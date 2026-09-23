@@ -977,7 +977,7 @@ rows:
   - value_stream.index
   - intelligence_ui.ask (strategy card)
   engines: []
-  lens: L2 Strategy (value_streams_at_risk, a separate branch; read verified in section 2, method absent from this worktree)
+  lens: L2 Strategy (value_streams_at_risk, a separate branch; read verified in section 2, method not present)
   status: wired
   proposed: null
 - id: IW-40

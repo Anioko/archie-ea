@@ -493,7 +493,7 @@ to reconfirm the count before trusting it:**
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
 | `unrendered-model-fields` | a detail-view template never rendering a real Text/JSON model field | ratchet @ 387 |
-| `wiring-rows` | a fact-bearing model column with no row in the intelligence wiring register | ratchet @ 1230 |
+| `wiring-rows` | a fact-bearing model column with no row in the intelligence wiring register | ratchet, baseline in verification_baseline.json |
 | `error-signalling` | an API error path that answers `200` | must be 0 |
 | `silent-data` | a server failure returned to the caller as data | must be 0 |
 | `dead-interactions` | a control that silently does nothing | must be 0 |

@@ -458,7 +458,7 @@ def gate_unrendered_model_fields(baseline: int) -> Result:
                   detail, count, baseline)
 
 
-def gate_wiring_rows(baseline: int) -> Result:
+def gate_wiring_rows(baseline: int | None) -> Result:
     """A fact-bearing model column (maturity, cost, licence, risk, owner, plateau, and the other families
     docs/intelligence-wiring-register.yml's `pipeline_rule.statement` names) with no row in that register.
     RATCHET.
@@ -467,16 +467,47 @@ def gate_wiring_rows(baseline: int) -> Result:
     lens or a derivation engine could read, with nobody having recorded whether it is wired, unwired, or
     deliberately not intelligence. Read scripts/check_wiring_rows.py's own docstring for the full disclosed
     scope before triaging. Hatch: `wiring-ok: IW-nn <reason>` on the column's def line.
+
+    The ratchet counts net columns, so a column that arrives alongside a deletion is invisible to it; this
+    gate also runs the checker's `--base` mode (default: the merge-base with origin/main) so the detail line
+    names what the change actually added, not only whether the running total moved.
     """
+    if baseline is None:
+        return Result("wiring-rows", FAIL,
+                      "no wiring_rows key in verification_baseline.json; "
+                      "run scripts/verify.py --gate wiring-rows --update-baseline")
     proc = _run([sys.executable, "scripts/check_wiring_rows.py", "--count"])
     try:
         count = int(proc.stdout.strip().splitlines()[-1])
     except (ValueError, IndexError):
         return Result("wiring-rows", FAIL,
                       f"could not parse count: {proc.stdout!r} {proc.stderr[:300]}")
+    status = PASS if count <= baseline else FAIL
     detail = "" if count <= baseline else "run scripts/check_wiring_rows.py --list to list them"
-    return Result("wiring-rows", PASS if count <= baseline else FAIL,
-                  detail, count, baseline)
+
+    base_proc = _run([sys.executable, "scripts/check_wiring_rows.py", "--base", "--count"])
+    if base_proc.returncode == 3:
+        stderr_line = base_proc.stderr.strip().splitlines()[-1] if base_proc.stderr.strip() else ""
+        addition = f"added-findings check skipped: {stderr_line}"
+        detail = f"{detail}; {addition}" if detail else addition
+    elif base_proc.returncode == 0:
+        addition = "0 added since merge-base"
+        detail = f"{detail}; {addition}" if detail else addition
+    elif base_proc.returncode == 1:
+        status = FAIL
+        try:
+            added_n = int(base_proc.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            added_n = "?"
+        list_proc = _run([sys.executable, "scripts/check_wiring_rows.py", "--base"])
+        addition = f"{added_n} added since merge-base: {list_proc.stdout.strip()[-1800:]}"
+        detail = f"{detail}; {addition}" if detail else addition
+    else:
+        status = FAIL
+        addition = "could not parse added count"
+        detail = f"{detail}; {addition}" if detail else addition
+
+    return Result("wiring-rows", status, detail, count, baseline)
 
 
 def gate_ui_contract(baseline: int) -> Result:
@@ -1762,10 +1793,11 @@ def build_gates(baseline: dict) -> list[Gate]:
                          "or mark 'unrendered-field-ok: <reason>' on its column line",
              tags=["static", "ui"]),
         Gate("wiring-rows", "a fact-bearing model column with no row in the intelligence wiring register",
-             "ratchet", lambda: gate_wiring_rows(baseline.get("wiring_rows", 1230)),
+             "ratchet", lambda: gate_wiring_rows(baseline.get("wiring_rows")),
              remediation="run scripts/check_wiring_rows.py --list; add a row (wired, or not_intelligence "
                          "with a reason) to docs/intelligence-wiring-register.yml, or mark "
-                         "'wiring-ok: IW-nn <reason>' on the column line",
+                         "'wiring-ok: IW-nn <reason>' on the column line; "
+                         "scripts/check_wiring_rows.py --base origin/main names what this change added",
              tags=["static"]),
         Gate("error-signalling", "no API error path that answers 200", "zero",
              gate_error_signalling,

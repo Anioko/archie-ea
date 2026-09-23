@@ -9,6 +9,7 @@ name match, and a missing register exiting 2, not 0.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -98,7 +99,7 @@ def test_a_not_intelligence_entry_suppresses_it(tmp_path):
 
 
 def test_a_row_naming_a_different_class_does_not_cover_this_one(tmp_path):
-    """Refuter control: a row naming class Risk must not cover RiskEntityLink's columns -- exact,
+    """Exactness control: a row naming class Risk must not cover RiskEntityLink's columns -- exact,
     comma-split equality on `model`, never a substring match."""
     mod = _load_checker()
     root = tmp_path / "tree"
@@ -114,6 +115,28 @@ def test_a_row_naming_a_different_class_does_not_cover_this_one(tmp_path):
     register_path = _write_register(tmp_path, rows=[{"id": "IW-03", "model": "Risk", "fields": ["risk_level"]}])
     findings = _scan(mod, root, register_path)
     assert len(findings) == 1 and findings[0].cls == "RiskEntityLink" and findings[0].attr == "risk_level"
+
+
+def test_a_not_intelligence_where_naming_a_longer_class_does_not_cover_a_shorter_one(tmp_path):
+    """A not_intelligence where naming RiskEntityLink.risk_level must not cover Risk.risk_level -- whole-word
+    matching on the class name, not a substring test (Risk is a substring of RiskEntityLink)."""
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    body = textwrap.dedent(
+        """\
+        class Risk(db.Model):
+            __tablename__ = "risks"
+            id = db.Column(db.Integer, primary_key=True)
+            risk_level = db.Column(db.String, nullable=True)
+        """
+    )
+    _write_model(root, body, filename="risk.py")
+    register_path = _write_register(tmp_path, not_intelligence=[
+        {"id": "IW-04", "fact": "n/a",
+         "where": ["app/models/links.py:10 RiskEntityLink.risk_level"], "reason": "test entry"},
+    ])
+    findings = _scan(mod, root, register_path)
+    assert len(findings) == 1 and findings[0].cls == "Risk" and findings[0].attr == "risk_level"
 
 
 # ---- (iii) escape hatch
@@ -163,6 +186,28 @@ def test_escape_hatch_line_above_does_not_leak_to_the_next_column(tmp_path):
     assert len(findings) == 1 and findings[0].attr == "risk_level"
 
 
+def test_escape_hatch_on_a_multi_line_declarations_closing_line(tmp_path):
+    """A marker on the closing-paren line of a multi-line declaration suppresses that column, and does not
+    leak onto the next column -- the declaration's own line range is `lineno..end_lineno`, not `lineno` alone."""
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    body = textwrap.dedent(
+        """\
+        class Widget(db.Model):
+            __tablename__ = "widgets"
+            id = db.Column(db.Integer, primary_key=True)
+            health_status = db.Column(
+                db.String,
+            )  # wiring-ok: IW-01 a real reason
+            risk_level = db.Column(db.String)
+        """
+    )
+    _write_model(root, body)
+    register_path = _write_register(tmp_path, rows=[{"id": "IW-01", "model": "none", "fields": []}])
+    findings = _scan(mod, root, register_path)
+    assert len(findings) == 1 and findings[0].attr == "risk_level"
+
+
 def test_escape_marker_with_an_id_not_in_the_register_is_reported_not_honoured(tmp_path):
     mod = _load_checker()
     root = tmp_path / "tree"
@@ -203,18 +248,79 @@ def test_family_boundary(tmp_path):
             id = db.Column(db.Integer, primary_key=True)
             user_count = db.Column(db.Integer)
             description = db.Column(db.Text)
+            name = db.Column(db.String)
+            status = db.Column(db.String)
+            controller = db.Column(db.String)
+            discount = db.Column(db.Integer)
+            scorecard = db.Column(db.String)
+            healthy = db.Column(db.Boolean)
+            costume = db.Column(db.String)
+            riskless = db.Column(db.Boolean)
             eol_date = db.Column(db.Date)
             is_baseline = db.Column(db.Boolean)
             rto_hours = db.Column(db.Integer)
             owner_id = db.Column(db.Integer)
+            end_of_life_date = db.Column(db.Date)
+            retired_at = db.Column(db.DateTime)
+            last_assessed = db.Column(db.Date)
+            key_risks = db.Column(db.Text)
+            other_costs = db.Column(db.Numeric)
+            critical_gaps = db.Column(db.Integer)
+            unique_vendors = db.Column(db.Integer)
+            ownership_type = db.Column(db.String)
+            assessor = db.Column(db.String)
+            gaps = db.Column(db.Text)
+            licensing_model = db.Column(db.String)
+            is_critical = db.Column(db.Boolean)
+            gdpr_compliant = db.Column(db.Boolean)
         """
     )
     _write_model(root, body)
     register_path = _write_register(tmp_path)
     findings = _scan(mod, root, register_path)
     flagged = {f.attr for f in findings}
-    assert flagged == {"eol_date", "is_baseline", "rto_hours", "owner_id"}
-    assert "user_count" not in flagged and "description" not in flagged
+    assert flagged == {
+        "eol_date", "is_baseline", "rto_hours", "owner_id", "end_of_life_date", "retired_at",
+        "last_assessed", "key_risks", "other_costs", "critical_gaps", "unique_vendors",
+        "ownership_type", "assessor", "gaps", "licensing_model", "is_critical", "gdpr_compliant",
+    }
+    for unflagged in ("user_count", "description", "name", "status", "controller", "discount",
+                      "scorecard", "healthy", "costume", "riskless"):
+        assert unflagged not in flagged
+
+
+# ---- (iv-b) the SQLAlchemy 2.0 annotated-assignment shape, and mixin columns staying unseen
+
+def test_ann_assign_mapped_column_shape_is_flagged(tmp_path):
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    body = textwrap.dedent(
+        """\
+        class Widget(db.Model):
+            __tablename__ = "widgets"
+            id = db.Column(db.Integer, primary_key=True)
+            risk_level: Mapped[str] = mapped_column(sa.String)
+        """
+    )
+    _write_model(root, body)
+    register_path = _write_register(tmp_path)
+    findings = _scan(mod, root, register_path)
+    assert len(findings) == 1 and findings[0].cls == "Widget" and findings[0].attr == "risk_level"
+
+
+def test_mixin_column_is_not_seen(tmp_path):
+    """Disclosed limit: a class with no Model base and no __tablename__ (a mixin) is not scanned."""
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    body = textwrap.dedent(
+        """\
+        class OwnerMixin:
+            owner_id = db.Column(db.Integer)
+        """
+    )
+    _write_model(root, body)
+    register_path = _write_register(tmp_path)
+    assert _scan(mod, root, register_path) == []
 
 
 # ---- (v) nested class inside a function
@@ -297,3 +403,77 @@ def test_count_matches_the_number_of_findings(tmp_path, monkeypatch, capsys):
     code = mod.main()
     assert code == 0
     assert capsys.readouterr().out.strip() == "1"
+
+
+# ---- (viii) base diff
+
+def _git(root, *args):
+    proc = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    return proc.stdout
+
+
+def test_base_diff_names_a_column_added_alongside_a_deletion(tmp_path, monkeypatch, capsys):
+    """A column that arrives with a deletion is invisible to the count ratchet (1 -> 1) but named by --base."""
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _git(root, "config", "user.email", "test@example.invalid")
+    _git(root, "config", "user.name", "test")
+    body_v1 = textwrap.dedent(
+        """\
+        class Widget(db.Model):
+            __tablename__ = "widgets"
+            id = db.Column(db.Integer, primary_key=True)
+            is_baseline = db.Column(db.Boolean)
+        """
+    )
+    _write_model(root, body_v1)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "first")
+    body_v2 = textwrap.dedent(
+        """\
+        class Widget(db.Model):
+            __tablename__ = "widgets"
+            id = db.Column(db.Integer, primary_key=True)
+            health_score = db.Column(db.Integer)
+        """
+    )
+    _write_model(root, body_v2)
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "second")
+
+    register_path = _write_register(tmp_path)
+
+    monkeypatch.setattr("sys.argv",
+                         ["check_wiring_rows.py", "--root", str(root), "--register", str(register_path), "--count"])
+    assert mod.main() == 0
+    assert capsys.readouterr().out.strip() == "1"  # count unchanged: 1 -> 1
+
+    monkeypatch.setattr("sys.argv",
+                         ["check_wiring_rows.py", "--root", str(root), "--register", str(register_path),
+                          "--base", "HEAD~1", "--count"])
+    assert mod.main() == 1
+    assert capsys.readouterr().out.strip() == "1"
+
+    monkeypatch.setattr("sys.argv",
+                         ["check_wiring_rows.py", "--root", str(root), "--register", str(register_path),
+                          "--base", "HEAD~1"])
+    assert mod.main() == 1
+    assert "Widget.health_score" in capsys.readouterr().out
+
+
+def test_base_diff_unresolvable_ref_exits_3_with_empty_stdout(tmp_path, monkeypatch, capsys):
+    mod = _load_checker()
+    root = tmp_path / "tree"
+    root.mkdir()
+    _git(root, "init", "-q")
+    _write_model(root, WIDGET_BODY)
+    register_path = _write_register(tmp_path)
+    monkeypatch.setattr("sys.argv",
+                         ["check_wiring_rows.py", "--root", str(root), "--register", str(register_path),
+                          "--base", "does-not-exist"])
+    code = mod.main()
+    assert code == 3
+    assert capsys.readouterr().out.strip() == ""
