@@ -334,3 +334,225 @@ def test_digest_recipients_refuse_a_missing_organization():
 
     with _pytest.raises(ValueError, match="requires an organization_id"):
         _get_recipients_by_roles(["enterprise_architect"], None)
+
+
+# ---- proactive copilot analysis
+
+
+def _make_solution(db_session, org_id, name, business_domain="Payroll", adm_phase="B", status="draft"):
+    """Insert a Solution owned by *org_id*."""
+    from app.models.solution_models import Solution
+
+    sol = Solution(
+        name=name,
+        organization_id=org_id,
+        business_domain=business_domain,
+        adm_phase=adm_phase,
+        status=status,
+    )
+    db_session.add(sol)
+    db_session.flush()
+    return sol
+
+
+def _make_app_component_for_solution(db_session, org_id, solution_id, app_name):
+    """Insert an ApplicationComponent and link it to *solution_id* via the junction table."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.solution_models import solution_applications
+
+    app = ApplicationComponent(name=app_name, organization_id=org_id)
+    db_session.add(app)
+    db_session.flush()
+    db_session.execute(
+        solution_applications.insert().values(
+            solution_id=solution_id,
+            application_component_id=app.id,
+            role="primary",
+        )
+    )
+    db_session.flush()
+    return app
+
+
+def test_proactive_analysis_tenant_scoped_generator(app, db_session, make_org):
+    """Acceptance 1: _run_proactive_analysis scoped to one org never names another org's solutions."""
+    import uuid as _uuid
+
+    from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
+        _run_proactive_analysis,
+    )
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()  # release savepoint so the thread's session sees the rows
+
+    sol_a_alpha = _make_solution(db_session, org_a.id, f"Payroll alpha-{tag}")
+    sol_a_beta = _make_solution(db_session, org_a.id, f"Payroll beta-{tag}")
+    sol_b_gamma = _make_solution(db_session, org_b.id, f"Payroll gamma-{tag}")
+    db_session.commit()
+
+    # Run synchronously scoped to org A
+    _run_proactive_analysis(app, sol_a_alpha.id, org_a.id)
+
+    # Read back the stored insight
+    insights = CopilotInsight.query.filter_by(
+        solution_id=sol_a_alpha.id,
+        insight_type="portfolio_duplicate",
+        seen=False,
+        dismissed=False,
+    ).all()
+
+    assert len(insights) >= 1, "expected at least one portfolio_duplicate insight"
+    combined = " ".join(
+        (ins.title or "") + " " + (ins.body or "") + " " + (ins.suggested_query or "")
+        for ins in insights
+    )
+    assert f"Payroll beta-{tag}" in combined, (
+        f"positive control: insight must name org A's other solution; got: {combined}"
+    )
+    assert f"Payroll gamma-{tag}" not in combined, (
+        f"TENANT LEAK: insight names org B's solution; got: {combined}"
+    )
+
+
+def test_proactive_analysis_service_alone_no_tenant_context(app, db_session, make_org):
+    """Acceptance 2: ProactiveAnalysisService with no tenant context still does not leak (D-2 holds alone)."""
+    import uuid as _uuid
+
+    from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()
+
+    sol_a_alpha = _make_solution(db_session, org_a.id, f"Payroll alpha-{tag}")
+    sol_a_beta = _make_solution(db_session, org_a.id, f"Payroll beta-{tag}")
+    sol_b_gamma = _make_solution(db_session, org_b.id, f"Payroll gamma-{tag}")
+    db_session.commit()
+
+    svc = ProactiveAnalysisService()
+    # No tenant context set — bare app_context only
+    with app.app_context():
+        insights = svc.analyse_solution(sol_a_alpha.id)
+
+    combined = " ".join(
+        (ins.title or "") + " " + (ins.body or "") + " " + (ins.suggested_query or "")
+        for ins in insights
+    )
+    assert f"Payroll gamma-{tag}" not in combined, (
+        f"TENANT LEAK (service alone): insight names org B's solution; got: {combined}"
+    )
+
+
+def test_proactive_analysis_pattern_available_no_cross_tenant_leak(app, db_session, make_org):
+    """Acceptance 2 (pattern_available): org B's high-completeness solution is never named for org A."""
+    import uuid as _uuid
+
+    from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()
+
+    sol_a = _make_solution(db_session, org_a.id, f"Unique pattern A-{tag}")
+    sol_b = _make_solution(db_session, org_b.id, f"Distinct pattern B-{tag}")
+    db_session.commit()
+
+    # Link two apps to each solution so they share applications
+    app_a1 = _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp1-{tag}")
+    app_a2 = _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp2-{tag}")
+    app_b1 = _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp1-{tag}")
+    app_b2 = _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp2-{tag}")
+    db_session.commit()
+
+    svc = ProactiveAnalysisService()
+    with app.app_context():
+        insights = svc.analyse_solution(sol_a.id)
+
+    combined = " ".join(
+        (ins.title or "") + " " + (ins.body or "") + " " + (ins.suggested_query or "")
+        for ins in insights
+    )
+    assert f"Distinct pattern B-{tag}" not in combined, (
+        f"TENANT LEAK (pattern_available): insight names org B's solution; got: {combined}"
+    )
+
+
+def test_run_proactive_analysis_none_org_writes_nothing(app, db_session, make_org):
+    """Acceptance 3: _run_proactive_analysis with None organization_id writes nothing and raises nothing."""
+    import uuid as _uuid
+
+    from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
+        _run_proactive_analysis,
+    )
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org = make_org("a")
+    db_session.commit()
+
+    sol = _make_solution(db_session, org.id, f"Payroll none-org-{tag}")
+    db_session.commit()
+
+    # Should not raise
+    _run_proactive_analysis(app, sol.id, None)
+
+    # Should not have written anything
+    insights = CopilotInsight.query.filter_by(solution_id=sol.id).all()
+    assert len(insights) == 0, (
+        f"expected no insights when organization_id is None, got {len(insights)}"
+    )
+
+
+def test_purge_cross_tenant_copilot_insights(app, db_session, make_org):
+    """Acceptance 4: purge command deletes only the two quoting insight types, dry-run first."""
+    from app.models.copilot_insight import CopilotInsight
+
+    org = make_org("purge")
+    db_session.commit()
+    sol = _make_solution(db_session, org.id, "Purge target solution")
+    db_session.commit()
+
+    def _add(insight_type, title):
+        row = CopilotInsight(
+            solution_id=sol.id,
+            insight_type=insight_type,
+            title=title,
+            body="body",
+            suggested_query="query",
+            severity="info",
+        )
+        db_session.add(row)
+        db_session.flush()
+        return row
+
+    _add("portfolio_duplicate", "dup")
+    _add("pattern_available", "pattern")
+    _add("stale_solution", "stale")
+    db_session.commit()
+
+    runner = app.test_cli_runner()
+
+    # Dry run: prints counts, deletes nothing
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights"])
+    assert result.exit_code == 0, result.output
+    assert "portfolio_duplicate: 1" in result.output
+    assert "pattern_available: 1" in result.output
+    assert "Dry run" in result.output
+    assert CopilotInsight.query.count() == 3, "dry run must delete nothing"
+
+    # --apply: deletes the two quoting types, leaves stale_solution
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
+    assert result.exit_code == 0, result.output
+    remaining = CopilotInsight.query.all()
+    assert {r.insight_type for r in remaining} == {"stale_solution"}, (
+        f"expected only stale_solution to remain, got {[r.insight_type for r in remaining]}"
+    )
+
+    # Second --apply deletes 0, exits 0
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
+    assert result.exit_code == 0, result.output
+    assert "Deleted 0 row(s)" in result.output
