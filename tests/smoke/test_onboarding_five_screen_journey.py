@@ -97,6 +97,11 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
 
         # Screen 4: Fill the gaps -- the review section shows its genuine empty state
         assert "Nothing to review yet" in page.inner_text("body")
+        # A long list must not be a wall: only the first few show until asked.
+        rows = page.get_by_text("Expected at your stage", exact=True)
+        assert rows.count() == 6, "the gaps list should open with a short, readable set"
+        page.get_by_role("button", name="Show all").click()
+        assert rows.count() > 6, "Show all must reveal the rest of the expected items"
         page.get_by_role("link", name="Continue").click()
         page.wait_for_url(lambda url: "/onboarding/twin" in url, timeout=PAGE_TIMEOUT)
 

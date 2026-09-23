@@ -9,6 +9,11 @@
         assigning: null,
         assignee: '',
         acceptReason: '',
+        showAll: false,
+        limit: 6,
+        visibleGaps() {
+            return this.showAll ? this.gaps : this.gaps.slice(0, this.limit);
+        },
         act(gapId, action, extra) {
             const body = Object.assign({action: action}, extra || {});
             window.Platform.fetch('{{ url_for('onboarding.gap_action', gap_id='__ID__') }}'.replace('__ID__', encodeURIComponent(gapId)), {
@@ -39,10 +44,10 @@
 
     {% if gaps %}
     <div class="space-y-2">
-        <template x-for="gap in gaps" :key="gap.gap_id">
+        <template x-for="gap in visibleGaps()" :key="gap.gap_id">
             <div class="rounded-lg border border-border p-3 space-y-2"
                  :class="(gap.assigned_to || gap.accepted_reason) ? 'opacity-60' : ''">
-                <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                     <div>
                         <p class="text-sm font-medium text-foreground" x-text="gap.label"></p>
                         <p class="text-xs text-muted-foreground" x-show="!gap.assigned_to && !gap.accepted_reason">Expected at your stage</p>
@@ -78,6 +83,10 @@
                 </div>
             </div>
         </template>
+        <button type="button" x-show="!showAll && gaps.length > limit" x-cloak @click="showAll = true"
+                class="w-full rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-4">
+            <span x-text="'Show all ' + gaps.length + ' expected items'"></span>
+        </button>
     </div>
     {% else %}
     <p class="text-sm text-muted-foreground">Nothing expected is missing yet.</p>
