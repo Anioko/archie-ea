@@ -16,6 +16,7 @@ from datetime import datetime  # dead-code-ok
 from sqlalchemy.orm import relationship, synonym
 
 from app.config.archimate_relationship_matrix import (
+    ALL_ELEMENTS as _MATRIX_ALL_ELEMENTS,
     VALID_RELATIONSHIPS as _MATRIX_VALID_RELATIONSHIPS,
     get_element_layer as _matrix_get_element_layer,
     get_valid_relationships as _matrix_get_valid_relationships,
@@ -337,9 +338,14 @@ def validate_relationship(rel_type, source_type, target_type):
     relationship validity authority — after normalising ``source_type``/
     ``target_type`` (stored snake_case, e.g. 'application_component') to
     the matrix's PascalCase keys. An element type the matrix does not
-    recognise is not itself evidence of an invalid relationship, so
-    validation is skipped (not refused) for it, as before this was an
-    adapter.
+    recognise at all is not itself evidence of an invalid relationship, so
+    validation is skipped (not refused) for it. Grouping, Location and
+    Junction belong to no layer but are recognised element types (in
+    ``ALL_ELEMENTS``), so they get the matrix's real verdict here rather
+    than the skip -- before this, ``get_element_layer`` returning ``None``
+    for the three of them (they are in no layer) fell into the same skip
+    path as a genuinely unrecognised type, so every relationship touching
+    one of them validated True regardless of what the matrix actually says.
 
     Args:
         rel_type: Relationship type (e.g., 'composition', 'serving')
@@ -353,10 +359,7 @@ def validate_relationship(rel_type, source_type, target_type):
     source_pascal = _matrix_normalize_element_type(source_type)
     target_pascal = _matrix_normalize_element_type(target_type)
 
-    if (
-        _matrix_get_element_layer(source_pascal) is None
-        or _matrix_get_element_layer(target_pascal) is None
-    ):
+    if source_pascal not in _MATRIX_ALL_ELEMENTS or target_pascal not in _MATRIX_ALL_ELEMENTS:
         return True, "Element type not in registry; validation skipped"
 
     if _matrix_is_valid_relationship(source_pascal, target_pascal, rel):
