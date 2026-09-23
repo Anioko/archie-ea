@@ -933,14 +933,54 @@ def test_public_repo_hygiene_commit_message_catches_assistant_product_name_on_tr
     assert _run_hygiene_checker(root, "commits") > 0, "row %r (%r) was not caught" % (label, trailer_line)
 
 
-def test_public_repo_hygiene_commit_message_assistant_product_name_needs_a_trailer_line(tmpdir):
-    """An assistant product name mentioned in ordinary prose -- not on a
-    trailer or footer line -- is an unrelated, legitimate mention (turning
-    a feature on or off, a comparison, a changelog entry) and must not
-    fire."""
+_ASSISTANT_PRODUCT_NAME_PROSE_CASES = [
+    ("Co-authored by Claude Code", "Fix the timeout on the retry path\n\nCo-authored by Claude Code\n"),
+    ("Written with Claude Code", "Fix the timeout on the retry path\n\nWritten with Claude Code\n"),
+]
+
+
+@pytest.mark.parametrize(
+    "label, message", _ASSISTANT_PRODUCT_NAME_PROSE_CASES,
+    ids=[c[0] for c in _ASSISTANT_PRODUCT_NAME_PROSE_CASES],
+)
+def test_public_repo_hygiene_commit_message_catches_assistant_product_name_in_prose(tmpdir, label, message):
+    """An assistant product name is caught anywhere in the message, not
+    only on a `Key: value` trailer line -- an ordinary sentence naming the
+    tool discloses exactly what the trailer/footer checks above exist to
+    catch."""
     root = tmpdir.mkdir("assistant-prose")
+    _init_repo_with_commit(root, message)
+    assert _run_hygiene_checker(root, "commits") > 0, "row %r was not caught" % (label,)
+
+
+def test_public_repo_hygiene_commit_message_assistant_product_name_fires_on_an_unrelated_mention_too(tmpdir):
+    """An assistant product name mentioned anywhere in the message -- not
+    only on a trailer or footer line -- is a hit; the checker no longer
+    tries to tell an unrelated mention (turning a feature on or off, a
+    comparison) apart from a disclosure by the shape of the line it sits
+    on."""
+    root = tmpdir.mkdir("assistant-prose-unrelated")
     _init_repo_with_commit(root, "Disable the Copilot suggestions panel in the editor settings")
+    assert _run_hygiene_checker(root, "commits") > 0
+
+
+def test_public_repo_hygiene_commit_message_governance_file_name_is_not_an_assistant_mention(tmpdir):
+    """This repository's own governance-file name shares its first word
+    with one of the assistant product names, and is referenced constantly
+    in ordinary commit messages that have nothing to do with the tool --
+    excluded by name so it does not collide."""
+    root = tmpdir.mkdir("governance-file-name")
+    _init_repo_with_commit(root, "Correct three stale gate counts in CLAUDE.md")
     assert _run_hygiene_checker(root, "commits") == 0
+
+
+def test_public_repo_hygiene_commit_message_governance_file_name_does_not_mask_a_real_mention(tmpdir):
+    """A genuine disclosure next to the governance-file name on the same
+    line is still caught -- excluding the file name does not excuse the
+    rest of the line."""
+    root = tmpdir.mkdir("governance-file-name-plus-real-mention")
+    _init_repo_with_commit(root, "Reworded CLAUDE.md; Written with Claude Code")
+    assert _run_hygiene_checker(root, "commits") > 0
 
 
 def test_public_repo_hygiene_commit_message_ordinary_trailer_line_is_clean(tmpdir):

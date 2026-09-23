@@ -209,12 +209,25 @@ _TRAILER_RE = re.compile(r"co-authored-by", re.IGNORECASE)
 # checked; a footer disclosing generation by anything is the thing being
 # excluded here, not only a named one.
 _GENERATED_WITH_RE = re.compile(r"generated\s+with", re.IGNORECASE)
-# git's own trailer shape: a short "Key: value" line, case-insensitive on
-# the key (Co-authored-by:, Signed-off-by:, Reviewed-by:, and so on).
-_TRAILER_LINE_RE = re.compile(r"^\s*[A-Za-z][A-Za-z -]*:\s+\S")
-# An assistant coding tool's own product name, whole word only -- so this
-# never fires on an unrelated word that merely contains one of them.
+# An assistant coding tool's own product name, whole word only (so this
+# never fires on an unrelated word that merely contains one of them) --
+# checked against the whole message line, not only a "Key: value" trailer
+# shape: a prose sentence naming the same tool ("co-authored by <tool>",
+# "written with <tool>") carries no trailer shape at all and discloses
+# exactly what the trailer/footer checks above exist to catch. One name
+# collides with this repository's own governance-file name, referenced
+# constantly in ordinary commit messages having nothing to do with the
+# tool that shares its name -- excluded by name, the same way rule 3's
+# PRODUCT_TERMS excludes this codebase's own vocabulary from the role-word
+# check above.
 _ASSISTANT_PRODUCT_RE = re.compile(r"\b(?:claude|codex|kilo|copilot)\b", re.IGNORECASE)
+_GOVERNANCE_FILE_NAME_RE = re.compile(r"\bclaude\.md\b", re.IGNORECASE)
+
+
+def _assistant_product_hit(line: str) -> bool:
+    """True if `line` names an assistant coding tool's own product,
+    outside a mention of this repository's own governance-file name."""
+    return bool(_ASSISTANT_PRODUCT_RE.search(_GOVERNANCE_FILE_NAME_RE.sub("", line)))
 
 # .js so app/static's authored JS is covered; vendor/bundles/*.min.js are
 # third-party or built output, never authored comments, and would be pure
@@ -590,10 +603,10 @@ def _iter_commit_messages(root: str, rev_range: str | None) -> list[tuple[str, s
 
 def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] | None:
     """Rule 3, commit-message half: pipeline role words, a Co-Authored-By
-    trailer, a generated-with footer, and an assistant product name sitting
-    on a trailer or footer line, in the commit message itself -- not the
-    diff. The escape hatch excuses only the physical line it sits on, not
-    the whole message; none of the three attribution checks below is ever
+    trailer, a generated-with footer, and an assistant product name
+    anywhere in the message, in the commit message itself -- not the diff.
+    The escape hatch excuses only the physical line it sits on, not the
+    whole message; none of the three attribution checks below is ever
     excused by it, marker or not -- each is checked, and can report, before
     the escape hatch is even read. Zero tolerance, scoped to the commits
     under review -- see verify.py's
@@ -614,8 +627,8 @@ def _scan_commit_messages(root: str, rev_range: str | None = None) -> list[str] 
             if _GENERATED_WITH_RE.search(line):
                 problems.append(f"{sha[:8]}: a 'generated with' footer line in the commit message")
                 continue
-            if _ASSISTANT_PRODUCT_RE.search(line) and _TRAILER_LINE_RE.match(line):
-                problems.append(f"{sha[:8]}: an assistant product name on a trailer line in the commit message")
+            if _assistant_product_hit(line):
+                problems.append(f"{sha[:8]}: an assistant product name in the commit message")
                 continue
             if ESCAPE_HATCH in line:
                 continue

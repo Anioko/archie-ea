@@ -924,9 +924,9 @@ def _resolve_hygiene_commit_range() -> tuple[str | None, str]:
 
 def gate_public_repo_hygiene_commit_messages() -> Result:
     """A pipeline role word, a Co-Authored-By trailer, a generated-with
-    footer line, or an assistant coding tool's own product name on a
-    trailer or footer line, in a commit message itself (not the diff),
-    among the commits under review.
+    footer line, or an assistant coding tool's own product name anywhere in
+    the message, in a commit message itself (not the diff), among the
+    commits under review.
 
     ZERO, not a ratchet, and scoped to a range rather than full history -- see
     ``_resolve_hygiene_commit_range``'s own docstring for why counting all of
@@ -1880,7 +1880,7 @@ def build_gates(baseline: dict) -> list[Gate]:
              tags=["static", "qa"]),
         Gate("public-repo-hygiene-commit-messages",
              "no pipeline role word, attribution trailer, generated-with footer, or "
-             "assistant product name on a trailer/footer line, in a commit message under review",
+             "assistant product name anywhere in a commit message under review",
              "zero",
              gate_public_repo_hygiene_commit_messages,
              remediation="run scripts/check_public_repo_hygiene.py --rule commits --range "
