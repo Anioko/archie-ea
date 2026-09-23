@@ -1,9 +1,11 @@
 {% extends 'layouts/public_base.html' %}{# smoke-coverage-ok: public landing page; visual layout verified by unit tests and Playwright screenshots under .task/ #}
-{% block title %}Entelim{% endblock %}
+{% block full_title %}Entelim{% endblock %}
 {% from 'macros/form_macros.html' import render_form_input %}
 
 {% block header %}
+{% with brand_name = "Entelim" %}
 {% include 'components/public_navbar.html' %}
+{% endwith %}
 {% endblock %}
 
 {% block content %}
