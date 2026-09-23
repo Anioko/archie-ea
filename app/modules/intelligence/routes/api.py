@@ -375,7 +375,11 @@ def risk_for_element(element_id: int):
 
     Serialises ``IntelligenceQueryService.risk_for_element`` through
     ``success_response`` -- same shape/error-handling pattern as
-    ``cross_layer_impact`` above, no business logic here.
+    ``cross_layer_impact`` above, no business logic here. ``framework``
+    narrows the control-gap block to one regulatory-framework code; an
+    unknown code is a 400, not a silent empty match (the same "never a
+    silent default" rule ``_parse_bool_param`` already applies to the
+    boolean params above).
     """
     include_derived, err = _parse_bool_param(
         request.args.get("include_derived"), default=True, param_name="include_derived"
@@ -402,6 +406,14 @@ def risk_for_element(element_id: int):
                 status_code=400,
             )
 
+    framework = request.args.get("framework")
+    if framework is not None and len(framework) > 50:
+        return error_response(
+            "framework must be at most 50 characters",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+
     organization_id = _current_organization_id()
     if organization_id is None:
         return error_response(
@@ -424,17 +436,32 @@ def risk_for_element(element_id: int):
 
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
-    result = IntelligenceQueryService.risk_for_element(
-        element_id,
-        max_depth=max_depth,
-        include_derived=include_derived,
-    )
+    try:
+        result = IntelligenceQueryService.risk_for_element(
+            element_id,
+            max_depth=max_depth,
+            include_derived=include_derived,
+            framework=framework,
+        )
+    except ValueError:
+        return error_response(
+            "framework is not a recognised code",
+            code="INVALID_PARAMETER",
+            status_code=400,
+        )
+
+    control_gaps = result.get("control_gaps")
+    _redact_financial_fields(control_gaps or [], ("estimated_cost",), "access_reason")
 
     return success_response(
         {
             "risks": result["risks"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+            "control_gaps": control_gaps,
+            "control_gaps_reason": result.get("control_gaps_reason"),
+            "framework": result.get("framework"),
+            "compliance_tags": result.get("compliance_tags"),
         }
     )
 

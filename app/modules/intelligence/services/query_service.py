@@ -14,6 +14,7 @@ are now answered.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
@@ -42,6 +43,14 @@ NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
 # different table, for L4.
 NO_OWNERSHIP_RECORDS_REASON = validate_reason_code("no_ownership_records")
 CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
+# Risk/control-gaps brief (2026-09-23) addition: Ask's Risk lens lists the
+# compliance gap rows recorded against anything on the answer's own element
+# set (the picked element plus its blast radii), beside the risks. Most
+# elements name no compliance requirement at all -- an honest absence, the
+# same discipline no_risk_recorded already applies to the risks list itself,
+# now applied to a distinct table pair for a distinct block on the same
+# answer.
+NO_COMPLIANCE_MAPPING_RECORDED_REASON = validate_reason_code("no_compliance_mapping_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -724,6 +733,7 @@ class IntelligenceQueryService:
         *,
         max_depth: int = 3,
         include_derived: bool = True,
+        framework: Optional[str] = None,
     ) -> Dict[str, Any]:
         """L6, "what could hurt <element>, and what does it touch": every
         ``Risk`` seeded directly on this element (``Risk.archimate_element_id
@@ -747,6 +757,27 @@ class IntelligenceQueryService:
         radius reaches other elements, the chain's aggregate score is the
         single worst (max) risk reaching it, the conservative choice
         documented in the L3/L6 brief, not a summed exposure figure.
+
+        Beside the risks, ``control_gaps`` lists every ``ComplianceGap`` whose
+        ``ComplianceRequirement`` is mirrored (``archimate_element_id``) on
+        the picked element or on any element the blast radius names -- the
+        answer's own element set, computed the same way whether or not a risk
+        was ever recorded (the no-risk branch runs one traversal, with no
+        owner attach, purely to establish that set). Neither
+        ``ComplianceRequirement`` nor ``ComplianceGap`` carries a tenant
+        column of its own; the already-tenant-fenced identity map built by
+        ``cross_layer_impact`` (plus the already-fenced picked element) IS the
+        fence a foreign requirement is kept out by. ``framework`` narrows that
+        list to one ``RegulatoryFramework`` code; a code that names no
+        ``RegulatoryFramework`` row at all raises ``ValueError`` (the route
+        turns this into a 400) rather than silently matching nothing, so an
+        unknown code and a known code with no rows in this answer are never
+        confused with each other. ``compliance_tags`` carries the resolved
+        ``ApplicationComponent``'s own recorded tags, reusing L3's dual
+        lookup (``portfolio_component_for_element``) rather than a second
+        element-to-component resolution. Nothing here joins or scores across
+        risks and gaps: a risk that is "also a control gap" is simply both
+        lists naming the same element id.
         """
         from app.models.risk import Risk
 
@@ -760,6 +791,10 @@ class IntelligenceQueryService:
                     "risks": [],
                     "reasons": [NO_TENANT_CONTEXT_REASON],
                     "elements": {},
+                    "control_gaps": None,
+                    "control_gaps_reason": None,
+                    "framework": None,
+                    "compliance_tags": None,
                 }
 
             from app.models import ArchiMateElement
@@ -772,6 +807,10 @@ class IntelligenceQueryService:
                     "risks": [],
                     "reasons": [ELEMENT_NOT_FOUND_REASON],
                     "elements": {},
+                    "control_gaps": None,
+                    "control_gaps_reason": None,
+                    "framework": None,
+                    "compliance_tags": None,
                 }
 
             seed_risks = (
@@ -782,40 +821,252 @@ class IntelligenceQueryService:
                 .all()
             )
 
-            if not seed_risks:
-                return {
-                    "risks": [],
-                    "reasons": [NO_RISK_RECORDED_REASON],
-                    "elements": {},
-                }
-
             all_elements: Dict[str, Dict[str, Any]] = {}
             risk_payloads: List[Dict[str, Any]] = []
-            for risk in seed_risks:
+
+            if not seed_risks:
+                # The no-risk branch still runs the ONE traversal L1 already
+                # implements, purely so the answer's element set exists for
+                # the control-gap read below -- risks stays [] and the
+                # reason stays no_risk_recorded either way.
                 blast = IntelligenceQueryService.cross_layer_impact(
                     element_id,
                     include_derived=include_derived,
                     max_depth=max_depth,
-                    with_owner=True,
+                    with_owner=False,
                 )
-                all_elements.update(blast.get("elements") or {})
-                risk_payloads.append(
-                    {
-                        "risk_id": risk.id,
-                        "title": risk.title,
-                        "status": risk.status.value if risk.status else None,
-                        "likelihood": risk.likelihood,
-                        "impact": risk.impact,
-                        "risk_score": risk.risk_score,
-                        "risk_level": risk.risk_level,
-                        "owner": risk.owner,
-                        "mitigation_plan": risk.mitigation_plan,
-                        "affected_rows": blast.get("rows", []),
-                        "affected_summary": blast.get("summary", {}),
-                    }
+                all_elements = blast.get("elements") or {}
+                reasons = [NO_RISK_RECORDED_REASON]
+            else:
+                for risk in seed_risks:
+                    blast = IntelligenceQueryService.cross_layer_impact(
+                        element_id,
+                        include_derived=include_derived,
+                        max_depth=max_depth,
+                        with_owner=True,
+                    )
+                    all_elements.update(blast.get("elements") or {})
+                    risk_payloads.append(
+                        {
+                            "risk_id": risk.id,
+                            "title": risk.title,
+                            "status": risk.status.value if risk.status else None,
+                            "likelihood": risk.likelihood,
+                            "impact": risk.impact,
+                            "risk_score": risk.risk_score,
+                            "risk_level": risk.risk_level,
+                            "owner": risk.owner,
+                            "mitigation_plan": risk.mitigation_plan,
+                            "affected_rows": blast.get("rows", []),
+                            "affected_summary": blast.get("summary", {}),
+                        }
+                    )
+                reasons = []
+
+            # The picked element plus every id the blast radii named -- the
+            # answer's own element set, independent of whether a risk seeded
+            # it. ``element_id`` reached here only through the tenant-fenced
+            # select above; ``all_elements``'s keys only through
+            # ``_resolve_elements_batch``'s own ``organization_id`` predicate
+            # -- so this set is itself already tenant-fenced.
+            answer_element_ids = {element_id} | {int(k) for k in all_elements}
+
+            # Resolve/validate the framework filter before the requirement
+            # read, so an unknown code and a known code that simply matches
+            # nothing in this answer are never conflated.
+            resolved_framework: Optional[str] = None
+            if framework is not None:
+                from app.models.compliance_models import RegulatoryFramework
+
+                known_code = db.session.execute(
+                    db.select(RegulatoryFramework.code).where(
+                        RegulatoryFramework.code == framework
+                    )
+                ).scalar_one_or_none()
+                if known_code is None:
+                    raise ValueError("framework does not name a recorded regulatory framework")
+                resolved_framework = known_code
+
+            # The requirement/gap read, filtered to the answer's own elements
+            # (and to the framework, when given) -- compliance tables carry
+            # no tenant column, so the IN(...) below is the only fence a
+            # foreign requirement meets.
+            from app.models.compliance_models import (
+                ComplianceControl,
+                ComplianceGap,
+                ComplianceRequirement,
+            )
+
+            requirement_stmt = (
+                db.select(
+                    ComplianceRequirement.id,
+                    ComplianceRequirement.archimate_element_id,
+                    ComplianceRequirement.title,
+                    ComplianceRequirement.risk_if_not_met,
+                    RegulatoryFramework.code,
+                    RegulatoryFramework.name,
+                    ComplianceControl.control_code,
+                )
+                .select_from(ComplianceRequirement)
+                .outerjoin(
+                    RegulatoryFramework,
+                    ComplianceRequirement.framework_id == RegulatoryFramework.id,
+                )
+                .outerjoin(
+                    ComplianceControl,
+                    ComplianceRequirement.control_id == ComplianceControl.id,
+                )
+                .where(ComplianceRequirement.archimate_element_id.in_(answer_element_ids))
+            )
+            if framework is not None:
+                requirement_stmt = requirement_stmt.where(RegulatoryFramework.code == framework)
+
+            requirement_rows = db.session.execute(requirement_stmt).all()
+
+            if not requirement_rows:
+                control_gaps: Optional[List[Dict[str, Any]]] = None
+                control_gaps_reason: Optional[str] = NO_COMPLIANCE_MAPPING_RECORDED_REASON
+            else:
+                requirements_by_id = {row.id: row for row in requirement_rows}
+
+                gap_rows = (
+                    db.session.execute(
+                        db.select(ComplianceGap)
+                        .where(
+                            ComplianceGap.compliance_requirement_id.in_(requirements_by_id.keys())
+                        )
+                        .order_by(ComplianceGap.compliance_requirement_id, ComplianceGap.id)
+                    )
+                    .scalars()
+                    .all()
                 )
 
-        return {"risks": risk_payloads, "reasons": [], "elements": all_elements}
+                control_gaps = []
+                for gap in gap_rows:
+                    req = requirements_by_id[gap.compliance_requirement_id]
+                    control_gaps.append(
+                        {
+                            "gap_id": gap.id,
+                            "element_id": req.archimate_element_id,
+                            "requirement_id": req.id,
+                            "requirement_title": req.title,
+                            "framework_code": req.code,
+                            "framework_name": req.name,
+                            "control_code": req.control_code,
+                            "gap_type": gap.gap_type,
+                            "title": gap.title,
+                            "risk_level": gap.risk_level,
+                            "likelihood": gap.likelihood,
+                            "remediation_action": gap.remediation_action,
+                            "target_completion_date": (
+                                gap.target_completion_date.isoformat()
+                                if gap.target_completion_date
+                                else None
+                            ),
+                            "status": gap.status,
+                            "risk_if_not_met": req.risk_if_not_met,
+                            "estimated_cost": (
+                                float(gap.estimated_cost)
+                                if gap.estimated_cost is not None
+                                else None
+                            ),
+                            "access_reason": None,
+                            "truth_class": "authoritative_fact",
+                        }
+                    )
+                # The block's own order -- element id, then requirement id,
+                # then gap id -- asserted in Python rather than trusted to
+                # the SELECT's ORDER BY, which only orders by requirement id.
+                control_gaps.sort(
+                    key=lambda row: (row["element_id"], row["requirement_id"], row["gap_id"])
+                )
+                control_gaps_reason = None
+
+            # The picked component's own recorded compliance facts -- L3's
+            # dual lookup, not a second element-to-component resolution.
+            component_resolution = IntelligenceQueryService.portfolio_component_for_element(
+                element_id
+            )
+            component_id = component_resolution.get("application_component_id")
+
+            if component_id is None:
+                compliance_tags: Optional[Dict[str, Any]] = {
+                    "tags": None,
+                    "tags_text": None,
+                    "gdpr_compliant": None,
+                    "pii_data_processed": None,
+                    "data_classification": None,
+                    "requirements_text": None,
+                    "reason": NO_APPLICATION_COMPONENT_REASON,
+                }
+            else:
+                from app.models.application_portfolio import ApplicationComponent
+
+                component_row = db.session.execute(
+                    db.select(
+                        ApplicationComponent.compliance_tags,
+                        ApplicationComponent.gdpr_compliant,
+                        ApplicationComponent.pii_data_processed,
+                        ApplicationComponent.data_classification,
+                        ApplicationComponent.compliance_requirements,
+                    ).where(ApplicationComponent.id == component_id)
+                ).first()
+
+                if component_row is None:
+                    compliance_tags = {
+                        "tags": None,
+                        "tags_text": None,
+                        "gdpr_compliant": None,
+                        "pii_data_processed": None,
+                        "data_classification": None,
+                        "requirements_text": None,
+                        "reason": NO_APPLICATION_COMPONENT_REASON,
+                    }
+                else:
+                    tags: Optional[List[Any]] = None
+                    tags_text: Optional[str] = None
+                    if component_row.compliance_tags is not None:
+                        try:
+                            parsed = json.loads(component_row.compliance_tags)
+                        except (TypeError, ValueError):
+                            parsed = None
+                        if isinstance(parsed, list):
+                            tags = parsed
+                        else:
+                            tags_text = component_row.compliance_tags
+
+                    # The two booleans carry a column default (False) and
+                    # cannot signal absence on their own -- disclosed as
+                    # recorded, never folded into this check; the reason is
+                    # driven by the three text columns only.
+                    if (
+                        component_row.compliance_tags is None
+                        and component_row.data_classification is None
+                        and component_row.compliance_requirements is None
+                    ):
+                        tags_reason = NO_COMPLIANCE_MAPPING_RECORDED_REASON
+                    else:
+                        tags_reason = None
+
+                    compliance_tags = {
+                        "tags": tags,
+                        "tags_text": tags_text,
+                        "gdpr_compliant": component_row.gdpr_compliant,
+                        "pii_data_processed": component_row.pii_data_processed,
+                        "data_classification": component_row.data_classification,
+                        "requirements_text": component_row.compliance_requirements,
+                        "reason": tags_reason,
+                    }
+
+        return {
+            "risks": risk_payloads,
+            "reasons": reasons,
+            "elements": all_elements,
+            "control_gaps": control_gaps,
+            "control_gaps_reason": control_gaps_reason,
+            "framework": resolved_framework,
+            "compliance_tags": compliance_tags,
+        }
 
     @staticmethod
     def portfolio_component_for_element(element_id: int) -> Dict[str, Any]:
