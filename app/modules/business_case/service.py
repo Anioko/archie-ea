@@ -25,6 +25,10 @@ from app.models.solution_models import Solution
 from app.models.strategic import StrategicInitiative
 from app.models.unified_capability import UnifiedCapability
 
+# The one projection function lives in the canvas module; this module
+# imports it rather than growing a second copy.
+from app.modules.business_model_canvas.service import project_canvas  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # Business-case document fields exposed to the inline field-save API.
