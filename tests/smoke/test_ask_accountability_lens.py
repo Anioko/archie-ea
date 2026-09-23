@@ -101,8 +101,12 @@ def _type_and_wait(page, prefix, term):
 
 
 def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
-    page, live_server, seeded, accountability_graph
+    browser, live_server, seeded, accountability_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -117,12 +121,17 @@ def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
     )).to_be_visible()
     expect(page.get_by_text("Capacity and availability data is not yet connected.")).to_be_visible()
     assert page.locator("[data-ask-accountability-row]").count() == 0
+    context.close()
 
 
 def test_all_six_questions_keep_their_own_answers_separate(
-    page, live_server, seeded, accountability_graph
+    browser, live_server, seeded, accountability_graph
 ):
     """Regression guard: six questions share one picker component."""
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -140,3 +149,4 @@ def test_all_six_questions_keep_their_own_answers_separate(
     page.wait_for_selector("#ask-accountability-results")
     expect(page.locator("#ask-accountability-results")).to_be_visible()
     expect(page.locator("#ask-results")).to_be_hidden()
+    context.close()

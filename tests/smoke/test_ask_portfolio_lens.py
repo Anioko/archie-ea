@@ -93,8 +93,12 @@ def _type_and_wait(page, prefix, term):
 
 
 def test_the_portfolio_question_links_to_rationalization_planning(
-    page, live_server, seeded, portfolio_graph
+    browser, live_server, seeded, portfolio_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -109,11 +113,16 @@ def test_the_portfolio_question_links_to_rationalization_planning(
     link = card.get_by_role("link", name="Open rationalization planning")
     href = link.get_attribute("href")
     assert href == "/applications/rationalization/planning/%s" % portfolio_graph["component_id"]
+    context.close()
 
 
 def test_a_non_application_element_reads_as_an_honest_not_tracked_state(
-    page, live_server, seeded, portfolio_graph
+    browser, live_server, seeded, portfolio_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -125,12 +134,17 @@ def test_a_non_application_element_reads_as_an_honest_not_tracked_state(
 
     expect(page.get_by_text("This is not something the rationalization view tracks.")).to_be_visible()
     assert page.locator("[data-ask-portfolio-card]").count() == 0
+    context.close()
 
 
 def test_all_three_questions_keep_their_own_answers_separate(
-    page, live_server, seeded, portfolio_graph
+    browser, live_server, seeded, portfolio_graph
 ):
     """Regression guard: three questions now share one picker component."""
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -148,3 +162,4 @@ def test_all_three_questions_keep_their_own_answers_separate(
     page.wait_for_selector("[data-ask-portfolio-card]")
     expect(page.locator("#ask-portfolio-results")).to_be_visible()
     expect(page.locator("#ask-results")).to_be_hidden()
+    context.close()

@@ -97,8 +97,12 @@ def _type_and_wait(page, prefix, term):
 
 
 def test_the_strategy_question_shows_the_seeded_initiative(
-    page, live_server, seeded, strategy_graph
+    browser, live_server, seeded, strategy_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -114,11 +118,16 @@ def test_the_strategy_question_shows_the_seeded_initiative(
     expect(row).to_contain_text("45% complete")
     expect(row).to_contain_text("Budget variance")
     expect(row).to_contain_text("1 connection")
+    context.close()
 
 
 def test_an_element_with_no_initiatives_reads_as_an_honest_empty_state(
-    page, live_server, seeded, strategy_graph
+    browser, live_server, seeded, strategy_graph
 ):
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -131,12 +140,17 @@ def test_an_element_with_no_initiatives_reads_as_an_honest_empty_state(
 
     expect(page.get_by_text("No initiatives recorded against this element.")).to_be_visible()
     assert page.locator("[data-ask-strategy-row]").count() == 0
+    context.close()
 
 
 def test_all_five_questions_keep_their_own_answers_separate(
-    page, live_server, seeded, strategy_graph
+    browser, live_server, seeded, strategy_graph
 ):
     """Regression guard: five questions now share one picker component."""
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    context.set_default_timeout(PAGE_TIMEOUT)
+    context.set_default_navigation_timeout(PAGE_TIMEOUT)
+    page = context.new_page()
     _login(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
@@ -154,3 +168,4 @@ def test_all_five_questions_keep_their_own_answers_separate(
     page.wait_for_selector("[data-ask-strategy-row]")
     expect(page.locator("#ask-strategy-results")).to_be_visible()
     expect(page.locator("#ask-results")).to_be_hidden()
+    context.close()
