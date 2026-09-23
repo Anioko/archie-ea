@@ -816,6 +816,16 @@ def test_public_repo_hygiene_record_id_bare_task_and_finding_refs_still_fire(tmp
     assert count > 0, "row %r (%r) was not caught" % (label, content)
 
 
+# The DEL- deliverable-code context check reads the text immediately before  # hygiene-ok: quoting this test's own example shapes, not a real hit
+# a matched deliverable-shaped token -- but must do so only when "DEL-"  # hygiene-ok: quoting this test's own example shapes, not a real hit
+# itself starts at a word boundary. A longer word that merely ends the same
+# way (a model name, say) is not a deliverable code and must still be caught.
+def test_public_repo_hygiene_del_context_check_has_a_left_boundary(tmpdir):
+    _write(tmpdir, "app/probe.py", '# See MODEL-D-001 for the reasoning.\n')  # hygiene-ok: probe data for the left-boundary regression test, not a real hit
+    count = _run_hygiene_checker(tmpdir, "content")
+    assert count > 0, "the probe row was wrongly allowlisted"  # hygiene-ok: quoting this test's own failure message, not a real hit
+
+
 def test_public_repo_hygiene_checker_passes_its_own_scan_unexempted(tmpdir):
     """The checker's own source is exempt from the content rule by
     filename (SELF_NAME) when scanned against this repository -- copied

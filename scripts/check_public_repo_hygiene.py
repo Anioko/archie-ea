@@ -121,10 +121,14 @@ _Q_QUARTER_DASH_RE = re.compile(r"^Q[1-4]-")
 # A deliverable code's own dash after the three-letter prefix is itself a  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
 # word-boundary in the record-id pattern's terms, so the match it finds  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
 # starts after that dash, never at the three-letter prefix -- which is why a
-# plain prefix-of-token check (above) cannot exclude it. Checked against the four
-# characters immediately before the match instead, the same way the WCAG
-# "A-" check below reads its own preceding context rather than the token.
-_DEL_DELIVERABLE_PREFIX_LEN = len("DEL-")
+# plain prefix-of-token check (above) cannot exclude it. Checked against the
+# text immediately before the match instead, the same way the WCAG "A-"
+# check below reads its own preceding context rather than the token -- with
+# a left boundary this one also needs: the three letters must not  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
+# themselves be preceded by a letter, digit or underscore, or a longer word  # hygiene-ok: describes the DEL- check's own reasoning, not a real hit
+# that merely ends the same way (a model name, say) is misread as the
+# deliverable prefix and wrongly excluded.
+_DEL_DELIVERABLE_CONTEXT_RE = re.compile(r"(?<![A-Za-z0-9_])DEL-$")
 
 
 def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
@@ -137,7 +141,7 @@ def _is_allowlisted_record_id(token: str, line: str, start: int) -> bool:
     if token.startswith("A-") and line[max(0, start - 6):start].rstrip().upper().endswith("WCAG"):
         return True
     if (token.startswith("D-") or token.startswith("F-")) and (
-        line[max(0, start - _DEL_DELIVERABLE_PREFIX_LEN):start].upper() == "DEL-"
+        _DEL_DELIVERABLE_CONTEXT_RE.search(line[:start].upper())
     ):
         return True
     return False
