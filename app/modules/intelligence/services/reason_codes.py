@@ -91,6 +91,13 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # The programme lens's own plateau/gap block: a work package's stored
+        # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
+        # point at a record belonging to a different tenant (the FK itself
+        # carries no tenant check, so the select that resolves it is what
+        # enforces the boundary) -- both are honest absences, not errors.
+        "no_plateau_recorded",
+        "no_gap_recorded",
     }
 )
 

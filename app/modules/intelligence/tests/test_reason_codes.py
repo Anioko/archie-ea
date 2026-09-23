@@ -20,6 +20,11 @@ this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 without updating this ratchet, only the two route-count ratchets. Found
 while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
+
+The programme lens's own plateau/gap block added two more --
+``no_plateau_recorded`` and ``no_gap_recorded`` -- for a work package's
+stored ``plateau_id``/``gap_id`` pointing at nothing or at a record outside
+the caller's tenant (26 total before this addition, 28 after).
 """
 
 from __future__ import annotations
@@ -62,11 +67,13 @@ _EXPECTED = {
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
+    "no_plateau_recorded",
+    "no_gap_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_six_members():
-    assert len(REASON_CODES) == 26
+def test_reason_codes_has_exactly_twenty_eight_members():
+    assert len(REASON_CODES) == 28
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
