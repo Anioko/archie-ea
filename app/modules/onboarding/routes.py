@@ -24,7 +24,7 @@ from app import db
 from app.models.organization import Organization
 from app.utils.api_response import success_response
 
-from .services import profile, stage_gaps
+from .services import completion, profile, stage_gaps
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
 
@@ -79,6 +79,12 @@ def company():
         stage = data.get("stage")
         if stage not in _STAGES:
             return jsonify({"success": False, "error": "invalid_stage"}), 400
+        # "Set up your workspace" lives on this same screen (restores what the
+        # retired first-login modal did) -- the role choice travels in the
+        # same POST as the company answers, one round trip. Reuses the same
+        # enterprise_role column and valid-role set as onboarding.finish and
+        # the standalone workspace-setup page below, via completion.set_role.
+        completion.set_role(current_user, data.get("enterprise_role"))
         profile.write(
             org,
             stage=stage,
@@ -227,17 +233,46 @@ def twin():
 def finish():
     """Record completion. Writes the same User.onboarding_completed_at (and
     optional enterprise_role) as dashboard.api_onboarding_complete -- one
-    column, so no second "onboarding done" flag exists, but this route holds
-    its own copy of that small write rather than calling the other endpoint."""
+    column, so no second "onboarding done" flag exists. Both routes call the
+    same completion.mark_complete now, so there is one copy of that write,
+    not two drifting ones."""
     data = request.get_json(silent=True) or {}
-    new_role = data.get("enterprise_role")
-    valid_roles = {
-        "solution_architect", "enterprise_architect", "business_architect",
-        "arb_member", "portfolio_manager", "platform_admin",
-        "cto", "application_manager", "procurement",
-    }
-    if new_role and new_role in valid_roles:
-        current_user.enterprise_role = new_role
-    current_user.onboarding_completed_at = datetime.datetime.utcnow()
+    completion.mark_complete(current_user, data.get("enterprise_role"))
     db.session.commit()
     return success_response({"next": url_for("dashboard.overview")})
+
+
+@onboarding_bp.route("/skip", methods=["GET"])
+@login_required
+def skip():
+    """Reachable from every one of the five screens (_wizard_shell.html).
+    Marks onboarding complete -- without it, a user who has not yet added
+    any data would be sent straight back into onboarding by
+    dashboard.overview's own gating condition on the very next request,
+    which is the redirect loop this route exists to break. Workspace setup
+    itself stays reachable afterwards from the dashboard and the user menu
+    (onboarding.workspace_setup), so skipping costs nothing permanent."""
+    completion.mark_complete(current_user)
+    db.session.commit()
+    return redirect(url_for("dashboard.overview"))
+
+
+@onboarding_bp.route("/api/role", methods=["POST"])
+@login_required
+def api_role():
+    """Role-only write, used by the standalone workspace-setup page (which
+    has no company/stage fields to bundle it with, unlike screen2's
+    combined POST). Same column, same valid-role set, via completion.set_role."""
+    data = request.get_json(silent=True) or {}
+    applied = completion.set_role(current_user, data.get("enterprise_role"))
+    db.session.commit()
+    return success_response({"applied": applied})
+
+
+@onboarding_bp.route("/workspace-setup", methods=["GET"])
+@login_required
+def workspace_setup():
+    """Everything the retired first-login modal did, reachable at any time --
+    not gated on onboarding_completed_at like welcome/index above. Linked from
+    the user menu and, while not yet complete, from a dashboard card."""
+    return render_template("onboarding/workspace_setup.html")
