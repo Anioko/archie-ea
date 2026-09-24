@@ -7,7 +7,7 @@ Routes:
 """
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, request, redirect, url_for
 
 from app.services import product_roadmap_service
 from flask_login import login_required
@@ -54,5 +54,5 @@ def assign_horizon(epic_id: int):
 @roadmap_outcome_bp.route("/product-roadmap", methods=["GET"])
 @login_required
 def product_roadmap_page():
-    """GET /product-roadmap — render the product roadmap template."""
-    return render_template("roadmap/product_roadmap.html")
+    """The product roadmap moved to the single Roadmaps page; redirect there."""
+    return redirect(url_for("main.capability_roadmap"))
