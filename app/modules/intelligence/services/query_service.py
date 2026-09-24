@@ -592,13 +592,19 @@ class IntelligenceQueryService:
         direction: str = "downstream",
         layer: Optional[str] = None,
         with_owner: bool = True,
+        organization_id: int = None,
     ) -> Dict[str, Any]:
         if direction not in VALID_DIRECTIONS:
             raise ValueError(f"direction must be one of {sorted(VALID_DIRECTIONS)}")
         if not (1 <= max_depth <= 5):
             raise ValueError("max_depth must be between 1 and 5")
 
-        org_id = current_org_id()
+        # *organization_id*, when given, is used instead of reading
+        # ``g.current_org_id`` -- same override ``risk_for_element`` accepts,
+        # threaded one level deeper for a caller (e.g. the Risk lens's own
+        # blast-radius read) that already resolved the tenant explicitly.
+        # Every other caller omits it and keeps today's behaviour.
+        org_id = organization_id if organization_id is not None else current_org_id()
 
         with record_query_latency("cross_layer_impact") as scope:
             scope.organization_id = org_id
@@ -738,6 +744,7 @@ class IntelligenceQueryService:
         *,
         max_depth: int = 3,
         include_derived: bool = True,
+        organization_id: int = None,
     ) -> Dict[str, Any]:
         """L6, "what could hurt <element>, and what does it touch": every
         ``Risk`` seeded directly on this element (``Risk.archimate_element_id
@@ -761,10 +768,16 @@ class IntelligenceQueryService:
         radius reaches other elements, the chain's aggregate score is the
         single worst (max) risk reaching it, the conservative choice
         documented in the L3/L6 brief, not a summed exposure figure.
+
+        *organization_id*, when given, is used instead of reading
+        ``g.current_org_id`` -- for a caller (e.g. the canvas projection's
+        blast-radius read) that already resolved the tenant explicitly and
+        should not risk a second, independent read of ``g`` diverging from
+        it. Every other caller omits it and keeps today's behaviour.
         """
         from app.models.risk import Risk
 
-        org_id = current_org_id()
+        org_id = organization_id if organization_id is not None else current_org_id()
 
         with record_query_latency("risk_for_element") as scope:
             scope.organization_id = org_id
@@ -811,6 +824,7 @@ class IntelligenceQueryService:
                     include_derived=include_derived,
                     max_depth=max_depth,
                     with_owner=True,
+                    organization_id=org_id,
                 )
                 all_elements.update(blast.get("elements") or {})
                 risk_payloads.append(

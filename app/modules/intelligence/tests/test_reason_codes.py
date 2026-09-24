@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_one_members,
+    13 -> test_reason_codes_has_exactly_thirty_six_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -25,12 +25,16 @@ the other two are reserved for T-S3's graph path.
 set is frozen at sixteen forever; the module's own docstring says a new
 absence condition adds a member here, and nowhere else. This test is
 updated in lockstep -- this ``_EXPECTED`` list has drifted out of sync with
-reality more than once already (found and corrected twice tonight,
-independently, by two different lenses' briefs each adding a member without
-re-deriving the true count); merging two branches that each added members
-independently (L2/L4/role-gating on one side, T-S1 on the other) is a third
-instance of the same class of drift, resolved here by re-deriving the real
-count (31) rather than trusting either side's own stale number.
+reality more than once already; merging two branches that each added
+members independently (the canvas projection's five on one side, L2/L4/
+role-gating/T-S1's eight on the other) is another instance of the same
+class of drift, resolved here by re-deriving the real count (36) rather
+than trusting either side's own stale number.
+
+The canvas projection added five: an empty box, a box composed from
+other sections with nothing to derive yet, an attribute total that cannot
+be shown honestly for revenue or for cost, and an element carrying no
+`profile` value are each a distinct, real absence on that read path.
 """
 
 from __future__ import annotations
@@ -71,6 +75,11 @@ _EXPECTED = {
     "no_work_package_recorded",
     "not_costed",
     "no_budget_recorded",
+    "canvas_box_empty",
+    "canvas_box_not_derived",
+    "revenue_incomplete",
+    "cost_incomplete",
+    "profile_not_set",
     "no_ownership_records",
     "capacity_not_available",
     "financial_data_restricted",
@@ -82,8 +91,8 @@ _EXPECTED = {
 }
 
 
-def test_reason_codes_has_exactly_thirty_one_members():
-    assert len(REASON_CODES) == 31
+def test_reason_codes_has_exactly_thirty_six_members():
+    assert len(REASON_CODES) == 36
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
