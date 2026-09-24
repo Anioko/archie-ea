@@ -1351,7 +1351,7 @@ def list_solutions():
             hidden_by_bu_filter=hidden_by_bu_filter,
             hidden_by_search_filter=hidden_by_search_filter,
             hidden_by_filters=hidden_by_filters,
-            only_default_filter_active=_default_shell_filter_active and hidden_by_filters > 0 and hidden_by_role_filter == 0,
+            only_default_filter_active=_default_shell_filter_active and hidden_by_filters > 0 and hidden_by_role_filter == 0 and not domain_filter and not type_filter and not created_after and not created_before and not ws_filter,
             active_filter_descriptions=active_filter_descriptions,
             clear_filters_url=clear_filters_url,
             org_total=org_total,

@@ -20,10 +20,8 @@
        destination. ─ #}
     {% macro _solutions_page_actions() %}
     <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
-      {# Primary: New Solution — the single filled button #}
-      {% call button(variant='default', size='sm', icon='plus', testid='btn-new-solution', on_click='startSolution', attrs=':disabled="startingSolution"') %}
-      <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
-      {% endcall %}
+      {# Primary: Architecture Journey — the single filled button, label matches destination h1 #}
+      {{ button(text='Architecture Journey', variant='default', size='sm', icon='plus', href=url_for('architecture_journey.index'), testid='btn-new-solution') }}
       {# Secondary actions: outline buttons, visible 2xl+ #}
       <div class="hidden 2xl:flex flex-wrap items-center gap-2">
         {{ button(text='Start Architecture Journey', variant='outline', size='sm', icon='zap', href=url_for('architecture_journey.index'), testid='btn-start-journey', aria_label='Start the guided Architecture Journey to design a new solution') }}
