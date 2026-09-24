@@ -24,7 +24,7 @@ from app import db
 from app.models.organization import Organization
 from app.utils.api_response import success_response
 
-from .services import completion, profile, stage_gaps, tell_us_more
+from .services import completion, producers, profile, proposals, stage_gaps, tell_us_more
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
 
@@ -182,12 +182,17 @@ def gaps():
         gap["assigned_to"] = assigned.get(gap_id)
     statuses = tell_us_more.section_statuses(org)
     tell_us_more_done = sum(1 for v in statuses.values() if v == "saved")
+    pending_review_count = sum(
+        1 for p in proposals.sync(org, producers.from_answers(org_profile))
+        if p["status"] == "pending"
+    )
     return render_template(
         "onboarding/screen4_gaps.html",
         stage_label=_STAGE_LABELS.get(stage, stage),
         gaps=all_gaps,
         tell_us_more_done=tell_us_more_done,
         tell_us_more_total=len(statuses),
+        pending_review_count=pending_review_count,
     )
 
 
@@ -285,6 +290,52 @@ def tell_us_more_section(section_key: str):
         section_index=[s["key"] for s in tell_us_more.SECTIONS].index(section_key) + 1,
         section_count=len(tell_us_more.SECTIONS),
     )
+
+
+@onboarding_bp.route("/review", methods=["GET"])
+@login_required
+def review():
+    """The Review screen (onboarding-redesign-v3 §6, "Review (P2 Auto)"): one
+    list of proposals about the organisation, each with a source and a
+    confidence, that a person confirms, edits or dismisses. Nothing here is
+    ever committed to the profile without that action -- see proposals.py."""
+    org = _current_org()
+    org_profile = profile.read(org)
+    candidates = producers.from_answers(org_profile)
+    items = proposals.sync(org, candidates)
+    pending = [p for p in items if p["status"] == "pending"]
+    decided = [p for p in items if p["status"] != "pending"]
+    return render_template(
+        "onboarding/screen_review.html",
+        pending=pending,
+        decided=decided,
+        has_any=bool(items),
+    )
+
+
+@onboarding_bp.route("/review/<the_proposal_id>/action", methods=["POST"])
+@login_required
+def review_action(the_proposal_id: str):
+    """Confirm, edit-then-confirm, or dismiss one proposal. Confirming and
+    editing write the decided value into the organisation's profile through
+    profile.write(); dismissing writes nothing there -- see proposals.py."""
+    org = _current_org()
+    data = request.get_json(silent=True) or {}
+    action = data.get("action")
+    try:
+        result = proposals.decide(
+            org,
+            the_proposal_id,
+            action,
+            value=data.get("value"),
+            user_id=current_user.id,
+        )
+    except KeyError:
+        return jsonify({"success": False, "error": "not_found"}), 404
+    except ValueError as exc:
+        error = str(exc) or "invalid_action"
+        return jsonify({"success": False, "error": error}), 400
+    return success_response({"proposal": result})
 
 
 @onboarding_bp.route("/finish", methods=["POST"])
