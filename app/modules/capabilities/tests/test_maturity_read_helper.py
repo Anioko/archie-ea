@@ -744,4 +744,78 @@ def test_16_get_gap_alerts_with_no_tenant_context_fails_closed(db_session, make_
     alerts = CapabilityHeatmapService().get_gap_alerts()
 
     assert alerts["maturity_gaps"] == []
+    assert alerts["unmapped"] == []
+    assert alerts["low_coverage"] == []
     assert alerts["summary"]["maturity_gap_reason"] == "no_tenant_context"
+    assert alerts["summary"]["total_alerts"] == 0
+
+
+# ---------------------------------------------------------------------------
+# get_gap_alerts cross-organisation (17)-(18)
+# ---------------------------------------------------------------------------
+
+
+def test_17_get_gap_alerts_unmapped_excludes_other_tenant(db_session, make_org, tenant_ctx):
+    """An unmapped capability owned by org A must not appear in org B's
+    unmapped list."""
+    org_a = make_org("mat1-gapalerts-xorg-a17")
+    org_b = make_org("mat1-gapalerts-xorg-b17")
+    domain = _domain(db_session, "gapalerts-xorg-17")
+    cap_a = _capability(db_session, org_a, domain=domain, current=3, target=5, name="Org A unmapped")
+
+    with tenant_ctx(org_b.id):
+        alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    ids = [row["id"] for row in alerts["unmapped"]]
+    assert cap_a.id not in ids
+
+
+def test_18_get_gap_alerts_low_coverage_excludes_other_tenant(db_session, make_org, tenant_ctx):
+    """A low-coverage capability owned by org A must not appear in org B's
+    low_coverage list."""
+    org_a = make_org("mat1-gapalerts-xorg-a18")
+    org_b = make_org("mat1-gapalerts-xorg-b18")
+    domain = _domain(db_session, "gapalerts-xorg-18")
+    cap_a = _capability(db_session, org_a, domain=domain, current=3, target=5, name="Org A low cov")
+
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+
+    app_obj = ApplicationComponent(
+        name=f"App for low-cov test {uuid.uuid4().hex[:8]}",
+        organization_id=org_a.id,
+    )
+    db_session.add(app_obj)
+    db_session.flush()
+
+    mapping = UnifiedApplicationCapabilityMapping(
+        unified_capability_id=cap_a.id,
+        application_component_id=app_obj.id,
+        coverage_percentage=30,
+    )
+    db_session.add(mapping)
+    db_session.flush()
+
+    with tenant_ctx(org_b.id):
+        alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    ids = [row["id"] for row in alerts["low_coverage"]]
+    assert cap_a.id not in ids
+
+
+def test_19_get_gap_alerts_shared_catalogue_row_not_in_maturity_gaps(db_session, make_org, tenant_ctx):
+    """A shared catalogue row (organization_id IS NULL, scope='reference')
+    appears in gap_population through visibility_predicate but
+    maturity_for_capability_ids returns it as not-assessed, so it never
+    reaches maturity_gaps."""
+    org = make_org("mat1-gapalerts-shared-19")
+    domain = _domain(db_session, "gapalerts-shared-19")
+    shared_cap = _capability(
+        db_session, None, domain=domain, current=3, target=5, scope="reference", name="Shared cap 19"
+    )
+
+    with tenant_ctx(org.id):
+        alerts = CapabilityHeatmapService().get_gap_alerts()
+
+    names = [row["name"] for row in alerts["maturity_gaps"]]
+    assert shared_cap.name not in names

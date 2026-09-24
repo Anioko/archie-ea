@@ -291,9 +291,35 @@ class CapabilityHeatmapService:
         - Low coverage: capabilities where average coverage < 50%
         - Critical maturity gaps: current maturity 2+ levels below target
 
+        Every section states its own organisation predicate rather than
+        depending on the ambient do_orm_execute listener alone.  Fails closed
+        with no resolvable tenant: no tenant means no tenant's rows, not every
+        tenant's rows.
+
         Returns:
             Dict with unmapped, low_coverage, maturity_gaps lists and summary.
         """
+        from app.modules.intelligence.services.reason_codes import validate_reason_code
+        from app.utils.tenant_sql import current_org_id
+
+        organization_id = current_org_id()
+        if organization_id is None:
+            return {
+                "unmapped": [],
+                "low_coverage": [],
+                "maturity_gaps": [],
+                "summary": {
+                    "unmapped_count": 0,
+                    "low_coverage_count": 0,
+                    "maturity_gap_count": 0,
+                    "maturity_gap_reason": validate_reason_code("no_tenant_context"),
+                    "critical_gaps": 0,
+                    "total_alerts": 0,
+                },
+            }
+
+        visibility = UnifiedCapability.visibility_predicate(organization_id)
+
         # 1. Unmapped capabilities (no entries in mapping table)
         mapped_ids_subq = (
             db.session.query(UnifiedApplicationCapabilityMapping.unified_capability_id)
@@ -304,7 +330,10 @@ class CapabilityHeatmapService:
         unmapped_caps = (
             db.session.query(UnifiedCapability, BusinessDomain.name)
             .join(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
-            .filter(~UnifiedCapability.id.in_(db.session.query(mapped_ids_subq)))
+            .filter(
+                visibility,
+                ~UnifiedCapability.id.in_(db.session.query(mapped_ids_subq)),
+            )
             .order_by(UnifiedCapability.strategic_importance.desc())
             .all()
         )
@@ -338,6 +367,7 @@ class CapabilityHeatmapService:
                 UnifiedApplicationCapabilityMapping,
                 UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
             )
+            .filter(visibility)
             .group_by(UnifiedCapability.id, UnifiedCapability.name, BusinessDomain.name)
             .having(func.avg(UnifiedApplicationCapabilityMapping.coverage_percentage) < 50)
             .order_by(func.avg(UnifiedApplicationCapabilityMapping.coverage_percentage))
@@ -358,46 +388,35 @@ class CapabilityHeatmapService:
 
         # 3. Critical maturity gaps (current 2+ levels below target), read
         # through maturity_for_capability_ids (ADR-MAT-1) so an absence is
-        # never rendered as a fabricated zero (ADR-MAT-2). Fails closed with
-        # no resolvable tenant, the same shape #91 gave get_maturity_heatmap:
-        # no tenant means no tenant's rows, not every tenant's rows.
-        from app.modules.intelligence.services.reason_codes import validate_reason_code
-        from app.utils.tenant_sql import current_org_id
-
-        organization_id = current_org_id()
-        if organization_id is None:
-            maturity_gaps = []
-            maturity_gap_reason = validate_reason_code("no_tenant_context")
-        else:
-            # Strict: a shared catalogue row cannot carry this tenant's gap.
-            gap_population = (
-                db.session.query(UnifiedCapability.id, UnifiedCapability.name, BusinessDomain.name)
-                .outerjoin(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
-                .filter(UnifiedCapability.organization_id == organization_id)
-                .all()
-            )
-            identity_by_id = {
-                cap_id: (cap_name, domain_name) for cap_id, cap_name, domain_name in gap_population
-            }
-            blocks = self.maturity_for_capability_ids(
-                list(identity_by_id.keys()), organization_id=organization_id
-            )
-            rows = []
-            for cap_id, block in blocks.items():
-                if block["under_target"] is True and block["target_gap"] >= 2:
-                    cap_name, domain_name = identity_by_id[cap_id]
-                    rows.append(
-                        {
-                            "id": cap_id,
-                            "name": cap_name,
-                            "domain": domain_name,
-                            "current": block["current"],
-                            "target": block["target"],
-                            "gap": block["target_gap"],
-                        }
-                    )
-            maturity_gaps = sorted(rows, key=lambda row: row["gap"], reverse=True)
-            maturity_gap_reason = None
+        # never rendered as a fabricated zero (ADR-MAT-2).
+        gap_population = (
+            db.session.query(UnifiedCapability.id, UnifiedCapability.name, BusinessDomain.name)
+            .outerjoin(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
+            .filter(visibility)
+            .all()
+        )
+        identity_by_id = {
+            cap_id: (cap_name, domain_name) for cap_id, cap_name, domain_name in gap_population
+        }
+        blocks = self.maturity_for_capability_ids(
+            list(identity_by_id.keys()), organization_id=organization_id
+        )
+        rows = []
+        for cap_id, block in blocks.items():
+            if block["under_target"] is True and block["target_gap"] >= 2:
+                cap_name, domain_name = identity_by_id[cap_id]
+                rows.append(
+                    {
+                        "id": cap_id,
+                        "name": cap_name,
+                        "domain": domain_name,
+                        "current": block["current"],
+                        "target": block["target"],
+                        "gap": block["target_gap"],
+                    }
+                )
+        maturity_gaps = sorted(rows, key=lambda row: row["gap"], reverse=True)
+        maturity_gap_reason = None
 
         # Count critical items (strategic_importance=critical or business_criticality=mission_critical)
         critical_unmapped = sum(
@@ -654,55 +673,82 @@ class CapabilityHeatmapService:
         Health score = weighted(avg_maturity_ratio * 60% + avg_coverage * 40%)
         Status thresholds: healthy (>=80), attention (60 - 79), at_risk (40 - 59), critical (<40)
 
+        Reads maturity through ``maturity_for_capability_ids`` (ADR-MAT-1) so an
+        absence is never rendered as a fabricated zero.  Fails closed with no
+        resolvable tenant: no tenant means no tenant's rows, not every tenant's
+        rows.
+
         Returns:
             List of domain health dicts sorted by health score ascending (worst first).
         """
-        domains = BusinessDomain.query.all()
+        from app.utils.tenant_sql import current_org_id
+
+        organization_id = current_org_id()
+        if organization_id is None:
+            return []
+
+        visibility = UnifiedCapability.visibility_predicate(organization_id)
+
+        caps_with_domain = (
+            db.session.query(UnifiedCapability, BusinessDomain.name, BusinessDomain.code)
+            .outerjoin(BusinessDomain, UnifiedCapability.domain_id == BusinessDomain.id)
+            .filter(visibility)
+            .all()
+        )
+
+        if not caps_with_domain:
+            return []
+
+        # Group by domain.  ``key is None`` is the no-domain group.
+        domain_groups: Dict[Any, Dict[str, Any]] = {}
+        for cap, domain_name, domain_code in caps_with_domain:
+            key = domain_code
+            if key not in domain_groups:
+                domain_groups[key] = {
+                    "domain_name": domain_name if domain_code is not None else "No domain",
+                    "domain_code": domain_code,
+                    "cap_ids": [],
+                }
+            domain_groups[key]["cap_ids"].append(cap.id)
+
+        all_cap_ids: List[int] = []
+        for group in domain_groups.values():
+            all_cap_ids.extend(group["cap_ids"])
+
+        maturity_blocks = self.maturity_for_capability_ids(
+            all_cap_ids, organization_id=organization_id
+        )
 
         results = []
-        for domain in domains:
-            # Get capabilities for this domain
-            caps = UnifiedCapability.query.filter_by(domain_id=domain.id).all()
-            if not caps:
-                results.append(
-                    {
-                        "domain_name": domain.name,
-                        "domain_code": domain.code,
-                        "health_score": 0,
-                        "capability_count": 0,
-                        "avg_maturity": 0,
-                        "avg_coverage": 0,
-                        "status": "critical",
-                    }
-                )
-                continue
+        for key in sorted(
+            (k for k in domain_groups if k is not None), key=lambda k: k or ""
+        ):
+            group = domain_groups[key]
+            cap_ids = group["cap_ids"]
 
-            cap_ids = [c.id for c in caps]
+            maturity_ratios: List[float] = []
+            maturity_values: List[int] = []
+            for cid in cap_ids:
+                block = maturity_blocks[cid]
+                if block["assessed"] and block["current"] is not None:
+                    maturity_values.append(block["current"])
+                    if block["target"] is not None and block["target"] > 0:
+                        maturity_ratios.append(block["current"] / block["target"])
 
-            # Average maturity ratio
-            maturity_ratios = []
-            for c in caps:
-                current = c.current_maturity_level or 1
-                target = c.target_maturity_level or 3
-                if target > 0:
-                    maturity_ratios.append(current / target)
             avg_maturity_ratio = (
                 sum(maturity_ratios) / len(maturity_ratios) if maturity_ratios else 0
             )
 
-            # Average coverage from mappings
             coverage_result = (
                 db.session.query(func.avg(UnifiedApplicationCapabilityMapping.coverage_percentage))
                 .filter(UnifiedApplicationCapabilityMapping.unified_capability_id.in_(cap_ids))
                 .scalar()
             )
-            avg_coverage = float(coverage_result or 0) / 100.0  # normalize to 0 - 1
+            avg_coverage = float(coverage_result or 0) / 100.0
 
-            # Weighted health score
             health_score = round((avg_maturity_ratio * 0.6 + avg_coverage * 0.4) * 100, 1)
             health_score = min(health_score, 100)
 
-            # Status classification
             if health_score >= 80:
                 status = "healthy"
             elif health_score >= 60:
@@ -712,20 +758,74 @@ class CapabilityHeatmapService:
             else:
                 status = "critical"
 
-            avg_maturity = sum(c.current_maturity_level or 1 for c in caps) / len(caps)
+            avg_maturity = (
+                sum(maturity_values) / len(maturity_values) if maturity_values else None
+            )
 
             results.append(
                 {
-                    "domain_name": domain.name,
-                    "domain_code": domain.code,
+                    "domain_name": group["domain_name"],
+                    "domain_code": group["domain_code"],
                     "health_score": health_score,
-                    "capability_count": len(caps),
-                    "avg_maturity": round(avg_maturity, 1),
+                    "capability_count": len(cap_ids),
+                    "avg_maturity": round(avg_maturity, 1) if avg_maturity is not None else None,
                     "avg_coverage": round(avg_coverage * 100, 1),
                     "status": status,
                 }
             )
 
-        # Sort by health score ascending (worst first for attention)
+        # No-domain group last, same as get_maturity_heatmap.
+        if None in domain_groups:
+            group = domain_groups[None]
+            cap_ids = group["cap_ids"]
+
+            maturity_ratios = []
+            maturity_values = []
+            for cid in cap_ids:
+                block = maturity_blocks[cid]
+                if block["assessed"] and block["current"] is not None:
+                    maturity_values.append(block["current"])
+                    if block["target"] is not None and block["target"] > 0:
+                        maturity_ratios.append(block["current"] / block["target"])
+
+            avg_maturity_ratio = (
+                sum(maturity_ratios) / len(maturity_ratios) if maturity_ratios else 0
+            )
+
+            coverage_result = (
+                db.session.query(func.avg(UnifiedApplicationCapabilityMapping.coverage_percentage))
+                .filter(UnifiedApplicationCapabilityMapping.unified_capability_id.in_(cap_ids))
+                .scalar()
+            )
+            avg_coverage = float(coverage_result or 0) / 100.0
+
+            health_score = round((avg_maturity_ratio * 0.6 + avg_coverage * 0.4) * 100, 1)
+            health_score = min(health_score, 100)
+
+            if health_score >= 80:
+                status = "healthy"
+            elif health_score >= 60:
+                status = "attention"
+            elif health_score >= 40:
+                status = "at_risk"
+            else:
+                status = "critical"
+
+            avg_maturity = (
+                sum(maturity_values) / len(maturity_values) if maturity_values else None
+            )
+
+            results.append(
+                {
+                    "domain_name": group["domain_name"],
+                    "domain_code": group["domain_code"],
+                    "health_score": health_score,
+                    "capability_count": len(cap_ids),
+                    "avg_maturity": round(avg_maturity, 1) if avg_maturity is not None else None,
+                    "avg_coverage": round(avg_coverage * 100, 1),
+                    "status": status,
+                }
+            )
+
         results.sort(key=lambda r: r["health_score"])
         return results

@@ -362,28 +362,79 @@ def test_no_tenant_context_fails_closed(db_session, make_org):
 
 
 # ---------------------------------------------------------------------------
-# get_domain_health / get_gap_alerts are untouched
+# get_domain_health / get_gap_alerts
 # ---------------------------------------------------------------------------
 
 
-def test_get_domain_health_still_carries_its_own_pre_existing_behaviour(db_session, make_org, tenant_ctx):
-    """``get_domain_health`` still invents a maturity level for an unassessed
-    capability -- unlike ``get_maturity_heatmap``, it was not changed here.
-
-    Pinning the old, still-present behaviour here means a future change to
-    ``get_domain_health`` is a deliberate choice, not an accidental side
-    effect of this one.
+def test_get_domain_health_no_longer_fabricates_a_level_for_unassessed(db_session, make_org, tenant_ctx):
+    """``get_domain_health`` now reads through ``maturity_for_capability_ids``
+    so an unassessed capability contributes no fabricated maturity level.
     """
-    org = make_org("domain-health-untouched")
-    domain = _domain(db_session, "domain-health-untouched")
+    org = make_org("domain-health-fixed")
+    domain = _domain(db_session, "domain-health-fixed")
     _capability(db_session, org, domain=domain, current=None, target=None, name="Unassessed for domain health")
 
     with tenant_ctx(org.id):
         health = CapabilityHeatmapService().get_domain_health()
 
     row = next(r for r in health if r["domain_code"] == domain.code)
-    # Still `current_maturity_level or 1` -- unchanged by this task.
-    assert row["avg_maturity"] == 1.0
+    assert row["avg_maturity"] is None
+
+
+def test_get_domain_health_uses_real_maturity_for_assessed(db_session, make_org, tenant_ctx):
+    """An assessed capability contributes its real maturity level, not a
+    fabricated fallback."""
+    org = make_org("domain-health-real")
+    domain = _domain(db_session, "domain-health-real")
+    _capability(db_session, org, domain=domain, current=3, target=5, name="Assessed cap")
+
+    with tenant_ctx(org.id):
+        health = CapabilityHeatmapService().get_domain_health()
+
+    row = next(r for r in health if r["domain_code"] == domain.code)
+    assert row["avg_maturity"] == 3.0
+    assert row["capability_count"] == 1
+
+
+def test_get_domain_health_excludes_other_tenant_domain(db_session, make_org, tenant_ctx):
+    """A domain that only has capabilities owned by org A must not appear in
+    org B's domain health result."""
+    org_a = make_org("domain-health-xorg-a")
+    org_b = make_org("domain-health-xorg-b")
+    domain_a = _domain(db_session, "domain-health-xorg-a")
+    _capability(db_session, org_a, domain=domain_a, current=3, target=5, name="Org A cap")
+
+    with tenant_ctx(org_b.id):
+        health = CapabilityHeatmapService().get_domain_health()
+
+    codes = [r["domain_code"] for r in health]
+    assert domain_a.code not in codes
+
+
+def test_get_domain_health_fails_closed_with_no_tenant(db_session, make_org):
+    """With no tenant context, get_domain_health returns an empty list."""
+    org = make_org("domain-health-notenant")
+    domain = _domain(db_session, "domain-health-notenant")
+    _capability(db_session, org, domain=domain, current=3, target=5, name="Should not leak")
+
+    health = CapabilityHeatmapService().get_domain_health()
+    assert health == []
+
+
+def test_get_domain_health_capability_with_current_but_no_target(db_session, make_org, tenant_ctx):
+    """A capability with a recorded current but no target is assessed but
+    contributes no maturity ratio (target is missing)."""
+    org = make_org("domain-health-notarget")
+    domain = _domain(db_session, "domain-health-notarget")
+    _capability(db_session, org, domain=domain, current=3, target=None, name="No target cap")
+
+    with tenant_ctx(org.id):
+        health = CapabilityHeatmapService().get_domain_health()
+
+    row = next(r for r in health if r["domain_code"] == domain.code)
+    assert row["avg_maturity"] == 3.0
+    # No target means no maturity ratio contribution; health comes from coverage only.
+    assert row["health_score"] == 0.0
 
 
 def test_get_gap_alerts_still_reachable_and_unchanged_in_shape(db_session, make_org, tenant_ctx):
