@@ -11,6 +11,8 @@ AC-2, ISO 27001 A.9.2.1 etc.), not per-org data — see its own docstring.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
@@ -102,3 +104,161 @@ def test_compliance_control_remains_global_reference_data(db_session, make_org, 
         "ComplianceControl gained an organization_id — if this is intentional, "
         "update this test and the tier-1 checklist row together; if not, revert."
     )
+
+
+# --- HTTP-level coverage of the routes this fix is about ---------------------
+
+
+def _officer(db_session, org, label):
+    from app.models.user import User
+
+    user = User(
+        email=f"officer-{label}-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Comp",
+        last_name="Officer",
+        confirmed=True,
+        organization_id=org.id,
+        role_archetype="compliance_officer",
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+def test_policy_list_route_shows_only_the_callers_organisation(
+    db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("a"), make_org("b")
+    _make_policy(db_session, org_a.id, "Org A policy")
+    _make_policy(db_session, org_b.id, "Org B policy")
+    login_as(client, _officer(db_session, org_a, "a"))
+
+    resp = client.get("/enterprise/compliance/policies")
+
+    body = resp.get_data(as_text=True)
+    assert resp.status_code == 200, body
+    assert "Org A policy" in body
+    assert "Org B policy" not in body, "TENANT LEAK: the list route shows another org's policy"
+
+
+def test_two_organisations_can_create_the_same_policy_name_over_http(
+    db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("a"), make_org("b")
+    user_a, user_b = _officer(db_session, org_a, "a"), _officer(db_session, org_b, "b")
+    payload = {"name": "NIST", "type": "NIST"}
+
+    login_as(client, user_a)
+    first = client.post("/enterprise/compliance/policies", json=payload)
+    again = client.post("/enterprise/compliance/policies", json=payload)
+    login_as(client, user_b)
+    other_org = client.post("/enterprise/compliance/policies", json=payload)
+
+    assert first.status_code == 201, first.get_data(as_text=True)
+    assert again.status_code == 409, "the same organisation still cannot repeat a name"
+    assert other_org.status_code == 201, (
+        "a different organisation must be able to use the same policy name"
+    )
+
+
+def test_a_raced_duplicate_is_a_409_not_a_500(db_session, make_org, client, login_as):
+    """Two same-organisation requests can both pass the duplicate check. The
+    per-organisation unique constraint refuses the second at commit; that must
+    read as the same 409 the pre-check gives, not a generic 500."""
+    from unittest.mock import MagicMock, patch
+
+    from app.models.compliance_models import CompliancePolicy
+
+    org = make_org("race")
+    _make_policy(db_session, org.id, "NIST")
+    login_as(client, _officer(db_session, org, "race"))
+
+    no_match = MagicMock()
+    no_match.filter_by.return_value.first.return_value = None  # the check "misses"
+    with patch.object(CompliancePolicy, "query", no_match):
+        resp = client.post("/enterprise/compliance/policies", json={"name": "NIST", "type": "NIST"})
+
+    assert resp.status_code == 409, resp.get_data(as_text=True)
+
+
+# --- backfill: a policy whose violations span organisations is never guessed --
+
+
+@pytest.fixture
+def nullable_tenant_columns(app):
+    """Let compliance rows exist without an organisation, as they do on a
+    database that predates the fix.
+
+    The column is NOT NULL on a fresh database (and nullable once
+    reconcile-schema has run). This changes it on its own autocommit connection,
+    before the test's transaction opens and after it has rolled back -- doing the
+    DDL inside the test's transaction would hold an exclusive table lock that the
+    backfill's own engine-level introspection then waits on forever. It must be
+    requested BEFORE db_session so it is torn down AFTER db_session rolls back.
+    """
+    from sqlalchemy import text
+
+    from app import db
+
+    tables = ("compliance_policies", "compliance_violations")
+    changed = []
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for table in tables:
+                not_null = conn.execute(
+                    text(
+                        "SELECT attnotnull FROM pg_attribute "
+                        "WHERE attrelid = CAST(:t AS regclass) AND attname = 'organization_id'"
+                    ),
+                    {"t": table},
+                ).scalar()
+                if not_null:
+                    conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN organization_id DROP NOT NULL"))
+                    changed.append(table)
+    yield
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for table in changed:
+                conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN organization_id SET NOT NULL"))
+
+
+def test_backfill_leaves_a_policy_null_when_its_violations_span_organisations(
+    nullable_tenant_columns, db_session, make_org
+):
+    from sqlalchemy import text
+
+    from app import db
+    from app.commands.reconcile_schema import _backfill_compliance_organizations
+    from app.models.compliance_models import CompliancePolicy, ComplianceViolation
+
+    org_a, org_b = make_org("a"), make_org("b")
+    user_a, user_b = _officer(db_session, org_a, "a"), _officer(db_session, org_b, "b")
+    shared = CompliancePolicy(name="Shared", policy_type="NIST", organization_id=None)
+    single = CompliancePolicy(name="Single", policy_type="NIST", organization_id=None)
+    db_session.add_all([shared, single])
+    db_session.flush()
+    for policy, user in ((shared, user_a), (shared, user_b), (single, user_a)):
+        db_session.add(
+            ComplianceViolation(
+                policy_id=policy.id, description="x", created_by_id=user.id, organization_id=None
+            )
+        )
+    db_session.flush()
+
+    added, failed = [], []
+    _backfill_compliance_organizations(
+        dry_run=False,
+        existing_tables={"compliance_policies", "compliance_violations", "users"},
+        added=added,
+        failed=failed,
+    )
+
+    org_of = {
+        row[0]: row[1]
+        for row in db.session.execute(
+            text("SELECT name, organization_id FROM compliance_policies WHERE name IN ('Shared','Single')")
+        )
+    }
+    assert org_of["Single"] == org_a.id, "an unambiguous policy is resolved"
+    assert org_of["Shared"] is None, "an ambiguous policy must be left NULL, not guessed"
+    assert any("more than one organisation" in line for line in failed), failed

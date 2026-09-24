@@ -1224,20 +1224,19 @@ def _backfill_sso_mapping_organizations(*, dry_run, existing_tables, added, fail
         )
 
 
-def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, added, failed):
-    """Replace the old global UNIQUE(sso_group_name) with a per-tenant one.
+def _replace_global_unique_with_tenant_unique(
+    *, table, old_name, new_name, column, dry_run, existing_tables, added
+):
+    """Replace a global UNIQUE(<column>) with UNIQUE(organization_id, <column>).
 
-    The single-column constraint meant two different organisations could never
-    both use a group named e.g. "Admins" -- a real functional bug riding along
-    with the tenant leak this whole migration closes. Postgres treats NULL as
-    distinct for uniqueness purposes, so pre-existing un-backfilled (NULL-org)
-    rows sharing a name are unaffected by adding the composite constraint.
+    Shared by every table that gained TenantMixin while carrying a globally
+    unique name: the old constraint meant two organisations could never both
+    use the same value. Postgres treats NULL as distinct for uniqueness, so
+    pre-existing un-backfilled (NULL-org) rows sharing a value are unaffected.
+    Idempotent: does nothing once the composite constraint exists.
     """
     from sqlalchemy import inspect, text
 
-    table = "sso_group_role_mappings"
-    old_name = "sso_group_role_mappings_sso_group_name_key"
-    new_name = "uq_sso_group_role_mappings_org_group"
     if table not in existing_tables:
         return
     live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
@@ -1253,7 +1252,7 @@ def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, ad
     if dry_run:
         added.append(
             f"constraint.{table}.{new_name} :: would replace {old_name} "
-            "with a composite (organization_id, sso_group_name) UNIQUE constraint"
+            f"with a composite (organization_id, {column}) UNIQUE constraint"
         )
         return
 
@@ -1264,11 +1263,31 @@ def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, ad
     db.session.execute(
         text(
             f'ALTER TABLE {table} ADD CONSTRAINT "{new_name}" '
-            "UNIQUE (organization_id, sso_group_name)"
+            f"UNIQUE (organization_id, {column})"
         )
     )
     db.session.commit()
     added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
+
+
+def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, added, failed):
+    """Replace the old global UNIQUE(sso_group_name) with a per-tenant one.
+
+    The single-column constraint meant two different organisations could never
+    both use a group named e.g. "Admins" -- a real functional bug riding along
+    with the tenant leak this whole migration closes.
+    """
+    _replace_global_unique_with_tenant_unique(
+        table="sso_group_role_mappings",
+        old_name="sso_group_role_mappings_sso_group_name_key",
+        new_name="uq_sso_group_role_mappings_org_group",
+        column="sso_group_name",
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+    )
+
+
 def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
     """Recover the tenant key for webhook rows that predate TenantMixin.
 
@@ -1484,8 +1503,9 @@ def _backfill_compliance_organizations(*, dry_run, existing_tables, added, faile
     ComplianceViolation has a trustworthy join: created_by_id -> users.organization_id.
     CompliancePolicy has no owner/creator column at all (it predates any per-user
     audit trail), so a policy's organization is instead recovered transitively via
-    any violation logged against it that already resolved to an org -- and, failing
-    that, left NULL and reported, never guessed.
+    the violations logged against it that already resolved to an org, but ONLY when
+    they all belong to one organisation. If they span organisations the owner is
+    genuinely ambiguous, so the policy is left NULL and reported, never guessed.
     """
     from sqlalchemy import inspect, text
 
@@ -1533,10 +1553,11 @@ def _backfill_compliance_organizations(*, dry_run, existing_tables, added, faile
                 UPDATE compliance_policies AS p
                 SET organization_id = sub.organization_id
                 FROM (
-                    SELECT DISTINCT ON (policy_id) policy_id, organization_id
+                    SELECT policy_id, MIN(organization_id) AS organization_id
                     FROM compliance_violations
                     WHERE organization_id IS NOT NULL
-                    ORDER BY policy_id, id
+                    GROUP BY policy_id
+                    HAVING COUNT(DISTINCT organization_id) = 1
                 ) AS sub
                 WHERE sub.policy_id = p.id
                   AND p.organization_id IS NULL
@@ -1546,6 +1567,20 @@ def _backfill_compliance_organizations(*, dry_run, existing_tables, added, faile
         updated_p = result.rowcount
         db.session.commit()
     unresolved_p = (before_p or 0) - updated_p
+    ambiguous_p = db.session.scalar(
+        text(
+            """
+            SELECT count(*) FROM (
+                SELECT v.policy_id
+                FROM compliance_violations AS v
+                JOIN compliance_policies AS p ON p.id = v.policy_id
+                WHERE v.organization_id IS NOT NULL AND p.organization_id IS NULL
+                GROUP BY v.policy_id
+                HAVING COUNT(DISTINCT v.organization_id) > 1
+            ) AS spanning
+            """
+        )
+    ) or 0
 
     if before_v:
         added.append(
@@ -1562,10 +1597,16 @@ def _backfill_compliance_organizations(*, dry_run, existing_tables, added, faile
             f"backfill.compliance_policies.organization_id :: before={before_p}, "
             f"updated={updated_p}, unresolved={unresolved_p}"
         )
-    if unresolved_p:
+    if ambiguous_p:
         failed.append(
-            f"backfill.compliance_policies.organization_id: {unresolved_p} row(s) "
-            "with no resolved violation to recover an org from -- no owner/creator "
+            f"backfill.compliance_policies.organization_id: {ambiguous_p} polic(y/ies) "
+            "left NULL because violations logged against them belong to more than one "
+            "organisation -- ownership is ambiguous and needs a person to decide"
+        )
+    if unresolved_p - ambiguous_p > 0:
+        failed.append(
+            f"backfill.compliance_policies.organization_id: {unresolved_p - ambiguous_p} "
+            "row(s) with no resolved violation to recover an org from -- no owner/creator "
             "column exists on compliance_policies to join through instead"
         )
 
@@ -1575,46 +1616,17 @@ def _ensure_compliance_policy_tenant_unique_constraint(*, dry_run, existing_tabl
 
     The single-column constraint meant two different organisations could never
     both have a policy named e.g. "NIST" -- the same cross-tenant collision shape
-    already closed for SSOGroupRoleMapping (PR#102). Postgres treats NULL as
-    distinct for uniqueness purposes, so pre-existing un-backfilled (NULL-org)
-    rows sharing a name are unaffected by adding the composite constraint.
+    already closed for SSOGroupRoleMapping.
     """
-    from sqlalchemy import inspect, text
-
-    table = "compliance_policies"
-    old_name = "compliance_policies_name_key"
-    new_name = "uq_compliance_policies_org_name"
-    if table not in existing_tables:
-        return
-    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
-    if "organization_id" not in live_columns:
-        return
-
-    existing_constraints = {
-        c["name"] for c in inspect(db.engine).get_unique_constraints(table)
-    }
-    if new_name in existing_constraints:
-        return  # already migrated
-
-    if dry_run:
-        added.append(
-            f"constraint.{table}.{new_name} :: would replace {old_name} "
-            "with a composite (organization_id, name) UNIQUE constraint"
-        )
-        return
-
-    if old_name in existing_constraints:
-        db.session.execute(
-            text(f'ALTER TABLE {table} DROP CONSTRAINT "{old_name}"')
-        )
-    db.session.execute(
-        text(
-            f'ALTER TABLE {table} ADD CONSTRAINT "{new_name}" '
-            "UNIQUE (organization_id, name)"
-        )
+    _replace_global_unique_with_tenant_unique(
+        table="compliance_policies",
+        old_name="compliance_policies_name_key",
+        new_name="uq_compliance_policies_org_name",
+        column="name",
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
     )
-    db.session.commit()
-    added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
 
 
 def _ensure_condition_evidence_canonical_document(
