@@ -128,3 +128,63 @@ def test_download_filenames_use_entelim_prefix():
     text = workflows_html.read_text(encoding="utf-8")
     assert "archie-review-" not in text
     assert "entelim-review-" in text
+# ---------------------------------------------------------------------------
+# Root-level documents visible on GitHub
+# ---------------------------------------------------------------------------
+
+_ROOT_DOCS = {
+    "ARCHITECT_QUICK_START.md": ROOT / "ARCHITECT_QUICK_START.md",
+    "DESIGN.md": ROOT / "DESIGN.md",
+    "CITATION.cff": ROOT / "CITATION.cff",
+    "llms.txt": ROOT / "llms.txt",
+    "package.json": ROOT / "package.json",
+}
+
+
+def test_no_dotted_wordmark_in_root_docs():
+    offenders = []
+    for name, path in _ROOT_DOCS.items():
+        text = path.read_text(encoding="utf-8")
+        if "A.R.C.H.I.E." in text:
+            offenders.append(name)
+    assert offenders == [], f"A.R.C.H.I.E. still present in root docs: {offenders}"
+
+
+def test_no_archie_word_in_root_docs():
+    """Root docs must not contain the old product name 'Archie' (with 'e').
+
+    'Archi' without the trailing 'e' is the external Archi desktop tool
+    (archimatetool.com) and is a legitimate reference, not the old brand.
+    """
+    offenders = []
+    for name, path in _ROOT_DOCS.items():
+        text = path.read_text(encoding="utf-8")
+        if "Archie" in text:
+            offenders.append(name)
+    assert offenders == [], f"'Archie' still present in root docs: {offenders}"
+
+
+def test_demo_script_no_old_brand():
+    path = ROOT / "scripts" / "demo" / "record_demo.py"
+    text = path.read_text(encoding="utf-8")
+    assert "A.R.C.H.I.E." not in text
+    assert "ARCHIE" not in text
+
+
+def test_web_search_user_agent_no_old_brand():
+    path = APP_DIR / "services" / "web_search_service.py"
+    text = path.read_text(encoding="utf-8")
+    assert "ARCHIE-EA-Platform" not in text
+    assert "Entelim-Platform" in text
+
+
+def test_gunicorn_conf_no_old_brand():
+    path = ROOT / "gunicorn.conf.py"
+    text = path.read_text(encoding="utf-8")
+    assert "A.R.C.H.I.E." not in text
+
+
+def test_start_server_bat_no_old_brand():
+    path = ROOT / "start-server.bat"
+    text = path.read_text(encoding="utf-8")
+    assert "A.R.C.H.I.E." not in text
