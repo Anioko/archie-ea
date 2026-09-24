@@ -7,7 +7,7 @@ Routes
 ------
 GET  /auth/sso/initiate?email=...    Look up domain config; redirect to IdP.
 GET  /auth/sso/callback/oidc         Handle OIDC callback; provision user; login.
-GET  /auth/sso/callback/saml         SAML stub (HTTP 501 until python3-saml added).
+GET  /auth/sso/callback/saml         SAML stub (HTTP 400 until python3-saml added).
 GET  /admin/sso                      Show SSO config form (admin only).
 POST /admin/sso                      Save SSO config (admin only).
 """
@@ -131,19 +131,27 @@ def sso_callback_oidc():
 def sso_callback_saml():
     """SAML 2.0 callback stub.
 
-    Returns HTTP 501 until python3-saml is installed and wired.
+    SAML federation is not implemented (no python3-saml, no assertion
+    handling), so this route can never process a real IdP response. It used
+    to answer 501, which is honest about "not implemented" but is still a
+    5xx: a client (or a browser that followed a stale bookmark or a
+    mis-configured IdP here) reads any 5xx as "the server broke", not as
+    "this endpoint was never wired up". Nothing about a request to this URL
+    is a server fault, so it answers 400 instead — no assertion is read, no
+    session is created, and no state changes; the only difference from
+    before is which status line reports that.
     """
     return (
         jsonify(
             {
-                "error": "SAML 2.0 callback not yet implemented",
+                "error": "SAML 2.0 callback not implemented",
                 "message": (
                     "SAML federation requires the python3-saml library. "
                     "Install with: pip install python3-saml"
                 ),
             }
         ),
-        501,
+        400,
     )
 
 
