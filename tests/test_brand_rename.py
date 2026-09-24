@@ -272,3 +272,61 @@ def test_caddyfile_503_page_no_old_brand():
     path = ROOT / "deploy" / "Caddyfile.proxy"
     text = path.read_text(encoding="utf-8")
     assert "Archie" not in text
+
+
+# ---------------------------------------------------------------------------
+# GitHub issue templates — user-facing text in the public repository
+# ---------------------------------------------------------------------------
+
+
+def test_github_issue_template_no_old_product_name():
+    """The bug report template asks for the product version; it must use the
+    current product name, not the old one."""
+    path = ROOT / ".github" / "ISSUE_TEMPLATE" / "bug_report.md"
+    text = path.read_text(encoding="utf-8")
+    assert STANDALONE_ARCHIE.search(text) is None, (
+        "'Archie' still present in .github/ISSUE_TEMPLATE/bug_report.md"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Codegen templates — environment variable names in generated output
+# ---------------------------------------------------------------------------
+
+_SOLUTIONS_TEMPLATE_DIR = APP_DIR / "modules" / "solutions_product" / "templates"
+
+# Every .j2 file under solutions_product/templates that the review identified
+# as carrying ARCHIE_* environment variable names in generated output.
+_CODEGEN_TEMPLATES_WITH_ARCHIE_ENV = [
+    _SOLUTIONS_TEMPLATE_DIR / "python_fastapi" / "health_reporter.py.j2",
+    _SOLUTIONS_TEMPLATE_DIR / "python_fastapi" / "github_actions.yml.j2",
+    _SOLUTIONS_TEMPLATE_DIR / "python_fastapi" / "gitlab_ci.yml.j2",
+    _SOLUTIONS_TEMPLATE_DIR / "go_chi" / "github_actions.yml.j2",
+    _SOLUTIONS_TEMPLATE_DIR / "go_chi" / "gitlab_ci.yml.j2",
+]
+
+_ARCHIE_ENV_VAR = re.compile(r"ARCHIE_[A-Z_]+")
+
+
+def test_codegen_templates_no_archie_env_vars():
+    """Generated code must not reference ARCHIE_* environment variables.
+
+    These names ship to customers in generated projects and carry the old
+    brand. The Entelim application's own environment is unchanged; this is
+    about the output that codegen produces for external projects.
+    """
+    offenders = []
+    for path in _CODEGEN_TEMPLATES_WITH_ARCHIE_ENV:
+        text = path.read_text(encoding="utf-8")
+        matches = _ARCHIE_ENV_VAR.findall(text)
+        if matches:
+            offenders.append(
+                "{}: {}".format(
+                    path.relative_to(ROOT),
+                    ", ".join(sorted(set(matches))),
+                )
+            )
+    assert offenders == [], (
+        "ARCHIE_* env vars still present in codegen templates:\n  "
+        + "\n  ".join(offenders)
+    )

@@ -161,6 +161,6 @@ deploy-production:
     - |
       curl -sf -X POST "{{ compliance_url }}" \
         -H "Content-Type: application/json" \
-        -H "Authorization: Bearer ${ARCHIE_API_TOKEN}" \
+        -H "Authorization: Bearer ${ENTELIM_API_TOKEN}" \
         -d '{"service_url": "http://{{ svc_name }}.{{ prod_ns }}.svc.cluster.local"}' || echo "Compliance check failed (non-blocking)"
 {% endif %}

@@ -255,6 +255,6 @@ jobs:
         run: |
           curl -sf -X POST "{{ compliance_url }}" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ '{{' }} secrets.ARCHIE_API_TOKEN {{ '}}' }}" \
+            -H "Authorization: Bearer ${{ '{{' }} secrets.ENTELIM_API_TOKEN {{ '}}' }}" \
             -d '{"service_url": "http://{{ svc_name }}.{{ prod_ns }}.svc.cluster.local"}' || echo "Compliance check failed (non-blocking)"
 {% endif %}

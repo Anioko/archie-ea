@@ -1,6 +1,6 @@
 {# app/modules/solutions_product/templates/python_fastapi/health_reporter.py.j2 #}
 {# Background health reporter — posts runtime metrics to the Entelim webhook. #}
-{# Context: solution_id, spec_hash, service_name, archie_webhook_url #}
+{# Context: solution_id, spec_hash, service_name, entelim_webhook_url #}
 """
 health_reporter.py — Runtime compliance reporter for Entelim
 
@@ -11,10 +11,10 @@ and POSTs them to the Entelim compliance webhook. Gracefully degrades if the
 webhook is unreachable — the service continues running without interruption.
 
 Configuration (via environment variables):
-    ARCHIE_WEBHOOK_URL   — full URL of the Entelim health report endpoint
-                           (default: {{ archie_webhook_url | default('http://localhost:5000/solutions/api/runtime/health-report', true) }})
-    ARCHIE_REPORT_INTERVAL_SECONDS — how often to report (default: 300)
-    ARCHIE_SPEC_HASH     — SHA-256 hash of the spec this service was generated from
+    ENTELIM_WEBHOOK_URL   — full URL of the Entelim health report endpoint
+                           (default: {{ entelim_webhook_url | default('http://localhost:5000/solutions/api/runtime/health-report', true) }})
+    ENTELIM_REPORT_INTERVAL_SECONDS — how often to report (default: 300)
+    ENTELIM_SPEC_HASH     — SHA-256 hash of the spec this service was generated from
 """
 import logging
 import os
@@ -32,15 +32,15 @@ logger = logging.getLogger(__name__)
 _SOLUTION_ID: int = {{ solution_id }}
 _SERVICE_NAME: str = "{{ service_name }}"
 _SPEC_HASH: str = os.environ.get(
-    "ARCHIE_SPEC_HASH",
+    "ENTELIM_SPEC_HASH",
     "{{ spec_hash | default('', true) }}",
 )
 _WEBHOOK_URL: str = os.environ.get(
-    "ARCHIE_WEBHOOK_URL",
-    "{{ archie_webhook_url | default('http://localhost:5000/solutions/api/runtime/health-report', true) }}",
+    "ENTELIM_WEBHOOK_URL",
+    "{{ entelim_webhook_url | default('http://localhost:5000/solutions/api/runtime/health-report', true) }}",
 )
 _REPORT_INTERVAL_SECONDS: int = int(
-    os.environ.get("ARCHIE_REPORT_INTERVAL_SECONDS", "300")
+    os.environ.get("ENTELIM_REPORT_INTERVAL_SECONDS", "300")
 )
 _REQUEST_TIMEOUT_SECONDS: int = 10
 
@@ -123,7 +123,7 @@ def _send_report(payload: dict) -> None:
     Gracefully degrades on any network or HTTP error — logs a warning and returns.
     """
     if not _WEBHOOK_URL:
-        logger.debug("ARCHIE_WEBHOOK_URL not set — skipping health report")
+        logger.debug("ENTELIM_WEBHOOK_URL not set — skipping health report")
         return
 
     try:
@@ -203,7 +203,7 @@ def start_reporter() -> None:
         target=_reporter_loop,
         args=(_stop_event,),
         daemon=True,
-        name="archie-health-reporter",
+        name="entelim-health-reporter",
     )
     _reporter_thread.start()
 
