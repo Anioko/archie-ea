@@ -1,6 +1,6 @@
 """Tests for the Entelim public home page and waiting list.
 
-Acceptance criteria from the task brief:
+What these tests check:
 1. GET / signed out returns 200 with "Entelim" in title/h1, none of the old names.
 2. POST with valid email+consent stores one row; duplicate shows same thanks;
    without consent refuses; without CSRF refused.
