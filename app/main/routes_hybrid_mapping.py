@@ -10,9 +10,9 @@ from app.utils.tenant_sql import current_org_id, org_scope
 
 # Tenancy note for this whole module.
 #
-# The three mapping junction tables
-# (unified_application_capability_mapping, capability_vendor_product_mapping,
-# unified_capability_archimate_mapping) carry NO organization_id column, and
+# The two mapping junction tables
+# (unified_application_capability_mapping, capability_vendor_product_mapping)
+# carry NO organization_id column, and
 # neither do vendor_products / vendor_organizations / business_domains.
 #
 # Every query in this module is now scoped to the signed-in organisation by
@@ -179,15 +179,16 @@ def _compute_mapping_stats():
     ).fetchone()
 
     # Direct ArchiMate Coverage — scoped on uc.organization_id.
+    # Derived from unified_capabilities.archimate_element_id (a real column)
+    # rather than the nonexistent unified_capability_archimate_mapping table.
     _org_uc_where4, _org_params_uc4 = org_scope(prefix="uc.", keyword="WHERE")
     arch_result = db.session.execute(
         text(
             f"""
         SELECT
             COUNT(DISTINCT uc.id) as total_capabilities,
-            COUNT(DISTINCT ucam.unified_capability_id) as capabilities_with_archimate
+            COUNT(DISTINCT CASE WHEN uc.archimate_element_id IS NOT NULL THEN uc.id END) as capabilities_with_archimate
         FROM unified_capabilities uc
-        LEFT JOIN unified_capability_archimate_mapping ucam ON uc.id = ucam.unified_capability_id
         {_org_uc_where4}
     """
         ),
@@ -214,9 +215,7 @@ def _compute_mapping_stats():
                     WHERE uc2.archimate_element_id IS NOT NULL
                 ) OR uc.id IN (
                     SELECT DISTINCT unified_capability_id FROM capability_vendor_product_mapping
-                ) OR uc.id IN (
-                    SELECT DISTINCT unified_capability_id FROM unified_capability_archimate_mapping
-                )
+                ) OR uc.archimate_element_id IS NOT NULL
             )
         ) AS multi_caps
         """
@@ -225,11 +224,13 @@ def _compute_mapping_stats():
     ).scalar()
 
     # Quality metrics — each leg scoped to the organisation that owns the
-    # referenced entity (application, capability, or ArchiMate element).
+    # referenced entity (application or capability).  The ArchiMate leg is
+    # intentionally absent: unified_capability_archimate_mapping does not
+    # exist as a table, and the archimate_element_id column on
+    # unified_capabilities carries no mapping_strength.
     _org_ac_where6, _org_params_ac6 = org_scope(prefix="ac.", keyword="AND")
     _org_uc_where6, _org_params_uc6 = org_scope(prefix="uc.", keyword="AND")
-    _org_ae_where6, _org_params_ae6 = org_scope(prefix="ae.", keyword="AND")
-    _org_params_hq = {**_org_params_ac6, **_org_params_uc6, **_org_params_ae6}
+    _org_params_hq = {**_org_params_ac6, **_org_params_uc6}
     high_quality_mappings = db.session.execute(
         text(
             f"""
@@ -241,21 +242,16 @@ def _compute_mapping_stats():
             SELECT cvpm.mapping_strength FROM capability_vendor_product_mapping cvpm
             JOIN unified_capabilities uc ON cvpm.unified_capability_id = uc.id
             WHERE cvpm.mapping_strength >= 4{_org_uc_where6}
-            UNION ALL
-            SELECT ucam.mapping_strength FROM unified_capability_archimate_mapping ucam
-            JOIN archimate_elements ae ON ucam.archimate_element_id = ae.id
-            WHERE ucam.mapping_strength >= 4{_org_ae_where6}
         ) AS hq_mappings
     """
         ),
         _org_params_hq,
     ).scalar()
 
-    # Total mappings — same three-leg scoping as quality metrics.
+    # Total mappings — same two-leg scoping as quality metrics.
     _org_ac_where7, _org_params_ac7 = org_scope(prefix="ac.", keyword="WHERE")
     _org_uc_where7, _org_params_uc7 = org_scope(prefix="uc.", keyword="WHERE")
-    _org_ae_where7, _org_params_ae7 = org_scope(prefix="ae.", keyword="WHERE")
-    _org_params_total = {**_org_params_ac7, **_org_params_uc7, **_org_params_ae7}
+    _org_params_total = {**_org_params_ac7, **_org_params_uc7}
     total_mappings = db.session.execute(
         text(
             f"""
@@ -267,10 +263,6 @@ def _compute_mapping_stats():
             SELECT COUNT(*) AS cnt FROM capability_vendor_product_mapping cvpm
             JOIN unified_capabilities uc ON cvpm.unified_capability_id = uc.id
             {_org_uc_where7}
-            UNION ALL
-            SELECT COUNT(*) AS cnt FROM unified_capability_archimate_mapping ucam
-            JOIN archimate_elements ae ON ucam.archimate_element_id = ae.id
-            {_org_ae_where7}
         ) AS all_mappings
     """
         ),
@@ -498,35 +490,39 @@ def get_product_mappings():
 
 
 def get_archimate_mappings():
-    """Get detailed direct ArchiMate mappings"""
+    """Get detailed direct ArchiMate mappings.
+
+    Derived from unified_capabilities.archimate_element_id joined with
+    archimate_elements.  There is no unified_capability_archimate_mapping
+    table, so mapping_strength, coverage_percentage, relationship_type and
+    implementation_complexity are always NULL.
+    """
 
     try:
         org_id = current_org_id()
         if org_id is None:
             return []
 
-        # ae is inner-joined and every projected column comes from it, so the
-        # unscoped form listed every organisation's ArchiMate elements by name.
-        _org_ae, _org_params = org_scope(prefix="ae.", keyword="WHERE")
+        # uc is inner-joined; scope on uc.organization_id.
+        _org_uc, _org_params = org_scope(prefix="uc.", keyword="WHERE")
         result = db.session.execute(
             text(
                 f"""
             SELECT
-                ucam.id,
+                uc.id,
                 uc.name as capability_name,
                 uc.strategic_importance,
                 ae.name as archimate_element_name,
                 ae.type as archimate_type,
                 ae.layer as archimate_layer,
                 ae.description as archimate_description,
-                ucam.mapping_strength,
-                ucam.coverage_percentage,
-                ucam.relationship_type,
-                ucam.implementation_complexity
-            FROM unified_capability_archimate_mapping ucam
-            JOIN unified_capabilities uc ON ucam.unified_capability_id = uc.id
-            JOIN archimate_elements ae ON ucam.archimate_element_id = ae.id
-            {_org_ae}
+                NULL as mapping_strength,
+                NULL as coverage_percentage,
+                NULL as relationship_type,
+                NULL as implementation_complexity
+            FROM unified_capabilities uc
+            JOIN archimate_elements ae ON uc.archimate_element_id = ae.id
+            {_org_uc}
             ORDER BY uc.strategic_importance DESC, uc.name
         """
             ),
@@ -585,9 +581,7 @@ def get_unmapped_capabilities():
             AND uc.id NOT IN (
                 SELECT DISTINCT unified_capability_id FROM capability_vendor_product_mapping
             )
-            AND uc.id NOT IN (
-                SELECT DISTINCT unified_capability_id FROM unified_capability_archimate_mapping
-            ){_org_uc}
+            AND uc.archimate_element_id IS NULL{_org_uc}
             ORDER BY uc.strategic_importance DESC, uc.name
         """
             ),
@@ -659,12 +653,12 @@ def get_unmapped_archimate_elements():
             return []
 
         # archimate_elements is the driving table and is scoped via org_scope.
-        # The NOT IN subquery on unified_capability_archimate_mapping is also
-        # scoped — without it, an element that has a mapping owned by another
-        # organisation would be hidden from this organisation's unmapped list.
+        # The NOT IN subquery checks unified_capabilities.archimate_element_id
+        # (scoped to this organisation) rather than the nonexistent
+        # unified_capability_archimate_mapping table.
         _org_ae, _org_params_ae = org_scope(prefix="ae.", keyword="AND")
-        _org_ae2, _org_params_ae2 = org_scope(prefix="ae2.", keyword="WHERE")
-        _org_params = {**_org_params_ae, **_org_params_ae2}
+        _org_uc2, _org_params_uc2 = org_scope(prefix="uc2.", keyword="WHERE")
+        _org_params = {**_org_params_ae, **_org_params_uc2}
         result = db.session.execute(
             text(
                 f"""
@@ -676,10 +670,9 @@ def get_unmapped_archimate_elements():
                 ae.description
             FROM archimate_elements ae
             WHERE ae.id NOT IN (
-                SELECT DISTINCT ucam.archimate_element_id
-                FROM unified_capability_archimate_mapping ucam
-                JOIN archimate_elements ae2 ON ucam.archimate_element_id = ae2.id
-                {_org_ae2}
+                SELECT DISTINCT uc2.archimate_element_id
+                FROM unified_capabilities uc2
+                WHERE uc2.archimate_element_id IS NOT NULL{_org_uc2}
             )
             AND ae.type IN ('ApplicationComponent', 'ApplicationService', 'TechnologyService', 'BusinessProcess'){_org_ae}
             ORDER BY ae.type, ae.name

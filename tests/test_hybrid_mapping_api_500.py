@@ -103,12 +103,23 @@ def two_orgs_with_b_data(db_session, make_org, app):
     org_b = make_org("iso-b")
     uniq = uuid.uuid4().hex[:8]
 
-    # --- org B: capability ---
+    # --- org B: ArchiMate element (created first so b_cap can reference it) ---
+    b_element = ArchiMateElement(
+        name=f"B Element {uniq}",
+        type="ApplicationComponent",
+        layer="Application",
+        organization_id=org_b.id,
+    )
+    db_session.add(b_element)
+    db_session.flush()
+
+    # --- org B: capability (with archimate_element_id set) ---
     b_cap = UnifiedCapability(
         name=f"B Capability {uniq}",
         code=f"B-CAP-{uniq}",
         level=1,
         organization_id=org_b.id,
+        archimate_element_id=b_element.id,
     )
     db_session.add(b_cap)
     db_session.flush()
@@ -119,16 +130,6 @@ def two_orgs_with_b_data(db_session, make_org, app):
         organization_id=org_b.id,
     )
     db_session.add(b_app)
-    db_session.flush()
-
-    # --- org B: ArchiMate element ---
-    b_element = ArchiMateElement(
-        name=f"B Element {uniq}",
-        type="ApplicationComponent",
-        layer="Application",
-        organization_id=org_b.id,
-    )
-    db_session.add(b_element)
     db_session.flush()
 
     # --- org B: vendor + product (global tables) ---
@@ -161,19 +162,6 @@ def two_orgs_with_b_data(db_session, make_org, app):
         coverage_percentage=80,
     )
     db_session.add(b_prod_map)
-    db_session.flush()
-
-    # --- org B: ArchiMate-capability mapping (no model — raw SQL) ---
-    from sqlalchemy import text as sa_text
-
-    db_session.execute(
-        sa_text(
-            "INSERT INTO unified_capability_archimate_mapping "
-            "(unified_capability_id, archimate_element_id, mapping_strength, coverage_percentage) "
-            "VALUES (:cid, :eid, 5, 80)"
-        ),
-        {"cid": b_cap.id, "eid": b_element.id},
-    )
     db_session.flush()
 
     return org_a, org_b, b_cap, b_app, b_element, b_vendor, b_product
