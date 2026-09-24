@@ -40,7 +40,9 @@ def _plain_name(element_type, user=None):
         try:
             show_archimate = bool(getattr(user, "show_archimate_names", False))
         except Exception:
-            pass
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
 
     if show_archimate:
         return element_type or "\u2014"
@@ -60,7 +62,9 @@ def _plain_layer(layer, user=None):
         try:
             show_archimate = bool(getattr(user, "show_archimate_names", False))
         except Exception:
-            pass
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
 
     if show_archimate:
         return layer or "\u2014"
@@ -317,6 +321,34 @@ def register_template_filters(app):
             "get_supported_currency_codes": service.get_supported_currency_codes,
             "is_supported_currency": service.is_supported_currency,
             "default_currency": current_app.config.get("DEFAULT_CURRENCY", "GBP"),
+        }
+
+    @app.context_processor
+    def plain_language_context():
+        """Make plain-language vocabulary and user setting available to JS."""
+        import json
+
+        from flask_login import current_user
+
+        from app.models.archimate_element_types import PLAIN_LANGUAGE_NAMES, PLAIN_LAYER_NAMES
+
+        show_archimate = False
+        try:
+            if (
+                current_user
+                and hasattr(current_user, "is_authenticated")
+                and current_user.is_authenticated
+            ):
+                show_archimate = bool(getattr(current_user, "show_archimate_names", False))
+        except Exception:
+            import logging
+            _log = logging.getLogger(__name__)
+            _log.warning("Could not read show_archimate_names for JS context", exc_info=True)
+
+        return {
+            "plain_language_names_json": json.dumps(PLAIN_LANGUAGE_NAMES),
+            "plain_layer_names_json": json.dumps(PLAIN_LAYER_NAMES),
+            "show_archimate_names_js": json.dumps(show_archimate),
         }
 
 
