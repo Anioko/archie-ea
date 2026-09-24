@@ -22,6 +22,7 @@ value-streams-at-risk surface.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
@@ -58,6 +59,7 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
 NO_CRITICALITY_RECORDED_REASON = validate_reason_code("no_criticality_recorded")
 NO_RECOVERY_OBJECTIVE_RECORDED_REASON = validate_reason_code("no_recovery_objective_recorded")
+NO_CONTRACT_RECORDED_REASON = validate_reason_code("no_contract_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -91,6 +93,35 @@ def _sec09_tenant_check(component_org_id: Optional[int], org_id: int) -> bool:
     source under test.
     """
     return component_org_id == org_id
+
+
+def _contract_tenant_predicate(model, organization_id: int):
+    """The explicit ``organization_id ==`` predicate on the contract select,
+    on top of the ORM tenant filter. Kept as its own seam so the cross-tenant
+    mutation proof can replace exactly this function with a no-op."""
+    return model.organization_id == organization_id
+
+
+def _build_contract_entry(row) -> Dict[str, Any]:
+    """One contract, every value as recorded. ``cost_reason`` is reserved for
+    the route's redaction. ``contract_value`` and ``contract_owner`` are not
+    carried, and nothing is totalled."""
+    return {
+        "contract_id": row.id,
+        "contract_name": row.contract_name,
+        "renewal_date": row.renewal_date.isoformat() if row.renewal_date is not None else None,
+        "end_date": row.end_date.isoformat() if row.end_date is not None else None,
+        "renewal_status": row.renewal_status,
+        "auto_renewal": row.auto_renewal,
+        "notice_period_days": row.notice_period_days,
+        "annual_cost": float(row.annual_cost) if row.annual_cost is not None else None,
+        "currency": row.currency,
+        "contract_risk": row.contract_risk,
+        "vendor_risk": row.vendor_risk,
+        "exit_complexity": row.exit_complexity,
+        "cost_reason": None,
+        "truth_class": "authoritative_fact",
+    }
 
 
 def _build_criticality_block(
@@ -657,11 +688,29 @@ class IntelligenceQueryService:
         direction: str = "downstream",
         layer: Optional[str] = None,
         with_owner: bool = True,
+        renewal_window_days: int = 90,
     ) -> Dict[str, Any]:
+        """L1 impact answer. Rows whose element is an application component
+        also carry ``contracts`` and ``contracts_reason``: the organisation's
+        ``VendorContract`` rows for that component whose renewal date or end
+        date falls between today and ``renewal_window_days`` from today
+        (inclusive at both ends; a past date is not in the window), as
+        recorded. A component with contract rows but none in the window has
+        ``contracts == []`` (measured); a component with no contract row at
+        all has ``contracts = None`` and ``contracts_reason =
+        "no_contract_recorded"`` -- nothing recorded is not the same as
+        nothing renewing. ``currency``, ``auto_renewal`` and
+        ``notice_period_days`` carry column defaults on the model (``USD``,
+        false, 90) and are passed through as recorded, never reinterpreted.
+        ``contract_flags`` lists the element ids whose ``contracts`` is
+        non-empty. A row whose element is not a component carries neither key.
+        """
         if direction not in VALID_DIRECTIONS:
             raise ValueError(f"direction must be one of {sorted(VALID_DIRECTIONS)}")
         if not (1 <= max_depth <= 5):
             raise ValueError("max_depth must be between 1 and 5")
+        if not (1 <= renewal_window_days <= 3650):
+            raise ValueError("renewal_window_days must be between 1 and 3650")
 
         org_id = current_org_id()
 
@@ -687,6 +736,11 @@ class IntelligenceQueryService:
                     "critical_element_ids": None,
                     "reason": NO_TENANT_CONTEXT_REASON,
                 }
+                contract_flags: Dict[str, Any] = {
+                    "renewing_element_ids": None,
+                    "reason": NO_TENANT_CONTEXT_REASON,
+                    "window_days": renewal_window_days,
+                }
             else:
                 from app.models import ArchiMateElement
 
@@ -706,6 +760,11 @@ class IntelligenceQueryService:
                     criticality_flags = {
                         "critical_element_ids": None,
                         "reason": ELEMENT_NOT_FOUND_REASON,
+                    }
+                    contract_flags = {
+                        "renewing_element_ids": None,
+                        "reason": ELEMENT_NOT_FOUND_REASON,
+                        "window_days": renewal_window_days,
                     }
                 else:
                     explicit_rows = _walk_explicit(element_id, max_depth, direction)
@@ -763,6 +822,42 @@ class IntelligenceQueryService:
                         components_by_element = _resolve_components_batch(
                             [row["element_id"] for row in rows], org_id
                         )
+
+                    # One select of the organisation's contracts for the
+                    # guarded components; grouped in Python by component.
+                    contracts_by_component: Dict[int, List[Any]] = {}
+                    if components_by_element:
+                        from app.models.application_portfolio import VendorContract
+
+                        component_ids = sorted({c.id for c in components_by_element.values()})
+                        contract_rows = db.session.execute(
+                            db.select(
+                                VendorContract.id,
+                                VendorContract.application_id,
+                                VendorContract.contract_name,
+                                VendorContract.renewal_date,
+                                VendorContract.end_date,
+                                VendorContract.renewal_status,
+                                VendorContract.auto_renewal,
+                                VendorContract.notice_period_days,
+                                VendorContract.annual_cost,
+                                VendorContract.currency,
+                                VendorContract.contract_risk,
+                                VendorContract.vendor_risk,
+                                VendorContract.exit_complexity,
+                            )
+                            .where(
+                                VendorContract.application_id.in_(component_ids),
+                                _contract_tenant_predicate(VendorContract, org_id),
+                            )
+                            .order_by(VendorContract.id)
+                        ).all()
+                        for contract_row in contract_rows:
+                            contracts_by_component.setdefault(
+                                contract_row.application_id, []
+                            ).append(contract_row)
+                    today = date.today()
+                    window_end = today + timedelta(days=renewal_window_days)
 
                     # Resource select for criticality (Decision B) -- keyed by
                     # the identity map's ids only, so only ids already resolved
@@ -832,6 +927,25 @@ class IntelligenceQueryService:
                         # whose element is neither carries no criticality key.
                         comp = components_by_element.get(row["element_id"])
                         if comp is not None:
+                            component_contracts = contracts_by_component.get(comp.id)
+                            if component_contracts is None:
+                                row["contracts"] = None
+                                row["contracts_reason"] = NO_CONTRACT_RECORDED_REASON
+                            else:
+                                in_window = []
+                                for contract_row in component_contracts:
+                                    dates = [
+                                        d
+                                        for d in (contract_row.renewal_date, contract_row.end_date)
+                                        if d is not None and today <= d <= window_end
+                                    ]
+                                    if dates:
+                                        in_window.append((min(dates), contract_row.id, contract_row))
+                                in_window.sort(key=lambda item: (item[0], item[1]))
+                                row["contracts"] = [
+                                    _build_contract_entry(item[2]) for item in in_window
+                                ]
+                                row["contracts_reason"] = None
                             row["criticality"] = _build_criticality_block(
                                 criticality=comp.criticality,
                                 business_criticality=comp.business_criticality,
@@ -864,6 +978,22 @@ class IntelligenceQueryService:
                     }
                     reasons = []
 
+                    # Whole-answer contract flags.
+                    if any("contracts_reason" in row for row in rows):
+                        contract_flags = {
+                            "renewing_element_ids": sorted(
+                                row["element_id"] for row in rows if row.get("contracts")
+                            ),
+                            "reason": None,
+                            "window_days": renewal_window_days,
+                        }
+                    else:
+                        contract_flags = {
+                            "renewing_element_ids": None,
+                            "reason": NO_CONTRACT_RECORDED_REASON,
+                            "window_days": renewal_window_days,
+                        }
+
                     # Whole-answer criticality flags (Decision E).
                     any_block = any(
                         row.get("criticality") is not None for row in rows
@@ -890,6 +1020,7 @@ class IntelligenceQueryService:
             "reasons": reasons,
             "elements": elements,
             "criticality_flags": criticality_flags,
+            "contract_flags": contract_flags,
         }
 
     @staticmethod

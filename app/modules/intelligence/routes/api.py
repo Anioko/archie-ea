@@ -440,6 +440,25 @@ def cross_layer_impact(element_id: int):
 
     layer = request.args.get("layer")
 
+    renewal_window_raw = request.args.get("renewal_window_days")
+    if renewal_window_raw is None:
+        renewal_window_days = 90
+    else:
+        try:
+            renewal_window_days = int(renewal_window_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "renewal_window_days must be an integer between 1 and 3650",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= renewal_window_days <= 3650):
+            return error_response(
+                "renewal_window_days must be between 1 and 3650",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
     organization_id = _current_organization_id()
     if organization_id is None:
         return error_response(
@@ -476,6 +495,17 @@ def cross_layer_impact(element_id: int):
         direction=direction,
         layer=layer,
         with_owner=with_owner,
+        renewal_window_days=renewal_window_days,
+    )
+
+    _redact_financial_fields(
+        [
+            contract
+            for row in result["rows"]
+            for contract in (row.get("contracts") or [])
+        ],
+        ("annual_cost",),
+        "cost_reason",
     )
 
     if result.get("rows") is None:
@@ -488,6 +518,7 @@ def cross_layer_impact(element_id: int):
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
             "criticality_flags": result.get("criticality_flags") or {},
+            "contract_flags": result.get("contract_flags") or {},
         }
     )
 

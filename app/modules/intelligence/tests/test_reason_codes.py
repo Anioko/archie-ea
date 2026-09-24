@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_one_members,
+    13 -> test_reason_codes_has_exactly_thirty_four_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -81,11 +81,12 @@ _EXPECTED = {
     "dependency_direction_unknown",
     "no_criticality_recorded",
     "no_recovery_objective_recorded",
+    "no_contract_recorded",
 }
 
 
-def test_reason_codes_has_exactly_thirty_three_members():
-    assert len(REASON_CODES) == 33
+def test_reason_codes_has_exactly_thirty_four_members():
+    assert len(REASON_CODES) == 34
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
