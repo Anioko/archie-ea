@@ -21,11 +21,12 @@ from flask import Blueprint, g, jsonify, redirect, render_template, request, url
 from flask_login import current_user, login_required
 
 from app import db
+from app.models.application_portfolio import ApplicationComponent
 from app.models.organization import Organization
 from app.utils.api_response import success_response
 
 from .services import capabilities as capability_capture
-from .services import completion, goals_changes, producers, profile, proposals, stage_gaps, tell_us_more
+from .services import completion, goals_changes, producers, profile, proposals, stage_gaps, tell_us_more, tools
 from .services import people as people_capture
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
@@ -170,7 +171,7 @@ def people():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         result = people_capture.save(data.get("people") or [], stage=stage, size_band=band)
-        return success_response({"next": url_for("onboarding.goals"), **result})
+        return success_response({"next": url_for("onboarding.tools_step"), **result})
     return render_template(
         "onboarding/screen3b_people.html",
         state=people_capture.read(stage, band),
@@ -179,6 +180,22 @@ def people():
         band=band,
         band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
     )
+
+
+@onboarding_bp.route("/tools", methods=["GET", "POST"])
+@login_required
+def tools_step():
+    """The tools the company runs on, and which capabilities each supports.
+
+    Tools become application components and support links (see services/tools.py);
+    nothing is kept on the side."""
+    org = _current_org()
+    stage, band = _stage_and_band(org)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = tools.save(data.get("tools") or [], stage=stage, size_band=band, org_id=org.id)
+        return success_response({"next": url_for("onboarding.goals"), **result})
+    return render_template("onboarding/screen3d_tools.html", state=tools.read(stage, band, org.id))
 
 
 @onboarding_bp.route("/goals", methods=["GET", "POST"])
@@ -215,6 +232,10 @@ def _recorded_for_org(org: Organization) -> dict:
             cat, key = gap_id.split(":", 1)
             if cat in recorded:
                 recorded[cat].append(key)
+    named = {(a.name or "").strip().lower() for a in ApplicationComponent.query.filter_by(organization_id=org.id).all()}
+    for key in stage_gaps.expected_for_stage(org_profile.get("stage") or "pre_revenue").get("systems", []):
+        if stage_gaps.label_for(key).lower() in named and key not in recorded["systems"]:
+            recorded["systems"].append(key)
     return recorded
 
 

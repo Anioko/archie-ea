@@ -98,6 +98,10 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         # People -- also optional; with no capabilities recorded it says so instead of an empty form
         assert "haven't recorded any capabilities" in page.inner_text("body")
         page.get_by_role("link", name="Skip this step").click()
+        page.wait_for_url(lambda url: "/onboarding/tools" in url, timeout=PAGE_TIMEOUT)
+
+        # Tools -- also optional
+        page.get_by_role("link", name="Skip this step").click()
         page.wait_for_url(lambda url: "/onboarding/goals" in url, timeout=PAGE_TIMEOUT)
 
         # Goals and changes -- also optional
@@ -214,7 +218,22 @@ def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(li
         page.select_option("#role_0_customer_acquisition", "R")
         page.select_option("#prof_0_customer_acquisition", "3")
         page.get_by_role("button", name="Save and continue").click()
+        page.wait_for_url(lambda url: "/onboarding/tools" in url, timeout=PAGE_TIMEOUT)
+
+        # A tool that supports the capability just saved.
+        page.fill("#tool_0", "Stripe")
+        page.select_option("#deploy_0", "saas")
+        page.get_by_label("Customer acquisition").check()
+        page.get_by_role("button", name="Save and continue").click()
         page.wait_for_url(lambda url: "/onboarding/goals" in url, timeout=PAGE_TIMEOUT)
+
+        page.goto(live_server + "/onboarding/tools", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+        assert page.input_value("#tool_0") == "Stripe"
+        assert page.input_value("#deploy_0") == "saas"
+        assert page.get_by_label("Customer acquisition").is_checked(), "the support link must come back after a reload"
+        page.goto(live_server + "/onboarding/goals", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
 
         # A goal, and a change that serves it.
         page.fill("#goal_0", "First ten customers")

@@ -609,7 +609,7 @@ def test_posting_people_saves_real_actors_and_advances(app, db_session, make_org
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()["data"]
-    assert body["next"].endswith("/onboarding/goals") and body["people"] == 1 and body["assignments"] == 1
+    assert body["next"].endswith("/onboarding/tools") and body["people"] == 1 and body["assignments"] == 1
     assert BusinessActor.query.filter_by(organization_id=org.id, name="Sam").count() == 1
     assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).one().raci == "R"
 
@@ -631,3 +631,33 @@ def test_goals_screen_renders_and_posting_saves_goal_and_change_then_advances(ap
     assert body["next"].endswith("/onboarding/gaps") and body["goals"] == 1 and body["links"] == 1
     assert ArchiMateElement.query.filter_by(organization_id=org.id, type="Goal", name="Grow revenue").count() == 1
     assert WorkPackage.query.filter_by(name="Launch sign-up").count() == 1
+
+
+def test_tools_screen_saves_a_real_application_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "tools-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+
+    assert client.get("/onboarding/tools").status_code == 200
+    resp = client.post("/onboarding/tools", json={"tools": [{"name": "Mailchimp", "deployment": "saas", "supports": ["marketing"]}]})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/goals") and body["tools"] == 1 and body["links"] == 1
+    assert ApplicationComponent.query.filter_by(organization_id=org.id, name="Mailchimp").count() == 1
+
+
+def test_a_tool_named_like_an_expected_system_counts_as_recorded_in_the_gaps(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile, stage_gaps
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "tools-gaps")
+    profile.write(org, stage="pre_revenue", size_band="micro")
+    label = stage_gaps.label_for("code_repository")
+    client.post("/onboarding/tools", json={"tools": [{"name": label}]})
+
+    from app.modules.onboarding import routes
+
+    assert "code_repository" in routes._recorded_for_org(org)["systems"]
