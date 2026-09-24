@@ -13,8 +13,8 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions, the four T-S1 additions and the two maturity-read-helper
-# additions below (twenty-eight total), exactly, nothing invented.
+# additions, the four T-S1 additions and the one maturity-read-helper
+# addition below (twenty-seven total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -71,14 +71,25 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
-        # Maturity read helper additions: the canonical maturity surface's
+        # Maturity read helper addition: the canonical maturity surface's
         # one batched read (CapabilityHeatmapService.maturity_for_elements /
-        # .maturity_for_capability_ids) has two absence conditions the
-        # existing "no_maturity_recorded" does not distinguish -- a current
-        # level recorded with no target to compare it against, and (reserved
-        # for a later reader) an answer with no Capability element in its
-        # chain at all.
+        # .maturity_for_capability_ids) has one absence condition the
+        # existing "no_maturity_recorded" does not distinguish — a current
+        # level recorded with no target to compare it against.
         "no_maturity_target_recorded",
+    }
+)
+
+# Codes reserved for a later reader whose implementation has not yet
+# landed. They are NOT members of the active REASON_CODES set and
+# ``validate_reason_code`` will reject them. When the reader lands, the
+# code moves from here into REASON_CODES and gets a test that produces it.
+RESERVED_REASON_CODES = frozenset(
+    {
+        # Reserved for a later reader whose chain resolves to no Capability
+        # element at all — distinct from no_maturity_recorded (a capability
+        # row exists but has no level) and no_maturity_target_recorded (a
+        # level exists but no target).
         "no_capability_in_chain",
     }
 )
@@ -110,6 +121,7 @@ def validate_reason_code(code: str) -> str:
 
 __all__ = [
     "REASON_CODES",
+    "RESERVED_REASON_CODES",
     "UnknownReasonCodeError",
     "is_valid_reason_code",
     "validate_reason_code",
