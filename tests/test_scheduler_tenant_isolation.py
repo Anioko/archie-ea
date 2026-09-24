@@ -507,52 +507,155 @@ def test_run_proactive_analysis_none_org_writes_nothing(app, db_session, make_or
     )
 
 
-def test_purge_cross_tenant_copilot_insights(app, db_session, make_org):
-    """Acceptance 4: purge command deletes only the two quoting insight types, dry-run first."""
+def _make_copilot_insight(db_session, solution_id, insight_type, body, title="insight title"):
+    """Insert a CopilotInsight whose *body* quotes another solution by name.
+
+    The proactive analysis stores the referenced solution by name (quoted in the
+    insight text) rather than by id, so the purge command resolves the referenced
+    solution by exact name match. Tests therefore quote the referenced solution's
+    name in the body the same way the analysis does.
+    """
     from app.models.copilot_insight import CopilotInsight
 
-    org = make_org("purge")
+    row = CopilotInsight(
+        solution_id=solution_id,
+        insight_type=insight_type,
+        title=title,
+        body=body,
+        suggested_query="query",
+        severity="info",
+    )
+    db_session.add(row)
+    db_session.flush()
+    return row
+
+
+def test_purge_same_organisation_insight_survives(app, db_session, make_org):
+    """An insight that names a solution in its own organisation is not deleted."""
+    import uuid as _uuid
+
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org = make_org("purge-same")
     db_session.commit()
-    sol = _make_solution(db_session, org.id, "Purge target solution")
+    own = _make_solution(db_session, org.id, f"Owner solution-{tag}")
+    sibling = _make_solution(db_session, org.id, f"Sibling solution-{tag}")
     db_session.commit()
 
-    def _add(insight_type, title):
-        row = CopilotInsight(
-            solution_id=sol.id,
-            insight_type=insight_type,
-            title=title,
-            body="body",
-            suggested_query="query",
-            severity="info",
-        )
-        db_session.add(row)
-        db_session.flush()
-        return row
-
-    _add("portfolio_duplicate", "dup")
-    _add("pattern_available", "pattern")
-    _add("stale_solution", "stale")
-    db_session.commit()
-
-    runner = app.test_cli_runner()
-
-    # Dry run: prints counts, deletes nothing
-    result = runner.invoke(args=["purge-cross-tenant-copilot-insights"])
-    assert result.exit_code == 0, result.output
-    assert "portfolio_duplicate: 1" in result.output
-    assert "pattern_available: 1" in result.output
-    assert "Dry run" in result.output
-    assert CopilotInsight.query.count() == 3, "dry run must delete nothing"
-
-    # --apply: deletes the two quoting types, leaves stale_solution
-    result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
-    assert result.exit_code == 0, result.output
-    remaining = CopilotInsight.query.all()
-    assert {r.insight_type for r in remaining} == {"stale_solution"}, (
-        f"expected only stale_solution to remain, got {[r.insight_type for r in remaining]}"
+    _make_copilot_insight(
+        db_session, own.id, "portfolio_duplicate",
+        body=f'Solutions with similar names exist in the same domain and phase: "{sibling.name}"',
     )
 
-    # Second --apply deletes 0, exits 0
+    runner = app.test_cli_runner()
     result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
     assert result.exit_code == 0, result.output
-    assert "Deleted 0 row(s)" in result.output
+
+    remaining = CopilotInsight.query.filter_by(solution_id=own.id).all()
+    assert len(remaining) == 1, (
+        "a same-organisation insight must survive the purge; got "
+        f"{[r.insight_type for r in remaining]}"
+    )
+
+
+def test_purge_cross_organisation_insight_removed(app, db_session, make_org):
+    """An insight naming another organisation's solution is deleted."""
+    import uuid as _uuid
+
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()
+    own = _make_solution(db_session, org_a.id, f"Owner solution-{tag}")
+    foreign = _make_solution(db_session, org_b.id, f"Foreign solution-{tag}")
+    db_session.commit()
+
+    _make_copilot_insight(
+        db_session, own.id, "pattern_available",
+        body=f'High-completeness solutions share applications with this one: "{foreign.name}"',
+    )
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
+    assert result.exit_code == 0, result.output
+
+    remaining = CopilotInsight.query.filter_by(solution_id=own.id).all()
+    assert len(remaining) == 0, "a cross-organisation insight must be removed by the purge"
+
+
+def test_purge_name_collision_across_orgs_survives(app, db_session, make_org):
+    """An insight quoting a name that exists in both its own org and another org is kept.
+
+    The name resolves within the insight's own organisation, so the reference is
+    legitimate even though the same name also exists elsewhere.
+    """
+    import uuid as _uuid
+
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()
+    own = _make_solution(db_session, org_a.id, f"Owner solution-{tag}")
+    same_name_in_a = _make_solution(db_session, org_a.id, f"CollidingName-{tag}")
+    same_name_in_b = _make_solution(db_session, org_b.id, f"CollidingName-{tag}")
+    db_session.commit()
+
+    _make_copilot_insight(
+        db_session, own.id, "portfolio_duplicate",
+        body=f'Solutions with similar names: "{same_name_in_a.name}"',
+    )
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights", "--apply"])
+    assert result.exit_code == 0, result.output
+
+    remaining = CopilotInsight.query.filter_by(solution_id=own.id).all()
+    assert len(remaining) == 1, (
+        "a name-collision insight (name exists in both own org and another org) "
+        "must survive the purge; got "
+        f"{[r.insight_type for r in remaining]}"
+    )
+
+
+def test_purge_dry_run_deletes_nothing(app, db_session, make_org):
+    """Dry run prints mismatch counts per type and deletes nothing."""
+    import uuid as _uuid
+
+    from app.models.copilot_insight import CopilotInsight
+
+    tag = _uuid.uuid4().hex[:8]
+    org_a, org_b = make_org("a"), make_org("b")
+    db_session.commit()
+    own_same = _make_solution(db_session, org_a.id, f"Owner same-{tag}")
+    sibling = _make_solution(db_session, org_a.id, f"Sibling-{tag}")
+    own_cross = _make_solution(db_session, org_a.id, f"Owner cross-{tag}")
+    foreign = _make_solution(db_session, org_b.id, f"Foreign-{tag}")
+    db_session.commit()
+
+    _make_copilot_insight(
+        db_session, own_same.id, "portfolio_duplicate",
+        body=f'Solutions with similar names: "{sibling.name}"',
+    )
+    _make_copilot_insight(
+        db_session, own_cross.id, "portfolio_duplicate",
+        body=f'Solutions with similar names: "{foreign.name}"',
+    )
+    _make_copilot_insight(
+        db_session, own_cross.id, "pattern_available",
+        body=f'High-completeness solutions share applications: "{foreign.name}"',
+    )
+    _make_copilot_insight(
+        db_session, own_cross.id, "stale_solution",
+        body="not a quoting type",
+    )
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["purge-cross-tenant-copilot-insights"])
+    assert result.exit_code == 0, result.output
+    assert "Dry run" in result.output
+    assert "portfolio_duplicate: 1" in result.output
+    assert "pattern_available: 1" in result.output
+    assert CopilotInsight.query.count() == 4, "dry run must delete nothing"
