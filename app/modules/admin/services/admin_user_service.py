@@ -219,8 +219,9 @@ class AdminUserService:
         Returns:
             Tuple of (success, message).
         """
+        user_name = user.full_name()
         db.session.delete(user)
         db.session.commit()
         return True, "Successfully deleted user {}.".format(
-            user.full_name()
+            user_name
         )

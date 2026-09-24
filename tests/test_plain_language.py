@@ -605,23 +605,22 @@ def test_plain_layer_does_not_crash_on_detached_user(app):
 # ---------------------------------------------------------------------------
 
 def test_landing_page_no_archimate_in_badge(app):
-    """The public landing page badge no longer says 'Powered by ArchiMate 3.2'."""
+    """The public landing page does not carry an ArchiMate badge."""
     client = app.test_client()
     resp = client.get("/")
     assert resp.status_code == 200
     html = resp.data.decode()
-    assert "Powered by ArchiMate 3.2" not in html
-    assert "Powered by open standards" in html
+    assert "Powered by ArchiMate" not in html
 
 
 def test_landing_page_no_archimate_in_feature_desc(app):
-    """The feature description no longer references ArchiMate 3.2 elements."""
+    """No feature text on the landing page refers to ArchiMate elements."""
     client = app.test_client()
     resp = client.get("/")
     assert resp.status_code == 200
     html = resp.data.decode()
-    assert "all ArchiMate 3.2 elements" not in html
-    assert "all architecture elements" in html
+    assert "ArchiMate 3.2" not in html
+    assert "ArchiMate elements" not in html
 
 
 # ---------------------------------------------------------------------------
