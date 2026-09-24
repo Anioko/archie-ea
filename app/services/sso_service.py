@@ -97,6 +97,65 @@ class SSOService:
                 f"Failed to fetch OIDC discovery document from {metadata_url}: {exc}"
             ) from exc
 
+    def _verify_id_token(self, id_token: str, config, discovery: dict) -> dict:
+        """Verify id_token signature, issuer, audience and expiry.
+
+        Uses the IdP's JWKS (from the OIDC discovery document) to verify the
+        JWT signature via authlib.  Validates that the ``iss`` claim matches
+        the discovery document's issuer, ``aud`` includes the configured
+        client_id, and ``exp`` is not in the past.
+
+        Args:
+            id_token: The ID token string from the token response.
+            config: :class:`app.models.sso_config.SSOConfig` instance.
+            discovery: OIDC discovery document dict (must contain ``jwks_uri``
+                and ``issuer``).
+
+        Returns:
+            Dict of decoded JWT claims.
+
+        Raises:
+            :class:`SSONotConfiguredError` on any verification failure.
+        """
+        jwks_uri = discovery.get("jwks_uri")
+        if not jwks_uri:
+            raise SSONotConfiguredError(
+                "OIDC discovery document missing 'jwks_uri'"
+            )
+
+        issuer = discovery.get("issuer", "")
+        if not issuer:
+            raise SSONotConfiguredError(
+                "OIDC discovery document missing 'issuer'"
+            )
+
+        import requests
+
+        try:
+            jwks_resp = requests.get(jwks_uri, timeout=10)
+            jwks_resp.raise_for_status()
+            jwks = jwks_resp.json()
+        except Exception as exc:
+            raise SSONotConfiguredError(
+                f"Failed to fetch JWKS from {jwks_uri}: {exc}"
+            ) from exc
+
+        claims_options = {
+            "iss": {"essential": True, "value": issuer},
+            "aud": {"essential": True, "value": config.client_id},
+        }
+
+        try:
+            from authlib.jose import jwt
+
+            claims = jwt.decode(id_token, jwks, claims_options=claims_options)
+            claims.validate()
+            return dict(claims)
+        except Exception as exc:
+            raise SSONotConfiguredError(
+                f"id_token verification failed: {exc}"
+            ) from exc
+
     def initiate_oidc_flow(self, config, redirect_uri: str) -> dict:
         """Build the OIDC authorization URL.
 
@@ -208,21 +267,18 @@ class SSOService:
             except Exception as exc:
                 logger.warning("Userinfo fetch failed (falling back to id_token): %s", exc)
 
-        # Fall back: decode id_token payload (no signature verification needed —
-        # we just exchanged the code back-channel, so the token is trustworthy)
+        # Fall back: verify id_token signature and extract claims
         if not userinfo:
             id_token = token_data.get("id_token", "")
             if id_token:
                 try:
-                    import base64
-                    import json
-
-                    parts = id_token.split(".")
-                    if len(parts) >= 2:
-                        padded = parts[1] + "=" * (4 - len(parts[1]) % 4)
-                        userinfo = json.loads(base64.urlsafe_b64decode(padded))
+                    userinfo = self._verify_id_token(id_token, config, discovery)
+                except SSONotConfiguredError:
+                    raise
                 except Exception as exc:
-                    logger.warning("Failed to decode id_token claims: %s", exc)
+                    raise SSONotConfiguredError(
+                        f"id_token verification failed: {exc}"
+                    ) from exc
 
         return userinfo
 
