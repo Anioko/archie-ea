@@ -7,8 +7,8 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, Response, g, redirect, render_template, request, url_for
-from flask_login import current_user, login_required
+from flask import Blueprint, Response, redirect, render_template, request, url_for
+from flask_login import login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
 # authenticated user could delete another user's records. Matches the gating
@@ -26,18 +26,6 @@ logger = logging.getLogger(__name__)
 business_model_bp = Blueprint(
     "business_model", __name__, url_prefix="/business-model"
 )
-
-
-def _current_organization_id():
-    """The plain int this request belongs to — same source and reasoning as
-    app/modules/intelligence/routes/api.py's own helper: ``g.current_org_id``
-    is what the tenant-isolation listener keys off, read here rather than
-    ``current_user.organization`` (an ORM relationship)."""
-    org_id = getattr(g, "current_org_id", None)
-    if org_id is not None:
-        return int(org_id)
-    org_id = getattr(current_user, "organization_id", None)
-    return int(org_id) if org_id is not None else None
 
 
 @business_model_bp.route("/")
@@ -85,7 +73,7 @@ def detail(canvas_id):
     # The Lean order applies once a saved diagram's viewpoint_type is
     # "lean_canvas" (a later change). No such column exists yet, so every
     # canvas renders in Business Model Canvas order.
-    org_id = _current_organization_id()
+    org_id = service._current_organization_id()
     if org_id is None:
         canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_model_canvas"]["zones"]}
         unclassified_count = 0
@@ -226,7 +214,7 @@ def save_block(canvas_id):
 @login_required
 def api_projection(canvas_id):
     """The one projection read for this canvas."""
-    org_id = _current_organization_id()
+    org_id = service._current_organization_id()
     if org_id is None:
         return error_response(
             "no tenant context for this request", code="NO_TENANT_CONTEXT", status_code=400

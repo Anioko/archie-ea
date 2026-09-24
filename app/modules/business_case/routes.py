@@ -7,7 +7,7 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, Response, g, redirect, render_template, request, url_for
+from flask import Blueprint, Response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -27,16 +27,6 @@ from . import service
 logger = logging.getLogger(__name__)
 
 business_case_bp = Blueprint("business_case", __name__, url_prefix="/business-case")
-
-
-def _current_organization_id():
-    """The plain int this request belongs to — same source and reasoning as
-    app/modules/intelligence/routes/api.py's own helper."""
-    org_id = getattr(g, "current_org_id", None)
-    if org_id is not None:
-        return int(org_id)
-    org_id = getattr(current_user, "organization_id", None)
-    return int(org_id) if org_id is not None else None
 
 
 def _link_options():
@@ -90,7 +80,7 @@ def detail(business_case_id):
 
     capabilities, initiatives, solutions = _link_options()
 
-    org_id = _current_organization_id()
+    org_id = service._current_organization_id()
     if org_id is None:
         canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_case"]["zones"]}
         unclassified_count = 0
@@ -250,7 +240,7 @@ def pull_financials(business_case_id):
 @login_required
 def api_projection(business_case_id):
     """The one projection read for this business case."""
-    org_id = _current_organization_id()
+    org_id = service._current_organization_id()
     if org_id is None:
         return error_response(
             "no tenant context for this request", code="NO_TENANT_CONTEXT", status_code=400
