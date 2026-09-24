@@ -11,8 +11,6 @@ import hashlib
 import secrets
 import urllib.parse
 
-import pytest
-
 
 def _pkce_pair() -> tuple[str, str]:
     """Generate a code_verifier and its S256 code_challenge."""

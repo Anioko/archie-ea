@@ -8,10 +8,7 @@ the existing REST routes through Flask's test client.
 
 from __future__ import annotations
 
-import json
-
-from flask import current_app, g, url_for
-from flask_login import current_user
+from flask import current_app
 
 from app.modules.ai_chat.services.architect_persona_charters import _neutralize_fence_lookalikes
 from app.modules.mcp.tools import register_tool

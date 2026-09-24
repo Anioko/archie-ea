@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 
-import pytest
+
 
 
 def _make_user(db_session, org, email):
@@ -174,7 +174,7 @@ class TestCrossTenantIsolation:
         user_b = _make_user(db_session, org_b, "iso-search-b@example.com")
 
         element_a = _make_element(db_session, org_a.id, "unique-org-a-element-xyz")
-        element_b = _make_element(db_session, org_b.id, "unique-org-b-element-xyz")
+        _make_element(db_session, org_b.id, "unique-org-b-element-xyz")
 
         token_a = _mint_oauth_token(client, db_session, org_a, user_a, login_as)
         token_b = _mint_oauth_token(client, db_session, org_b, user_b, login_as)

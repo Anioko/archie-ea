@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 
-import pytest
+
 
 
 def _make_user(db_session, org, email, enterprise_role=None):
@@ -432,13 +432,11 @@ class TestStaticChecks:
                             f"{filename} imports {alias.name}"
                 elif isinstance(node, ast.ImportFrom):
                     if node.module:
-                        full = f"{node.module}.{node.names[0].name}" if node.names else node.module
                         assert node.module not in forbidden_imports, \
                             f"{filename} imports from {node.module}"
 
     def test_search_elements_calls_only_canonical_route(self):
         """search_elements and get_element call only the canonical route."""
-        import ast
         import os
 
         element_tools_path = os.path.join(

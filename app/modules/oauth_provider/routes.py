@@ -9,9 +9,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
 from app.modules.oauth_provider.models import OAuthClient, OAuthToken
