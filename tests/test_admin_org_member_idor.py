@@ -483,6 +483,50 @@ class TestAdminUserActionRoutes:
         # The flashed success message must contain the user's name.
         assert victim_name.encode() in resp.data
 
+    def test_successful_delete_creates_audit_record(
+        self, app, db_session, login_as, client
+    ):
+        """A successful user deletion through the current admin module must
+        create exactly one audit record naming the deleted user and the actor."""
+        from app.models.audit_log import AuditLog
+
+        org_a = _make_org(db_session, "audit-ok2-a")
+        admin_a = _make_user(db_session, org_a, is_org_admin=True)
+        victim = _make_user(
+            db_session, org_a,
+            email=f"auditok2-{uuid.uuid4().hex[:8]}@example.com",
+        )
+        victim_id = victim.id
+        db_session.commit()
+
+        with app.app_context():
+            before = AuditLog.query.filter_by(
+                action="admin_user_delete", record_id=victim_id
+            ).count()
+
+        with app.app_context():
+            login_as(client, admin_a)
+            resp = client.post(f"/admin/user/{victim_id}/_delete", follow_redirects=True)
+
+        assert resp.status_code == 200
+
+        with app.app_context():
+            entries = AuditLog.query.filter_by(
+                action="admin_user_delete", record_id=victim_id
+            ).all()
+
+        assert len(entries) == before + 1, (
+            f"Expected exactly one new audit entry for successful deletion, "
+            f"but count went from {before} to {len(entries)}"
+        )
+        entry = entries[-1]
+        assert entry.user_id == admin_a.id, (
+            f"Audit entry user_id {entry.user_id} != actor {admin_a.id}"
+        )
+        assert entry.table_name == "admin_user", (
+            f"Audit entry table_name {entry.table_name!r} != 'admin_user'"
+        )
+
     def test_cross_org_role_page_post_is_refused(
         self, app, db_session, login_as, client
     ):
