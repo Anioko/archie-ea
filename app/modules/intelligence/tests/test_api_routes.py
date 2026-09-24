@@ -333,11 +333,12 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_nine_routes(app):
-    """The impact, risk, portfolio, programme, strategy, accountability and
-    yield routes all mount on this same existing blueprint rather than a
-    new one each. Still exactly one blueprint, now nine routes on it -- all
-    six lenses of the catalogue plus recompute/derived/yield.
+def test_module_registers_exactly_ten_routes(app):
+    """The impact, risk, portfolio, programme, strategy, accountability,
+    value-streams-at-risk and yield routes all mount on this same existing
+    blueprint rather than a new one each. Still exactly one blueprint, now
+    ten routes on it -- all six lenses of the catalogue plus the Strategic
+    value-streams-at-risk surface plus recompute/derived/yield.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -346,6 +347,7 @@ def test_module_registers_exactly_nine_routes(app):
     assert endpoints == {
         "intelligence_api.recompute_derivation",
         "intelligence_api.get_derived_fact_provenance",
+        "intelligence_api.value_streams_at_risk",
         "intelligence_api.cross_layer_impact",
         "intelligence_api.risk_for_element",
         "intelligence_api.portfolio_component_for_element",
@@ -835,12 +837,16 @@ def test_accountability_endpoint_unknown_element_is_404(app, db_session, make_or
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
 
 
-def test_accountability_endpoint_element_with_no_ownership_returns_honest_empty(
+def test_accountability_endpoint_returns_the_withdrawn_reason(
     app, db_session, make_org, client, login_as
 ):
+    """The ownership read is withdrawn (a tenant-isolation gap found in
+    external review of the original PR, see
+    IntelligenceQueryService.accountability_for_element's docstring) --
+    every real element returns this honest reason, not owner data."""
     from app.models.application_portfolio import ApplicationComponent
 
-    org = make_org("accountability-route-empty")
+    org = make_org("accountability-route-withdrawn")
     user = _make_user(db_session, org)
     a = _make_element(db_session, org.id, "A")
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
@@ -853,23 +859,27 @@ def test_accountability_endpoint_element_with_no_ownership_returns_honest_empty(
     data = resp.get_json()["data"]
     assert data["owners"] == []
     assert data["capacity_not_available"] is True
-    assert "no_ownership_records" in data["reasons"]
-    assert "capacity_not_available" in data["reasons"]
+    assert "ownership_reader_not_built" in data["reasons"]
 
 
-def test_accountability_endpoint_returns_owner_with_organization_unit(
+def test_accountability_endpoint_never_returns_seeded_ownership_data(
     app, db_session, make_org, client, login_as
 ):
+    """The regression guard that matters: a real, well-formed ownership
+    graph exists -- exactly the shape the original (unsafe) implementation
+    would have served over HTTP, including the cross-tenant-leakable
+    organization_unit fields -- and the endpoint must still return nothing
+    from it."""
     from app.models.application_portfolio import ApplicationComponent
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
-    org = make_org("accountability-route-owner")
+    org = make_org("accountability-route-guard")
     user = _make_user(db_session, org)
     a = _make_element(db_session, org.id, "A")
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Finance", unit_type="Department")
+    unit = OrganizationUnit(name="Finance", unit_type="Department", head_of_unit="Pat Head")
     db_session.add(unit)
     db_session.flush()
     ownership = ApplicationOwnership(
@@ -883,11 +893,8 @@ def test_accountability_endpoint_returns_owner_with_organization_unit(
     resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["capacity_not_available"] is True
-    assert len(data["owners"]) == 1
-    row = data["owners"][0]
-    assert row["ownership_type"] == "Business Owner"
-    assert row["organization_unit"]["name"] == "Finance"
+    assert data["owners"] == []
+    assert data["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
 
 
 def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
