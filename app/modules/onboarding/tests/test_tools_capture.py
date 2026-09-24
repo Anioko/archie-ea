@@ -13,6 +13,17 @@ def _with_capability(key="customer_acquisition"):
     caps.save([{"key": key, "maturity": 2}], stage=STAGE, size_band=BAND)
 
 
+def _mappings(org_id):
+    """Support links for this organisation's tools. The mapping table has no
+    tenant column and the browser journeys commit real rows to the shared test
+    database, so a bare Mapping.query would count other runs' rows."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping as Mapping
+
+    ids = [a.id for a in ApplicationComponent.query.filter_by(organization_id=org_id).all()]
+    return Mapping.query.filter(Mapping.application_component_id.in_(ids)).all() if ids else []
+
+
 def _tool(name="Stripe", **overrides):
     entry = {"name": name, "deployment": "saas", "supports": ["customer_acquisition"]}
     entry.update(overrides)
@@ -43,7 +54,7 @@ def test_the_support_link_is_a_real_mapping_row_and_claims_no_coverage(db_sessio
     with tenant_ctx(org.id):
         _with_capability()
         tools.save([_tool()], stage=STAGE, size_band=BAND)
-        row = Mapping.query.one()
+        (row,) = _mappings(org.id)
         capability = db_session.get(UnifiedCapability, row.unified_capability_id)
 
     assert capability.name == "Customer acquisition" and capability.organization_id == org.id
@@ -61,7 +72,7 @@ def test_saving_twice_updates_and_an_unticked_capability_removes_only_the_link(d
         tools.save([_tool()], stage=STAGE, size_band=BAND)
         tools.save([_tool(supports=[])], stage=STAGE, size_band=BAND)
         assert ApplicationComponent.query.filter_by(name="Stripe").count() == 1
-        assert Mapping.query.count() == 0
+        assert _mappings(org.id) == []
 
 
 def test_a_capability_not_recorded_yet_is_not_linked(db_session, make_org, tenant_ctx):
@@ -70,7 +81,7 @@ def test_a_capability_not_recorded_yet_is_not_linked(db_session, make_org, tenan
     org = make_org("nocap")
     with tenant_ctx(org.id):
         result = tools.save([_tool()], stage=STAGE, size_band=BAND)
-        assert Mapping.query.count() == 0
+        assert _mappings(org.id) == []
 
     assert result == {"tools": 1, "links": 0}
 

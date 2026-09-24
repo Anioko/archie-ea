@@ -74,6 +74,25 @@ def welcome():
     return render_template("onboarding/screen1_welcome.html")
 
 
+def _can_edit_company_profile(org: Organization) -> bool:
+    """The owner or an administrator edits the company profile.
+
+    Until the organisation has any company answers, whoever is onboarding may
+    write them (the person who signed up is the one creating the profile)."""
+    if getattr(current_user, "is_org_admin", False) or getattr(current_user, "is_platform_admin", False):
+        return True
+    return not profile.read(org).get("stage")
+
+
+def _apply_company_name(org: Organization, raw) -> None:
+    """Rename the organisation (the auto-created "First Last's Workspace" is the
+    usual case). The slug is left alone so existing links keep working."""
+    name = (raw or "").strip()[:200]
+    if len(name) >= 2 and name != org.name:
+        org.name = name
+        db.session.add(org)
+
+
 @onboarding_bp.route("/company", methods=["GET", "POST"])
 @login_required
 def company():
@@ -89,6 +108,15 @@ def company():
         # enterprise_role column and valid-role set as onboarding.finish and
         # the standalone workspace-setup page below, via completion.set_role.
         completion.set_role(current_user, data.get("enterprise_role"))
+        if not _can_edit_company_profile(org):
+            # A teammate joining an organisation that already has a company
+            # profile keeps their own role choice but does not rewrite the
+            # organisation's answers; only its owner or an administrator does.
+            db.session.commit()
+            if request.is_json:
+                return success_response({"next": url_for("onboarding.capabilities")})
+            return redirect(url_for("onboarding.capabilities"))
+        _apply_company_name(org, data.get("company_name"))
         profile.write(
             org,
             stage=stage,
@@ -105,6 +133,8 @@ def company():
 
     return render_template(
         "onboarding/screen2_company.html",
+        can_edit=_can_edit_company_profile(org),
+        company_name="" if (org.name or "").endswith("'s Workspace") else (org.name or ""),
         stages=[{"key": k, "label": v} for k, v in _STAGE_LABELS.items()],
         size_bands=capability_capture.size_bands(),
         current=profile.read(org),

@@ -4,6 +4,7 @@
 
 {% block wizard_content %}
 <div x-data="{
+        companyName: {{ (company_name or '') | tojson | forceescape }},
         stage: {{ (current.stage or '') | tojson | forceescape }},
         companySize: {{ (current.company_size or '') | tojson | forceescape }},
         industry: {{ (current.industry or '') | tojson | forceescape }},
@@ -37,6 +38,7 @@
             window.Platform.fetch('{{ url_for('onboarding.company') }}', {
                 method: 'POST',
                 body: {
+                    company_name: this.companyName,
                     stage: this.stage,
                     company_size: this.companySize,
                     industry: this.industry,
@@ -84,6 +86,21 @@
     </a>
     {% endif %}
 
+    {% if not can_edit %}
+    <p class="rounded-lg border border-border p-3 text-sm text-muted-foreground" role="note">
+        Your organisation's company answers were set by its owner or an administrator, so they are shown here but
+        can only be changed by them. You can still choose your own role below.
+    </p>
+    {% endif %}
+    <fieldset {% if not can_edit %}disabled{% endif %} class="space-y-6 min-w-0 border-0 p-0 m-0">
+    <div>
+        <label for="company_name" class="text-sm font-medium text-foreground mb-1 block">Company name</label>
+        <input id="company_name" type="text" x-model="companyName" maxlength="200" placeholder="e.g. Lantern Quay"
+               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1
+                      text-sm shadow-sm transition-colors placeholder:text-muted-foreground
+                      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        <p class="text-xs text-muted-foreground mt-1">This replaces the name we gave your workspace when you signed up.</p>
+    </div>
     <div>
         <label class="text-sm font-medium text-foreground mb-2 block" id="stage-label">What stage are you at?</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-labelledby="stage-label">
@@ -154,6 +171,8 @@
             We handle card payment data directly
         </label>
     </div>
+
+    </fieldset>
 
     <p x-show="errorMessage" x-cloak x-text="errorMessage" class="text-sm text-destructive" role="alert"></p>
 

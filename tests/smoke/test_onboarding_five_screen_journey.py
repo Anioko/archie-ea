@@ -197,6 +197,7 @@ def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(li
         page.click("text=Let's go")
         page.wait_for_url(lambda url: "/onboarding/company" in url, timeout=PAGE_TIMEOUT)
         page.check("input[value='early_revenue']")
+        page.fill("#company_name", "Lantern Quay Ltd")
         page.get_by_role("button", name="11 to 50 people").click()
         page.get_by_role("button", name="Continue").click()
         page.wait_for_url(lambda url: "/onboarding/capabilities" in url, timeout=PAGE_TIMEOUT)
@@ -258,6 +259,10 @@ def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(li
         assert page.input_value("#name_0") == "Priya Shah"
         assert page.input_value("#role_0_customer_acquisition") == "R"
         assert page.input_value("#prof_0_customer_acquisition") == "3", "the saved proficiency must come back after a reload"
+
+        page.goto(live_server + "/onboarding/company", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+        assert page.input_value("#company_name") == "Lantern Quay Ltd", "the company name must replace the auto-created workspace name"
 
         page.goto(live_server + "/onboarding/capabilities", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         page.wait_for_timeout(500)

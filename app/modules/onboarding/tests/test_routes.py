@@ -661,3 +661,66 @@ def test_a_tool_named_like_an_expected_system_counts_as_recorded_in_the_gaps(app
     from app.modules.onboarding import routes
 
     assert "code_repository" in routes._recorded_for_org(org)["systems"]
+
+
+def test_company_name_renames_the_auto_created_workspace(app, db_session, make_org, client, login_as):
+    org = make_org("rename")
+    user = _make_user(db_session, org, is_org_admin=True)
+    login_as(client, user)
+    org.name = "On Board's Workspace"
+    db_session.flush()
+
+    resp = client.post("/onboarding/company", json={"stage": "early_revenue", "company_name": "Lantern Quay"})
+
+    assert resp.status_code == 200
+    db_session.refresh(org)
+    assert org.name == "Lantern Quay"
+
+
+def test_the_company_screen_does_not_prefill_the_auto_created_name(app, db_session, make_org, client, login_as):
+    org = make_org("prefill")
+    user = _make_user(db_session, org, is_org_admin=True)
+    login_as(client, user)
+    org.name = "On Board's Workspace"
+    db_session.flush()
+
+    html = client.get("/onboarding/company").get_data(as_text=True)
+
+    assert "companyName: &#34;&#34;" in html
+
+
+def test_a_teammate_cannot_rewrite_an_existing_company_profile_but_keeps_their_role(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org = make_org("teammate")
+    admin_profile = profile.write(org, stage="growing", industry="Logistics")
+    user = _make_user(db_session, org)
+    login_as(client, user)
+    org.name = "Real Company"
+    db_session.flush()
+
+    resp = client.post(
+        "/onboarding/company",
+        json={"stage": "pre_revenue", "industry": "Hijacked", "company_name": "Renamed", "enterprise_role": "cto"},
+    )
+
+    assert resp.status_code == 200
+    db_session.refresh(org)
+    db_session.refresh(user)
+    assert org.name == "Real Company"
+    assert profile.read(org)["stage"] == "growing" and profile.read(org)["industry"] == "Logistics"
+    assert user.enterprise_role == "cto"
+
+
+def test_a_platform_admin_may_edit_the_company_profile(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org = make_org("padmin")
+    profile.write(org, stage="growing")
+    user = _make_user(db_session, org, is_platform_admin=True)
+    login_as(client, user)
+
+    resp = client.post("/onboarding/company", json={"stage": "established"})
+
+    assert resp.status_code == 200
+    assert profile.read(org)["stage"] == "established"
