@@ -24,16 +24,16 @@
       {% call button(variant='default', size='sm', icon='plus', testid='btn-new-solution', on_click='startSolution', attrs=':disabled="startingSolution"') %}
       <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
       {% endcall %}
-      {# Secondary actions: outline buttons, visible sm+ #}
-      <div class="hidden sm:flex flex-wrap items-center gap-2">
+      {# Secondary actions: outline buttons, visible 2xl+ #}
+      <div class="hidden 2xl:flex flex-wrap items-center gap-2">
         {{ button(text='Start Architecture Journey', variant='outline', size='sm', icon='zap', href=url_for('architecture_journey.index'), testid='btn-start-journey', aria_label='Start the guided Architecture Journey to design a new solution') }}
         {{ button(text='New from Template', variant='outline', size='sm', icon='layout-template', data_action='open-template-modal', testid='btn-new-from-template') }}
         {% if 'enterprise_crud.reference_catalog' in flask.current_app.view_functions %}
         {{ button(text='Reference catalogue', variant='outline', size='sm', icon='library', href=url_for('enterprise_crud.reference_catalog'), testid='btn-reference-catalog', aria_label='Browse the reference catalogue of approved, reusable solutions') }}
         {% endif %}
       </div>
-      {# Below sm: secondary actions in a "More" dropdown #}
-      <div class="sm:hidden">
+      {# Below 2xl: secondary actions in a "More" dropdown #}
+      <div class="2xl:hidden">
         {{ dropdown_menu(
             id='solutions-more-menu',
             trigger_text='More',
@@ -211,7 +211,7 @@
                         <th class="px-5 py-3.5 w-10"><input type="checkbox" data-select-all="solution-table" class="h-4 w-4 rounded border-input" aria-label="Select all solutions"></th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Solution</th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Phase &amp; Status</th>
-                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Design Maturity</th>
+                        <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider hidden xl:table-cell">Design Maturity</th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider hidden 2xl:table-cell">Architecture Scope</th>
                         <th class="px-5 py-3.5 text-center text-2xs font-semibold text-muted-foreground uppercase tracking-wider hidden 2xl:table-cell">Arch. Score</th>
                         <th class="px-5 py-3.5 text-left text-2xs font-semibold text-muted-foreground uppercase tracking-wider">Next Action</th>
@@ -231,7 +231,7 @@
                             <td class="px-5 py-4 w-10">
                                 <input type="checkbox" data-select-row="solution-table" value="{{ solution.id }}" class="h-4 w-4 rounded border-input" aria-label="Select {{ solution.name }}">
                             </td>
-                            <td class="px-5 py-4 min-w-[18rem]">
+                            <td class="px-5 py-4 min-w-[14rem]">
                                 <div class="space-y-1.5">
                                     <a href="{{ url_for('solution_design.view_solution', solution_id=solution.id) }}" class="text-sm font-semibold text-foreground hover:text-primary transition-colors">{{ solution.name }}</a>
                                     <p class="text-xs text-muted-foreground leading-relaxed">{{ solution.description[:90] if solution.description else 'No summary yet.' }}{% if solution.description and solution.description|length > 90 %}...{% endif %}</p>
@@ -273,7 +273,7 @@
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold {{ _gov_cls }}">{{ _gov_label }}</span>
                                 </div>
                             </td>
-                            <td class="px-5 py-4 whitespace-nowrap">
+                            <td class="px-5 py-4 whitespace-nowrap hidden xl:table-cell">
                                 <div class="space-y-2">
                                     <div class="flex items-baseline gap-2">
                                         <span class="text-2xl font-bold tracking-tight
