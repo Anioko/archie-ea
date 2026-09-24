@@ -1119,6 +1119,7 @@ class IntelligenceQueryService:
                         "gap_kind": None,
                         "gap_type": None,
                         "resolution_status": None,
+                        "resolution_status_default_possible": True,
                         "originating_plateau_id": None,
                         "target_plateau_id": None,
                         "owner_text": None,
@@ -1133,6 +1134,7 @@ class IntelligenceQueryService:
                         "gap_kind": gap_row.gap_kind,
                         "gap_type": gap_row.gap_type,
                         "resolution_status": gap_row.resolution_status,
+                        "resolution_status_default_possible": True,
                         "originating_plateau_id": gap_row.originating_plateau_id,
                         "target_plateau_id": gap_row.target_plateau_id,
                         "owner_text": gap_row.owner,
@@ -1328,23 +1330,22 @@ class IntelligenceQueryService:
         -- it is a permanent, honest disclosure of a real product gap, not
         a per-request absence condition like every other reason code here.
 
-        Tenant-safety note, verified not assumed: neither
+        Tenant-safety note: neither
         ``OrganizationUnit`` nor ``ApplicationOwnership`` carries a
         ``TenantMixin``/``organization_id`` of its own (same gap already
         flagged for ``UnifiedWorkPackage``, L5, and ``PortfolioInitiative``,
-        L2). This method never queries ``ApplicationOwnership`` except by an
-        ``application_id`` obtained from ``portfolio_component_for_element``,
-        which only ever resolves through an already-tenant-validated
-        ``ArchiMateElement`` -- so no independently untenanted read of
-        either table is exposed here. Not attempting to add tenant scoping
-        to either table itself -- a fourth instance of the same pre-existing
-        gap is stronger evidence it needs its own dedicated fix, not
-        stronger reason to patch it inside one more lens.
+        L2). The ``OrganizationUnit`` read joins through
+        ``ApplicationOwnership`` → ``ApplicationComponent`` to verify the
+        unit is reachable from a component owned by this tenant; a unit
+        only referenced by another tenant's components resolves to ``None``.
         """
         from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+        from app.models.application_portfolio import ApplicationComponent
+
+        org_id = current_org_id()
 
         with record_query_latency("accountability_for_element") as scope:
-            scope.organization_id = current_org_id()
+            scope.organization_id = org_id
 
             component_result = IntelligenceQueryService.portfolio_component_for_element(element_id)
             if component_result.get("reasons"):
@@ -1356,10 +1357,17 @@ class IntelligenceQueryService:
 
             application_id = component_result["application_component_id"]
 
+            from sqlalchemy import or_
+            import datetime as _dt
+
             ownership_rows = (
                 db.session.execute(
                     db.select(ApplicationOwnership).where(
-                        ApplicationOwnership.application_id == application_id
+                        ApplicationOwnership.application_id == application_id,
+                        or_(
+                            ApplicationOwnership.end_date.is_(None),
+                            ApplicationOwnership.end_date >= _dt.date.today(),
+                        ),
                     )
                 )
                 .scalars()
@@ -1382,21 +1390,37 @@ class IntelligenceQueryService:
                 # anyway -- same discipline every other lens's owner/user
                 # lookup uses -- in case that constraint is ever loosened;
                 # it does not currently have a reachable test case.
-                unit = db.session.get(OrganizationUnit, row.organization_unit_id)
+                # Tenant-scoped: OrganizationUnit carries no organization_id
+                # column of its own, so the read joins through
+                # ApplicationOwnership → ApplicationComponent to verify the
+                # unit is reachable from a component owned by this tenant.
+                unit = db.session.execute(
+                    db.select(OrganizationUnit)
+                    .join(
+                        ApplicationOwnership,
+                        ApplicationOwnership.organization_unit_id == OrganizationUnit.id,
+                    )
+                    .join(
+                        ApplicationComponent,
+                        ApplicationComponent.id == ApplicationOwnership.application_id,
+                    )
+                    .where(
+                        OrganizationUnit.id == row.organization_unit_id,
+                        ApplicationComponent.organization_id == org_id,
+                    )
+                ).scalars().first()
                 owner_payloads.append(
                     {
                         "owner_id": row.id,
                         "ownership_type": row.ownership_type,
                         "ownership_percentage": row.ownership_percentage,
                         "primary_contact": row.primary_contact,
-                        "contact_email": row.contact_email,
                         "start_date": row.start_date.isoformat() if row.start_date else None,
                         "end_date": row.end_date.isoformat() if row.end_date else None,
                         "organization_unit": (
                             {
                                 "name": unit.name,
                                 "unit_type": unit.unit_type,
-                                "head_of_unit": unit.head_of_unit,
                             }
                             if unit is not None
                             else None

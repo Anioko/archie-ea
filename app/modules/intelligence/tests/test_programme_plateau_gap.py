@@ -325,8 +325,9 @@ def test_b_owned_gap_is_never_shown_and_the_absence_is_not_vacuous(
     gap_block = result["work_packages"][0]["gap"]
     assert gap_block["reason"] == "no_gap_recorded"
     for key, value in gap_block.items():
-        if key != "reason":
+        if key not in ("reason", "resolution_status_default_possible"):
             assert value is None
+    assert gap_block["resolution_status_default_possible"] is True
 
     with app.test_request_context("/"):
         g.current_org_id = None
@@ -508,10 +509,11 @@ def test_plateau_and_gap_block_shapes_and_payload_key_set(app, db_session, make_
     assert len(payload["plateau"]) == 6
     assert set(payload["gap"].keys()) == {
         "gap_id", "name", "gap_kind", "gap_type", "resolution_status",
+        "resolution_status_default_possible",
         "originating_plateau_id", "target_plateau_id", "owner_text",
         "estimated_cost", "access_reason", "reason",
     }
-    assert len(payload["gap"]) == 11
+    assert len(payload["gap"]) == 12
 
     base_keys = {
         "work_package_id", "name", "status", "progress_percentage", "start_date",
@@ -655,8 +657,9 @@ def test_fabrication_every_absent_block_is_all_none_never_falsy(app, db_session,
 
     assert payload["gap"]["reason"] == "no_gap_recorded"
     for key, value in payload["gap"].items():
-        if key != "reason":
+        if key not in ("reason", "resolution_status_default_possible"):
             assert value is None
+    assert payload["gap"]["resolution_status_default_possible"] is True
 
     assert payload["risk_level"] is None
     assert payload["priority"] is None
@@ -718,3 +721,61 @@ def test_route_does_not_redact_gap_estimated_cost_for_cto(app, db_session, make_
     row = resp.get_json()["data"]["work_packages"][0]
     assert row["gap"]["estimated_cost"] == 5000.0
     assert row["gap"]["access_reason"] is None
+
+
+# --- (14) resolution_status_default_possible disclosure --------------------
+
+
+def test_resolution_status_default_possible_is_true_when_gap_present(app, db_session, make_org):
+    from flask import g
+
+    org = make_org("plategap-res-status-present")
+    a = _element(db_session, org.id, "A")
+    g1 = _gap(db_session, org.id, name="Gap with default status")
+    _work_package(db_session, a, name="WP", gap_id=g1.id)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.programme_for_element(a.id)
+
+    payload = result["work_packages"][0]
+    assert payload["gap"]["gap_id"] == g1.id
+    assert payload["gap"]["resolution_status"] == "identified"
+    assert payload["gap"]["resolution_status_default_possible"] is True
+
+
+def test_resolution_status_default_possible_is_true_when_gap_absent(app, db_session, make_org):
+    from flask import g
+
+    org = make_org("plategap-res-status-absent")
+    a = _element(db_session, org.id, "A")
+    _work_package(db_session, a, name="No gap")
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.programme_for_element(a.id)
+
+    payload = result["work_packages"][0]
+    assert payload["gap"]["reason"] == "no_gap_recorded"
+    assert payload["gap"]["resolution_status"] is None
+    assert payload["gap"]["resolution_status_default_possible"] is True
+
+
+def test_resolution_status_explicit_is_still_ambiguous(app, db_session, make_org):
+    from flask import g
+
+    org = make_org("plategap-res-status-explicit")
+    a = _element(db_session, org.id, "A")
+    g1 = _gap(db_session, org.id, name="Explicit status", resolution_status="in_progress")
+    _work_package(db_session, a, name="WP", gap_id=g1.id)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        result = IntelligenceQueryService.programme_for_element(a.id)
+
+    payload = result["work_packages"][0]
+    assert payload["gap"]["resolution_status"] == "in_progress"
+    assert payload["gap"]["resolution_status_default_possible"] is True
