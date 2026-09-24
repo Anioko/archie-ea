@@ -35,6 +35,36 @@ PASSWORD = "SmokeJourney!2026"
 BOOT_TIMEOUT = int(os.environ.get("SMOKE_BOOT_TIMEOUT", "180"))
 
 
+def pytest_configure(config):
+    """Register fallback ``page`` and ``context`` fixtures when the
+    pytest-playwright plugin is absent.
+
+    CI's "Browser journeys" and "Browser compatibility" jobs install
+    ``playwright`` and ``pytest-timeout`` but NOT ``pytest-playwright``,
+    so every test that uses the plugin's ``page`` (or ``context``) fixture
+    errors at setup with "fixture 'page' not found".  These fallbacks are
+    built on this suite's own ``browser`` fixture (package scope) and
+    provide the same function-scoped lifecycle the plugin would.
+    """
+    if config.pluginmanager.hasplugin("playwright"):
+        return
+
+    class _SmokePageFallback:
+        @pytest.fixture(scope="function")
+        def context(self, browser):
+            ctx = browser.new_context()
+            yield ctx
+            ctx.close()
+
+        @pytest.fixture(scope="function")
+        def page(self, context):
+            p = context.new_page()
+            yield p
+            p.close()
+
+    config.pluginmanager.register(_SmokePageFallback(), name="smoke-page-fallback")
+
+
 def _tail(path, lines=40):
     """Last *lines* of the server log - what actually failed, in its own words."""
     try:

@@ -119,15 +119,6 @@ def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
     assert page.locator("[data-ask-accountability-row]").count() == 0
 
 
-# This marker is strict=True so the test fails (XPASS) once Ask rows render for
-# seeded data. Remove this marker when the seed creates ArchiMate relationships
-# that produce [data-ask-row] elements for the seeded element.
-@pytest.mark.xfail(strict=True, reason=(
-    "Impact query returns empty for the seeded element: no ArchiMate relationships "
-    "involve it, so the frontend shows the empty state (state='empty') instead of "
-    "rendering [data-ask-row] elements (which live inside x-show=\"state === 'ready'\"). "
-    "The seed must create a relationship targeting the element for this test to proceed."
-))
 def test_all_six_questions_keep_their_own_answers_separate(
     page, live_server, seeded, accountability_graph
 ):
