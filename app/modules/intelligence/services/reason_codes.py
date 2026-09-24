@@ -91,7 +91,7 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
-        # Risk/control-gaps brief (2026-09-23) addition: Ask's Risk lens lists
+        # Risk/control-gaps (2026-09-23) addition: Ask's Risk lens lists
         # the compliance gap rows recorded against anything on the answer's
         # own element set, beside the risks, and the resolved component's own
         # recorded compliance tags. Most elements name no compliance

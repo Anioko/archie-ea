@@ -9,7 +9,7 @@ T-004 (US-1) added two members -- ``no_tenant_context`` and
 read path that sdd-v2.md's original sixteen do not cover. T-005 (US-5) added
 one more -- ``p95_above_highest_bucket`` (D3) -- for the yield endpoint's
 p95 bucket-edge read having no honest number to report when the 95th
-percentile falls in the histogram's +Inf overflow bucket. "Closed" means no
+percentile falls in the histogram's +Inf overflow bin. "Closed" means no
 endpoint may invent an absence string inline, not that the set is frozen at
 sixteen forever; the module's own docstring says a new absence condition
 adds a member here, and nowhere else. This test is updated in lockstep.
@@ -18,10 +18,10 @@ This ``_EXPECTED`` list drifted out of sync with reality some time before
 this fix -- the L3/L5 briefs each added a member to ``reason_codes.py``
 (``no_application_component``, ``no_work_package_recorded``, ``not_costed``)
 without updating this ratchet, only the two route-count ratchets. Found
-while adding the L2 brief's own ``no_budget_recorded`` member; corrected to
+while adding the L2 addition's own ``no_budget_recorded`` member; corrected to
 the real, current set (23) rather than bumped by one on top of a stale base.
 
-The risk/control-gaps brief (2026-09-23) added one more --
+The risk/control-gaps addition (2026-09-23) added one more --
 ``no_compliance_mapping_recorded`` -- for the Risk lens's control-gap and
 compliance-tag blocks, moving the count to 27.
 """
