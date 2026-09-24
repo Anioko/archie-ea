@@ -356,3 +356,94 @@ def test_deselected_answer_cleanup_is_isolated_between_organisations(app, db_ses
     assert len(risks_a) == 1
     assert risks_a[0].title == "GDPR compliance"
     assert len(risks_b) == 2, "org B's iso27001 risk must not be touched by org A's cleanup"
+
+
+# -- deselecting an answer must not delete work built on what it created ------
+
+
+def test_deselecting_a_framework_keeps_a_capability_someone_has_been_assigned_to(app, db_session, make_org):
+    from app.models.business_layer import BusinessActor
+    from app.models.organization_model import EnterpriseRaciAssignment
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-keep-raci")
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": ["agile-methodology", "devops-practices"]})
+    agile = UnifiedCapability.query.filter_by(organization_id=org.id, name="Agile Methodology").one()
+    actor = BusinessActor(name="Priya", actor_type="Individual", organization_id=org.id)
+    db_session.add(actor)
+    db_session.flush()
+    db_session.add(
+        EnterpriseRaciAssignment(
+            organization_id=org.id, stakeholder_type="actor", stakeholder_id=actor.id,
+            stakeholder_name="Priya", capability_id=agile.id, raci="R",
+        )
+    )
+    db_session.flush()
+
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": ["devops-practices"]})
+
+    assert UnifiedCapability.query.filter_by(organization_id=org.id, name="Agile Methodology").count() == 1
+    assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).count() == 1
+    # released, so a later save never touches it again
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": ["devops-practices"]})
+    assert UnifiedCapability.query.filter_by(organization_id=org.id, name="Agile Methodology").count() == 1
+
+
+def test_deselecting_a_framework_keeps_a_capability_a_tool_supports(app, db_session, make_org):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-keep-tool")
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": ["agile-methodology"]})
+    cap = UnifiedCapability.query.filter_by(organization_id=org.id, name="Agile Methodology").one()
+    app_row = ApplicationComponent(name="Jira", organization_id=org.id)
+    db_session.add(app_row)
+    db_session.flush()
+    db_session.add(UnifiedApplicationCapabilityMapping(unified_capability_id=cap.id, application_component_id=app_row.id))
+    db_session.flush()
+
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": []})
+
+    assert UnifiedCapability.query.filter_by(organization_id=org.id, name="Agile Methodology").count() == 1
+    assert UnifiedApplicationCapabilityMapping.query.filter_by(application_component_id=app_row.id).count() == 1
+
+
+def test_deselecting_a_standard_keeps_a_risk_with_a_written_mitigation_plan(app, db_session, make_org):
+    from app.models.risk import Risk
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-keep-risk")
+    tell_us_more.save_section(org, "compliance", {"standards": {"gdpr": "partial", "iso27001": "full"}})
+    gdpr = Risk.query.filter_by(organization_id=org.id, title="GDPR compliance").one()
+    gdpr.mitigation_plan = "Appoint a DPO and run a data-mapping exercise"
+    db_session.flush()
+
+    tell_us_more.save_section(org, "compliance", {"standards": {"iso27001": "full"}})
+
+    kept = Risk.query.filter_by(organization_id=org.id, title="GDPR compliance").one()
+    assert kept.mitigation_plan.startswith("Appoint a DPO")
+
+
+def test_deselecting_a_template_keeps_a_work_package_that_has_moved_on(app, db_session, make_org):
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.unified_work_package import UnifiedWorkPackage
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-keep-wp")
+    tell_us_more.save_section(org, "whats_changing", {"transformation_templates": ["crm", "cloud-migration"]})
+    rows = (
+        UnifiedWorkPackage.query.join(ArchiMateElement, UnifiedWorkPackage.archimate_element_id == ArchiMateElement.id)
+        .filter(ArchiMateElement.organization_id == org.id, UnifiedWorkPackage.name.like("%Cloud%"))
+        .all()
+    )
+    assert rows
+    rows[0].status = "in_progress"
+    kept_id = rows[0].id
+    db_session.flush()
+
+    tell_us_more.save_section(org, "whats_changing", {"transformation_templates": ["crm"]})
+
+    assert db_session.get(UnifiedWorkPackage, kept_id) is not None
