@@ -121,14 +121,29 @@ class TestWaitlistSignup:
         """AC 2: Without email it refuses with a clear message."""
         from app.models.waitlist_signup import WaitlistSignup
 
+        count_before = WaitlistSignup.query.count()
         resp = client.post("/", data={"consent": "1"}, follow_redirects=True)
         assert resp.status_code == 200
         html = resp.data.decode()
         assert "email" in html.lower()
 
-        count = WaitlistSignup.query.count()
         # No new rows should have been added
-        assert count == WaitlistSignup.query.count()
+        assert WaitlistSignup.query.count() == count_before
+
+    def test_invalid_email_format_refuses_with_clear_message(self, client, db_session):
+        """Server-side email validation rejects invalid formats."""
+        from app.models.waitlist_signup import WaitlistSignup
+
+        count_before = WaitlistSignup.query.count()
+        resp = client.post(
+            "/",
+            data={"email": "not-an-email", "consent": "1"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "valid email" in html.lower()
+        assert WaitlistSignup.query.count() == count_before
 
     def test_missing_csrf_is_refused(self, client, app):
         """AC 2: Without CSRF it is refused."""

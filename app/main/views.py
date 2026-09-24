@@ -2,6 +2,7 @@ import csv
 import io
 import json
 
+from email_validator import EmailNotValidError, validate_email
 from flask import (
     Blueprint,
     Response,
@@ -52,6 +53,13 @@ def index():
         elif not consent:
             error = "You must agree that your email will be used only for launch news."
         else:
+            try:
+                valid = validate_email(email, check_deliverability=False)
+                email = valid.normalized
+            except EmailNotValidError:
+                error = "Please enter a valid email address."
+                return render_template("main/index.html", thanks=False, error=error)
+
             from app.models.waitlist_signup import WaitlistSignup
 
             existing = WaitlistSignup.query.filter_by(email=email).first()
