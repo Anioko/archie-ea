@@ -10,7 +10,13 @@
     <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
     {# Theme init script moved to partials/_head.html — one implementation for both layouts. #}
     {# Accessibility CSS: loaded once via partials/_head.html (asset_url filter) — do not re-include here (ARCH-061) #}
-    <style>[x-cloak] { display: none !important; }</style>
+    <style>
+    [x-cloak] { display: none !important; }
+    @media (max-width: 1023px) {
+      #admin-header { pointer-events: none; }
+      #admin-header > * { pointer-events: auto; }
+    }
+    </style>
     {% block extra_css %}{% endblock %}
     {% block head %}{% endblock %}
     {% block extra_head %}{% endblock %}

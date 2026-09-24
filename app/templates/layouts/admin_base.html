@@ -39,6 +39,16 @@
       table { border-collapse: collapse; width: 100%; }
       th, td { border: 1px solid #ccc; padding: 4px; }
     }
+
+    /* Below lg breakpoint the sticky header must not intercept pointer
+       events in its left padding area, where the mobile sidebar opener
+       sits. The header itself is pointer-events:none; every direct child
+       restores pointer-events:auto so search, notifications and the user
+       menu remain interactive. */
+    @media (max-width: 1023px) {
+      #admin-header { pointer-events: none; }
+      #admin-header > * { pointer-events: auto; }
+    }
     </style>
     
     {% block extra_css %}{% endblock %}
