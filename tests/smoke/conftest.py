@@ -250,6 +250,29 @@ def live_server(request, ai_protocol_stub, app):
         print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
 
 
+def _delete_api_settings(**filters):
+    """Delete APISettings rows matching *filters* inside a fresh app context.
+
+    Returns the number of rows deleted so callers can assert their own
+    expectations (e.g. exactly one row for a fixture teardown, or any number
+    for a test finalizer that may have already cleaned up).
+    """
+    from app import create_app, db
+    from app.models.models import APISettings
+
+    app = create_app("testing")
+    with app.app_context():
+        db.session.remove()
+        existing = APISettings.query.filter_by(**filters).count()
+        if existing:
+            APISettings.query.filter_by(**filters).delete(
+                synchronize_session=False)
+            db.session.commit()
+            assert APISettings.query.filter_by(**filters).count() == 0
+        db.session.remove()
+        return existing
+
+
 @pytest.fixture(scope="session")
 def seeded(live_server, request, ai_protocol_stub):
     """One organisation, one user per archetype, and the fixtures they need.
@@ -333,16 +356,10 @@ def seeded(live_server, request, ai_protocol_stub):
             out["ids"]["ai_protocol_provider"] = provider_id
 
             def remove_protocol_provider():
-                with app.app_context():
-                    db.session.remove()
-                    query = APISettings.query.filter_by(
-                        id=provider_id, organization_id=provider_org,
-                        provider="openai", key_label="ci-protocol-stub")
-                    assert query.count() == 1, "Protocol provider fixture was unexpectedly changed"
-                    assert query.delete(synchronize_session=False) == 1
-                    db.session.commit()
-                    assert APISettings.query.filter_by(id=provider_id, organization_id=provider_org).count() == 0
-                    db.session.remove()
+                count = _delete_api_settings(
+                    id=provider_id, organization_id=provider_org,
+                    provider="openai", key_label="ci-protocol-stub")
+                assert count == 1, "Protocol provider fixture was unexpectedly changed"
 
             request.addfinalizer(remove_protocol_provider)
 
