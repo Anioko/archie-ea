@@ -17,7 +17,7 @@ import uuid
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import PAGE_TIMEOUT, PASSWORD, type_and_wait
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -93,13 +93,6 @@ def _ready(page, factory):
     )
 
 
-def _type_and_wait(page, prefix, term):
-    box = page.locator("#%s-picker-input" % prefix)
-    box.press_sequentially(term, delay=15)
-    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
-    return box
-
-
 def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
     page, live_server, seeded, accountability_graph
 ):
@@ -109,7 +102,7 @@ def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
 
     page.locator("#ask-question-accountability").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", accountability_graph["noun"])
+    type_and_wait(page, "ask", accountability_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
     expect(page.get_by_text(
@@ -128,14 +121,14 @@ def test_all_six_questions_keep_their_own_answers_separate(
     _ready(page, "askSurface")
 
     page.locator("#ask-question-impact").click()
-    _type_and_wait(page, "ask", accountability_graph["noun"])
+    type_and_wait(page, "ask", accountability_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-row]")
     expect(page.locator("#ask-results")).to_be_visible()
     expect(page.locator("#ask-accountability-results")).to_be_hidden()
 
     page.locator("#ask-question-accountability").click()
-    _type_and_wait(page, "ask", accountability_graph["noun"])
+    type_and_wait(page, "ask", accountability_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("#ask-accountability-results")
     expect(page.locator("#ask-accountability-results")).to_be_visible()

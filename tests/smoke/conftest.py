@@ -641,6 +641,18 @@ def browser(request):
     b.close()
 
 
+def type_and_wait(page, prefix, term):
+    """Type *term* into the ask-picker input and wait for the option list.
+
+    Uses ``fill()`` (clears existing text, then types) so repeated
+    calls across question switches do not concatenate onto stale input.
+    """
+    box = page.locator("#%s-picker-input" % prefix)
+    box.fill(term)
+    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
+    return box
+
+
 # Every enterprise role the product defines. The scope contract below prevents
 # a new or promoted persona from silently disappearing from browser coverage.
 ARCHETYPES = [
