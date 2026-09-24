@@ -4,7 +4,7 @@ Coverage rule: recorded / worked out / expected-at-your-stage. This module only
 ever compares; it never asserts a gap into the model as a fact.
 
 No existing service in this codebase computes organisation-level stage gaps
-across company functions (the nearest matches — DomainCompletenessService,
+across roles, systems and controls (the nearest matches — DomainCompletenessService,
 ArchitecturalGapAnalyzer — score a single solution or application, a different
 shape of question), so this is new, narrowly-scoped comparison logic over the
 stage_baseline.yml data file, not a duplicate of an existing store or scorer.
@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 
 _STAGE_ORDER = ["pre_revenue", "early_revenue", "growing", "established"]
-_CATEGORIES = ("roles", "functions", "capabilities", "systems")
+_CATEGORIES = ("roles", "systems")
 
 _DATA_PATH = Path(__file__).resolve().parents[3] / "seed_data" / "onboarding" / "stage_baseline.yml"
 
@@ -38,8 +38,7 @@ def label_for(key: str) -> str:
 def expected_for_stage(stage: str) -> dict:
     """Everything expected at *stage*, additive with every earlier stage.
 
-    Returns {"roles": [...], "functions": [...], "capabilities": [...],
-    "systems": [...], "controls": [...]} — controls carry their condition,
+    Returns {"roles": [...], "systems": [...], "controls": [...]} — controls carry their condition,
     unresolved conditions are left for the caller to evaluate.
     """
     data = _load_baseline()
@@ -70,8 +69,8 @@ def applicable_controls(stage: str, *, region_europe_or_eu_customers: bool, hand
 def compute_gaps(stage: str, recorded: dict, *, region_europe_or_eu_customers: bool = False, handles_card_data_directly: bool = False) -> list[dict]:
     """Compare expected-at-stage against what is recorded.
 
-    *recorded* is {"roles": set-like, "functions": set-like, "capabilities":
-    set-like, "systems": set-like, "controls": set-like} of keys already
+    *recorded* is {"roles": set-like, "systems": set-like, "controls":
+    set-like} of keys already
     present for the organisation. Returns a list of gap dicts, one per
     missing expected item, each {"category", "key", "label"} — never a
     fact, only a comparison result for the UI to render as "expected at

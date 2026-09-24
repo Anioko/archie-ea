@@ -89,10 +89,10 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         page.check("input[value='early_revenue']")
         page.fill("#company_size", "8 people")
         page.get_by_role("button", name="Continue").click()
-        page.wait_for_url(lambda url: "/onboarding/first-question" in url, timeout=PAGE_TIMEOUT)
+        page.wait_for_url(lambda url: "/onboarding/capabilities" in url, timeout=PAGE_TIMEOUT)
 
-        # Screen 3: First question -- skip it, it must be optional
-        page.get_by_role("button", name="Skip", exact=True).click()
+        # Screen 3: Capabilities -- skip it, it must be optional
+        page.get_by_role("link", name="Skip this step").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 4: Fill the gaps -- the review section shows its genuine empty state
@@ -136,7 +136,7 @@ def test_the_website_field_is_an_honest_stub_not_a_dead_control(live_server, fre
         page.close()
 
 
-def test_a_returning_teammate_enters_at_the_first_question(live_server, fresh_user, browser):
+def test_a_returning_teammate_enters_at_the_capabilities_screen(live_server, fresh_user, browser):
     """onboarding-prd-v1 §3: an invited team member skips Screens 1-2 because
     the org's P0 already exists."""
     from app import create_app, db
@@ -166,9 +166,47 @@ def test_a_returning_teammate_enters_at_the_first_question(live_server, fresh_us
     try:
         _login(page, live_server, teammate_email)
         page.wait_for_timeout(500)
-        assert "/onboarding/first-question" in page.url, (
+        assert "/onboarding/capabilities" in page.url, (
             "an invited teammate whose org already has a stage recorded should "
-            "skip straight to the first question, got %s" % page.url
+            "skip straight to the capabilities step, got %s" % page.url
         )
+    finally:
+        page.close()
+
+
+
+def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(live_server, fresh_user, browser):
+    """The wiring proof in the browser: click the real controls on the capabilities
+    screen, save, reload, and see the answer come back from the capability table."""
+    page = browser.new_page()
+    try:
+        _login(page, live_server, fresh_user["email"])
+        page.wait_for_timeout(500)
+        page.click("text=Let's go")
+        page.wait_for_url(lambda url: "/onboarding/company" in url, timeout=PAGE_TIMEOUT)
+        page.check("input[value='early_revenue']")
+        page.get_by_role("button", name="11 to 50 people").click()
+        page.get_by_role("button", name="Continue").click()
+        page.wait_for_url(lambda url: "/onboarding/capabilities" in url, timeout=PAGE_TIMEOUT)
+
+        # A small early-revenue company is offered its own set, not procurement.
+        body = page.inner_text("body")
+        assert "Customer acquisition" in body
+        assert "Procurement" not in body
+
+        page.fill("#owner_customer_acquisition", "Sam")
+        page.locator("#owner_customer_acquisition").press("Tab")
+        page.get_by_role("group", name="Maturity of Customer acquisition").get_by_role("button", name="Level 2, Managed").click()
+        page.get_by_role("button", name="Save and continue").click()
+        page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
+
+        page.goto(live_server + "/onboarding/capabilities", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+        assert page.input_value("#owner_customer_acquisition") == "Sam"
+        level2 = page.get_by_role("group", name="Maturity of Customer acquisition").get_by_role("button", name="Level 2, Managed")
+        assert level2.get_attribute("aria-pressed") == "true", "the saved rating must come back after a reload"
+        # Marketing was not answered, so it stays unassessed and was not created.
+        marketing = page.get_by_role("group", name="Maturity of Marketing").get_by_role("button", name="Level 2, Managed")
+        assert marketing.get_attribute("aria-pressed") == "false"
     finally:
         page.close()

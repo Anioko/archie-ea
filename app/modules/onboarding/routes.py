@@ -24,11 +24,13 @@ from app import db
 from app.models.organization import Organization
 from app.utils.api_response import success_response
 
+from .services import capabilities as capability_capture
 from .services import profile, stage_gaps
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
 
 _STAGES = ("pre_revenue", "early_revenue", "growing", "established")
+_SIZE_BANDS = tuple(b["key"] for b in capability_capture.size_bands())
 _STAGE_LABELS = {
     "pre_revenue": "Pre-revenue",
     "early_revenue": "Early revenue",
@@ -58,7 +60,7 @@ def index():
     if org_profile.get("stage"):
         # The org's own P0 already exists (someone else completed it) -- an
         # invited team member enters at Screen 3, per onboarding-prd-v1 S3.
-        return redirect(url_for("onboarding.first_question"))
+        return redirect(url_for("onboarding.capabilities"))
     return redirect(url_for("onboarding.welcome"))
 
 
@@ -83,18 +85,20 @@ def company():
             org,
             stage=stage,
             company_size=(data.get("company_size") or "").strip()[:100] or None,
+            size_band=data.get("size_band") if data.get("size_band") in _SIZE_BANDS else None,
             industry=(data.get("industry") or "").strip()[:200] or None,
             source_url=(data.get("source_url") or "").strip()[:500] or None,
             region_europe_or_eu_customers=bool(data.get("region_europe_or_eu_customers")),
             handles_card_data_directly=bool(data.get("handles_card_data_directly")),
         )
         if request.is_json:
-            return success_response({"next": url_for("onboarding.first_question")})
-        return redirect(url_for("onboarding.first_question"))
+            return success_response({"next": url_for("onboarding.capabilities")})
+        return redirect(url_for("onboarding.capabilities"))
 
     return render_template(
         "onboarding/screen2_company.html",
         stages=[{"key": k, "label": v} for k, v in _STAGE_LABELS.items()],
+        size_bands=capability_capture.size_bands(),
         current=profile.read(org),
     )
 
@@ -118,18 +122,33 @@ def api_website_read():
     })
 
 
-@onboarding_bp.route("/first-question", methods=["GET", "POST"])
+def _stage_and_band(org: Organization) -> tuple[str, str]:
+    org_profile = profile.read(org)
+    stage = org_profile.get("stage") or "pre_revenue"
+    band = org_profile.get("size_band") or capability_capture.band_from_text(org_profile.get("company_size"))
+    return stage, band
+
+
+@onboarding_bp.route("/capabilities", methods=["GET", "POST"])
 @login_required
-def first_question():
+def capabilities():
+    """What the company can do and how mature each capability is.
+
+    Answers are written to the real capability table (see services/capabilities.py);
+    nothing is kept on the side."""
     org = _current_org()
+    stage, band = _stage_and_band(org)
     if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        answer = (data.get("answer") or "").strip()[:1000]
-        profile.write(org, first_question_answer=answer or None)
-        if request.is_json:
-            return success_response({"next": url_for("onboarding.gaps")})
-        return redirect(url_for("onboarding.gaps"))
-    return render_template("onboarding/screen3_first_question.html", current=profile.read(org))
+        data = request.get_json(silent=True) or {}
+        result = capability_capture.save(data.get("items") or [], stage=stage, size_band=band)
+        return success_response({"next": url_for("onboarding.gaps"), **result})
+    return render_template(
+        "onboarding/screen3_capabilities.html",
+        rows=capability_capture.read(stage, band),
+        levels=capability_capture.maturity_levels(),
+        stage_label=_STAGE_LABELS.get(stage, stage),
+        band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
+    )
 
 
 def _recorded_for_org(org: Organization) -> dict:
@@ -143,7 +162,7 @@ def _recorded_for_org(org: Organization) -> dict:
     so today this is deliberately small, and every remaining gap reads
     "expected at your stage", never a fabricated fact."""
     org_profile = profile.read(org)
-    recorded = {"roles": [], "functions": [], "capabilities": [], "systems": [], "controls": []}
+    recorded = {"roles": [], "systems": [], "controls": []}
     assigned = org_profile.get("assigned_gaps", {})
     # assigned gap keys are stored as "<category>:<key>"
     for gap_id in assigned:

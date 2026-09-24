@@ -1,4 +1,6 @@
-# Stage-baseline content for onboarding's "Fill the gaps" step.
+# Stage-baseline content for onboarding's "Fill the gaps" step: roles, systems and
+# controls. Business capabilities are NOT listed here; they come from
+# capability_catalogue.yml and are recorded as real capability rows.
 #
 # Each stage lists what is *expected* to exist for a company at that stage —
 # never asserted as fact, only compared against what the organisation has
@@ -12,13 +14,6 @@ pre_revenue:
   roles:
     - founder_ceo
     - product_eng_lead
-  functions:
-    - build_product
-    - find_first_customers
-    - manage_cash
-  capabilities:
-    - software_development
-    - customer_discovery
   systems:
     - code_repository
     - team_comms_tool
@@ -29,17 +24,6 @@ early_revenue:
     - first_sales_owner
     - marketing_owner
     - support_cs_owner
-  functions:
-    - sell
-    - market
-    - support_customers
-    - invoice_and_collect
-    - baseline_data_protection
-  capabilities:
-    - lead_generation
-    - customer_onboarding
-    - release_management
-    - bookkeeping
   systems:
     - billing_invoicing_tool
     - support_channel
@@ -59,19 +43,6 @@ growing:
     - finance_lead
     - people_lead
     - named_security_owner
-  functions:
-    - pipeline_management
-    - campaign_management
-    - renewals
-    - structured_hiring
-    - payroll
-    - incident_response
-    - vendor_management
-  capabilities:
-    - forecasting
-    - qa_testing
-    - security_operations
-    - hr_compliance
   systems:
     - real_crm
     - ats_hiring_tracker
@@ -88,15 +59,6 @@ established:
     - internal_audit_or_risk_function
     - procurement_owner
     - data_governance_owner
-  functions:
-    - multi_region_compliance_tracking
-    - formal_risk_and_audit_cycles
-    - structured_procurement
-    - data_governance
-  capabilities:
-    - portfolio_level_forecasting
-    - formal_change_management
-    - business_continuity_planning
   systems:
     - grc_or_audit_tracking_tool
     - formal_procurement_system

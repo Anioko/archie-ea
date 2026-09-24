@@ -7,6 +7,7 @@
         stage: {{ (current.stage or '') | tojson | forceescape }},
         companySize: {{ (current.company_size or '') | tojson | forceescape }},
         industry: {{ (current.industry or '') | tojson | forceescape }},
+        sizeBand: {{ (current.size_band or '') | tojson | forceescape }},
         sourceUrl: {{ (current.source_url or '') | tojson | forceescape }},
         regionEu: {{ (current.region_europe_or_eu_customers | default(false)) | tojson }},
         cardData: {{ (current.handles_card_data_directly | default(false)) | tojson }},
@@ -37,6 +38,7 @@
                     stage: this.stage,
                     company_size: this.companySize,
                     industry: this.industry,
+                    size_band: this.sizeBand,
                     source_url: this.sourceUrl,
                     region_europe_or_eu_customers: this.regionEu,
                     handles_card_data_directly: this.cardData,
@@ -89,6 +91,21 @@
                           text-sm shadow-sm transition-colors placeholder:text-muted-foreground
                           focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
         </div>
+    </div>
+
+    <div>
+        <label class="text-sm font-medium text-foreground mb-2 block" id="size-band-label">How big is the company?</label>
+        <div class="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="size-band-label">
+            {% for b in size_bands %}
+            <button type="button" @click="sizeBand = (sizeBand === '{{ b.key }}') ? '' : '{{ b.key }}'"
+                    :aria-pressed="sizeBand === '{{ b.key }}'"
+                    class="rounded-md border text-sm font-medium h-9 px-3"
+                    :class="sizeBand === '{{ b.key }}' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-accent'">
+                {{ b.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">This decides how many questions we ask and how we ask about your people. A small company names people one by one; a large one starts from teams.</p>
     </div>
 
     <div class="rounded-lg border border-border p-4 space-y-3">

@@ -59,7 +59,7 @@ def test_index_redirects_to_welcome_for_a_genuinely_new_org(app, db_session, mak
     assert resp.headers["Location"].endswith("/onboarding/welcome")
 
 
-def test_index_redirects_to_first_question_when_org_already_onboarded(app, db_session, make_org, client, login_as):
+def test_index_redirects_to_capabilities_when_org_already_onboarded(app, db_session, make_org, client, login_as):
     """An invited team member enters at Screen 3, per onboarding-prd-v1 §3."""
     from app.modules.onboarding.services import profile
 
@@ -69,7 +69,7 @@ def test_index_redirects_to_first_question_when_org_already_onboarded(app, db_se
     login_as(client, user)
     resp = client.get("/onboarding/", follow_redirects=False)
     assert resp.status_code in (302, 308)
-    assert resp.headers["Location"].endswith("/onboarding/first-question")
+    assert resp.headers["Location"].endswith("/onboarding/capabilities")
 
 
 def test_index_shows_saved_company_answers_to_someone_who_already_finished(
@@ -173,7 +173,7 @@ def test_company_step_json_post_returns_the_next_screen(app, db_session, make_or
     )
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
-    assert resp.get_json()["data"]["next"].endswith("/onboarding/first-question")
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/capabilities")
     from app.modules.onboarding.services import profile
 
     db_session.refresh(org)
@@ -188,13 +188,79 @@ def test_company_step_rejects_an_unknown_stage(app, db_session, make_org, client
     assert resp.status_code == 400
 
 
-def test_first_question_may_be_skipped_and_still_advances(app, db_session, make_org, client, login_as):
-    _logged_in(db_session, make_org, client, login_as, "first-question")
+def test_capabilities_screen_offers_what_fits_the_stage_and_size(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
 
-    resp = client.post("/onboarding/first-question", json={"answer": ""})
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-screen")
+    profile.write(org, stage="pre_revenue", size_band="micro")
+
+    html = client.get("/onboarding/capabilities").get_data(as_text=True)
+
+    assert "Product development" in html
+    assert "Procurement" not in html, "a tiny pre-revenue company is not asked about procurement"
+
+
+def test_capabilities_screen_for_a_large_established_company_offers_more(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-large")
+    profile.write(org, stage="established", size_band="large")
+
+    html = client.get("/onboarding/capabilities").get_data(as_text=True)
+
+    assert "Procurement" in html and "Business continuity" in html
+
+
+def test_posting_capabilities_saves_real_rows_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.business_capabilities import BusinessCapability
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    resp = client.post(
+        "/onboarding/capabilities",
+        json={"items": [{"key": "marketing", "owner": "Sam", "maturity": 2}]},
+    )
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/gaps") and body["created"] == 1
+    assert BusinessCapability.query.filter_by(organization_id=org.id, name="Marketing").one().current_maturity_level == 2
+
+
+def test_posting_no_capabilities_is_fine_and_still_advances(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-empty")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    resp = client.post("/onboarding/capabilities", json={"items": []})
+
+    assert resp.status_code == 200
     assert resp.get_json()["data"]["next"].endswith("/onboarding/gaps")
+
+
+def test_the_company_step_records_the_size_band(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "band")
+
+    client.post("/onboarding/company", json={"stage": "growing", "size_band": "mid"})
+
+    db_session.refresh(org)
+    assert profile.read(org)["size_band"] == "mid"
+
+
+def test_an_unknown_size_band_is_ignored(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "band-bad")
+
+    client.post("/onboarding/company", json={"stage": "growing", "size_band": "gigantic"})
+
+    db_session.refresh(org)
+    assert "size_band" not in profile.read(org)
 
 
 def test_a_gap_can_be_accepted_with_a_reason_and_is_recorded(app, db_session, make_org, client, login_as):
