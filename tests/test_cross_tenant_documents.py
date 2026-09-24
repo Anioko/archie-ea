@@ -302,9 +302,9 @@ def test_cross_tenant_delete_refused_legacy_route(app, _two_org_fixture):
     client_a = _make_client(app, f["user_a_id"])
 
     resp = client_a.post(f"/dashboard/documents/{f['doc_b_id']}/delete")
-    # The route redirects after delete; don't follow so we can check the
-    # redirect target separately.
-    assert resp.status_code in (302, 200), (
+    # The query now filters by organization_id so a foreign document is simply
+    # not found (404) rather than being loaded and then denied.
+    assert resp.status_code == 404, (
         f"Unexpected status {resp.status_code}"
     )
 
@@ -333,9 +333,9 @@ def test_cross_tenant_delete_refused_unified_route(app, _two_org_fixture):
         f"/applications/documents/{f['doc_b_id']}/delete",
         data={"csrf_token": "test-bypass"},
     )
-    # The route may redirect (302), return a CSRF error (403), or return an
-    # error page (200/400). Either way, the document must survive.
-    assert resp.status_code in (200, 302, 400, 403), (
+    # The query now filters by organization_id so a foreign document is simply
+    # not found (404) — the CSRF/owner checks that follow are never reached.
+    assert resp.status_code == 404, (
         f"Unexpected status {resp.status_code}"
     )
 
@@ -358,14 +358,10 @@ def test_cross_tenant_download_refused_legacy_route(app, _two_org_fixture):
         f"/dashboard/documents/{f['doc_b_id']}/download",
         follow_redirects=True,
     )
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    # The file must not be served; we must see a refusal.
-    assert "cross-tenant test file" not in html, (
-        f"Org B's file content was served to Org A: {html[:500]}"
-    )
-    assert "Access denied." in html, (
-        f"Expected 'Access denied.' flash; got: {html[:500]}"
+    # The query now filters by organization_id so a foreign document is simply
+    # not found (404) — the file is never served.
+    assert resp.status_code == 404, (
+        f"Unexpected status {resp.status_code}"
     )
 
 
@@ -378,13 +374,10 @@ def test_cross_tenant_download_refused_unified_route(app, _two_org_fixture):
         f"/applications/documents/{f['doc_b_id']}/download",
         follow_redirects=True,
     )
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "cross-tenant test file" not in html, (
-        f"Org B's file content was served to Org A: {html[:500]}"
-    )
-    assert "Access denied." in html, (
-        f"Expected 'Access denied.' flash; got: {html[:500]}"
+    # The query now filters by organization_id so a foreign document is simply
+    # not found (404) — the file is never served.
+    assert resp.status_code == 404, (
+        f"Unexpected status {resp.status_code}"
     )
 
 
@@ -453,7 +446,9 @@ def test_analyze_refuses_org_b_document(app, _two_org_fixture):
         f"/dashboard/api/applications/{f['app_a_id']}/analyze-document",
         data={"document_id": str(f["doc_b_id"])},
     )
-    assert resp.status_code == 403, (
-        f"Expected 403 for Org B's document; got {resp.status_code}"
+    # The query now filters by organization_id so a foreign document is simply
+    # not found (404) rather than loaded and then denied by verify_file_access.
+    assert resp.status_code == 404, (
+        f"Expected 404 for Org B's document; got {resp.status_code}"
     )
-    assert "Access denied" in resp.get_data(as_text=True)
+    assert "Document not found" in resp.get_data(as_text=True)

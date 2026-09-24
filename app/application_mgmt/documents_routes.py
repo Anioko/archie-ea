@@ -5,7 +5,7 @@ Document download/delete routes for Application Management.
 
 import os
 
-from flask import current_app, flash, redirect, send_file, url_for
+from flask import current_app, flash, g, redirect, send_file, url_for
 from flask_login import login_required
 
 from .. import db
@@ -17,14 +17,14 @@ from . import application_mgmt
 @login_required
 def download_document_file(doc_id):
     """Download a document file"""
-    document = ApplicationDocument.query.get_or_404(doc_id)
+    document = ApplicationDocument.query.filter_by(
+        id=doc_id, organization_id=g.current_org_id
+    ).first_or_404()
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    # ApplicationDocument is a plain db.Model (no TenantMixin), so
-    # .get_or_404() returns any tenant's row. Use the document's own
-    # organization_id rather than the parent ApplicationComponent's, because
-    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
-    # another tenant's row, which would skip this guard.
+    # The query above filters by organization_id so a foreign document is simply
+    # not found; verify_file_access provides a second line of defence, including
+    # unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")
@@ -62,18 +62,15 @@ def download_document_file(doc_id):
 @login_required
 def delete_document_file(doc_id):
     """Delete a document file"""
-    document = ApplicationDocument.query.get_or_404(doc_id)
+    document = ApplicationDocument.query.filter_by(
+        id=doc_id, organization_id=g.current_org_id
+    ).first_or_404()
     app_id = document.application_component_id
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    #
-    # ApplicationDocument is a plain db.Model - it carries organization_id but not
-    # TenantMixin, so nothing filters this query and .get_or_404() will happily
-    # return another tenant's row. Use the document's own organization_id rather
-    # than the parent ApplicationComponent's, because ApplicationComponent IS
-    # tenant-scoped and .query.get() returns None for another tenant's row, which
-    # would skip this guard. Deletion is irreversible, which makes the omission
-    # worse here than on the read path.
+    # The query above filters by organization_id so a foreign document is simply
+    # not found; verify_file_access provides a second line of defence, including
+    # unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")

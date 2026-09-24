@@ -2,7 +2,7 @@
 
 import logging
 
-from flask import current_app, flash, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, request, send_file, url_for
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFError, validate_csrf
 from werkzeug.utils import secure_filename
@@ -60,9 +60,8 @@ def update_document_file(id, doc_id):
     try:
         from app.models.miscellaneous import ApplicationDocument
 
-        # tenant-scoping-ok: filtered by id (PK) plus an application_component_id FK.
         doc = ApplicationDocument.query.filter_by(
-            id=doc_id, application_component_id=id
+            id=doc_id, application_component_id=id, organization_id=g.current_org_id
         ).first_or_404()
         doc.title = request.form.get("title", doc.title)
         doc.description = request.form.get("description", doc.description)
@@ -252,14 +251,14 @@ def download_document_file(doc_id):
 
     from app.models.miscellaneous import ApplicationDocument
 
-    doc = ApplicationDocument.query.get_or_404(doc_id)
+    doc = ApplicationDocument.query.filter_by(
+        id=doc_id, organization_id=g.current_org_id
+    ).first_or_404()
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    # ApplicationDocument is a plain db.Model (no TenantMixin), so
-    # .get_or_404() returns any tenant's row. Use the document's own
-    # organization_id rather than the parent ApplicationComponent's, because
-    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
-    # another tenant's row, which would skip this guard.
+    # The query above filters by organization_id so a foreign document is simply
+    # not found; verify_file_access provides a second line of defence, including
+    # unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(doc.organization_id):
         flash("Access denied.", "error")
@@ -302,22 +301,15 @@ def delete_document_file(doc_id):
 
     from app.models.miscellaneous import ApplicationDocument
 
-    doc = ApplicationDocument.query.get_or_404(doc_id)
+    doc = ApplicationDocument.query.filter_by(
+        id=doc_id, organization_id=g.current_org_id
+    ).first_or_404()
     app_id = doc.application_component_id
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    #
-    # ApplicationDocument carries organization_id but not TenantMixin, so no filter
-    # is injected and .get_or_404() returns any tenant's row. Use the document's
-    # own organization_id rather than the parent ApplicationComponent's, because
-    # ApplicationComponent IS tenant-scoped and .query.get() returns None for
-    # another tenant's row, which would skip this guard. Without this, any
-    # authenticated user could destroy any tenant's document - the row and the file
-    # on disk - by walking integer ids, and deletion is not recoverable.
-    #
-    # Both this route and the legacy /dashboard/documents/<id>/delete in
-    # app/application_mgmt/documents_routes.py are registered, so the check has to
-    # exist in both. Fixing only one leaves the door open under a different URL.
+    # The query above filters by organization_id so a foreign document is simply
+    # not found; verify_file_access provides a second line of defence, including
+    # unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(doc.organization_id):
         flash("Access denied.", "danger")

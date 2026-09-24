@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, request  # dead-code-ok
+from flask import current_app, flash, g, jsonify, request  # dead-code-ok
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -129,12 +129,18 @@ def analyze_document_for_application(application_id):
 
         if document_id:
             # Analyze existing document
-            document = ApplicationDocument.query.get_or_404(document_id)
+            document = ApplicationDocument.query.filter_by(
+                id=document_id, organization_id=g.current_org_id
+            ).first()
 
-            # Tenant isolation: check the document's own organisation before
-            # reading its content or running any analysis on it.
-            # ApplicationDocument is a plain db.Model (no TenantMixin), so
-            # .get_or_404() returns any tenant's row.
+            if not document:
+                return jsonify({"error": "Document not found."}), 404
+
+            # Tenant isolation: verify the document belongs to the caller's
+            # organisation. The query above filters by organization_id so a
+            # foreign document is simply not found; verify_file_access provides
+            # a second line of defence, including unrestricted access for
+            # platform admins.
             from app.middleware.tenant_files import verify_file_access
 
             if not verify_file_access(document.organization_id):
