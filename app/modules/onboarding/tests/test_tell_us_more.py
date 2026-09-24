@@ -10,7 +10,15 @@ pytestmark = pytest.mark.usefixtures("db_session")
 
 
 def _make_user(db_session, org):
-    from app.models.user import User
+    from app.models.user import Role, User
+
+    # Full-page renders (the hub and each section extend layouts/base.html,
+    # whose nav macro reads current_user.role) need a seeded Role row, the
+    # same gap test_routes.py's own pre-existing full-page-render tests hit
+    # on a freshly created schema. Role.insert_roles() is the app's own,
+    # idempotent seeding path — reused here rather than hand-building a row.
+    if Role.query.filter_by(default=True).first() is None:
+        Role.insert_roles()
 
     user = User(
         email=f"tum-{uuid.uuid4().hex[:8]}@example.com",
@@ -129,7 +137,8 @@ def test_hub_lists_all_five_sections_with_unlock_lines(app, db_session, make_org
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    for title in ("How you work", "What you must comply with", "What you're changing", "How you build", "Who's on the team"):
+    # Jinja's autoescape renders an apostrophe in text content as `&#39;`.
+    for title in ("How you work", "What you must comply with", "What you&#39;re changing", "How you build", "Who&#39;s on the team"):
         assert title in html
     assert "Removes" in html and "Accountability" in html, "the team section's unlock line must render"
 

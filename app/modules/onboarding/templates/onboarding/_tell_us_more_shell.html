@@ -1,21 +1,21 @@
 {# Shared shell for the "Tell us more" hub and its five sections
-   (onboarding-redesign-v3 §3). Deliberately not `_wizard_shell.html`: that
-   shell's progress bar is hard-coded to the five *numbered* onboarding
-   screens (1-5); Tell us more sits outside that numbering, is reachable from
-   several places (Screen 4, Screen 5, the dashboard), and its five sections
-   can be done in any order, skipped, or resumed later — a fixed 1-5 step
-   count would misrepresent that. Same card chrome as the wizard shell for
-   visual consistency. #}
-{% extends 'layouts/base.html' %}
+   (onboarding-redesign-v3 §3). Deliberately not `_wizard_shell.html`
+   (layouts/base.html): that shell has no sidebar/nav on purpose, for the
+   linear, five-screen, one-user-in-one-sitting P0 walkthrough. Tell us more
+   is the opposite shape — optional, reachable from several places (Screen 4,
+   Screen 5, the modules directory), done in any order over multiple
+   sessions — so it uses the standard admin shell (nav, search, the same
+   chrome every other signed-in page has) rather than the distraction-free
+   wizard one; a person arriving from the directory or returning later should
+   land somewhere they can also navigate away from normally. Same card
+   chrome as the wizard shell's screens for visual consistency of the
+   sections themselves. #}
+{% extends 'layouts/admin_base.html' %}
 
 {% block title %}{{ page_title | default('Tell us more') }} — A.R.C.H.I.E.{% endblock %}
 
-{% block extra_js %}
-<script src="{{ url_for('static', filename='js/bundles/core-admin.js') }}"></script>
-{% endblock %}
-
 {% block content %}
-<div class="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-10">
+<div class="flex flex-col items-center px-4 py-10">
     <div class="w-full max-w-2xl">
         <div class="mb-4">
             <a href="{{ back_href | default(url_for('onboarding.gaps')) }}"
