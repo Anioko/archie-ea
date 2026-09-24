@@ -65,7 +65,7 @@ from app.models.unified_capability import UnifiedCapability
 from app.models.unified_work_package import UnifiedWorkPackage
 from app.services import archimate_backbone
 
-from . import reference_data
+from . import people, reference_data
 
 _MARKER_KEY = "onboarding_source"
 _MAX_STACK_TOKENS = 8
@@ -424,7 +424,13 @@ def _apply_implementation(org: Organization, answers: dict) -> dict:
     return {"capabilities_created": capabilities_created, "technology_elements_created": technology_created}
 
 
+def _apply_team(org: Organization, answers: dict) -> dict:
+    """"Who's on the team" rows become real people (the ones the People step edits)."""
+    return people.record_named(org, answers.get("people") or [])
+
+
 _HANDLERS = {
+    "team": _apply_team,
     "compliance": _apply_compliance,
     "how_you_work": _apply_frameworks,
     "whats_changing": _apply_transformation,

@@ -296,7 +296,6 @@ def test_review_route_isolation_between_organizations(app, db_session, make_org,
     login_as(client, user_a)
     resp = client.get("/onboarding/review")
     assert resp.status_code == 200
-    from app.modules.onboarding.services import producers
     candidate_id = proposals.proposal_id("funding_stage", "Series A or B")
     resp = client.post(f"/onboarding/review/{candidate_id}/action", json={"action": "confirm"})
     assert resp.status_code == 200, resp.get_data(as_text=True)
