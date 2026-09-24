@@ -15,7 +15,7 @@ URL prefix /dashboard applied via register() in v2/__init__.py — route decorat
 
 import logging
 
-from flask import Blueprint, g, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, g, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required
 
 from app import db
@@ -615,7 +615,7 @@ def overview():
         guided_steps = [
             {
                 "title": "Import applications",
-                "description": "Bring your application portfolio into Entelim.",
+                "description": f"Bring your application portfolio into {current_app.config['APP_NAME']}.",
                 "href": "/applications/",
                 "done": applications_count > 0,
             },
@@ -645,7 +645,7 @@ def overview():
             guided_steps.append(
                 {
                     "title": "Invite your team",
-                    "description": "Bring in the colleagues who'll use Entelim with you.",
+                    "description": f"Bring in the colleagues who'll use {current_app.config['APP_NAME']} with you.",
                     "href": "/admin/users",
                     "done": org_user_count > 1,
                 }
