@@ -1,0 +1,24 @@
+# Intelligence wiring register — fact-bearing columns on tenant-scoped tables.
+# Every column that carries a fact about the tenant's enterprise must appear
+# here (with its pipeline role) or under not_intelligence (with a reason).
+#
+# Schema:
+#   tables:
+#     <table_name>:
+#       columns:
+#         <column_name>:
+#           role: <pipeline role description>
+#       not_intelligence:
+#         <column_name>: <reason this column is not intelligence-bearing>
+
+tables:
+  users:
+    columns: {}
+    not_intelligence:
+      notification_preferences:
+        reason: >
+          User-level boolean toggles (notification channels, display
+          preferences including show_archimate_names).  These control the
+          UI experience for one user; they carry no fact about the
+          enterprise architecture and are never fed into any pipeline,
+          graph, or derived fact.
