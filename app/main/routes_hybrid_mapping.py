@@ -141,7 +141,7 @@ def _compute_mapping_stats():
         LEFT JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
         LEFT JOIN application_components ac ON uacm.application_component_id = ac.id{_org_ac_and}
         {_org_uc_where}
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_app,
     ).fetchone()
@@ -157,7 +157,7 @@ def _compute_mapping_stats():
         FROM unified_capabilities uc
         LEFT JOIN capability_vendor_product_mapping cvpm ON uc.id = cvpm.unified_capability_id
         {_org_uc_where2}
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_uc2,
     ).fetchone()
@@ -173,7 +173,7 @@ def _compute_mapping_stats():
         JOIN vendor_products vp ON cvpm.vendor_product_id = vp.id
         JOIN unified_capabilities uc ON cvpm.unified_capability_id = uc.id
         WHERE vp.archimate_product_element_id IS NOT NULL{_org_uc_and3}
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_uc3,
     ).fetchone()
@@ -190,7 +190,7 @@ def _compute_mapping_stats():
             COUNT(DISTINCT CASE WHEN uc.archimate_element_id IS NOT NULL THEN uc.id END) as capabilities_with_archimate
         FROM unified_capabilities uc
         {_org_uc_where4}
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_uc4,
     ).fetchone()
@@ -202,7 +202,7 @@ def _compute_mapping_stats():
     _org_uc_where5, _org_params_uc5 = org_scope(prefix="uc.", keyword="AND")
     multi_path_caps = db.session.execute(
         text(
-            f"""
+            """
         SELECT COUNT(*) FROM (
             SELECT DISTINCT uc.id
             FROM unified_capabilities uc
@@ -243,7 +243,7 @@ def _compute_mapping_stats():
             JOIN unified_capabilities uc ON cvpm.unified_capability_id = uc.id
             WHERE cvpm.mapping_strength >= 4{_org_uc_where6}
         ) AS hq_mappings
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_hq,
     ).scalar()
@@ -264,7 +264,7 @@ def _compute_mapping_stats():
             JOIN unified_capabilities uc ON cvpm.unified_capability_id = uc.id
             {_org_uc_where7}
         ) AS all_mappings
-    """
+    """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
         ),
         _org_params_total,
     ).scalar()
@@ -384,7 +384,7 @@ def get_application_mappings():
             LEFT JOIN archimate_elements ae ON uc.archimate_element_id = ae.id{_org_ae}
             {_org_ac}
             ORDER BY uc.strategic_importance DESC, uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params,
         )
@@ -455,7 +455,7 @@ def get_product_mappings():
             LEFT JOIN archimate_elements ae ON vp.archimate_product_element_id = ae.id{_org_ae}
             {_org_uc}
             ORDER BY uc.strategic_importance DESC, uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params,
         )
@@ -524,7 +524,7 @@ def get_archimate_mappings():
             JOIN archimate_elements ae ON uc.archimate_element_id = ae.id
             {_org_uc}
             ORDER BY uc.strategic_importance DESC, uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params,
         )
@@ -583,7 +583,7 @@ def get_unmapped_capabilities():
             )
             AND uc.archimate_element_id IS NULL{_org_uc}
             ORDER BY uc.strategic_importance DESC, uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params,
         )
@@ -677,7 +677,7 @@ def get_unmapped_archimate_elements():
             AND ae.type IN ('ApplicationComponent', 'ApplicationService', 'TechnologyService', 'BusinessProcess'){_org_ae}
             ORDER BY ae.type, ae.name
             LIMIT 20
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params,
         )
