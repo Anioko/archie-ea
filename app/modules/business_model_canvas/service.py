@@ -6,10 +6,14 @@ business logic that don't belong on the ORM model itself.
 
 ``project_canvas`` (below) is the one projection read shared by both canvas
 modules — ``business_case`` imports it rather than growing a second copy.
+``_current_organization_id`` (below) is the same — ``business_case`` imports
+it too, rather than growing a second copy of the same g-then-current_user
+resolution the route layer already uses.
 """
 
 from collections import defaultdict
 
+from flask import g
 from flask_login import current_user
 
 from app import db
@@ -27,6 +31,24 @@ from app.modules.intelligence.services.latency_probe import record_query_latency
 from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 
+def _current_organization_id():
+    """The plain int this request belongs to, or None outside a tenant
+    request (e.g. an anonymous caller) -- same source and reasoning as the
+    route-level helpers in business_model_canvas/routes.py and
+    business_case/routes.py: ``g.current_org_id`` is what the tenant-
+    isolation listener keys off, read here rather than
+    ``current_user.organization`` (an ORM relationship), with a fallback to
+    ``current_user.organization_id`` for the rare caller that reaches this
+    service outside a request that set ``g.current_org_id``. On
+    AnonymousUser (no session), both reads come back None honestly -- never
+    an AttributeError, and never another tenant's data."""
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is not None:
+        return int(org_id)
+    org_id = getattr(current_user, "organization_id", None)
+    return int(org_id) if org_id is not None else None
+
+
 def list_canvases():
     """Return all canvases for the current tenant, most recently updated first."""
     return (
@@ -40,8 +62,18 @@ def get_canvas_or_none(canvas_id):
     # listener's WHERE clause the way a filtered query does, so a guessed id
     # belonging to another organisation would still be found. Filter
     # explicitly, the same two-layer rule applied elsewhere in this codebase.
+    #
+    # current_user.organization_id was read directly here, which crashes
+    # with AttributeError on AnonymousUser (no such attribute) -- reachable
+    # from get_viewpoint_data's canvas_id lookup on an unauthenticated
+    # request. _current_organization_id() returns None instead, and with no
+    # organisation there is no tenant to filter on, so this returns None:
+    # never another tenant's canvas, never a crash.
+    org_id = _current_organization_id()
+    if org_id is None:
+        return None
     return BusinessModelCanvas.query.filter_by(
-        id=canvas_id, organization_id=current_user.organization_id
+        id=canvas_id, organization_id=org_id
     ).first()
 
 
@@ -301,7 +333,7 @@ def project_canvas(template_key, record, *, organization_id):
             if risk.risk_level not in ("high", "critical"):
                 continue
             high_risk_elements.add(risk.archimate_element_id)
-            high_risk_elements |= _risk_blast_targets(risk.archimate_element_id)
+            high_risk_elements |= _risk_blast_targets(risk.archimate_element_id, organization_id)
 
         # Two passes: attribute/composed zones read OTHER zones' entries
         # (revenue_streams reads value_propositions' entries; cost_structure
@@ -370,15 +402,22 @@ def project_canvas(template_key, record, *, organization_id):
     }
 
 
-def _risk_blast_targets(risk_element_id):
+def _risk_blast_targets(risk_element_id, organization_id):
     """The elements an explicit relationship reaches, one hop out from a
     risk's mirror element — the Risk lens's own read
     (``IntelligenceQueryService.risk_for_element``), imported and reused,
-    never a second traversal."""
+    never a second traversal.
+
+    *organization_id* is the caller's already-resolved tenant, passed down
+    explicitly rather than left for ``risk_for_element`` to re-read from
+    ``g`` — this read can run inside a projection that itself was handed an
+    explicit organisation_id, and a second, independent ``g`` read has no
+    reason to agree with it in every calling context."""
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     blast = IntelligenceQueryService.risk_for_element(
         risk_element_id, max_depth=1, include_derived=False,
+        organization_id=organization_id,
     )
     targets = set()
     for payload in blast.get("risks", []):

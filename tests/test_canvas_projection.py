@@ -77,7 +77,7 @@ def _derived(db_session, org_id, source, target, *, derived_type="Realization", 
         target_element_id=target.id,
         derived_type=derived_type,
         rule_id="CV-TEST",
-        chain=[1, 2],
+        chain=[1],
         chain_element_ids=[source.id, target.id],
         depth=1,
         confidence=1.0,
@@ -128,7 +128,9 @@ def _risk(db_session, org_id, element, *, likelihood=5, impact=5):
 def _work_package(db_session, element, name="WP"):
     from app.models.unified_work_package import UnifiedWorkPackage
 
-    wp = UnifiedWorkPackage(name=name, archimate_element_id=element.id)
+    wp = UnifiedWorkPackage(
+        name=name, archimate_element_id=element.id, business_capability="Test Capability"
+    )
     db_session.add(wp)
     db_session.flush()
     return wp
@@ -574,14 +576,20 @@ class TestCrossTenantCanvases:
         (app/middleware/tenant_isolation.py) -- documented as a no-op, not a
         deny, when it is unset (archimate_viewpoint_service.py's own comment
         on that same listener). Removing the explicit predicate is removing
-        that context: with no request-scoped org at all, the same lookup
-        that returned None in the test above now returns the row, proving
-        the fence -- not luck -- is what made that assertion pass."""
+        that context: with no request-scoped org at all (only a logged-in
+        user, whose organization_id the lookup's own fallback still reads),
+        the same lookup that returned None in the test above now returns the
+        row, proving the fence -- not luck -- is what made that assertion
+        pass."""
+        from flask_login import login_user
+
         org_a = make_org("cv-canvas-mutp-a")
         canvas_a = _canvas(db_session, org_a.id, name="Org A Canvas")
+        user_a = _user(db_session, org_a.id)
         db_session.commit()
 
         with app.test_request_context("/"):
+            login_user(user_a)
             record = bmc_service.get_canvas_or_none(canvas_a.id)
         with pytest.raises(AssertionError):
             assert record is None
@@ -604,13 +612,17 @@ class TestCrossTenantBusinessCases:
 
     def test_mutation_proof_business_case_lookup_predicate(self, app, db_session, make_org):
         """Same fence, same proof, as canvases above."""
+        from flask_login import login_user
+
         from app.modules.business_case import service as case_service
 
         org_a = make_org("cv-case-mutp-a")
         case_a = _business_case(db_session, org_a.id, title="Org A Case")
+        user_a = _user(db_session, org_a.id)
         db_session.commit()
 
         with app.test_request_context("/"):
+            login_user(user_a)
             record = case_service.get_business_case_or_none(case_a.id)
         with pytest.raises(AssertionError):
             assert record is None
@@ -640,6 +652,13 @@ class TestCrossTenantRisks:
         vp_a = _element(db_session, org_a.id, "Value", "VP A", profile="value_proposition")
         vp_b = _element(db_session, org_b.id, "Value", "VP B", profile="value_proposition")
         _risk(db_session, org_b.id, vp_b, likelihood=5, impact=5)
+        # The one-hop relationship _risk_blast_targets's blast radius reaches
+        # from the risk's own element: without it there is nothing for a
+        # leaked, cross-tenant risk to reach, so the mutation below could
+        # never move this tenant's own entry regardless of which predicate
+        # is defeated. Cross-tenant on purpose -- the same shape a leak in
+        # production would take.
+        _relationship(db_session, org_b.id, vp_b, vp_a, type_="serving")
         db_session.commit()
 
         real_read = bmc_service._read_canvas_risks
@@ -1035,3 +1054,141 @@ class TestLatencyAtScale:
         p95 = latencies[int(len(latencies) * 0.95)]
         print(f"canvas_projection p95 on {total_elements} elements: {p95} ms")
         assert p95 <= 2000
+
+
+# --- Anonymous access (review finding 1) ------------------------------------
+
+
+class TestAnonymousCanvasLookup:
+    """get_canvas_or_none / get_business_case_or_none read
+    current_user.organization_id directly, which raises AttributeError on
+    Flask-Login's AnonymousUserMixin -- reachable from get_viewpoint_data's
+    canvas_id lookup with no session at all. Neither helper may ever raise
+    for a caller with no tenant context; both must return None, honestly,
+    the same as a foreign id."""
+
+    def test_get_canvas_or_none_with_no_session_returns_none_not_a_crash(
+        self, app, db_session, make_org
+    ):
+        org = make_org("cv-anon-canvas")
+        canvas = _canvas(db_session, org.id)
+        db_session.commit()
+
+        with app.test_request_context("/"):
+            record = bmc_service.get_canvas_or_none(canvas.id)
+        assert record is None
+
+    def test_get_business_case_or_none_with_no_session_returns_none_not_a_crash(
+        self, app, db_session, make_org
+    ):
+        from app.modules.business_case import service as case_service
+
+        org = make_org("cv-anon-case")
+        case = _business_case(db_session, org.id)
+        db_session.commit()
+
+        with app.test_request_context("/"):
+            record = case_service.get_business_case_or_none(case.id)
+        assert record is None
+
+    def test_viewpoint_data_route_with_no_session_never_500s(
+        self, app, db_session, make_org, client
+    ):
+        org = make_org("cv-anon-viewpoint")
+        canvas = _canvas(db_session, org.id)
+        db_session.commit()
+
+        resp = client.get(
+            f"/archimate/viewpoints-api/business_model_canvas/data?canvas_id={canvas.id}"
+        )
+        assert resp.status_code in (302, 401, 403, 404)
+
+
+# --- acm_properties enum validation (review finding 3) ----------------------
+
+
+class TestPatchElementAcmProperties:
+    """PATCH /archimate/api/elements/<id> merges acm_properties through
+    PropertyService.merge_properties and rejects a value outside the
+    template's enum_options with 400, before any field is written."""
+
+    def _template(self, db_session, archimate_type, key, options):
+        from app.models.acm_property_template import AcmPropertyTemplate
+
+        tpl = AcmPropertyTemplate(
+            archimate_type=archimate_type,
+            property_key=key,
+            display_name=key,
+            property_type="enum",
+            enum_options=options,
+            required_for_tier="standard",
+        )
+        db_session.add(tpl)
+        db_session.flush()
+        return tpl
+
+    def test_value_outside_enum_options_is_rejected_with_400(
+        self, app, db_session, make_org, client, login_as
+    ):
+        org = make_org("cv-acm-enum-reject")
+        user = _user(db_session, org.id)
+        element = _element(db_session, org.id, "ApplicationComponent", "App A")
+        self._template(
+            db_session, "ApplicationComponent", "deployment_model",
+            ["cloud-native", "on-prem"],
+        )
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.patch(
+            f"/archimate/api/elements/{element.id}",
+            json={"acm_properties": {"deployment_model": "not-a-real-option"}},
+        )
+        assert resp.status_code == 400
+
+        db_session.refresh(element)
+        assert (element.acm_properties or {}).get("deployment_model") is None
+
+    def test_value_inside_enum_options_is_merged_through_property_service(
+        self, app, db_session, make_org, client, login_as
+    ):
+        org = make_org("cv-acm-enum-accept")
+        user = _user(db_session, org.id)
+        element = _element(db_session, org.id, "ApplicationComponent", "App B")
+        self._template(
+            db_session, "ApplicationComponent", "deployment_model",
+            ["cloud-native", "on-prem"],
+        )
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.patch(
+            f"/archimate/api/elements/{element.id}",
+            json={"acm_properties": {"deployment_model": "on-prem"}},
+        )
+        assert resp.status_code == 200
+
+        db_session.refresh(element)
+        stored = element.acm_properties["deployment_model"]
+        assert stored == {"value": "on-prem", "source": "user"}
+
+    def test_key_with_no_enum_template_is_merged_unvalidated(
+        self, app, db_session, make_org, client, login_as
+    ):
+        """A property with no AcmPropertyTemplate row (or one with no
+        enum_options) has no closed vocabulary to check against -- merged
+        through as-is, same as before this finding was fixed."""
+        org = make_org("cv-acm-no-template")
+        user = _user(db_session, org.id)
+        element = _element(db_session, org.id, "ApplicationComponent", "App C")
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.patch(
+            f"/archimate/api/elements/{element.id}",
+            json={"acm_properties": {"technology_stack": "anything at all"}},
+        )
+        assert resp.status_code == 200
+
+        db_session.refresh(element)
+        assert element.acm_properties["technology_stack"]["value"] == "anything at all"
