@@ -137,6 +137,8 @@
        package was never costed, matching the server's own not_costed
        reason rather than inventing a number. */
     function workPackageModel(wp) {
+        var hasCostVariance = wp.cost_variance_pct != null;
+        var costRedacted = wp.cost_reason === 'financial_data_restricted';
         return {
             workPackageId: wp.work_package_id,
             name: wp.name,
@@ -147,7 +149,9 @@
             endDate: wp.end_date,
             isOverdue: wp.is_overdue,
             owner: wp.owner || null,
-            costVariancePct: wp.cost_variance_pct != null ? wp.cost_variance_pct : null,
+            costVariancePct: hasCostVariance ? wp.cost_variance_pct : null,
+            hasCostVariance: hasCostVariance,
+            costRedacted: costRedacted,
             costReason: wp.cost_reason || null,
             affectedRows: wp.affected_rows || [],
             affectedSummary: wp.affected_summary || {}
@@ -178,6 +182,8 @@
        no_budget_recorded reason rather than inventing a number. Success
        metrics are nested as-is (already a small, flat list server-side). */
     function initiativeModel(initiative) {
+        var hasBudgetVariance = initiative.budget_variance_pct != null;
+        var budgetRedacted = initiative.budget_reason === 'financial_data_restricted';
         return {
             initiativeId: initiative.initiative_id,
             name: initiative.name,
@@ -190,7 +196,9 @@
             targetEndDate: initiative.target_end_date,
             executiveSponsor: initiative.executive_sponsor || null,
             programManager: initiative.program_manager || null,
-            budgetVariancePct: initiative.budget_variance_pct != null ? initiative.budget_variance_pct : null,
+            budgetVariancePct: hasBudgetVariance ? initiative.budget_variance_pct : null,
+            hasBudgetVariance: hasBudgetVariance,
+            budgetRedacted: budgetRedacted,
             budgetReason: initiative.budget_reason || null,
             successMetrics: (initiative.success_metrics || []).map(function (m) {
                 return {
