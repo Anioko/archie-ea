@@ -1,0 +1,49 @@
+{# Shared public marketing footer — reused by main/index.html and public/page.html
+   so every public page (home, vision, modules, comparisons, use-cases, dogfood,
+   and the site pages below) links to the same set of pages. Do not duplicate
+   this markup in a page template; extend this file instead.
+#}
+<footer class="border-t border-border bg-card">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-16">
+    <div class="grid sm:grid-cols-2 md:grid-cols-4 gap-8 mb-8">
+      <div class="space-y-4">
+        <h3 class="font-semibold text-foreground">Entelim</h3>
+        <ul class="space-y-2 text-sm text-muted-foreground">
+          <li><a href="/features" class="hover:text-foreground transition-colors">Features</a></li>
+          <li><a href="/pricing" class="hover:text-foreground transition-colors">Pricing</a></li>
+          <li><a href="{{ url_for('account.login') }}" class="hover:text-foreground transition-colors">Sign in</a></li>
+          <li><a href="{{ url_for('account.register') }}" class="hover:text-foreground transition-colors">Sign up</a></li>
+        </ul>
+      </div>
+      <div class="space-y-4">
+        <h3 class="font-semibold text-foreground">Open source</h3>
+        <ul class="space-y-2 text-sm text-muted-foreground">
+          <li><a href="https://github.com/archiet-ltd/entelim" target="_blank" rel="noopener noreferrer" class="hover:text-foreground transition-colors">GitHub</a></li>
+          <li><a href="/docs" class="hover:text-foreground transition-colors">Documentation</a></li>
+          <li><span class="text-muted-foreground/60 cursor-default">AGPL-3.0</span></li>
+        </ul>
+      </div>
+      <div class="space-y-4">
+        <h3 class="font-semibold text-foreground">Company</h3>
+        <ul class="space-y-2 text-sm text-muted-foreground">
+          <li><a href="/about" class="hover:text-foreground transition-colors">About</a></li>
+          <li><a href="/contact" class="hover:text-foreground transition-colors">Contact</a></li>
+          <li><span class="text-muted-foreground/60 cursor-default">Archiet Ltd</span></li>
+        </ul>
+      </div>
+      <div class="space-y-4">
+        <h3 class="font-semibold text-foreground">Legal</h3>
+        <ul class="space-y-2 text-sm text-muted-foreground">
+          <li><a href="/security" class="hover:text-foreground transition-colors">Security</a></li>
+          <li><a href="/privacy" class="hover:text-foreground transition-colors">Privacy</a></li>
+          <li><a href="/terms" class="hover:text-foreground transition-colors">Terms</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="border-t border-border pt-8">
+      <p class="text-sm text-muted-foreground text-center">
+        Entelim is open source under AGPL-3.0. Made by Archiet Ltd.
+      </p>
+    </div>
+  </div>
+</footer>

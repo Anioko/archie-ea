@@ -1,6 +1,7 @@
 {# smoke-coverage-ok: covered by tests/test_public_content_pages.py (32 tests, all page families, JSON-LD, sitemap, llms.txt)
    Template: public/page.html — Renders a single public content page.
-   Extends layouts/public_base.html, reuses components/public_navbar.html.
+   Extends layouts/public_base.html, reuses components/public_navbar.html and
+   components/public_footer.html.
    Receives a `page` object (PublicPage dataclass) and `jsonld` string.
 #}
 {% extends 'layouts/public_base.html' %}
@@ -57,4 +58,6 @@
   </div>
   {% endif %}
 </div>
+
+{% include 'components/public_footer.html' %}
 {% endblock %}

@@ -9,6 +9,9 @@ Directory layout maps to URL families:
   content/pages/function-per-segment/ → /use-cases/<slug>
   content/pages/vs/              → /vs/<slug>
   content/pages/dogfood/         → /how-archiet-runs-on-entelim
+  content/pages/site/            → /<slug> (about, security, privacy, terms,
+                                    contact, features, pricing, docs — one
+                                    fixed top-level page per file)
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ FAMILY_DIR_MAP = {
     "function-per-segment": "function-per-segment",
     "comparison": "vs",
     "dogfood": "dogfood",
+    "site": "site",
 }
 
 FAMILY_URL_PREFIX = {
@@ -38,6 +42,9 @@ FAMILY_URL_PREFIX = {
     "function-per-segment": "/use-cases",
     "comparison": "/vs",
     "dogfood": "/how-archiet-runs-on-entelim",
+    # No prefix: each file under content/pages/site/ is its own fixed
+    # top-level page (content/pages/site/about.md -> /about).
+    "site": "",
 }
 
 _md = markdown.Markdown(extensions=["extra"])

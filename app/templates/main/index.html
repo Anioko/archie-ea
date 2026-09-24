@@ -212,35 +212,6 @@
 </section>
 
 <!-- Footer -->
-<footer class="border-t border-border bg-card">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-16">
-    <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-8 mb-8">
-      <div class="space-y-4">
-        <h3 class="font-semibold text-foreground">Entelim</h3>
-        <ul class="space-y-2 text-sm text-muted-foreground">
-          <li><a href="{{ url_for('account.login') }}" class="hover:text-foreground transition-colors">Sign in</a></li>
-        </ul>
-      </div>
-      <div class="space-y-4">
-        <h3 class="font-semibold text-foreground">Open source</h3>
-        <ul class="space-y-2 text-sm text-muted-foreground">
-          <li><a href="https://github.com/archiet-ltd/entelim" target="_blank" rel="noopener noreferrer" class="hover:text-foreground transition-colors">GitHub</a></li>
-          <li><span class="text-muted-foreground/60 cursor-default">AGPL-3.0</span></li>
-        </ul>
-      </div>
-      <div class="space-y-4">
-        <h3 class="font-semibold text-foreground">Company</h3>
-        <ul class="space-y-2 text-sm text-muted-foreground">
-          <li><span class="text-muted-foreground/60 cursor-default">Archiet Ltd</span></li>
-        </ul>
-      </div>
-    </div>
-    <div class="border-t border-border pt-8">
-      <p class="text-sm text-muted-foreground text-center">
-        Entelim is open source under AGPL-3.0. Made by Archiet Ltd.
-      </p>
-    </div>
-  </div>
-</footer>
+{% include 'components/public_footer.html' %}
 
 {% endblock %}

@@ -280,6 +280,32 @@ def public_dogfood():
     return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
 
 
+@main.route(
+    "/<any(about, security, privacy, terms, contact, features, pricing, docs):slug>"
+)
+def public_site_page(slug):
+    """A fixed top-level marketing/legal page (one file per page under content/pages/site/)."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("site", slug=slug)
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/signup")
+def public_signup_redirect():
+    """/signup is not a second form — it redirects to the real sign-up page."""
+    return redirect(url_for("account.register"), code=301)
+
+
+@main.route("/register")
+def public_register_redirect():
+    """/register is not a second form — it redirects to the real sign-up page."""
+    return redirect(url_for("account.register"), code=301)
+
+
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
