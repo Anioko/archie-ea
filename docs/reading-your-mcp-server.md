@@ -52,8 +52,7 @@ support for remote MCP servers.
 4. The assistant can now call any of the nine read tools on your behalf.
 
 The token is tied to your user account, not to your organisation as a
-whole. It expires after one hour and can be revoked at any time from your
-account settings.
+whole. It expires after one hour.
 
 Two well-known endpoints publish the server's OAuth metadata so any
 standards-compliant client can discover the flow automatically:
@@ -61,12 +60,6 @@ standards-compliant client can discover the flow automatically:
 - `/.well-known/oauth-protected-resource` — the resource server metadata
 - `/.well-known/oauth-authorization-server` — the authorization server
   metadata, including supported PKCE methods and grant types
-
-## Revoking access
-
-Open your account settings, find the active tokens list, and revoke any
-token. The assistant's next call returns an authentication error. There is
-no delay and no grace period — revocation is immediate.
 
 ## Self-hosted installations
 

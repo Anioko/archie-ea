@@ -31,7 +31,7 @@ def protected_resource_metadata():
         "resource": f"{base}/mcp" if base else "/mcp",
         "authorization_servers": [base or "https://app.entelim.com"],
         "bearer_methods_supported": ["header"],
-        "scopes_supported": ["mcp:read", "mcp:propose"],
+        "scopes_supported": ["mcp:read"],
     })
 
 
@@ -43,11 +43,9 @@ def authorization_server_metadata():
         "issuer": base or "https://app.entelim.com",
         "authorization_endpoint": f"{base}/oauth/authorize",
         "token_endpoint": f"{base}/oauth/token",
-        "registration_endpoint": f"{base}/oauth/register",
-        "scopes_supported": ["mcp:read", "mcp:propose"],
+        "scopes_supported": ["mcp:read"],
         "response_types_supported": ["code"],
-        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "grant_types_supported": ["authorization_code"],
         "token_endpoint_auth_methods_supported": ["none"],
         "code_challenge_methods_supported": ["S256"],
-        "service_documentation": f"{base}/docs/reading-your-mcp-server.md" if base else "",
     })

@@ -26,8 +26,6 @@
     <div class="scope">
       {% if scope == "mcp:read" %}
         <strong>Read your architecture data</strong> — view elements, canvases, and intelligence lenses
-      {% elif scope == "mcp:propose" %}
-        <strong>Propose changes for review</strong> — suggest new relationships (requires your approval)
       {% else %}
         {{ scope }}
       {% endif %}
