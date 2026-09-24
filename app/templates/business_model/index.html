@@ -15,9 +15,10 @@
           {'label': 'Home', 'href': url_for('main.index')},
           {'label': 'Business Model Canvas'}
       ],
-      actions=[
-          {'text': 'New Canvas', 'icon': 'plus', 'onclick': "Platform.modal.open('bmc-create-modal')", 'variant': 'default'}
-      ]
+actions=[
+           {'text': 'New Canvas', 'icon': 'plus', 'onclick': "Platform.modal.open('bmc-create-modal')", 'variant': 'default'},
+           {'text': 'Business Cases', 'icon': 'briefcase', 'href': url_for('business_case.index'), 'variant': 'outline'}
+       ]
   ) }}
 
   <div class="p-6 space-y-6">

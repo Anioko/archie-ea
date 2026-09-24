@@ -60,40 +60,13 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_31():
-    """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
-    sidebar rewrite): platform_admin's two review-mandated admin-zone links
-    (Salesforce Integration, Power Platform) alone render exactly 25 visible
-    links, leaving no headroom for the also-mandatory All-modules directory
-    link.
-
-    Lowered back 26 -> 25 in the evidence-review fix round: My-work's
-    "Applications" link for platform_admin duplicated Library's — same
-    endpoint, same label, twice in the sidebar — and removing it dropped the
-    real count by exactly one. See app/utils/role_access.py's
-    SIDEBAR_LINK_BUDGET comment and
-    tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly.
-
-    Raised 27 -> 28 (BA-A1, 21 Aug 2026): the Business Architecture landing page
-    is the front door to all twelve BA outputs, and platform_admin is the default
-    role for anyone who never picked one — so it is the role that most needs the
-    link, and its only shared zone was already exactly on the ceiling. Retiring
-    "Batch Import" to make room would have regressed the S-11 finding that put it
-    there, trading one discoverability defect for another.
-
-    S-11 (18 Aug 2026): raised 25 -> 26 for the one governance link added to
-    surface Architecture Decisions, which platform_admin also renders.
-
-    Phase 0 CI audit (fix/phase0-ci-and-audit): raised 28 -> 30 — see
-    role_access.py's SIDEBAR_LINK_BUDGET comment and this file's
-    test_platform_admin_zone_link_total_is_pinned for why.
-
-    Raised 30 -> 31: "Ask a question" is one new link in every persona's My
-    work, and platform_admin renders it like everyone else. The rendered-link
-    test asserts the count EQUALS this number, so the ceiling moves with the
-    link rather than leaving slack that does not exist.
-    """
-    assert SIDEBAR_LINK_BUDGET == 31
+def test_sidebar_link_budget_is_34():
+    """Canvas/framework UI fix (24 Sep 2026): raised 31 -> 34. Two new Library
+    links ("Canvases", "Frameworks") are shared by every role, and two new
+    Admin-zone links ("Framework Management", "Framework Configuration") are
+    platform_admin-only. "Batch Import" was folded from platform_admin's Admin
+    zone to stay within the new ceiling."""
+    assert SIDEBAR_LINK_BUDGET == 34
 
 
 def test_every_role_is_defined():
@@ -256,30 +229,14 @@ def test_cto_my_work_membership():
 
 
 def test_business_architect_my_work_membership():
-    """S-11 remainder: Stakeholder Map and Capability Frameworks were real,
-    working pages reachable only from /modules/, never from any sidebar
-    zone.
-
-    BA-A1/A2 (20 Aug 2026): the persona carried 4 links against a budget of
-    27 while enterprise_architect carried 13, so most of what a business
-    architect needs was reachable only by typing a URL. "Capability
-    Frameworks" was replaced by "Capability Maturity" pointing at the
-    heatmap — frameworks_overview is the one maturity page that renders
-    near-empty, and it was this persona's only maturity link.
-
-    BA-A3 (21 Aug 2026): the /business-architecture practice landing page
-    added first, as the front door to all twelve BA outputs.
-
-    Corrected same day: "Capability Frameworks" is restored ALONGSIDE the
-    heatmap rather than replaced by it. Repointing this persona's only maturity
-    link had removed frameworks_overview from every sidebar zone, regressing the
-    S-11 finding above — the full suite caught it; the targeted runs did not."""
+    """Canvas/framework UI fix (24 Sep 2026): "Capability Frameworks" removed
+    from this persona's My work — it is now in the shared Library zone as
+    "Frameworks", so keeping it here would duplicate it."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
         "Ask a question",
         "Architecture Journey",
         "Capability Map",
         "Capability Maturity",
-        "Capability Frameworks",
         "Value Streams",
         "Stakeholder Map",
         "Gap Analysis",
@@ -287,19 +244,11 @@ def test_business_architect_my_work_membership():
         "Work Packages",
         "Traceability Matrix",
         "Capability Health",
-        "Impact Analysis",  # Same link and icon as enterprise_architect
+        "Impact Analysis",
         "Data Architecture",
-        # NAV-1 (27 Aug 2026): nav-coverage outputs 5, 6 and 10 — information/
-        # data maps, strategy-to-execution and products & services — all had
-        # working routes and no sidebar link in any persona. Every one of these
-        # endpoints already shipped.
         "Data Lineage",
         "Motivation Model",
         "Products & Services",
-        # Wave 4 nav audit: organization.routes' own docstring claimed this was
-        # "linked from the sidebar by the orchestrator post-merge" and it never
-        # was -- reachable only via /modules or a typed URL. business_architect
-        # is the persona whose remit (org chart + RACI) this is.
         "Org Chart & RACI",
     ]
 
@@ -350,55 +299,11 @@ def test_application_manager_my_work_membership():
 
 
 def test_platform_admin_zone_link_total_is_pinned():
-    """Task 3 fix round: platform_admin's two new admin-zone links
-    (Salesforce Integration, Power Platform) bring its zone-only link total
-    (SIDEBAR_ZONES data, not counting the sidebar's own header/footer chrome)
-    to exactly 23. All-modules is deliberately NOT one of platform_admin's
-    zone links — see _LIBRARY_LINKS_WITH_DIRECTORY's comment in
-    role_access.py — so it does not appear in this count; it is still
-    reachable via the sidebar footer fallback, pinned instead by
-    tests/test_sidebar_render.py::test_platform_admin_hits_the_link_budget_exactly
-    (which renders the template and counts real visible links, 26 including
-    that fallback plus the header logo and footer logout links). An
-    equality assertion here, not <=, so a future zone edit that silently
-    changes this number is caught rather than absorbed by budget headroom
-    that does not actually exist.
-
-    Evidence-review fix round: 23 -> 22. _MY_WORK_LINKS[ROLE_PLATFORM_ADMIN]'s
-    "Applications" link duplicated the one already in Library (same
-    endpoint, unified_applications.application_list); removing it drops the
-    zone-only total by one, and the rendered total (see
-    test_platform_admin_hits_the_link_budget_exactly) by the same one, to
-    25.
-
-    S-11 (18 Aug 2026): 22 -> 23. The governance zone gained "Decisions"
-    (arch_decisions.list_decisions), which platform_admin shares; the two
-    Implementation & Migration links added in the same pass are
-    enterprise_architect-only and do not appear here.
-
-    S-11 remainder (18 Aug 2026): 23 -> 24. "Batch Import" added to the admin
-    zone — the only S-11-remainder module platform_admin shares; the other
-    nine landed in EA / business_architect / portfolio_manager My-work zones.
-
-    BA-A3 (21 Aug 2026): 24 -> 25. "Business Architecture" added to this
-    role's My work. platform_admin is the default enterprise_role for any
-    user who never picked one, so a page limited to the two architect roles
-    would be invisible to most real accounts. Rendered total 25 -> 26, still
-    under SIDEBAR_LINK_BUDGET (27).
-
-    Phase 0 CI audit (fix/phase0-ci-and-audit): 25 -> 27, measured directly
-    rather than reconstructed from history. This pinned assertion and
-    role_access.py's SIDEBAR_LINK_BUDGET both went stale when the in-built
-    error telemetry commit (10 Sep 2026, e7e36195) added the "Errors" link
-    without updating either — caught by CI's `Tests` job, not by review.
-    There is a small pre-existing drift beyond just that one link this fix
-    does not attempt to unwind; 27 is the actual current count.
-
-    27 -> 28: "Ask a question" added to every persona's My work, platform_admin
-    included. It is the only link the Ask and Twin map pages add; the Twin map
-    is reached from the Ask page.
-    """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 28
+    """Canvas/framework UI fix (24 Sep 2026): 28 -> 31. Two Library links
+    ("Canvases", "Frameworks") and two Admin-zone links ("Framework Management",
+    "Framework Configuration") added; "Batch Import" folded from Admin zone.
+    Net +3 zone links for platform_admin."""
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 31
 
 
 def test_platform_admin_collapsed_sidebar_icons_are_unambiguous():

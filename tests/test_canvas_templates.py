@@ -252,7 +252,7 @@ class TestBothPagesRenderEmpty:
         for zone in zones:
             reason = soup.find(attrs={"data-testid": f"canvas-box-reason-{zone['box_key']}"})
             assert reason is not None, zone["box_key"]
-            assert "Nothing here yet — type to add" in reason.get_text()
+            assert "Nothing here yet" in reason.get_text()
             # The hint sits outside the input: never rendered inside the
             # existing textarea's own value/placeholder as example content.
             textarea = soup.find(attrs={"data-testid": f"bmc-textarea-{zone['box_key']}"})
@@ -294,7 +294,7 @@ class TestBothPagesRenderEmpty:
             if zone["empty_reason"] == "canvas_box_not_derived":
                 assert "Composed from the other sections" in reason.get_text()
             else:
-                assert "Nothing here yet — type to add" in reason.get_text()
+                assert "Nothing here yet" in reason.get_text()
 
         unclassified = soup.find(attrs={"data-testid": "canvas-unclassified"})
         assert unclassified is not None

@@ -358,7 +358,12 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # page is the entry point of the impact question for every persona and has no
 # other route in; the Twin map is reached from the Ask page and has no link of
 # its own, so this is the only link the two pages add.
-SIDEBAR_LINK_BUDGET = 31
+# Canvas/framework UI fix (24 Sep 2026): raised 31 -> 34. Two new Library
+# links ("Canvases", "Frameworks") are shared by every role, and two new
+# Admin-zone links ("Framework Management", "Framework Configuration") are
+# platform_admin-only. "Batch Import" was folded from platform_admin's Admin
+# zone to stay within the new ceiling. Every other role stays under.
+SIDEBAR_LINK_BUDGET = 34
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -413,6 +418,8 @@ _HOME_LINKS = [
 _LIBRARY_LINKS = [
     _link("Applications", "unified_applications.application_list", "list"),
     _link("Capabilities", "capability_map.index", "map"),
+    _link("Canvases", "business_model.index", "layout-grid"),
+    _link("Frameworks", "maturity_management.frameworks_overview", "layers"),
     _link("Vendors", "unified_applications.vendors", "building"),
     _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
@@ -467,9 +474,10 @@ _ADMIN_LINKS = [
     # both existed, worked, and had no sidebar link of any kind).
     _link("Salesforce Integration", "admin.salesforce_integration", "cloud"),
     _link("Power Platform", "admin.power_platform_integration", "blocks"),
-    # S-11 remainder (18 Aug 2026): batch import was directory-only, never in
-    # a sidebar zone of any role.
-    _link("Batch Import", "batch_import_view.dashboard", "upload"),
+    # Canvas/framework UI fix: Framework Management and Framework Configuration
+    # are platform-admin-only surfaces.
+    _link("Framework Management", "main.framework_management.dashboard", "package"),
+    _link("Framework Configuration", "framework_config_ui.framework_config_dashboard", "settings-2"),
     # In-built error telemetry (10 Sep 2026): the owner's "how do we know the
     # system has silently degraded" question, answered without a paid APM.
     # Cross-tenant like Organizations above -- the route is @platform_admin_required.
@@ -606,11 +614,6 @@ _MY_WORK_LINKS = {
         # data actually carries — BA-12). Clicking the single maturity link and
         # finding nothing is precisely why maturity was reported as missing.
         _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
-        # Kept alongside the heatmap, not replaced by it. A QA finding pins
-        # frameworks_overview as needing a sidebar zone, and repointing this
-        # persona's only maturity link at the heatmap had quietly removed it
-        # from every zone — trading one discoverability defect for another.
-        _link("Capability Frameworks", "maturity_management.frameworks_overview", "layers"),
         _link("Value Streams", "value_stream.index", "waypoints"),
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
         _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),

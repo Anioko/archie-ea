@@ -150,6 +150,11 @@
         .bmc-grid > [data-area="cost"] { grid-area: cost; }
         .bmc-grid > [data-area="rev"] { grid-area: rev; }
       }
+      .bmc-grid .bmc-box-title {
+        overflow-wrap: break-word;
+        word-break: break-word;
+        hyphens: auto;
+      }
     </style>
     <div id="bmc-grid" class="bmc-grid" data-testid="bmc-grid">
       {% for b in bmc_layout %}
@@ -157,7 +162,7 @@
         <div class="flex items-center justify-between gap-1.5 mb-2">
           <div class="flex items-center gap-1.5 min-w-0">
             <i data-lucide="{{ b.icon }}" class="h-3.5 w-3.5 text-muted-foreground shrink-0" aria-hidden="true"></i>
-            <span class="text-xs font-semibold text-foreground uppercase tracking-wide truncate">{{ b.label }}</span>
+            <span class="text-xs font-semibold text-foreground uppercase tracking-wide bmc-box-title">{{ b.label }}</span>
           </div>
           <button type="button" @click="draftBlock('{{ b.key }}')" :disabled="draftingBlock === '{{ b.key }}'"
                   data-testid="bmc-draft-ai-{{ b.key }}"

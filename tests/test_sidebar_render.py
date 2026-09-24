@@ -309,3 +309,56 @@ def test_impact_analysis_is_linked_under_my_work(app, db_session, make_org, role
     assert my_work != -1 and library != -1 and my_work < link < library, (
         f"{role}: the Impact Analysis link is not under the My work heading"
     )
+
+
+@pytest.mark.parametrize(
+    "role,label",
+    [
+        ("solution_architect", "sa-canvases"),
+        ("enterprise_architect", "ea-canvases"),
+        ("business_architect", "ba-canvases"),
+        ("procurement", "proc-canvases"),
+    ],
+)
+def test_canvases_and_frameworks_in_library_zone(app, db_session, make_org, role, label):
+    """Canvas/framework UI fix: "Canvases" and "Frameworks" must appear in the
+    shared Library zone for every role."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, role, label)
+    assert "Canvases" in sidebar_html, f"{role}: no Canvases link in sidebar"
+    assert "Frameworks" in sidebar_html, f"{role}: no Frameworks link in sidebar"
+    # Both must be under the Library heading, not My work.
+    library = sidebar_html.find("Library")
+    canvases = sidebar_html.find("Canvases")
+    frameworks = sidebar_html.find("Frameworks")
+    assert library != -1 and library < canvases, f"{role}: Canvases not under Library"
+    assert library != -1 and library < frameworks, f"{role}: Frameworks not under Library"
+
+
+def test_framework_management_and_config_admin_only(app, db_session, make_org):
+    """Canvas/framework UI fix: Framework Management and Framework Configuration
+    must appear only in platform_admin's Admin zone."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-fw-admin")
+    assert "Framework Management" in sidebar_html
+    assert "Framework Configuration" in sidebar_html
+    admin = sidebar_html.find("Admin")
+    fw_mgmt = sidebar_html.find("Framework Management")
+    fw_cfg = sidebar_html.find("Framework Configuration")
+    assert admin != -1 and admin < fw_mgmt, "Framework Management not under Admin"
+    assert admin != -1 and admin < fw_cfg, "Framework Configuration not under Admin"
+
+    # These must NOT appear for a non-admin role.
+    sa_html = _sidebar_html(app, db_session, make_org, "solution_architect", "sa-no-fw-admin")
+    assert "Framework Management" not in sa_html
+    assert "Framework Configuration" not in sa_html
+
+
+def test_business_architect_no_duplicate_capability_frameworks(app, db_session, make_org):
+    """Canvas/framework UI fix: business_architect must not have a separate
+    "Capability Frameworks" link — it is now "Frameworks" in the shared Library."""
+    sidebar_html = _sidebar_html(app, db_session, make_org, "business_architect", "ba-no-dup-cf")
+    assert "Capability Frameworks" not in sidebar_html, (
+        "business_architect must not have a separate Capability Frameworks link"
+    )
+    assert "Frameworks" in sidebar_html, (
+        "business_architect must still see Frameworks in the Library zone"
+    )

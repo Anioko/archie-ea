@@ -52,7 +52,9 @@ NAV_PAGES = {
         "/admin/errors",
         "Deduplicated server + client errors, aggregated by fingerprint across every organization.",
     ),
-    "batch_import_view.dashboard": ("/batch-import/", "Batch Import Dashboard"),
+    # Canvas/framework UI fix (24 Sep 2026): batch_import_view.dashboard was
+    # intentionally folded from platform_admin's Admin zone to stay within the
+    # link budget.
     "consolidation_list.dashboard": (
         "/consolidation-list/",
         "Consolidation List Dashboard",

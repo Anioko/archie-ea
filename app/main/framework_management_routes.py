@@ -28,7 +28,8 @@ framework_management_bp = Blueprint(
 @login_required
 def dashboard():
     """Framework Management Dashboard"""
-    return render_template("framework_management/dashboard.html")
+    has_manufacturing = db.session.query(FrameworkInstance).count() > 0
+    return render_template("framework_management/dashboard.html", has_manufacturing=has_manufacturing)
 
 
 MATURITY_LABELS = {1: "Initial", 2: "Developing", 3: "Defined", 4: "Managed", 5: "Optimizing"}
