@@ -37,6 +37,19 @@
         Skip to sidebar navigation
     </a>
 
+    <button type="button"
+            x-data="{ isDesktop: window.innerWidth >= 1024 }"
+            x-init="window.addEventListener('resize', () => { isDesktop = window.innerWidth >= 1024; if (isDesktop) { $store.sidebar.open = false; } })"
+            x-show="!isDesktop && !$store.sidebar.open" x-cloak
+            @click="$store.sidebar.open = true"
+            class="fixed top-4 left-4 z-30 lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
+            aria-controls="admin-sidebar"
+            aria-label="Open sidebar">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+    </button>
+
     <div class="relative flex h-screen overflow-hidden"
          @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
          x-data="{
@@ -51,16 +64,6 @@
                 });
             }
          }">
-        <button type="button" x-show="!isDesktop && !$store.sidebar.open" x-cloak
-                @click="$store.sidebar.open = true"
-                class="fixed top-4 left-4 z-[35] lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
-                aria-controls="admin-sidebar"
-                aria-label="Open sidebar">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
-            </svg>
-        </button>
-
         <div x-show="$store.sidebar.open && !isDesktop" x-cloak
              @click="$store.sidebar.open = false"
              x-transition:enter="transition-opacity ease-out duration-200"

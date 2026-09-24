@@ -84,6 +84,35 @@
         Skip to search
     </a>
     
+    <!-- Global mobile sidebar opener (works even when pages override the header block) -->
+    {#
+      .stop is load-bearing, not tidiness. This button sits OUTSIDE the
+      sidebar element, so without it the same click both opens the sidebar
+      here and reaches the sidebar's own @click.away, which closes it again
+      in the same tick. Instrumenting the event path showed exactly that:
+      ["btn:true", "doc:false"], final state false. Below 1024px the sidebar
+      could never be opened, and the only way to reach another page was to
+      type a URL -- the application was effectively desktop-only.
+      aria-expanded is bound so assistive technology is told the state too.
+
+      Rendered OUTSIDE the overflow-hidden layout container so it is never
+      trapped in a stacking context below the sticky header. Carries its own
+      isDesktop so it does not depend on the container's x-data scope.
+    #}
+    <button type="button"
+            x-data="{ isDesktop: window.innerWidth >= 1024 }"
+            x-init="window.addEventListener('resize', () => { isDesktop = window.innerWidth >= 1024; if (isDesktop) { $store.sidebar.open = false; } })"
+            x-show="!isDesktop && !$store.sidebar.open" x-cloak
+            @click.stop="$store.sidebar.open = true"
+            :aria-expanded="$store.sidebar.open ? 'true' : 'false'"
+            class="fixed top-4 left-4 z-30 lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
+            aria-controls="admin-sidebar"
+            aria-label="Open sidebar">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+    </button>
+
     <div class="relative flex h-screen overflow-hidden"
          @keydown.ctrl.b.window.prevent="$store.sidebar.toggle()"
          x-data="{
@@ -98,28 +127,6 @@
                 });
             }
          }">
-        <!-- Global mobile sidebar opener (works even when pages override the header block) -->
-        {#
-          .stop is load-bearing, not tidiness. This button sits OUTSIDE the
-          sidebar element, so without it the same click both opens the sidebar
-          here and reaches the sidebar's own @click.away, which closes it again
-          in the same tick. Instrumenting the event path showed exactly that:
-          ["btn:true", "doc:false"], final state false. Below 1024px the sidebar
-          could never be opened, and the only way to reach another page was to
-          type a URL -- the application was effectively desktop-only.
-          aria-expanded is bound so assistive technology is told the state too.
-        #}
-        <button type="button" x-show="!isDesktop && !$store.sidebar.open" x-cloak
-                @click.stop="$store.sidebar.open = true"
-                :aria-expanded="$store.sidebar.open ? 'true' : 'false'"
-                class="fixed top-4 left-4 z-[35] lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-background text-foreground shadow-sm hover:bg-accent transition-colors"
-                aria-controls="admin-sidebar"
-                aria-label="Open sidebar">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"></path>
-            </svg>
-        </button>
-
         <!-- Mobile sidebar backdrop -->
         <div x-show="$store.sidebar.open && !isDesktop" x-cloak
              @click="$store.sidebar.open = false"
