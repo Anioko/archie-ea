@@ -26,6 +26,11 @@ from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 VALID_DIRECTIONS = {"downstream", "upstream", "both"}
 
+
+class UnknownFrameworkError(ValueError):
+    """Raised when a framework code does not name a recorded regulatory framework."""
+
+
 NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
@@ -756,7 +761,7 @@ class IntelligenceQueryService:
         ``likelihood x impact`` is shown on its row; when a risk's blast
         radius reaches other elements, the chain's aggregate score is the
         single worst (max) risk reaching it, the conservative choice
-        documented in the L3/L6 brief, not a summed exposure figure.
+        documented in the L3/L6 specification, not a summed exposure figure.
 
         Beside the risks, ``control_gaps`` lists every ``ComplianceGap`` whose
         ``ComplianceRequirement`` is mirrored (``archimate_element_id``) on
@@ -769,7 +774,7 @@ class IntelligenceQueryService:
         ``cross_layer_impact`` (plus the already-fenced picked element) IS the
         fence a foreign requirement is kept out by. ``framework`` narrows that
         list to one ``RegulatoryFramework`` code; a code that names no
-        ``RegulatoryFramework`` row at all raises ``ValueError`` (the route
+        ``RegulatoryFramework`` row at all raises ``UnknownFrameworkError`` (the route
         turns this into a 400) rather than silently matching nothing, so an
         unknown code and a known code with no rows in this answer are never
         confused with each other. ``compliance_tags`` carries the resolved
@@ -889,7 +894,7 @@ class IntelligenceQueryService:
                     )
                 ).scalar_one_or_none()
                 if known_code is None:
-                    raise ValueError("framework does not name a recorded regulatory framework")
+                    raise UnknownFrameworkError("framework does not name a recorded regulatory framework")
                 resolved_framework = known_code
 
             # The requirement/gap read, filtered to the answer's own elements

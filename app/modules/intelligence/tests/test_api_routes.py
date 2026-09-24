@@ -499,6 +499,89 @@ def test_risk_endpoint_cross_tenant_element_is_404_not_leak(
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
 
 
+def test_risk_endpoint_includes_control_gaps_and_compliance_tags_fields(
+    app, db_session, make_org, client, login_as
+):
+    """The risk endpoint response carries control_gaps, control_gaps_reason,
+    framework and compliance_tags keys even when no compliance data exists."""
+    org = make_org("risk-route-fields")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert "control_gaps" in data
+    assert "control_gaps_reason" in data
+    assert "framework" in data
+    assert "compliance_tags" in data
+    assert data["control_gaps"] is None
+    assert data["control_gaps_reason"] == "no_compliance_mapping_recorded"
+    assert data["framework"] is None
+    assert isinstance(data["compliance_tags"], dict)
+    assert data["compliance_tags"].get("reason") == "no_application_component"
+
+
+def test_risk_endpoint_invalid_framework_returns_400(
+    app, db_session, make_org, client, login_as
+):
+    """An unknown framework code returns 400, not 200 with an empty list."""
+    org = make_org("risk-route-bad-fw")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}?framework=nonexistent_code")
+    assert resp.status_code == 400
+    assert resp.get_json()["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_risk_endpoint_cross_tenant_control_gaps_not_leaked(
+    app, db_session, make_org, client, login_as
+):
+    """Control gaps from another organisation are never visible."""
+    from app.models.compliance_models import (
+        ComplianceGap,
+        ComplianceRequirement,
+        RegulatoryFramework,
+    )
+
+    org_a = make_org("risk-route-cg-tenant-a")
+    org_b = make_org("risk-route-cg-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    framework = RegulatoryFramework(code="soc2", name="SOC 2")
+    db_session.add(framework)
+    db_session.flush()
+    req = ComplianceRequirement(
+        archimate_element_id=a.id,
+        title="Tenant A requirement",
+        description="Should not leak",
+        requirement_type="regulatory",
+        framework_id=framework.id,
+    )
+    db_session.add(req)
+    db_session.flush()
+    gap = ComplianceGap(
+        compliance_requirement_id=req.id,
+        gap_type="missing_requirement",
+        title="Tenant A gap",
+        description="Should not leak",
+        risk_level="high",
+        status="open",
+    )
+    db_session.add(gap)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
 # --- L3: GET /api/v1/intelligence/portfolio/<element_id> ----------------------
 
 

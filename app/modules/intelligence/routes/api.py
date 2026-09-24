@@ -434,7 +434,7 @@ def risk_for_element(element_id: int):
             status_code=404,
         )
 
-    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService, UnknownFrameworkError
 
     try:
         result = IntelligenceQueryService.risk_for_element(
@@ -443,7 +443,7 @@ def risk_for_element(element_id: int):
             include_derived=include_derived,
             framework=framework,
         )
-    except ValueError:
+    except UnknownFrameworkError:
         return error_response(
             "framework is not a recognised code",
             code="INVALID_PARAMETER",
