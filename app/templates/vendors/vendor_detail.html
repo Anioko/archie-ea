@@ -600,7 +600,7 @@
                     {% for element in elements %}
                     <li class="flex items-center justify-between text-sm">
                         <span class="font-medium">{{ element.name }}</span>
-                        <span class="text-xs text-muted-foreground">{{ element.element_type or element.type or 'Element' }}</span>
+                        <span class="text-xs text-muted-foreground">{{ (element.element_type or element.type or 'Element') | plain_name(current_user) }}</span>
                     </li>
                     {% endfor %}
                 </ul>
