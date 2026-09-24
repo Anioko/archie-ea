@@ -66,7 +66,7 @@ def test_all_pages_return_200(app):
 
 
 def test_all_pages_have_title_in_html_title(app):
-    """Every page has its title in the <title> element."""
+    """Every page has its title in the <title> element, correctly encoded."""
     import html as html_mod
     import re
 
@@ -75,11 +75,18 @@ def test_all_pages_have_title_in_html_title(app):
         for page in pages:
             rv = client.get(page.url)
             html = rv.data.decode()
-            # Extract the <title> content and unescape for comparison
             title_match = re.search(r"<title>(.*?)</title>", html, re.DOTALL)
             assert title_match is not None, f"{page.url}: no <title> found"
-            rendered_title = html_mod.unescape(title_match.group(1).strip())
-            # The title includes " - {APP_NAME}" suffix from public_base.html
+            raw_title = title_match.group(1).strip()
+            # Must not contain double-encoded entities
+            assert "&amp;amp;" not in raw_title, (
+                f"{page.url}: double-encoded &amp; in <title> '{raw_title}'"
+            )
+            assert "&amp;lt;" not in raw_title, (
+                f"{page.url}: double-encoded &lt; in <title> '{raw_title}'"
+            )
+            # After a single unescape the title must contain the page title
+            rendered_title = html_mod.unescape(raw_title)
             assert page.title in rendered_title, (
                 f"{page.url}: title '{page.title}' not in <title> '{rendered_title}'"
             )
@@ -571,3 +578,86 @@ def test_page_count_consistency():
     assert len(pages) == md_count, (
         f"load_all_pages returned {len(pages)} pages but {md_count} .md files exist"
     )
+
+
+# ── Tests for review findings ─────────────────────────────────────────────
+
+
+def test_title_html_entities_decoded():
+    """Titles containing HTML entities like &amp; are decoded to plain text."""
+    page = load_page("module", slug="diagrams")
+    assert page is not None
+    # The markdown heading is "Diagrams & Composer"
+    # After fix: title should be "Diagrams & Composer" (decoded), not "Diagrams &amp; Composer"
+    assert page.title == "Diagrams & Composer", (
+        f"Expected 'Diagrams & Composer', got '{page.title}'"
+    )
+    assert "&amp;" not in page.title, (
+        f"Title contains HTML entity: '{page.title}'"
+    )
+
+
+def test_title_html_entities_decoded_org_chart():
+    """Org Chart & RACI title has & decoded."""
+    page = load_page("module", slug="org-chart")
+    assert page is not None
+    assert page.title == "Org Chart & RACI", (
+        f"Expected 'Org Chart & RACI', got '{page.title}'"
+    )
+    assert "&amp;" not in page.title
+
+
+def test_comparison_faq_jsonld_has_entries():
+    """Comparison pages with <strong>-format FAQ produce non-empty mainEntity."""
+    for slug in ["leanix", "ardoq", "bizzdesign-hopex"]:
+        page = load_page("comparison", slug=slug)
+        assert page is not None, f"Comparison page {slug} not found"
+        ld_str = build_jsonld(page)
+        ld = json.loads(ld_str)
+        assert ld["@type"] == "FAQPage", f"{slug}: expected FAQPage"
+        assert len(ld["mainEntity"]) > 0, (
+            f"{slug}: FAQPage mainEntity is empty, got {ld['mainEntity']}"
+        )
+        for item in ld["mainEntity"]:
+            assert item["@type"] == "Question"
+            assert len(item["name"]) > 0
+            assert item["acceptedAnswer"]["@type"] == "Answer"
+            assert len(item["acceptedAnswer"]["text"]) > 0
+
+
+def test_comparison_faq_jsonld_question_count():
+    """Each comparison page has the expected number of FAQ entries."""
+    expected_counts = {
+        "leanix": 3,
+        "ardoq": 3,
+        "bizzdesign-hopex": 2,
+    }
+    for slug, expected in expected_counts.items():
+        page = load_page("comparison", slug=slug)
+        assert page is not None
+        ld = json.loads(build_jsonld(page))
+        actual = len(ld["mainEntity"])
+        assert actual == expected, (
+            f"{slug}: expected {expected} FAQ entries, got {actual}"
+        )
+
+
+def test_rendered_title_no_double_encoding(app):
+    """Pages with & in title render correctly in <title> without double-encoding."""
+    import re
+
+    with app.test_client() as client:
+        for url in ["/modules/diagrams", "/modules/org-chart"]:
+            rv = client.get(url)
+            html = rv.data.decode()
+            title_match = re.search(r"<title>(.*?)</title>", html, re.DOTALL)
+            assert title_match is not None, f"{url}: no <title>"
+            raw_title = title_match.group(1)
+            # Must not contain double-encoded entities
+            assert "&amp;amp;" not in raw_title, (
+                f"{url}: double-encoded &amp; in <title>: '{raw_title}'"
+            )
+            # Must contain a properly encoded &
+            assert "&amp;" in raw_title, (
+                f"{url}: missing &amp; in <title>: '{raw_title}'"
+            )

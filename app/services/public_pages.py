@@ -39,7 +39,7 @@ FAMILY_URL_PREFIX = {
     "dogfood": "/how-archiet-runs-on-entelim",
 }
 
-_md = markdown.Markdown(extensions=["extra", "toc"])
+_md = markdown.Markdown(extensions=["extra"])
 
 
 @dataclass
@@ -84,11 +84,12 @@ def _parse_front_matter(raw: str) -> tuple[dict[str, Any], str]:
 
 def _extract_title(body_html: str, front_matter: dict[str, Any]) -> str:
     """Extract the page title from the first h1 in rendered HTML."""
+    import html as _html
     import re
 
     match = re.search(r"<h1[^>]*>(.*?)</h1>", body_html, re.DOTALL)
     if match:
-        return re.sub(r"<[^>]+>", "", match.group(1)).strip()
+        return _html.unescape(re.sub(r"<[^>]+>", "", match.group(1)).strip())
     return front_matter.get("title", front_matter.get("module_label", "Untitled"))
 
 
@@ -249,24 +250,28 @@ def _jsonld_software_app(page: PublicPage, site_url: str) -> dict[str, Any]:
 
 
 def _jsonld_faq(page: PublicPage, site_url: str) -> dict[str, Any]:
+    import html as _html
     import re
 
     questions: list[dict[str, str]] = []
-    # Extract FAQ entries from rendered HTML: h2 "Frequently asked" followed by h3 questions
+    # Extract FAQ entries from rendered HTML: h2 "Frequently asked" followed by
+    # either <h3>Question</h3><p>Answer</p> or <p><strong>Question</strong>Answer</p>
     faq_section = re.search(
         r"<h2[^>]*>Frequently asked.*?</h2>(.*?)(?=<h2|$)",
         page.body_html,
         re.DOTALL | re.IGNORECASE,
     )
     if faq_section:
+        section_html = faq_section.group(1)
+        # Format A: <h3>Question</h3><p>Answer</p>
         qa_pairs = re.findall(
             r"<h3[^>]*>(.*?)</h3>\s*<p[^>]*>(.*?)</p>",
-            faq_section.group(1),
+            section_html,
             re.DOTALL,
         )
         for q_html, a_html in qa_pairs:
-            q_text = re.sub(r"<[^>]+>", "", q_html).strip()
-            a_text = re.sub(r"<[^>]+>", "", a_html).strip()
+            q_text = _html.unescape(re.sub(r"<[^>]+>", "", q_html).strip())
+            a_text = _html.unescape(re.sub(r"<[^>]+>", "", a_html).strip())
             if q_text and a_text:
                 questions.append(
                     {
@@ -278,6 +283,27 @@ def _jsonld_faq(page: PublicPage, site_url: str) -> dict[str, Any]:
                         },
                     }
                 )
+        # Format B: <p><strong>Question</strong>Answer text</p>
+        if not questions:
+            bold_pairs = re.findall(
+                r"<p[^>]*>\s*<strong[^>]*>(.*?)</strong>\s*(.*?)</p>",
+                section_html,
+                re.DOTALL,
+            )
+            for q_html, a_html in bold_pairs:
+                q_text = _html.unescape(re.sub(r"<[^>]+>", "", q_html).strip())
+                a_text = _html.unescape(re.sub(r"<[^>]+>", "", a_html).strip())
+                if q_text and a_text:
+                    questions.append(
+                        {
+                            "@type": "Question",
+                            "name": q_text,
+                            "acceptedAnswer": {
+                                "@type": "Answer",
+                                "text": a_text,
+                            },
+                        }
+                    )
 
     return {
         "@context": "https://schema.org",
