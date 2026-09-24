@@ -25,6 +25,7 @@ from app.models.organization import Organization
 from app.utils.api_response import success_response
 
 from .services import capabilities as capability_capture
+from .services import goals_changes
 from .services import people as people_capture
 from .services import profile, stage_gaps
 
@@ -164,7 +165,7 @@ def people():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         result = people_capture.save(data.get("people") or [], stage=stage, size_band=band)
-        return success_response({"next": url_for("onboarding.gaps"), **result})
+        return success_response({"next": url_for("onboarding.goals"), **result})
     return render_template(
         "onboarding/screen3b_people.html",
         state=people_capture.read(stage, band),
@@ -173,6 +174,21 @@ def people():
         band=band,
         band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
     )
+
+
+@onboarding_bp.route("/goals", methods=["GET", "POST"])
+@login_required
+def goals():
+    """What the company wants to achieve, and what is planned or under way.
+
+    Goals become ArchiMate Goal elements and changes become work packages
+    (see services/goals_changes.py); nothing is kept on the side."""
+    org = _current_org()
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = goals_changes.save(data.get("goals") or [], data.get("changes") or [], org_id=org.id)
+        return success_response({"next": url_for("onboarding.gaps"), **result})
+    return render_template("onboarding/screen3c_goals.html", state=goals_changes.read())
 
 
 def _recorded_for_org(org: Organization) -> dict:

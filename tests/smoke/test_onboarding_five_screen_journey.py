@@ -98,6 +98,10 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         # People -- also optional; with no capabilities recorded it says so instead of an empty form
         assert "haven't recorded any capabilities" in page.inner_text("body")
         page.get_by_role("link", name="Skip this step").click()
+        page.wait_for_url(lambda url: "/onboarding/goals" in url, timeout=PAGE_TIMEOUT)
+
+        # Goals and changes -- also optional
+        page.get_by_role("link", name="Skip this step").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 4: Fill the gaps -- the review section shows its genuine empty state
@@ -211,7 +215,25 @@ def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(li
         page.select_option("#role_0_customer_acquisition", "R")
         page.select_option("#prof_0_customer_acquisition", "3")
         page.get_by_role("button", name="Save and continue").click()
+        page.wait_for_url(lambda url: "/onboarding/goals" in url, timeout=PAGE_TIMEOUT)
+
+        # A goal, and a change that serves it.
+        page.fill("#goal_0", "First ten customers")
+        page.fill("#measure_0", "10 signed contracts")
+        page.get_by_role("button", name="Add a change").click()
+        page.fill("#change_0", "Launch self-service sign-up")
+        page.select_option("#status_0", "in_progress")
+        page.select_option("#serves_0", "First ten customers")
+        page.get_by_role("button", name="Save and continue").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
+
+        page.goto(live_server + "/onboarding/goals", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+        assert page.input_value("#goal_0") == "First ten customers"
+        assert page.input_value("#measure_0") == "10 signed contracts"
+        assert page.input_value("#change_0") == "Launch self-service sign-up"
+        assert page.input_value("#status_0") == "in_progress"
+        assert page.input_value("#serves_0") == "First ten customers", "the link to the goal must come back after a reload"
 
         page.goto(live_server + "/onboarding/people", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         page.wait_for_timeout(500)

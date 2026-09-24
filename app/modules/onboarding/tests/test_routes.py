@@ -353,6 +353,25 @@ def test_posting_people_saves_real_actors_and_advances(app, db_session, make_org
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()["data"]
-    assert body["next"].endswith("/onboarding/gaps") and body["people"] == 1 and body["assignments"] == 1
+    assert body["next"].endswith("/onboarding/goals") and body["people"] == 1 and body["assignments"] == 1
     assert BusinessActor.query.filter_by(organization_id=org.id, name="Sam").count() == 1
     assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).one().raci == "R"
+
+
+def test_goals_screen_renders_and_posting_saves_goal_and_change_then_advances(app, db_session, make_org, client, login_as):
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.implementation_migration import WorkPackage
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "goals-post")
+
+    assert client.get("/onboarding/goals").status_code == 200
+    resp = client.post(
+        "/onboarding/goals",
+        json={"goals": [{"name": "Grow revenue"}], "changes": [{"name": "Launch sign-up", "goal": "Grow revenue"}]},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/gaps") and body["goals"] == 1 and body["links"] == 1
+    assert ArchiMateElement.query.filter_by(organization_id=org.id, type="Goal", name="Grow revenue").count() == 1
+    assert WorkPackage.query.filter_by(organization_id=org.id, name="Launch sign-up").count() == 1
