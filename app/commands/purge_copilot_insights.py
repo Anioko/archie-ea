@@ -1,48 +1,88 @@
-"""``flask purge-cross-tenant-copilot-insights`` — delete derived insight rows.
+"""``flask purge-cross-tenant-copilot-insights`` — delete cross-tenant insight rows.
 
 ``portfolio_duplicate`` and ``pattern_available`` insights quote other solutions
-by name. Before the tenant-scope fix (T-RR-4) they could name solutions from
-other organisations. This command deletes those two insight types so they are
-regenerated correctly on the next blueprint page load.
+by name. Before the tenant-scope fix they could name solutions from other
+organisations. This command deletes only the insights whose named solution
+belongs to a different organisation than the insight's own solution; legitimate
+within-organisation insights are left untouched.
+
+The analysis stores the referenced solution by name (quoted) in the insight
+text, not by id, so the referenced solution is resolved by exact name match
+against the solutions table.
 
 It is a one-off housekeeping command, not a scheduled job. Dry-run by default;
-deletes only with ``--apply``.
+deletes only with ``--execute``.
 """
 
+import re
+
 import click
+
+_QUOTED_NAME = re.compile(r'"([^"]+)"')
+_TARGET_TYPES = ("portfolio_duplicate", "pattern_available")
+
+
+def _named_solution_org_ids(insight, own_solution):
+    """Return the organisation ids of the solutions an insight names, minus itself."""
+    from app.models.solution_models import Solution
+
+    text = " ".join(
+        part for part in (insight.title, insight.body, insight.suggested_query) if part
+    )
+    names = set(_QUOTED_NAME.findall(text))
+    org_ids = set()
+    for name in names:
+        for solution in Solution.query.filter(Solution.name == name).all():
+            if solution.id != own_solution.id and solution.organization_id is not None:
+                org_ids.add(solution.organization_id)
+    return org_ids
+
+
+def _cross_tenant_insights():
+    """Return cross-tenant insights of the two quoting types, grouped by type."""
+    from app.models.copilot_insight import CopilotInsight
+    from app.models.solution_models import Solution
+
+    by_type = {insight_type: [] for insight_type in _TARGET_TYPES}
+    insights = CopilotInsight.query.filter(
+        CopilotInsight.insight_type.in_(_TARGET_TYPES)
+    ).all()
+
+    for insight in insights:
+        own = Solution.query.get(insight.solution_id)
+        if own is None or own.organization_id is None:
+            continue
+        named_org_ids = _named_solution_org_ids(insight, own)
+        if any(org_id != own.organization_id for org_id in named_org_ids):
+            by_type[insight.insight_type].append(insight)
+
+    return by_type
 
 
 def init_app(app):
     @app.cli.command("purge-cross-tenant-copilot-insights")
     @click.option(
-        "--apply",
+        "--execute",
         is_flag=True,
         default=False,
-        help="Actually delete rows. Without this flag the command prints counts only.",
+        help="Actually delete cross-tenant rows. Without this flag the command prints counts only.",
     )
-    def purge_cross_tenant_copilot_insights(apply):
-        """Delete portfolio_duplicate and pattern_available CopilotInsight rows."""
-        from app.models.copilot_insight import CopilotInsight
+    def purge_cross_tenant_copilot_insights(execute):
+        """Delete cross-tenant portfolio_duplicate and pattern_available insights."""
+        from app import db
 
-        target_types = ["portfolio_duplicate", "pattern_available"]
-        counts = {}
-        for insight_type in target_types:
-            counts[insight_type] = CopilotInsight.query.filter_by(
-                insight_type=insight_type
-            ).count()
+        by_type = _cross_tenant_insights()
 
-        for insight_type, count in counts.items():
-            click.echo(f"{insight_type}: {count} row(s)")
+        for insight_type in _TARGET_TYPES:
+            click.echo(f"{insight_type}: {len(by_type[insight_type])} row(s)")
 
-        if apply:
+        if execute:
             total = 0
-            for insight_type in target_types:
-                deleted = CopilotInsight.query.filter_by(
-                    insight_type=insight_type
-                ).delete()
-                total += deleted
-            from app import db
+            for insight_type in _TARGET_TYPES:
+                for insight in by_type[insight_type]:
+                    db.session.delete(insight)
+                total += len(by_type[insight_type])
             db.session.commit()
             click.echo(f"Deleted {total} row(s).")
         else:
-            click.echo("Dry run — use --apply to delete.")
+            click.echo("Dry run — use --execute to delete.")
