@@ -116,6 +116,11 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Risk answer: a risk can be linked to an application, a solution or
+        # a programme. Only the application half can be followed to an
+        # element, so the link types the answer cannot resolve are named
+        # with this reason instead of being dropped.
+        "risk_link_unresolvable",
     }
 )
 
