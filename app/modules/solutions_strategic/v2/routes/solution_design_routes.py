@@ -54,6 +54,7 @@ from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
+from app.jobs.tenant_safe_job import tenant_scope
 from app.models.solution_models import Solution
 from app.utils.route_guards import require_entity
 from app.services.feature_flag_service import FeatureFlagService
@@ -2958,6 +2959,42 @@ def _build_blueprint_context(solution):
     }
 
 
+def _run_proactive_analysis(app, solution_id: int, organization_id):
+    """Run proactive copilot-insight generation for one solution, tenant-scoped.
+
+    Runs synchronously when called directly (tests) or as a daemon thread's
+    target (``view_solution``). When ``organization_id`` is None it logs a
+    warning and returns without running; otherwise it runs inside
+    ``tenant_scope`` so every query the analysis makes is filtered to the
+    solution's own organisation.
+    """
+    if organization_id is None:
+        logger.warning(
+            "Skipping proactive analysis for solution %s: organization_id is None",
+            solution_id,
+        )
+        return
+    with app.app_context(), tenant_scope(organization_id):
+        try:
+            from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
+            from app.models.copilot_insight import CopilotInsight
+            from app import db
+            svc = ProactiveAnalysisService()
+            new_insights = svc.analyse_solution(solution_id)
+            for insight in new_insights:
+                existing = CopilotInsight.query.filter_by(
+                    solution_id=solution_id,
+                    insight_type=insight.insight_type,
+                    seen=False,
+                    dismissed=False,
+                ).first()
+                if not existing:
+                    db.session.add(insight)
+            db.session.commit()
+        except Exception as _e:
+            logger.debug("Proactive analysis failed for sol %s: %s", solution_id, _e)
+
+
 @solution_design_bp.route("/<int:solution_id>", methods=["GET"])
 @login_required
 def view_solution(solution_id: int):
@@ -2984,30 +3021,9 @@ def view_solution(solution_id: int):
 
             # Fire proactive analysis in background — does not block page render
             import threading as _t
-            def _run_proactive(app_ref, sol_id):
-                with app_ref.app_context():
-                    try:
-                        from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
-                        from app.models.copilot_insight import CopilotInsight
-                        from app import db
-                        svc = ProactiveAnalysisService()
-                        new_insights = svc.analyse_solution(sol_id)
-                        for insight in new_insights:
-                            existing = CopilotInsight.query.filter_by(
-                                solution_id=sol_id,
-                                insight_type=insight.insight_type,
-                                seen=False,
-                                dismissed=False,
-                            ).first()
-                            if not existing:
-                                db.session.add(insight)
-                        db.session.commit()
-                    except Exception as _e:
-                        logger.debug("Proactive analysis failed for sol %s: %s", sol_id, _e)
-
             _t.Thread(
-                target=_run_proactive,
-                args=(current_app._get_current_object(), solution.id),
+                target=_run_proactive_analysis,
+                args=(current_app._get_current_object(), solution.id, solution.organization_id),
                 daemon=True,
             ).start()
 
