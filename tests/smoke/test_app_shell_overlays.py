@@ -370,3 +370,69 @@ def test_onboarding_modal_z_index_is_200(browser, live_server):
                 db.text("DELETE FROM organizations WHERE id=:oid"), {"oid": org_id})
             db.session.commit()
             db.session.remove()
+
+
+# ── Phone sidebar opener clickable ───────────────────────────────────────────
+
+
+def test_phone_sidebar_opener_clickable_and_below_modal(browser, live_server, seeded):
+    """At a phone viewport the sidebar opener must be clickable (no force)
+    and must sit below an open modal in the stacking context."""
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    try:
+        _login(page, live_server, seeded["emails"]["platform_admin"])
+        page.goto(live_server + "/dashboard/overview",
+                  wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(1000)
+
+        # The opener must be visible at phone width
+        opener = page.locator("button[aria-label='Open sidebar']")
+        assert opener.count() > 0, "phone sidebar opener not rendered at 390px"
+
+        # Click the opener normally — no force=True. If the spacer intercepts
+        # pointer events this click lands on the spacer and the sidebar never opens.
+        opener.first.click()
+        page.wait_for_timeout(700)
+
+        # The sidebar must be open: the Alpine store must report open=true
+        sidebar_open = page.evaluate("""() => {
+            const store = window.Alpine
+                && window.Alpine.store('sidebar');
+            return store ? store.open : null;
+        }""")
+        assert sidebar_open is True, (
+            "sidebar store.open is %s after clicking the opener — "
+            "the click was intercepted" % sidebar_open
+        )
+
+        # Close the sidebar for the modal test
+        page.evaluate("""() => {
+            const store = window.Alpine && window.Alpine.store('sidebar');
+            if (store) store.open = false;
+        }""")
+        page.wait_for_timeout(300)
+
+        # Open the search modal (z-[100]) and verify the opener (z-30) is below it
+        page.evaluate("""() => {
+            const modal = document.getElementById('search-modal');
+            if (modal) modal.style.display = 'flex';
+        }""")
+        page.wait_for_timeout(300)
+
+        z_indices = page.evaluate("""() => {
+            const opener = document.querySelector('[aria-label="Open sidebar"]');
+            const searchModal = document.getElementById('search-modal');
+            return {
+                openerZ: opener ? parseInt(getComputedStyle(opener).zIndex, 10) : null,
+                modalZ: searchModal ? parseInt(getComputedStyle(searchModal).zIndex, 10) : null,
+            };
+        }""")
+
+        assert z_indices["openerZ"] is not None, "phone sidebar opener not found"
+        assert z_indices["modalZ"] is not None, "search modal not found"
+        assert z_indices["openerZ"] < z_indices["modalZ"], (
+            "opener z-index (%d) must be below search modal z-index (%d)"
+            % (z_indices["openerZ"], z_indices["modalZ"])
+        )
+    finally:
+        page.close()
