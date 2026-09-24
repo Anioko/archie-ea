@@ -661,3 +661,238 @@ def test_rendered_title_no_double_encoding(app):
             assert "&amp;" in raw_title, (
                 f"{url}: missing &amp; in <title>: '{raw_title}'"
             )
+
+
+# ── XSS sanitization tests ─────────────────────────────────────────────────
+
+
+def test_xss_script_tag_stripped_from_rendered_page(app):
+    """<script> tags in Markdown source are stripped from rendered output."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('<script>alert("xss")</script>\n\n# Title')
+    sanitized = _sanitize_html(raw_html)
+    assert "<script>" not in sanitized
+    assert "</script>" not in sanitized
+    assert "<h1>Title</h1>" in sanitized
+
+
+def test_xss_event_handler_stripped(app):
+    """Event handlers like onclick are stripped from rendered HTML."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('<p onclick="alert(1)">test</p>')
+    sanitized = _sanitize_html(raw_html)
+    assert "onclick" not in sanitized
+    assert "<p>test</p>" in sanitized
+
+
+def test_xss_img_onerror_stripped(app):
+    """onerror handlers on img tags are stripped."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('<img src=x onerror="alert(1)">')
+    sanitized = _sanitize_html(raw_html)
+    assert "onerror" not in sanitized
+
+
+def test_xss_legitimate_html_preserved(app):
+    """Legitimate Markdown-generated HTML is preserved after sanitization."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    test_md = """# Title
+
+**bold** and *italic* and [a link](https://example.com).
+
+- list item 1
+- list item 2
+"""
+    raw_html = md.convert(test_md)
+    sanitized = _sanitize_html(raw_html)
+    assert "<h1>Title</h1>" in sanitized
+    assert "<strong>bold</strong>" in sanitized
+    assert "<em>italic</em>" in sanitized
+    assert '<a href="https://example.com">a link</a>' in sanitized
+    assert "<li>list item 1</li>" in sanitized
+
+
+def test_xss_svg_tag_stripped(app):
+    """SVG tags are stripped from rendered HTML."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('<svg onload="alert(1)"></svg>')
+    sanitized = _sanitize_html(raw_html)
+    assert "<svg" not in sanitized
+
+
+def test_xss_iframe_tag_stripped(app):
+    """iframe tags are stripped from rendered HTML."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('<iframe src="https://evil.com"></iframe>')
+    sanitized = _sanitize_html(raw_html)
+    assert "<iframe" not in sanitized
+
+
+def test_xss_javascript_url_stripped(app):
+    """javascript: URLs in href are stripped."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    raw_html = md.convert('[click me](javascript:alert(1))')
+    sanitized = _sanitize_html(raw_html)
+    assert "javascript:" not in sanitized
+
+
+def test_all_rendered_pages_are_sanitized(app):
+    """Every rendered page body has no script tags or event handlers."""
+    import re
+
+    from app.services.public_pages import load_all_pages
+
+    pages = load_all_pages()
+    with app.test_client() as client:
+        for page in pages:
+            rv = client.get(page.url)
+            html = rv.data.decode()
+            # Extract only the page body content (inside public-page-content)
+            body_match = re.search(
+                r'<article[^>]*class="[^"]*public-page-content[^"]*"[^>]*>(.*?)</article>',
+                html,
+                re.DOTALL,
+            )
+            if body_match is None:
+                # Fallback: check the whole page minus script/style blocks
+                body_html = html
+            else:
+                body_html = body_match.group(1)
+            assert "<script>" not in body_html.lower(), (
+                f"{page.url}: contains <script> tag in page body"
+            )
+            assert "onerror=" not in body_html.lower(), (
+                f"{page.url}: contains onerror handler in page body"
+            )
+            assert "onclick=" not in body_html.lower(), (
+                f"{page.url}: contains onclick handler in page body"
+            )
+            assert "onload=" not in body_html.lower(), (
+                f"{page.url}: contains onload handler in page body"
+            )
+
+
+def test_xss_markdown_code_blocks_preserved(app):
+    """Code blocks and inline code are preserved after sanitization."""
+    import markdown
+
+    from app.services.public_pages import _sanitize_html
+
+    md = markdown.Markdown(extensions=["extra"])
+    test_md = """# Title
+
+Some `inline code`.
+
+```
+code block
+```
+"""
+    raw_html = md.convert(test_md)
+    sanitized = _sanitize_html(raw_html)
+    assert "<code>inline code</code>" in sanitized
+    assert "code block" in sanitized
+
+
+# ── Sitemap homepage tests ─────────────────────────────────────────────────
+
+
+def test_sitemap_includes_homepage(app):
+    """/sitemap.xml includes the homepage URL."""
+    with app.test_client() as client:
+        rv = client.get("/sitemap.xml")
+        assert rv.status_code == 200
+        xml = rv.data.decode()
+        assert "<loc>https://entelim.org/</loc>" in xml, (
+            "sitemap.xml missing homepage URL"
+        )
+
+
+def test_sitemap_homepage_has_priority(app):
+    """/sitemap.xml homepage entry has priority 1.0."""
+    with app.test_client() as client:
+        rv = client.get("/sitemap.xml")
+        xml = rv.data.decode()
+        assert "<priority>1.0</priority>" in xml, (
+            "sitemap.xml homepage missing priority"
+        )
+
+
+def test_sitemap_still_includes_all_content_pages(app):
+    """/sitemap.xml still includes every content page after homepage addition."""
+    from app.services.public_pages import load_all_pages
+
+    pages = load_all_pages()
+    with app.test_client() as client:
+        rv = client.get("/sitemap.xml")
+        xml = rv.data.decode()
+        for page in pages:
+            assert page.url in xml, (
+                f"sitemap.xml missing content page URL {page.url}"
+            )
+
+
+def test_sitemap_xml_valid_with_homepage(app):
+    """/sitemap.xml is valid XML with homepage included."""
+    import xml.etree.ElementTree as ET
+
+    with app.test_client() as client:
+        rv = client.get("/sitemap.xml")
+        xml = rv.data.decode()
+        # Must parse as valid XML
+        try:
+            root = ET.fromstring(xml)
+        except ET.ParseError as e:
+            pytest.fail(f"sitemap.xml is not valid XML: {e}")
+        assert root.tag == "{http://www.sitemaps.org/schemas/sitemap/0.9}urlset"
+        urls = root.findall("{http://www.sitemaps.org/schemas/sitemap/0.9}url")
+        assert len(urls) > 0
+
+
+# ── Cross-organisation test for XSS sanitization ───────────────────────────
+
+
+def test_xss_sanitization_cross_org(app):
+    """Sanitized pages are safe regardless of which organisation's context."""
+    # Public pages are filesystem-based with no org context, but verify
+    # that no XSS vector can be introduced through any page.
+    from app.services.public_pages import load_all_pages
+
+    pages = load_all_pages()
+    with app.test_client() as client:
+        for page in pages:
+            rv = client.get(page.url)
+            html = rv.data.decode()
+            # No raw HTML event handlers anywhere
+            for handler in ["onerror", "onclick", "onload", "onmouseover",
+                          "onfocus", "onblur", "onsubmit"]:
+                assert f"{handler}=" not in html.lower(), (
+                    f"{page.url}: contains {handler} handler"
+                )

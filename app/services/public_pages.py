@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import bleach
 import markdown
 import yaml
 
@@ -40,6 +41,31 @@ FAMILY_URL_PREFIX = {
 }
 
 _md = markdown.Markdown(extensions=["extra"])
+
+# Tags and attributes produced by standard Markdown (plus extra extension).
+# Any HTML tag or attribute not in these lists is stripped by bleach.
+_ALLOWED_TAGS = {
+    "a", "abbr", "acronym", "b", "blockquote", "br", "code", "em",
+    "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i", "img", "li",
+    "ol", "p", "pre", "strong", "table", "tbody", "td", "th",
+    "thead", "tr", "ul",
+}
+_ALLOWED_ATTRS = {
+    "a": ["href", "title"],
+    "img": ["src", "alt", "title"],
+    "th": ["align"],
+    "td": ["align"],
+}
+
+
+def _sanitize_html(html: str) -> str:
+    """Strip unsafe HTML tags and attributes from rendered Markdown."""
+    return bleach.clean(
+        html,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRS,
+        strip=True,
+    )
 
 
 @dataclass
@@ -104,7 +130,7 @@ def _build_canonical(front_matter: dict[str, Any]) -> str | None:
 def _load_page(file_path: Path, family: str, slug: str, url: str) -> PublicPage:
     raw = file_path.read_text(encoding="utf-8")
     front_matter, body_md = _parse_front_matter(raw)
-    body_html = _md.reset().convert(body_md)
+    body_html = _sanitize_html(_md.reset().convert(body_md))
     title = _extract_title(body_html, front_matter)
     canonical = _build_canonical(front_matter)
     return PublicPage(
