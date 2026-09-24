@@ -41,6 +41,7 @@ NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
 RISK_LINK_UNRESOLVABLE_REASON = validate_reason_code("risk_link_unresolvable")
 NO_CAPABILITY_IN_CHAIN_REASON = validate_reason_code("no_capability_in_chain")
 NO_VENDOR_MAPPING_RECORDED_REASON = validate_reason_code("no_vendor_mapping_recorded")
+REVIEW_ITEM_NOT_VISIBLE_REASON = validate_reason_code("review_item_not_visible")
 NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
 NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
 NOT_COSTED_REASON = validate_reason_code("not_costed")
@@ -266,6 +267,14 @@ def _vendor_capability_predicate(model, organization_id: int):
     NULL``) is not this organisation's capability and never supplies vendor
     mappings. Its own seam so the cross-tenant mutation proof can replace
     exactly this function with the permissive predicate."""
+    return model.organization_id == organization_id
+
+
+def _review_tenant_predicate(model, organization_id: int):
+    """The explicit ``organization_id ==`` predicate on both review-board
+    selects (sessions and items), on top of the ORM tenant filter. Its own
+    seam so the cross-tenant mutation proof can replace exactly this function
+    with a no-op."""
     return model.organization_id == organization_id
 
 
@@ -871,6 +880,158 @@ class IntelligenceQueryService:
         return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
 
     @staticmethod
+    def _recorded_risk_blocks(
+        element_id: int, component_id: Optional[int], org_id: int
+    ) -> Dict[str, Any]:
+        """The three blocks ``risk_for_element`` carries beside its risks,
+        each as recorded and none of them scored, aggregated or defaulted."""
+        from app.models.architecture_review_board import (
+            ARB_OPEN_STATUSES,
+            ARBReviewItem,
+            ArchitectureReviewBoard,
+        )
+        from app.models.application_portfolio import ApplicationComponent
+        from app.models.unified_work_package import UnifiedWorkPackage
+
+        ratings_scale = "low-medium-high-critical"
+        if component_id is None:
+            recorded_ratings = {
+                "technical_risk": None,
+                "business_risk": None,
+                "vendor_risk": None,
+                "obsolescence_risk": None,
+                "scale": ratings_scale,
+                "reason": NO_APPLICATION_COMPONENT_REASON,
+                "truth_class": "authoritative_fact",
+            }
+        else:
+            row = db.session.execute(
+                db.select(
+                    ApplicationComponent.technical_risk,
+                    ApplicationComponent.business_risk,
+                    ApplicationComponent.vendor_risk,
+                    ApplicationComponent.obsolescence_risk,
+                ).where(
+                    ApplicationComponent.id == component_id,
+                    ApplicationComponent.organization_id == org_id,
+                )
+            ).first()
+            values = tuple(row) if row is not None else (None, None, None, None)
+            recorded_ratings = {
+                "technical_risk": values[0],
+                "business_risk": values[1],
+                "vendor_risk": values[2],
+                "obsolescence_risk": values[3],
+                "scale": ratings_scale,
+                "reason": NO_RISK_RECORDED_REASON if all(v is None for v in values) else None,
+                "truth_class": "authoritative_fact",
+            }
+
+        packages = db.session.execute(
+            db.select(
+                UnifiedWorkPackage.id,
+                UnifiedWorkPackage.name,
+                UnifiedWorkPackage.risk_level,
+                UnifiedWorkPackage.priority,
+                UnifiedWorkPackage.risk_mitigation,
+            )
+            .where(UnifiedWorkPackage.archimate_element_id == element_id)
+            .order_by(UnifiedWorkPackage.id)
+        ).all()
+        if packages:
+            work_package_risk = [
+                {
+                    "work_package_id": p.id,
+                    "name": p.name,
+                    "risk_level": p.risk_level,
+                    "priority": p.priority,
+                    "risk_mitigation": p.risk_mitigation,
+                    "risk_level_default_possible": True,
+                    "priority_default_possible": True,
+                }
+                for p in packages
+            ]
+            work_package_risk_reason = None
+        else:
+            work_package_risk = None
+            work_package_risk_reason = NO_WORK_PACKAGE_RECORDED_REASON
+
+        session_rows = db.session.execute(
+            db.select(
+                ArchitectureReviewBoard.id,
+                ArchitectureReviewBoard.name,
+                ArchitectureReviewBoard.impacted_element_ids,
+            )
+            .where(
+                _review_tenant_predicate(ArchitectureReviewBoard, org_id),
+                ArchitectureReviewBoard.impacted_element_ids.isnot(None),
+            )
+            .order_by(ArchitectureReviewBoard.id)
+        ).all()
+        wanted = {element_id, str(element_id)}
+        sessions = {
+            s.id: s.name
+            for s in session_rows
+            if isinstance(s.impacted_element_ids, list)
+            and any(candidate in wanted for candidate in s.impacted_element_ids)
+        }
+        if not sessions:
+            review_items = None
+            review_items_reason = REVIEW_ITEM_NOT_VISIBLE_REASON
+        else:
+            item_rows = db.session.execute(
+                db.select(
+                    ARBReviewItem.id,
+                    ARBReviewItem.review_number,
+                    ARBReviewItem.title,
+                    ARBReviewItem.review_type,
+                    ARBReviewItem.status,
+                    ARBReviewItem.arb_session_id,
+                    ARBReviewItem.compliance_score,
+                    ARBReviewItem.risk_score,
+                    ARBReviewItem.quality_score,
+                    ARBReviewItem.overall_score,
+                )
+                .where(
+                    ARBReviewItem.arb_session_id.in_(sorted(sessions)),
+                    _review_tenant_predicate(ARBReviewItem, org_id),
+                )
+                .order_by(ARBReviewItem.arb_session_id, ARBReviewItem.id)
+            ).all()
+
+            def _score(value):
+                return float(value) if value is not None else None
+
+            review_items = [
+                {
+                    "review_item_id": i.id,
+                    "review_number": i.review_number,
+                    "title": i.title,
+                    "review_type": i.review_type,
+                    "status": i.status,
+                    "is_open": (i.status in ARB_OPEN_STATUSES) if i.status is not None else None,
+                    "session_id": i.arb_session_id,
+                    "session_name": sessions.get(i.arb_session_id),
+                    "compliance_score": _score(i.compliance_score),
+                    "risk_score": _score(i.risk_score),
+                    "quality_score": _score(i.quality_score),
+                    "overall_score": _score(i.overall_score),
+                    "scale": "0-100",
+                    "basis": "recorded_by_review_board",
+                }
+                for i in item_rows
+            ]
+            review_items_reason = None
+
+        return {
+            "recorded_ratings": recorded_ratings,
+            "work_package_risk": work_package_risk,
+            "work_package_risk_reason": work_package_risk_reason,
+            "review_items": review_items,
+            "review_items_reason": review_items_reason,
+        }
+
+    @staticmethod
     def risk_for_element(
         element_id: int,
         *,
@@ -892,6 +1053,20 @@ class IntelligenceQueryService:
         ``application_link``); a risk that is both mirrored on the element
         and linked to its component is listed once, as ``element``. A linked
         risk seeds the same traversal from the same element.
+
+        Beside the risks, and entering no score, the answer carries three
+        blocks that describe the picked element whether or not a ``Risk`` row
+        exists: ``recorded_ratings`` (the four risk words recorded on the
+        application component the element resolves to), ``work_package_risk``
+        (the recorded ``risk_level``, ``priority`` and mitigation of every work
+        package seeded on the element; both words carry column defaults
+        (``medium``) on the model, flagged on each entry, passed through as
+        recorded), and ``review_items`` (every review item of every
+        architecture review session whose impacted-element list names the
+        element, with its four recorded 0-100 scores and its status; whether
+        an item is still open is recorded, filtering is the reader's choice).
+        Nothing is aggregated, ranked or defaulted. Reading the four words
+        costs one extra select when a component exists.
 
         Solution and programme links carry no ArchiMate mirror id, so they
         cannot be followed to an element. They are not dropped: the answer's
@@ -927,6 +1102,11 @@ class IntelligenceQueryService:
                         "by_element": None,
                         "reason": NO_TENANT_CONTEXT_REASON,
                     },
+                    "recorded_ratings": None,
+                    "work_package_risk": None,
+                    "work_package_risk_reason": NO_TENANT_CONTEXT_REASON,
+                    "review_items": None,
+                    "review_items_reason": NO_TENANT_CONTEXT_REASON,
                 }
 
             from app.models import ArchiMateElement
@@ -949,6 +1129,11 @@ class IntelligenceQueryService:
                         "by_element": None,
                         "reason": ELEMENT_NOT_FOUND_REASON,
                     },
+                    "recorded_ratings": None,
+                    "work_package_risk": None,
+                    "work_package_risk_reason": ELEMENT_NOT_FOUND_REASON,
+                    "review_items": None,
+                    "review_items_reason": ELEMENT_NOT_FOUND_REASON,
                 }
 
             direct_risks = (
@@ -1015,6 +1200,10 @@ class IntelligenceQueryService:
                 "reason": RISK_LINK_UNRESOLVABLE_REASON if unresolvable_types else None,
             }
 
+            element_blocks = IntelligenceQueryService._recorded_risk_blocks(
+                element_id, component_id, org_id
+            )
+
             seed_risks = [(risk, "element", None) for risk in direct_risks] + [
                 (risk, "application_link", link_id_by_risk[risk.id]) for risk in linked_risks
             ]
@@ -1029,6 +1218,7 @@ class IntelligenceQueryService:
                         "by_element": None,
                         "reason": NO_RISK_RECORDED_REASON,
                     },
+                    **element_blocks,
                 }
 
             all_elements: Dict[str, Dict[str, Any]] = {}
@@ -1091,6 +1281,7 @@ class IntelligenceQueryService:
             "elements": all_elements,
             "link_resolution": link_resolution,
             "vendor_concentration": vendor_concentration,
+            **element_blocks,
         }
 
     @staticmethod
