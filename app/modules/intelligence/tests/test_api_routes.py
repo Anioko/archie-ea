@@ -501,6 +501,89 @@ def test_risk_endpoint_cross_tenant_element_is_404_not_leak(
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
 
 
+def test_risk_endpoint_includes_control_gaps_and_compliance_tags_fields(
+    app, db_session, make_org, client, login_as
+):
+    """The risk endpoint response carries control_gaps, control_gaps_reason,
+    framework and compliance_tags keys even when no compliance data exists."""
+    org = make_org("risk-route-fields")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert "control_gaps" in data
+    assert "control_gaps_reason" in data
+    assert "framework" in data
+    assert "compliance_tags" in data
+    assert data["control_gaps"] is None
+    assert data["control_gaps_reason"] == "no_compliance_mapping_recorded"
+    assert data["framework"] is None
+    assert isinstance(data["compliance_tags"], dict)
+    assert data["compliance_tags"].get("reason") == "no_application_component"
+
+
+def test_risk_endpoint_invalid_framework_returns_400(
+    app, db_session, make_org, client, login_as
+):
+    """An unknown framework code returns 400, not 200 with an empty list."""
+    org = make_org("risk-route-bad-fw")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}?framework=nonexistent_code")
+    assert resp.status_code == 400
+    assert resp.get_json()["error"]["code"] == "INVALID_PARAMETER"
+
+
+def test_risk_endpoint_cross_tenant_control_gaps_not_leaked(
+    app, db_session, make_org, client, login_as
+):
+    """Control gaps from another organisation are never visible."""
+    from app.models.compliance_models import (
+        ComplianceGap,
+        ComplianceRequirement,
+        RegulatoryFramework,
+    )
+
+    org_a = make_org("risk-route-cg-tenant-a")
+    org_b = make_org("risk-route-cg-tenant-b")
+    user_b = _make_user(db_session, org_b)
+    a = _make_element(db_session, org_a.id, "A")
+    framework = RegulatoryFramework(code="soc2", name="SOC 2")
+    db_session.add(framework)
+    db_session.flush()
+    req = ComplianceRequirement(
+        archimate_element_id=a.id,
+        title="Tenant A requirement",
+        description="Should not leak",
+        requirement_type="regulatory",
+        framework_id=framework.id,
+    )
+    db_session.add(req)
+    db_session.flush()
+    gap = ComplianceGap(
+        compliance_requirement_id=req.id,
+        gap_type="missing_requirement",
+        title="Tenant A gap",
+        description="Should not leak",
+        risk_level="high",
+        status="open",
+    )
+    db_session.add(gap)
+    db_session.commit()
+
+    login_as(client, user_b)
+    resp = client.get(f"/api/v1/intelligence/risk/{a.id}")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
 # --- L3: GET /api/v1/intelligence/portfolio/<element_id> ----------------------
 
 
@@ -837,16 +920,15 @@ def test_accountability_endpoint_unknown_element_is_404(app, db_session, make_or
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
 
 
-def test_accountability_endpoint_returns_the_withdrawn_reason(
+def test_accountability_endpoint_element_with_no_ownership_returns_honest_empty(
     app, db_session, make_org, client, login_as
 ):
-    """The ownership read is withdrawn (a tenant-isolation gap found in
-    external review of the original PR, see
-    IntelligenceQueryService.accountability_for_element's docstring) --
-    every real element returns this honest reason, not owner data."""
+    """An element that resolves to an ApplicationComponent but has no
+    ownership rows returns an honest empty owners list with the
+    no_ownership_records reason."""
     from app.models.application_portfolio import ApplicationComponent
 
-    org = make_org("accountability-route-withdrawn")
+    org = make_org("accountability-route-empty")
     user = _make_user(db_session, org)
     a = _make_element(db_session, org.id, "A")
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
@@ -859,31 +941,29 @@ def test_accountability_endpoint_returns_the_withdrawn_reason(
     data = resp.get_json()["data"]
     assert data["owners"] == []
     assert data["capacity_not_available"] is True
-    assert "ownership_reader_not_built" in data["reasons"]
+    assert "no_ownership_records" in data["reasons"]
 
 
-def test_accountability_endpoint_never_returns_seeded_ownership_data(
+def test_accountability_endpoint_returns_owner_with_organization_unit(
     app, db_session, make_org, client, login_as
 ):
-    """The regression guard that matters: a real, well-formed ownership
-    graph exists -- exactly the shape the original (unsafe) implementation
-    would have served over HTTP, including the cross-tenant-leakable
-    organization_unit fields -- and the endpoint must still return nothing
-    from it."""
+    """A real, well-formed ownership graph with organization_id set on every
+    row returns the owner and unit data through the endpoint."""
     from app.models.application_portfolio import ApplicationComponent
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
-    org = make_org("accountability-route-guard")
+    org = make_org("accountability-route-owner")
     user = _make_user(db_session, org)
     a = _make_element(db_session, org.id, "A")
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Finance", unit_type="Department", head_of_unit="Pat Head")
+    unit = OrganizationUnit(name="Finance", unit_type="Department", head_of_unit="Pat Head", organization_id=org.id)
     db_session.add(unit)
     db_session.flush()
     ownership = ApplicationOwnership(
         application_id=component.id, organization_unit_id=unit.id,
+        organization_id=org.id,
         ownership_type="Business Owner", primary_contact="Jordan Owner",
     )
     db_session.add(ownership)
@@ -893,8 +973,11 @@ def test_accountability_endpoint_never_returns_seeded_ownership_data(
     resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
     assert resp.status_code == 200
     data = resp.get_json()["data"]
-    assert data["owners"] == []
-    assert data["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
+    assert data["capacity_not_available"] is True
+    assert len(data["owners"]) == 1
+    row = data["owners"][0]
+    assert row["ownership_type"] == "Business Owner"
+    assert row["organization_unit"]["name"] == "Finance"
 
 
 def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
@@ -910,11 +993,12 @@ def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
     component = ApplicationComponent(name="A App", organization_id=org_a.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Tenant A Finance", unit_type="Department")
+    unit = OrganizationUnit(name="Tenant A Finance", unit_type="Department", organization_id=org_a.id)
     db_session.add(unit)
     db_session.flush()
     db_session.add(ApplicationOwnership(
-        application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
+        application_id=component.id, organization_unit_id=unit.id,
+        organization_id=org_a.id, ownership_type="Business Owner",
     ))
     db_session.commit()
 

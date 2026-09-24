@@ -11,10 +11,8 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
-# the one T-005 addition, the Portfolio and Programme lenses' three
-# additions and the four T-S1 additions below (twenty-six total), exactly,
-# nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, plus the two T-004
+# additions below (eighteen total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -93,6 +91,15 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # Risk/control-gaps (2026-09-23) addition: Ask's Risk lens lists
+        # the compliance gap rows recorded against anything on the answer's
+        # own element set, beside the risks, and the resolved component's own
+        # recorded compliance tags. Most elements name no compliance
+        # requirement at all, and most components carry none of the three
+        # text columns that would evidence one -- an honest absence, the same
+        # discipline no_risk_recorded already applies to a different table on
+        # the same answer.
+        "no_compliance_mapping_recorded",
         # PR #107 defect remediation (2026-09-23): the L4 Accountability
         # lens's ownership read is withdrawn -- the original implementation
         # read ApplicationOwnership/OrganizationUnit directly with a real,
@@ -100,10 +107,7 @@ REASON_CODES = frozenset(
         # TenantMixin, no tenant predicate on the fetch), rather than reuse
         # the existing tenant-checked _resolve_owners_batch pattern. Every
         # accountability response carries this reason until a shared,
-        # tenant-safe reader exists -- see
-        # IntelligenceQueryService.accountability_for_element's docstring.
-        # Distinct from a "decision pending" state: the data source is
-        # already decided, only the safe reader is missing.
+        # tenant-safe reader exists.
         "ownership_reader_not_built",
         # T-S1 (value streams at risk, curated path) additions: absence
         # conditions the original vocabulary has no member for. T-S1 emits

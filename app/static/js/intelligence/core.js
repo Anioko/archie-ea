@@ -208,13 +208,9 @@
         return (payload.initiatives || []).map(initiativeModel);
     }
 
-    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
-       server-side (see IntelligenceQueryService.accountability_for_element's
-       docstring) -- every response carries ownership_reader_not_built and
-       capacity_not_available regardless of element_id, no owners array
-       ever populated. No max_depth/include_derived -- this lens is a pure
-       ownership lookup, not a blast-radius traversal, unlike every other
-       lens. */
+    /* L4: owners of the element's ApplicationComponent. No max_depth/
+       include_derived -- this lens is a pure ownership lookup, not a
+       blast-radius traversal, unlike every other lens. */
     function fetchAccountability(elementId) {
         return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
             return resp && resp.data ? resp.data : {};
