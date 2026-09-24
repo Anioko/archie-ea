@@ -6,9 +6,10 @@ from datetime import datetime
 from typing import Dict
 
 from app.extensions import db
+from app.models.mixins.core import TenantMixin
 
 
-class WebhookSubscription(db.Model):
+class WebhookSubscription(TenantMixin, db.Model):
     """Webhook subscription model"""
 
     __tablename__ = "webhook_subscriptions"
@@ -50,7 +51,7 @@ class WebhookSubscription(db.Model):
         }
 
 
-class WebhookEvent(db.Model):
+class WebhookEvent(TenantMixin, db.Model):
     """Webhook event model"""
 
     __tablename__ = "webhook_events"
@@ -79,7 +80,7 @@ class WebhookEvent(db.Model):
         }
 
 
-class WebhookDelivery(db.Model):
+class WebhookDelivery(TenantMixin, db.Model):
     """Webhook delivery attempt model"""
 
     __tablename__ = "webhook_deliveries"

@@ -1271,6 +1271,103 @@ def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, ad
     added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
 
 
+def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for webhook rows that predate TenantMixin.
+
+    WebhookSubscription carries a user_id; the user's own organization_id is
+    the only trustworthy tenant provenance.  Rows whose user no longer exists
+    are reported and left untouched.
+    """
+    from sqlalchemy import inspect, text
+
+    for tbl in ("webhook_subscriptions", "webhook_events", "webhook_deliveries"):
+        if tbl not in existing_tables:
+            continue
+        live_columns = {c["name"] for c in inspect(db.engine).get_columns(tbl)}
+        if "organization_id" not in live_columns:
+            continue
+
+        before = db.session.scalar(
+            text(f"SELECT count(*) FROM {tbl} WHERE organization_id IS NULL")
+        )
+        if not before:
+            continue
+
+        if tbl == "webhook_subscriptions":
+            eligible = db.session.scalar(
+                text(
+                    "SELECT count(*) FROM webhook_subscriptions ws "
+                    "JOIN users u ON u.id::varchar = ws.user_id "
+                    "WHERE ws.organization_id IS NULL AND u.organization_id IS NOT NULL"
+                )
+            )
+            unresolved = before - eligible
+            if not dry_run and eligible:
+                result = db.session.execute(
+                    text(
+                        "UPDATE webhook_subscriptions AS ws "
+                        "SET organization_id = u.organization_id "
+                        "FROM users AS u "
+                        "WHERE u.id::varchar = ws.user_id "
+                        "AND ws.organization_id IS NULL "
+                        "AND u.organization_id IS NOT NULL"
+                    )
+                )
+                eligible = result.rowcount
+                db.session.commit()
+            added.append(
+                f"backfill.{tbl}.organization_id "
+                f":: before={before}, updated={eligible}, unresolved={unresolved}"
+            )
+            if unresolved:
+                failed.append(
+                    f"backfill.{tbl}.organization_id: "
+                    f"{unresolved} unresolved row(s); no user tenant provenance"
+                )
+        elif tbl == "webhook_events":
+            # WebhookEvent rows without a subscription have no tenant provenance
+            # to recover; report and leave untouched.
+            added.append(
+                f"backfill.{tbl}.organization_id "
+                f":: before={before}, updated=0, unresolved={before}"
+            )
+            failed.append(
+                f"backfill.{tbl}.organization_id: "
+                f"{before} unresolved row(s); no subscription tenant provenance"
+            )
+        elif tbl == "webhook_deliveries":
+            eligible = db.session.scalar(
+                text(
+                    "SELECT count(*) FROM webhook_deliveries wd "
+                    "JOIN webhook_subscriptions ws ON ws.id = wd.subscription_id "
+                    "WHERE wd.organization_id IS NULL AND ws.organization_id IS NOT NULL"
+                )
+            )
+            unresolved = before - eligible
+            if not dry_run and eligible:
+                result = db.session.execute(
+                    text(
+                        "UPDATE webhook_deliveries AS wd "
+                        "SET organization_id = ws.organization_id "
+                        "FROM webhook_subscriptions AS ws "
+                        "WHERE ws.id = wd.subscription_id "
+                        "AND wd.organization_id IS NULL "
+                        "AND ws.organization_id IS NOT NULL"
+                    )
+                )
+                eligible = result.rowcount
+                db.session.commit()
+            added.append(
+                f"backfill.{tbl}.organization_id "
+                f":: before={before}, updated={eligible}, unresolved={unresolved}"
+            )
+            if unresolved:
+                failed.append(
+                    f"backfill.{tbl}.organization_id: "
+                    f"{unresolved} unresolved row(s); no subscription tenant provenance"
+                )
+
+
 def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, failed):
     """Recover the tenant key for DocumentChunkEmbedding rows that predate
     TenantMixin, via document_id -> ai_chat_document_uploads (already scoped).
@@ -1570,6 +1667,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_document_chunk_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_webhook_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,

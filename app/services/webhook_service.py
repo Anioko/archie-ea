@@ -372,6 +372,7 @@ class WebhookService:
             payload=formatted_payload,
             status="pending",
             attempt_count=0,
+            organization_id=subscription.organization_id,
             created_at=datetime.utcnow(),
         )
 
@@ -457,12 +458,16 @@ class WebhookService:
 
     def process_incoming_webhook(self, subscription_id: str, payload: Dict, headers: Dict) -> Dict:
         """Process an incoming webhook from external services"""
+        subscription = self.get_subscription_by_id(subscription_id)
+        org_id = subscription.organization_id if subscription else None
+
         # Store the incoming webhook event
         event = WebhookEvent(
             id=str(uuid.uuid4()),
             event_type="webhook.incoming",
             payload={"subscription_id": subscription_id, "payload": payload, "headers": headers},
             user_id=None,  # External webhook
+            organization_id=org_id,
             event_metadata={"incoming": True},
             created_at=datetime.utcnow(),
         )
