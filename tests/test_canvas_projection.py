@@ -661,10 +661,16 @@ class TestCrossTenantRisks:
         _relationship(db_session, org_b.id, vp_b, vp_a, type_="serving")
         db_session.commit()
 
-        real_read = bmc_service._read_canvas_risks
+        real_read_risks = bmc_service._read_canvas_risks
+        real_read_rels = bmc_service._read_relationships_by_source_ids
         monkeypatch.setattr(
             bmc_service, "_read_canvas_risks",
-            lambda organization_id: real_read(org_b.id) + real_read(organization_id),
+            lambda organization_id: real_read_risks(org_b.id) + real_read_risks(organization_id),
+        )
+        monkeypatch.setattr(
+            bmc_service, "_read_relationships_by_source_ids",
+            lambda organization_id, source_ids: real_read_rels(org_b.id, source_ids)
+            + real_read_rels(organization_id, source_ids),
         )
 
         payload = _project_without_ambient_tenant(app, "lean_canvas", canvas, org_a.id)

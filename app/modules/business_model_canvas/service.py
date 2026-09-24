@@ -246,6 +246,27 @@ def _read_zone_relationships(organization_id, rel_types):
     )
 
 
+def _read_relationships_by_source_ids(organization_id, source_ids):
+    """Relationships whose source is one of *source_ids*, tenant-scoped —
+    the same explicit-predicate pattern as every other read seam here, so a
+    mutation-proof test can monkeypatch exactly this to drop the predicate
+    and confirm the matching cross-tenant test goes red."""
+    if not source_ids:
+        return []
+    from app.models.archimate_core import ArchiMateRelationship
+
+    return (
+        db.session.execute(
+            db.select(ArchiMateRelationship).where(
+                ArchiMateRelationship.organization_id == organization_id,
+                ArchiMateRelationship.source_id.in_(sorted(source_ids)),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 def _read_canvas_risks(organization_id):
     from app.models.risk import Risk
 
@@ -328,12 +349,14 @@ def project_canvas(template_key, record, *, organization_id):
 
         risk_id_by_element = {}
         high_risk_elements = set()
+        blast_seeds = []
         for risk in _read_canvas_risks(organization_id):
             risk_id_by_element[risk.archimate_element_id] = risk.id
             if risk.risk_level not in ("high", "critical"):
                 continue
             high_risk_elements.add(risk.archimate_element_id)
-            high_risk_elements |= _risk_blast_targets(risk.archimate_element_id, organization_id)
+            blast_seeds.append(risk.archimate_element_id)
+        high_risk_elements |= _risk_blast_targets(blast_seeds, organization_id)
 
         # Two passes: attribute/composed zones read OTHER zones' entries
         # (revenue_streams reads value_propositions' entries; cost_structure
@@ -402,31 +425,22 @@ def project_canvas(template_key, record, *, organization_id):
     }
 
 
-def _risk_blast_targets(risk_element_id, organization_id):
-    """The elements an explicit relationship reaches, one hop out from a
-    risk's mirror element — the Risk lens's own read
-    (``IntelligenceQueryService.risk_for_element``), imported and reused,
-    never a second traversal.
+def _risk_blast_targets(risk_element_ids, organization_id):
+    """The elements an explicit relationship reaches, one hop out from every
+    high-risk element — batched into a single relationship read over all the
+    ids at once, instead of calling ``risk_for_element`` per id.
 
     *organization_id* is the caller's already-resolved tenant, passed down
     explicitly rather than left for ``risk_for_element`` to re-read from
     ``g`` — this read can run inside a projection that itself was handed an
     explicit organisation_id, and a second, independent ``g`` read has no
     reason to agree with it in every calling context."""
-    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    if not risk_element_ids:
+        return set()
 
-    blast = IntelligenceQueryService.risk_for_element(
-        risk_element_id, max_depth=1, include_derived=False,
-        organization_id=organization_id,
-    )
     targets = set()
-    for payload in blast.get("risks", []):
-        if payload.get("risk_level") not in ("high", "critical"):
-            continue
-        for affected in payload.get("affected_rows", []):
-            element_id = affected.get("element_id")
-            if element_id is not None:
-                targets.add(element_id)
+    for rel in _read_relationships_by_source_ids(organization_id, risk_element_ids):
+        targets.add(rel.target_id)
     return targets
 
 
