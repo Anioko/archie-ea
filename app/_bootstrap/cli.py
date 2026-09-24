@@ -399,6 +399,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")
 
+    try:
+        from app.commands.purge_copilot_insights import init_app as init_purge_copilot_insights
+        init_purge_copilot_insights(app)
+        app.logger.info("Copilot insights purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:
         from app.commands import seed_strategic_demo
