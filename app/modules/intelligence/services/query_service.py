@@ -56,6 +56,8 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # Distinct from a "decision pending" state -- the ownership data source IS
 # decided; what doesn't exist yet is a shared, tenant-safe reader for it.
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
+NO_CAPABILITY_IN_CHAIN_REASON = validate_reason_code("no_capability_in_chain")
+NO_RACI_RECORDED_REASON = validate_reason_code("no_raci_recorded")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1146,6 +1148,18 @@ class IntelligenceQueryService:
         return {"initiatives": initiative_payloads, "reasons": [], "elements": all_elements}
 
     @staticmethod
+    def _raci_tenant_predicate(model, organization_id: int):
+        """The explicit ``organization_id ==`` predicate on both RACI selects.
+
+        For ``UnifiedCapability`` this is the strict predicate: a shared
+        reference-catalogue row (``organization_id IS NULL``) is not this
+        organisation's capability and must never supply rows. Kept as its own
+        seam so the cross-tenant mutation proof can replace exactly this one
+        function with a no-op and confirm the named test goes red.
+        """
+        return model.organization_id == organization_id
+
+    @staticmethod
     def accountability_for_element(element_id: int) -> Dict[str, Any]:
         """L4, "who's accountable for ___, and can they take on more?":
         WITHDRAWN -- the ownership data source is decided, but no shared,
@@ -1178,16 +1192,120 @@ class IntelligenceQueryService:
         one. The route, question card and tests stay in place so the lens
         is easy to re-enable once a shared, tenant-safe reader exists;
         only the query itself is disabled.
+
+        What is answered instead, for a ``Capability`` element only: who is
+        recorded against the capability that mirrors it, from the
+        organisation's ``EnterpriseRaciAssignment`` rows -- a different table
+        with its own tenant column, not the ownership tables above, and never
+        presented as an application owner. The answer then carries a ``raci``
+        block; for every other element type, and when there is no tenant
+        context or the element is not found, the answer is exactly the
+        withdrawn one and carries no ``raci`` key (not applicable is not an
+        absence).
+
+        The ``raci`` block has exactly six keys: ``capability_id``, ``rows``,
+        ``accountable_count``, ``no_accountable``, ``reason`` and ``source``.
+        Each row is as recorded (assignment id, stakeholder type, id and
+        label, and the RACI letter); a null letter is carried as null and does
+        not count as ``A``. A capability with rows but no ``A`` is a listed
+        absence (``no_accountable`` true), not a defect and not a score. The
+        stakeholder label is the recorded one; nothing is resolved to a person
+        or role row.
         """
-        # No record_query_latency wrapper -- there is no query to time, and
-        # sampling a constant into the NFR-5 latency series would only
-        # dilute it with meaningless near-zero readings.
-        del element_id  # withdrawn; kept for a stable call signature
-        return {
+        # No record_query_latency wrapper -- the withdrawn answer has no
+        # query to time, and sampling a constant into the NFR-5 latency series
+        # would only dilute it with meaningless near-zero readings.
+        answer: Dict[str, Any] = {
             "owners": [],
             "capacity_not_available": True,
             "reasons": [OWNERSHIP_READER_NOT_BUILT_REASON, CAPACITY_NOT_AVAILABLE_REASON],
         }
+
+        org_id = current_org_id()
+        if org_id is None:
+            return answer
+
+        from app.models import ArchiMateElement
+
+        element = db.session.execute(
+            db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+        ).scalar_one_or_none()
+        if element is None or (element.type or "") != "Capability":
+            return answer
+
+        from app.models.organization_model import EnterpriseRaciAssignment
+        from app.models.unified_capability import UnifiedCapability
+
+        capability_id = db.session.execute(
+            db.select(UnifiedCapability.id)
+            .where(
+                UnifiedCapability.archimate_element_id == element_id,
+                IntelligenceQueryService._raci_tenant_predicate(UnifiedCapability, org_id),
+            )
+            .order_by(UnifiedCapability.id)
+        ).scalars().first()
+
+        if capability_id is None:
+            answer["raci"] = {
+                "capability_id": None,
+                "rows": None,
+                "accountable_count": None,
+                "no_accountable": None,
+                "reason": NO_CAPABILITY_IN_CHAIN_REASON,
+                "source": "enterprise_raci_assignments",
+            }
+            return answer
+
+        raci_rows = db.session.execute(
+            db.select(
+                EnterpriseRaciAssignment.id,
+                EnterpriseRaciAssignment.stakeholder_type,
+                EnterpriseRaciAssignment.stakeholder_id,
+                EnterpriseRaciAssignment.stakeholder_name,
+                EnterpriseRaciAssignment.raci,
+            )
+            .where(
+                EnterpriseRaciAssignment.capability_id == capability_id,
+                IntelligenceQueryService._raci_tenant_predicate(EnterpriseRaciAssignment, org_id),
+            )
+            .order_by(
+                EnterpriseRaciAssignment.raci,
+                EnterpriseRaciAssignment.stakeholder_name,
+                EnterpriseRaciAssignment.id,
+            )
+        ).all()
+
+        if not raci_rows:
+            answer["raci"] = {
+                "capability_id": capability_id,
+                "rows": None,
+                "accountable_count": None,
+                "no_accountable": None,
+                "reason": NO_RACI_RECORDED_REASON,
+                "source": "enterprise_raci_assignments",
+            }
+            return answer
+
+        entries = [
+            {
+                "assignment_id": row.id,
+                "stakeholder_type": row.stakeholder_type,
+                "stakeholder_id": row.stakeholder_id,
+                "stakeholder_name": row.stakeholder_name,
+                "raci": row.raci,
+            }
+            for row in raci_rows
+        ]
+        accountable_count = sum(1 for entry in entries if entry["raci"] == "A")
+        answer["raci"] = {
+            "capability_id": capability_id,
+            "rows": entries,
+            "accountable_count": accountable_count,
+            "no_accountable": accountable_count == 0,
+            "reason": None,
+            "source": "enterprise_raci_assignments",
+        }
+        return answer
 
     # ------------------------------------------------------------------ #
     # T-S1: value streams at risk -- the curated path (DA-S1). Helpers are

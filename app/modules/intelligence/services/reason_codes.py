@@ -116,6 +116,11 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Accountability answer for a capability: no capability of this
+        # organisation mirrors the element, and a capability with no RACI
+        # assignment recorded against it.
+        "no_capability_in_chain",
+        "no_raci_recorded",
     }
 )
 
