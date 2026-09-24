@@ -47,7 +47,8 @@ def _resolve_bearer_token() -> OAuthToken | None:
         return None
     if not token.is_active:
         return None
-    # Update last_used_at
+    # Update last_used_at — an intentional write for token usage tracking
+    # so that idle tokens can be identified and revoked.
     token.last_used_at = datetime.now(timezone.utc)
     from app.extensions import db
     db.session.flush()
@@ -57,8 +58,11 @@ def _resolve_bearer_token() -> OAuthToken | None:
 def _authenticate_request() -> bool:
     """Authenticate the current request via Bearer token.
 
-    Sets flask_login's current_user from the token's user. Returns True
-    if authentication succeeded.
+    Sets flask_login's current_user from the token's user. Also sets
+    g.current_org_id and the database tenant context, because the
+    before_request handler runs before this view function and cannot
+    see the yet-to-be-authenticated user. Returns True if authentication
+    succeeded.
     """
     token = _resolve_bearer_token()
     if token is None:
@@ -73,6 +77,16 @@ def _authenticate_request() -> bool:
     # Set up the request context exactly as a session-cookie request would
     from flask_login import login_user
     login_user(user)
+
+    # Re-establish tenant context now that current_user is set.
+    # The before_request handler ran before authentication and left
+    # g.current_org_id = None; we must set it here so that metering
+    # and tenant isolation work correctly for the remainder of the request.
+    if hasattr(user, "organization_id"):
+        g.current_org_id = user.organization_id
+        g.current_org = getattr(user, "organization", None)
+        from app.middleware.tenant_isolation import set_database_tenant_context
+        set_database_tenant_context(db.session.connection(), g.current_org_id)
 
     return True
 

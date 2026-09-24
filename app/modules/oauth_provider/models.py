@@ -68,9 +68,11 @@ class OAuthAuthorizationCode(db.Model):
 
         Returns the code payload if found and not expired, or None.
         The code is deleted in the same transaction so it cannot be reused.
+        Uses SELECT ... FOR UPDATE to prevent concurrent redemption of the
+        same code.
         """
         now = datetime.now(timezone.utc)
-        auth_code = cls.query.filter_by(code=code).first()
+        auth_code = cls.query.filter_by(code=code).with_for_update().first()
         if auth_code is None:
             return None
         if auth_code.expires_at.tzinfo is None:
@@ -134,7 +136,8 @@ class OAuthClient(db.Model):
 class OAuthToken(db.Model):
     """An issued access token (and optional refresh token).
 
-    Resolves to a ``User`` through the ``flask-login`` ``request_loader`` seam.
+    Resolves to a ``User`` through the MCP blueprint's ``_authenticate_request``,
+    which calls ``login_user()`` to set ``flask-login``'s ``current_user``.
     Scoped to the MCP mount; not a general API key.
     """
 

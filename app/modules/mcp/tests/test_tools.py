@@ -145,8 +145,8 @@ class TestMCPInitialize:
         resp = client.post("/mcp", data=json.dumps(payload), content_type="application/json")
         assert resp.status_code == 401
 
-    def test_tools_list_returns_nine_tools(self, client, db_session, make_org, login_as):
-        """tools/list returns exactly the nine read-only tools."""
+    def test_tools_list_returns_ten_tools(self, client, db_session, make_org, login_as):
+        """tools/list returns exactly the ten read-only tools."""
         org = make_org("mcp")
         user = _make_user(db_session, org, "mcp-list@example.com")
         token = _mint_oauth_token(client, db_session, org, user, login_as)
@@ -401,6 +401,29 @@ class TestCanvasTools:
         assert mcp_result["error"]["code"] == "NOT_FOUND"
 
 
+class TestMeteringAndTenantContext:
+    """Metering records carry the correct organization_id after Bearer auth."""
+
+    def test_mcp_tool_call_metering_has_correct_org_id(self, client, db_session, make_org, login_as):
+        """After a Bearer-token MCP tool call, the UsageEvent has the correct org_id."""
+        org = make_org("mcp-meter")
+        user = _make_user(db_session, org, "mcp-meter@example.com")
+        element = _make_element(db_session, org.id, "meter-test")
+
+        token = _mint_oauth_token(client, db_session, org, user, login_as)
+        _mcp_call(client, token, "ask_impact", {"element_id": element.id})
+
+        from app.models.usage_event import UsageEvent
+        events = UsageEvent.query.filter_by(
+            event_type="mcp_tool_call",
+            resource_type="ask_impact",
+        ).all()
+        assert len(events) >= 1, "Expected at least one metering event"
+        for event in events:
+            assert event.organization_id == org.id, \
+                f"UsageEvent org_id={event.organization_id}, expected {org.id}"
+
+
 class TestStaticChecks:
     """Static assertions about the MCP module."""
 
@@ -482,3 +505,10 @@ class TestStaticChecks:
                 for forbidden_name in forbidden:
                     assert forbidden_name not in source, \
                         f"{os.path.relpath(filepath)} references {forbidden_name}"
+
+    def test_usage_event_model_has_mcp_tool_call_constant(self):
+        """UsageEvent.EVENT_MCP_TOOL_CALL is defined and equals 'mcp_tool_call'."""
+        from app.models.usage_event import UsageEvent
+        assert hasattr(UsageEvent, "EVENT_MCP_TOOL_CALL"), \
+            "UsageEvent missing EVENT_MCP_TOOL_CALL constant"
+        assert UsageEvent.EVENT_MCP_TOOL_CALL == "mcp_tool_call"

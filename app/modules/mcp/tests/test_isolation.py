@@ -221,3 +221,47 @@ class TestCrossTenantIsolation:
         mcp_result = json.loads(mcp_resp["result"]["content"][0]["text"])
         assert "error" in mcp_result
         assert "not found" in str(mcp_result).lower()
+
+    def test_cross_tenant_metering_isolation(self, client, db_session, make_org, login_as):
+        """Metering records are scoped to the correct organisation."""
+        org_a = make_org("iso-a")
+        org_b = make_org("iso-b")
+
+        user_a = _make_user(db_session, org_a, "iso-meter-a@example.com")
+        user_b = _make_user(db_session, org_b, "iso-meter-b@example.com")
+
+        element_a = _make_element(db_session, org_a.id, "meter-a")
+        element_b = _make_element(db_session, org_b.id, "meter-b")
+
+        token_a = _mint_oauth_token(client, db_session, org_a, user_a, login_as)
+        token_b = _mint_oauth_token(client, db_session, org_b, user_b, login_as)
+
+        # Both orgs make tool calls
+        _mcp_call(client, token_a, "ask_impact", {"element_id": element_a.id})
+        _mcp_call(client, token_b, "ask_impact", {"element_id": element_b.id})
+
+        from app.models.usage_event import UsageEvent
+
+        # Org A's metering events all belong to org A
+        events_a = UsageEvent.query.filter_by(
+            event_type="mcp_tool_call",
+            organization_id=org_a.id,
+        ).all()
+        assert len(events_a) >= 1
+        for event in events_a:
+            assert event.organization_id == org_a.id
+
+        # Org B's metering events all belong to org B
+        events_b = UsageEvent.query.filter_by(
+            event_type="mcp_tool_call",
+            organization_id=org_b.id,
+        ).all()
+        assert len(events_b) >= 1
+        for event in events_b:
+            assert event.organization_id == org_b.id
+
+        # No cross-contamination
+        for event in events_a:
+            assert event.organization_id != org_b.id
+        for event in events_b:
+            assert event.organization_id != org_a.id
