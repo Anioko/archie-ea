@@ -305,6 +305,52 @@ class AccountService:
             )
 
     @staticmethod
+    def accept_invitation(user, invitation_id):
+        """Accept a pending invitation for the current user.
+
+        Returns (success: bool, message: str). On success, creates the
+        OrgRole row and removes the pending invitation.
+        """
+        from app.models.pending_invitation import PendingInvitation
+
+        # tenant-scoping-ok: gated by user_id check below — only the
+        # invitation owner can accept their own invitations.
+        invitation = PendingInvitation.query.get(invitation_id)
+        if invitation is None:
+            return False, "Invitation not found."
+        if invitation.user_id != user.id:
+            return False, "This invitation is not for you."
+        OrgRole.set_role(
+            invitation.organization_id,
+            user.id,
+            invitation.role,
+            granted_by_id=invitation.invited_by,
+        )
+        db.session.delete(invitation)
+        db.session.commit()
+        return True, "Invitation accepted."
+
+    @staticmethod
+    def decline_invitation(user, invitation_id):
+        """Decline a pending invitation for the current user.
+
+        Returns (success: bool, message: str). On success, removes the
+        pending invitation without granting any role.
+        """
+        from app.models.pending_invitation import PendingInvitation
+
+        # tenant-scoping-ok: gated by user_id check below — only the
+        # invitation owner can decline their own invitations.
+        invitation = PendingInvitation.query.get(invitation_id)
+        if invitation is None:
+            return False, "Invitation not found."
+        if invitation.user_id != user.id:
+            return False, "This invitation is not for you."
+        db.session.delete(invitation)
+        db.session.commit()
+        return True, "Invitation declined."
+
+    @staticmethod
     def set_password(user, password):
         """Set a user's password (for join-from-invite flow)."""
         user.password = password
