@@ -1,0 +1,32 @@
+{# Shared shell for the "Tell us more" hub and its five sections
+   (onboarding-redesign-v3 §3). Deliberately not `_wizard_shell.html`: that
+   shell's progress bar is hard-coded to the five *numbered* onboarding
+   screens (1-5); Tell us more sits outside that numbering, is reachable from
+   several places (Screen 4, Screen 5, the dashboard), and its five sections
+   can be done in any order, skipped, or resumed later — a fixed 1-5 step
+   count would misrepresent that. Same card chrome as the wizard shell for
+   visual consistency. #}
+{% extends 'layouts/base.html' %}
+
+{% block title %}{{ page_title | default('Tell us more') }} — A.R.C.H.I.E.{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/bundles/core-admin.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="min-h-screen flex flex-col items-center justify-center bg-background px-4 py-10">
+    <div class="w-full max-w-2xl">
+        <div class="mb-4">
+            <a href="{{ back_href | default(url_for('onboarding.gaps')) }}"
+               class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+                <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+                {{ back_label | default('Back') }}
+            </a>
+        </div>
+        <div class="bg-card rounded-2xl border border-border shadow-lg overflow-hidden">
+            {% block tell_us_more_content %}{% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
