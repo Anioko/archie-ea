@@ -571,6 +571,11 @@ def risk_for_element(element_id: int):
             "elements": result.get("elements") or {},
             "link_resolution": result.get("link_resolution") or {},
             "vendor_concentration": vendor_concentration,
+            "recorded_ratings": result.get("recorded_ratings"),
+            "work_package_risk": result.get("work_package_risk"),
+            "work_package_risk_reason": result.get("work_package_risk_reason"),
+            "review_items": result.get("review_items"),
+            "review_items_reason": result.get("review_items_reason"),
         }
     )
 
