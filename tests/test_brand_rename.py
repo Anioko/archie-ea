@@ -115,3 +115,16 @@ def test_onboarding_descriptions_use_app_name():
     assert "current_app.config['APP_NAME']" in text
     assert '"Bring your application portfolio into Entelim."' not in text
     assert "\"Bring in the colleagues who'll use Entelim with you.\"" not in text
+
+
+def test_download_filenames_use_entelim_prefix():
+    """User-visible download filenames must not carry the old archie prefix."""
+    ai_chat_js = APP_DIR / "static" / "js" / "ai_chat" / "app.js"
+    text = ai_chat_js.read_text(encoding="utf-8")
+    assert "archie-chat-" not in text
+    assert "entelim-chat-" in text
+
+    workflows_html = APP_DIR / "templates" / "ea_workflows" / "instance_detail.html"
+    text = workflows_html.read_text(encoding="utf-8")
+    assert "archie-review-" not in text
+    assert "entelim-review-" in text

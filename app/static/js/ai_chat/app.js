@@ -1162,7 +1162,7 @@ Would you like me to provide more details about the extracted elements or help y
         let url = URL.createObjectURL(blob);
         let a = document.createElement('a');
         a.href = url;
-        a.download = 'archie-chat-' + new Date().toISOString().slice(0, 10) + '.md';
+        a.download = 'entelim-chat-' + new Date().toISOString().slice(0, 10) + '.md';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
