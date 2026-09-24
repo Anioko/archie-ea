@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_DIR = ROOT / "app"
 
 STANDALONE_ARCHI = re.compile(r"(?<![A-Za-z])Archi(?![A-Za-z])")
+STANDALONE_ARCHIE = re.compile(r"(?<![A-Za-z])Archie(?![A-Za-z])")
 
 
 def test_app_name_defaults_to_entelim():
@@ -138,6 +139,9 @@ _ROOT_DOCS = {
     "CITATION.cff": ROOT / "CITATION.cff",
     "llms.txt": ROOT / "llms.txt",
     "package.json": ROOT / "package.json",
+    "CONTRIBUTING.md": ROOT / "CONTRIBUTING.md",
+    "COMMERCIAL-LICENSE.md": ROOT / "COMMERCIAL-LICENSE.md",
+    "CLAUDE.md": ROOT / "CLAUDE.md",
 }
 
 
@@ -155,11 +159,13 @@ def test_no_archie_word_in_root_docs():
 
     'Archi' without the trailing 'e' is the external Archi desktop tool
     (archimatetool.com) and is a legitimate reference, not the old brand.
+    'Archiet' is a separate product (spec-driven code generation) and is
+    also legitimate.
     """
     offenders = []
     for name, path in _ROOT_DOCS.items():
         text = path.read_text(encoding="utf-8")
-        if "Archie" in text:
+        if STANDALONE_ARCHIE.search(text):
             offenders.append(name)
     assert offenders == [], f"'Archie' still present in root docs: {offenders}"
 
