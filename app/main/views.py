@@ -115,6 +115,10 @@ def sitemap_xml():
     pages = load_all_pages()
     base_url = "https://entelim.org"
     urls = []
+    # Homepage is not a content page but is the most important URL
+    urls.append(
+        f"  <url><loc>{base_url}/</loc><priority>1.0</priority></url>"
+    )
     for p in pages:
         urls.append(
             f"  <url><loc>{base_url}{p.url}</loc></url>"
