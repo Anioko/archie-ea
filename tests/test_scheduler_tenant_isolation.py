@@ -408,10 +408,10 @@ def test_proactive_analysis_tenant_scoped_generator(app, db_session, make_org):
         (ins.title or "") + " " + (ins.body or "") + " " + (ins.suggested_query or "")
         for ins in insights
     )
-    assert f"Payroll beta-{tag}" in combined, (
+    assert sol_a_beta.name in combined, (
         f"positive control: insight must name org A's other solution; got: {combined}"
     )
-    assert f"Payroll gamma-{tag}" not in combined, (
+    assert sol_b_gamma.name not in combined, (
         f"TENANT LEAK: insight names org B's solution; got: {combined}"
     )
 
@@ -428,7 +428,7 @@ def test_proactive_analysis_service_alone_no_tenant_context(app, db_session, mak
     db_session.commit()
 
     sol_a_alpha = _make_solution(db_session, org_a.id, f"Payroll alpha-{tag}")
-    sol_a_beta = _make_solution(db_session, org_a.id, f"Payroll beta-{tag}")
+    _make_solution(db_session, org_a.id, f"Payroll beta-{tag}")
     sol_b_gamma = _make_solution(db_session, org_b.id, f"Payroll gamma-{tag}")
     db_session.commit()
 
@@ -441,7 +441,7 @@ def test_proactive_analysis_service_alone_no_tenant_context(app, db_session, mak
         (ins.title or "") + " " + (ins.body or "") + " " + (ins.suggested_query or "")
         for ins in insights
     )
-    assert f"Payroll gamma-{tag}" not in combined, (
+    assert sol_b_gamma.name not in combined, (
         f"TENANT LEAK (service alone): insight names org B's solution; got: {combined}"
     )
 
@@ -462,10 +462,10 @@ def test_proactive_analysis_pattern_available_no_cross_tenant_leak(app, db_sessi
     db_session.commit()
 
     # Link two apps to each solution so they share applications
-    app_a1 = _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp1-{tag}")
-    app_a2 = _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp2-{tag}")
-    app_b1 = _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp1-{tag}")
-    app_b2 = _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp2-{tag}")
+    _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp1-{tag}")
+    _make_app_component_for_solution(db_session, org_a.id, sol_a.id, f"SharedApp2-{tag}")
+    _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp1-{tag}")
+    _make_app_component_for_solution(db_session, org_b.id, sol_b.id, f"SharedApp2-{tag}")
     db_session.commit()
 
     svc = ProactiveAnalysisService()
@@ -608,7 +608,7 @@ def test_purge_name_collision_across_orgs_survives(app, db_session, make_org):
     db_session.commit()
     own = _make_solution(db_session, org_a.id, f"Owner solution-{tag}")
     same_name_in_a = _make_solution(db_session, org_a.id, f"CollidingName-{tag}")
-    same_name_in_b = _make_solution(db_session, org_b.id, f"CollidingName-{tag}")
+    _make_solution(db_session, org_b.id, f"CollidingName-{tag}")
     db_session.commit()
 
     _make_copilot_insight(
