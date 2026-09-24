@@ -178,6 +178,22 @@ def test_sitemap_xml_includes_every_page(app):
             )
 
 
+def test_sitemap_xml_lists_the_homepage_once_with_top_priority(app):
+    """The home page is not a content page, but it is the most important URL."""
+    import re
+    from urllib.parse import urlparse
+
+    with app.test_client() as client:
+        xml = client.get("/sitemap.xml").data.decode()
+
+    entries = re.findall(r"<url>\s*<loc>([^<]+)</loc>(.*?)</url>", xml, flags=re.S)
+    homepage = [(loc, rest) for loc, rest in entries if urlparse(loc).path == "/"]
+    assert len(homepage) == 1
+    assert "<priority>1.0</priority>" in homepage[0][1]
+    # Listing it does not displace any content page.
+    assert len(entries) == len(load_all_pages()) + 1
+
+
 def test_llms_txt_has_correct_content_type(app):
     """/llms.txt returns text/plain."""
     with app.test_client() as client:
