@@ -109,8 +109,9 @@
         <div class="p-6">
             <h3 class="text-sm font-semibold mb-1">Notification Preferences</h3>
             <p class="text-xs text-muted-foreground mb-5">Choose which in-app notifications you want to receive.</p>
-            <form method="POST" action="{{ url_for('account.save_notification_preferences') }}">
+            <form method="POST" action="{{ url_for('account.save_preferences') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="form_type" value="notifications">
                 <div class="space-y-4">
                     {% for pref_key, pref_label, pref_desc in notif_prefs %}
                         {% set is_enabled = user.get_notification_preference(pref_key) %}
@@ -164,8 +165,9 @@
         <div class="p-6">
             <h3 class="text-sm font-semibold mb-1">Display Preferences</h3>
             <p class="text-xs text-muted-foreground mb-5">Control how architecture terms are shown throughout the application.</p>
-            <form method="POST" action="{{ url_for('account.save_display_preferences') }}">
+            <form method="POST" action="{{ url_for('account.save_preferences') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="form_type" value="display">
                 <div class="space-y-4">
                     {% set show_archimate = user.show_archimate_names %}
                     <div class="flex items-start justify-between gap-4 py-3">
