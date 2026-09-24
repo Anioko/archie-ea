@@ -89,28 +89,30 @@ def test_new_solution_is_the_primary_header_button(app, client):
     # "Start Architecture Journey" must NOT be the filled primary button
     assert 'data-testid="btn-start-journey"' in body
     # The primary button must use bg-primary (filled style)
-    # Find the btn-new-solution element and verify it has bg-primary
+    # Find the btn-new-solution element and verify it has bg-primary.
+    # The button component renders class= before data-testid=, so match
+    # either ordering.
     import re
     btn_match = re.search(
-        r'data-testid="btn-new-solution"[^>]*class="([^"]*)"',
+        r'<button[^>]*data-testid="btn-new-solution"[^>]*>',
         body
     )
     assert btn_match is not None, "btn-new-solution must be present"
-    btn_classes = btn_match.group(1)
-    assert "bg-primary" in btn_classes, (
+    btn_tag = btn_match.group(0)
+    assert "bg-primary" in btn_tag, (
         "New Solution must be the filled primary button (bg-primary), "
-        f"got classes: {btn_classes}"
+        f"got: {btn_tag[:200]}"
     )
     # "Start Architecture Journey" must be an outline button, not filled
     journey_match = re.search(
-        r'data-testid="btn-start-journey"[^>]*class="([^"]*)"',
+        r'<a[^>]*data-testid="btn-start-journey"[^>]*>',
         body
     )
     assert journey_match is not None, "btn-start-journey must be present"
-    journey_classes = journey_match.group(1)
-    assert "bg-primary" not in journey_classes, (
+    journey_tag = journey_match.group(0)
+    assert "bg-primary" not in journey_tag, (
         "Start Architecture Journey must not be the filled primary button, "
-        f"got classes: {journey_classes}"
+        f"got: {journey_tag[:200]}"
     )
 
 

@@ -5,6 +5,7 @@
 {% from 'components/modal.html' import modal %}
 {% from 'macros/page_shell.html' import page_shell, stat_card %}
 {% from 'components/dropdown_menu.html' import dropdown_menu %}
+{% from 'components/button.html' import button %}
 
 
 {% block title %}All Solutions{% endblock %}
@@ -20,29 +21,15 @@
     {% macro _solutions_page_actions() %}
     <div class="flex flex-wrap items-center gap-2" data-testid="page-actions">
       {# Primary: New Solution — the single filled button #}
-      <button type="button" @click="startSolution" :disabled="startingSolution"
-        data-testid="btn-new-solution"
-        class="inline-flex items-center gap-1.5 h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
-        <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-        <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
-      </button>
+      {% call button(variant='default', size='sm', icon='plus', testid='btn-new-solution', on_click='startSolution', attrs=':disabled="startingSolution"') %}
+      <span x-text="startingSolution ? 'Creating…' : 'New Solution'"></span>
+      {% endcall %}
       {# Secondary actions: outline buttons, visible sm+ #}
       <div class="hidden sm:flex flex-wrap items-center gap-2">
-        <a href="{{ url_for('architecture_journey.index') }}" data-testid="btn-start-journey"
-           class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors"
-           aria-label="Start the guided Architecture Journey to design a new solution">
-          <i data-lucide="zap" class="h-4 w-4" aria-hidden="true"></i>Start Architecture Journey
-        </a>
-        <button type="button" data-testid="btn-new-from-template" data-action="open-template-modal"
-          class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors">
-          <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>New from Template
-        </button>
+        {{ button(text='Start Architecture Journey', variant='outline', size='sm', icon='zap', href=url_for('architecture_journey.index'), testid='btn-start-journey', aria_label='Start the guided Architecture Journey to design a new solution') }}
+        {{ button(text='New from Template', variant='outline', size='sm', icon='layout-template', data_action='open-template-modal', testid='btn-new-from-template') }}
         {% if 'enterprise_crud.reference_catalog' in flask.current_app.view_functions %}
-        <a href="{{ url_for('enterprise_crud.reference_catalog') }}" data-testid="btn-reference-catalog"
-           class="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-input bg-background text-sm font-medium hover:bg-accent transition-colors"
-           aria-label="Browse the reference catalogue of approved, reusable solutions">
-          <i data-lucide="library" class="h-4 w-4" aria-hidden="true"></i>Reference catalogue
-        </a>
+        {{ button(text='Reference catalogue', variant='outline', size='sm', icon='library', href=url_for('enterprise_crud.reference_catalog'), testid='btn-reference-catalog', aria_label='Browse the reference catalogue of approved, reusable solutions') }}
         {% endif %}
       </div>
       {# Below sm: secondary actions in a "More" dropdown #}
@@ -54,7 +41,7 @@
             trigger_variant='default',
             items=[
                 {'text': 'Start Architecture Journey', 'icon': 'zap', 'href': url_for('architecture_journey.index')},
-                {'text': 'New from Template', 'icon': 'layout-template', 'onclick': 'openTemplateModal()'},
+                {'text': 'New from Template', 'icon': 'layout-template', 'data_action': 'open-template-modal'},
             ] + ([
                 {'text': 'Reference catalogue', 'icon': 'library', 'href': url_for('enterprise_crud.reference_catalog')},
             ] if 'enterprise_crud.reference_catalog' in flask.current_app.view_functions else [])
@@ -218,7 +205,7 @@
 
         {# Table #}
         <div class="overflow-x-auto">
-            <table class="min-w-full">
+            <table class="min-w-full solutions-table">
                 <thead>
                     <tr class="border-b border-border/50 bg-muted/30">
                         <th class="px-5 py-3.5 w-10"><input type="checkbox" data-select-all="solution-table" class="h-4 w-4 rounded border-input" aria-label="Select all solutions"></th>
@@ -471,24 +458,21 @@
             <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                 <i data-lucide="eye-off" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
             </div>
-            {% if hidden_by_default_filter and hidden_by_default_filter > 0 and (not hidden_by_role_filter or hidden_by_role_filter == 0) and (not hidden_by_filters or hidden_by_filters == 0) %}
+            {% if only_default_filter_active %}
             {# Hidden-draft state: only the default filter's empty drafts are hidden #}
-            <h2 class="mt-4 text-lg font-medium" data-testid="solutions-empty-state-heading">Your draft is waiting</h2>
-            <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto" data-testid="solutions-hidden-disclosure">
-                Untitled drafts stay out of this list until they have a problem statement.
-            </p>
-            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <a href="{{ url_for('solution_design.list_solutions', status='draft') }}"
-                   class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium">
-                    Show drafts
-                </a>
-                <button type="button" @click="startSolution" :disabled="startingSolution"
-                  data-testid="btn-new-solution"
-                  class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-input bg-background hover:bg-accent transition-colors text-sm font-medium disabled:opacity-50 disabled:pointer-events-none">
-                    <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
-                    New Solution
-                </button>
-            </div>
+            {% from 'components/empty_state.html' import empty_state %}
+            {{ empty_state(
+                icon='eye-off',
+                title='Your draft is waiting',
+                description='Untitled drafts stay out of this list until they have a problem statement.',
+                cta_text='Show drafts',
+                cta_href=url_for('solution_design.list_solutions', status='draft'),
+                secondary_cta_text='New Solution',
+                secondary_cta_onclick='startSolution()',
+                secondary_cta_icon='plus',
+                heading_testid='solutions-empty-state-heading',
+                description_testid='solutions-hidden-disclosure'
+            ) }}
             {% else %}
             {# Solutions hidden by role or user-set filters #}
             <h2 class="mt-4 text-lg font-medium" data-testid="solutions-empty-state-heading">
@@ -511,19 +495,13 @@
             </div>
             <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
                 {% if hidden_by_filters and hidden_by_filters > 0 %}
-                <a href="{{ clear_filters_url }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" data-testid="solutions-clear-filters">
-                    Clear all filters
-                </a>
+                {{ button(text='Clear all filters', variant='default', href=clear_filters_url, testid='solutions-clear-filters') }}
                 {% endif %}
                 {% if hidden_by_role_filter and hidden_by_role_filter > 0 and bu_filter_active and not show_all_override %}
-                <a href="{{ request.path }}?bu=all" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium" data-testid="solutions-view-all-bu" aria-label="Show solutions across all business units">
-                    View all business units
-                </a>
+                {{ button(text='View all business units', variant='outline', href=request.path ~ '?bu=all', testid='solutions-view-all-bu', aria_label='Show solutions across all business units') }}
                 {% endif %}
                 {% if hidden_by_role_filter and hidden_by_role_filter > 0 and 'arb.dashboard' in flask.current_app.view_functions %}
-                <a href="{{ url_for('arb.dashboard') }}" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-border/50 bg-card hover:bg-accent transition-colors text-sm font-medium">
-                    Request review access
-                </a>
+                {{ button(text='Request review access', variant='outline', href=url_for('arb.dashboard')) }}
                 {% endif %}
             </div>
             {% endif %}
@@ -539,14 +517,11 @@
             description='Create a solution to start its architecture blueprint.',
             cta_text='New Solution',
             cta_onclick='startSolution()',
-            cta_icon='plus'
+            cta_icon='plus',
+            heading_testid='solutions-empty-state-heading'
         ) }}
         <div class="flex flex-wrap items-center justify-center gap-3 pb-12 -mt-4">
-            <button type="button" data-action="open-template-modal"
-              class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-md border border-input bg-background hover:bg-accent transition-colors text-sm font-medium">
-                <i data-lucide="layout-template" class="h-4 w-4" aria-hidden="true"></i>
-                New from Template
-            </button>
+            {{ button(text='New from Template', variant='outline', icon='layout-template', data_action='open-template-modal') }}
         </div>
     </div>
     {% endif %}

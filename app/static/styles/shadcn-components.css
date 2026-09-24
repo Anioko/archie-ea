@@ -72,13 +72,14 @@
 }
 
 /* Sticky last-column edge: left border + shadow so the scrolled boundary is
-   visible rather than cutting mid-word with no cue. */
-#main-content .overflow-x-auto table thead th:last-child {
+   visible rather than cutting mid-word with no cue. Scoped to .solutions-table
+   so other tables in the product are unaffected. */
+#main-content .overflow-x-auto table.solutions-table thead th:last-child {
     border-left: 1px solid hsl(var(--border));
     box-shadow: -4px 0 8px -4px hsl(var(--foreground) / 0.12);
 }
 
-#main-content .overflow-x-auto table tbody td:last-child {
+#main-content .overflow-x-auto table.solutions-table tbody td:last-child {
     border-left: 1px solid hsl(var(--border));
     box-shadow: -4px 0 8px -4px hsl(var(--foreground) / 0.08);
 }
