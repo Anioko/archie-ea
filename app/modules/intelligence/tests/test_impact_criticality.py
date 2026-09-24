@@ -350,10 +350,8 @@ def test_zero_rto_with_null_rpo_is_recorded_not_absent(app, db_session, make_org
 # ---------------------------------------------------------------------------
 
 
-def test_resource_critical_yields_critical_false_and_correct_source(app, db_session, make_org):
-    """Resource criticality = 'Critical' — the rule checks criticality.lower() ==
-    'mission_critical' (the component's own vocabulary) and business_criticality
-    is None for resources, so critical is False.  The source and shape are correct."""
+def test_resource_rated_critical_reads_as_critical(app, db_session, make_org):
+    """A resource's own top word, 'Critical', reads as critical beside the word itself."""
     org = make_org("crit-9")
     app_a = _element(db_session, org.id, "AppA")
     tech_b = _tech_element(db_session, org.id, "TechB")
@@ -363,12 +361,29 @@ def test_resource_critical_yields_critical_false_and_correct_source(app, db_sess
 
     result = _impact(app, org.id, app_a.id, include_derived=False, with_owner=False)
     block = result["rows"][0]["criticality"]
-    assert block["critical"] is False
+    assert block["criticality"] == "Critical"
+    assert block["critical"] is True
+    assert block["reason"] is None
     assert block["source"] == "archimate_resources"
     assert block["recovery_reason"] == "no_recovery_objective_recorded"
     assert block["business_criticality"] is None
     assert block["rto_hours"] is None
     assert block["rpo_hours"] is None
+
+
+def test_resource_rated_low_reads_as_not_critical(app, db_session, make_org):
+    org = make_org("crit-9b")
+    app_a = _element(db_session, org.id, "AppA")
+    tech_b = _tech_element(db_session, org.id, "TechB")
+    _relationship(db_session, org.id, app_a, tech_b)
+    _resource(db_session, tech_b.id, criticality="Low")
+    db_session.commit()
+
+    result = _impact(app, org.id, app_a.id, include_derived=False, with_owner=False)
+    block = result["rows"][0]["criticality"]
+    assert block["criticality"] == "Low"
+    assert block["critical"] is False
+    assert block["reason"] is None
 
 
 # ---------------------------------------------------------------------------

@@ -106,10 +106,11 @@ def _build_criticality_block(
 
     Rules, in order: ``reason = "no_criticality_recorded"`` and
     ``critical = None`` when ``criticality`` and ``business_criticality`` are
-    both ``None``; otherwise ``reason = None`` and ``critical =
-    (criticality or "").lower() == "mission_critical" or
-    (business_criticality or "").lower() == "critical"`` — the two recorded
-    words, compared case-insensitively, nothing else mapped or ranked;
+    both ``None``; otherwise ``reason = None`` and ``critical`` is true when
+    the lower-cased ``criticality`` is ``mission_critical`` (a component's
+    word) or ``critical`` (a resource's word), or the lower-cased
+    ``business_criticality`` is ``critical`` — the recorded words, compared
+    case-insensitively, nothing else mapped or ranked;
     ``recovery_reason = "no_recovery_objective_recorded"`` when ``rto_hours``
     and ``rpo_hours`` are both ``None``, else ``None``. No hour is ever
     defaulted; ``0`` hours is a recorded value and is emitted as ``0``.
@@ -119,9 +120,8 @@ def _build_criticality_block(
         critical = None
     else:
         reason = None
-        critical = (
-            (criticality or "").lower() == "mission_critical"
-            or (business_criticality or "").lower() == "critical"
+        critical = (criticality or "").lower() in {"mission_critical", "critical"} or (
+            (business_criticality or "").lower() == "critical"
         )
     recovery_reason = (
         NO_RECOVERY_OBJECTIVE_RECORDED_REASON
