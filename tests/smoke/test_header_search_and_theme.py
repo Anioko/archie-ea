@@ -96,3 +96,71 @@ def test_dark_theme_toggle_via_enter_key_toggles_exactly_once(page, live_server,
         "dark theme menuitemcheckbox — the toggle may have double-fired and "
         "returned to the original state"
     )
+
+
+def _relative_luminance(r, g, b):
+    """Compute WCAG relative luminance from sRGB 0-255 channel values."""
+    def _linearise(c):
+        s = c / 255.0
+        return s / 12.92 if s <= 0.04045 else ((s + 0.055) / 1.055) ** 2.4
+    return 0.2126 * _linearise(r) + 0.7152 * _linearise(g) + 0.0722 * _linearise(b)
+
+
+def _contrast_ratio(l1, l2):
+    lighter = max(l1, l2)
+    darker = min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_user_menu_profile_contrast_in_dark_mode(page, live_server, seeded):
+    """In dark mode, the Profile menu item text must contrast at least 4.5:1
+    against the popover background."""
+    _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    _visit(page, live_server, "/dashboard/overview")
+
+    # Enable dark mode
+    page.evaluate("() => document.documentElement.classList.add('dark')")
+    page.wait_for_timeout(300)
+
+    # Open the user menu
+    user_btn = page.locator("#user-menu-btn")
+    user_btn.click()
+    page.wait_for_timeout(400)
+
+    # Get the Profile link — the first <a role="menuitem"> in the dropdown
+    profile_link = page.locator('#user-dropdown a[role="menuitem"]').first
+    assert profile_link.is_visible(), "Profile link not visible in user menu"
+
+    # Get the user dropdown (popover) element
+    dropdown = page.locator("#user-dropdown")
+
+    # Read computed colours
+    text_color = profile_link.evaluate("el => window.getComputedStyle(el).color")
+    bg_color = dropdown.evaluate("el => window.getComputedStyle(el).backgroundColor")
+
+    # Parse rgb(r, g, b) or rgba(r, g, b, a) strings
+    import re
+
+    def _parse_rgb(css_color):
+        m = re.match(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", css_color)
+        if not m:
+            raise ValueError(f"Could not parse colour: {css_color!r}")
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+    text_rgb = _parse_rgb(text_color)
+    bg_rgb = _parse_rgb(bg_color)
+
+    # Assert colours differ
+    assert text_rgb != bg_rgb, (
+        f"Profile text colour {text_rgb} must differ from popover background {bg_rgb}"
+    )
+
+    # Compute contrast ratio
+    text_lum = _relative_luminance(*text_rgb)
+    bg_lum = _relative_luminance(*bg_rgb)
+    ratio = _contrast_ratio(text_lum, bg_lum)
+
+    assert ratio >= 4.5, (
+        f"Profile text ({text_color}) on popover background ({bg_color}) "
+        f"contrast ratio {ratio:.2f}:1 is below WCAG AA minimum 4.5:1"
+    )
