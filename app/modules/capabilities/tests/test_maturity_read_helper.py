@@ -96,7 +96,7 @@ def _capability(
 
 def _org_capability_with_element(db_session, org, label, **kwargs):
     """A capability of *org*, its own domain and its own linked element --
-    the fixture shape this task's brief specifies: each organisation gets a
+    the fixture shape this task specifies: each organisation gets a
     ``BusinessDomain``, an ``ArchiMateElement`` of type Capability and a
     ``UnifiedCapability`` row pointing at it through ``archimate_element_id``.
     """

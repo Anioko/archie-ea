@@ -193,7 +193,7 @@ class CapabilityHeatmapService:
                     entry["unassessed"].append({"id": cap.id, "name": cap.name})
                 else:
                     # The clamp below folds a recorded out-of-range level into
-                    # a valid bucket; it is a separate, pre-existing concern
+                    # a valid level; it is a separate, pre-existing concern
                     # from an unrecorded value, and is only reached here for a
                     # value that was actually recorded.
                     maturity = max(1, min(5, raw_maturity))

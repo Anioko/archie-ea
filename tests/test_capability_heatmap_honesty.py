@@ -152,12 +152,12 @@ def test_missing_target_contributes_to_no_target_figure(db_session, make_org, te
 
 
 # ---------------------------------------------------------------------------
-# Recorded current levels 1-5 land in their own bucket, and nowhere else
+# Recorded current levels 1-5 land in their own level, and nowhere else
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("level", [1, 2, 3, 4, 5])
-def test_recorded_current_levels_land_in_their_own_bucket(db_session, make_org, tenant_ctx, level):
+def test_recorded_current_levels_land_in_their_own_level(db_session, make_org, tenant_ctx, level):
     org = make_org(f"level-{level}")
     domain = _domain(db_session, f"level-{level}")
     cap = _capability(
@@ -366,12 +366,12 @@ def test_no_tenant_context_fails_closed(db_session, make_org):
 # ---------------------------------------------------------------------------
 
 
-def test_get_domain_health_still_carries_its_own_pre_existing_defect(db_session, make_org, tenant_ctx):
+def test_get_domain_health_still_carries_its_own_pre_existing_behaviour(db_session, make_org, tenant_ctx):
     """``get_domain_health`` still invents a maturity level for an unassessed
     capability -- unlike ``get_maturity_heatmap``, it was not changed here.
 
     Pinning the old, still-present behaviour here means a future change to
-    ``get_domain_health`` is a deliberate decision, not an accidental side
+    ``get_domain_health`` is a deliberate choice, not an accidental side
     effect of this one.
     """
     org = make_org("domain-health-untouched")
@@ -401,7 +401,7 @@ def test_get_gap_alerts_still_reachable_and_unchanged_in_shape(db_session, make_
 # ---------------------------------------------------------------------------
 # The population read is one query, and the query count does not grow
 # with the number of capabilities (measured further at 50/1,000 -- see the
-# build report for the larger-scale run).
+# build log for the larger-scale run).
 # ---------------------------------------------------------------------------
 
 
@@ -614,4 +614,48 @@ def test_page_renders_not_assessed_column_and_legend(app, client, login_as, db_s
 
 # Every test above uses db_session (rolled back at teardown) and make_org
 # (collision-free names); the module's own repeated green runs, logged in
-# the build report, are the actual evidence that this leaves no row behind.
+# the build log, are the actual evidence that this leaves no row behind.
+
+
+# ---------------------------------------------------------------------------
+# Forbidden-word guard: none of the standing-instruction prohibited terms
+# appear in the files touched by this task.
+# ---------------------------------------------------------------------------
+
+_FORBIDDEN = {"defect", "bucket", "decision", "brief"}
+
+import os
+
+
+def _source_lines(relative_path):
+    root = os.path.dirname(os.path.dirname(__file__))
+    with open(os.path.join(root, relative_path)) as fh:
+        return fh.readlines()
+
+
+def test_no_forbidden_words_in_heatmap_service():
+    lines = _source_lines("app/modules/capabilities/services/capability_heatmap_service.py")
+    for i, line in enumerate(lines, 1):
+        lower = line.lower()
+        for word in _FORBIDDEN:
+            assert word not in lower, f"forbidden word {word!r} at line {i}"
+
+
+def test_no_forbidden_words_in_heatmap_honesty_tests():
+    lines = _source_lines("tests/test_capability_heatmap_honesty.py")
+    for i, line in enumerate(lines, 1):
+        lower = line.lower()
+        # The _FORBIDDEN set itself contains the words being checked;
+        # skip its own definition line.
+        if "_forbidden" in lower:
+            continue
+        for word in _FORBIDDEN:
+            assert word not in lower, f"forbidden word {word!r} at line {i}"
+
+
+def test_no_forbidden_words_in_maturity_read_helper_tests():
+    lines = _source_lines("app/modules/capabilities/tests/test_maturity_read_helper.py")
+    for i, line in enumerate(lines, 1):
+        lower = line.lower()
+        for word in _FORBIDDEN:
+            assert word not in lower, f"forbidden word {word!r} at line {i}"
