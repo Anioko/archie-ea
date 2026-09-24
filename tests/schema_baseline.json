@@ -34844,6 +34844,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": true
+   },
    "quality_score": {
     "has_default": false,
     "nullable": true

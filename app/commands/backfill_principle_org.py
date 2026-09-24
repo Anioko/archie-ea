@@ -37,104 +37,209 @@ Idempotent; safe to re-run. Run AFTER reconcile-schema:
 
 import click
 from flask.cli import with_appcontext
+from sqlalchemy import inspect, text
 
 from app import db
+from app.commands.tenant_schema import (
+    ensure_organization_index_and_fk,
+    plan_organization_index_and_fk,
+)
 
 
+# SQL identifiers are restricted to the three registered command call sites.
+_FALLBACK_TABLES = {"principles", "enterprise_initiatives"}
+_PARENT_IDENTITY = ("kanban_cards", "kanban_boards", "board_id")
 
 
 def _resolve_org_id(conn, explicit):
-    from sqlalchemy import text
-
     if explicit is not None:
         row = conn.execute(
-            text("SELECT id FROM organizations WHERE id = :i"), {"i": explicit}
+            text("SELECT id FROM public.organizations WHERE id = :i"), {"i": explicit}
         ).first()
         if not row:
             raise click.ClickException(f"No organization with id={explicit}.")
         return explicit
-    rows = conn.execute(text("SELECT id, name FROM organizations ORDER BY id")).fetchall()
+    rows = conn.execute(text("SELECT id, name FROM public.organizations ORDER BY id")).all()
     if not rows:
         raise click.ClickException("No organizations exist; create one before backfilling.")
     if len(rows) == 1:
-        click.echo(
-            f"  single organization found: id={rows[0][0]} ({rows[0][1]}) — assigning orphans to it"
-        )
         return rows[0][0]
-    # Refuse to guess. Picking wrongly hands one tenant's governance record to
-    # another, which is the exact failure this command exists to prevent.
     listing = ", ".join(f"{r[0]}={r[1]}" for r in rows)
     raise click.ClickException(
         f"{len(rows)} organizations exist ({listing}). Re-run with --org-id to say which one "
-        "owns the pre-existing principles."
+        "owns the pre-existing rows."
     )
 
 
-def _backfill(TABLE, dry_run, org_id):
-    """Backfill organization_id on one pre-existing tenant table."""
-    from sqlalchemy import inspect, text
+def _commit_outcome_unknown(exc):
+    """A server rejection is definitive; a missing acknowledgement is not."""
+    original = getattr(exc, "orig", exc)
+    code = getattr(original, "sqlstate", None) or getattr(original, "pgcode", None)
+    return (getattr(exc, "connection_invalidated", False) or not code
+            or code.startswith("08") or code in {"40003", "57P01", "57P02", "57P03"})
 
-    insp = inspect(db.engine)
-    if TABLE not in set(insp.get_table_names()):
-        click.echo(f"  - {TABLE}: table absent, nothing to do")
-        return
 
-    conn = db.session.connection()
-
-    cols = {c["name"] for c in insp.get_columns(TABLE)}
-    if "organization_id" not in cols:
-        if dry_run:
-            click.echo(f"  - {TABLE}: would ADD COLUMN organization_id")
-            click.echo("dry-run: no changes committed.")
+def _run_backfill(table, dry_run, org_id=None, *, parent_table=None, fk_column=None):
+    messages = []
+    result = {"examined_null": 0, "eligible": 0, "attributed": 0,
+              "remaining_nulls": 0, "schema": {}, "dry_run": dry_run}
+    committing = False
+    try:
+        if parent_table is None:
+            if table not in _FALLBACK_TABLES:
+                raise ValueError("Unsupported fallback table")
+        elif (table, parent_table, fk_column) != _PARENT_IDENTITY:
+            raise ValueError("Unsupported parent attribution identity")
+        conn = db.session.connection()
+        insp = inspect(conn)
+        if conn.dialect.name != "postgresql" or insp.default_schema_name != "public":
+            raise ValueError("Tenancy repair requires the default PostgreSQL public schema")
+        live = set(insp.get_table_names(schema="public"))
+        if table not in live:
             db.session.rollback()
-            return
-        conn.execute(
-            text(f'ALTER TABLE "{TABLE}" ADD COLUMN IF NOT EXISTS organization_id INTEGER')
-        )
-        click.echo(f"  + {TABLE}: added organization_id")
-
-    orphans = conn.execute(
-        text(f'SELECT count(*) FROM "{TABLE}" WHERE organization_id IS NULL')
-    ).scalar()
-
-    if orphans:
-        target = _resolve_org_id(conn, org_id)
-        if dry_run:
-            click.echo(f"  - {TABLE}: would assign {orphans} orphaned row(s) to org {target}")
+            click.echo(f"  - {table}: table absent, nothing to do")
+            return result
+        target = f'"public"."{table}"'
+        if parent_table is not None and parent_table not in live:
+            columns = {c["name"] for c in insp.get_columns(table, schema="public")}
+            predicate = "organization_id IS NULL" if "organization_id" in columns else "TRUE"
+            remaining = conn.execute(text(
+                f'SELECT count(*) FROM {target} WHERE {predicate}'  # nosec B608 -- literal-call-site table and fixed predicate
+            )).scalar_one()
+            result.update(examined_null=remaining, remaining_nulls=remaining)
+            db.session.rollback()
+            click.echo(f"  - {table}: parent absent, remaining_nulls={remaining}; nothing changed")
+            return result
+        if not dry_run:
+            conn.execute(text("SET LOCAL lock_timeout = '5s'"))
+            # Acquire the strongest target lock up front: no later DDL lock
+            # upgrade can deadlock two cooperating repair invocations.
+            for name in sorted({table, "organizations"} | ({parent_table} if parent_table else set())):
+                mode = "ACCESS EXCLUSIVE" if name == table else "SHARE"
+                conn.execute(text(f'LOCK TABLE "public"."{name}" IN {mode} MODE'))
+        cols = {c["name"]: c for c in insp.get_columns(table, schema="public")}
+        col = cols.get("organization_id")
+        missing = col is None
+        if col is not None and type(col.get("nullable")) is not bool:
+            raise ValueError(f"{table}: catalog nullability unavailable")
+        if parent_table:
+            parent_cols = {c["name"] for c in insp.get_columns(parent_table, schema="public")}
+            if "organization_id" not in parent_cols:
+                raise ValueError(f"{parent_table}.organization_id is absent; run reconcile-schema first")
+            if fk_column not in cols or "id" not in parent_cols:
+                raise ValueError(f"{table}: parent link is absent; run reconcile-schema first")
+        plan = plan_organization_index_and_fk(conn, table, column_missing=missing)
+        result["schema"] = {"column": "add" if missing else "present",
+                            "nullability": "drop_not_null" if col and not col["nullable"] else "present",
+                            **plan}
+        null_predicate = "TRUE" if missing else "c.organization_id IS NULL"
+        examined = conn.execute(text(
+            f'SELECT count(*) FROM {target} c WHERE {null_predicate}'  # nosec B608 -- literal-call-site table and fixed predicate
+        )).scalar_one()
+        result["examined_null"] = examined
+        if parent_table:
+            parent = f'"public"."{parent_table}"'
+            predicate = f'c."{fk_column}" = p.id AND {null_predicate} AND p.organization_id IS NOT NULL'
+            eligible = conn.execute(text(
+                f'SELECT count(*) FROM {target} c JOIN {parent} p ON {predicate}'  # nosec B608 -- identities and predicate derive only from literal call sites
+            )).scalar_one()
+            # A broken legacy parent must be refused before column/owner writes.
+            if conn.execute(text(
+                f'SELECT 1 FROM {target} c JOIN {parent} p ON {predicate} '  # nosec B608 -- identities and predicate derive only from literal call sites
+                "WHERE NOT EXISTS (SELECT 1 FROM public.organizations o "
+                "WHERE o.id = p.organization_id) LIMIT 1"
+            )).first():
+                raise ValueError(f"{parent_table}: eligible parent has an invalid organization owner")
         else:
-            conn.execute(
-                text(f'UPDATE "{TABLE}" SET organization_id = :o WHERE organization_id IS NULL'),
-                {"o": target},
-            )
-            click.echo(f"  + {TABLE}: assigned {orphans} orphaned row(s) to org {target}")
-    else:
-        click.echo("  no orphaned rows — nothing to assign")
-
-    if dry_run:
-        click.echo("dry-run: no changes committed.")
-        db.session.rollback()
-        return
-
-    # reconcile-schema adds neither an index nor the FK.
-    for ddl, label in (
-        (
-            f'CREATE INDEX IF NOT EXISTS ix_{TABLE}_organization_id ON "{TABLE}" (organization_id)',
-            "index",
-        ),
-        (
-            f'ALTER TABLE "{TABLE}" ADD CONSTRAINT fk_{TABLE}_organization '
-            'FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE',
-            "foreign key",
-        ),
-    ):
+            eligible = examined
+            owner = _resolve_org_id(conn, org_id) if eligible else None
+        result["eligible"] = eligible
+        result["remaining_nulls"] = examined - eligible
+        if dry_run:
+            db.session.rollback()
+            click.echo(f"{table}: would attribute={eligible} remaining_nulls={examined - eligible}; "
+                       f"schema={result['schema']}")
+            click.echo("dry-run: no changes committed.")
+            return result
+        if missing:
+            conn.execute(text(f'ALTER TABLE {target} ADD COLUMN organization_id INTEGER'))
+            messages.append(f"  + {table}: added organization_id")
+        elif not col["nullable"]:
+            conn.execute(text(f'ALTER TABLE {target} ALTER COLUMN organization_id DROP NOT NULL'))
+            messages.append(f"  + {table}: nullable ownership restored")
+        if eligible:
+            if parent_table:
+                # The virtual missing-column predicate becomes its real NULL
+                # equivalent after ADD COLUMN; preview and apply select the same rows.
+                predicate = (f'c."{fk_column}" = p.id AND c.organization_id IS NULL '
+                             'AND p.organization_id IS NOT NULL')
+                updated = conn.execute(text(
+                    f'UPDATE {target} c SET organization_id = p.organization_id '  # nosec B608 -- literal-call-site identities; owner derives from the joined parent
+                    f'FROM {parent} p WHERE {predicate} RETURNING c.id, c.organization_id, p.organization_id'
+                )).all()
+                if any(actual_owner != expected_owner for _, actual_owner, expected_owner in updated):
+                    raise ValueError(f"{table}: attributed owner postcondition failed")
+            else:
+                updated = conn.execute(text(
+                    f'UPDATE {target} SET organization_id = :o '  # nosec B608 -- literal-call-site table; organization value is bound
+                    'WHERE organization_id IS NULL RETURNING id, organization_id'
+                ), {"o": owner}).all()
+                if any(actual_owner != owner for _, actual_owner in updated):
+                    raise ValueError(f"{table}: attributed owner postcondition failed")
+            result["attributed"] = len(updated)
+        remaining = conn.execute(text(
+            f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- table is a validated literal-call-site identity
+        )).scalar_one()
+        if result["attributed"] != eligible or remaining != examined - eligible:
+            raise ValueError(f"{table}: attribution count postcondition failed")
+        result["remaining_nulls"] = remaining
+        result["schema"].update(ensure_organization_index_and_fk(
+            conn, table, strict=True, echo=messages.append,
+        ))
+        insp.clear_cache()
+        actual = next(c for c in insp.get_columns(table, schema="public")
+                      if c["name"] == "organization_id")
+        if actual["nullable"] is not True or (missing and actual.get("default") is not None):
+            raise ValueError(f"{table}: nullable ownership postcondition failed")
+        if plan_organization_index_and_fk(conn, table) != {"index": "present", "foreign_key": "present"}:
+            raise ValueError(f"{table}: schema completion postcondition failed")
+        final_remaining = conn.execute(text(
+            f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- table is a validated literal-call-site identity
+        )).scalar_one()
+        if final_remaining != result["remaining_nulls"]:
+            raise ValueError(f"{table}: final attribution count postcondition failed")
+        committing = True
+        db.session.commit()
+    except Exception as exc:
+        unknown = committing and _commit_outcome_unknown(exc)
         try:
-            conn.execute(text(ddl))
-            click.echo(f"  + {TABLE}: {label}")
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  ! {TABLE}: {label} skipped ({str(exc)[:100]})")
+            db.session.rollback()
+        except Exception as rollback_error:
+            if not unknown:
+                raise click.ClickException(
+                    f"{table}: repair failed; transaction cleanup failed; inspect before retry: {rollback_error}"
+                ) from exc
+        if unknown:
+            raise click.ClickException(
+                f"{table}: commit outcome unknown; inspect data and schema on a new connection before retry."
+            ) from exc
+        if isinstance(exc, click.ClickException):
+            raise
+        raise click.ClickException(
+            f"{table}: repair failed; transaction rolled back; retry after resolving the cause: {exc}"
+        ) from exc
+    for message in messages:
+        click.echo(message)
+    click.echo(f"{table}: attributed={result['attributed']} remaining_nulls={result['remaining_nulls']}")
+    if result["remaining_nulls"]:
+        click.echo(f"  {table}: unresolved rows remain NULL; parent ownership is unavailable")
+    click.echo(f"backfill {table}: done.")
+    return result
 
-    db.session.commit()
-    click.echo(f"backfill {TABLE}: done.")
+
+def _backfill(TABLE, dry_run, org_id):
+    """Assign NULL owners using the existing sole/explicit organization policy."""
+    return _run_backfill(TABLE, dry_run, org_id)
 
 
 @click.command("backfill-principle-org")
@@ -161,75 +266,8 @@ def backfill_initiative_org(dry_run, org_id):
 
 
 def _backfill_from_parent(table, parent_table, fk_column, dry_run):
-    """Backfill organization_id by deriving it from an already-scoped parent.
-
-    Exact, not a guess: where the child has a NOT NULL FK to a tenant-scoped
-    parent, the parent's organisation *is* the child's. No --org-id, no refusing
-    to choose between organisations, and correct even on a multi-tenant install.
-    """
-    from sqlalchemy import inspect, text
-
-    insp = inspect(db.engine)
-    live = set(insp.get_table_names())
-    if table not in live or parent_table not in live:
-        click.echo(f"  - {table}: table or parent absent, nothing to do")
-        return
-
-    conn = db.session.connection()
-
-    cols = {c["name"] for c in insp.get_columns(table)}
-    if "organization_id" not in cols:
-        if dry_run:
-            click.echo(f"  - {table}: would ADD COLUMN organization_id")
-            db.session.rollback()
-            return
-        conn.execute(text(f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
-        click.echo(f"  + {table}: added organization_id")
-
-    orphans = conn.execute(
-        text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')
-    ).scalar()
-    if not orphans:
-        click.echo("  no orphaned rows — nothing to assign")
-    elif dry_run:
-        click.echo(f"  - {table}: would derive org for {orphans} row(s) from {parent_table}")
-        db.session.rollback()
-        return
-    else:
-        conn.execute(text(
-            f'UPDATE "{table}" AS c SET organization_id = p.organization_id '
-            f'FROM "{parent_table}" AS p '
-            f'WHERE c.{fk_column} = p.id AND c.organization_id IS NULL'
-        ))
-        remaining = conn.execute(
-            text(f'SELECT count(*) FROM "{table}" WHERE organization_id IS NULL')
-        ).scalar()
-        click.echo(f"  + {table}: derived org for {orphans - remaining} row(s) from {parent_table}")
-        if remaining:
-            # Only possible if the parent itself is unbackfilled. Say so rather
-            # than leaving rows silently invisible.
-            click.echo(
-                f"  ! {table}: {remaining} row(s) still NULL — their {parent_table} "
-                "row has no organization_id yet"
-            )
-
-    if dry_run:
-        db.session.rollback()
-        return
-
-    for ddl, label in (
-        (f'CREATE INDEX IF NOT EXISTS ix_{table}_organization_id ON "{table}" (organization_id)', "index"),
-        (f'ALTER TABLE "{table}" ADD CONSTRAINT fk_{table}_organization '
-         'FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE', "foreign key"),
-    ):
-        try:
-            conn.execute(text(ddl))
-            click.echo(f"  + {table}: {label}")
-        except Exception as exc:  # noqa: BLE001
-            click.echo(f"  ! {table}: {label} skipped ({str(exc)[:100]})")
-
-    db.session.commit()
-    click.echo(f"backfill {table}: done.")
+    """Derive only NULL child owners from non-NULL parent owners, without fallback."""
+    return _run_backfill(table, dry_run, parent_table=parent_table, fk_column=fk_column)
 
 
 @click.command("backfill-kanban-card-org")

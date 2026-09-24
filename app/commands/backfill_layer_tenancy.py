@@ -1,61 +1,21 @@
-"""flask backfill-layer-tenancy — give every TenantMixin table a hardened tenant column.
+"""Reconcile TenantMixin ownership with its declared nullable/required policy.
 
-ADR-0002 records the structural bind this command resolves: `reconcile-schema`
-can only ever ADD nullable columns, while `TenantMixin.organization_id` is
-declared NOT NULL. So when a model gains the mixin, an existing database is left
-with a nullable, unindexed column that the model says cannot be null — and, per
-ADR-0003, the tenant filter compares with `=`, so any row left at NULL silently
-vanishes from every organisation's view rather than failing loudly.
-
-`backfill-value-stream-tenancy` solved this for three tables. The ADR-0003
-completion put `TenantMixin` on ~28 more models across the business, data,
-technology and physical layers, and hard-coding another table list per adoption
-wave does not scale. This command derives its worklist from the mapper registry
-instead: every mapped `TenantMixin` model's table is a candidate, and a table is
-touched only when something is actually wrong with it —
-
-  * the column is missing entirely (model gained the mixin before any
-    reconcile-schema ran here), or
-  * rows hold NULL (pre-mixin rows never assigned to a tenant), or
-  * the column is still nullable or unindexed (reconcile-schema adds plain
-    nullable columns with no index).
-
-Healthy tables are read and skipped, so the command is safe to run on every
-boot, which is exactly where docker-compose runs it. Orphan assignment follows
-the house refusal-to-guess rule: with one organisation the rows go to it, with
-several the command demands --org-id rather than guessing a tenant.
-
-    flask --app manage backfill-layer-tenancy --dry-run
-    flask --app manage backfill-layer-tenancy
-    flask --app manage backfill-layer-tenancy --org-id 7
+Nullable ownership is preserved for dedicated attribution commands. Required
+ownership derives from supported parents before sole/explicit-org fallback.
+All repairs use one transaction; dry runs only read the observed schema/data.
 """
 
 import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.commands.tenant_schema import _HAS_INDEX
 
 
-# Tables whose tenant can be READ from a row they already reference rather than
-# guessed. Each statement fills organization_id only where it is NULL, so it is
-# idempotent and can never move a row between tenants.
-#
-# vendor_product_capabilities records how well a vendor product covers a business
-# capability. The capability is tenant-owned, so the assessment belongs to that
-# capability's organisation — every production row resolves this way, which is
-# strictly better than the refuse-to-guess fallback (they would otherwise all be
-# assigned to one operator-chosen org).
-# tenancy-ok: this backfill is what gives the column its values; it derives the
-# tenant from the joined row rather than assuming one.
+# Canonical parent derivation for required ownership. The same join predicate
+# drives both the dry-run count and the UPDATE; only NULL owners are eligible.
 _DERIVABLE_ORG = {
-    "vendor_product_capabilities": """
-        UPDATE vendor_product_capabilities v
-           SET organization_id = b.organization_id
-          FROM business_capability b
-         WHERE v.business_capability_id = b.id
-           AND v.organization_id IS NULL
-           AND b.organization_id IS NOT NULL
-    """,
+    "vendor_product_capabilities": ("business_capability", "business_capability_id"),
 }
 
 
@@ -63,16 +23,15 @@ def _resolve_org_id(conn, explicit):
     from sqlalchemy import text
 
     if explicit is not None:
-        row = conn.execute(text("SELECT id FROM organizations WHERE id = :i"), {"i": explicit}).first()
+        row = conn.execute(
+            text('SELECT id FROM public.organizations WHERE id = :i'), {"i": explicit}
+        ).first()
         if not row:
             raise click.ClickException(f"No organization with id={explicit}.")
         return explicit
-    rows = conn.execute(text("SELECT id, name FROM organizations ORDER BY id")).fetchall()
+    rows = conn.execute(text("SELECT id, name FROM public.organizations ORDER BY id")).fetchall()
     if len(rows) == 1:
-        click.echo(f"  single organization found: id={rows[0][0]} ({rows[0][1]}) — assigning orphans to it")
         return rows[0][0]
-    # Refuse to guess. Picking wrongly hands one tenant's data to another,
-    # which is the exact failure this command exists to prevent.
     listing = ", ".join(f"{r[0]}={r[1]}" for r in rows)
     raise click.ClickException(
         f"{len(rows)} organizations exist ({listing}). Re-run with --org-id to say which one "
@@ -81,131 +40,212 @@ def _resolve_org_id(conn, explicit):
 
 
 def _tenant_tables():
-    """Every table mapped by a TenantMixin model, deduplicated and sorted.
+    """Return one sorted (name, nullable) inventory, refusing ambiguous mappings.
 
-    Derived from the mapper registry rather than a hand-kept list so the next
-    model to gain the mixin is covered without editing this file. Dual-mapped
-    tables (`extend_existing`) appear once.
-
-    Names are re-checked against a strict identifier pattern before being
-    returned. They come from mapped classes rather than from any request, so
-    this cannot fail in practice — it exists so the f-string interpolation
-    below (bandit B608, which cannot know the source is trusted) is guarded by
-    something executable rather than by a comment.
+    Only ordinary tables on the default bind with an implicit public schema are
+    supported. Retained mapper columns can differ from the canonical Table
+    column after extend_existing; both must agree before any SQL is issued.
     """
     import re
 
+    from sqlalchemy import Column, Integer, Table
+
     from app.models.mixins import TenantMixin
 
-    safe = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-    tables = set()
+    safe = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    tables = {}
+    errors = []
     for mapper in db.Model.registry.mappers:
-        if issubclass(mapper.class_, TenantMixin):
-            name = mapper.local_table.name
-            if not safe.match(name):
-                raise RuntimeError(
-                    f"refusing to interpolate unexpected table name {name!r}"
-                )
-            tables.add(name)
-    return sorted(tables)
+        cls = mapper.class_
+        if not issubclass(cls, TenantMixin):
+            continue
+        table = mapper.local_table
+        label = f"{cls.__module__}.{cls.__qualname__} ({getattr(table, 'fullname', table)})"
+        if not isinstance(table, Table):
+            errors.append(f"{label}: unsupported table mapping")
+            continue
+        bind = table.metadata.info.get("bind_key")
+        identity = (bind, table.schema, table.name)
+        if (bind is not None or getattr(cls, "__bind_key__", None) is not None
+                or table.schema is not None or not safe.fullmatch(table.name)):
+            errors.append(f"{label}: unsupported bind/schema/table identity {identity!r}")
+            continue
+        canonical = table.c.get("organization_id")
+        prop = mapper.column_attrs.get("organization_id")
+        mapped = list(prop.columns) if prop is not None else []
+        if canonical is None or len(mapped) != 1:
+            errors.append(f"{label}: missing or ambiguous organization_id metadata")
+            continue
+        columns = [canonical, mapped[0]]
+        if any(not isinstance(c, Column) or c.table is not table or c.name != "organization_id"
+               or c.key != "organization_id" or not isinstance(c.type, Integer)
+               or type(c.nullable) is not bool for c in columns):
+            errors.append(f"{label}: unsupported organization_id column metadata")
+            continue
+        if mapped[0].nullable is not canonical.nullable:
+            errors.append(f"{label}: mapped/canonical organization_id nullability conflict")
+            continue
+        tables.setdefault(identity, []).append((canonical.nullable, label))
+    for identity, declarations in tables.items():
+        if len({nullable for nullable, _ in declarations}) != 1:
+            labels = ", ".join(sorted(label for _, label in declarations))
+            errors.append(f"{identity!r}: conflicting organization_id policies: {labels}")
+    if errors:
+        raise click.ClickException("Invalid tenancy metadata: " + "; ".join(sorted(errors)))
+    return sorted((identity[2], declarations[0][0]) for identity, declarations in tables.items())
 
 
 def repair_layer_tenancy(org_id=None, dry_run=False):
-    """Repair organization_id on every TenantMixin table that needs it.
+    """Repair declared ownership policy atomically, without moving existing owners.
 
     Returns {"repaired": [...], "skipped_healthy": n, "absent": [...]}.
+    Dry-run repaired entries describe planned changes, never committed writes.
     """
     from sqlalchemy import inspect, text
 
-    insp = inspect(db.engine)
-    live = set(insp.get_table_names())
-    conn = db.session.connection()
-
-    repaired, absent = [], []
+    repaired, absent, messages = [], [], []
     healthy = 0
     resolved_org = None
-
-    for t in _tenant_tables():
-        if t not in live:
-            absent.append(t)
-            continue
-
-        cols = {c["name"]: c for c in insp.get_columns(t)}
-        col = cols.get("organization_id")
-        indexes = {i["name"] for i in insp.get_indexes(t)}
-        wanted_index = f"ix_{t}_organization_id"
-        has_index = wanted_index in indexes or any(
-            i["column_names"] == ["organization_id"] for i in insp.get_indexes(t)
-        )
-
-        if col is None:
-            if dry_run:
-                click.echo(f"  - {t}: would ADD COLUMN organization_id")
-                repaired.append(t)
+    try:
+        inventory = _tenant_tables()
+        conn = db.session.connection()
+        insp = inspect(conn)
+        if conn.dialect.name != "postgresql" or insp.default_schema_name != "public":
+            raise click.ClickException("Tenancy repair requires the default PostgreSQL public schema.")
+        live = set(insp.get_table_names(schema="public"))
+        for t, nullable in inventory:
+            if t not in live:
+                absent.append(t)
                 continue
-            conn.execute(text(f'ALTER TABLE "{t}" ADD COLUMN IF NOT EXISTS organization_id INTEGER'))
-            click.echo(f"  + {t}: added organization_id")
-            col = {"nullable": True}
+            target = f'"public"."{t}"'
+            cols = {c["name"]: c for c in insp.get_columns(t, schema="public")}
+            col = cols.get("organization_id")
+            if col is not None and type(col.get("nullable")) is not bool:
+                raise click.ClickException(f"{t}: catalog nullability is unavailable")
+            missing = col is None
+            actions = []
+            if missing:
+                actions.append("ADD COLUMN organization_id INTEGER (nullable, no default)")
+            orphans = conn.execute(text(
+                f'SELECT count(*) FROM {target}'  # nosec B608 -- target quotes a validated mapped name; suffix is constant SQL
+                + ("" if missing else " WHERE organization_id IS NULL")
+            )).scalar_one()
 
-        # A table that can state its own tenant does so first, so those rows
-        # never reach the guess-based orphan pass below.
-        if not dry_run and t in _DERIVABLE_ORG:
-            derived = conn.execute(text(_DERIVABLE_ORG[t])).rowcount
-            if derived:
-                click.echo(f"  + {t}: derived org for {derived} row(s) from the linked entity")
-
-        orphans = conn.execute(
-            text(f'SELECT count(*) FROM "{t}" WHERE organization_id IS NULL')
-        ).scalar()
-
-        if not orphans and col.get("nullable") is False and has_index:
-            healthy += 1
-            continue
-
-        if orphans:
-            if resolved_org is None:
-                resolved_org = _resolve_org_id(conn, org_id)
-            if dry_run:
-                click.echo(f"  - {t}: would assign {orphans} orphaned row(s) to org {resolved_org}")
-            else:
-                conn.execute(
-                    text(f'UPDATE "{t}" SET organization_id = :o WHERE organization_id IS NULL'),
-                    {"o": resolved_org},
+            if nullable:
+                if not missing and col["nullable"] is False:
+                    actions.append("DROP NOT NULL")
+                if not dry_run:
+                    if missing:
+                        conn.execute(text(f'ALTER TABLE {target} ADD COLUMN organization_id INTEGER'))
+                    elif col["nullable"] is False:
+                        conn.execute(text(f'ALTER TABLE {target} ALTER COLUMN organization_id DROP NOT NULL'))
+                    insp.clear_cache()
+                    actual = next(c for c in insp.get_columns(t, schema="public")
+                                  if c["name"] == "organization_id")
+                    if actual["nullable"] is not True:
+                        raise click.ClickException(f"{t}: nullable ownership postcondition failed")
+                messages.append(
+                    f"  {t}: {orphans} NULL owner(s) preserved; "
+                    "index/FK completion deferred to dedicated commands"
                 )
-                click.echo(f"  + {t}: assigned {orphans} orphaned row(s) to org {resolved_org}")
-
+            else:
+                index_params = {"table": target, "column": "organization_id"}
+                has_index = conn.execute(text(_HAS_INDEX), index_params).first() is not None
+                index_name = f"ix_{t}_organization_id"
+                if not has_index:
+                    # Index names share the table's schema with all relations.
+                    # PostgreSQL's name cast applies its identifier length limit;
+                    # keep both the schema and quoted table identity exact.
+                    occupied = conn.execute(text(
+                        "SELECT c.oid FROM pg_catalog.pg_class c "
+                        "WHERE c.relnamespace = (SELECT relnamespace FROM pg_catalog.pg_class "
+                        "WHERE oid = to_regclass(:table)) "
+                        "AND c.relname = CAST(:index_name AS name)"
+                    ), {"table": target, "index_name": index_name}).first()
+                    if occupied:
+                        raise click.ClickException(
+                            f'{t}: cannot add organization index; public."{index_name}" '
+                            "is occupied and no valid organization-leading index exists"
+                        )
+                if not dry_run and missing:
+                    conn.execute(text(f'ALTER TABLE {target} ADD COLUMN organization_id INTEGER'))
+                derivation = _DERIVABLE_ORG.get(t)
+                if derivation and orphans:
+                    parent, link = derivation
+                    predicate = f'v."{link}" = b.id AND b.organization_id IS NOT NULL'
+                    if not (dry_run and missing):
+                        predicate += " AND v.organization_id IS NULL"
+                    if dry_run:
+                        derived = conn.execute(text(
+                            f'SELECT count(*) FROM {target} v JOIN public."{parent}" b ON {predicate}'  # nosec B608 -- validated target; parent/link and predicate SQL are code constants
+                        )).scalar_one()
+                    else:
+                        derived = conn.execute(text(
+                            f'UPDATE {target} v SET organization_id = b.organization_id '  # nosec B608 -- validated target; parent/link and predicate SQL are code constants
+                            f'FROM public."{parent}" b WHERE {predicate}'
+                        )).rowcount
+                    if derived:
+                        actions.append(f"derive {derived} owner(s) from linked entity")
+                    if dry_run:
+                        orphans -= derived
+                    else:
+                        orphans = conn.execute(text(
+                            f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- only a validated, quoted mapped table name is interpolated
+                        )).scalar_one()
+                if orphans:
+                    if resolved_org is None:
+                        resolved_org = _resolve_org_id(conn, org_id)
+                    actions.append(f"assign {orphans} residual owner(s) to org {resolved_org}")
+                    if not dry_run:
+                        conn.execute(text(
+                            f'UPDATE {target} SET organization_id = :o WHERE organization_id IS NULL'  # nosec B608 -- validated quoted target; organization value stays bound as :o
+                        ), {"o": resolved_org})
+                if not has_index:
+                    actions.append("add organization index")
+                    if not dry_run:
+                        conn.execute(text(
+                            f'CREATE INDEX IF NOT EXISTS "{index_name}" '
+                            f'ON {target} (organization_id)'
+                        ))
+                if missing or col["nullable"]:
+                    actions.append("SET NOT NULL")
+                    if not dry_run:
+                        conn.execute(text(f'ALTER TABLE {target} ALTER COLUMN organization_id SET NOT NULL'))
+                if not dry_run:
+                    insp.clear_cache()
+                    actual = next(c for c in insp.get_columns(t, schema="public")
+                                  if c["name"] == "organization_id")
+                    remaining = conn.execute(text(
+                        f'SELECT count(*) FROM {target} WHERE organization_id IS NULL'  # nosec B608 -- only a validated, quoted mapped table name is interpolated
+                    )).scalar_one()
+                    if (actual["nullable"] is not False or remaining
+                            or not conn.execute(text(_HAS_INDEX), index_params).first()):
+                        raise click.ClickException(f"{t}: required ownership postcondition failed")
+            if actions:
+                repaired.append(t)
+                messages.append(f"  {t}: {'would ' if dry_run else ''}" + "; ".join(actions))
+            else:
+                healthy += 1
         if dry_run:
-            if col.get("nullable") is not False or not has_index:
-                click.echo(f"  - {t}: would add index / SET NOT NULL as needed")
-            repaired.append(t)
-            continue
-
-        # Index before NOT NULL, both idempotent; reconcile-schema adds neither.
-        for ddl, label in (
-            (f'CREATE INDEX IF NOT EXISTS {wanted_index} ON "{t}" (organization_id)', "index"),
-            (f'ALTER TABLE "{t}" ALTER COLUMN organization_id SET NOT NULL', "not-null"),
-        ):
-            try:
-                conn.execute(text(ddl))
-            except Exception as exc:  # noqa: BLE001 — report, keep repairing other tables
-                click.echo(f"  ! {t}: {label} skipped ({str(exc)[:100]})")
-        click.echo(f"  + {t}: hardened (index, NOT NULL)")
-        repaired.append(t)
-
-    if dry_run:
+            db.session.rollback()
+        else:
+            db.session.commit()
+    except Exception as exc:
         db.session.rollback()
-    else:
-        db.session.commit()
-
+        if isinstance(exc, click.ClickException):
+            raise
+        raise click.ClickException(f"Tenancy repair failed; transaction rolled back: {exc}") from exc
+    for message in messages:
+        click.echo(message)
     return {"repaired": repaired, "skipped_healthy": healthy, "absent": absent}
 
 
 @click.command("backfill-layer-tenancy")
 @click.option("--dry-run", is_flag=True, help="Report what would change; change nothing.")
-@click.option("--org-id", type=int, default=None, help="Organization to assign orphaned rows to.")
+@click.option("--org-id", type=int, default=None, help="Organization for unresolved required-tenant rows.")
 @with_appcontext
 def backfill_layer_tenancy(dry_run, org_id):
-    """Backfill and harden organization_id on every TenantMixin table."""
+    """Reconcile declared nullable ownership and harden required ownership."""
     stats = repair_layer_tenancy(org_id=org_id, dry_run=dry_run)
     if stats["absent"]:
         click.echo(f"  {len(stats['absent'])} mapped table(s) absent (created by init-db later): "

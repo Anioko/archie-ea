@@ -18,13 +18,17 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
+
+from flask import g, has_request_context
 
 from app import db
 
 # Import models
-from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+from app.models.confidence_review import APPLICATION_ITEM_TYPES, ReviewQueueItem, ReviewStatus
+from app.utils.route_guards import load_entity
 
 logger = logging.getLogger(__name__)
 
@@ -325,11 +329,13 @@ class ConfidenceReviewService:
         from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
         # Ensure item is in IN_REVIEW state first
-        review_item = ReviewQueueItem.query.get(item_id)
+        review_item = load_entity(ReviewQueueItem, item_id)
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
-            self.assign_review_item(item_id, reviewer_id)
+            assignment = self.assign_review_item(item_id, reviewer_id)
+            if not assignment.get("success"):
+                return assignment
 
         decision = ReviewDecisionData(
             review_item_id=item_id,
@@ -353,11 +359,13 @@ class ConfidenceReviewService:
         """Reject a review item (wrapper around submit_review_decision)."""
         from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
-        review_item = ReviewQueueItem.query.get(item_id)
+        review_item = load_entity(ReviewQueueItem, item_id)
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
-            self.assign_review_item(item_id, reviewer_id)
+            assignment = self.assign_review_item(item_id, reviewer_id)
+            if not assignment.get("success"):
+                return assignment
 
         decision = ReviewDecisionData(
             review_item_id=item_id,
@@ -671,6 +679,27 @@ class ConfidenceReviewService:
 
         return True
 
+    @staticmethod
+    def _organization_for_new_item(item_data: ReviewQueueItemData) -> Optional[int]:
+        """Organisation a new queue item belongs to.
+
+        The signed-in caller's organisation when there is one. Outside a request
+        (a background job) it is the organisation that owns the reviewed
+        application, for the item types whose ``item_id`` is an application.
+        ``None`` when neither is known; such an item is listed for nobody.
+        """
+        if has_request_context():
+            return getattr(g, "current_org_id", None)
+        if item_data.item_type in APPLICATION_ITEM_TYPES and item_data.item_id:
+            from app.models.application_portfolio import ApplicationComponent
+
+            return (
+                db.session.query(ApplicationComponent.organization_id)
+                .filter(ApplicationComponent.id == item_data.item_id)
+                .scalar()
+            )
+        return None
+
     def add_to_review_queue(
         self, item_data: ReviewQueueItemData, evaluation_result: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -694,6 +723,7 @@ class ConfidenceReviewService:
 
             # Create review queue item
             review_item = ReviewQueueItem(
+                organization_id=self._organization_for_new_item(item_data),
                 threshold_id=evaluation_result.get("threshold_id"),
                 item_type=item_data.item_type,
                 item_id=item_data.item_id,
@@ -787,10 +817,16 @@ class ConfidenceReviewService:
         """
         try:
             from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+            from app.models.user import User
 
-            review_item = ReviewQueueItem.query.get(review_item_id)
+            review_item = load_entity(ReviewQueueItem, review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
+
+            if review_item.organization_id is None or not User.query.filter_by(
+                id=reviewer_id, organization_id=review_item.organization_id
+            ).first():
+                return {"success": False, "error": "Reviewer not found"}
 
             if review_item.status != ReviewStatus.PENDING:
                 return {
@@ -830,10 +866,16 @@ class ConfidenceReviewService:
         """
         try:
             from app.models.confidence_review import ReviewDecision, ReviewQueueItem, ReviewStatus
+            from app.models.user import User
 
-            review_item = ReviewQueueItem.query.get(decision_data.review_item_id)
+            review_item = load_entity(ReviewQueueItem, decision_data.review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
+
+            if review_item.organization_id is None or not User.query.filter_by(
+                id=decision_data.reviewer_id, organization_id=review_item.organization_id
+            ).first():
+                return {"success": False, "error": "Reviewer not found"}
 
             if review_item.status != ReviewStatus.IN_REVIEW:
                 return {
@@ -860,8 +902,8 @@ class ConfidenceReviewService:
                 review_item_id=decision_data.review_item_id,
                 decision_type=decision_data.decision_type,
                 decision_reason=decision_data.decision_reason,
-                confidence_adjustment=decision_data.human_confidence_estimate
-                - review_item.confidence_score,
+                confidence_adjustment=Decimal(str(decision_data.human_confidence_estimate))
+                - Decimal(str(review_item.confidence_score)),
                 quality_assessment=json.dumps(decision_data.quality_assessment),
                 identified_issues=json.dumps(decision_data.identified_issues),
                 suggested_improvements=json.dumps(decision_data.suggested_improvements),
