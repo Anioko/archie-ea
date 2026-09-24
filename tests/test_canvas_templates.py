@@ -357,10 +357,10 @@ class TestForeignIdReturnsNotFoundBytes:
         # not-found template, never the record's own data -- not about the
         # two numbers happening to match.
         own_text = _without_per_request_nonce(
-            own_missing.get_data(as_text=True).replace("#999999999", "#ID")
+            re.sub(r"(?<!&)#999999999(?![\da-fA-F])", "#ID", own_missing.get_data(as_text=True))
         )
         foreign_text = _without_per_request_nonce(
-            foreign.get_data(as_text=True).replace(f"#{canvas_id}", "#ID")
+            re.sub(rf"(?<!&)#{canvas_id}(?![\da-fA-F])", "#ID", foreign.get_data(as_text=True))
         )
         assert foreign_text == own_text
         assert "Org A Canvas" not in foreign_text
@@ -388,10 +388,10 @@ class TestForeignIdReturnsNotFoundBytes:
         # typed is echoed back and differs by design; the page itself must
         # not otherwise differ.
         own_text = _without_per_request_nonce(
-            own_missing.get_data(as_text=True).replace("#999999999", "#ID")
+            re.sub(r"(?<!&)#999999999(?![\da-fA-F])", "#ID", own_missing.get_data(as_text=True))
         )
         foreign_text = _without_per_request_nonce(
-            foreign.get_data(as_text=True).replace(f"#{case_id}", "#ID")
+            re.sub(rf"(?<!&)#{case_id}(?![\da-fA-F])", "#ID", foreign.get_data(as_text=True))
         )
         assert foreign_text == own_text
         assert "Org A Case" not in foreign_text
