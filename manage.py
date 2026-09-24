@@ -386,7 +386,7 @@ def register_cli_commands(app):
         else:
             try:
                 db.session.execute(text(
-                    "ALTER TABLE users ADD COLUMN show_archimate_names BOOLEAN NOT NULL DEFAULT 0"
+                    "ALTER TABLE users ADD COLUMN show_archimate_names INTEGER NOT NULL DEFAULT 0"
                 ))
             except Exception:  # column already exists in SQLite
                 db.session.rollback()
