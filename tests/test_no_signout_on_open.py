@@ -127,6 +127,25 @@ class TestOpeningAPageNeverSignsOut:
         assert "/dashboard" in resp.headers["Location"]
         _assert_still_signed_in(client)
 
+    def test_bare_login_convenience_path_reaches_dashboard_not_the_form(
+        self, app, db_session, make_org, client
+    ):
+        """The bare /login convenience redirect (distinct from /account/login)
+        is what the audit actually walked -- it forwards to /account/login,
+        which before this fix re-rendered the sign-in form for an already
+        authenticated visitor. Follow the whole chain and land on the
+        dashboard, not a login form."""
+        org = make_org("nosignout2b")
+        user = _make_user(db_session, org)
+        _login_via_form(client, user.email, _PASSWORD)
+
+        _clear_g_cache()
+        resp = client.get("/login", follow_redirects=True)
+        assert resp.status_code == 200, resp.status_code
+        body = resp.get_data(as_text=True)
+        assert 'id="password"' not in body, "landed back on the sign-in form"
+        _assert_still_signed_in(client)
+
     def test_login_page_still_renders_the_form_when_signed_out(self, client):
         """Guard against overcorrecting: an anonymous visitor must still see
         the sign-in form, not get redirected anywhere."""
