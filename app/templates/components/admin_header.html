@@ -186,8 +186,6 @@
                             role="menuitemcheckbox"
                             :aria-checked="$store.theme.dark"
                             @click="$store.theme.toggle()"
-                            @keydown.enter.prevent="$store.theme.toggle()"
-                            @keydown.space.prevent="$store.theme.toggle()"
                             class="flex items-center justify-between w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
                         <span class="flex items-center gap-2">
                             <i data-lucide="moon" class="h-4 w-4"></i>

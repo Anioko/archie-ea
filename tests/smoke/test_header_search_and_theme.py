@@ -65,3 +65,34 @@ def test_search_trigger_does_not_pass_event_as_query(page, live_server, seeded):
     assert value == "", (
         f"search input value must be empty after trigger click, got {value!r}"
     )
+
+
+def test_dark_theme_toggle_via_enter_key_toggles_exactly_once(page, live_server, seeded):
+    """Pressing Enter once on the focused Dark theme menuitemcheckbox must
+    toggle the ``dark`` class exactly once.  A redundant @keydown handler
+    would cause a double-toggle in some browsers (D-5)."""
+    _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    _visit(page, live_server, "/dashboard/overview")
+
+    # Open the user menu
+    user_btn = page.locator("#user-menu-btn")
+    user_btn.click()
+    page.wait_for_timeout(400)
+
+    # Focus the dark-theme menuitemcheckbox
+    dark_item = page.locator('button[role="menuitemcheckbox"]')
+    assert dark_item.count() == 1
+    dark_item.focus()
+    page.wait_for_timeout(100)
+
+    # Press Enter once
+    page.keyboard.press("Enter")
+    page.wait_for_timeout(400)
+
+    # Verify dark class was applied exactly once
+    has_dark = page.evaluate("() => document.documentElement.classList.contains('dark')")
+    assert has_dark is True, (
+        "expected <html> to have class 'dark' after pressing Enter on the "
+        "dark theme menuitemcheckbox — the toggle may have double-fired and "
+        "returned to the original state"
+    )

@@ -370,10 +370,9 @@ def test_dark_theme_switch_in_user_menu(app, db_session, make_org):
     assert ':aria-checked="$store.theme.dark' in html, (
         "dark theme switch aria-checked not bound to $store.theme.dark"
     )
-    # Keyboard operable: Enter and Space must toggle
-    assert '@keydown.enter.prevent="$store.theme.toggle()"' in html, (
-        "dark theme menuitem missing Enter key handler"
-    )
-    assert '@keydown.space.prevent="$store.theme.toggle()"' in html, (
-        "dark theme menuitem missing Space key handler"
+    # Keyboard operable: @click on a <button> natively fires on Enter and Space,
+    # so no separate @keydown handlers are needed (D-5: redundant keydown
+    # handlers risk double-toggle in some browsers).
+    assert '@click="$store.theme.toggle()"' in html, (
+        "dark theme menuitem missing click handler"
     )
