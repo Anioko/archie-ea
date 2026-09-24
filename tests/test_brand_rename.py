@@ -66,6 +66,9 @@ def test_no_standalone_archi_word_in_templates_or_static_js():
         if "__pycache__" in path.parts:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
+        # The external Archi desktop tool's file format label is a legitimate
+        # reference, not the old product name.
+        text = text.replace("Archi (.archimate)", "")
         if STANDALONE_ARCHI.search(text):
             offenders.append(str(path.relative_to(ROOT)))
     assert offenders == [], f"'Archi' standalone still present in: {offenders}"
