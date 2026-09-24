@@ -68,3 +68,50 @@ def test_no_standalone_archi_word_in_templates_or_static_js():
         if STANDALONE_ARCHI.search(text):
             offenders.append(str(path.relative_to(ROOT)))
     assert offenders == [], f"'Archi' standalone still present in: {offenders}"
+
+
+def test_no_archie_dot_ai_email_in_billing_page():
+    billing = APP_DIR / "templates" / "admin" / "billing.html"
+    text = billing.read_text(encoding="utf-8")
+    assert "sales@archie.ai" not in text
+
+
+def test_no_at_archie_in_slack_integration_page():
+    slack = APP_DIR / "templates" / "admin" / "integrations_slack.html"
+    text = slack.read_text(encoding="utf-8")
+    assert "@archie" not in text
+
+
+def test_no_at_archie_in_admin_index_page():
+    index_page = APP_DIR / "templates" / "admin" / "index.html"
+    text = index_page.read_text(encoding="utf-8")
+    assert "@archie" not in text
+
+
+def test_no_archie_trace_in_codegen_workbench():
+    wb = APP_DIR / "templates" / "codegen" / "_wb_ide.html"
+    text = wb.read_text(encoding="utf-8")
+    assert "ARCHIE_TRACE" not in text
+
+
+def test_account_flash_welcome_uses_app_name():
+    """The registration flash message reads APP_NAME from config, not a hardcoded string."""
+    account_routes = APP_DIR / "modules" / "account" / "routes" / "account_routes.py"
+    text = account_routes.read_text(encoding="utf-8")
+    assert "current_app.config['APP_NAME']" in text
+    assert '"Welcome to Entelim!"' not in text
+
+
+def test_account_v2_flash_welcome_uses_app_name():
+    account_routes = APP_DIR / "modules" / "account" / "v2" / "routes" / "account_routes.py"
+    text = account_routes.read_text(encoding="utf-8")
+    assert "current_app.config['APP_NAME']" in text
+    assert '"Welcome to Entelim!"' not in text
+
+
+def test_onboarding_descriptions_use_app_name():
+    dashboard_views = APP_DIR / "modules" / "dashboard" / "v2" / "routes" / "dashboard_views.py"
+    text = dashboard_views.read_text(encoding="utf-8")
+    assert "current_app.config['APP_NAME']" in text
+    assert '"Bring your application portfolio into Entelim."' not in text
+    assert "\"Bring in the colleagues who'll use Entelim with you.\"" not in text
