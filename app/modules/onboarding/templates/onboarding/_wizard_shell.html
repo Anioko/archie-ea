@@ -2,7 +2,7 @@
    centred card. Extended by each screen, never inlined per-screen. #}
 {% extends 'layouts/base.html' %}
 
-{% block title %}{{ step_title | default('Getting started') }} — A.R.C.H.I.E.{% endblock %}
+{% block title %}{{ step_title | default('Getting started') }} — {{ config.APP_NAME }}{% endblock %}
 
 {# layouts/base.html does not load the platform core; the screens call
    Platform.fetch, so load the same bundle every other signed-in layout does. #}
