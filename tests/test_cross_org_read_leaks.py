@@ -250,3 +250,75 @@ def test_initiative_list_shows_initiative_linked_to_own_architecture_model(
     assert foreign_init.name not in names, (
         "Org A must NOT see initiative linked to Org B's architecture model"
     )
+
+
+def test_initiative_list_returns_empty_when_user_has_no_organisation(
+    db_session, make_org, client, login_as,
+):
+    """A signed-in user with no organisation must see an empty initiative list."""
+    from app.models.implementation_migration import TechnologyRoadmapInitiative
+    from app.models.solution_models import Solution
+    from app.models.user import Role, User
+
+    from tests.smoke.conftest import PASSWORD
+
+    org_a = make_org("noorg-a")
+    org_b = make_org("noorg-b")
+
+    suffix = uuid.uuid4().hex[:10]
+
+    sol_a = Solution(
+        name=f"Sol-A-{suffix}",
+        organization_id=org_a.id,
+        solution_type="application",
+    )
+    sol_b = Solution(
+        name=f"Sol-B-{suffix}",
+        organization_id=org_b.id,
+        solution_type="application",
+    )
+    db_session.add_all([sol_a, sol_b])
+    db_session.flush()
+
+    init_a = TechnologyRoadmapInitiative(
+        name=f"Init-A-{suffix}",
+        fiscal_year_start=2026,
+        fiscal_year_end=2027,
+        solution_id=sol_a.id,
+    )
+    init_b = TechnologyRoadmapInitiative(
+        name=f"Init-B-{suffix}",
+        fiscal_year_start=2026,
+        fiscal_year_end=2027,
+        solution_id=sol_b.id,
+    )
+    db_session.add_all([init_a, init_b])
+    db_session.flush()
+
+    role = Role.query.filter_by(name="Administrator").first()
+    if role is None:
+        Role.insert_roles()
+        role = Role.query.filter_by(name="Administrator").first()
+
+    no_org_user = User(
+        email=f"leak-noorg-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="NoOrg",
+        last_name="Test",
+        organization_id=None,
+        role=role,
+        confirmed=True,
+    )
+    no_org_user.password = PASSWORD
+    db_session.add(no_org_user)
+    db_session.flush()
+
+    login_as(client, no_org_user)
+    resp = client.get("/solutions/api/roadmap/initiatives")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["data"] == [], (
+        "User with no organisation must see an empty initiative list"
+    )
+    assert data["count"] == 0, (
+        "Count must be zero when user has no organisation"
+    )

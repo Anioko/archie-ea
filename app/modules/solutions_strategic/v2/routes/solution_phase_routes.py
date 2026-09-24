@@ -2782,6 +2782,8 @@ def list_roadmap_initiatives():
         db.session.rollback()
 
     org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return jsonify({"success": True, "data": [], "count": 0})
     year = request.args.get("year", type=int)
     query = TechnologyRoadmapInitiative.query
     if org_id is not None:
