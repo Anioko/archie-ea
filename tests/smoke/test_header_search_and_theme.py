@@ -139,14 +139,6 @@ def test_user_menu_profile_contrast_in_dark_mode(page, live_server, seeded):
     bg_color = dropdown.evaluate("el => window.getComputedStyle(el).backgroundColor")
 
     # Parse rgb(r, g, b) or rgba(r, g, b, a) strings
-    import re
-
-    def _parse_rgb(css_color):
-        m = re.match(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", css_color)
-        if not m:
-            raise ValueError(f"Could not parse colour: {css_color!r}")
-        return int(m.group(1)), int(m.group(2)), int(m.group(3))
-
     text_rgb = _parse_rgb(text_color)
     bg_rgb = _parse_rgb(bg_color)
 
@@ -163,4 +155,93 @@ def test_user_menu_profile_contrast_in_dark_mode(page, live_server, seeded):
     assert ratio >= 4.5, (
         f"Profile text ({text_color}) on popover background ({bg_color}) "
         f"contrast ratio {ratio:.2f}:1 is below WCAG AA minimum 4.5:1"
+    )
+
+
+def _parse_rgb(css_color):
+    """Parse an rgb(r, g, b) or rgba(r, g, b, a) string into (r, g, b)."""
+    import re
+    m = re.match(r"rgba?\((\d+),\s*(\d+),\s*(\d+)", css_color)
+    if not m:
+        raise ValueError(f"Could not parse colour: {css_color!r}")
+    return int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+
+def _switch_track_knob_contrast(page, theme_label):
+    """Return (track_bg, knob_bg, ratio) for the unchecked switch in the user menu."""
+    # Ensure the user menu is open
+    user_btn = page.locator("#user-menu-btn")
+    dropdown = page.locator("#user-dropdown")
+    if not dropdown.is_visible():
+        user_btn.click()
+        page.wait_for_timeout(400)
+    assert dropdown.is_visible(), f"user dropdown not visible in {theme_label}"
+
+    # The switch track is the span.peer inside the menuitemcheckbox button
+    track = page.locator('button[role="menuitemcheckbox"] > span.peer')
+    assert track.is_visible(), f"switch track not visible in {theme_label}"
+
+    # The knob is the inner span
+    knob = track.locator("> span").first
+    assert knob.is_visible(), f"switch knob not visible in {theme_label}"
+
+    track_bg = track.evaluate("el => window.getComputedStyle(el).backgroundColor")
+    knob_bg = knob.evaluate("el => window.getComputedStyle(el).backgroundColor")
+
+    track_rgb = _parse_rgb(track_bg)
+    knob_rgb = _parse_rgb(knob_bg)
+
+    track_lum = _relative_luminance(*track_rgb)
+    knob_lum = _relative_luminance(*knob_rgb)
+    ratio = _contrast_ratio(track_lum, knob_lum)
+
+    return track_bg, knob_bg, ratio
+
+
+def test_switch_unchecked_track_knob_contrast(page, live_server, seeded):
+    """The unchecked switch track must have a non-transparent background and at
+    least 3:1 contrast against the knob in both light and dark themes."""
+    _login(page, live_server, seeded["emails"]["enterprise_architect"])
+    _visit(page, live_server, "/dashboard/overview")
+
+    # --- Light theme ---
+    page.evaluate("() => document.documentElement.classList.remove('dark')")
+    page.wait_for_timeout(300)
+
+    track_bg_light, knob_bg_light, ratio_light = _switch_track_knob_contrast(page, "light")
+
+    # Track must not be transparent
+    assert track_bg_light != "rgba(0, 0, 0, 0)", (
+        f"switch track background is transparent in light theme: {track_bg_light}"
+    )
+    assert "rgba(0, 0, 0, 0)" not in track_bg_light, (
+        f"switch track background is transparent in light theme: {track_bg_light}"
+    )
+
+    assert ratio_light >= 3.0, (
+        f"switch track ({track_bg_light}) vs knob ({knob_bg_light}) "
+        f"contrast ratio {ratio_light:.2f}:1 in light theme is below 3:1 minimum"
+    )
+
+    # Close the menu before switching themes
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(300)
+
+    # --- Dark theme ---
+    page.evaluate("() => document.documentElement.classList.add('dark')")
+    page.wait_for_timeout(300)
+
+    track_bg_dark, knob_bg_dark, ratio_dark = _switch_track_knob_contrast(page, "dark")
+
+    # Track must not be transparent
+    assert track_bg_dark != "rgba(0, 0, 0, 0)", (
+        f"switch track background is transparent in dark theme: {track_bg_dark}"
+    )
+    assert "rgba(0, 0, 0, 0)" not in track_bg_dark, (
+        f"switch track background is transparent in dark theme: {track_bg_dark}"
+    )
+
+    assert ratio_dark >= 3.0, (
+        f"switch track ({track_bg_dark}) vs knob ({knob_bg_dark}) "
+        f"contrast ratio {ratio_dark:.2f}:1 in dark theme is below 3:1 minimum"
     )
