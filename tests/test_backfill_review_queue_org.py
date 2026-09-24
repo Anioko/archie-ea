@@ -1,10 +1,10 @@
 """backfill-review-queue-org derives each NULL-org review_queue_items row's
-organization from its user FKs in a stated order of preference.
+organization from its reviewed item first (item_type + item_id), then from
+user FKs in a stated order of preference.
 
 Scenario: items created before the TenantMixin migration, with
 organization_id NULL, seeded for two different organisations via their
-assigned_to_id / reviewed_by_id / escalated_to_id user references, plus
-one unresolvable row (all user FKs NULL).
+reviewed item ids or user foreign key references, plus unresolvable rows.
 """
 import uuid
 
@@ -26,7 +26,40 @@ def _user(db_session, org, label="u"):
     return user
 
 
-def _item(db_session, org_id=None, item_name=None, assigned_to_id=None,
+def _app_component(db_session, org, label="app"):
+    """Create an ApplicationComponent owned by *org*."""
+    from app.models.application_portfolio import ApplicationComponent
+
+    suffix = uuid.uuid4().hex[:8]
+    app = ApplicationComponent(
+        name=f"{label}-{suffix}",
+        description="test application",
+        organization_id=org.id,
+    )
+    db_session.add(app)
+    db_session.flush()
+    return app
+
+
+def _archimate_element(db_session, org, label="ae"):
+    """Create an ArchiMateElement owned by *org*."""
+    from app.models.archimate_core import ArchiMateElement
+
+    suffix = uuid.uuid4().hex[:8]
+    ae = ArchiMateElement(
+        name=f"{label}-{suffix}",
+        type="ApplicationComponent",
+        layer="application",
+        # TenantMixin column
+        organization_id=org.id,
+    )
+    db_session.add(ae)
+    db_session.flush()
+    return ae
+
+
+def _item(db_session, org_id=None, item_name=None, item_type="capability_mapping",
+          item_id=1, assigned_to_id=None,
           reviewed_by_id=None, escalated_to_id=None):
     """Create a review queue item, optionally with NULL organization_id."""
     from app.models.confidence_review import ReviewQueueItem, ReviewStatus
@@ -35,8 +68,8 @@ def _item(db_session, org_id=None, item_name=None, assigned_to_id=None,
         item_name = f"item-{uuid.uuid4().hex[:8]}"
     row = ReviewQueueItem(
         organization_id=org_id,
-        item_type="capability_mapping",
-        item_id=1,
+        item_type=item_type,
+        item_id=item_id,
         item_name=item_name,
         item_data='{"key":"value"}',
         confidence_score=0.75,
@@ -205,3 +238,141 @@ def test_preference_order_assigned_over_reviewed(db_session, two_orgs):
     assert item.organization_id == org_a.id, (
         "assigned_to_id must take precedence over reviewed_by_id"
     )
+
+
+# ── reviewed-item resolution (pending, unassigned items) ────────────────────
+
+
+def test_pending_item_resolved_from_application(db_session, two_orgs):
+    """A pending item with no user FKs must be resolved from the application
+    referenced by item_type / item_id."""
+    org_a, org_b = two_orgs
+    app_a = _app_component(db_session, org_a, "app-a")
+    app_b = _app_component(db_session, org_b, "app-b")
+
+    item_a = _item(db_session, org_id=None, item_name="pending-a",
+                   item_type="capability_mapping", item_id=app_a.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    item_b = _item(db_session, org_id=None, item_name="pending-b",
+                   item_type="capability_mapping", item_id=app_b.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    assert item_a.organization_id is None
+    assert item_b.organization_id is None
+
+    result = _run()
+    assert result.exit_code == 0, f"backfill failed: {result.output}"
+
+    db_session.refresh(item_a)
+    db_session.refresh(item_b)
+
+    assert item_a.organization_id == org_a.id, (
+        f"pending A should get app org {org_a.id}, got {item_a.organization_id}"
+    )
+    assert item_b.organization_id == org_b.id, (
+        f"pending B should get app org {org_b.id}, got {item_b.organization_id}"
+    )
+
+
+def test_reviewed_item_wins_over_user_fks(db_session, two_orgs):
+    """The reviewed item's organisation takes precedence over user FKs."""
+    org_a, org_b = two_orgs
+    app_a = _app_component(db_session, org_a, "app-a")
+    user_b = _user(db_session, org_b, "reviewer-b")
+
+    # Item belongs to org_a's app, but assigned_to is org_b's user.
+    item = _item(db_session, org_id=None, item_name="item-wins",
+                 item_type="capability_mapping", item_id=app_a.id,
+                 assigned_to_id=user_b.id,
+                 reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    _run()
+    db_session.refresh(item)
+
+    assert item.organization_id == org_a.id, (
+        "reviewed item (org A) must take precedence over assigned_to (org B)"
+    )
+
+
+def test_pending_item_process_classification(db_session, two_orgs):
+    """process_classification items resolve from the application."""
+    org_a, org_b = two_orgs
+    app_a = _app_component(db_session, org_a, "proc-app-a")
+    app_b = _app_component(db_session, org_b, "proc-app-b")
+
+    item_a = _item(db_session, org_id=None, item_name="proc-a",
+                   item_type="process_classification", item_id=app_a.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    item_b = _item(db_session, org_id=None, item_name="proc-b",
+                   item_type="process_classification", item_id=app_b.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    _run()
+    db_session.refresh(item_a)
+    db_session.refresh(item_b)
+
+    assert item_a.organization_id == org_a.id
+    assert item_b.organization_id == org_b.id
+
+
+def test_pending_item_vendor_analysis(db_session, two_orgs):
+    """vendor_analysis items resolve from the application."""
+    org_a, _org_b = two_orgs
+    app_a = _app_component(db_session, org_a, "vendor-app-a")
+
+    item = _item(db_session, org_id=None, item_name="vendor-item",
+                 item_type="vendor_analysis", item_id=app_a.id,
+                 assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    _run()
+    db_session.refresh(item)
+
+    assert item.organization_id == org_a.id
+
+
+def test_pending_item_archimate_element(db_session, two_orgs):
+    """archimate_element items resolve from the ArchiMateElement."""
+    org_a, org_b = two_orgs
+    ae_a = _archimate_element(db_session, org_a, "ae-a")
+    ae_b = _archimate_element(db_session, org_b, "ae-b")
+
+    item_a = _item(db_session, org_id=None, item_name="archi-a",
+                   item_type="archimate_element", item_id=ae_a.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    item_b = _item(db_session, org_id=None, item_name="archi-b",
+                   item_type="archimate_element", item_id=ae_b.id,
+                   assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    _run()
+    db_session.refresh(item_a)
+    db_session.refresh(item_b)
+
+    assert item_a.organization_id == org_a.id
+    assert item_b.organization_id == org_b.id
+
+
+def test_unknown_item_type_reported_stays_null(db_session, two_orgs):
+    """An unrecognised item_type must be reported by name and count,
+    and its rows stay NULL."""
+    org_a, _org_b = two_orgs
+    app_a = _app_component(db_session, org_a, "unknown-app")
+
+    item = _item(db_session, org_id=None, item_name="unknown-type",
+                 item_type="future_feature_type", item_id=app_a.id,
+                 assigned_to_id=None, reviewed_by_id=None, escalated_to_id=None)
+    db_session.commit()
+
+    result = _run()
+    assert result.exit_code == 0
+    # Unknown types are reported by name in the output.
+    assert "future_feature_type" in result.output, (
+        f"unknown type must be reported: {result.output}"
+    )
+
+    db_session.refresh(item)
+    assert item.organization_id is None, "unknown-type item must stay NULL"

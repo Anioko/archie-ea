@@ -50,6 +50,46 @@ class ConfidenceThresholdConfig:
     quality_gates: Dict[str, Any] = None
 
 
+# Item-type → table mapping for resolving the reviewed entity's organisation.
+# Used by add_to_review_queue and the backfill command.  Keep in sync with
+# app/commands/backfill_review_queue_org.py:_ITEM_TYPE_TABLE.
+_ITEM_TYPE_TABLE = {
+    "capability_mapping": "application_components",
+    "process_classification": "application_components",
+    "process_mapping": "application_components",
+    "vendor_analysis": "application_components",
+    "taxonomy_validation": "application_components",
+    "archimate_generation": "application_components",
+    "archimate_element": "archimate_elements",
+}
+
+
+def _resolve_org_id_from_item(item_type: str, item_id: int) -> Optional[int]:
+    """Return the organisation id for a reviewed entity, or None.
+
+    Each item_type value refers to a single ``TenantMixin`` table whose
+    ``id`` column maps to ``item_id``.  The table provides
+    ``organization_id``.
+
+    Returns None when the type is unrecognised or the row is missing.
+    """
+    table_name = _ITEM_TYPE_TABLE.get(item_type)
+    if table_name is None or item_id is None or item_id <= 0:
+        return None
+    try:
+        from app.extensions import db
+
+        row = db.session.execute(
+            db.text(
+                f"SELECT organization_id FROM {table_name} WHERE id = :id"
+            ),
+            {"id": item_id},
+        ).first()
+        return row[0] if row else None
+    except Exception:
+        return None
+
+
 @dataclass
 class ReviewQueueItemData:
     """Data for review queue item creation."""
@@ -692,6 +732,15 @@ class ConfidenceReviewService:
             estimated_review_time = evaluation_result["action"].get("estimated_review_time", 24)
             review_deadline = datetime.utcnow() + timedelta(hours=estimated_review_time)
 
+            # Resolve the reviewed item's organisation so new rows always have an
+            # org even outside a request context (background jobs, CLI seeds).
+            # The TenantMixin before_flush listener stamps organization_id from
+            # g.current_org_id when that is set; this explicit lookup covers the
+            # paths that lack one and is a no-op when g is already set.
+            resolved_org_id = _resolve_org_id_from_item(
+                item_data.item_type, item_data.item_id
+            )
+
             # Create review queue item
             review_item = ReviewQueueItem(
                 threshold_id=evaluation_result.get("threshold_id"),
@@ -706,6 +755,7 @@ class ConfidenceReviewService:
                 status=ReviewStatus.PENDING,
                 review_priority=review_priority,
                 review_deadline=review_deadline,
+                organization_id=resolved_org_id,
             )
 
             db.session.add(review_item)
