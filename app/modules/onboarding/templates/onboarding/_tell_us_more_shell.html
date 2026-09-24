@@ -12,7 +12,7 @@
    sections themselves. #}
 {% extends 'layouts/admin_base.html' %}
 
-{% block title %}{{ page_title | default('Tell us more') }} — A.R.C.H.I.E.{% endblock %}
+{% block title %}{{ page_title | default('Tell us more') }} — {{ config.APP_NAME }}{% endblock %}
 
 {% block content %}
 <div class="flex flex-col items-center px-4 py-10">
