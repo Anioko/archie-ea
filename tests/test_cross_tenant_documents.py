@@ -39,24 +39,48 @@ UNSCOPED_MODELS = (
     "ContractApplication",
 )
 
-OWNERSHIP_MARKERS = (
+# An explicit ownership/authorisation check in the handler source. Any one of
+# these on its own scopes a handler: it compares against the caller's
+# organisation (verify_file_access, organization_id, current_user.organization,
+# _check_access) or aborts the request.
+EXPLICIT_OWNERSHIP_MARKERS = (
     "verify_file_access",
     "organization_id",
     "current_user.organization",
     "_check_access",
     "abort(403",
-    # Loading the parent ApplicationComponent counts. It IS a TenantMixin model, so
-    # .query.get_or_404() is filtered and a cross-tenant caller gets 404 before the
-    # unfiltered child is reached. Without this, the check reports every handler
-    # that scopes correctly through its parent - 10 of the 11 it first flagged -
-    # and a rule that cries wolf gets muted rather than fixed.
-    #
-    # Deliberately NOT counting db.session.get(ApplicationComponent, ...): that can
-    # be served from the identity map without emitting a SELECT, so the filter is
-    # not guaranteed to run.
+)
+
+# Loading the parent ApplicationComponent scopes a handler ONLY when the
+# unscoped child is queried back to that parent through a foreign key (a marker
+# in FK_SCOPED_CHILD_MARKERS). ApplicationComponent is a TenantMixin model, so
+# .query.get_or_404() is filtered and a cross-tenant caller gets 404 before the
+# child is reached — but a bare parent load followed by loading the child by its
+# own primary key does NOT propagate that scope to the child.
+#
+# Deliberately NOT counting db.session.get(ApplicationComponent, ...): that can
+# be served from the identity map without emitting a SELECT, so the filter is
+# not guaranteed to run.
+PARENT_SCOPED_MARKERS = (
     "ApplicationComponent.query.get_or_404(",
     "ApplicationComponent.query.get(",
 )
+
+# Foreign-key columns that tie an unscoped child back to the ApplicationComponent
+# parent (or an entity reachable only through one). A handler that relies on
+# PARENT_SCOPED_MARKERS must also filter the child by one of these for the parent's
+# tenant scope to actually reach the child row.
+FK_SCOPED_CHILD_MARKERS = (
+    "application_component_id=",
+    "application_id=",
+    "capability_id=",
+    "business_capability_id=",
+)
+
+# Kept for test_every_document_delete_route_checks_tenancy: every
+# document-delete handler also carries an explicit verify_file_access check, so
+# accepting a parent load as scoping is safe there.
+OWNERSHIP_MARKERS = EXPLICIT_OWNERSHIP_MARKERS + PARENT_SCOPED_MARKERS
 
 
 def _unwrap(view):
@@ -116,7 +140,10 @@ def test_mutating_routes_on_unfiltered_models_scope_themselves(app):
         touches = [m for m in UNSCOPED_MODELS if re.search(r"\b%s\.query" % m, src)]
         if not touches:
             continue
-        if any(marker in src for marker in OWNERSHIP_MARKERS):
+        if any(marker in src for marker in EXPLICIT_OWNERSHIP_MARKERS):
+            continue
+        parent_scoped = any(marker in src for marker in PARENT_SCOPED_MARKERS)
+        if parent_scoped and any(marker in src for marker in FK_SCOPED_CHILD_MARKERS):
             continue
         findings.append("%s -> %s (%s)" % (rule, rule.endpoint, ",".join(touches)))
 
@@ -207,6 +234,16 @@ def _two_org_fixture(app):
         db.session.add(app_b)
         db.session.flush()
 
+        # An application owned by org A, so org A's user can pass the
+        # tenant-scoped parent lookup on the analyze-document route and reach
+        # the document-level tenant check.
+        app_a = ApplicationComponent(
+            name=f"App-A-{_uuid.uuid4().hex[:8]}",
+            organization_id=org_a.id,
+        )
+        db.session.add(app_a)
+        db.session.flush()
+
         # Create a real file on disk so the delete path tries to remove it.
         upload_dir = _os.path.join(
             app.instance_path, "uploads", str(org_b.id), "documents"
@@ -235,6 +272,7 @@ def _two_org_fixture(app):
             "org_a_id": org_a.id,
             "org_b_id": org_b.id,
             "user_a_id": user_a.id,
+            "app_a_id": app_a.id,
             "app_b_id": app_b.id,
             "doc_b_id": doc_b.id,
             "file_path": file_path,
@@ -348,3 +386,74 @@ def test_cross_tenant_download_refused_unified_route(app, _two_org_fixture):
     assert "Access denied." in html, (
         f"Expected 'Access denied.' flash; got: {html[:500]}"
     )
+
+
+# ---------------------------------------------------------------------------
+# verify_file_access fail-closed behaviour (D-1/D-2) and the analysis route
+# (D-3). Unit-level checks of the helper, plus one integration check of the
+# analysis route's tenant guard.
+# ---------------------------------------------------------------------------
+
+
+def test_verify_file_access_denies_missing_org_inside_request(app):
+    """Inside a request, a caller with no tenant context is refused (not allowed)."""
+    from flask import g
+
+    from app.middleware.tenant_files import verify_file_access
+
+    with app.test_request_context("/"):
+        # current_org_id not set at all.
+        assert verify_file_access(5) is False
+        # current_org_id present but None.
+        g.current_org_id = None
+        assert verify_file_access(5) is False
+
+
+def test_verify_file_access_denies_null_org_doc_to_non_admin(app):
+    """A document whose organization_id is None is refused to a non-admin (D-2).
+
+    The old helper granted access to an org-less document whenever the caller
+    also lacked a tenant context. A non-admin must be refused either way.
+    """
+    from flask import g
+
+    from app.middleware.tenant_files import verify_file_access
+
+    with app.test_request_context("/"):
+        # Non-admin caller WITH an organisation cannot read an org-less document.
+        g.current_org_id = 5
+        assert verify_file_access(None) is False
+
+    with app.test_request_context("/"):
+        # Non-admin caller with no organisation either.
+        g.current_org_id = None
+        assert verify_file_access(None) is False
+
+
+def test_verify_file_access_allows_outside_request(app):
+    """Outside a request (CLI / background job) access stays allowed, even for None."""
+    from app.middleware.tenant_files import verify_file_access
+
+    # Application context but no request context: matches CLI and background-job
+    # callers, where there is no tenant context to enforce against.
+    with app.app_context():
+        assert verify_file_access(5) is True
+        assert verify_file_access(None) is True
+
+
+def test_analyze_refuses_org_b_document(app, _two_org_fixture):
+    """Org A's user asks the analysis route to analyze Org B's document → refused."""
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    # doc_b belongs to org B (its application_component_id is app_b, org B).
+    # The URL uses app_a (org A) so org A's user passes the tenant-scoped parent
+    # lookup, and the document-level organisation check must refuse the doc.
+    resp = client_a.post(
+        f"/dashboard/api/applications/{f['app_a_id']}/analyze-document",
+        data={"document_id": str(f["doc_b_id"])},
+    )
+    assert resp.status_code == 403, (
+        f"Expected 403 for Org B's document; got {resp.status_code}"
+    )
+    assert "Access denied" in resp.get_data(as_text=True)

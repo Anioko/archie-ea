@@ -129,11 +129,17 @@ def analyze_document_for_application(application_id):
 
         if document_id:
             # Analyze existing document
-            # tenant-scoping-ok: cross-org access is closed by the
-            # application_component_id check immediately below, which
-            # rejects any document not FK-scoped to this (org-scoped)
-            # application_id.
             document = ApplicationDocument.query.get_or_404(document_id)
+
+            # Tenant isolation: check the document's own organisation before
+            # reading its content or running any analysis on it.
+            # ApplicationDocument is a plain db.Model (no TenantMixin), so
+            # .get_or_404() returns any tenant's row.
+            from app.middleware.tenant_files import verify_file_access
+
+            if not verify_file_access(document.organization_id):
+                return jsonify({"error": "Access denied."}), 403
+
             if document.application_component_id != application_id:
                 return jsonify(
                     {"error": "Document does not belong to this application"}
