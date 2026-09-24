@@ -20,7 +20,7 @@ import time
 import pytest
 from playwright.sync_api import expect
 
-from tests.smoke.conftest import PASSWORD
+from tests.smoke.conftest import PASSWORD, _delete_api_settings
 
 PAGE_TIMEOUT = 30000
 
@@ -46,24 +46,9 @@ def test_power_platform_credentials_save_and_persist(browser, live_server, seede
         org_id = seeded["ids"]["org"]
 
         def _remove_power_platform_provider():
-            from app import create_app, db
-            cleanup_app = create_app("testing")
-            with cleanup_app.app_context():
-                db.session.remove()
-                from app.models.models import APISettings
-                existing = APISettings.query.filter_by(
-                    provider="power_platform_coe", key_label="default",
-                    organization_id=org_id).count()
-                if existing:
-                    assert APISettings.query.filter_by(
-                        provider="power_platform_coe", key_label="default",
-                        organization_id=org_id).delete(
-                            synchronize_session=False) == existing
-                    db.session.commit()
-                    assert APISettings.query.filter_by(
-                        provider="power_platform_coe", key_label="default",
-                        organization_id=org_id).count() == 0
-                db.session.remove()
+            _delete_api_settings(
+                provider="power_platform_coe", key_label="default",
+                organization_id=org_id)
 
         request.addfinalizer(_remove_power_platform_provider)
 
