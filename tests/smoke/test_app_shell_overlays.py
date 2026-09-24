@@ -48,12 +48,11 @@ def test_phone_sidebar_opener_z_index_below_backdrop(browser, live_server, seede
 
         z_indices = page.evaluate("""() => {
             const opener = document.querySelector('[aria-label="Open sidebar"]');
-            // The mobile backdrop is the fixed inset-0 div with z-40 that is
-            // a direct child of the same flex container as the opener.
-            const container = opener ? opener.parentElement : null;
-            const backdrop = container
-                ? container.querySelector(':scope > div.fixed.inset-0')
-                : null;
+            // The mobile backdrop is the fixed inset-0 div with z-40 inside
+            // the overflow-hidden layout container.
+            const backdrop = document.querySelector(
+                'div.fixed.inset-0.z-40, div[class*="fixed inset-0"][class*="z-40"]'
+            );
             return {
                 openerZ: opener ? parseInt(getComputedStyle(opener).zIndex, 10) : null,
                 backdropZ: backdrop ? parseInt(getComputedStyle(backdrop).zIndex, 10) : null,
