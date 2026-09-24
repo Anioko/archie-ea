@@ -144,7 +144,7 @@
 
             <!-- Main Content Area -->
             <main id="main-content"
-                  class="flex-1 bg-background pb-20"
+                  class="flex-1 bg-background"
                   role="main">
                 <div class="px-6 py-8">
                     {% block breadcrumb %}{% endblock %}
@@ -301,7 +301,7 @@
             }
         }"
         x-show="showOnboarding" x-cloak
-        class="fixed inset-0 z-[100] flex items-start sm:items-center justify-center bg-black/60 p-4 overflow-y-auto"
+        class="fixed inset-0 z-[200] flex items-start sm:items-center justify-center bg-black/60 p-4 overflow-y-auto"
         @keydown.escape.window="completeOnboarding()"
         @keydown.enter.prevent>
         <div class="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto"
@@ -398,6 +398,9 @@
             if (el) { try { this.steps = JSON.parse(el.textContent); } catch(_) { /* swallow-ok: defensive parse of our own server-rendered step JSON; a malformed block hides the optional guide button rather than breaking page init, and the user never asked for the guide */ } }
             const saved = parseInt(localStorage.getItem(this.storageKey) || '0');
             this.currentIndex = (saved < this.steps.length) ? saved : 0;
+            if (this.steps.length > 0) {
+                document.getElementById('main-content')?.classList.add('pb-20');
+            }
         },
         get currentStep() { return this.steps[this.currentIndex] || null; },
         next() {
