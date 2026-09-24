@@ -6,7 +6,7 @@ Document download/delete routes for Application Management.
 import os
 
 from flask import current_app, flash, g, redirect, send_file, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from .. import db
 from ..models.miscellaneous import ApplicationDocument
@@ -17,14 +17,15 @@ from . import application_mgmt
 @login_required
 def download_document_file(doc_id):
     """Download a document file"""
-    document = ApplicationDocument.query.filter_by(
-        id=doc_id, organization_id=g.current_org_id
-    ).first_or_404()
+    query = ApplicationDocument.query.filter_by(id=doc_id)
+    if not getattr(current_user, "is_platform_admin", False):
+        query = query.filter_by(organization_id=g.current_org_id)
+    document = query.first_or_404()
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    # The query above filters by organization_id so a foreign document is simply
-    # not found; verify_file_access provides a second line of defence, including
-    # unrestricted access for platform admins.
+    # The query above skips the organisation filter for platform administrators,
+    # who can reach any document; verify_file_access provides a second line of
+    # defence, including unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")
@@ -62,15 +63,16 @@ def download_document_file(doc_id):
 @login_required
 def delete_document_file(doc_id):
     """Delete a document file"""
-    document = ApplicationDocument.query.filter_by(
-        id=doc_id, organization_id=g.current_org_id
-    ).first_or_404()
+    query = ApplicationDocument.query.filter_by(id=doc_id)
+    if not getattr(current_user, "is_platform_admin", False):
+        query = query.filter_by(organization_id=g.current_org_id)
+    document = query.first_or_404()
     app_id = document.application_component_id
 
     # Tenant isolation: verify the document belongs to the caller's organisation.
-    # The query above filters by organization_id so a foreign document is simply
-    # not found; verify_file_access provides a second line of defence, including
-    # unrestricted access for platform admins.
+    # The query above skips the organisation filter for platform administrators,
+    # who can reach any document; verify_file_access provides a second line of
+    # defence, including unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
     if not verify_file_access(document.organization_id):
         flash("Access denied.", "danger")

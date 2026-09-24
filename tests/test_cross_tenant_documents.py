@@ -452,3 +452,127 @@ def test_analyze_refuses_org_b_document(app, _two_org_fixture):
         f"Expected 404 for Org B's document; got {resp.status_code}"
     )
     assert "Document not found" in resp.get_data(as_text=True)
+
+
+# ---------------------------------------------------------------------------
+# D-1: Platform administrator cross-org access
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _platform_admin_fixture(app):
+    """Create two orgs, a platform admin in org A, a tenant admin in org A,
+    and a document in org B.
+
+    Uses explicit commits so the data is visible to HTTP requests made through
+    the test client.
+    """
+    import os as _os
+
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.miscellaneous import ApplicationDocument
+    from app.models.organization import Organization
+    from app.models.user import User
+
+    suffix = _uuid.uuid4().hex[:10]
+
+    with app.app_context():
+        org_a = Organization(
+            name=f"Test pa-a {suffix}", slug=f"test-pa-a-{suffix}"
+        )
+        org_b = Organization(
+            name=f"Test pa-b {suffix}", slug=f"test-pa-b-{suffix}"
+        )
+        db.session.add_all([org_a, org_b])
+        db.session.flush()
+
+        platform_admin = User(
+            email=f"pa-{_uuid.uuid4().hex[:8]}@example.com",
+            first_name="Platform",
+            last_name="Admin",
+            organization_id=org_a.id,
+            confirmed=True,
+            is_platform_admin=True,
+        )
+        tenant_admin = User(
+            email=f"ta-{_uuid.uuid4().hex[:8]}@example.com",
+            first_name="Tenant",
+            last_name="Admin",
+            organization_id=org_a.id,
+            confirmed=True,
+            is_platform_admin=False,
+        )
+        db.session.add_all([platform_admin, tenant_admin])
+        db.session.flush()
+
+        app_b = ApplicationComponent(
+            name=f"App-B-{_uuid.uuid4().hex[:8]}",
+            organization_id=org_b.id,
+        )
+        db.session.add(app_b)
+        db.session.flush()
+
+        # Create a real file on disk under the configured upload folder so the
+        # path-traversal check in the download handler passes.
+        upload_base = app.config.get("UPLOAD_FOLDER", "uploads")
+        upload_dir = _os.path.join(upload_base, str(org_b.id), "documents")
+        _os.makedirs(upload_dir, exist_ok=True)
+        file_path = _os.path.join(upload_dir, f"test-{_uuid.uuid4().hex[:8]}.txt")
+        with open(file_path, "w") as f:
+            f.write("platform admin cross-org test file")
+
+        doc_b = ApplicationDocument(
+            organization_id=org_b.id,
+            application_component_id=app_b.id,
+            title="Org B Secret Document",
+            file_name="secret.txt",
+            file_extension="TXT",
+            file_path=file_path,
+            file_size=_os.path.getsize(file_path),
+            uploaded_by="b-admin",
+        )
+        db.session.add(doc_b)
+        db.session.flush()
+
+        db.session.commit()
+
+        ids = {
+            "org_a_id": org_a.id,
+            "org_b_id": org_b.id,
+            "platform_admin_id": platform_admin.id,
+            "tenant_admin_id": tenant_admin.id,
+            "app_b_id": app_b.id,
+            "doc_b_id": doc_b.id,
+            "file_path": file_path,
+        }
+
+    yield ids
+
+
+def test_platform_admin_can_download_cross_org_document(app, _platform_admin_fixture):
+    """A platform administrator can download another organisation's document."""
+    f = _platform_admin_fixture
+    client_pa = _make_client(app, f["platform_admin_id"])
+
+    resp = client_pa.get(
+        f"/applications/documents/{f['doc_b_id']}/download",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200, (
+        f"Platform admin should reach org B's document; got {resp.status_code}"
+    )
+
+
+def test_tenant_admin_cannot_download_cross_org_document(app, _platform_admin_fixture):
+    """A tenant administrator of organisation A cannot download org B's document."""
+    f = _platform_admin_fixture
+    client_ta = _make_client(app, f["tenant_admin_id"])
+
+    resp = client_ta.get(
+        f"/applications/documents/{f['doc_b_id']}/download",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 404, (
+        f"Tenant admin must not reach org B's document; got {resp.status_code}"
+    )

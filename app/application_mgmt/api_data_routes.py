@@ -129,18 +129,19 @@ def analyze_document_for_application(application_id):
 
         if document_id:
             # Analyze existing document
-            document = ApplicationDocument.query.filter_by(
-                id=document_id, organization_id=g.current_org_id
-            ).first()
+            query = ApplicationDocument.query.filter_by(id=document_id)
+            if not getattr(current_user, "is_platform_admin", False):
+                query = query.filter_by(organization_id=g.current_org_id)
+            document = query.first()
 
             if not document:
                 return jsonify({"error": "Document not found."}), 404
 
             # Tenant isolation: verify the document belongs to the caller's
-            # organisation. The query above filters by organization_id so a
-            # foreign document is simply not found; verify_file_access provides
-            # a second line of defence, including unrestricted access for
-            # platform admins.
+            # organisation. The query above skips the organisation filter for
+            # platform administrators, who can reach any document;
+            # verify_file_access provides a second line of defence, including
+            # unrestricted access for platform admins.
             from app.middleware.tenant_files import verify_file_access
 
             if not verify_file_access(document.organization_id):
