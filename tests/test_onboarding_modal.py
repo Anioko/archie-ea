@@ -170,8 +170,9 @@ def test_onboarding_step_3_persists_before_showing(app, make_user):
 
     # The step 2 Continue button must call persistOnboarding().then(...) before
     # setting step = 3, so the server persist happens on entry to step 3.
-    assert 'persistOnboarding()' in html, (
-        "persistOnboarding() must be called when entering step 3"
+    # Match the @click attribute specifically, not the method definition.
+    assert re.search(r'@click="persistOnboarding\(\)\.then\(', html), (
+        "step 2 Continue button must call persistOnboarding().then(...) in its @click attribute"
     )
     # Step 3's CTA must use dismissOnboarding (not completeOnboarding) since
     # persistence already happened on entry.
@@ -207,7 +208,27 @@ def test_help_button_z_index_below_overlays(app, make_user):
     drawer z-50, modal z-[100])."""
     html = _render_base(app, make_user(None))
 
-    # The guided-mode trigger must not be at z-40
+    # The guided-mode trigger must be present
     assert 'guided-mode-trigger' in html, (
         "guided mode trigger must be present in the template"
+    )
+    # The trigger button must carry z-30, not z-40
+    trigger_match = re.search(r'id="guided-mode-trigger".*?class="([^"]*)"', html, re.DOTALL)
+    assert trigger_match, "guided-mode-trigger element not found with class attribute"
+    trigger_classes = trigger_match.group(1)
+    assert 'z-30' in trigger_classes, (
+        f"guided-mode-trigger must use z-30, got classes: {trigger_classes}"
+    )
+    assert 'z-40' not in trigger_classes, (
+        f"guided-mode-trigger must not use z-40, got classes: {trigger_classes}"
+    )
+    # The panel must also carry z-30, not z-40
+    panel_match = re.search(r'id="guided-mode-panel".*?class="([^"]*)"', html, re.DOTALL)
+    assert panel_match, "guided-mode-panel element not found with class attribute"
+    panel_classes = panel_match.group(1)
+    assert 'z-30' in panel_classes, (
+        f"guided-mode-panel must use z-30, got classes: {panel_classes}"
+    )
+    assert 'z-40' not in panel_classes, (
+        f"guided-mode-panel must not use z-40, got classes: {panel_classes}"
     )
