@@ -31,12 +31,17 @@
 {# L2 (2026-09-22): strategy answers inline, one card per initiative seeded
    on the picked element, each with its own blast-radius and nested success
    metrics -- same shape as L5's programme cards. #}
+{# L4 (2026-09-22): accountability answers inline, one card per owner of the
+   element's ApplicationComponent -- no blast-radius (pure ownership lookup,
+   not a traversal), and a permanent capacity-gap note since capacity data
+   does not exist anywhere in this codebase. This completes all six lenses. #}
 {% set questions = [
     {'key': 'impact', 'before': 'What breaks if', 'blank': '___', 'after': 'fails or is under-resourced?'},
     {'key': 'strategy', 'before': 'What are we trying to achieve at', 'blank': '___', 'after': ', and how is it tracking?'},
     {'key': 'risk', 'before': 'What could hurt', 'blank': '___', 'after': 'and what does it touch?'},
     {'key': 'portfolio', 'before': 'What is the rationalization status of', 'blank': '___', 'after': '?'},
-    {'key': 'programme', 'before': "What's changing at", 'blank': '___', 'after': ', and is it on track?'}
+    {'key': 'programme', 'before': "What's changing at", 'blank': '___', 'after': ', and is it on track?'},
+    {'key': 'accountability', 'before': "Who's accountable for", 'blank': '___', 'after': ', and can they take on more?'}
 ] %}
 {% macro _ps_actions() %}
 <a href="{{ url_for('intelligence_ui.twin_map') }}"
@@ -172,7 +177,8 @@
                     <p class="mt-1 text-sm text-foreground" x-show="wp.owner"><span x-text="wp.owner"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!wp.owner">No owner recorded</p>
                     <p class="mt-1 text-sm text-foreground" x-show="wp.costVariancePct !== null" x-text="'Cost variance: ' + wp.costVariancePct.toFixed(1) + '%'"></p>
-                    <p class="mt-1 text-sm text-muted-foreground" x-show="wp.costVariancePct === null">Not costed</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="wp.costVariancePct === null && wp.costReason !== 'financial_data_restricted'">Not costed</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="wp.costVariancePct === null && wp.costReason === 'financial_data_restricted'">Restricted to roles with budget authority</p>
                     <p class="mt-2 text-sm text-foreground" x-text="wp.affectedRows.length + ' connection' + (wp.affectedRows.length === 1 ? '' : 's') + ' reached'"></p>
                 </li>
             </template>
@@ -201,7 +207,8 @@
                     <p class="mt-1 text-sm text-foreground" x-show="initiative.executiveSponsor"><span x-text="initiative.executiveSponsor"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!initiative.executiveSponsor">No sponsor recorded</p>
                     <p class="mt-1 text-sm text-foreground" x-show="initiative.budgetVariancePct !== null" x-text="'Budget variance: ' + initiative.budgetVariancePct.toFixed(1) + '%'"></p>
-                    <p class="mt-1 text-sm text-muted-foreground" x-show="initiative.budgetVariancePct === null">Not costed</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="initiative.budgetVariancePct === null && initiative.budgetReason !== 'financial_data_restricted'">Not costed</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="initiative.budgetVariancePct === null && initiative.budgetReason === 'financial_data_restricted'">Restricted to roles with budget authority</p>
                     <ul class="mt-2 space-y-1" x-show="initiative.successMetrics.length" x-cloak>
                         <template x-for="metric in initiative.successMetrics" :key="metric.metricName">
                             <li class="text-sm text-foreground">
@@ -215,6 +222,31 @@
                 </li>
             </template>
         </ul>
+    </div>
+
+    {# L4: one card per owner of the element's ApplicationComponent -- no
+       blast-radius rows, and a permanent capacity-gap note that is NOT
+       inside any loading/error/empty state gate, since it is true on
+       every single response regardless of ownership data. #}
+    <div id="ask-accountability-results" aria-busy="false" :aria-busy="accountabilityBusy ? 'true' : 'false'" x-show="answeredKey === 'accountability' && accountabilityState !== 'idle'" x-cloak class="space-y-4">
+        <h2 id="ask-accountability-results-heading" x-ref="accountabilityResultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
+        <div x-show="accountabilityState === 'loading'" x-cloak role="status" aria-label="Loading" class="h-16 animate-pulse rounded-lg border border-border bg-muted/30"></div>
+        <p x-show="accountabilityState === 'empty'" x-cloak class="text-sm text-muted-foreground">Ownership data is not yet connected.</p>
+        <p x-show="accountabilityState === 'error'" x-cloak class="text-sm text-destructive">Could not load ownership records for this element.</p>
+        <ul class="space-y-3" x-show="accountabilityState === 'ready'" x-cloak>
+            <template x-for="owner in owners" :key="owner.ownerId">
+                <li class="rounded-lg border border-border bg-card p-4" data-ask-accountability-row>
+                    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                        <h3 class="min-w-0 break-words text-base font-semibold text-foreground" x-text="owner.ownershipType"></h3>
+                        <span class="inline-flex h-6 items-center rounded-full border border-border px-2 text-xs font-medium text-foreground" x-show="owner.organizationUnit" x-text="owner.organizationUnit && owner.organizationUnit.name"></span>
+                    </div>
+                    <p class="mt-1 text-sm text-foreground" x-show="owner.primaryContact"><span x-text="owner.primaryContact"></span></p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="!owner.primaryContact">No contact recorded</p>
+                    <p class="mt-1 text-sm text-muted-foreground" x-show="owner.startDate"><span x-text="'Since ' + owner.startDate"></span></p>
+                </li>
+            </template>
+        </ul>
+        <p class="mt-2 text-sm text-muted-foreground">Capacity and availability data is not yet connected.</p>
     </div>
 
     {{ provenance_drawer() }}

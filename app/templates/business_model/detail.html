@@ -42,7 +42,9 @@
     operatingModelType: {{ (canvas.operating_model_type or '') | tojson }},
     blockApiUrl: {{ url_for('business_model.save_block', canvas_id=canvas.id) | tojson }},
     updateApiUrl: {{ url_for('business_model.update_canvas', canvas_id=canvas.id) | tojson }},
-    draftBlockApiUrl: {{ url_for('business_model.ai_draft_block', canvas_id=canvas.id) | tojson }}
+    draftBlockApiUrl: {{ url_for('business_model.ai_draft_block', canvas_id=canvas.id) | tojson }},
+    exportApiUrl: {{ url_for('business_model.export_canvas', canvas_id=canvas.id) | tojson }},
+    savedDiagramId: {{ canvas_saved_diagram_id | tojson }}
   })' x-cloak>
 
   {{ page_header(
@@ -83,6 +85,41 @@
       </span>
     </div>
 
+    {# ── Export & share — image through the existing ExportManager over the
+       rendered grid (the reason line of every empty box is already in that
+       DOM, so it is already in the image); the saved-viewpoint formats over
+       the record's saved diagram; share is the existing in-tenant saved-
+       diagram link, only offered once one exists. ── #}
+    <div class="rounded-lg border border-border bg-card p-4 flex flex-wrap items-center gap-3" data-testid="bmc-export-share-panel">
+      <div class="flex items-center gap-2 shrink-0">
+        <i data-lucide="share-2" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+        <span class="text-sm font-medium text-foreground">Export &amp; share</span>
+      </div>
+      <button type="button" @click="exportImage()" data-testid="bmc-export-image"
+        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
+        <i data-lucide="image" class="h-4 w-4 mr-1.5" aria-hidden="true"></i> Export as image
+      </button>
+      <select aria-label="File export format" x-model="exportFormat" data-testid="bmc-export-format"
+        class="flex h-9 rounded-md border border-input bg-transparent px-2 py-1 text-sm shadow-sm">
+        <option value="mermaid">Mermaid (.mmd)</option>
+        <option value="lucid">Lucidchart (.lucid)</option>
+        <option value="archi">Archi (.archimate)</option>
+      </select>
+      <a :href="exportFileUrl" data-testid="bmc-export-file"
+        class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
+        <i data-lucide="download" class="h-4 w-4 mr-1.5" aria-hidden="true"></i> Download file
+      </a>
+      <template x-if="shareUrl">
+        <a :href="shareUrl" target="_blank" rel="noopener" data-testid="bmc-share-link"
+          class="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 py-1.5">
+          <i data-lucide="link" class="h-4 w-4 mr-1.5" aria-hidden="true"></i> Share
+        </a>
+      </template>
+      <span x-show="!shareUrl" x-cloak class="text-xs text-muted-foreground" data-testid="bmc-share-unavailable">
+        Save an entry on this canvas to get a share link.
+      </span>
+    </div>
+
     {# ── The 9-box Business Model Canvas (classic BMC layout via CSS grid-template-areas) ── #}
     <style>
       .bmc-grid {
@@ -114,7 +151,7 @@
         .bmc-grid > [data-area="rev"] { grid-area: rev; }
       }
     </style>
-    <div class="bmc-grid" data-testid="bmc-grid">
+    <div id="bmc-grid" class="bmc-grid" data-testid="bmc-grid">
       {% for b in bmc_layout %}
       <div class="{{ b.class }} p-3 flex flex-col" data-area="{{ b.area }}" data-testid="bmc-block-{{ b.key }}">
         <div class="flex items-center justify-between gap-1.5 mb-2">
@@ -182,6 +219,9 @@ document.addEventListener('alpine:init', () => {
     blockApiUrl: config.blockApiUrl,
     updateApiUrl: config.updateApiUrl,
     draftBlockApiUrl: config.draftBlockApiUrl,
+    exportApiUrl: config.exportApiUrl,
+    savedDiagramId: config.savedDiagramId || null,
+    exportFormat: 'mermaid',
     savingBlock: null,
     savedBlock: null,
     savingMeta: false,
@@ -191,6 +231,26 @@ document.addEventListener('alpine:init', () => {
 
     csrfToken() {
       return document.querySelector('meta[name=csrf-token]')?.content || '';
+    },
+
+    get exportFileUrl() {
+      return this.exportApiUrl + '?format=' + encodeURIComponent(this.exportFormat);
+    },
+
+    // The existing in-tenant saved-diagram share: opening this URL re-derives
+    // membership from the current elements, and a viewer outside this tenant
+    // gets the same "diagram not found" bytes as a missing id — no public or
+    // token-based link is created here.
+    get shareUrl() {
+      return this.savedDiagramId ? ('/archimate/composer?viewpoint_id=' + this.savedDiagramId) : null;
+    },
+
+    // The same shared ExportManager every other page's "Export as image"
+    // button uses, over the rendered grid — the empty-box reason lines sit
+    // in that same DOM, so they are already part of the image.
+    async exportImage() {
+      if (!window.exportToPNG) return;
+      await window.exportToPNG('bmc-grid', 'business-model-canvas-' + this.canvasId, { scale: 2 });
     },
 
     // Advisory only: drafts content into the block's existing textarea
