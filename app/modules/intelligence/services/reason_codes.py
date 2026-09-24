@@ -11,8 +11,8 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, plus the two T-004
-# additions below (eighteen total), exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, plus twelve additions
+# below (twenty-eight total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
