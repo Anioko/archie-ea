@@ -1165,6 +1165,318 @@ def _backfill_roadmap_task_organizations(*, dry_run, existing_tables, added, fai
         )
 
 
+def _backfill_sso_mapping_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for SSO group-role mappings that predate TenantMixin.
+
+    Unlike webhook_subscriptions (user_id) or roadmap items (their programme),
+    this table has NO provenance column at all -- nothing records which admin,
+    from which org, created a given mapping. Guessing is not an option. The one
+    case that is genuinely unambiguous: a single-tenant install (exactly one
+    Organization) has only one possible owner, matching the same fallback
+    `_default_org_id()` already uses for this exact situation (mixins/core.py).
+    In a real multi-tenant deployment, existing rows are left NULL and reported;
+    an admin must re-save each one via /admin/sso-settings to claim it for their
+    org (that route's INSERT path sets organization_id automatically, same as
+    any other TenantMixin create). Until then a NULL-org mapping matches no
+    org's `organization_id = :id` filter and simply stops applying -- a real,
+    visible operational consequence of closing this leak, not a silent one.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "sso_group_role_mappings"
+    if table not in existing_tables or "organizations" not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    before = db.session.scalar(
+        text(f"SELECT count(*) FROM {table} WHERE organization_id IS NULL")
+    )
+    if not before:
+        return
+    org_count = db.session.scalar(text("SELECT count(*) FROM organizations"))
+    updated = 0
+    if not dry_run and org_count == 1:
+        result = db.session.execute(
+            text(
+                f"""
+                UPDATE {table}
+                SET organization_id = (SELECT id FROM organizations LIMIT 1)
+                WHERE organization_id IS NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+    unresolved = before - updated
+    added.append(
+        f"backfill.{table}.organization_id :: before={before}, updated={updated}, "
+        f"unresolved={unresolved} (single-tenant install: {org_count == 1})"
+    )
+    if unresolved:
+        failed.append(
+            f"backfill.{table}.organization_id: {unresolved} row(s) have no "
+            "provenance column and this is a multi-tenant install -- they will "
+            "stop applying at SSO login until an admin re-saves them via "
+            "/admin/sso-settings to claim them for their org. Not a bug: "
+            "guessing which org a pre-existing mapping belongs to is worse."
+        )
+
+
+def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, added, failed):
+    """Replace the old global UNIQUE(sso_group_name) with a per-tenant one.
+
+    The single-column constraint meant two different organisations could never
+    both use a group named e.g. "Admins" -- a real functional bug riding along
+    with the tenant leak this whole migration closes. Postgres treats NULL as
+    distinct for uniqueness purposes, so pre-existing un-backfilled (NULL-org)
+    rows sharing a name are unaffected by adding the composite constraint.
+    """
+    from sqlalchemy import inspect, text
+
+    table = "sso_group_role_mappings"
+    old_name = "sso_group_role_mappings_sso_group_name_key"
+    new_name = "uq_sso_group_role_mappings_org_group"
+    if table not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+    if "organization_id" not in live_columns:
+        return
+
+    existing_constraints = {
+        c["name"] for c in inspect(db.engine).get_unique_constraints(table)
+    }
+    if new_name in existing_constraints:
+        return  # already migrated
+
+    if dry_run:
+        added.append(
+            f"constraint.{table}.{new_name} :: would replace {old_name} "
+            "with a composite (organization_id, sso_group_name) UNIQUE constraint"
+        )
+        return
+
+    if old_name in existing_constraints:
+        db.session.execute(
+            text(f'ALTER TABLE {table} DROP CONSTRAINT "{old_name}"')
+        )
+    db.session.execute(
+        text(
+            f'ALTER TABLE {table} ADD CONSTRAINT "{new_name}" '
+            "UNIQUE (organization_id, sso_group_name)"
+        )
+    )
+    db.session.commit()
+    added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
+def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for webhook rows that predate TenantMixin.
+
+    `webhook_subscriptions.user_id` / `webhook_events.user_id` are varchar
+    columns storing `str(User.id)` (see webhook_service.py's own comment on
+    that cast), so `users.organization_id` -- itself a plain column, not
+    TenantMixin, but the only provenance these rows ever had -- is the
+    trustworthy source via a cast-and-join. A user_id that isn't a plain
+    integer string, or that names no live user, is left NULL and reported,
+    not guessed. `webhook_deliveries` has no user_id at all; its provenance
+    is its own subscription (via subscription_id), falling back to its event
+    (via event_id) only when the subscription itself has no organization_id
+    -- both already backfilled by the two updates above it in this function,
+    so ordering matters here.
+    """
+    from sqlalchemy import inspect, text
+
+    if "webhook_subscriptions" not in existing_tables or "users" not in existing_tables:
+        return
+
+    def _backfill_by_user(table: str):
+        live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+        if "organization_id" not in live_columns or "user_id" not in live_columns:
+            return
+        before = db.session.scalar(
+            text(f"SELECT count(*) FROM {table} WHERE organization_id IS NULL")
+        )
+        eligible = db.session.scalar(
+            text(
+                f"""
+                SELECT count(*)
+                FROM {table} t
+                JOIN users u ON u.id = CAST(t.user_id AS INTEGER)
+                WHERE t.organization_id IS NULL
+                  AND t.user_id ~ '^[0-9]+$'
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = eligible
+        if not dry_run and eligible:
+            result = db.session.execute(
+                text(
+                    f"""
+                    UPDATE {table} AS t
+                    SET organization_id = u.organization_id
+                    FROM users AS u
+                    WHERE u.id = CAST(t.user_id AS INTEGER)
+                      AND t.organization_id IS NULL
+                      AND t.user_id ~ '^[0-9]+$'
+                      AND u.organization_id IS NOT NULL
+                    """
+                )
+            )
+            updated = result.rowcount
+            db.session.commit()
+        # A NULL user_id (system/external events) is an expected, not a
+        # failure, case -- only count rows that HAD a user_id we could not
+        # resolve (unknown user, or the rare non-numeric legacy value).
+        unresolved = db.session.scalar(
+            text(
+                f"""
+                SELECT count(*) FROM {table} t
+                WHERE t.organization_id IS NULL
+                  AND t.user_id IS NOT NULL
+                  AND NOT (
+                    t.user_id ~ '^[0-9]+$'
+                    AND EXISTS (
+                        SELECT 1 FROM users u
+                        WHERE u.id = CAST(t.user_id AS INTEGER)
+                          AND u.organization_id IS NOT NULL
+                    )
+                  )
+                """
+            )
+        )
+        if before:
+            added.append(
+                f"backfill.{table}.organization_id :: before={before}, "
+                f"updated={updated}, unresolved={unresolved}"
+            )
+        if unresolved:
+            failed.append(
+                f"backfill.{table}.organization_id: {unresolved} row(s) with a "
+                "user_id that names no live user with a known organization"
+            )
+
+    _backfill_by_user("webhook_subscriptions")
+    if "webhook_events" in existing_tables:
+        _backfill_by_user("webhook_events")
+
+    if "webhook_deliveries" not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns("webhook_deliveries")}
+    if "organization_id" not in live_columns:
+        return
+    before = db.session.scalar(
+        text("SELECT count(*) FROM webhook_deliveries WHERE organization_id IS NULL")
+    )
+    updated = 0
+    if not dry_run and before:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE webhook_deliveries AS d
+                SET organization_id = s.organization_id
+                FROM webhook_subscriptions AS s
+                WHERE s.id = d.subscription_id
+                  AND d.organization_id IS NULL
+                  AND s.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated += result.rowcount
+        db.session.commit()
+        if "webhook_events" in existing_tables:
+            result = db.session.execute(
+                text(
+                    """
+                    UPDATE webhook_deliveries AS d
+                    SET organization_id = e.organization_id
+                    FROM webhook_events AS e
+                    WHERE e.id = d.event_id
+                      AND d.organization_id IS NULL
+                      AND e.organization_id IS NOT NULL
+                    """
+                )
+            )
+            updated += result.rowcount
+            db.session.commit()
+    unresolved = db.session.scalar(
+        text("SELECT count(*) FROM webhook_deliveries WHERE organization_id IS NULL")
+    )
+    if before:
+        added.append(
+            f"backfill.webhook_deliveries.organization_id :: before={before}, "
+            f"updated={updated}, unresolved={unresolved}"
+        )
+    if unresolved:
+        failed.append(
+            f"backfill.webhook_deliveries.organization_id: {unresolved} row(s) "
+            "whose subscription and event are both missing or org-less"
+        )
+
+
+def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for DocumentChunkEmbedding rows that predate
+    TenantMixin, via document_id -> ai_chat_document_uploads (already scoped).
+
+    document_id carries no FK constraint (see the model's own comment), so a
+    chunk whose document was since deleted, or whose id never matched a real
+    upload, is left NULL and reported -- not guessed.
+    """
+    from sqlalchemy import inspect, text
+
+    required = {"document_chunk_embeddings", "ai_chat_document_uploads"}
+    if not required <= existing_tables:
+        return
+    live_columns = {
+        c["name"] for c in inspect(db.engine).get_columns("document_chunk_embeddings")
+    }
+    if "organization_id" not in live_columns:
+        return
+
+    before = db.session.scalar(
+        text("SELECT count(*) FROM document_chunk_embeddings WHERE organization_id IS NULL")
+    )
+    if not before:
+        return
+    eligible = db.session.scalar(
+        text(
+            """
+            SELECT count(*)
+            FROM document_chunk_embeddings c
+            JOIN ai_chat_document_uploads d ON d.id = c.document_id
+            WHERE c.organization_id IS NULL
+              AND d.organization_id IS NOT NULL
+            """
+        )
+    )
+    updated = eligible
+    if not dry_run and eligible:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE document_chunk_embeddings AS c
+                SET organization_id = d.organization_id
+                FROM ai_chat_document_uploads AS d
+                WHERE d.id = c.document_id
+                  AND c.organization_id IS NULL
+                  AND d.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+    unresolved = before - updated
+    added.append(
+        f"backfill.document_chunk_embeddings.organization_id :: before={before}, "
+        f"updated={updated}, unresolved={unresolved}"
+    )
+    if unresolved:
+        failed.append(
+            f"backfill.document_chunk_embeddings.organization_id: {unresolved} "
+            "row(s) whose document_id names no live ai_chat_document_uploads row"
+        )
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1383,6 +1695,30 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_roadmap_task_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_sso_mapping_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_sso_mapping_tenant_unique_constraint(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_document_chunk_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_webhook_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
