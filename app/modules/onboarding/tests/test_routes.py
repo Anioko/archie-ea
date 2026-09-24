@@ -72,13 +72,24 @@ def test_index_redirects_to_first_question_when_org_already_onboarded(app, db_se
     assert resp.headers["Location"].endswith("/onboarding/first-question")
 
 
-def test_index_redirects_to_dashboard_once_onboarding_is_complete(app, db_session, make_org, client, login_as):
+def test_index_shows_saved_company_answers_to_someone_who_already_finished(
+    app, db_session, make_org, client, login_as
+):
+    """Finished users only reach /onboarding/ on purpose (All modules lists
+    "Getting started"). It must answer 200 with their saved answers, not bounce."""
+    from app.modules.onboarding.services import profile
+
     org = make_org("done")
+    profile.write(org, stage="growing", company_size="40 people")
     user = _make_user(db_session, org, onboarding_completed=True)
     login_as(client, user)
+
     resp = client.get("/onboarding/", follow_redirects=False)
-    assert resp.status_code in (302, 308)
-    assert "/dashboard/overview" in resp.headers["Location"]
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Bring your company" in html
+    assert "40 people" in html
 
 
 def test_gap_action_accept_keeps_the_gap_visible(app, db_session, make_org):

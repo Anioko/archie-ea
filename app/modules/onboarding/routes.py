@@ -45,9 +45,13 @@ def _current_org() -> Organization:
 @onboarding_bp.route("/")
 @login_required
 def index():
-    """Entry point: route each onboarding-time persona to the right screen."""
+    """Entry point: route each onboarding-time persona to the right screen.
+
+    Someone who has already finished only lands here by choice (the All modules
+    directory lists "Getting started"), so show their saved company answers,
+    editable, instead of bouncing them to the dashboard."""
     if current_user.onboarding_completed_at:
-        return redirect(url_for("dashboard.overview"))
+        return company()
 
     org = _current_org()
     org_profile = profile.read(org)
