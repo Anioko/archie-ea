@@ -2963,11 +2963,16 @@ def _run_proactive_analysis(app, solution_id: int, organization_id):
     """Run proactive copilot-insight generation for one solution, tenant-scoped.
 
     Runs synchronously when called directly (tests) or as a daemon thread's
-    target (``view_solution``). Returns immediately when ``organization_id`` is
-    None, otherwise runs inside ``tenant_scope`` so every query the analysis
-    makes is filtered to the solution's own organisation.
+    target (``view_solution``). When ``organization_id`` is None it logs a
+    warning and returns without running; otherwise it runs inside
+    ``tenant_scope`` so every query the analysis makes is filtered to the
+    solution's own organisation.
     """
     if organization_id is None:
+        logger.warning(
+            "Skipping proactive analysis for solution %s: organization_id is None",
+            solution_id,
+        )
         return
     with app.app_context(), tenant_scope(organization_id):
         try:

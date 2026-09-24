@@ -481,8 +481,9 @@ def test_proactive_analysis_pattern_available_no_cross_tenant_leak(app, db_sessi
     )
 
 
-def test_run_proactive_analysis_none_org_writes_nothing(app, db_session, make_org):
+def test_run_proactive_analysis_none_org_writes_nothing(app, db_session, make_org, caplog):
     """Acceptance 3: _run_proactive_analysis with None organization_id writes nothing and raises nothing."""
+    import logging
     import uuid as _uuid
 
     from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
@@ -497,8 +498,15 @@ def test_run_proactive_analysis_none_org_writes_nothing(app, db_session, make_or
     sol = _make_solution(db_session, org.id, f"Payroll none-org-{tag}")
     db_session.commit()
 
-    # Should not raise
-    _run_proactive_analysis(app, sol.id, None)
+    with caplog.at_level(logging.WARNING):
+        _run_proactive_analysis(app, sol.id, None)
+
+    # Should have logged a warning naming the solution id
+    assert any(
+        "Skipping proactive analysis" in record.message
+        and str(sol.id) in record.message
+        for record in caplog.records
+    ), f"expected warning log when organization_id is None, got: {[r.message for r in caplog.records]}"
 
     # Should not have written anything
     insights = CopilotInsight.query.filter_by(solution_id=sol.id).all()
