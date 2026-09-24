@@ -108,9 +108,8 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         page.get_by_role("link", name="Skip this step").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
 
-        # Screen 4: Fill the gaps -- the stage picked on screen 2 already implies suggestions,
-        # so the review section offers them instead of its empty state
-        assert "waiting for you to confirm or dismiss" in page.inner_text("body")
+        # Screen 4: Fill the gaps -- the review section shows the pending proposal count
+        assert "1 suggestion waiting for you to confirm or dismiss" in page.inner_text("body")
         # A long list must not be a wall: only the first few show until asked.
         rows = page.get_by_text("Expected at your stage", exact=True)
         assert rows.count() == 6, "the gaps list should open with a short, readable set"
