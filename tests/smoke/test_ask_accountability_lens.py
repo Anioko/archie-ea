@@ -1,12 +1,6 @@
 """L4, "who's accountable for <element>, and can they take on more?": the
 accountability question on the Ask page, in a real browser.
 
-The ownership read is WITHDRAWN (a tenant-isolation gap found in external
-review of the original PR -- see
-IntelligenceQueryService.accountability_for_element's docstring). These
-tests pin the withdrawn state itself, including with a real seeded ownership
-graph present, to guard against silently re-enabling the unsafe read.
-
 The impact/strategy/risk/portfolio/programme questions must keep working
 exactly as before -- these tests also cover that regression, since all six
 share one picker.
@@ -46,7 +40,7 @@ def _seed_accountability_graph(org_id):
         db.session.add(service_component)
         db.session.flush()
 
-        unit = OrganizationUnit(name="%s Finance" % noun, unit_type="Department")
+        unit = OrganizationUnit(name="%s Finance" % noun, unit_type="Department", organization_id=org_id)
         db.session.add(unit)
         db.session.flush()
 
@@ -56,6 +50,7 @@ def _seed_accountability_graph(org_id):
         db.session.add(ApplicationOwnership(
             application_id=service_component.id,
             organization_unit_id=unit.id,
+            organization_id=org_id,
             ownership_type="Business Owner",
             primary_contact="Jordan Owner",
         ))
@@ -100,7 +95,7 @@ def _type_and_wait(page, prefix, term):
     return box
 
 
-def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
+def test_the_accountability_question_shows_the_seeded_owner(
     page, live_server, seeded, accountability_graph
 ):
     _login(page, live_server, seeded["emails"]["solution_architect"])
@@ -112,11 +107,9 @@ def test_the_accountability_question_shows_the_withdrawn_state_not_seeded_data(
     _type_and_wait(page, "ask", accountability_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
-    expect(page.get_by_text(
-        "Ownership data is not yet connected."
-    )).to_be_visible()
+    page.wait_for_selector("[data-ask-accountability-row]")
+    expect(page.locator("[data-ask-accountability-row]")).to_have_count(1)
     expect(page.get_by_text("Capacity and availability data is not yet connected.")).to_be_visible()
-    assert page.locator("[data-ask-accountability-row]").count() == 0
 
 
 def test_all_six_questions_keep_their_own_answers_separate(
