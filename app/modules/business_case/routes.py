@@ -7,7 +7,7 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, Response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -82,6 +82,10 @@ def detail(business_case_id):
     # Zones in record order, keyed by box_key.
     canvas_zones = CANVAS_TEMPLATES["business_case"]["zones"]
 
+    from app.services.composer_export_formats import resolve_canvas_saved_diagram_id
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(business_case, "business_case")
+
     return render_template(
         "business_case/detail.html",
         business_case=business_case,
@@ -91,6 +95,41 @@ def detail(business_case_id):
         solutions=solutions,
         canvas_zones={z["box_key"]: z for z in canvas_zones},
         canvas_unclassified_count=0,
+        canvas_saved_diagram_id=saved_diagram_id,
+    )
+
+
+@business_case_bp.route("/<int:business_case_id>/export", methods=["GET"])
+@login_required
+def export_canvas(business_case_id):
+    """Export this business case through the existing saved-viewpoint formats
+    (mermaid, lucid, archi) over the record's saved diagram, with every empty
+    box's reason named in the file.
+
+    Query parameter: format (mermaid|lucid|archi, default mermaid).
+    """
+    business_case = service.get_business_case_or_none(business_case_id)
+    if business_case is None:
+        return not_found_response("Business Case")
+
+    fmt = request.args.get("format", "mermaid")
+    if fmt not in ("mermaid", "lucid", "archi"):
+        return error_response(f"Unsupported format: {fmt}", code="VALIDATION_ERROR", status_code=400)
+
+    from app.services.composer_export_formats import (
+        export_canvas_viewpoint,
+        resolve_canvas_saved_diagram_id,
+    )
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(business_case, "business_case")
+    body, mimetype, ext = export_canvas_viewpoint(
+        "business_case", saved_diagram_id, fmt,
+        name=business_case.title or "Business Case",
+    )
+    filename = f"business-case-{business_case_id}.{ext}"
+    return Response(
+        body, status=200, mimetype=mimetype,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 

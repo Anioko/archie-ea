@@ -7,7 +7,7 @@ Index endpoint (linked from the sidebar by the orchestrator post-merge):
 
 import logging
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, Response, redirect, render_template, request, url_for
 from flask_login import login_required
 
 # Destructive and mutating routes were guarded by @login_required only, so any
@@ -76,6 +76,10 @@ def detail(canvas_id):
     # that template's zones, keyed by box_key.
     canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_model_canvas"]["zones"]}
 
+    from app.services.composer_export_formats import resolve_canvas_saved_diagram_id
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(canvas, "business_model_canvas")
+
     return render_template(
         "business_model/detail.html",
         canvas=canvas,
@@ -83,6 +87,41 @@ def detail(canvas_id):
         operating_model_types=OPERATING_MODEL_TYPES,
         canvas_zones=canvas_zones,
         canvas_unclassified_count=0,
+        canvas_saved_diagram_id=saved_diagram_id,
+    )
+
+
+@business_model_bp.route("/<int:canvas_id>/export", methods=["GET"])
+@login_required
+def export_canvas(canvas_id):
+    """Export this canvas through the existing saved-viewpoint formats
+    (mermaid, lucid, archi) over the record's saved diagram, with every empty
+    box's reason named in the file.
+
+    Query parameter: format (mermaid|lucid|archi, default mermaid).
+    """
+    canvas = service.get_canvas_or_none(canvas_id)
+    if canvas is None:
+        return not_found_response("Business Model Canvas")
+
+    fmt = request.args.get("format", "mermaid")
+    if fmt not in ("mermaid", "lucid", "archi"):
+        return error_response(f"Unsupported format: {fmt}", code="VALIDATION_ERROR", status_code=400)
+
+    from app.services.composer_export_formats import (
+        export_canvas_viewpoint,
+        resolve_canvas_saved_diagram_id,
+    )
+
+    saved_diagram_id = resolve_canvas_saved_diagram_id(canvas, "business_model_canvas")
+    body, mimetype, ext = export_canvas_viewpoint(
+        "business_model_canvas", saved_diagram_id, fmt,
+        name=canvas.name or "Business Model Canvas",
+    )
+    filename = f"business-model-canvas-{canvas_id}.{ext}"
+    return Response(
+        body, status=200, mimetype=mimetype,
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
