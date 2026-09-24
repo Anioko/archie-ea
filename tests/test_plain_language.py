@@ -355,10 +355,9 @@ def test_save_display_preferences_toggle_on(app, db_session, make_org):
 
 def test_save_display_preferences_toggle_off(app, db_session, make_org):
     """POST to save_preferences without the key leaves it off."""
-    client, user = _make_client(app, db_session, make_org)
-    # First turn it on
-    user.show_archimate_names = True
-    db_session.flush()
+    # First turn it on. The user is prepared before logging in: changing it
+    # afterwards invalidates the test login and the request is redirected.
+    client, user = _make_client(app, db_session, make_org, show_archimate_names=True)
 
     resp = client.post(
         "/account/manage/preferences",
@@ -475,6 +474,75 @@ def test_save_preferences_handles_both_in_one_request(app, db_session, make_org)
     assert user.show_archimate_names is False
 
 
+def test_saving_notifications_does_not_reset_the_display_preference(app, db_session, make_org):
+    """The display preference shares the notification JSON; saving the
+    notification form (which does not carry it) must leave it switched on."""
+    client, user = _make_client(app, db_session, make_org, show_archimate_names=True)
+    db_session.commit()
+
+    resp = client.post(
+        "/account/manage/preferences",
+        data={"form_type": "notifications", "arb_decisions": "on"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire(user)
+    db_session.refresh(user)
+    assert user.show_archimate_names is True
+    assert user.notification_preferences.get("arb_decisions") is True
+    assert user.notification_preferences.get("weekly_digest") is False
+
+
+def test_saving_the_display_preference_keeps_the_notification_choices(app, db_session, make_org):
+    # Prepare the user first: changing it after the test login invalidates the
+    # login and the request would be redirected to the sign-in page.
+    user = _make_user(db_session, make_org)
+    user.set_notification_preferences({"arb_decisions": False, "weekly_digest": True})
+    db_session.commit()
+    client = app.test_client()
+    _login(client, user.id)
+
+    client.post(
+        "/account/manage/preferences",
+        data={"form_type": "display", "show_archimate_names": "on"},
+        follow_redirects=True,
+    )
+
+    db_session.expire(user)
+    db_session.refresh(user)
+    assert user.show_archimate_names is True
+    assert user.get_notification_preference("arb_decisions") is False
+    assert user.get_notification_preference("weekly_digest") is True
+
+
+def test_set_notification_preferences_keeps_known_keys_it_is_not_given(db_session, make_org):
+    user = _make_user(db_session, make_org, show_archimate_names=True)
+
+    user.set_notification_preferences({"arb_decisions": False})
+
+    assert user.show_archimate_names is True
+    assert user.get_notification_preference("arb_decisions") is False
+
+
+def test_set_notification_preferences_still_drops_unknown_keys(db_session, make_org):
+    user = _make_user(db_session, make_org)
+    user.notification_preferences = {"arb_decisions": True, "retired_key": True}
+
+    user.set_notification_preferences({"weekly_digest": False, "not_a_preference": True})
+
+    assert set(user.notification_preferences) == {"arb_decisions", "weekly_digest"}
+
+
+def test_set_notification_preferences_reads_a_json_string_value(db_session, make_org):
+    user = _make_user(db_session, make_org)
+    user.notification_preferences = '{"show_archimate_names": true}'
+
+    user.set_notification_preferences({"arb_decisions": False})
+
+    assert user.notification_preferences == {"show_archimate_names": True, "arb_decisions": False}
+
+
 # ---------------------------------------------------------------------------
 # F3: JS globals present in admin base template
 # ---------------------------------------------------------------------------
@@ -565,7 +633,7 @@ def test_show_archimate_names_stored_in_notification_preferences():
     not as a separate column.  The migration in manage.py no longer creates
     a dedicated column."""
     manage_path = os.path.join(os.path.dirname(__file__), "..", "manage.py")
-    with open(manage_path) as f:
+    with open(manage_path, encoding="utf-8") as f:
         source = f.read()
     # The dedicated column migration must not exist
     assert "show_archimate_names BOOLEAN" not in source, (
@@ -644,7 +712,7 @@ def test_orphans_table_uses_plain_name_filter():
         os.path.dirname(__file__), "..", "app", "templates",
         "ea_workflows", "instance_detail.html"
     )
-    with open(template_path) as f:
+    with open(template_path, encoding="utf-8") as f:
         source = f.read()
 
     # The orphans table type column (line ~380) must use |plain_name
@@ -666,7 +734,7 @@ def test_io_chip_uses_plain_name_filter():
         os.path.dirname(__file__), "..", "app", "templates",
         "ea_workflows", "instance_detail.html"
     )
-    with open(template_path) as f:
+    with open(template_path, encoding="utf-8") as f:
         source = f.read()
 
     # The io-chip type span (line ~2129) must use |plain_name
@@ -683,7 +751,7 @@ def test_orphans_table_no_raw_element_type_without_filter():
         os.path.dirname(__file__), "..", "app", "templates",
         "ea_workflows", "instance_detail.html"
     )
-    with open(template_path) as f:
+    with open(template_path, encoding="utf-8") as f:
         source = f.read()
 
     # The pattern "element_type or '—'" (without |plain_name) must not exist
@@ -765,7 +833,7 @@ def test_intelligence_wiring_register_covers_notification_preferences():
         os.path.dirname(__file__), "..", "docs", "artifacts",
         "intelligence-wiring-register.yml"
     )
-    with open(register_path) as f:
+    with open(register_path, encoding="utf-8") as f:
         register = yaml.safe_load(f)
 
     users_table = register.get("tables", {}).get("users", {})

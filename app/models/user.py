@@ -421,11 +421,21 @@ class User(UserMixin, db.Model):
         return prefs.get(key, self._DEFAULT_NOTIFICATION_PREFS.get(key, True))
 
     def set_notification_preferences(self, prefs_dict):
-        """Replace notification_preferences with validated dict. Only known keys are stored."""
+        """Update notification_preferences from a validated dict.
+
+        Only known keys are stored. A known key that is not in *prefs_dict*
+        keeps its current value: the display preference (``show_archimate_names``)
+        lives in this same JSON, so saving the notification form, which does not
+        carry it, must not reset it.
+        """
+        import json
+
         known_keys = set(self._DEFAULT_NOTIFICATION_PREFS.keys())
-        self.notification_preferences = {
-            k: bool(v) for k, v in prefs_dict.items() if k in known_keys
-        }
+        raw = getattr(self, "notification_preferences", None)
+        stored = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        merged = {k: bool(v) for k, v in stored.items() if k in known_keys}
+        merged.update({k: bool(v) for k, v in prefs_dict.items() if k in known_keys})
+        self.notification_preferences = merged
 
     def __repr__(self):
         return f"<User '{self.full_name()}'>"
