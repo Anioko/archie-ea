@@ -44,7 +44,7 @@ def test_unclassified_solution_survives_dashboard_reload_and_pipeline_navigation
             )
             expect(card).not_to_contain_text("No solutions yet")
         assert page.goto(live_server + "/dashboard/health", timeout=PAGE_TIMEOUT).status == 200
-        maturity = page.locator('[data-slot="card"]').filter(has=page.get_by_text("Avg Solution Maturity", exact=True))
+        maturity = page.locator('[data-slot="card"]').filter(has=page.locator('[data-slot="card-description"]').get_by_text("Avg Solution Maturity", exact=True))
         expect(maturity.locator('[data-slot="card-title"]')).to_have_text("—")
         distribution = page.get_by_role("heading", name="ADM Phase Distribution", exact=True).locator("../..")
         unknown_row = distribution.get_by_text("Unclassified", exact=True).locator("..")
