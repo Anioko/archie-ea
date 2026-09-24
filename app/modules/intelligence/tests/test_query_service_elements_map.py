@@ -235,7 +235,9 @@ def test_http_data_carries_elements_beside_rows_summary_reasons(app, db_session,
     body = resp.get_json()
     assert body["success"] is True
     data = body["data"]
-    assert set(data.keys()) == {"rows", "summary", "reasons", "elements", "criticality_flags"}
+    assert set(data.keys()) == {
+        "rows", "summary", "reasons", "elements", "criticality_flags", "contract_flags",
+    }
     assert set(data["elements"]) == {str(a.id), str(b.id)}
     assert data["elements"][str(b.id)]["name"] == "Bravo"
 
