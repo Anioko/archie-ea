@@ -35,7 +35,7 @@ def _login(page, base, email):
 
 @pytest.mark.smoke
 @pytest.mark.journey
-def test_power_platform_credentials_save_and_persist(browser, live_server, seeded):
+def test_power_platform_credentials_save_and_persist(browser, live_server, seeded, request):
     """A platform admin opens the Power Platform integration page, saves
     tenant credentials through the real form and Save button, then reloads
     the page cold and confirms the non-secret fields survived."""
@@ -43,6 +43,30 @@ def test_power_platform_credentials_save_and_persist(browser, live_server, seede
     page = context.new_page()
     page.on("dialog", lambda d: d.accept())
     try:
+        org_id = seeded["ids"]["org"]
+
+        def _remove_power_platform_provider():
+            from app import create_app, db
+            cleanup_app = create_app("testing")
+            with cleanup_app.app_context():
+                db.session.remove()
+                from app.models.models import APISettings
+                existing = APISettings.query.filter_by(
+                    provider="power_platform_coe", key_label="default",
+                    organization_id=org_id).count()
+                if existing:
+                    assert APISettings.query.filter_by(
+                        provider="power_platform_coe", key_label="default",
+                        organization_id=org_id).delete(
+                            synchronize_session=False) == existing
+                    db.session.commit()
+                    assert APISettings.query.filter_by(
+                        provider="power_platform_coe", key_label="default",
+                        organization_id=org_id).count() == 0
+                db.session.remove()
+
+        request.addfinalizer(_remove_power_platform_provider)
+
         _login(page, live_server, seeded["emails"]["platform_admin"])
 
         tenant_id = "smoke-tenant-%d" % int(time.time() * 1000)
