@@ -65,19 +65,14 @@ def _authenticate_request() -> bool:
         return False
 
     from app.models.user import User
-    user = User.query.get(token.user_id)
+    from app.extensions import db
+    user = db.session.get(User, token.user_id)
     if user is None:
         return False
 
     # Set up the request context exactly as a session-cookie request would
     from flask_login import login_user
     login_user(user)
-    g.current_org_id = user.organization_id
-    g.current_org = getattr(user, "organization", None)
-
-    from app.extensions import db
-    from app.middleware.tenant_isolation import set_database_tenant_context
-    set_database_tenant_context(db.session.connection(), g.current_org_id)
 
     return True
 
