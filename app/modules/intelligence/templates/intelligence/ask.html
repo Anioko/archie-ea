@@ -195,11 +195,11 @@
                     </p>
                     <p class="mt-1 text-sm text-foreground" x-show="wp.owner"><span x-text="wp.owner"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!wp.owner">No owner recorded</p>
-                    <p class="mt-1 text-sm text-foreground" x-show="wp.costVariancePct !== null" x-text="'Cost variance: ' + wp.costVariancePct.toFixed(1) + '%'"></p>
-                    <template x-if="wp.costVariancePct === null && wp.costReason !== 'financial_data_restricted'">
+                    <p class="mt-1 text-sm text-foreground" x-show="wp.costVariancePct != null" x-text="'Cost variance: ' + wp.costVariancePct.toFixed(1) + '%'"></p>
+                    <template x-if="wp.costVariancePct == null && wp.costReason != 'financial_data_restricted'">
                         <p class="mt-1 text-sm text-muted-foreground">Not costed</p>
                     </template>
-                    <template x-if="wp.costVariancePct === null && wp.costReason === 'financial_data_restricted'">
+                    <template x-if="wp.costVariancePct == null && wp.costReason == 'financial_data_restricted'">
                         <p class="mt-1 text-sm text-muted-foreground">Restricted to roles with budget authority</p>
                     </template>
                     <p class="mt-2 text-sm text-foreground" x-text="wp.affectedRows.length + ' connection' + (wp.affectedRows.length === 1 ? '' : 's') + ' reached'"></p>
@@ -237,11 +237,11 @@
                     </p>
                     <p class="mt-1 text-sm text-foreground" x-show="initiative.executiveSponsor"><span x-text="initiative.executiveSponsor"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!initiative.executiveSponsor">No sponsor recorded</p>
-                    <p class="mt-1 text-sm text-foreground" x-show="initiative.budgetVariancePct !== null" x-text="'Budget variance: ' + initiative.budgetVariancePct.toFixed(1) + '%'"></p>
-                    <template x-if="initiative.budgetVariancePct === null && initiative.budgetReason !== 'financial_data_restricted'">
+                    <p class="mt-1 text-sm text-foreground" x-show="initiative.budgetVariancePct != null" x-text="'Budget variance: ' + initiative.budgetVariancePct.toFixed(1) + '%'"></p>
+                    <template x-if="initiative.budgetVariancePct == null && initiative.budgetReason != 'financial_data_restricted'">
                         <p class="mt-1 text-sm text-muted-foreground">Not costed</p>
                     </template>
-                    <template x-if="initiative.budgetVariancePct === null && initiative.budgetReason === 'financial_data_restricted'">
+                    <template x-if="initiative.budgetVariancePct == null && initiative.budgetReason == 'financial_data_restricted'">
                         <p class="mt-1 text-sm text-muted-foreground">Restricted to roles with budget authority</p>
                     </template>
                     <ul class="mt-2 space-y-1" x-show="initiative.successMetrics.length" x-cloak>
