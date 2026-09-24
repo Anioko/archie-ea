@@ -93,6 +93,11 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
 
         # Screen 3: Capabilities -- skip it, it must be optional
         page.get_by_role("link", name="Skip this step").click()
+        page.wait_for_url(lambda url: "/onboarding/people" in url, timeout=PAGE_TIMEOUT)
+
+        # People -- also optional; with no capabilities recorded it says so instead of an empty form
+        assert "haven't recorded any capabilities" in page.inner_text("body")
+        page.get_by_role("link", name="Skip this step").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
 
         # Screen 4: Fill the gaps -- the review section shows its genuine empty state
@@ -198,7 +203,21 @@ def test_a_capability_answer_is_saved_to_the_real_table_and_survives_a_reload(li
         page.locator("#owner_customer_acquisition").press("Tab")
         page.get_by_role("group", name="Maturity of Customer acquisition").get_by_role("button", name="Level 2, Managed").click()
         page.get_by_role("button", name="Save and continue").click()
+        page.wait_for_url(lambda url: "/onboarding/people" in url, timeout=PAGE_TIMEOUT)
+
+        # A company of 11-50 is asked for named people; attach one to the capability just saved.
+        assert "name each person" in page.inner_text("body")
+        page.fill("#name_0", "Priya Shah")
+        page.select_option("#role_0_customer_acquisition", "R")
+        page.select_option("#prof_0_customer_acquisition", "3")
+        page.get_by_role("button", name="Save and continue").click()
         page.wait_for_url(lambda url: "/onboarding/gaps" in url, timeout=PAGE_TIMEOUT)
+
+        page.goto(live_server + "/onboarding/people", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_timeout(500)
+        assert page.input_value("#name_0") == "Priya Shah"
+        assert page.input_value("#role_0_customer_acquisition") == "R"
+        assert page.input_value("#prof_0_customer_acquisition") == "3", "the saved proficiency must come back after a reload"
 
         page.goto(live_server + "/onboarding/capabilities", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         page.wait_for_timeout(500)

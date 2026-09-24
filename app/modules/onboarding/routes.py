@@ -25,6 +25,7 @@ from app.models.organization import Organization
 from app.utils.api_response import success_response
 
 from .services import capabilities as capability_capture
+from .services import people as people_capture
 from .services import profile, stage_gaps
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
@@ -141,12 +142,35 @@ def capabilities():
     if request.method == "POST":
         data = request.get_json(silent=True) or {}
         result = capability_capture.save(data.get("items") or [], stage=stage, size_band=band)
-        return success_response({"next": url_for("onboarding.gaps"), **result})
+        return success_response({"next": url_for("onboarding.people"), **result})
     return render_template(
         "onboarding/screen3_capabilities.html",
         rows=capability_capture.read(stage, band),
         levels=capability_capture.maturity_levels(),
         stage_label=_STAGE_LABELS.get(stage, stage),
+        band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
+    )
+
+
+@onboarding_bp.route("/people", methods=["GET", "POST"])
+@login_required
+def people():
+    """Who does what, and how well. How people are captured depends on company size.
+
+    People and teams are written as business actors with capability assignments
+    (see services/people.py); nothing is kept on the side."""
+    org = _current_org()
+    stage, band = _stage_and_band(org)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = people_capture.save(data.get("people") or [], stage=stage, size_band=band)
+        return success_response({"next": url_for("onboarding.gaps"), **result})
+    return render_template(
+        "onboarding/screen3b_people.html",
+        state=people_capture.read(stage, band),
+        proficiency=list(people_capture.PROFICIENCY),
+        roles=list(people_capture.ROLES),
+        band=band,
         band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
     )
 

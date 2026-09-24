@@ -225,7 +225,7 @@ def test_posting_capabilities_saves_real_rows_and_advances(app, db_session, make
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
     body = resp.get_json()["data"]
-    assert body["next"].endswith("/onboarding/gaps") and body["created"] == 1
+    assert body["next"].endswith("/onboarding/people") and body["created"] == 1
     assert BusinessCapability.query.filter_by(organization_id=org.id, name="Marketing").one().current_maturity_level == 2
 
 
@@ -238,7 +238,7 @@ def test_posting_no_capabilities_is_fine_and_still_advances(app, db_session, mak
     resp = client.post("/onboarding/capabilities", json={"items": []})
 
     assert resp.status_code == 200
-    assert resp.get_json()["data"]["next"].endswith("/onboarding/gaps")
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/people")
 
 
 def test_the_company_step_records_the_size_band(app, db_session, make_org, client, login_as):
@@ -310,3 +310,49 @@ def test_saved_answers_with_quotes_are_escaped_into_the_page_state(
     assert resp.status_code == 200
     assert 'companySize: &#34;Bob' in html, "value must be a JSON string, HTML-escaped for the attribute"
     assert 'companySize: "Bob' not in html, "a raw double quote would end the x-data attribute early"
+
+
+def test_people_screen_asks_a_small_company_for_people_and_a_large_one_for_teams(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-size")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+    small = client.get("/onboarding/people").get_data(as_text=True)
+    profile.write(org, stage="established", size_band="large")
+    large = client.get("/onboarding/people").get_data(as_text=True)
+
+    assert "name each person" in small and "start from teams" not in small
+    assert "start from teams" in large in large
+
+
+def test_people_screen_with_no_capabilities_points_back_instead_of_showing_an_empty_form(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-none")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    html = client.get("/onboarding/people").get_data(as_text=True)
+
+    assert "haven't recorded any capabilities" in html
+
+
+def test_posting_people_saves_real_actors_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.business_layer import BusinessActor
+    from app.models.organization_model import EnterpriseRaciAssignment
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+
+    resp = client.post(
+        "/onboarding/people",
+        json={"people": [{"name": "Sam", "kind": "person", "assignments": [{"key": "marketing", "role": "R", "proficiency": 2}]}]},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/gaps") and body["people"] == 1 and body["assignments"] == 1
+    assert BusinessActor.query.filter_by(organization_id=org.id, name="Sam").count() == 1
+    assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).one().raci == "R"
