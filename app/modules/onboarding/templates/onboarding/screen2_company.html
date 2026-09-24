@@ -61,6 +61,14 @@
         <p class="text-sm text-muted-foreground">This is the only step that isn't optional — everything else you can fill in later.</p>
     </div>
 
+    {% if current_user.onboarding_completed_at %}
+    <a href="{{ url_for('onboarding.review') }}"
+       class="flex items-center justify-between rounded-lg border border-border p-3 hover:border-primary/30 transition-colors">
+        <span class="text-sm text-foreground">Review what we can already tell about your company</span>
+        <i data-lucide="arrow-right" class="h-4 w-4 text-muted-foreground" aria-hidden="true"></i>
+    </a>
+    {% endif %}
+
     <div>
         <label class="text-sm font-medium text-foreground mb-2 block" id="stage-label">What stage are you at?</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-labelledby="stage-label">

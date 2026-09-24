@@ -426,3 +426,41 @@ def test_gaps_screen_links_to_review_when_a_proposal_is_pending(
     html = resp.get_data(as_text=True)
     assert "/onboarding/review" in html
     assert "waiting for you to confirm or dismiss" in html
+
+
+def test_company_screen_links_to_review_for_a_returning_user(
+    app, db_session, make_org, client, login_as
+):
+    """A user who already finished onboarding reaches Screen 2 (Bring your
+    company) from the dashboard's "Getting started" link (onboarding.index
+    renders it for them); Review must be reachable from there too."""
+    import datetime
+
+    _make_default_role(db_session)
+    org = make_org("returning")
+    user = _make_user(db_session, org)
+    user.onboarding_completed_at = datetime.datetime.utcnow()
+    db_session.add(user)
+    db_session.flush()
+    login_as(client, user)
+
+    resp = client.get("/onboarding/")
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    html = resp.get_data(as_text=True)
+    assert 'href="/onboarding/review"' in html
+
+
+def test_company_screen_has_no_review_link_for_a_new_user_mid_onboarding(
+    app, db_session, make_org, client, login_as
+):
+    """The link only appears once onboarding is finished -- a first-time
+    user on Screen 2 should not be sent to Review before they have answered
+    anything Review could show."""
+    org, _ = _logged_in(db_session, make_org, client, login_as, "notyet", with_role=True)
+
+    resp = client.get("/onboarding/company")
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    html = resp.get_data(as_text=True)
+    assert 'href="/onboarding/review"' not in html
