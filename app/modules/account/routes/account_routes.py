@@ -219,6 +219,7 @@ def save_notification_preferences():
         "assignment_changes",
         "weekly_digest",
         "mention_notifications",
+        "show_archimate_names",
     ]
     prefs = {key: (request.form.get(key) == "on") for key in known_keys}
     try:

@@ -325,21 +325,31 @@ def register_template_filters(app):
 
     @app.context_processor
     def plain_language_context():
-        """Make plain-language vocabulary and user setting available to JS."""
+        """Make plain-language vocabulary and user setting available to JS.
+
+        Only injected when a user is signed in — public pages (landing,
+        login, password reset) never render these values, so serialising
+        ~3 KB of JSON on every unauthenticated request is wasted work.
+        """
         import json
 
         from flask_login import current_user
+
+        try:
+            if not (
+                current_user
+                and hasattr(current_user, "is_authenticated")
+                and current_user.is_authenticated
+            ):
+                return {}
+        except Exception:
+            return {}
 
         from app.models.archimate_element_types import PLAIN_LANGUAGE_NAMES, PLAIN_LAYER_NAMES
 
         show_archimate = False
         try:
-            if (
-                current_user
-                and hasattr(current_user, "is_authenticated")
-                and current_user.is_authenticated
-            ):
-                show_archimate = bool(getattr(current_user, "show_archimate_names", False))
+            show_archimate = bool(getattr(current_user, "show_archimate_names", False))
         except Exception:
             import logging
             _log = logging.getLogger(__name__)
