@@ -137,7 +137,7 @@ def register():
             email=form.email.data,
             password=form.password.data,
         ))
-        flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
+        flash(f"Account created successfully. Welcome to {current_app.config['APP_NAME']}!", "success")
         return redirect(url_for("main.index"))
     return render_template("account/register.html", form=form)
 
@@ -373,6 +373,24 @@ def join_from_invite(user_id, token):
         return render_template("account/join_invite.html", form=form)
     else:
         flash(message, "error")
+    return redirect(url_for("main.index"))
+
+
+@account_bp.route("/invitation/<int:invitation_id>/accept", methods=["POST"])
+@login_required
+def accept_invitation(invitation_id):
+    """Accept a pending invitation and gain the offered role."""
+    success, message = _svc.accept_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
+
+
+@account_bp.route("/invitation/<int:invitation_id>/decline", methods=["POST"])
+@login_required
+def decline_invitation(invitation_id):
+    """Decline a pending invitation — no role is granted."""
+    success, message = _svc.decline_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
     return redirect(url_for("main.index"))
 
 

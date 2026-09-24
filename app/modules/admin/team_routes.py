@@ -49,7 +49,11 @@ def team():
 @login_required
 @rbac_service.require_role("org_admin")
 def team_invite():
-    """Add an existing user to the org with a given role (stub invite email)."""
+    """Create a pending invitation for an existing user to join the org.
+
+    The user must accept before a role or membership is granted.  Duplicate
+    pending invitations for the same org+user are refused.
+    """
     org_id = _require_org_id()
     email = (request.form.get("email") or "").strip().lower()
     role = request.form.get("role", "viewer")
@@ -63,10 +67,15 @@ def team_invite():
     if user is None:
         return jsonify({"error": f"No user found with email {email}"}), 404
 
-    OrgRole.set_role(org_id, user.id, role, granted_by_id=current_user.id)
+    from app.models.pending_invitation import PendingInvitation
+
+    _, created = PendingInvitation.create_for(
+        org_id, user.id, role, invited_by_id=current_user.id
+    )
+    if not created:
+        return jsonify({"error": "An invitation for this user already exists"}), 409
     db.session.commit()
 
-    # Stub: send invite email — wire to real email service in COM-008+
     logger.info(
         "STUB invite email to %s with role %s in org %s", email, role, org_id
     )
