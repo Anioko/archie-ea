@@ -194,6 +194,40 @@ def test_sitemap_xml_lists_the_homepage_once_with_top_priority(app):
     assert len(entries) == len(load_all_pages()) + 1
 
 
+def _strings_in(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings_in(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings_in(item)
+
+
+def test_structured_data_cannot_end_its_script_block_early(app):
+    """A title with a closing script tag must not break out of the JSON-LD block."""
+    import dataclasses
+
+    hostile = 'Vision </script><script>alert(1)</script> & <!-- more'
+    page = dataclasses.replace(load_all_pages()[0], title=hostile)
+
+    serialised = build_jsonld(page)
+
+    assert "</script>" not in serialised and "<" not in serialised and ">" not in serialised
+    assert "&" not in serialised
+    # Still valid JSON, and it decodes to exactly the text that was put in.
+    assert hostile in set(_strings_in(json.loads(serialised)))
+
+
+def test_every_page_renders_one_script_block_for_its_structured_data(app):
+    """Rendered pages keep exactly one JSON-LD script element."""
+    with app.test_client() as client:
+        for page in load_all_pages()[:8]:
+            html = client.get(page.url).data.decode()
+            assert html.count('type="application/ld+json"') == 1
+
+
 def test_llms_txt_has_correct_content_type(app):
     """/llms.txt returns text/plain."""
     with app.test_client() as client:

@@ -223,7 +223,19 @@ def build_jsonld(page: PublicPage) -> str:
     else:
         ld = _jsonld_webpage(page, site_url)
 
-    return json.dumps(ld, indent=2, ensure_ascii=False)
+    return _escape_for_script_block(json.dumps(ld, indent=2, ensure_ascii=False))
+
+
+def _escape_for_script_block(serialised: str) -> str:
+    """Make serialised JSON safe to place inside a <script> element.
+
+    ``json.dumps`` does not escape ``<``, ``>`` or ``&``, so a title or answer
+    containing ``</script>`` would end the block early and let the rest run as
+    markup. The escaped forms are still valid JSON and decode to the same text.
+    """
+    return (
+        serialised.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+    )
 
 
 def _jsonld_webpage(page: PublicPage, site_url: str) -> dict[str, Any]:
