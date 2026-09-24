@@ -80,11 +80,13 @@ _EXPECTED = {
     "value_stream_not_linked_to_model",
     "dependency_direction_unknown",
     "risk_link_unresolvable",
+    "no_capability_in_chain",
+    "no_vendor_mapping_recorded",
 }
 
 
-def test_reason_codes_has_exactly_thirty_two_members():
-    assert len(REASON_CODES) == 32
+def test_reason_codes_has_exactly_thirty_four_members():
+    assert len(REASON_CODES) == 34
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

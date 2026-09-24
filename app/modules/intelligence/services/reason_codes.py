@@ -121,6 +121,11 @@ REASON_CODES = frozenset(
         # element, so the link types the answer cannot resolve are named
         # with this reason instead of being dropped.
         "risk_link_unresolvable",
+        # Vendor concentration for a capability: no capability of this
+        # organisation mirrors the element, and a capability with no vendor
+        # mapping recorded against it.
+        "no_capability_in_chain",
+        "no_vendor_mapping_recorded",
     }
 )
 
