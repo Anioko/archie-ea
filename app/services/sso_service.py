@@ -16,6 +16,7 @@ Usage::
 
 import logging
 import secrets
+from typing import Optional
 from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,12 @@ class SSOService:
 
     # Simple in-process cache for OIDC discovery documents (URL → dict).
     _discovery_cache: dict = {}
+
+    # In-process cache for JWKS documents (URI -> (fetched_at, jwks)). A signing
+    # key that is not in the cached set is refetched once, so a key rotation at
+    # the IdP does not lock users out for the length of the TTL.
+    _jwks_cache: dict = {}
+    _JWKS_TTL_SECONDS = 300
 
     # ------------------------------------------------------------------
     # Email-domain lookup
@@ -97,19 +104,46 @@ class SSOService:
                 f"Failed to fetch OIDC discovery document from {metadata_url}: {exc}"
             ) from exc
 
-    def _verify_id_token(self, id_token: str, config, discovery: dict) -> dict:
-        """Verify id_token signature, issuer, audience and expiry.
+    def _get_jwks(self, jwks_uri: str, *, force: bool = False) -> dict:
+        """Return the IdP's key set, from the cache while it is fresh."""
+        import time
+
+        import requests
+
+        cached = self._jwks_cache.get(jwks_uri)
+        if cached is not None and not force and time.monotonic() - cached[0] < self._JWKS_TTL_SECONDS:
+            return cached[1]
+        try:
+            jwks_resp = requests.get(jwks_uri, timeout=10)
+            jwks_resp.raise_for_status()
+            jwks = jwks_resp.json()
+        except Exception as exc:
+            logger.warning("Failed to fetch JWKS from %s: %s", jwks_uri, exc)
+            raise SSONotConfiguredError(
+                "id_token verification failed: the identity provider's signing keys are unavailable"
+            ) from exc
+        self._jwks_cache[jwks_uri] = (time.monotonic(), jwks)
+        return jwks
+
+    def _verify_id_token(
+        self, id_token: str, config, discovery: dict, expected_nonce: str
+    ) -> dict:
+        """Verify id_token signature, issuer, audience, expiry and nonce.
 
         Uses the IdP's JWKS (from the OIDC discovery document) to verify the
         JWT signature via authlib.  Validates that the ``iss`` claim matches
         the discovery document's issuer, ``aud`` includes the configured
-        client_id, and ``exp`` is not in the past.
+        client_id, ``exp`` is not in the past, and the ``nonce`` claim equals
+        the nonce generated for this login and kept in the caller's session,
+        so a token captured from another login cannot be replayed here.
 
         Args:
             id_token: The ID token string from the token response.
             config: :class:`app.models.sso_config.SSOConfig` instance.
             discovery: OIDC discovery document dict (must contain ``jwks_uri``
                 and ``issuer``).
+            expected_nonce: The nonce sent in this login's authorization
+                request. Required: a missing value refuses the token.
 
         Returns:
             Dict of decoded JWT claims.
@@ -117,6 +151,13 @@ class SSOService:
         Raises:
             :class:`SSONotConfiguredError` on any verification failure.
         """
+        if not config.client_id:
+            raise SSONotConfiguredError("SSO config has no client_id")
+        if not expected_nonce:
+            raise SSONotConfiguredError(
+                "id_token verification failed: no nonce was issued for this login"
+            )
+
         jwks_uri = discovery.get("jwks_uri")
         if not jwks_uri:
             raise SSONotConfiguredError(
@@ -129,32 +170,35 @@ class SSOService:
                 "OIDC discovery document missing 'issuer'"
             )
 
-        import requests
-
-        try:
-            jwks_resp = requests.get(jwks_uri, timeout=10)
-            jwks_resp.raise_for_status()
-            jwks = jwks_resp.json()
-        except Exception as exc:
-            raise SSONotConfiguredError(
-                f"Failed to fetch JWKS from {jwks_uri}: {exc}"
-            ) from exc
-
         claims_options = {
             "iss": {"essential": True, "value": issuer},
             "aud": {"essential": True, "value": config.client_id},
+            "nonce": {"essential": True, "value": expected_nonce},
         }
 
-        try:
-            from authlib.jose import jwt
+        from authlib.jose import jwt
 
+        def _decode(jwks: dict) -> dict:
             claims = jwt.decode(id_token, jwks, claims_options=claims_options)
             claims.validate()
             return dict(claims)
-        except Exception as exc:
-            raise SSONotConfiguredError(
-                f"id_token verification failed: {exc}"
-            ) from exc
+
+        jwks = self._get_jwks(jwks_uri)
+        try:
+            return _decode(jwks)
+        except Exception as first_exc:
+            # The signing key may have rotated since the key set was cached:
+            # refetch once and try again before refusing the token.
+            try:
+                fresh = self._get_jwks(jwks_uri, force=True)
+                if fresh == jwks:
+                    raise first_exc
+                return _decode(fresh)
+            except SSONotConfiguredError:
+                raise
+            except Exception as exc:
+                logger.warning("id_token verification failed: %s", exc)
+                raise SSONotConfiguredError("id_token verification failed") from exc
 
     def initiate_oidc_flow(self, config, redirect_uri: str) -> dict:
         """Build the OIDC authorization URL.
@@ -167,7 +211,9 @@ class SSOService:
             redirect_uri: The callback URL registered with the IdP.
 
         Returns:
-            Dict with keys ``redirect_url`` (str) and ``state`` (str).
+            Dict with keys ``redirect_url``, ``state`` and ``nonce`` (str). The
+            caller must keep ``state`` and ``nonce`` in the login session and
+            hand the nonce back to :meth:`handle_oidc_callback`.
 
         Raises:
             :class:`SSONotConfiguredError` if config is None or setup is incomplete.
@@ -187,18 +233,25 @@ class SSOService:
             )
 
         state = secrets.token_urlsafe(32)
+        nonce = secrets.token_urlsafe(32)
         params = {
             "response_type": "code",
             "client_id": config.client_id,
             "redirect_uri": redirect_uri,
             "scope": "openid email profile",
             "state": state,
+            "nonce": nonce,
         }
         redirect_url = f"{auth_endpoint}?{urlencode(params)}"
-        return {"redirect_url": redirect_url, "state": state}
+        return {"redirect_url": redirect_url, "state": state, "nonce": nonce}
 
     def handle_oidc_callback(
-        self, config, code: str, state: str, redirect_uri: str
+        self,
+        config,
+        code: str,
+        state: str,
+        redirect_uri: str,
+        expected_nonce: Optional[str] = None,
     ) -> dict:
         """Exchange the authorization code for tokens and return user info.
 
@@ -210,6 +263,9 @@ class SSOService:
             code: The authorization code from the IdP callback.
             state: The state parameter (caller should validate before calling).
             redirect_uri: Must match the value used in :meth:`initiate_oidc_flow`.
+            expected_nonce: The nonce :meth:`initiate_oidc_flow` returned for
+                this login. Needed whenever claims come from the id_token
+                (the userinfo endpoint does not use it).
 
         Returns:
             Dict of user-info claims (``email``, ``sub``, ``name``, etc.).
@@ -219,6 +275,8 @@ class SSOService:
         """
         if config is None:
             raise SSONotConfiguredError("No SSO config provided")
+        if not config.client_id:
+            raise SSONotConfiguredError("SSO config has no client_id")
         if not config.idp_metadata_url:
             raise SSONotConfiguredError("SSO config has no idp_metadata_url")
 
@@ -272,13 +330,14 @@ class SSOService:
             id_token = token_data.get("id_token", "")
             if id_token:
                 try:
-                    userinfo = self._verify_id_token(id_token, config, discovery)
+                    userinfo = self._verify_id_token(
+                        id_token, config, discovery, expected_nonce or ""
+                    )
                 except SSONotConfiguredError:
                     raise
                 except Exception as exc:
-                    raise SSONotConfiguredError(
-                        f"id_token verification failed: {exc}"
-                    ) from exc
+                    logger.warning("id_token verification failed: %s", exc)
+                    raise SSONotConfiguredError("id_token verification failed") from exc
 
         return userinfo
 
