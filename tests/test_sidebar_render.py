@@ -334,22 +334,30 @@ def test_canvases_and_frameworks_in_library_zone(app, db_session, make_org, role
     assert library != -1 and library < frameworks, f"{role}: Frameworks not under Library"
 
 
-def test_framework_management_and_config_admin_only(app, db_session, make_org):
-    """Canvas/framework UI fix: Framework Management and Framework Configuration
-    must appear only in platform_admin's Admin zone."""
-    sidebar_html = _sidebar_html(app, db_session, make_org, "platform_admin", "pa-fw-admin")
-    assert "Framework Management" in sidebar_html
-    assert "Framework Configuration" in sidebar_html
-    admin = sidebar_html.find("Admin")
-    fw_mgmt = sidebar_html.find("Framework Management")
-    fw_cfg = sidebar_html.find("Framework Configuration")
-    assert admin != -1 and admin < fw_mgmt, "Framework Management not under Admin"
-    assert admin != -1 and admin < fw_cfg, "Framework Configuration not under Admin"
+def test_framework_management_and_config_reachable_from_admin_dashboard(app, db_session, make_org):
+    """Canvas/framework UI fix, round 2 (25 Sep 2026): Framework Management and
+    Framework Configuration are reached from the admin dashboard page
+    (Command Center) rather than two more Admin-zone sidebar links — the
+    platform_admin sidebar has zero headroom left once "Canvases" and
+    "Frameworks" join every role's Library zone (see
+    app/utils/role_access.py's SIDEBAR_LINK_BUDGET comment). Command Center
+    itself is still the first link in the Admin zone, so both stay one click
+    away from the sidebar."""
+    client = _make_logged_in_client(app, db_session, make_org, "platform_admin", "pa-fw-dash")
+    resp = client.get("/admin/")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Framework Management" in html
+    assert "Framework Configuration" in html
+    assert 'href="/framework-management/"' in html or 'href="/framework-management' in html
+    assert 'href="/framework-config/"' in html or 'href="/framework-config' in html
 
-    # These must NOT appear for a non-admin role.
-    sa_html = _sidebar_html(app, db_session, make_org, "solution_architect", "sa-no-fw-admin")
-    assert "Framework Management" not in sa_html
-    assert "Framework Configuration" not in sa_html
+    # A non-admin cannot reach the dashboard page at all (admin_required).
+    sa_client = _make_logged_in_client(app, db_session, make_org, "solution_architect", "sa-no-fw-dash")
+    sa_resp = sa_client.get("/admin/")
+    assert sa_resp.status_code in (302, 403), (
+        "solution_architect should not be able to load the admin dashboard page"
+    )
 
 
 def test_business_architect_no_duplicate_capability_frameworks(app, db_session, make_org):
