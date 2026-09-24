@@ -574,8 +574,31 @@ PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 # CI passes today only because its `tests` job never runs `playwright install`,
 # so the launch raises, the skip below unwinds the context, and the loop is
 # released. Adding a browser to that job would have turned it red.
+
+
+@pytest.fixture(scope="session")
+def _sync_playwright_instance(request):
+    """One sync_playwright() instance for the whole session.
+
+    Used only when the pytest-playwright plugin is absent (the CI browser jobs
+    that install ``playwright`` but not ``pytest-playwright``).  In those jobs
+    the smoke package is the last (and only) browser consumer, so a
+    session-scoped lifecycle is safe — there is no later ``asyncio.run()`` to
+    collide with.
+    """
+    from playwright.sync_api import sync_playwright
+
+    pw = sync_playwright().start()
+    request.addfinalizer(pw.stop)
+    return pw
+
+
 @pytest.fixture(scope="package")
-def browser(playwright):
+def browser(request):
+    if request.config.pluginmanager.hasplugin("playwright"):
+        playwright = request.getfixturevalue("playwright")
+    else:
+        playwright = request.getfixturevalue("_sync_playwright_instance")
     engine, engine_name = _select_browser_engine(playwright, os.environ)
     try:
         b = engine.launch(headless=True)
