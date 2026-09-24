@@ -14,7 +14,7 @@ import uuid
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import PAGE_TIMEOUT, PASSWORD, type_and_wait
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -85,13 +85,6 @@ def _ready(page, factory):
     )
 
 
-def _type_and_wait(page, prefix, term):
-    box = page.locator("#%s-picker-input" % prefix)
-    box.press_sequentially(term, delay=15)
-    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
-    return box
-
-
 def test_the_portfolio_question_links_to_rationalization_planning(
     page, live_server, seeded, portfolio_graph
 ):
@@ -101,7 +94,7 @@ def test_the_portfolio_question_links_to_rationalization_planning(
 
     page.locator("#ask-question-portfolio").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", portfolio_graph["noun"])
+    type_and_wait(page, "ask", portfolio_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
     card = page.locator("[data-ask-portfolio-card]")
@@ -120,11 +113,11 @@ def test_a_non_application_element_reads_as_an_honest_not_tracked_state(
 
     page.locator("#ask-question-portfolio").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", portfolio_graph["noun"])
+    type_and_wait(page, "ask", portfolio_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Committee").click()
 
     expect(page.get_by_text("This is not something the rationalization view tracks.")).to_be_visible()
-    assert page.locator("[data-ask-portfolio-card]").count() == 0
+    assert not page.locator("[data-ask-portfolio-card]").is_visible()
 
 
 def test_all_three_questions_keep_their_own_answers_separate(
@@ -136,14 +129,14 @@ def test_all_three_questions_keep_their_own_answers_separate(
     _ready(page, "askSurface")
 
     page.locator("#ask-question-impact").click()
-    _type_and_wait(page, "ask", portfolio_graph["noun"])
+    type_and_wait(page, "ask", portfolio_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-row]")
     expect(page.locator("#ask-results")).to_be_visible()
     expect(page.locator("#ask-portfolio-results")).to_be_hidden()
 
     page.locator("#ask-question-portfolio").click()
-    _type_and_wait(page, "ask", portfolio_graph["noun"])
+    type_and_wait(page, "ask", portfolio_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-portfolio-card]")
     expect(page.locator("#ask-portfolio-results")).to_be_visible()
