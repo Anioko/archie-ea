@@ -790,13 +790,15 @@ def accountability_for_element(element_id: int):
 
     result = IntelligenceQueryService.accountability_for_element(element_id)
 
-    return success_response(
-        {
-            "owners": result["owners"],
-            "capacity_not_available": result.get("capacity_not_available", True),
-            "reasons": result.get("reasons") or [],
-        }
-    )
+    payload = {
+        "owners": result["owners"],
+        "capacity_not_available": result.get("capacity_not_available", True),
+        "reasons": result.get("reasons") or [],
+    }
+    if "raci" in result:
+        payload["raci"] = result["raci"]
+
+    return success_response(payload)
 
 
 @intelligence_api.route("/yield", methods=["GET"])
