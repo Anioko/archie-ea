@@ -7,7 +7,7 @@ Allows adoption and deployment of framework configurations.
 
 from datetime import datetime
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 
 from app import db
 from app.decorators import audit_log
@@ -28,7 +28,7 @@ framework_management_bp = Blueprint(
 @login_required
 def dashboard():
     """Framework Management Dashboard"""
-    return render_template("framework_management/dashboard.html")
+    return redirect(url_for("maturity_management.frameworks_overview"), code=302)
 
 
 MATURITY_LABELS = {1: "Initial", 2: "Developing", 3: "Defined", 4: "Managed", 5: "Optimizing"}
