@@ -26,6 +26,7 @@ pytestmark = pytest.mark.usefixtures("db_session")
 def _make_user(db_session, make_org, **kwargs):
     from app.models.user import User
 
+    show_archimate = kwargs.pop("show_archimate_names", None)
     org = make_org("plain-lang")
     defaults = dict(
         email=f"plain-lang-{uuid.uuid4().hex[:8]}@example.com",
@@ -39,6 +40,9 @@ def _make_user(db_session, make_org, **kwargs):
     user = User(**defaults)
     db_session.add(user)
     db_session.flush()
+    if show_archimate is not None:
+        user.show_archimate_names = show_archimate
+        db_session.flush()
     return user
 
 
@@ -556,19 +560,219 @@ def test_landing_page_no_archimate_in_feature_desc(app):
 # F6: SQLite migration uses INTEGER not BOOLEAN
 # ---------------------------------------------------------------------------
 
-def test_sqlite_migration_uses_integer_not_boolean():
-    """The SQLite branch of the migration uses INTEGER, not BOOLEAN."""
+def test_show_archimate_names_stored_in_notification_preferences():
+    """show_archimate_names is stored inside notification_preferences JSON,
+    not as a separate column.  The migration in manage.py no longer creates
+    a dedicated column."""
     manage_path = os.path.join(os.path.dirname(__file__), "..", "manage.py")
     with open(manage_path) as f:
         source = f.read()
-    # Find the else branch (SQLite) — it should use INTEGER
-    # The PostgreSQL branch correctly uses BOOLEAN; only the else branch matters
-    else_idx = source.find("show_archimate_names INTEGER")
-    assert else_idx != -1, (
-        "SQLite migration must use INTEGER not BOOLEAN"
+    # The dedicated column migration must not exist
+    assert "show_archimate_names BOOLEAN" not in source, (
+        "manage.py must not create a separate show_archimate_names column"
     )
-    # The BOOLEAN occurrence should only be in the PostgreSQL branch
-    bool_idx = source.find("show_archimate_names BOOLEAN")
-    assert bool_idx == -1 or bool_idx < else_idx, (
-        "BOOLEAN must only appear in the PostgreSQL branch, not SQLite"
+    assert "show_archimate_names INTEGER" not in source, (
+        "manage.py must not create a separate show_archimate_names column"
+    )
+    # The value lives in _DEFAULT_NOTIFICATION_PREFS
+    from app.models.user import User
+    assert "show_archimate_names" in User._DEFAULT_NOTIFICATION_PREFS
+    assert User._DEFAULT_NOTIFICATION_PREFS["show_archimate_names"] is False
+
+
+# ---------------------------------------------------------------------------
+# F7: show_archimate_names stored inside notification_preferences JSON
+# ---------------------------------------------------------------------------
+
+def test_show_archimate_names_reads_from_notification_preferences(db_session, make_org):
+    """The show_archimate_names property delegates to get_notification_preference."""
+    user = _make_user(db_session, make_org)
+    # Default is False (from _DEFAULT_NOTIFICATION_PREFS)
+    assert user.show_archimate_names is False
+    assert user.get_notification_preference("show_archimate_names") is False
+
+
+def test_show_archimate_names_writes_to_notification_preferences(db_session, make_org):
+    """Setting show_archimate_names updates the notification_preferences JSON."""
+    user = _make_user(db_session, make_org)
+    user.show_archimate_names = True
+    db_session.flush()
+    # The JSON column must contain the key
+    prefs = user.notification_preferences or {}
+    assert prefs.get("show_archimate_names") is True
+    # The property must reflect it
+    assert user.show_archimate_names is True
+    assert user.get_notification_preference("show_archimate_names") is True
+
+
+def test_show_archimate_names_preserves_other_preferences(db_session, make_org):
+    """Writing show_archimate_names does not clobber other notification prefs."""
+    user = _make_user(db_session, make_org)
+    user.set_notification_preferences({"arb_decisions": False, "weekly_digest": True})
+    db_session.flush()
+
+    user.show_archimate_names = True
+    db_session.flush()
+
+    assert user.get_notification_preference("arb_decisions") is False
+    assert user.get_notification_preference("weekly_digest") is True
+    assert user.get_notification_preference("show_archimate_names") is True
+
+
+def test_show_archimate_names_cross_organisation(db_session, make_org):
+    """The property is a pure read/write on the user's own JSON — no cross-org leak."""
+    user_a = _make_user(db_session, make_org)
+    user_b = _make_user(db_session, make_org)
+
+    user_a.show_archimate_names = True
+    db_session.flush()
+
+    # user_b must be unaffected
+    assert user_b.show_archimate_names is False
+    assert user_a.show_archimate_names is True
+
+
+# ---------------------------------------------------------------------------
+# F8: instance_detail.html orphans / undocumented / io-chip plain_name wiring
+# ---------------------------------------------------------------------------
+
+def test_orphans_table_uses_plain_name_filter():
+    """The orphans table on the EA workflow detail page renders element_type
+    through |plain_name, not raw PascalCase."""
+    import os
+    template_path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "templates",
+        "ea_workflows", "instance_detail.html"
+    )
+    with open(template_path) as f:
+        source = f.read()
+
+    # The orphans table type column (line ~380) must use |plain_name
+    assert "el.element_type | plain_name(current_user)" in source, (
+        "Orphans table must pipe element_type through |plain_name"
+    )
+    # The undocumented elements table type column (line ~403) must use |plain_name
+    # Count occurrences — there should be at least 2 (orphans + undocumented)
+    count = source.count("element_type | plain_name(current_user)")
+    assert count >= 2, (
+        f"Expected at least 2 uses of element_type|plain_name, found {count}"
+    )
+
+
+def test_io_chip_uses_plain_name_filter():
+    """The input/output element chips render el.type through |plain_name."""
+    import os
+    template_path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "templates",
+        "ea_workflows", "instance_detail.html"
+    )
+    with open(template_path) as f:
+        source = f.read()
+
+    # The io-chip type span (line ~2129) must use |plain_name
+    assert "el.type | plain_name(current_user)" in source, (
+        "I/O chip must pipe el.type through |plain_name"
+    )
+
+
+def test_orphans_table_no_raw_element_type_without_filter():
+    """The orphans/undocumented tables must not render element_type without
+    the |plain_name filter (the raw PascalCase leak)."""
+    import os
+    template_path = os.path.join(
+        os.path.dirname(__file__), "..", "app", "templates",
+        "ea_workflows", "instance_detail.html"
+    )
+    with open(template_path) as f:
+        source = f.read()
+
+    # The pattern "element_type or '—'" (without |plain_name) must not exist
+    assert "element_type or '—'" not in source, (
+        "Raw element_type without |plain_name filter must not exist in template"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F9: Legacy notification-preferences route includes show_archimate_names
+# ---------------------------------------------------------------------------
+
+def test_legacy_route_known_keys_include_show_archimate_names():
+    """The legacy save_notification_preferences route's known_keys list
+    includes show_archimate_names so the legacy path does not silently
+    drop the display preference."""
+    import inspect
+    from app.modules.account.routes.account_routes import save_notification_preferences
+
+    source = inspect.getsource(save_notification_preferences)
+    assert "show_archimate_names" in source, (
+        "Legacy route must include show_archimate_names in known_keys"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F10: Context processor skips injection on unauthenticated pages
+# ---------------------------------------------------------------------------
+
+def test_plain_language_context_empty_for_anonymous(app):
+    """The plain_language_context processor returns an empty dict when no
+    user is signed in, avoiding ~3 KB of JSON serialisation on every
+    unauthenticated page render."""
+    client = app.test_client()
+    resp = client.get("/")
+    assert resp.status_code == 200
+    html = resp.data.decode()
+    # Public pages must not include the plain-language JSON globals
+    assert "window.__PLAIN_LANGUAGE_NAMES__" not in html
+    assert "window.__PLAIN_LAYER_NAMES__" not in html
+    assert "window.__SHOW_ARCHIMATE_NAMES__" not in html
+
+
+def test_plain_language_context_populated_for_authenticated(app, db_session, make_org):
+    """The plain_language_context processor returns the full payload when
+    a user is signed in."""
+    client, user = _make_client(app, db_session, make_org)
+    resp = client.get("/architecture/")
+    assert resp.status_code == 200
+    html = resp.data.decode()
+    assert "window.__PLAIN_LANGUAGE_NAMES__" in html
+    assert "window.__PLAIN_LAYER_NAMES__" in html
+    assert "window.__SHOW_ARCHIMATE_NAMES__" in html
+
+
+# ---------------------------------------------------------------------------
+# F11: Intelligence wiring register exists and covers notification_preferences
+# ---------------------------------------------------------------------------
+
+def test_intelligence_wiring_register_exists():
+    """The intelligence wiring register file exists at the documented path."""
+    import os
+    register_path = os.path.join(
+        os.path.dirname(__file__), "..", "docs", "artifacts",
+        "intelligence-wiring-register.yml"
+    )
+    assert os.path.isfile(register_path), (
+        "intelligence-wiring-register.yml must exist at docs/artifacts/"
+    )
+
+
+def test_intelligence_wiring_register_covers_notification_preferences():
+    """notification_preferences (which now stores show_archimate_names) is
+    listed under not_intelligence with a reason."""
+    import os
+    import yaml
+
+    register_path = os.path.join(
+        os.path.dirname(__file__), "..", "docs", "artifacts",
+        "intelligence-wiring-register.yml"
+    )
+    with open(register_path) as f:
+        register = yaml.safe_load(f)
+
+    users_table = register.get("tables", {}).get("users", {})
+    not_intel = users_table.get("not_intelligence", {})
+    assert "notification_preferences" in not_intel, (
+        "notification_preferences must be listed under not_intelligence"
+    )
+    assert "reason" in not_intel["notification_preferences"], (
+        "notification_preferences entry must have a reason"
     )
