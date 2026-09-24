@@ -55,7 +55,7 @@ living enterprise architecture, that's what Entelim is for.
 - **Need a self-hosted, governed EA platform and want open source?** Use
   [Entelim](https://github.com/Anioko/archie-ea).
 - **Want it hosted, multi-tenant, with SSO and enterprise support?** See
-  [ReqArchitect](https://reqarchitect.com), the managed platform built on Archie.
+  [ReqArchitect](https://reqarchitect.com), the managed platform built on Entelim.
 
 ## FAQ
 
@@ -66,7 +66,7 @@ governance.
 
 **What is the best open-source enterprise architecture tool?**
 For ArchiMate *diagramming*, Archi. For a *governed, web-based EA platform* (portfolio,
-TOGAF journey, ARB, AI), Archie.
+TOGAF journey, ARB, AI), Entelim.
 
 **Is Entelim really open source?**
 Yes — Entelim is licensed under AGPL-3.0. A commercial license is also available for closed-

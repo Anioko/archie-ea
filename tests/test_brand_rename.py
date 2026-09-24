@@ -194,3 +194,81 @@ def test_start_server_bat_no_old_brand():
     path = ROOT / "start-server.bat"
     text = path.read_text(encoding="utf-8")
     assert "A.R.C.H.I.E." not in text
+
+# ---------------------------------------------------------------------------
+# docs/ directory files modified in the rename
+# ---------------------------------------------------------------------------
+
+_DOCS_FILES = [
+    ROOT / "docs" / "README.md",
+    ROOT / "docs" / "application-rationalization.md",
+    ROOT / "docs" / "archimate-3-2-cheat-sheet.md",
+    ROOT / "docs" / "architecture-review-board.md",
+    ROOT / "docs" / "demo-script.md",
+    ROOT / "docs" / "open-source-enterprise-architecture-tools.md",
+    ROOT / "docs" / "togaf-adm-with-archimate.md",
+]
+
+
+def test_no_dotted_wordmark_in_docs_dir():
+    offenders = []
+    for path in _DOCS_FILES:
+        text = path.read_text(encoding="utf-8")
+        if "A.R.C.H.I.E." in text:
+            offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == [], f"A.R.C.H.I.E. still present in docs/: {offenders}"
+
+
+def test_no_archie_word_in_docs_dir():
+    offenders = []
+    for path in _DOCS_FILES:
+        text = path.read_text(encoding="utf-8")
+        if STANDALONE_ARCHIE.search(text):
+            offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == [], f"'Archie' still present in docs/: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Codegen artefacts — publisher prefix and HTTP headers
+# ---------------------------------------------------------------------------
+
+
+def test_power_platform_publisher_prefix_is_ent():
+    from types import SimpleNamespace
+
+    from app.modules.codegen.routes._helpers import (
+        _generate_power_platform_solution,
+    )
+
+    sol = SimpleNamespace(id=1, name="Test Solution", blueprint_version=1)
+    files = _generate_power_platform_solution(sol, {}, {})
+    manifest = files["pac-manifest.json"]
+    assert '"prefix": "ent"' in manifest
+    assert '"prefix": "arc"' not in manifest
+
+
+def test_sap_btp_iflow_headers_use_entelim_prefix():
+    from types import SimpleNamespace
+
+    from app.modules.codegen.routes._helpers import (
+        _generate_sap_btp_integration,
+    )
+
+    sol = SimpleNamespace(id=1, name="Test Solution", blueprint_version=1)
+    files = _generate_sap_btp_integration(sol, {}, {})
+    iflow = files["iflow/main.iflw"]
+    assert "X-Entelim-Solution" in iflow
+    assert "X-Entelim-Generated" in iflow
+    assert "X-ARCHIE-Solution" not in iflow
+    assert "X-ARCHIE-Generated" not in iflow
+
+
+# ---------------------------------------------------------------------------
+# Deploy artefacts
+# ---------------------------------------------------------------------------
+
+
+def test_caddyfile_503_page_no_old_brand():
+    path = ROOT / "deploy" / "Caddyfile.proxy"
+    text = path.read_text(encoding="utf-8")
+    assert "Archie" not in text

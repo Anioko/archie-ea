@@ -7052,7 +7052,7 @@ def _generate_power_platform_solution(solution, config: dict, uml: dict) -> dict
         "_archie_provenance": prov_comment,
         "name": solution_pascal,
         "version": "1.0.0",
-        "publisher": {"name": "Entelim", "prefix": "arc"},
+        "publisher": {"name": "Entelim", "prefix": "ent"},
         "environment": {"url": "${POWER_PLATFORM_ENVIRONMENT_URL}"},
         "solutions": [{"name": solution_snake, "path": "./solution"}],
     }
@@ -7188,8 +7188,8 @@ def _generate_sap_btp_integration(solution, config: dict, uml: dict) -> dict:
         f"        </Sender>\n"
         f"        <ProcessStep name=\"ContentModifier_SetHeaders\" type=\"ContentModifier\">\n"
         f"          <Headers>\n"
-        f"            <Header name=\"X-ARCHIE-Solution\" value=\"{sol_id}\"/>\n"
-        f"            <Header name=\"X-ARCHIE-Generated\" value=\"true\"/>\n"
+        f"            <Header name=\"X-Entelim-Solution\" value=\"{sol_id}\"/>\n"
+        f"            <Header name=\"X-Entelim-Generated\" value=\"true\"/>\n"
         f"          </Headers>\n"
         f"        </ProcessStep>\n"
         f"        <Receiver name=\"Receiver\">\n"
