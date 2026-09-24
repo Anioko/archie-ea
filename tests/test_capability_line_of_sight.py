@@ -276,3 +276,39 @@ class TestTenantIsolation:
         # out, so it is indistinguishable from one that never existed.
         assert resp.status_code in (302, 404)
         assert b"Foreign Capability B" not in resp.data
+
+    def test_edit_page_does_not_reach_another_orgs_capability(
+        self, app, db_session, make_org, tenant_ctx, login_as, client
+    ):
+        org_a = make_org("los-edit-a")
+        org_b = make_org("los-edit-b")
+        user_a = _make_user(db_session, org_a)
+        cap_b_id = _make_capability(
+            db_session, tenant_ctx, org_b, name="Foreign Edit Capability"
+        )
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, user_a)
+            resp = client.get(f"/capability-maturity/edit/{cap_b_id}")
+
+        assert resp.status_code in (302, 404)
+        assert b"Foreign Edit Capability" not in resp.data
+
+    def test_json_detail_does_not_reach_another_orgs_capability(
+        self, app, db_session, make_org, tenant_ctx, login_as, client
+    ):
+        org_a = make_org("los-api-a")
+        org_b = make_org("los-api-b")
+        user_a = _make_user(db_session, org_a)
+        cap_b_id = _make_capability(
+            db_session, tenant_ctx, org_b, name="Foreign API Capability"
+        )
+        db_session.commit()
+
+        with app.app_context():
+            login_as(client, user_a)
+            resp = client.get(f"/capability-maturity/api/capability/{cap_b_id}")
+
+        assert resp.status_code == 404
+        assert b"Foreign API Capability" not in resp.data

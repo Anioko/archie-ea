@@ -208,9 +208,9 @@ def edit_capability_maturity(capability_id):
                    maturity_gap, strategic_importance, business_owner, maturity_assessment_notes,
                    maturity_assessment_date
             FROM business_capability
-            WHERE id = :capability_id
+            WHERE id = :capability_id AND organization_id = :org_id
         """
-        _get_params = {"capability_id": capability_id}
+        _get_params = {"capability_id": capability_id, "org_id": getattr(g, "current_org_id", None)}
 
         # The execute was missing: _get_query/_get_params were built and never run,
         # so `result` was unbound and this route raised NameError on every request.
@@ -395,9 +395,9 @@ def get_capability_api(capability_id):
                    maturity_gap, strategic_importance, business_owner, maturity_assessment_notes,
                    maturity_assessment_date
             FROM business_capability
-            WHERE id = :capability_id
+            WHERE id = :capability_id AND organization_id = :org_id
         """
-        _api_params = {"capability_id": capability_id}
+        _api_params = {"capability_id": capability_id, "org_id": getattr(g, "current_org_id", None)}
 
         result = db.session.execute(text(_api_query), _api_params)
         capability = result.fetchone()
