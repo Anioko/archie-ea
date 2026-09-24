@@ -273,29 +273,10 @@ def test_ctrl_b_hint_matches_wired_handler(app, db_session, make_org):
 
 # ── T-UI-2: search palette + dark theme ──────────────────────────────
 
-
-def test_search_trigger_does_not_pass_event_as_query(app, db_session, make_org):
-    """Clicking the search trigger must not pass the PointerEvent as the
-    prefill query. The listener must be wrapped: function(){openSearchModal();}
-    and openSearchModal must guard against non-string arguments."""
-    user, _ = _make_user(db_session, make_org, "search-trigger")
-    client = app.test_client()
-    _login(client, user.id)
-
-    resp = client.get("/dashboard/overview")
-    assert resp.status_code == 200, resp.get_data(as_text=True)[:2000]
-    html = resp.get_data(as_text=True)
-
-    # The listener registration must wrap openSearchModal, not pass it directly
-    assert "function () { openSearchModal(); }" in html, (
-        "search trigger listener must wrap openSearchModal in a function, "
-        "not pass it directly (which would pass the click event as prefillQuery)"
-    )
-    # openSearchModal must guard against non-string prefillQuery
-    assert "typeof prefillQuery === 'string'" in html, (
-        "openSearchModal must guard against non-string prefillQuery "
-        "(the click event object is truthy but not a string)"
-    )
+# test_search_trigger_does_not_pass_event_as_query (removed): the string-presence
+# version is superseded by the Playwright smoke test of the same name in
+# tests/smoke/test_header_search_and_theme.py, which verifies runtime behaviour
+# by clicking the trigger and asserting the input value is empty.
 
 
 def test_theme_init_script_appears_once_in_head(app, db_session, make_org):
