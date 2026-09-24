@@ -66,7 +66,7 @@ def _make_user(db_session, make_org, label):
         confirmed=True,
         enterprise_role="enterprise_architect",
     )
-    user.password = "Sup3rSecret!23"
+    user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
     db_session.commit()
