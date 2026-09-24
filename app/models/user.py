@@ -198,8 +198,20 @@ class User(UserMixin, db.Model):
     # Plain-language display: when False (default), element types and layers use
     # plain names (e.g. "Application" instead of "ApplicationComponent").
     # When True, the standard ArchiMate names are shown everywhere.
-    # migration-exempt (DDL added in manage.py init_db)
-    show_archimate_names = db.Column(db.Boolean, nullable=False, default=False, server_default=db.text("false"))  # migration-exempt
+    # Stored inside notification_preferences JSON to keep user-level boolean
+    # toggles in one authority (ADR 0008).  The property delegates to
+    # get_notification_preference / set_notification_preferences so every
+    # access path — template filter, context processor, account route — reads
+    # and writes the same store.
+    @property
+    def show_archimate_names(self):
+        return self.get_notification_preference("show_archimate_names")
+
+    @show_archimate_names.setter
+    def show_archimate_names(self, value):
+        prefs = dict(self.notification_preferences or {})
+        prefs["show_archimate_names"] = bool(value)
+        self.notification_preferences = prefs
 
     @staticmethod
     def normalize_email(email):
@@ -393,6 +405,7 @@ class User(UserMixin, db.Model):
         "assignment_changes": True,
         "weekly_digest": True,
         "mention_notifications": True,
+        "show_archimate_names": False,
     }
 
     def get_notification_preference(self, key):  # model-safety-ok

@@ -378,20 +378,6 @@ def register_cli_commands(app):
                 db.session.rollback()
         print("  \u2713 PLT-017: users.notification_preferences column ensured")
 
-        # Plain-language display: show_archimate_names boolean on users
-        if db.engine.dialect.name == "postgresql":
-            db.session.execute(text(
-                "ALTER TABLE users ADD COLUMN IF NOT EXISTS show_archimate_names BOOLEAN NOT NULL DEFAULT false"
-            ))
-        else:
-            try:
-                db.session.execute(text(
-                    "ALTER TABLE users ADD COLUMN show_archimate_names INTEGER NOT NULL DEFAULT 0"
-                ))
-            except Exception:  # column already exists in SQLite
-                db.session.rollback()
-        print("  \u2713 users.show_archimate_names column ensured")
-
         db.session.commit()
         _seed_requirement_templates()
         print("Database tables created (or already exist).")
