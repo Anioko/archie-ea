@@ -120,7 +120,16 @@ let ComposerPersistence = (function() {
             if (self.layerZoneCells && self.layerZoneCells.length) {
                 ext.swimlanes = self.layerZoneCells.map(function(cell) {
                     let p = cell.position(); let s = cell.size();
-                    return { layer: cell.get('zoneLayer'), x: Math.round(p.x), y: Math.round(p.y), width: s.width, height: s.height };
+                    let sz = { layer: cell.get('zoneLayer'), x: Math.round(p.x), y: Math.round(p.y), width: s.width, height: s.height };
+                    /* A canvas zone carries which box it is, so the restore
+                       path below can round-trip it through createLayerZone's
+                       zoneDef argument. Absent (not an empty string) on
+                       every non-canvas swimlane, so JSON.stringify drops the
+                       key and today's saved viewpoints serialize exactly as
+                       before. */
+                    let boxKey = cell.get('boxKey');
+                    if (boxKey) { sz.box_key = boxKey; }
+                    return sz;
                 });
                 hasData = true;
             }
@@ -798,7 +807,13 @@ let ComposerPersistence = (function() {
                 try { if (data.description) ext = JSON.parse(data.description); } catch (e) { /* swallow-ok: description is plain free text on pre-canvas-extension viewpoints, so a parse failure is the expected legacy case rather than an error */ }
                 if (ext && ext._canvas_ext && Array.isArray(ext.swimlanes) && ext.swimlanes.length) {
                     ext.swimlanes.forEach(function(sz) {
-                        let zone = createLayerZone(sz.layer, sz.x, sz.y, sz.width || 1400, sz.height || 160);
+                        /* A serialized box_key round-trips through
+                           createLayerZone's zoneDef argument so a restored
+                           canvas zone still carries which box it is; a plain
+                           (pre-canvas) swimlane has no box_key and restores
+                           exactly as before. */
+                        let zoneDef = sz.box_key ? { box_key: sz.box_key } : undefined;
+                        let zone = createLayerZone(sz.layer, sz.x, sz.y, sz.width || 1400, sz.height || 160, zoneDef);
                         self.graph.addCell(zone);
                         zone.toBack();
                         self.layerZoneCells.push(zone);

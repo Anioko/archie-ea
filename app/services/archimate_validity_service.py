@@ -716,7 +716,21 @@ class ArchimateValidityService:
         return results
 
     def _strategy_rules(self, source_type, target_type, src_layer, tgt_layer):
-        """Strategy layer relationship patterns."""
+        """Strategy layer relationship patterns.
+
+        Canvas relationship keys ("aggregation","strategy","strategy") and
+        ("assignment","strategy","strategy") added to VALID_RELATIONSHIPS
+        (app/models/archimate_core.py) need no new rule here: the same-type
+        block below already grants aggregation between two elements of the
+        same strategy type (Capability/Capability, Resource/Resource — the
+        "hierarchies" ArchiMate 3.2 §5.1.2 describes), and the Resource ->
+        Capability assignment rule two lines down already grants assignment
+        for that pair (§7.4). The six new "association" keys (option ↔ plan
+        item, outcome ↔ work package, key partner ↔ resource/capability)
+        likewise need no rule here: ``is_valid`` treats association as
+        always valid (ArchiMate 3.2 §5.2.4: "association may connect any two
+        concepts"), unconditionally, before any layer rule runs.
+        """
         results = []
 
         # Within strategy layer
