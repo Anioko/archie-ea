@@ -16,6 +16,8 @@ is always the source of truth, financial aggregation is best-effort.
 import logging
 from decimal import Decimal, InvalidOperation
 
+from flask_login import current_user
+
 from app import db
 from app.models.business_case import BUSINESS_CASE_STATUSES, BusinessCase
 from app.models.cost_intelligence import CapabilityCostAllocation
@@ -77,7 +79,13 @@ def list_business_cases():
 
 
 def get_business_case_or_none(business_case_id):
-    return BusinessCase.query.get(business_case_id)
+    # A primary-key .query.get(id) does not reliably carry the ORM tenant
+    # listener's WHERE clause the way a filtered query does, so a guessed id
+    # belonging to another organisation would still be found. Filter
+    # explicitly, the same two-layer rule applied elsewhere in this codebase.
+    return BusinessCase.query.filter_by(
+        id=business_case_id, organization_id=current_user.organization_id
+    ).first()
 
 
 def create_business_case(title, description=None, status=None, created_by_id=None, **fields):

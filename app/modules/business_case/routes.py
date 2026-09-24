@@ -15,6 +15,7 @@ from flask_login import current_user, login_required
 # already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
 from app.decorators import require_roles
 
+from app.config.archimate_viewpoints import CANVAS_TEMPLATES
 from app.models.business_case import BUSINESS_CASE_STATUSES
 from app.models.business_capabilities import BusinessCapability
 from app.models.solution_models import Solution
@@ -78,6 +79,9 @@ def detail(business_case_id):
         return render_template("business_case/not_found.html", business_case_id=business_case_id), 404
 
     capabilities, initiatives, solutions = _link_options()
+    # Zones in record order, keyed by box_key.
+    canvas_zones = CANVAS_TEMPLATES["business_case"]["zones"]
+
     return render_template(
         "business_case/detail.html",
         business_case=business_case,
@@ -85,6 +89,8 @@ def detail(business_case_id):
         capabilities=capabilities,
         initiatives=initiatives,
         solutions=solutions,
+        canvas_zones={z["box_key"]: z for z in canvas_zones},
+        canvas_unclassified_count=0,
     )
 
 

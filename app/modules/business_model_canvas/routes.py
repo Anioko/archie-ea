@@ -15,6 +15,7 @@ from flask_login import login_required
 # already used by app/modules/capabilities/routes/enterprise_crud_routes.py.
 from app.decorators import require_roles
 
+from app.config.archimate_viewpoints import CANVAS_TEMPLATES
 from app.models.business_model import CANVAS_BLOCKS, OPERATING_MODEL_TYPES
 from app.utils.api_response import error_response, not_found_response, success_response
 
@@ -69,11 +70,19 @@ def detail(canvas_id):
     if canvas is None:
         return render_template("business_model/not_found.html", canvas_id=canvas_id), 404
 
+    # The Lean order applies once a saved diagram's viewpoint_type is
+    # "lean_canvas" (a later change). No such column exists yet, so every
+    # canvas renders in Business Model Canvas order and zone data comes from
+    # that template's zones, keyed by box_key.
+    canvas_zones = {z["box_key"]: z for z in CANVAS_TEMPLATES["business_model_canvas"]["zones"]}
+
     return render_template(
         "business_model/detail.html",
         canvas=canvas,
         canvas_blocks=CANVAS_BLOCKS,
         operating_model_types=OPERATING_MODEL_TYPES,
+        canvas_zones=canvas_zones,
+        canvas_unclassified_count=0,
     )
 
 
