@@ -7,28 +7,28 @@ get_element wraps GET /archimate/api/elements/<id>/detail.
 
 from __future__ import annotations
 
-from flask import current_app, session
-
-from app.modules.ai_chat.services.architect_persona_charters import _neutralize_fence_lookalikes
+from app.utils.text_sanitization import neutralize_fence_lookalikes
+from app.utils.internal_api import call_internal_api
 from app.modules.mcp.tools import register_tool
 
 
 def _call_element_search(query: str, limit: int = 30) -> dict:
     """Call the canonical element search route."""
-    with current_app.test_client() as client:
-        with client.session_transaction() as sess:
-            sess.update(session)
-        resp = client.get(f"/archimate/api/elements/search?q={query}&limit={limit}")
-        return resp.get_json()
+    _status, data = call_internal_api(
+        "GET", "/archimate/api/elements/search",
+        query_string={"q": query, "limit": limit},
+        pass_session=True,
+    )
+    return data
 
 
 def _call_element_detail(element_id: int) -> dict:
     """Call the element detail route."""
-    with current_app.test_client() as client:
-        with client.session_transaction() as sess:
-            sess.update(session)
-        resp = client.get(f"/archimate/api/elements/{element_id}/detail")
-        return resp.get_json()
+    _status, data = call_internal_api(
+        "GET", f"/archimate/api/elements/{element_id}/detail",
+        pass_session=True,
+    )
+    return data
 
 
 @register_tool(
@@ -60,7 +60,7 @@ def search_elements(args: dict) -> dict:
         for item in result["data"]:
             for key in ("name", "description"):
                 if key in item and isinstance(item[key], str):
-                    item[key] = _neutralize_fence_lookalikes(item[key])
+                    item[key] = neutralize_fence_lookalikes(item[key])
     return result
 
 
@@ -86,14 +86,14 @@ def get_element(args: dict) -> dict:
     if isinstance(result, dict):
         for key in ("name", "description"):
             if key in result and isinstance(result[key], str):
-                result[key] = _neutralize_fence_lookalikes(result[key])
+                result[key] = neutralize_fence_lookalikes(result[key])
         for item in result.get("linked_solutions") or []:
             if "name" in item and isinstance(item["name"], str):
-                item["name"] = _neutralize_fence_lookalikes(item["name"])
+                item["name"] = neutralize_fence_lookalikes(item["name"])
         for item in result.get("linked_capabilities") or []:
             if "name" in item and isinstance(item["name"], str):
-                item["name"] = _neutralize_fence_lookalikes(item["name"])
+                item["name"] = neutralize_fence_lookalikes(item["name"])
         for item in result.get("connected_elements") or []:
             if "name" in item and isinstance(item["name"], str):
-                item["name"] = _neutralize_fence_lookalikes(item["name"])
+                item["name"] = neutralize_fence_lookalikes(item["name"])
     return result

@@ -8,9 +8,8 @@ the existing REST routes through Flask's test client.
 
 from __future__ import annotations
 
-from flask import current_app
-
-from app.modules.ai_chat.services.architect_persona_charters import _neutralize_fence_lookalikes
+from app.utils.text_sanitization import neutralize_fence_lookalikes
+from app.utils.internal_api import call_internal_api
 from app.modules.mcp.tools import register_tool
 
 
@@ -21,14 +20,9 @@ def _call_intelligence_route(lens: str, element_id: int) -> dict:
     stack (tenant context, tenant isolation, login_required) with the
     current_user already set by the MCP blueprint's _authenticate_request.
     """
-    with current_app.test_client() as client:
-        # Pass the current session cookie so the route sees the authenticated user
-        from flask import session
-        with client.session_transaction() as sess:
-            sess.update(session)
-
-        resp = client.get(f"/api/v1/intelligence/{lens}/{element_id}")
-        data = resp.get_json()
+    _status, data = call_internal_api(
+        "GET", f"/api/v1/intelligence/{lens}/{element_id}", pass_session=True
+    )
 
     # Apply fencing to free-text fields in the response
     if data and data.get("success") and data.get("data"):
@@ -38,7 +32,7 @@ def _call_intelligence_route(lens: str, element_id: int) -> dict:
 
 
 def _fence_response_text(payload: dict) -> None:
-    """Apply _neutralize_fence_lookalikes to every free-text field in the payload.
+    """Apply neutralize_fence_lookalikes to every free-text field in the payload.
 
     Only fields that are strings and not known to be enums or numbers are fenced.
     """
@@ -60,7 +54,7 @@ def _fence_response_text(payload: dict) -> None:
 
     for key, value in list(payload.items()):
         if isinstance(value, str) and key not in _safe_keys:
-            payload[key] = _neutralize_fence_lookalikes(value)
+            payload[key] = neutralize_fence_lookalikes(value)
         elif isinstance(value, dict):
             _fence_response_text(value)
         elif isinstance(value, list):
