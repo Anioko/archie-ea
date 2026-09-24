@@ -141,6 +141,7 @@
             workPackageId: wp.work_package_id,
             name: wp.name,
             status: wp.status,
+            statusLabel: statusLabel(wp.status),
             progressPercentage: wp.progress_percentage,
             startDate: wp.start_date,
             endDate: wp.end_date,
@@ -181,6 +182,7 @@
             initiativeId: initiative.initiative_id,
             name: initiative.name,
             status: initiative.status,
+            statusLabel: statusLabel(initiative.status),
             priority: initiative.priority,
             healthStatus: initiative.health_status,
             completionPercentage: initiative.completion_percentage,
@@ -271,6 +273,23 @@
         var active = document.activeElement;
         var onButton = active && active.hasAttribute && active.hasAttribute('data-recompute-button');
         if (onButton || !active || active === document.body) heading.focus();
+    }
+
+    /* After an answer arrives, scroll its results heading into view and move
+       focus to it so the answer is visible without scrolling and announced
+       for screen readers (the heading already carries tabindex="-1"). */
+    function showResults(heading) {
+        if (!heading) return;
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        heading.focus();
+    }
+
+    /* Convert a snake_case status code to a readable label: "in_progress" →
+       "In Progress", "Active" → "Active". Matches the Python-side pattern
+       status.replace("_", " ").title() used across this codebase. */
+    function statusLabel(status) {
+        if (!status) return '';
+        return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
     function failureStatus(err) {
@@ -478,6 +497,8 @@
         timeText: timeText,
         refreshIcons: refreshIcons,
         keepPlace: keepPlace,
+        showResults: showResults,
+        statusLabel: statusLabel,
         failureStatus: failureStatus,
         bandFor: bandFor,
         pluralThings: pluralThings,
