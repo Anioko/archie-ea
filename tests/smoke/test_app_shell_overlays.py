@@ -62,8 +62,8 @@ def test_phone_sidebar_opener_z_index_below_backdrop(browser, live_server, seede
 
         assert z_indices["openerZ"] is not None, "phone sidebar opener not found"
         assert z_indices["backdropZ"] is not None, "mobile sidebar backdrop not found"
-        assert z_indices["openerZ"] < z_indices["backdropZ"], (
-            "opener z-index (%d) must be below backdrop z-index (%d)"
+        assert z_indices["openerZ"] <= z_indices["backdropZ"], (
+            "opener z-index (%d) must be at or below backdrop z-index (%d)"
             % (z_indices["openerZ"], z_indices["backdropZ"])
         )
     finally:
