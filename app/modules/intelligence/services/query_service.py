@@ -56,6 +56,7 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # now applied to a distinct table pair for a distinct block on the same
 # answer.
 NO_COMPLIANCE_MAPPING_RECORDED_REASON = validate_reason_code("no_compliance_mapping_recorded")
+OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.

@@ -368,11 +368,16 @@ class WebhookService:
         delivery = WebhookDelivery(
             id=str(uuid.uuid4()),
             subscription_id=subscription.id,
+            # Explicit, not the column default: this runs on a background thread
+            # (see _deliver_to_subscriptions) with no request context, so
+            # TenantMixin's g.current_org_id-reading default can't resolve it.
+            # The subscription itself was already org-scoped before the thread
+            # started, so it's the trustworthy source here.
+            organization_id=subscription.organization_id,
             event_type=event_data.get("event_type"),
             payload=formatted_payload,
             status="pending",
             attempt_count=0,
-            organization_id=subscription.organization_id,
             created_at=datetime.utcnow(),
         )
 
@@ -458,16 +463,17 @@ class WebhookService:
 
     def process_incoming_webhook(self, subscription_id: str, payload: Dict, headers: Dict) -> Dict:
         """Process an incoming webhook from external services"""
+        # This route is unauthenticated (verified by the subscription's own HMAC
+        # secret, not a session) -- there is no g.current_org_id to fall back on,
+        # so the receiving subscription's own org is the only trustworthy source.
         subscription = self.get_subscription_by_id(subscription_id)
-        org_id = subscription.organization_id if subscription else None
-
         # Store the incoming webhook event
         event = WebhookEvent(
             id=str(uuid.uuid4()),
+            organization_id=subscription.organization_id if subscription else None,
             event_type="webhook.incoming",
             payload={"subscription_id": subscription_id, "payload": payload, "headers": headers},
             user_id=None,  # External webhook
-            organization_id=org_id,
             event_metadata={"incoming": True},
             created_at=datetime.utcnow(),
         )

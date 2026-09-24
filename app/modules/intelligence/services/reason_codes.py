@@ -100,6 +100,26 @@ REASON_CODES = frozenset(
         # discipline no_risk_recorded already applies to a different table on
         # the same answer.
         "no_compliance_mapping_recorded",
+        # PR #107 defect remediation (2026-09-23): the L4 Accountability
+        # lens's ownership read is withdrawn -- the original implementation
+        # read ApplicationOwnership/OrganizationUnit directly with a real,
+        # unreviewed tenant-isolation gap on OrganizationUnit (no
+        # TenantMixin, no tenant predicate on the fetch), rather than reuse
+        # the existing tenant-checked _resolve_owners_batch pattern. Every
+        # accountability response carries this reason until a shared,
+        # tenant-safe reader exists.
+        "ownership_reader_not_built",
+        # T-S1 (value streams at risk, curated path) additions: absence
+        # conditions the original vocabulary has no member for. T-S1 emits
+        # the first two -- no value stream recorded for this tenant, and a
+        # value stream with no capability recorded against it by any path.
+        # The other two are reserved for T-S3, which adds the graph path
+        # (an explicit or derived dependency) this task deliberately does
+        # not read -- they are not reachable until that task lands.
+        "no_value_stream_recorded",
+        "no_capability_linked",
+        "value_stream_not_linked_to_model",
+        "dependency_direction_unknown",
     }
 )
 

@@ -67,11 +67,16 @@ _EXPECTED = {
     "capacity_not_available",
     "financial_data_restricted",
     "no_compliance_mapping_recorded",
+    "ownership_reader_not_built",
+    "no_value_stream_recorded",
+    "no_capability_linked",
+    "value_stream_not_linked_to_model",
+    "dependency_direction_unknown",
 }
 
 
-def test_reason_codes_has_exactly_twenty_seven_members():
-    assert len(REASON_CODES) == 27
+def test_reason_codes_has_exactly_thirty_two_members():
+    assert len(REASON_CODES) == 32
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

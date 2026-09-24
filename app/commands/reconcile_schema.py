@@ -1269,6 +1269,149 @@ def _ensure_sso_mapping_tenant_unique_constraint(*, dry_run, existing_tables, ad
     )
     db.session.commit()
     added.append(f"constraint.{table}.{new_name} :: added, replacing {old_name}")
+def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
+    """Recover the tenant key for webhook rows that predate TenantMixin.
+
+    `webhook_subscriptions.user_id` / `webhook_events.user_id` are varchar
+    columns storing `str(User.id)` (see webhook_service.py's own comment on
+    that cast), so `users.organization_id` -- itself a plain column, not
+    TenantMixin, but the only provenance these rows ever had -- is the
+    trustworthy source via a cast-and-join. A user_id that isn't a plain
+    integer string, or that names no live user, is left NULL and reported,
+    not guessed. `webhook_deliveries` has no user_id at all; its provenance
+    is its own subscription (via subscription_id), falling back to its event
+    (via event_id) only when the subscription itself has no organization_id
+    -- both already backfilled by the two updates above it in this function,
+    so ordering matters here.
+    """
+    from sqlalchemy import inspect, text
+
+    if "webhook_subscriptions" not in existing_tables or "users" not in existing_tables:
+        return
+
+    def _backfill_by_user(table: str):
+        live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+        if "organization_id" not in live_columns or "user_id" not in live_columns:
+            return
+        before = db.session.scalar(
+            text(f"SELECT count(*) FROM {table} WHERE organization_id IS NULL")
+        )
+        eligible = db.session.scalar(
+            text(
+                f"""
+                SELECT count(*)
+                FROM {table} t
+                JOIN users u ON u.id = CAST(t.user_id AS INTEGER)
+                WHERE t.organization_id IS NULL
+                  AND t.user_id ~ '^[0-9]+$'
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = eligible
+        if not dry_run and eligible:
+            result = db.session.execute(
+                text(
+                    f"""
+                    UPDATE {table} AS t
+                    SET organization_id = u.organization_id
+                    FROM users AS u
+                    WHERE u.id = CAST(t.user_id AS INTEGER)
+                      AND t.organization_id IS NULL
+                      AND t.user_id ~ '^[0-9]+$'
+                      AND u.organization_id IS NOT NULL
+                    """
+                )
+            )
+            updated = result.rowcount
+            db.session.commit()
+        # A NULL user_id (system/external events) is an expected, not a
+        # failure, case -- only count rows that HAD a user_id we could not
+        # resolve (unknown user, or the rare non-numeric legacy value).
+        unresolved = db.session.scalar(
+            text(
+                f"""
+                SELECT count(*) FROM {table} t
+                WHERE t.organization_id IS NULL
+                  AND t.user_id IS NOT NULL
+                  AND NOT (
+                    t.user_id ~ '^[0-9]+$'
+                    AND EXISTS (
+                        SELECT 1 FROM users u
+                        WHERE u.id = CAST(t.user_id AS INTEGER)
+                          AND u.organization_id IS NOT NULL
+                    )
+                  )
+                """
+            )
+        )
+        if before:
+            added.append(
+                f"backfill.{table}.organization_id :: before={before}, "
+                f"updated={updated}, unresolved={unresolved}"
+            )
+        if unresolved:
+            failed.append(
+                f"backfill.{table}.organization_id: {unresolved} row(s) with a "
+                "user_id that names no live user with a known organization"
+            )
+
+    _backfill_by_user("webhook_subscriptions")
+    if "webhook_events" in existing_tables:
+        _backfill_by_user("webhook_events")
+
+    if "webhook_deliveries" not in existing_tables:
+        return
+    live_columns = {c["name"] for c in inspect(db.engine).get_columns("webhook_deliveries")}
+    if "organization_id" not in live_columns:
+        return
+    before = db.session.scalar(
+        text("SELECT count(*) FROM webhook_deliveries WHERE organization_id IS NULL")
+    )
+    updated = 0
+    if not dry_run and before:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE webhook_deliveries AS d
+                SET organization_id = s.organization_id
+                FROM webhook_subscriptions AS s
+                WHERE s.id = d.subscription_id
+                  AND d.organization_id IS NULL
+                  AND s.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated += result.rowcount
+        db.session.commit()
+        if "webhook_events" in existing_tables:
+            result = db.session.execute(
+                text(
+                    """
+                    UPDATE webhook_deliveries AS d
+                    SET organization_id = e.organization_id
+                    FROM webhook_events AS e
+                    WHERE e.id = d.event_id
+                      AND d.organization_id IS NULL
+                      AND e.organization_id IS NOT NULL
+                    """
+                )
+            )
+            updated += result.rowcount
+            db.session.commit()
+    unresolved = db.session.scalar(
+        text("SELECT count(*) FROM webhook_deliveries WHERE organization_id IS NULL")
+    )
+    if before:
+        added.append(
+            f"backfill.webhook_deliveries.organization_id :: before={before}, "
+            f"updated={updated}, unresolved={unresolved}"
+        )
+    if unresolved:
+        failed.append(
+            f"backfill.webhook_deliveries.organization_id: {unresolved} row(s) "
+            "whose subscription and event are both missing or org-less"
+        )
 
 
 def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
