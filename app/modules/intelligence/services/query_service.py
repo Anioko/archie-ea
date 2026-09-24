@@ -43,7 +43,7 @@ NO_BUDGET_RECORDED_REASON = validate_reason_code("no_budget_recorded")
 # different table, for L4.
 NO_OWNERSHIP_RECORDS_REASON = validate_reason_code("no_ownership_records")
 CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
-# Risk/control-gaps brief (2026-09-23) addition: Ask's Risk lens lists the
+# Risk/control-gaps (2026-09-23) addition: Ask's Risk lens lists the
 # compliance gap rows recorded against anything on the answer's own element
 # set (the picked element plus its blast radii), beside the risks. Most
 # elements name no compliance requirement at all -- an honest absence, the
@@ -1397,24 +1397,15 @@ class IntelligenceQueryService:
         The capacity half of L4 ("who do we need... when") is honestly
         absent: no ``Workforce``/``Skill``/``Headcount`` class exists
         anywhere in ``app/models`` (checked, not assumed), and building one
-        is FR-13-gated -- an external HR-source decision, the same class of
+        is FR-13-gated -- an external HR-source determination, the same class of
         gate as L2's OKR source. ``capacity_not_available`` is therefore in
         ``reasons`` on EVERY response this method returns, success included
         -- it is a permanent, honest disclosure of a real product gap, not
         a per-request absence condition like every other reason code here.
 
-        Tenant-safety note, verified not assumed: neither
-        ``OrganizationUnit`` nor ``ApplicationOwnership`` carries a
-        ``TenantMixin``/``organization_id`` of its own (same gap already
-        flagged for ``UnifiedWorkPackage``, L5, and ``PortfolioInitiative``,
-        L2). This method never queries ``ApplicationOwnership`` except by an
-        ``application_id`` obtained from ``portfolio_component_for_element``,
-        which only ever resolves through an already-tenant-validated
-        ``ArchiMateElement`` -- so no independently untenanted read of
-        either table is exposed here. Not attempting to add tenant scoping
-        to either table itself -- a fourth instance of the same pre-existing
-        gap is stronger evidence it needs its own dedicated fix, not
-        stronger reason to patch it inside one more lens.
+        Tenant scoping: ``OrganizationUnit`` and ``ApplicationOwnership`` now
+        carry ``organization_id`` columns. Every read of either table is
+        scoped to the current tenant via ``current_org_id()``.
         """
         from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
@@ -1430,11 +1421,13 @@ class IntelligenceQueryService:
                 }
 
             application_id = component_result["application_component_id"]
+            org_id = current_org_id()
 
             ownership_rows = (
                 db.session.execute(
                     db.select(ApplicationOwnership).where(
-                        ApplicationOwnership.application_id == application_id
+                        ApplicationOwnership.application_id == application_id,
+                        ApplicationOwnership.organization_id == org_id,
                     )
                 )
                 .scalars()
@@ -1457,7 +1450,16 @@ class IntelligenceQueryService:
                 # anyway -- same discipline every other lens's owner/user
                 # lookup uses -- in case that constraint is ever loosened;
                 # it does not currently have a reachable test case.
-                unit = db.session.get(OrganizationUnit, row.organization_unit_id)
+                unit = (
+                    db.session.execute(
+                        db.select(OrganizationUnit).where(
+                            OrganizationUnit.id == row.organization_unit_id,
+                            OrganizationUnit.organization_id == org_id,
+                        )
+                    )
+                    .scalars()
+                    .first()
+                )
                 owner_payloads.append(
                     {
                         "owner_id": row.id,

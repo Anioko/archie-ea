@@ -169,6 +169,9 @@ class OrganizationUnit(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Tenant
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
+
     # Relationships
     child_units = db.relationship(
         "OrganizationUnit", backref=db.backref("parent", remote_side="OrganizationUnit.id")
@@ -209,6 +212,9 @@ class ApplicationOwnership(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Tenant
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Relationships
     application = db.relationship("ApplicationComponent", backref="ownership_records")

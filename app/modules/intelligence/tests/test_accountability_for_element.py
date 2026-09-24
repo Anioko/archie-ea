@@ -30,16 +30,16 @@ def _component(db_session, org_id, element, name="A App"):
     return component
 
 
-def _unit(db_session, *, name="Finance", unit_type="Department", head_of_unit=None):
+def _unit(db_session, org_id, *, name="Finance", unit_type="Department", head_of_unit=None):
     from app.models.enterprise_intelligence import OrganizationUnit
 
-    unit = OrganizationUnit(name=name, unit_type=unit_type, head_of_unit=head_of_unit)
+    unit = OrganizationUnit(name=name, unit_type=unit_type, head_of_unit=head_of_unit, organization_id=org_id)
     db_session.add(unit)
     db_session.flush()
     return unit
 
 
-def _ownership(db_session, component, unit, *, ownership_type="Business Owner",
+def _ownership(db_session, component, unit, org_id, *, ownership_type="Business Owner",
                ownership_percentage=100, primary_contact=None, contact_email=None,
                start_date=None, end_date=None):
     # organization_unit_id is NOT NULL on this model -- every real ownership
@@ -50,6 +50,7 @@ def _ownership(db_session, component, unit, *, ownership_type="Business Owner",
     ownership = ApplicationOwnership(
         application_id=component.id,
         organization_unit_id=unit.id,
+        organization_id=org_id,
         ownership_type=ownership_type,
         ownership_percentage=ownership_percentage,
         primary_contact=primary_contact,
@@ -141,9 +142,9 @@ def test_owner_with_organization_unit_renders_honestly(app, db_session, make_org
     org = make_org("accountability-lens-owner")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session, name="Finance", head_of_unit="Pat Head")
+    unit = _unit(db_session, org.id, name="Finance", head_of_unit="Pat Head")
     _ownership(
-        db_session, component, unit=unit, ownership_type="Business Owner",
+        db_session, component, unit=unit, org_id=org.id, ownership_type="Business Owner",
         primary_contact="Jordan Owner", contact_email="jordan@example.com",
     )
     db_session.commit()
@@ -173,8 +174,8 @@ def test_capacity_not_available_is_present_even_on_a_successful_answer(app, db_s
     org = make_org("accountability-lens-capacity-always")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session)
-    _ownership(db_session, component, unit)
+    unit = _unit(db_session, org.id)
+    _ownership(db_session, component, unit, org.id)
     db_session.commit()
 
     with app.test_request_context("/"):
@@ -194,9 +195,9 @@ def test_multiple_owners_on_one_component_each_get_their_own_row(app, db_session
     org = make_org("accountability-lens-multi")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session)
-    _ownership(db_session, component, unit, ownership_type="Business Owner")
-    _ownership(db_session, component, unit, ownership_type="Technical Owner")
+    unit = _unit(db_session, org.id)
+    _ownership(db_session, component, unit, org.id, ownership_type="Business Owner")
+    _ownership(db_session, component, unit, org.id, ownership_type="Technical Owner")
     db_session.commit()
 
     with app.test_request_context("/"):
