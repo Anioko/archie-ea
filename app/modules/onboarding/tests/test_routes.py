@@ -693,7 +693,7 @@ def test_a_teammate_cannot_rewrite_an_existing_company_profile_but_keeps_their_r
     from app.modules.onboarding.services import profile
 
     org = make_org("teammate")
-    admin_profile = profile.write(org, stage="growing", industry="Logistics")
+    profile.write(org, stage="growing", industry="Logistics")
     user = _make_user(db_session, org)
     login_as(client, user)
     org.name = "Real Company"

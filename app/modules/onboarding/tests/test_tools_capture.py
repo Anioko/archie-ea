@@ -47,7 +47,6 @@ def test_a_tool_becomes_an_application_component_with_an_archimate_element(db_se
 
 
 def test_the_support_link_is_a_real_mapping_row_and_claims_no_coverage(db_session, make_org, tenant_ctx):
-    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping as Mapping
     from app.models.unified_capability import UnifiedCapability
 
     org = make_org("link")
@@ -64,7 +63,6 @@ def test_the_support_link_is_a_real_mapping_row_and_claims_no_coverage(db_sessio
 
 def test_saving_twice_updates_and_an_unticked_capability_removes_only_the_link(db_session, make_org, tenant_ctx):
     from app.models.application_portfolio import ApplicationComponent
-    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping as Mapping
 
     org = make_org("twice")
     with tenant_ctx(org.id):
@@ -76,7 +74,6 @@ def test_saving_twice_updates_and_an_unticked_capability_removes_only_the_link(d
 
 
 def test_a_capability_not_recorded_yet_is_not_linked(db_session, make_org, tenant_ctx):
-    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping as Mapping
 
     org = make_org("nocap")
     with tenant_ctx(org.id):
