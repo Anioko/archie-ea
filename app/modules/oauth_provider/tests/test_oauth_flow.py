@@ -231,10 +231,12 @@ class TestOAuthAuthorizationCodeFlow:
         params = urllib.parse.parse_qs(parsed.query)
         auth_code = params["code"][0]
 
-        # Expire all codes by manipulating time
-        import app.modules.oauth_provider.routes as oauth_routes
-        for k in list(oauth_routes._auth_codes.keys()):
-            oauth_routes._auth_codes[k]["expires_at"] = 0
+        # Expire all codes by setting their expires_at in the past
+        from datetime import datetime, timezone
+        from app.modules.oauth_provider.models import OAuthAuthorizationCode
+        for ac in OAuthAuthorizationCode.query.all():
+            ac.expires_at = datetime.fromtimestamp(0, tz=timezone.utc)
+        db_session.flush()
 
         resp = client.post(
             "/oauth/token",

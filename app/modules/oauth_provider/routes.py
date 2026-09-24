@@ -8,28 +8,15 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import time
 
 from flask import Blueprint, current_app, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
-from app.modules.oauth_provider.models import OAuthClient, OAuthToken
+from app.modules.oauth_provider.models import OAuthAuthorizationCode, OAuthClient, OAuthToken
 
 logger = logging.getLogger(__name__)
 
 oauth_provider_bp = Blueprint("oauth_provider", __name__, url_prefix="/oauth")
-
-# In-memory authorization code store. Codes are short-lived (60s) and
-# single-use, so a database table is unnecessary overhead.
-_auth_codes: dict[str, dict] = {}
-
-
-def _clean_expired_codes():
-    """Remove expired authorization codes."""
-    now = time.time()
-    expired = [k for k, v in _auth_codes.items() if v.get("expires_at", 0) < now]
-    for k in expired:
-        _auth_codes.pop(k, None)
 
 
 def _hash_code_verifier(verifier: str) -> str:
@@ -118,22 +105,19 @@ def authorize():
         )
 
     # POST: process consent
-    _clean_expired_codes()
+    OAuthAuthorizationCode.clean_expired()
 
-    import secrets
-    code = secrets.token_urlsafe(32)
-    _auth_codes[code] = {
-        "client_id": client_id,
-        "user_id": current_user.id,
-        "redirect_uri": redirect_uri,
-        "scope": requested_scope,
-        "resource": validated_resource,
-        "code_challenge": code_challenge,
-        "code_challenge_method": code_challenge_method,
-        "expires_at": time.time() + 60,
-    }
+    auth_code = OAuthAuthorizationCode.issue(
+        client_id=client_id,
+        user_id=current_user.id,
+        redirect_uri=redirect_uri,
+        scope=requested_scope,
+        resource=validated_resource,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
+    )
 
-    params = {"code": code}
+    params = {"code": auth_code.code}
     if state:
         params["state"] = state
 
@@ -158,20 +142,20 @@ def token():
     if not code or not client_id or not code_verifier:
         return jsonify({"error": "invalid_request"}), 400
 
-    _clean_expired_codes()
+    OAuthAuthorizationCode.clean_expired()
 
-    auth_code = _auth_codes.pop(code, None)
+    auth_code = OAuthAuthorizationCode.consume(code)
     if auth_code is None:
         return jsonify({"error": "invalid_grant", "error_description": "authorization code not found or expired"}), 400
 
-    if auth_code["client_id"] != client_id:
+    if auth_code.client_id != client_id:
         return jsonify({"error": "invalid_grant", "error_description": "client_id mismatch"}), 400
 
-    if auth_code["redirect_uri"] != redirect_uri:
+    if auth_code.redirect_uri != redirect_uri:
         return jsonify({"error": "invalid_grant", "error_description": "redirect_uri mismatch"}), 400
 
     # Verify PKCE
-    expected_challenge = auth_code["code_challenge"]
+    expected_challenge = auth_code.code_challenge
     actual_challenge = _hash_code_verifier(code_verifier)
     if actual_challenge != expected_challenge:
         return jsonify({"error": "invalid_grant", "error_description": "code_verifier does not match"}), 400
@@ -182,12 +166,12 @@ def token():
         if validated_resource is None:
             return jsonify({"error": "invalid_resource"}), 400
     else:
-        validated_resource = auth_code.get("resource")
+        validated_resource = auth_code.resource
 
     token = OAuthToken.issue(
         client_id=client_id,
-        user_id=auth_code["user_id"],
-        scope=auth_code.get("scope", "mcp:read"),
+        user_id=auth_code.user_id,
+        scope=auth_code.scope or "mcp:read",
         resource=validated_resource,
     )
 
