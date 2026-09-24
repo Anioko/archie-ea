@@ -54,6 +54,14 @@ _svc = AccountService
 @rate_limit(10, "1m", methods=("POST",))  # SECURITY: Brute-force protection on credential submits only
 def login():
     """Log in an existing user."""
+    # Opening /login while already signed in must not disturb the existing
+    # session (it is still fully valid) -- send the user on to the dashboard
+    # instead of re-rendering the sign-in form, which otherwise reads as an
+    # unexpected sign-out even though the session was never touched. Same
+    # already-authenticated guard as reset_password_request()/reset_password()
+    # below, reused here rather than duplicated with new logic.
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard.overview"))
     form = LoginForm()
     if form.validate_on_submit():
         # COM-005: Check email-domain SSO config before password auth.
