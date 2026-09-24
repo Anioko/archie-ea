@@ -122,6 +122,8 @@ REASON_CODES = frozenset(
         # no endpoint may invent an absence string inline.
         "no_criticality_recorded",
         "no_recovery_objective_recorded",
+        # Impact answer: an application with no contract recorded against it.
+        "no_contract_recorded",
     }
 )
 
