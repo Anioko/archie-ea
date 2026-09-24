@@ -106,7 +106,7 @@ NONE_SAFE_TEMPLATES = [
     "app/templates/arb/dashboard.html",
     "app/templates/arb/review_detail.html",
     "app/templates/arb/sessions.html",
-    "app/modules/admin/templates/admin/user_role_edit.html",
+    "app/templates/admin/user_role_edit.html",
 ]
 
 
