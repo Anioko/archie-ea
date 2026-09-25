@@ -25,6 +25,16 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 @pytest.fixture(autouse=True)
+def _registered_models(app):
+    """Building an SSOConfig row here never touches the database, but the
+    SQLAlchemy mapper for it (and for every other model reachable from it)
+    is only fully configured once the application has been created, which
+    is what the session-scoped ``app`` fixture does. No test in this file
+    needs a database session for that; it only needs the models imported.
+    """
+
+
+@pytest.fixture(autouse=True)
 def _fresh_jwks_cache():
     """The key set is cached in-process; every test starts with it empty."""
     from app.services.sso_service import SSOService
