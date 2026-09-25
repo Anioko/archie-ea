@@ -25,7 +25,7 @@ from app.models.transformation_programme import (
     ProgrammeRoleAssignment,
     ProgrammeWorkstream,
 )
-from app.models.user import User
+from app.models.user import Permission, User
 from app.modules.transformation_room.command_service import CommandService, OperationAuthorizer
 from app.modules.transformation_room.domain import (
     ActorContext,
@@ -39,27 +39,22 @@ from app.modules.transformation_room.domain import (
 )
 
 
-CREATE_ROLES = frozenset(
-    {"enterprise_architect", "chief_architect", "cto", "platform_admin", "organization_admin", "administrator"}
-)
+# Programme WRITE authority is persona- or assignment-based only. Admin flags,
+# the legacy Role name and the enterprise_role column default ("platform_admin")
+# grant no programme write (SRS section 6; security.md S1).
+CREATE_ROLES = frozenset({"enterprise_architect", "chief_architect", "cto"})
 OBJECTIVE_ROLES = CREATE_ROLES | frozenset({"programme_owner", "workstream_lead"})
 ROLE_ASSIGNMENT_ROLES = CREATE_ROLES | frozenset({"programme_owner"})
-ARCHIVE_ROLES = frozenset({"programme_owner", "platform_admin", "organization_admin", "administrator"})
-READ_ROLES = CREATE_ROLES | frozenset(
-    {
-        "portfolio_manager",
-        "business_architect",
-        "application_architect",
-        "arb_member",
-        "programme_owner",
-        "workstream_lead",
-        "evidence_owner",
-        "decision_authority",
-        "delivery_lead",
-        "outcome_owner",
-        "contributor",
-    }
-)
+LINK_ROLES = CREATE_ROLES | frozenset({"programme_owner", "workstream_lead", "contributor"})
+# Org governance escape hatch: an org admin may retire a programme whose owner
+# has left. This is the only admin-derived write, and it is non-destructive.
+ARCHIVE_ROLES = frozenset({"programme_owner", "organization_admin"})
+# Admins keep READ within their own organisation (support, governance).
+READ_ROLES = CREATE_ROLES | frozenset({"organization_admin"}) | frozenset({
+    "portfolio_manager", "business_architect", "application_architect", "arb_member",
+    "programme_owner", "workstream_lead", "evidence_owner", "decision_authority",
+    "delivery_lead", "outcome_owner", "contributor",
+})
 
 
 def _required_text(value: Any, field: str) -> str:
@@ -110,6 +105,14 @@ def canonical_role_assignment_key(payload: Mapping[str, Any]) -> str:
     }
     canonical = json.dumps(identity, sort_keys=True, separators=(",", ":"))
     return f"role-assignment:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def _require_write_permission(user) -> None:
+    """Programme writes require Permission.GENERAL; a read-only Viewer persona
+    must not write programme content even if their enterprise_role string
+    matches a write role (security.md S2)."""
+    if not user.can(Permission.GENERAL):
+        raise NotAuthorised("write_permission_required")
 
 
 class TransformationProgrammeService:
@@ -263,6 +266,7 @@ class TransformationProgrammeService:
             if operation != "programme.create" or supplied_key != natural_key:
                 raise NotAuthorised("programme_create_command_mismatch")
             user = cls._load_runtime_user(session, actor)
+            _require_write_permission(user)
             if not cls._server_roles(user).intersection(CREATE_ROLES):
                 raise NotAuthorised("programme_create_not_authorised")
             owner = session.scalar(
@@ -283,6 +287,7 @@ class TransformationProgrammeService:
         # commit serializes account-role revocation with the first programme
         # persistence. User has no separate active/disabled account predicate.
         runtime_user = cls._load_runtime_user(session, actor, lock=True)
+        _require_write_permission(runtime_user)
         if not cls._server_roles(runtime_user).intersection(CREATE_ROLES):
             raise NotAuthorised("programme_create_not_authorised")
         outcome_data = request.outcome
@@ -992,11 +997,6 @@ class TransformationProgrammeService:
             roles.add("organization_admin")
         if user.is_platform_admin:
             roles.add("platform_admin")
-        try:
-            if user.role and user.role.name:
-                roles.add(user.role.name.strip().lower())
-        except Exception:
-            pass
         return roles
 
     @classmethod
@@ -1008,7 +1008,7 @@ class TransformationProgrammeService:
         at the final submit with a raw 'programme_create_not_authorised'. Authorising
         once at the door and once at the command keeps both honest."""
         try:
-            return bool(cls._server_roles(user) & CREATE_ROLES)
+            return bool(cls._server_roles(user) & CREATE_ROLES) and user.can(Permission.GENERAL)
         except Exception:
             return False
 
@@ -1030,6 +1030,8 @@ class TransformationProgrammeService:
         # check and the governed mutation.
         user = cls._load_runtime_user(session, actor, lock=lock)
         roles = cls._server_roles(user)
+        if allowed_roles is not READ_ROLES:
+            _require_write_permission(user)
         today = date.today()
         assignment_statement = (
             select(ProgrammeRoleAssignment)

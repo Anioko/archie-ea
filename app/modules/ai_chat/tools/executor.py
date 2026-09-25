@@ -2883,9 +2883,9 @@ class ToolExecutor:
             return {
                 "success": False,
                 "error": (
-                    "Only Enterprise Architects, CTOs and administrators can create "
-                    "programmes. Ask one of them to set the programme up, or to give "
-                    "you that role."
+                    "Only Enterprise Architects, Chief Architects and CTOs can create "
+                    "programmes. Ask one of them to set the programme up, or ask an "
+                    "organisation admin to give you that persona."
                 ),
             }
 
