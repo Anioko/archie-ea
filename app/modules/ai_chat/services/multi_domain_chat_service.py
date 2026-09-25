@@ -4597,7 +4597,19 @@ Use enterprise architecture terminology appropriate for this role."""
             if context_filter and "layer" in context_filter:
                 target_layer = context_filter["layer"]
 
-            elements_query = ArchiMateElement.query
+            # Ordered by name, the same ordering the element list pages already
+            # use (api_elements_search) -- with no explicit order the database
+            # is free to return an organisation's rows in whatever order its
+            # physical layout happens to put them in, which is stable within
+            # one run but not across two (confirmed: the same organisation,
+            # captured the same way, listed a different element in an early
+            # visible slot depending on how much unrelated data existed
+            # elsewhere in the table). LIMIT then a possible re-sort by
+            # rel_counts both need a deterministic starting order to mean
+            # anything -- which 100 (or 200) rows the limit keeps, and which
+            # element wins a tie in the rel_counts sort below, both depend on
+            # it.
+            elements_query = ArchiMateElement.query.order_by(ArchiMateElement.name)
             if target_layer:
                 elements_query = elements_query.filter(ArchiMateElement.layer == target_layer)
                 detail_elements = elements_query.limit(200).all()
