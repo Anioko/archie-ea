@@ -371,6 +371,15 @@ class Deliverable(db.Model):
 
     artifact_references = db.Column(db.JSON)
 
+    # R1-06 (programme-journey-templates): a snapshot of what the template
+    # declared, so later template edits never alter an instantiated programme
+    # (ADR 0012 decision 4). All nullable; tolerated when NULL.
+    template_code = db.Column(db.String(80), nullable=True)
+    journey_stage = db.Column(db.String(20), nullable=True)
+    declared_element_types = db.Column(db.JSON, nullable=True)
+    # R1-07: why a deliverable was completed with no model content.
+    completion_reason = db.Column(db.Text, nullable=True)
+
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
