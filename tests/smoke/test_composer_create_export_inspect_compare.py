@@ -124,14 +124,16 @@ def test_created_diagram_survives_every_export_format_intact(browser, live_serve
     csrf_token = page.evaluate(
         "() => document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''"
     )
-    # Quick-add creates ApplicationComponent elements, and the metamodel
-    # only allows composition, aggregation, serving, specialization and
-    # association directly between two of those (triggering is a behavior
-    # relationship and does not apply structure-to-structure), so the three
-    # distinct types drawn here are chosen from that set.
+    # Quick-add creates ApplicationComponent elements, both of which are
+    # active-structure per the validity service's own rule engine (the
+    # authority the create endpoint actually calls, not the separate static
+    # relationship-matrix reference table): two active elements of the same
+    # type grant composition and aggregation, association is always valid as
+    # a fallback, and that is the whole set -- triggering and serving are
+    # behaviour-to-behaviour relationships and apply to neither.
     relationship_specs = [
         (real_element_ids[0], real_element_ids[1], "aggregation"),
-        (real_element_ids[1], real_element_ids[2], "serving"),
+        (real_element_ids[1], real_element_ids[2], "composition"),
         (real_element_ids[0], real_element_ids[3], "association"),
     ]
     for src, tgt, rel_type in relationship_specs:
