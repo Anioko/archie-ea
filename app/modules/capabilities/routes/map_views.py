@@ -117,15 +117,25 @@ def mapping_modal_partial(variant):
     return render_template("capability_map/_lazy_mapping_modals.html", variant=variant)
 
 
-@capability_map.route("/hierarchy")
-@login_required
 @cached(
     ttl=300,
     key_prefix="capability_map:hierarchy",
     key_func=lambda: getattr(g, "current_org_id", None),
 )
-def hierarchy():
-    """Capability hierarchy visualization — uses real BusinessCapability data."""
+def _hierarchy_context():
+    """Build the hierarchy page's template context (the query results only).
+
+    This is what gets cached — never the rendered HTML. ``render_template``
+    bakes the current request's CSP nonce into ``<script nonce="...">`` /
+    ``<style nonce="...">`` attributes (see CspNonceExtension in
+    app/_bootstrap/security.py). Caching that rendered string, as this used
+    to, meant a cache hit on request 2 served request 1's nonce inside a
+    response whose Content-Security-Policy header carried request 2's own
+    (freshly generated, per-request) nonce — the two never matched, so the
+    browser refused every nonce'd tag on the page. Caching only the data and
+    calling ``render_template`` fresh on every request keeps the nonce and
+    the header in the same response, cache hit or not.
+    """
     from app.modules.capabilities.services.capability_count_service import (
         count_business_capabilities,
     )
@@ -176,28 +186,42 @@ def hierarchy():
         roots = [c for c in capabilities if c.level == 1]
         catalog = {"children": [cap_to_dict(r) for r in roots]}
 
-        return render_template(
-            "capability_map/hierarchy.html",
-            catalog=catalog,
-            total_capabilities=total_capabilities,
-            has_coverage_data=mapping_counts is not None,
-        )
+        return {
+            "catalog": catalog,
+            "total_capabilities": total_capabilities,
+            "has_coverage_data": mapping_counts is not None,
+            "load_error": None,
+        }
     except Exception as e:
         from app import db
 
         db.session.rollback()
         current_app.logger.exception("Unexpected error loading hierarchy: %s", e)
-        flash("Error loading the capability hierarchy. Please try again.", "error")
         # The catalog shape is required by the Alpine tree, so it stays a dict
         # with an empty children list - no invented nodes. load_error is what
         # tells the user the tree is empty because nothing could be read.
-        return render_template(
-            "capability_map/hierarchy.html",
-            catalog={"children": []},
-            load_error="The capability hierarchy could not be read.",
-            total_capabilities=total_capabilities,
-            has_coverage_data=False,
-        )
+        return {
+            "catalog": {"children": []},
+            "total_capabilities": total_capabilities,
+            "has_coverage_data": False,
+            "load_error": "The capability hierarchy could not be read.",
+        }
+
+
+@capability_map.route("/hierarchy")
+@login_required
+def hierarchy():
+    """Capability hierarchy visualization — uses real BusinessCapability data."""
+    context = _hierarchy_context()
+    if context["load_error"]:
+        flash("Error loading the capability hierarchy. Please try again.", "error")
+    return render_template(
+        "capability_map/hierarchy.html",
+        catalog=context["catalog"],
+        total_capabilities=context["total_capabilities"],
+        has_coverage_data=context["has_coverage_data"],
+        load_error=context["load_error"],
+    )
 
 
 @capability_map.route("/network")
@@ -207,22 +231,18 @@ def network():
     return render_template("capability_map/network.html")
 
 
-@capability_map.route("/simple")
-@login_required
 @cached(
     ttl=300,
     key_prefix="capability_map:simple",
     key_func=lambda: getattr(g, "current_org_id", None),
 )
-def simple_view():
-    """Simple flat view of capabilities — real BusinessCapability data.
+def _simple_view_context():
+    """Build the simple view's template context (the query results only).
 
-    Was previously a 612-line static template with no context at all: a
-    hardcoded "38 capabilities / 124 functions / 11 domains" and a fictional
-    "Digital Application Platform" taxonomy, shown identically to every
-    tenant. Rebuilt on the same query pattern as ``hierarchy()`` above —
-    level-1 roots with their direct children — but flattened for a page
-    that is meant to be simple, not a recursive tree.
+    Cached separately from the render — see ``_hierarchy_context`` above for
+    why: caching ``render_template``'s output bakes in that request's CSP
+    nonce, which a later cache hit then serves under a different response's
+    (freshly generated) nonce, and the browser blocks the mismatch.
     """
     try:
         from app.models.business_capabilities import BusinessCapability
@@ -268,34 +288,61 @@ def simple_view():
             "domain_count": len(domains),
         }
 
-        return render_template(
-            "capability_map/simple.html",
-            capability_groups=capability_groups,
-            stats=stats,
-        )
+        return {
+            "capability_groups": capability_groups,
+            "stats": stats,
+            "load_error": None,
+        }
     except Exception:
         from app import db
 
         db.session.rollback()
         current_app.logger.exception("Could not load the simple capability view")
-        flash("Error loading the capability view. Please try again.", "error")
-        return render_template(
-            "capability_map/simple.html",
-            capability_groups=[],
-            stats={"total": None, "l1_count": None, "max_depth": None, "domain_count": None},
-            load_error="The capability list could not be read.",
-        )
+        return {
+            "capability_groups": [],
+            "stats": {"total": None, "l1_count": None, "max_depth": None, "domain_count": None},
+            "load_error": "The capability list could not be read.",
+        }
 
 
-@capability_map.route("/dashboard")
+@capability_map.route("/simple")
 @login_required
+def simple_view():
+    """Simple flat view of capabilities — real BusinessCapability data.
+
+    Was previously a 612-line static template with no context at all: a
+    hardcoded "38 capabilities / 124 functions / 11 domains" and a fictional
+    "Digital Application Platform" taxonomy, shown identically to every
+    tenant. Rebuilt on the same query pattern as ``hierarchy()`` above —
+    level-1 roots with their direct children — but flattened for a page
+    that is meant to be simple, not a recursive tree.
+    """
+    context = _simple_view_context()
+    if context["load_error"]:
+        flash("Error loading the capability view. Please try again.", "error")
+    return render_template(
+        "capability_map/simple.html",
+        capability_groups=context["capability_groups"],
+        stats=context["stats"],
+        load_error=context["load_error"],
+    )
+
+
 @cached(
     ttl=300,
     key_prefix="capability_map:dashboard",
     key_func=lambda: getattr(g, "current_org_id", None),
 )
-def dashboard():
-    """Comprehensive dashboard with multiple visualization types"""
+def _dashboard_context():
+    """Build the dashboard's template context (the query results only).
+
+    Cached separately from the render — see ``_hierarchy_context`` above for
+    why: caching ``render_template``'s output bakes in that request's CSP
+    nonce, which a later cache hit then serves under a different response's
+    (freshly generated) nonce, and the browser blocks the mismatch. Returns
+    ``None`` on failure so the route can fall back to the (uncached)
+    error template exactly as before.
+    """
     try:
         # Get statistics
         from app.services.application_capability_catalog import (
@@ -313,19 +360,34 @@ def dashboard():
 
         mappings = ApplicationCapabilityCoverage.query.count()
 
-        return render_template(
-            "capability_map/index.html",
-            catalog=catalog,
-            validation=validation,
-            app_count=applications,
-            mapping_count=mappings,
-        )
+        return {
+            "catalog": catalog,
+            "validation": validation,
+            "app_count": applications,
+            "mapping_count": mappings,
+        }
     except Exception as e:
         current_app.logger.error(f"Error loading capability map: {e}")
+        return None
+
+
+@capability_map.route("/dashboard")
+@login_required
+def dashboard():
+    """Comprehensive dashboard with multiple visualization types"""
+    context = _dashboard_context()
+    if context is None:
         return render_template(
             "capability_map/error.html",
             error="An unexpected error occurred. Please try again.",
         )
+    return render_template(
+        "capability_map/index.html",
+        catalog=context["catalog"],
+        validation=context["validation"],
+        app_count=context["app_count"],
+        mapping_count=context["mapping_count"],
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -2,11 +2,13 @@
 
   POST /api/v1/intelligence/derivation/recompute
   GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
   GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/strategy/<element_id>
+  GET  /api/v1/intelligence/accountability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -36,10 +38,41 @@ from app.utils.api_response import error_response, not_found_response, success_r
 # body of the exact 400/404 responses that ARE their real, reachable home.
 _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
+_FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
+
+# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
+# already gates rationalization/TCO/procurement views to this same set) --
+# reused, not a new authority list invented for this endpoint.
+_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
 )
+
+
+def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: str) -> None:
+    """Redacts *fields* in place on every dict in *rows* for a caller without
+    budget authority (least-privilege on the one sensitive data category this
+    codebase's EA surfaces gate today -- financial figures; matches how
+    ROLE_SECTION_ACCESS already treats rationalization/TCO/procurement, per
+    field here rather than per page, since only Strategy/Programme carry
+    financial figures on an otherwise uniformly-visible lens).
+
+    Redaction is honest, not silent: each redacted field becomes ``None`` and
+    *reason_field* (e.g. ``"budget_reason"``) is set to
+    ``financial_data_restricted`` -- distinct from ``not_costed``/
+    ``no_budget_recorded``, which mean "nobody recorded this," not "you
+    can't see this." A caller with budget authority sees the real value and
+    this function is a no-op for them.
+    """
+    from app.utils.role_access import get_user_role
+
+    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+        return
+    for row in rows:
+        for field in fields:
+            row[field] = None
+        row[reason_field] = _FINANCIAL_DATA_RESTRICTED_REASON
 
 
 def _current_organization_id() -> int | None:
@@ -228,6 +261,128 @@ def _parse_bool_param(raw: str | None, *, default: bool, param_name: str):
         code="INVALID_PARAMETER",
         status_code=400,
     )
+
+
+def _value_stream_or_404_response(value_stream_id: int, organization_id: int):
+    """Resolve *value_stream_id* within *organization_id*'s tenant scope, or
+    the not-found error response for it.
+
+    Two predicates, not one: ``ValueStream`` carries ``TenantMixin``, so the
+    ``do_orm_execute`` tenant-isolation listener already fences this select
+    inside a request -- the same shape ``cross_layer_impact`` uses for
+    ``element_id`` below. The explicit
+    ``IntelligenceQueryService._value_stream_tenant_predicate`` carried on
+    top of that is what keeps "does not exist" and
+    "belongs to another tenant" indistinguishable even if the listener's
+    ambient organisation and the caller-resolved *organization_id* were ever
+    to diverge -- without it, a foreign id could return 200 with empty rows
+    (via the listener) while a never-existed id 404s here (this resolver),
+    an existence oracle. Reusing the same seam ``value_streams_at_risk``
+    itself uses also means the item-10 mutation proof, which neuters that
+    one function, now covers all three predicate call sites on this path,
+    not just two of them.
+
+    Isolated as its own seam, the same pattern as ``_parse_bool_param``
+    above, so the indistinguishability mutation-proof test (T-S1 acceptance
+    item 13) can monkeypatch exactly this function to diverge the message
+    between the two cases and confirm the named test goes red, without
+    editing source under test.
+
+    Returns ``(value_stream, error_response_or_None)``.
+    """
+    from app.extensions import db
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    from app.models.unified_capability import ValueStream
+
+    value_stream = db.session.execute(
+        db.select(ValueStream).where(
+            ValueStream.id == value_stream_id,
+            IntelligenceQueryService._value_stream_tenant_predicate(
+                ValueStream, organization_id
+            ),
+        )
+    ).scalar_one_or_none()
+    if value_stream is not None:
+        return value_stream, None
+    return None, error_response(
+        "Value stream not found",
+        code="VALUE_STREAM_NOT_FOUND",
+        status_code=404,
+    )
+
+
+@intelligence_api.route("/value-streams-at-risk", methods=["GET"])
+@login_required
+def value_streams_at_risk():
+    """T-S1 (DA-S1): US-2's "which value streams are at risk, and why" --
+    the curated path only (no graph read; that is T-S3).
+
+    Serialises ``IntelligenceQueryService.value_streams_at_risk`` through
+    ``success_response`` -- no business logic here (task 02 constraint,
+    T-S1 brief constraint 4).
+    """
+    threshold_raw = request.args.get("threshold")
+    if threshold_raw is None:
+        threshold = 3
+    else:
+        try:
+            threshold = int(threshold_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "threshold must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= threshold <= 5):
+            return error_response(
+                "threshold must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    value_stream_id_raw = request.args.get("value_stream_id")
+    value_stream_id = None
+    if value_stream_id_raw is not None:
+        try:
+            value_stream_id = int(value_stream_id_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if value_stream_id <= 0:
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    if value_stream_id is not None:
+        _value_stream, not_found_err = _value_stream_or_404_response(
+            value_stream_id, organization_id
+        )
+        if not_found_err is not None:
+            return not_found_err
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.value_streams_at_risk(
+        organization_id,
+        threshold=threshold,
+        value_stream_id=value_stream_id,
+    )
+
+    return success_response(result)
 
 
 @intelligence_api.route("/impact/<int:element_id>", methods=["GET"])
@@ -509,9 +664,12 @@ def programme_for_element(element_id: int):
         include_derived=include_derived,
     )
 
+    work_packages = result["work_packages"]
+    _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+
     return success_response(
         {
-            "work_packages": result["work_packages"],
+            "work_packages": work_packages,
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
         }
@@ -579,11 +737,65 @@ def strategy_for_element(element_id: int):
         include_derived=include_derived,
     )
 
+    initiatives = result["initiatives"]
+    _redact_financial_fields(initiatives, ("budget_variance_pct",), "budget_reason")
+
     return success_response(
         {
-            "initiatives": result["initiatives"],
+            "initiatives": initiatives,
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/accountability/<int:element_id>", methods=["GET"])
+@login_required
+def accountability_for_element(element_id: int):
+    """L4: "who's accountable for ___, and can they take on more?"
+    Serialises ``IntelligenceQueryService.accountability_for_element``
+    through ``success_response`` -- same error-handling pattern as the
+    other lenses, no business logic here. No max_depth/include_derived
+    params: this lens is a pure ownership lookup, not a blast-radius
+    traversal, unlike every other lens on this blueprint.
+
+    The ownership read itself is currently WITHDRAWN -- see the service
+    method's own docstring (a real tenant-isolation gap found in external
+    review of the original PR; no shared, tenant-safe reader exists yet).
+    This route's element/tenant pre-checks are unchanged and still real;
+    only the body of the answer is a permanent honest empty state until
+    that reader exists.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.accountability_for_element(element_id)
+
+    return success_response(
+        {
+            "owners": result["owners"],
+            "capacity_not_available": result.get("capacity_not_available", True),
+            "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 

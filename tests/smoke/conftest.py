@@ -30,10 +30,39 @@ import uuid
 import pytest
 
 pytest.importorskip("playwright", reason="playwright not installed - smoke journeys skipped")
-from playwright.sync_api import sync_playwright  # noqa: E402
 
 PASSWORD = "SmokeJourney!2026"
 BOOT_TIMEOUT = int(os.environ.get("SMOKE_BOOT_TIMEOUT", "180"))
+
+
+def pytest_configure(config):
+    """Register fallback ``page`` and ``context`` fixtures when the
+    pytest-playwright plugin is absent.
+
+    CI's "Browser journeys" and "Browser compatibility" jobs install
+    ``playwright`` and ``pytest-timeout`` but NOT ``pytest-playwright``,
+    so every test that uses the plugin's ``page`` (or ``context``) fixture
+    errors at setup with "fixture 'page' not found".  These fallbacks are
+    built on this suite's own ``browser`` fixture (package scope) and
+    provide the same function-scoped lifecycle the plugin would.
+    """
+    if config.pluginmanager.hasplugin("playwright"):
+        return
+
+    class _SmokePageFallback:
+        @pytest.fixture(scope="function")
+        def context(self, browser):
+            ctx = browser.new_context()
+            yield ctx
+            ctx.close()
+
+        @pytest.fixture(scope="function")
+        def page(self, context):
+            p = context.new_page()
+            yield p
+            p.close()
+
+    config.pluginmanager.register(_SmokePageFallback(), name="smoke-page-fallback")
 
 
 def _tail(path, lines=40):
@@ -250,8 +279,30 @@ def live_server(request, ai_protocol_stub, app):
         print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
 
 
-@pytest.fixture(scope="session")
-def seeded(live_server, request, ai_protocol_stub):
+def _delete_api_settings(**filters):
+    """Delete APISettings rows matching *filters* inside a fresh app context.
+
+    Returns the number of rows deleted so callers can assert their own
+    expectations (e.g. exactly one row for a fixture teardown, or any number
+    for a test finalizer that may have already cleaned up).
+    """
+    from app import create_app, db
+    from app.models.models import APISettings
+
+    app = create_app("testing")
+    with app.app_context():
+        db.session.remove()
+        existing = APISettings.query.filter_by(**filters).count()
+        if existing:
+            APISettings.query.filter_by(**filters).delete(
+                synchronize_session=False)
+            db.session.commit()
+            assert APISettings.query.filter_by(**filters).count() == 0
+        db.session.remove()
+        return existing
+
+
+def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
     """One organisation, one user per archetype, and the fixtures they need.
 
     Returns {archetype: email} plus the ids the journeys navigate to.
@@ -260,11 +311,30 @@ def seeded(live_server, request, ai_protocol_stub):
     have no create path for their own entity - which was itself a finding - and a
     journey should not be blocked from testing a read screen by a missing write
     screen.
+
+    A plain function, not a fixture: `seeded` below calls it once for the
+    session-wide organisation every ordinary smoke test shares, and a second
+    caller (test_visual_regression.py's `visual_org`) calls it again for a
+    dedicated organisation of exactly the same shape, so a screen capture
+    that needs real content does not also need the shared organisation to be
+    in whatever state 500 other tests have left it in.
+
+    Every name below embeds a per-call suffix so two calls in the same
+    database never collide. It is random (a fresh uuid) by default, which is
+    what every ordinary smoke test wants -- nothing about its own content is
+    asserted on. `fixed_suffix` overrides that with a caller-chosen, stable
+    value instead, for the one caller (test_visual_regression.py's
+    `visual_org`) whose whole point is a screen whose content -- not just its
+    shape -- must render identically every run. A fixed suffix reused across
+    two calls in the same database collides on the organisation's slug (and
+    the seeded users' emails): the caller is responsible for calling this at
+    most once per database when passing one (see `visual_org`'s own guard,
+    which pytest's fixture scope alone was not enough to provide).
     """
     from app import create_app, db
 
     app = create_app("testing")
-    suffix = uuid.uuid4().hex[:8]
+    suffix = fixed_suffix or uuid.uuid4().hex[:8]
     out = {"emails": {}, "ids": {}}
 
     with app.app_context():
@@ -333,16 +403,10 @@ def seeded(live_server, request, ai_protocol_stub):
             out["ids"]["ai_protocol_provider"] = provider_id
 
             def remove_protocol_provider():
-                with app.app_context():
-                    db.session.remove()
-                    query = APISettings.query.filter_by(
-                        id=provider_id, organization_id=provider_org,
-                        provider="openai", key_label="ci-protocol-stub")
-                    assert query.count() == 1, "Protocol provider fixture was unexpectedly changed"
-                    assert query.delete(synchronize_session=False) == 1
-                    db.session.commit()
-                    assert APISettings.query.filter_by(id=provider_id, organization_id=provider_org).count() == 0
-                    db.session.remove()
+                count = _delete_api_settings(
+                    id=provider_id, organization_id=provider_org,
+                    provider="openai", key_label="ci-protocol-stub")
+                assert count == 1, "Protocol provider fixture was unexpectedly changed"
 
             request.addfinalizer(remove_protocol_provider)
 
@@ -548,6 +612,14 @@ def seeded(live_server, request, ai_protocol_stub):
     return out
 
 
+@pytest.fixture(scope="session")
+def seeded(live_server, request, ai_protocol_stub):
+    """The one organisation, one user per archetype, and their fixtures
+    every ordinary smoke test in this session shares. See
+    `_seed_standard_org` above for what it contains."""
+    return _seed_standard_org(request, ai_protocol_stub)
+
+
 PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 
 
@@ -575,19 +647,53 @@ PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))
 # CI passes today only because its `tests` job never runs `playwright install`,
 # so the launch raises, the skip below unwinds the context, and the loop is
 # released. Adding a browser to that job would have turned it red.
+
+
+@pytest.fixture(scope="session")
+def _sync_playwright_instance(request):
+    """One sync_playwright() instance for the whole session.
+
+    Used only when the pytest-playwright plugin is absent (the CI browser jobs
+    that install ``playwright`` but not ``pytest-playwright``).  In those jobs
+    the smoke package is the last (and only) browser consumer, so a
+    session-scoped lifecycle is safe — there is no later ``asyncio.run()`` to
+    collide with.
+    """
+    from playwright.sync_api import sync_playwright
+
+    pw = sync_playwright().start()
+    request.addfinalizer(pw.stop)
+    return pw
+
+
 @pytest.fixture(scope="package")
-def browser():
-    with sync_playwright() as p:
-        engine, engine_name = _select_browser_engine(p, os.environ)
-        try:
-            b = engine.launch(headless=True)
-        except Exception as exc:                      # no browser binary in this env
-            message = "%s unavailable: %s" % (engine_name, str(exc)[:120])
-            if os.environ.get("SMOKE_REQUIRE_BROWSER") == "1":
-                pytest.fail(message)
-            pytest.skip(message)
-        yield b
-        b.close()
+def browser(request):
+    if request.config.pluginmanager.hasplugin("playwright"):
+        playwright = request.getfixturevalue("playwright")
+    else:
+        playwright = request.getfixturevalue("_sync_playwright_instance")
+    engine, engine_name = _select_browser_engine(playwright, os.environ)
+    try:
+        b = engine.launch(headless=True)
+    except Exception as exc:                      # no browser binary in this env
+        message = "%s unavailable: %s" % (engine_name, str(exc)[:120])
+        if os.environ.get("SMOKE_REQUIRE_BROWSER") == "1":
+            pytest.fail(message)
+        pytest.skip(message)
+    yield b
+    b.close()
+
+
+def type_and_wait(page, prefix, term):
+    """Type *term* into the ask-picker input and wait for the option list.
+
+    Uses ``fill()`` (clears existing text, then types) so repeated
+    calls across question switches do not concatenate onto stale input.
+    """
+    box = page.locator("#%s-picker-input" % prefix)
+    box.fill(term)
+    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
+    return box
 
 
 # Every enterprise role the product defines. The scope contract below prevents

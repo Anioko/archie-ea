@@ -338,7 +338,7 @@ class SSOService:
         )
 
         # 5. Map groups to role
-        role = self.map_groups_to_role(groups)
+        role = self.map_groups_to_role(groups, user.organization_id)
         if role:
             user.enterprise_role = role
 
@@ -405,22 +405,32 @@ class SSOService:
 
     # ── Group-to-role mapping ────────────────────────────────────────
 
-    def _load_db_group_role_map(self):
-        """Load active SSO group-to-role mappings from the database.
+    def _load_db_group_role_map(self, organization_id):
+        """Load active SSO group-to-role mappings from the database, for one org.
 
-        Returns a dict of {group_name: role_name} for all active DB rows.
+        Returns a dict of {group_name: role_name} for that org's active rows.
         Falls back to an empty dict if the table is not yet available.
+
+        This runs during the SSO callback, before request-scoped tenant context
+        (g.current_org_id) exists -- TenantMixin's automatic do_orm_execute
+        filter is a no-op here (see app/middleware/tenant_isolation.py), so the
+        organization_id predicate below is the only thing scoping this query.
+        Previously this had no filter at all: any org's IdP group names could
+        match a mapping created by an entirely different org, a real
+        cross-tenant privilege-confusion risk at login time.
         """
         try:
             from app.models.miscellaneous import SSOGroupRoleMapping
 
-            rows = SSOGroupRoleMapping.query.filter_by(is_active=True).all()
+            rows = SSOGroupRoleMapping.query.filter_by(
+                is_active=True, organization_id=organization_id
+            ).all()
             return {r.sso_group_name: r.role_name for r in rows}
         except Exception as exc:
             logger.debug("Could not load SSO mappings from DB (table ready?): %s", exc)
             return {}
 
-    def map_groups_to_role(self, groups):
+    def map_groups_to_role(self, groups, organization_id):
         """Map a list of IdP group names to a single platform enterprise_role.
 
         Checks database mappings first (PLT-033); falls back to the in-memory
@@ -428,6 +438,10 @@ class SSOService:
         SSO_GROUP_ROLE_MAP config.  If multiple groups match, the
         highest-privilege role wins (platform_admin > enterprise_architect >
         arb_member > portfolio_manager > solution_architect).
+
+        ``organization_id`` scopes the DB-mapping lookup to the user's own org
+        -- see `_load_db_group_role_map`'s docstring for why this can't rely on
+        the ordinary automatic tenant filter.
 
         Returns the role string, or ``None`` if no groups match.
         """
@@ -444,7 +458,7 @@ class SSOService:
         ]
 
         # DB mappings take precedence; fall back to config map when DB is empty.
-        db_map = self._load_db_group_role_map()
+        db_map = self._load_db_group_role_map(organization_id)
         effective_map = self._group_role_map.copy()
         if db_map:
             effective_map = db_map  # DB fully overrides config when rows exist

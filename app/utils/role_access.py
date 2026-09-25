@@ -367,8 +367,21 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # 27, and the rendered sidebar (zone links + the header logo + the footer
 # All-modules fallback + the footer logout link, the constant 3 this constant
 # has tracked since the Phase 0 CI audit note above) drops the same one,
-# 31 -> 30. Lowering the budget to match rather than leaving slack a future
-# regression could hide behind.
+# 31 -> 30.
+#
+# Canvas/framework UI fix, round 2 (25 Sep 2026): two new Library links
+# ("Canvases", "Frameworks") are shared by every role. The two roles with
+# none left (business_architect, platform_admin) and the one with a single
+# link of headroom (enterprise_architect) each lose exactly one thing to pay
+# for the two new links; see _MY_WORK_LINKS and _ADMIN_LINKS comments below
+# for which link and where it is still reachable. Framework Management and
+# Framework Configuration (platform_admin-only) are reachable from the admin
+# dashboard page (app/templates/admin/index.html) instead of a third and
+# fourth new Admin-zone sidebar entry, which is why they add zero to every
+# role's rendered count. Combined with the sidebar diet above, the worst
+# case (platform_admin) nets out at the same 30 the diet alone produced --
+# lowering the budget to match rather than leaving slack a future regression
+# could hide behind.
 SIDEBAR_LINK_BUDGET = 30
 
 _ZONE_TITLES = {
@@ -424,6 +437,14 @@ _HOME_LINKS = [
 _LIBRARY_LINKS = [
     _link("Applications", "unified_applications.application_list", "list"),
     _link("Capabilities", "capability_map.index", "map"),
+    _link("Canvases", "business_model.index", "layout-grid"),
+    # "layers" collided with an existing link's icon in the same collapsed
+    # menu for two roles -- portfolio_manager's "Consolidation List" and
+    # data_architect's "Capability Map" both already used it, and this link
+    # is shared into every role's Library zone, so it must not match any
+    # icon used anywhere else in role_access.py. "library" is unused
+    # elsewhere in this file and reads directly as "a library of frameworks".
+    _link("Frameworks", "maturity_management.frameworks_overview", "library"),
     _link("Vendors", "unified_applications.vendors", "building"),
     _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
@@ -471,16 +492,22 @@ _ADMIN_LINKS = [
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
     _link("Governance Gates", "admin.governance_gates", "badge-check", requires="admin"),
-    _link("Import History", "dashboard_pages.import_history", "history"),
     _link("Seed Management", "admin.seed_management", "database"),
     _link("Settings", "main.settings", "settings"),
     # Added in the Task 3 fix round (review finding: orphaned real routes —
     # both existed, worked, and had no sidebar link of any kind).
     _link("Salesforce Integration", "admin.salesforce_integration", "cloud"),
     _link("Power Platform", "admin.power_platform_integration", "blocks"),
-    # S-11 remainder (18 Aug 2026): batch import was directory-only, never in
-    # a sidebar zone of any role.
-    _link("Batch Import", "batch_import_view.dashboard", "upload"),
+    # Canvas/framework UI fix, round 2 (25 Sep 2026): "Import History" and
+    # "Batch Import" (S-11 remainder, 18 Aug 2026) folded out of this zone --
+    # platform_admin has zero headroom left once "Canvases" and "Frameworks"
+    # join every role's Library zone. Both are tiles on the admin dashboard
+    # page instead (app/templates/admin/index.html, "Frameworks & Data"
+    # section), one click from Command Center rather than a direct sidebar
+    # entry. Framework Management and Framework Configuration are tiles on
+    # the same dashboard page rather than two more Admin-zone links, for the
+    # same reason -- the platform admin still reaches all four from Command
+    # Center, which is itself the first link in this zone.
     # In-built error telemetry (10 Sep 2026): the owner's "how do we know the
     # system has silently degraded" question, answered without a paid APM.
     # Cross-tenant like Organizations above -- the route is @platform_admin_required.
@@ -553,15 +580,26 @@ _MY_WORK_LINKS = {
         # over /enterprise/api/work-packages.
         _link("Gap Analysis", "enterprise.gap_analysis", "git-compare"),
         _link("Work Packages", "enterprise.work_packages", "package"),
-        # S-11 remainder (18 Aug 2026, QA Update 6/8): these three were
+        # S-11 remainder (18 Aug 2026, QA Update 6/8): these were
         # directory-only — reachable from /modules/ but from no sidebar zone
-        # of any role. All three are EA-shaped working pages.
+        # of any role. Both are EA-shaped working pages.
         # crosshair, not git-branch: Traceability Matrix in this same zone
         # already uses git-branch, and collapsed to a 4rem rail two entries
         # behind one glyph are the same button.
         _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
         _link("Capability Health", "strategic.capability_health", "activity"),
-        _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
+        # "Duplicate Detection" (unified_duplicate.simple_dashboard) moved out
+        # of this zone in the canvas/framework UI fix, round 2 (25 Sep 2026):
+        # this zone has one link of headroom and "Canvases" plus "Frameworks"
+        # joining every role's Library zone need two. It moved rather than
+        # dropped -- see ROLE_PORTFOLIO_MANAGER below, the persona that owns
+        # the Rationalization workflow it is reached from in context
+        # (app/templates/applications/rationalization.html); it stays in a
+        # sidebar zone, just not this one, so it is not directory-only again.
+        # ARCH-123 / ARCH-124's Data Architecture and Tech Radar links, folded
+        # into this zone on 18 Aug 2026, came out again in the sidebar diet
+        # (22 Sep 2026): neither page is asked for by a segment's day-to-day
+        # work today; both stay reachable by their own URL.
     ],
     ROLE_CTO: [
         # A CTO with no route to a roadmap from their own sidebar. Found
@@ -587,7 +625,19 @@ _MY_WORK_LINKS = {
         # and strategy-to-execution were not built. They are; 350 routes serve
         # them. Nothing below is a new page — every endpoint already ships and
         # is already in another persona's zones.
-        _link("Capability Map", "capability_map.index", "map"),
+        # BA-A3's front door, Architecture Journey (architecture_journey.index),
+        # came out of every zone that carried it in the sidebar diet (22 Sep
+        # 2026): no segment's day-to-day work asks for it today; it stays
+        # reachable by its own URL.
+        #
+        # "Capability Map" folded out in the canvas/framework UI fix, round 2
+        # (25 Sep 2026): it pointed at capability_map.index, the exact
+        # endpoint Library already carries as "Capabilities" for every role
+        # (see the enterprise_architect NAV-1 note above, which made the same
+        # fix for the same reason) -- this persona rendered the identical page
+        # under two labels. This zone has no headroom left once "Canvases" and
+        # "Frameworks" join the shared Library zone; dropping a same-page
+        # duplicate loses nothing.
         # Points at the heatmap, NOT frameworks_overview. That was the only
         # maturity link this persona had, it is labelled "Frameworks" rather
         # than "Maturity", and it lands on the one maturity page that renders
@@ -595,11 +645,6 @@ _MY_WORK_LINKS = {
         # data actually carries — BA-12). Clicking the single maturity link and
         # finding nothing is precisely why maturity was reported as missing.
         _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
-        # Kept alongside the heatmap, not replaced by it. A QA finding pins
-        # frameworks_overview as needing a sidebar zone, and repointing this
-        # persona's only maturity link at the heatmap had quietly removed it
-        # from every zone — trading one discoverability defect for another.
-        _link("Capability Frameworks", "maturity_management.frameworks_overview", "layers"),
         _link("Value Streams", "value_stream.index", "waypoints"),
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
         _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),
@@ -646,6 +691,12 @@ _MY_WORK_LINKS = {
         _link("Consolidation List", "consolidation_list.dashboard", "layers"),
         # NAV-1: see the CTO entry above — same page, the other owning persona.
         _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
+        # Moved from enterprise_architect in the canvas/framework UI fix,
+        # round 2 (25 Sep 2026): that zone had no headroom left once
+        # "Canvases" and "Frameworks" joined the shared Library zone. This
+        # zone has ample headroom, and portfolio_manager already owns
+        # Rationalization above, from which this page is reached in context.
+        _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from
