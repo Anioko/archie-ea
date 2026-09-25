@@ -324,6 +324,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register capability projection CLI: {e}")
 
     try:
+        from app.commands.programme_types_status import init_app as init_programme_types_status
+        init_programme_types_status(app)
+        app.logger.info("Programme types status CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register programme-types status CLI: {e}")
+
+    try:
         from app.commands.repoint_journey_decision_links import (
             init_app as init_repoint_journey_decision_links,
         )
