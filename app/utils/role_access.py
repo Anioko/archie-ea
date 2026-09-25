@@ -359,19 +359,30 @@ def get_all_roles_with_access(section: str) -> List[str]:
 # other route in; the Twin map is reached from the Ask page and has no link of
 # its own, so this is the only link the two pages add.
 #
+# Sidebar diet (22 Sep 2026): four real pages that no segment's day-to-day
+# work asks for today (Architecture Journey, Data Architecture, Data Lineage,
+# Tech Radar) came out of every zone that carried them; each stays reachable
+# by its own URL. platform_admin, still the persona carrying the most zone
+# links, loses its one occurrence (Architecture Journey): 28 zone links ->
+# 27, and the rendered sidebar (zone links + the header logo + the footer
+# All-modules fallback + the footer logout link, the constant 3 this constant
+# has tracked since the Phase 0 CI audit note above) drops the same one,
+# 31 -> 30.
+#
 # Canvas/framework UI fix, round 2 (25 Sep 2026): two new Library links
-# ("Canvases", "Frameworks") are shared by every role. The ceiling stays 31 --
-# the round-1 attempt raised it to 34 without first checking whether the
-# addition actually needed headroom; it did not, once paired with folds. The
-# two roles with none left (business_architect, platform_admin) and the one
-# with a single link of headroom (enterprise_architect) each lose exactly one
-# thing to pay for the two new links; see _MY_WORK_LINKS and _ADMIN_LINKS
-# comments below for which link and where it is still reachable. Framework
-# Management and Framework Configuration (platform_admin-only) are reachable
-# from the admin dashboard page (app/templates/admin/index.html) instead of a
-# third and fourth new Admin-zone sidebar entry, which is why they add zero to
-# every role's rendered count.
-SIDEBAR_LINK_BUDGET = 31
+# ("Canvases", "Frameworks") are shared by every role. The two roles with
+# none left (business_architect, platform_admin) and the one with a single
+# link of headroom (enterprise_architect) each lose exactly one thing to pay
+# for the two new links; see _MY_WORK_LINKS and _ADMIN_LINKS comments below
+# for which link and where it is still reachable. Framework Management and
+# Framework Configuration (platform_admin-only) are reachable from the admin
+# dashboard page (app/templates/admin/index.html) instead of a third and
+# fourth new Admin-zone sidebar entry, which is why they add zero to every
+# role's rendered count. Combined with the sidebar diet above, the worst
+# case (platform_admin) nets out at the same 30 the diet alone produced --
+# lowering the budget to match rather than leaving slack a future regression
+# could hide behind.
+SIDEBAR_LINK_BUDGET = 30
 
 _ZONE_TITLES = {
     "home": "Home",
@@ -509,7 +520,6 @@ _ADMIN_LINKS = [
 # asserted exactly by tests/test_sidebar_budgets.py.
 _MY_WORK_LINKS = {
     ROLE_SOLUTION_ARCHITECT: [
-        _link("Architecture Journey", "architecture_journey.index", "compass"),
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("AI Chat", "unified_ai_chat.index", "message-square"),
         _link("ADM Kanban", "adm_kanban_view.index", "kanban"),
@@ -586,14 +596,10 @@ _MY_WORK_LINKS = {
         # the Rationalization workflow it is reached from in context
         # (app/templates/applications/rationalization.html); it stays in a
         # sidebar zone, just not this one, so it is not directory-only again.
-        # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): the Data
-        # Architect and Technical Architect personas the register flagged as
-        # underserved are folded into enterprise_architect here — there is no
-        # dedicated role for either yet. Data Architecture already existed
-        # (models + dashboard) but was reachable from nowhere in the
-        # sidebar; Tech Radar is new. Both are now linked.
-        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "workflow"),
-        _link("Tech Radar", "tech_radar.index", "radar"),
+        # ARCH-123 / ARCH-124's Data Architecture and Tech Radar links, folded
+        # into this zone on 18 Aug 2026, came out again in the sidebar diet
+        # (22 Sep 2026): neither page is asked for by a segment's day-to-day
+        # work today; both stay reachable by their own URL.
     ],
     ROLE_CTO: [
         # A CTO with no route to a roadmap from their own sidebar. Found
@@ -610,13 +616,6 @@ _MY_WORK_LINKS = {
         # (TCO coverage, cost tiers, rationalization posture) that no persona's
         # sidebar linked to. Given to the two roles whose job it is.
         _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
-        # Level 10 walkthrough, 30 Aug 2026: the radar is the CTO's technology
-        # direction instrument, and /technology/radar/classify names "cto" in
-        # its own require_roles list -- so the persona was authorised to set
-        # adopt/trial/assess/hold and had no link to the page from anywhere in
-        # its sidebar. 28 nav links on the CTO dashboard, none of them this.
-        # Finding a page by grepping the source is not finding it.
-        _link("Tech Radar", "tech_radar.index", "radar"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
         # BA-A1/A2. This persona had 4 links against a budget of 27 while
@@ -626,12 +625,11 @@ _MY_WORK_LINKS = {
         # and strategy-to-execution were not built. They are; 350 routes serve
         # them. Nothing below is a new page — every endpoint already ships and
         # is already in another persona's zones.
+        # BA-A3's front door, Architecture Journey (architecture_journey.index),
+        # came out of every zone that carried it in the sidebar diet (22 Sep
+        # 2026): no segment's day-to-day work asks for it today; it stays
+        # reachable by its own URL.
         #
-        # BA-A3. The front door, deliberately first: the persona's problem was
-        # never that a page was missing, it was that twelve outputs were spread
-        # over five generic zones with no page that presents them as one
-        # practice. /business-architecture is that page.
-        _link("Architecture Journey", "architecture_journey.index", "compass"),
         # "Capability Map" folded out in the canvas/framework UI fix, round 2
         # (25 Sep 2026): it pointed at capability_map.index, the exact
         # endpoint Library already carries as "Capabilities" for every role
@@ -656,16 +654,12 @@ _MY_WORK_LINKS = {
         _link("Capability Health", "strategic.capability_health", "activity"),
         # Same link and icon as enterprise_architect's.
         _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
-        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
-        # NAV-1 (27 Aug 2026, nav-coverage gate 4 -> 0). Three of Iain's twelve
-        # business-architecture outputs had working routes and no sidebar link
-        # anywhere, in any persona — which is why an evaluating architect read
-        # them as absent. All three land on pages that already ship; none is new.
+        # NAV-1 (27 Aug 2026, nav-coverage gate 4 -> 0). Two of Iain's twelve
+        # business-architecture outputs below had working routes and no
+        # sidebar link anywhere, in any persona — which is why an evaluating
+        # architect read them as absent. Both land on pages that already
+        # ship; neither is new.
         #
-        # Output 5, Information/data maps: field-level lineage over the
-        # DataObject catalogue. Distinct from "Data Architecture" above (the
-        # domain/steward dashboard) — this is the map itself.
-        _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         # Output 6, Strategy-to-execution: the motivation layer — drivers,
         # goals, outcomes, principles, requirements — is the ArchiMate backbone
         # that connects strategy to the work packages already linked above.
@@ -745,12 +739,6 @@ _MY_WORK_LINKS = {
     ROLE_PLATFORM_ADMIN: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("Portfolio", "portfolio.index", "briefcase"),
-        # BA-A3. platform_admin is the default enterprise_role for every user
-        # who has not picked one during onboarding (see the column comment in
-        # app/models/user.py), so a page that exists only for the two architect
-        # roles is invisible to most real accounts. Rendered total for this
-        # role goes 25 -> 26, still under SIDEBAR_LINK_BUDGET (27).
-        _link("Architecture Journey", "architecture_journey.index", "compass"),
     ],
     # Promoted from charter-only, 31 Aug 2026. The blueprint scores a Security
     # Viewpoint as one of its fifteen sections and nobody owned it; every link
@@ -783,17 +771,16 @@ _MY_WORK_LINKS = {
         _link("Compliance", "application_mgmt.compliance_frameworks_dashboard",
               "clipboard-check"),
         _link("Applications", "unified_applications.application_list", "list"),
-        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
-        _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Interface Register", "interface_register.index", "cable"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
     # persona's remit, so the fold is now unnecessary rather than pragmatic.
+    # Data Architecture and Data Lineage no longer render in any zone (no
+    # segment's day-to-day work asks their question yet); both stay reachable
+    # by their own URL for this persona, same as every other role.
     ROLE_DATA_ARCHITECT: [
-        _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
-        _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
         _link("ArchiMate Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),

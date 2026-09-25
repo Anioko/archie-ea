@@ -60,7 +60,7 @@ def _all_links(role):
     return links
 
 
-def test_sidebar_link_budget_is_31():
+def test_sidebar_link_budget_is_30():
     """Raised 25 -> 26 in the Task 3 fix round (coordinator review of the
     sidebar rewrite): platform_admin's two review-mandated admin-zone links
     (Salesforce Integration, Power Platform) alone render exactly 25 visible
@@ -93,12 +93,20 @@ def test_sidebar_link_budget_is_31():
     test asserts the count EQUALS this number, so the ceiling moves with the
     link rather than leaving slack that does not exist.
 
+    Lowered 31 -> 30 (sidebar diet, 22 Sep 2026): Architecture Journey, Data
+    Architecture, Data Lineage and Tech Radar came out of every zone that
+    carried them — each stays reachable by its own URL, none by a sidebar
+    click. platform_admin, still the persona carrying the most zone links,
+    loses its one occurrence (Architecture Journey): 28 zone links -> 27, and
+    the rendered sidebar (zone links + the constant 3 non-zone chrome links
+    above) drops the same one.
+
     Canvas/framework UI fix, round 2 (25 Sep 2026): two new Library links
     ("Canvases", "Frameworks") were added for every role and the ceiling did
     not move — see role_access.py's SIDEBAR_LINK_BUDGET comment for the folds
     that paid for them.
     """
-    assert SIDEBAR_LINK_BUDGET == 31
+    assert SIDEBAR_LINK_BUDGET == 30
 
 
 def test_every_role_is_defined():
@@ -179,7 +187,6 @@ def test_solution_architect_my_work_membership():
     review of the sidebar rewrite; membership amended accordingly."""
     assert _my_work_labels(ROLE_SOLUTION_ARCHITECT) == [
         "Ask a question",
-        "Architecture Journey",
         "Solutions",
         "AI Chat",
         "ADM Kanban",
@@ -188,14 +195,14 @@ def test_solution_architect_my_work_membership():
         # TO the board. Adding it closed a handoff that stopped mid-journey.
         "Review Board",
         "Programmes",
-        # SAP S/4HANA Interface Register (Task 02, round 3 fix): a 7th
+        # SAP S/4HANA Interface Register (Task 02, round 3 fix): a new
         # my_work link was added at role_access.py:469; this test asserted
         # exact equality and had gone red on main until this line was added.
         "Interface Register",
         # Reported problem: the platform's own "analyse the ripple effects of a
         # change" feature was reachable only from the 83-item All-modules page, so an architect
         # with no training had no discoverable path to it. Impact analysis is a primary job for
-        # this persona. This is the 8th link, one past the spec table's "3-7"; the spec now says so.
+        # this persona.
         "Impact Analysis",
     ]
 
@@ -233,12 +240,10 @@ def test_enterprise_architect_my_work_membership():
         # plus "Frameworks" joining the shared Library zone needed two. Still
         # reachable via "All modules" (see role_access.py's comment on this
         # role's entry).
-        # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): Data
-        # Architecture (existing, previously undiscoverable) and Tech Radar
-        # (new), folded into enterprise_architect's My work since there is
-        # no dedicated Data Architect / Technical Architect role yet.
-        "Data Architecture",
-        "Tech Radar",
+        # ARCH-123 / ARCH-124's Data Architecture and Tech Radar links, folded
+        # into this zone on 18 Aug 2026, came out again in the sidebar diet
+        # (22 Sep 2026): neither page is asked for by a segment's day-to-day
+        # work today; both stay reachable by their own URL.
     ]
 
 
@@ -256,11 +261,6 @@ def test_cto_my_work_membership():
         # NAV-1: nav-coverage output 9 (KPI/metric dashboards) had routes but
         # no sidebar link in any persona.
         "Portfolio KPIs",
-        # Level 10 walkthrough, 30 Aug 2026: the radar is the CTO's technology
-        # direction instrument and /technology/radar/classify names "cto" in
-        # its own require_roles list -- the persona was authorised to set the
-        # rings and had no link to the page from anywhere.
-        "Tech Radar",
     ]
 
 
@@ -276,7 +276,6 @@ def test_business_architect_my_work_membership():
     the shared Library zone; dropping a same-page duplicate loses nothing."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
         "Ask a question",
-        "Architecture Journey",
         "Capability Maturity",
         "Value Streams",
         "Stakeholder Map",
@@ -285,9 +284,10 @@ def test_business_architect_my_work_membership():
         "Work Packages",
         "Traceability Matrix",
         "Capability Health",
-        "Impact Analysis",
-        "Data Architecture",
-        "Data Lineage",
+        "Impact Analysis",  # Same link and icon as enterprise_architect
+        # NAV-1 (27 Aug 2026): nav-coverage outputs 6 and 10 — strategy-to-
+        # execution and products & services — had working routes and no
+        # sidebar link in any persona. Both endpoints already shipped.
         "Motivation Model",
         "Products & Services",
         "Org Chart & RACI",
@@ -395,14 +395,18 @@ def test_platform_admin_zone_link_total_is_pinned():
     included. It is the only link the Ask and Twin map pages add; the Twin map
     is reached from the Ask page.
 
-    Canvas/framework UI fix, round 2 (25 Sep 2026): stays 28. "Canvases" and
+    Sidebar diet (22 Sep 2026): 28 -> 27. "Architecture Journey" came out of
+    this zone along with every other zone that carried it — the page stays
+    reachable by its own URL, not by a sidebar click.
+
+    Canvas/framework UI fix, round 2 (25 Sep 2026): stays 27. "Canvases" and
     "Frameworks" join this role's Library zone (+2); "Import History" and
     "Batch Import" fold out of the Admin zone onto the admin dashboard page
     (-2), and Framework Management / Framework Configuration are added to
     that same dashboard page rather than the Admin zone, so they add zero
     here. Net zero.
     """
-    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 28
+    assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 27
 
 
 def test_platform_admin_collapsed_sidebar_icons_are_unambiguous():
