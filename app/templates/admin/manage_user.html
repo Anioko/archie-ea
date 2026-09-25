@@ -98,11 +98,14 @@
                                 I understand that this action cannot be undone.
                             </label>
                         </div>
-                        <a :href="confirmed ? '{{ url_for('admin.delete_user', user_id=user.id) }}' : '#'" 
-                           :class="confirmed ? '' : 'pointer-events-none opacity-50'" 
-                           class="inline-flex items-center justify-center rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-                            Delete this user
-                        </a>
+                        <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" :disabled="!confirmed"
+                                    :class="confirmed ? '' : 'pointer-events-none opacity-50'"
+                                    class="inline-flex items-center justify-center rounded-md bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                                Delete this user
+                            </button>
+                        </form>
                     </div>
                 {% elif form %}
                     <div class="rounded-lg border bg-card text-card-foreground shadow-sm p-6">

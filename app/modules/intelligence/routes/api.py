@@ -796,6 +796,7 @@ def accountability_for_element(element_id: int):
             "owners": result["owners"],
             "capacity_not_available": result.get("capacity_not_available", True),
             "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 
