@@ -33,7 +33,7 @@
     {% endfor %}
   </div>
 
-  <form method="post">
+  <form method="post" action="{{ url_for('oauth_provider.authorize') }}">
     <input type="hidden" name="client_id" value="{{ client_id }}">
     <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
     <input type="hidden" name="code_challenge" value="{{ code_challenge }}">
