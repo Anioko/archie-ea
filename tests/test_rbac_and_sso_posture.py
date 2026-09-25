@@ -75,7 +75,7 @@ def _make_rbac_user(db_session, org, *, is_org_admin=False, is_platform_admin=Fa
         is_platform_admin=is_platform_admin,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
     return user

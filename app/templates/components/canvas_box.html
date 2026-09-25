@@ -1,28 +1,24 @@
 {# Canvas box — the shared per-box rendering business_model/detail.html and
-   business_case/detail.html use for one CANVAS_TEMPLATES zone.
+    business_case/detail.html use for one CANVAS_TEMPLATES zone.
 
-   Renders structure only: the entries list exists and is always empty here
-   (a later change adds the projection that fills it), so every box carries
-   its `empty_reason` as a labelled hint outside the input rather than any
-   placeholder content inside it. Once entries exist, the same list gains
-   rows, each with up to three flag chips and an "Open" link — nothing here
-   invents that state early.
+    Renders structure only: the entries list exists and is always empty here
+    (a later change adds the projection that fills it), so every box carries
+    its `empty_reason` as a labelled hint outside the input rather than any
+    placeholder content inside it. Once entries exist, the same list gains
+    rows, each with up to three flag chips and an "Open" link — nothing here
+    invents that state early.
 
-   Reuses the existing empty_state macro rather than a new one. #}
-{% from 'components/empty_state.html' import empty_state %}
+    Empty boxes show a single short line "Nothing here yet" above the typing
+    area — no large repeated icon. #}
 
 {% macro canvas_box_entries(zone) %}
 {# The entries list itself: present, empty. A later change is the only
-   thing that ever puts a row in it. #}
+    thing that ever puts a row in it. #}
 <ul data-testid="canvas-entries-{{ zone.box_key }}" class="sr-only" aria-hidden="true"></ul>
 {% if zone.empty_reason == 'canvas_box_not_derived' %}
-<div data-testid="canvas-box-reason-{{ zone.box_key }}" data-reason="canvas_box_not_derived" role="status">
-    {{ empty_state(icon='layers', title='Composed from the other sections — nothing to show yet', padding='py-4') }}
-</div>
+<p data-testid="canvas-box-reason-{{ zone.box_key }}" data-reason="canvas_box_not_derived" role="status" class="text-xs text-muted-foreground mb-2">Composed from the other sections — nothing to show yet</p>
 {% else %}
-<div data-testid="canvas-box-reason-{{ zone.box_key }}" data-reason="canvas_box_empty" role="status">
-    {{ empty_state(icon='inbox', title='Nothing here yet — type to add', padding='py-4') }}
-</div>
+<p data-testid="canvas-box-reason-{{ zone.box_key }}" data-reason="canvas_box_empty" role="status" class="text-xs text-muted-foreground mb-2">Nothing here yet</p>
 {% endif %}
 {% endmacro %}
 
