@@ -1,7 +1,7 @@
 """One-off remap: `architecture_journey_links` rows of type 'decision' currently
-store an `ArchitectureDecisionRecord.id` in `entity_id`. R1-02
-(docs/buckets/programme-journey-templates) repoints `JOURNEY_LINK_RESOLVERS["decision"]`
-to read `ArchitectureDecision` (the register ARB already uses) instead, so a raw
+store an `ArchitectureDecisionRecord.id` in `entity_id`. R1-02 repoints
+`JOURNEY_LINK_RESOLVERS["decision"]` to read `ArchitectureDecision` (the
+register ARB already uses) instead, so a raw
 resolver change alone would make every existing link silently resolve to whatever
 unrelated `ArchitectureDecision` row happens to share that numeric id -- a wrong
 decision shown with full apparent authority, not "no longer available".

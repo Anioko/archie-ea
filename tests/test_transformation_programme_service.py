@@ -1035,7 +1035,7 @@ def test_subordinate_failure_rolls_back_entire_programme_graph(programme_fixture
 
 # --------------------------------------------------------------------- #
 # R1-01: programme write authority is persona- or assignment-based only #
-# (security.md 3.2, S1/S2; docs/buckets/programme-journey-templates)    #
+# (security.md 3.2, findings S1 and S2)                                 #
 # --------------------------------------------------------------------- #
 
 
