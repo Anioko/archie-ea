@@ -81,7 +81,7 @@ def _resolve_org_id_from_item(item_type: str, item_id: int) -> Optional[int]:
 
         row = db.session.execute(
             db.text(
-                f"SELECT organization_id FROM {table_name} WHERE id = :id"
+                f"SELECT organization_id FROM {table_name} WHERE id = :id"  # nosec B608 -- only fixed table and column names from a mapping in code are interpolated; values are bound parameters
             ),
             {"id": item_id},
         ).first()
