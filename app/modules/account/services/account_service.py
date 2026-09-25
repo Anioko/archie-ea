@@ -315,11 +315,15 @@ class AccountService:
 
         # tenant-scoping-ok: gated by user_id check below — only the
         # invitation owner can accept their own invitations.
-        invitation = PendingInvitation.query.get(invitation_id)
+        invitation = db.session.get(PendingInvitation, invitation_id)
         if invitation is None:
             return False, "Invitation not found."
         if invitation.user_id != user.id:
             return False, "This invitation is not for you."
+        if invitation.is_expired():
+            db.session.delete(invitation)
+            db.session.commit()
+            return False, "This invitation has expired. Ask an administrator to invite you again."
         OrgRole.set_role(
             invitation.organization_id,
             user.id,
@@ -341,7 +345,7 @@ class AccountService:
 
         # tenant-scoping-ok: gated by user_id check below — only the
         # invitation owner can decline their own invitations.
-        invitation = PendingInvitation.query.get(invitation_id)
+        invitation = db.session.get(PendingInvitation, invitation_id)
         if invitation is None:
             return False, "Invitation not found."
         if invitation.user_id != user.id:

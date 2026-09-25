@@ -2751,7 +2751,11 @@ def solution_traceability_export(solution_id):
 @login_required
 def list_roadmap_initiatives():
     """ENH-013: List technology roadmap initiatives, optionally filtered by year."""
+    from flask import g
+
+    from app.models.archimate_core import ArchitectureModel
     from app.models.implementation_migration import TechnologyRoadmapInitiative
+    from app.models.solution_models import Solution
 
     # Ensure table exists (no migrations)
     try:
@@ -2777,8 +2781,33 @@ def list_roadmap_initiatives():
     except Exception:
         db.session.rollback()
 
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return jsonify({"success": True, "data": [], "count": 0})
     year = request.args.get("year", type=int)
     query = TechnologyRoadmapInitiative.query
+    if org_id is not None:
+        arch_sub = (
+            db.session.query(ArchitectureModel.id)
+            .filter(ArchitectureModel.organization_id == org_id)
+            .subquery()
+        )
+        sol_sub = (
+            db.session.query(Solution.id)
+            .filter(Solution.organization_id == org_id)
+            .subquery()
+        )
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                TechnologyRoadmapInitiative.architecture_id.in_(
+                    db.session.query(arch_sub.c.id)
+                ),
+                TechnologyRoadmapInitiative.solution_id.in_(
+                    db.session.query(sol_sub.c.id)
+                ),
+            )
+        )
     if year:
         query = query.filter(
             TechnologyRoadmapInitiative.fiscal_year_start <= year,

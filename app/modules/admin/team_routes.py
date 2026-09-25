@@ -67,6 +67,9 @@ def team_invite():
     if user is None:
         return jsonify({"error": f"No user found with email {email}"}), 404
 
+    if OrgRole.get_role(org_id, user.id) is not None:
+        return jsonify({"error": "This user is already a member of the organisation"}), 409
+
     from app.models.pending_invitation import PendingInvitation
 
     _, created = PendingInvitation.create_for(
