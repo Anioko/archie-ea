@@ -210,6 +210,7 @@ def upload_document_file(application_id):
             file_path=None,
             file_size=None,
             uploaded_by=uploaded_by,
+            uploaded_by_id=current_user.id if current_user.is_authenticated else None,
         )
         db.session.add(document)
         db.session.flush()
@@ -351,12 +352,14 @@ def delete_document_file(doc_id):
             )
         )
 
-    # Ownership check: only the uploader or an admin can delete
+    # Ownership check: only the uploader (by user id) or an administrator can delete.
+    # Documents uploaded before the uploaded_by_id column was added have no id and
+    # can be deleted only by admin roles — that is deliberate (fail closed), because
+    # a display name cannot be mapped to an identity reliably.
     if current_user.is_authenticated:
         is_owner = (
-            hasattr(doc, "uploaded_by")
-            and doc.uploaded_by
-            and doc.uploaded_by == current_user.full_name()
+            doc.uploaded_by_id is not None
+            and doc.uploaded_by_id == current_user.id
         )
         is_admin = hasattr(current_user, "role") and current_user.role in ("admin", "architect")
         if not is_owner and not is_admin:

@@ -1091,6 +1091,44 @@
     "nullable": true
    }
   },
+  "ai_chat_approval_audit_log": {
+   "actor_type": {
+    "has_default": true,
+    "nullable": false
+   },
+   "actor_user_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "approval_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "event": {
+    "has_default": false,
+    "nullable": false
+   },
+   "from_status": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "to_status": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "ai_chat_audit_logs": {
    "after_state": {
     "has_default": false,
@@ -1206,6 +1244,10 @@
    }
   },
   "ai_chat_crud_approvals": {
+   "agent_turn_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "approved_at": {
     "has_default": false,
     "nullable": true
@@ -1386,6 +1428,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "persona": {
     "has_default": false,
     "nullable": true
@@ -1433,6 +1479,36 @@
     "nullable": true
    }
   },
+  "ai_prompt_template_versions": {
+   "change_type": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "system_prompt": {
+    "has_default": false,
+    "nullable": false
+   },
+   "template_name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "version": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "ai_prompt_templates": {
    "category": {
     "has_default": false,
@@ -1462,9 +1538,17 @@
     "has_default": true,
     "nullable": true
    },
+   "updated_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "user_prompt_template": {
     "has_default": false,
     "nullable": false
+   },
+   "version": {
+    "has_default": true,
+    "nullable": true
    }
   },
   "ai_recommendations": {
@@ -2986,6 +3070,14 @@
     "has_default": false,
     "nullable": true
    },
+   "deleted_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "deleted_by": {
+    "has_default": false,
+    "nullable": true
+   },
    "dependencies_count": {
     "has_default": true,
     "nullable": true
@@ -2999,7 +3091,7 @@
     "nullable": true
    },
    "deployment_status": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "description": {
@@ -3151,7 +3243,7 @@
     "nullable": true
    },
    "lifecycle_status": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "lock_version": {
@@ -3938,6 +4030,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "pii_fields": {
     "has_default": false,
     "nullable": true
@@ -4253,6 +4349,10 @@
     "nullable": false
    },
    "uploaded_by": {
+    "has_default": false,
+    "nullable": true
+   },
+   "uploaded_by_id": {
     "has_default": false,
     "nullable": true
    }
@@ -7914,6 +8014,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "request_id": {
     "has_default": false,
     "nullable": true
@@ -7952,6 +8056,10 @@
     "has_default": true,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "role": {
     "has_default": false,
     "nullable": false
@@ -7962,6 +8070,128 @@
    },
    "voting_member": {
     "has_default": true,
+    "nullable": true
+   }
+  },
+  "arb_canonical_conditions": {
+   "blocks_execution": {
+    "has_default": true,
+    "nullable": false
+   },
+   "category": {
+    "has_default": false,
+    "nullable": true
+   },
+   "compensating_control": {
+    "has_default": false,
+    "nullable": true
+   },
+   "condition_number": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_event_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "description": {
+    "has_default": false,
+    "nullable": false
+   },
+   "due_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "evidence_submitted_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "evidence_submitted_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "fulfilled_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "fulfilled_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "fulfilment_evidence_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "legacy_lifecycle_provenance": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "responsible_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "review_cycle_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "submitted_evidence_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "verified_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "verified_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waived_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waived_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_prior_status": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_scope_json": {
+    "has_default": false,
     "nullable": true
    }
   },
@@ -7995,6 +8225,10 @@
     "nullable": true
    },
    "impact_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
     "has_default": false,
     "nullable": true
    },
@@ -8139,6 +8373,218 @@
     "nullable": false
    }
   },
+  "arb_condition_events": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "condition_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "condition_revision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_event_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "event_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "from_state": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "projection_revision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "projection_status": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_cycle_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "submitted_evidence_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "to_state": {
+    "has_default": false,
+    "nullable": false
+   },
+   "waiver_scope_json": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "arb_condition_evidence_records": {
+   "adr_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "architecture_model_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "canonical_document": {
+    "has_default": false,
+    "nullable": false
+   },
+   "collected_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "condition_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "condition_revision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decision_brief_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_event_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "freshness_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "freshness_rule_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "freshness_status": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "observed_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "review_cycle_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "solution_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_checksum": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_identity": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "value_json": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "arb_conditions": {
    "category": {
     "has_default": false,
@@ -8225,6 +8671,96 @@
     "nullable": true
    }
   },
+  "arb_decision_events": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "adr_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "architecture_model_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "conditions_json": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_brief_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "from_state": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outcome": {
+    "has_default": false,
+    "nullable": false
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_cycle_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "solution_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "to_state": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "arb_derogations": {
    "adm_phase": {
     "has_default": false,
@@ -8304,6 +8840,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "original_name": {
     "has_default": false,
     "nullable": false
@@ -8377,6 +8917,10 @@
    "id": {
     "has_default": true,
     "nullable": false
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
    },
    "parent_exception_id": {
     "has_default": false,
@@ -8500,6 +9044,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "owner_id": {
     "has_default": false,
     "nullable": true
@@ -8542,6 +9090,10 @@
     "has_default": true,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "parent_comment_id": {
     "has_default": false,
     "nullable": true
@@ -8569,6 +9121,96 @@
    "user_id": {
     "has_default": false,
     "nullable": false
+   }
+  },
+  "arb_review_cycles": {
+   "adr_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "architecture_model_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "closed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "condition_projection_revision": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cycle_number": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "legacy_source_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "legacy_source_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "migration_gap_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "opened_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "predecessor_cycle_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "review_number": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "terminal_outcome": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "arb_review_items": {
@@ -8608,6 +9250,10 @@
     "has_default": false,
     "nullable": true
    },
+   "condition_projection_revision": {
+    "has_default": false,
+    "nullable": true
+   },
    "conditions": {
     "has_default": false,
     "nullable": true
@@ -8625,6 +9271,14 @@
     "nullable": true
    },
    "decision": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_version_id": {
     "has_default": false,
     "nullable": true
    },
@@ -8684,6 +9338,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "overall_score": {
     "has_default": false,
     "nullable": true
@@ -8697,6 +9355,10 @@
     "nullable": true
    },
    "review_completed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "review_cycle_id": {
     "has_default": false,
     "nullable": true
    },
@@ -8724,12 +9386,28 @@
     "has_default": false,
     "nullable": true
    },
+   "solution_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "solution_id": {
     "has_default": false,
     "nullable": true
    },
    "status": {
     "has_default": true,
+    "nullable": true
+   },
+   "subject_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_type": {
+    "has_default": false,
     "nullable": true
    },
    "submitted_at": {
@@ -8755,6 +9433,192 @@
    "version": {
     "has_default": true,
     "nullable": false
+   }
+  },
+  "arb_subject_evidence_snapshots": {
+   "adr_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "architecture_model_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "captured_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "captured_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "citations": {
+    "has_default": false,
+    "nullable": true
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "payload": {
+    "has_default": false,
+    "nullable": true
+   },
+   "policy_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "schema_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "arb_submission_events": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "adr_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "architecture_model_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_brief_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "event_type": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "review_cycle_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "solution_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_evidence_snapshot_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "arb_submission_evidence_snapshots": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "artifacts": {
+    "has_default": false,
+    "nullable": true
+   },
+   "captured_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "checks": {
+    "has_default": false,
+    "nullable": true
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": true
+   },
+   "governance_result": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "request_assertions": {
+    "has_default": false,
+    "nullable": true
+   },
+   "review_item_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "schema_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "workflow_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "workspace_id": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "arb_submission_packs": {
@@ -8843,6 +9707,32 @@
     "nullable": false
    }
   },
+  "arb_waiver_expiry_checkpoints": {
+   "cursor_condition_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cursor_organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cursor_waiver_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_ids_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "scope_key": {
+    "has_default": true,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
   "arb_workflow_stages": {
    "code": {
     "has_default": false,
@@ -8862,6 +9752,10 @@
    },
    "order": {
     "has_default": true,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
     "nullable": true
    }
   },
@@ -9149,6 +10043,72 @@
     "nullable": true
    }
   },
+  "archimate_derived_relationships": {
+   "chain": {
+    "has_default": false,
+    "nullable": false
+   },
+   "chain_element_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "computed_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "confidence": {
+    "has_default": true,
+    "nullable": false
+   },
+   "depth": {
+    "has_default": false,
+    "nullable": false
+   },
+   "derived_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "engine_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "provenance": {
+    "has_default": true,
+    "nullable": false
+   },
+   "rule_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_element_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "stale": {
+    "has_default": true,
+    "nullable": false
+   },
+   "stale_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "stale_since": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_element_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "archimate_element_comments": {
    "comment_text": {
     "has_default": false,
@@ -9233,6 +10193,14 @@
     "nullable": true
    },
    "customization_notes": {
+    "has_default": false,
+    "nullable": true
+   },
+   "deleted_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "deleted_by": {
     "has_default": false,
     "nullable": true
    },
@@ -9541,6 +10509,10 @@
     "nullable": false
    },
    "reviewed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "sequence_order": {
     "has_default": false,
     "nullable": true
    },
@@ -10324,6 +11296,14 @@
     "has_default": false,
     "nullable": true
    },
+   "source_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_table": {
+    "has_default": false,
+    "nullable": true
+   },
    "status": {
     "has_default": true,
     "nullable": true
@@ -10519,6 +11499,144 @@
    "updated_at": {
     "has_default": true,
     "nullable": true
+   }
+  },
+  "architecture_journey_links": {
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "entity_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "entity_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "journey_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "note": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "relation": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
+  "architecture_journey_members": {
+   "added_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "journey_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "role": {
+    "has_default": true,
+    "nullable": false
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "architecture_journeys": {
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "current_stage": {
+    "has_default": true,
+    "nullable": false
+   },
+   "evidence_manifest": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "intent": {
+    "has_default": false,
+    "nullable": false
+   },
+   "journey_state": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outcome_type": {
+    "has_default": true,
+    "nullable": false
+   },
+   "owner_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "programme_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "selected_deliverables": {
+    "has_default": true,
+    "nullable": false
+   },
+   "selected_layers": {
+    "has_default": true,
+    "nullable": false
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "version": {
+    "has_default": true,
+    "nullable": false
    }
   },
   "architecture_models": {
@@ -10979,6 +12097,48 @@
     "nullable": false
    }
   },
+  "artefact_share_links": {
+   "artefact_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "label": {
+    "has_default": false,
+    "nullable": true
+   },
+   "last_viewed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "revoked_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "token": {
+    "has_default": false,
+    "nullable": false
+   },
+   "view_count": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
   "assessments": {
    "archimate_element_id": {
     "has_default": false,
@@ -11013,6 +12173,80 @@
     "nullable": false
    },
    "result_score": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "assumptions": {
+   "confidence": {
+    "has_default": false,
+    "nullable": true
+   },
+   "converted_to_risk_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "impact_if_false": {
+    "has_default": false,
+    "nullable": true
+   },
+   "initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "invalidated_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "invalidated_note": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "owner_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": true
+   },
+   "statement": {
+    "has_default": false,
+    "nullable": false
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "validate_by_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "validated_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "validation_method": {
+    "has_default": false,
+    "nullable": true
+   },
+   "work_package_id": {
     "has_default": false,
     "nullable": true
    }
@@ -11588,6 +12822,10 @@
     "has_default": true,
     "nullable": true
    },
+   "name": {
+    "has_default": false,
+    "nullable": true
+   },
    "started_at": {
     "has_default": false,
     "nullable": true
@@ -12107,6 +13345,116 @@
     "nullable": true
    }
   },
+  "benefits": {
+   "actual_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "actual_value": {
+    "has_default": false,
+    "nullable": true
+   },
+   "baseline_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "baseline_value": {
+    "has_default": false,
+    "nullable": true
+   },
+   "benefit_type": {
+    "has_default": true,
+    "nullable": true
+   },
+   "capability_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "description": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "materialisation_key": {
+    "has_default": false,
+    "nullable": true
+   },
+   "measure": {
+    "has_default": false,
+    "nullable": true
+   },
+   "measurement_frequency": {
+    "has_default": false,
+    "nullable": true
+   },
+   "measurement_method": {
+    "has_default": false,
+    "nullable": true
+   },
+   "name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outcome_commitment_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "owner_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "programme_workstream_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "strategic_initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_value": {
+    "has_default": false,
+    "nullable": true
+   },
+   "unit": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "work_package_id": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
   "business_actors": {
    "actor_type": {
     "has_default": false,
@@ -12335,7 +13683,7 @@
     "nullable": true
    },
    "current_maturity_level": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "deprecated_as_of": {
@@ -12431,7 +13779,7 @@
     "nullable": true
    },
    "target_maturity_level": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "updated_at": {
@@ -12686,6 +14034,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "time_sensitivity": {
@@ -13290,6 +14642,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "parent_process_id": {
     "has_default": false,
     "nullable": true
@@ -13439,6 +14795,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "overtime_eligible": {
     "has_default": true,
@@ -13729,6 +15089,98 @@
    "updated_at": {
     "has_default": true,
     "nullable": true
+   }
+  },
+  "candidate_overlap_dispositions": {
+   "candidate_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decided_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decided_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "overlapping_application_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": false
+   },
+   "signal_digest": {
+    "has_default": false,
+    "nullable": false
+   },
+   "target_application_id": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "candidate_signals": {
+   "candidate_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "evaluated_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "payload_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "rule_code": {
+    "has_default": false,
+    "nullable": false
+   },
+   "rule_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_record_ids": {
+    "has_default": false,
+    "nullable": false
    }
   },
   "capabilities": {
@@ -16547,6 +17999,32 @@
     "nullable": false
    }
   },
+  "codegen_connector_credentials": {
+   "connector_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "encrypted_data": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": true
+   }
+  },
   "codegen_data_imports": {
    "column_count": {
     "has_default": false,
@@ -17259,6 +18737,134 @@
     "nullable": false
    },
    "workflow_definition": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "command_idempotency_records": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "attempt_count": {
+    "has_default": true,
+    "nullable": false
+   },
+   "claim_token": {
+    "has_default": false,
+    "nullable": false
+   },
+   "claimant_request_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "completed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "idempotency_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "last_error_class": {
+    "has_default": false,
+    "nullable": true
+   },
+   "lease_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "lease_generation": {
+    "has_default": true,
+    "nullable": false
+   },
+   "natural_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "operation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "operation_result_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "request_digest": {
+    "has_default": false,
+    "nullable": false
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "terminal_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
+  "command_materialisations": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "natural_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "object_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "operation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outbox_events": {
+    "has_default": false,
+    "nullable": false
+   },
+   "receipt_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "request_digest": {
+    "has_default": false,
+    "nullable": false
+   },
+   "response_json": {
     "has_default": false,
     "nullable": false
    }
@@ -18040,6 +19646,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "scope": {
     "has_default": false,
     "nullable": true
@@ -18217,6 +19827,10 @@
    "name": {
     "has_default": false,
     "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": true
    },
    "status": {
     "has_default": true,
@@ -18945,6 +20559,66 @@
     "nullable": false
    }
   },
+  "conversation_messages": {
+   "content": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "model": {
+    "has_default": false,
+    "nullable": true
+   },
+   "role": {
+    "has_default": false,
+    "nullable": false
+   },
+   "thread_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "tokens": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "conversation_threads": {
+   "created_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "message_count": {
+    "has_default": true,
+    "nullable": true
+   },
+   "model": {
+    "has_default": false,
+    "nullable": false
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "copilot_insights": {
    "body": {
     "has_default": false,
@@ -19336,6 +21010,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "updated_at": {
     "has_default": true,
     "nullable": true
@@ -19396,6 +21074,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "updated_at": {
@@ -19482,6 +21164,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "owning_capability_id": {
@@ -19626,6 +21312,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "owning_capability_id": {
     "has_default": false,
     "nullable": true
@@ -19702,6 +21392,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "requested_at": {
@@ -19790,6 +21484,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "retention_period_days": {
     "has_default": false,
     "nullable": true
@@ -19799,6 +21497,10 @@
     "nullable": true
    },
    "source_system": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_archimate_element_id": {
     "has_default": false,
     "nullable": true
    },
@@ -19902,6 +21604,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "record_count": {
     "has_default": false,
     "nullable": true
@@ -19959,6 +21665,10 @@
    "measured_at": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "overall_quality_score": {
     "has_default": false,
@@ -20042,6 +21752,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "retention_period_days": {
     "has_default": false,
     "nullable": true
@@ -20086,6 +21800,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "store_type": {
@@ -20146,6 +21864,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "processing_language": {
@@ -20211,6 +21933,242 @@
     "nullable": true
    }
   },
+  "decision_brief_evidence_citations": {
+   "acknowledged": {
+    "has_default": false,
+    "nullable": false
+   },
+   "brief_version_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "current_record_id_at_freeze": {
+    "has_default": false,
+    "nullable": false
+   },
+   "evidence_head_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "evidence_record_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "freshness_status": {
+    "has_default": false,
+    "nullable": false
+   },
+   "head_revision_at_freeze": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "was_current": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "decision_brief_option_citations": {
+   "brief_version_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "option_version_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
+  "decision_brief_versions": {
+   "blockers_cleared": {
+    "has_default": false,
+    "nullable": false
+   },
+   "brief_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "canonical_document": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cited_evidence_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decision_authority_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "frozen_payload": {
+    "has_default": false,
+    "nullable": false
+   },
+   "human_reviewed_ai": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "measure_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "option_version_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outcome_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "policy_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "recommendation_option_version_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_revision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "submitted_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "submitter_authorized": {
+    "has_default": false,
+    "nullable": false
+   },
+   "unknowns_acknowledged": {
+    "has_default": false,
+    "nullable": false
+   },
+   "version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "decision_briefs": {
+   "candidate_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "conflicts": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_authority_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "expected_impacts": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "option_exception_authority_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "option_exception_name": {
+    "has_default": false,
+    "nullable": true
+   },
+   "option_exception_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "option_exception_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "recommendation_option_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "unknown_codes": {
+    "has_default": true,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "decision_capability_links": {
    "capability_id": {
     "has_default": false,
@@ -20234,6 +22192,64 @@
    },
    "link_type": {
     "has_default": true,
+    "nullable": false
+   }
+  },
+  "decision_events": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "brief_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "conditions_json": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "event_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "from_state": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_review_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "to_state": {
+    "has_default": false,
     "nullable": false
    }
   },
@@ -20465,6 +22481,170 @@
    "work_package_id": {
     "has_default": false,
     "nullable": false
+   }
+  },
+  "delivery_export_attempts": {
+   "attempt_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "attempted_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "completed_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "dispatch_lease_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "error_class": {
+    "has_default": false,
+    "nullable": true
+   },
+   "error_message": {
+    "has_default": false,
+    "nullable": true
+   },
+   "external_key": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "predecessor_attempt_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "provider_idempotency_key": {
+    "has_default": false,
+    "nullable": true
+   },
+   "provider_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "request_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "response_digest": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": false,
+    "nullable": false
+   },
+   "work_package_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "demands": {
+   "business_justification": {
+    "has_default": false,
+    "nullable": true
+   },
+   "business_value_score": {
+    "has_default": false,
+    "nullable": true
+   },
+   "capability_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "decision_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "decision_rationale": {
+    "has_default": false,
+    "nullable": true
+   },
+   "description": {
+    "has_default": false,
+    "nullable": true
+   },
+   "effort_estimate_days": {
+    "has_default": false,
+    "nullable": true
+   },
+   "estimated_cost": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "needed_by_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "reference": {
+    "has_default": false,
+    "nullable": true
+   },
+   "requested_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "requested_for_business_unit": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "submitted_date": {
+    "has_default": true,
+    "nullable": true
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "triaged_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "urgency_score": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "deployment_pipelines": {
@@ -20971,6 +23151,10 @@
    "model_version": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    }
   },
   "dod_checks": {
@@ -21758,6 +23942,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "phase_gate_contract": {
     "has_default": false,
     "nullable": true
@@ -21872,6 +24060,10 @@
     "has_default": true,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "parent_iteration_id": {
     "has_default": false,
     "nullable": true
@@ -21950,6 +24142,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "read_at": {
     "has_default": false,
     "nullable": true
@@ -22017,6 +24213,10 @@
     "nullable": true
    },
    "next_run_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
     "has_default": false,
     "nullable": true
    },
@@ -22096,6 +24296,10 @@
    },
    "max_retries": {
     "has_default": true,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
     "nullable": true
    },
    "output_data": {
@@ -22566,6 +24770,10 @@
    }
   },
   "enterprise_briefings": {
+   "checks_run": {
+    "has_default": false,
+    "nullable": true
+   },
    "finding_count": {
     "has_default": true,
     "nullable": true
@@ -22766,9 +24974,17 @@
     "has_default": false,
     "nullable": true
    },
+   "linked_strategic_initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "name": {
     "has_default": false,
     "nullable": false
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
    },
    "planned_end_date": {
     "has_default": false,
@@ -23081,6 +25297,436 @@
    "utilization_percentage": {
     "has_default": false,
     "nullable": true
+   }
+  },
+  "error_events": {
+   "fingerprint": {
+    "has_default": false,
+    "nullable": false
+   },
+   "first_seen_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "last_seen_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "level": {
+    "has_default": true,
+    "nullable": false
+   },
+   "location": {
+    "has_default": false,
+    "nullable": true
+   },
+   "message": {
+    "has_default": false,
+    "nullable": false
+   },
+   "occurrence_count": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "resolved": {
+    "has_default": true,
+    "nullable": false
+   },
+   "resolved_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source": {
+    "has_default": false,
+    "nullable": false
+   },
+   "stack": {
+    "has_default": false,
+    "nullable": true
+   },
+   "url": {
+    "has_default": false,
+    "nullable": true
+   },
+   "user_agent": {
+    "has_default": false,
+    "nullable": true
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "evidence_claim_heads": {
+   "claim_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "current_record_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "source_identity": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
+  "evidence_head_events": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "command_receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_txid": {
+    "has_default": true,
+    "nullable": false
+   },
+   "head_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "new_record_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "old_record_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "reason": {
+    "has_default": false,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "evidence_records": {
+   "ai_model": {
+    "has_default": false,
+    "nullable": true
+   },
+   "ai_provider": {
+    "has_default": false,
+    "nullable": true
+   },
+   "ai_run_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "candidate_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "cited_evidence_ids": {
+    "has_default": true,
+    "nullable": false
+   },
+   "claim_contract_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "claim_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "classification": {
+    "has_default": false,
+    "nullable": false
+   },
+   "collected_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "collector_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "collector_type": {
+    "has_default": true,
+    "nullable": false
+   },
+   "confidence": {
+    "has_default": false,
+    "nullable": true
+   },
+   "confidence_method": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "currency": {
+    "has_default": false,
+    "nullable": true
+   },
+   "freshness_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "freshness_rule_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "freshness_status": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "observed_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "programme_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_checksum": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_identity": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_record_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_system": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_uri": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "supersedes_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "unit": {
+    "has_default": false,
+    "nullable": true
+   },
+   "valid_from": {
+    "has_default": false,
+    "nullable": true
+   },
+   "valid_until": {
+    "has_default": false,
+    "nullable": true
+   },
+   "value_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "value_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "evidence_requests": {
+   "accepted_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "accepted_evidence_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "acknowledgement_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "assigned_to_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "candidate_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "claim_contract_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "claim_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "decline_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "due_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "expired_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "interim_accountable_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "required": {
+    "has_default": true,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "submitted_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "submitted_evidence_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waived_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_authority_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "waiver_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
    }
   },
   "exception_process": {
@@ -24770,6 +27416,10 @@
    },
    "estimated_start_date": {
     "has_default": false,
+    "nullable": true
+   },
+   "gap_kind": {
+    "has_default": true,
     "nullable": true
    },
    "gap_sub_types": {
@@ -27021,6 +29671,48 @@
     "nullable": false
    }
   },
+  "intelligence_derivation_runs": {
+   "derived_count": {
+    "has_default": false,
+    "nullable": true
+   },
+   "duration_ms": {
+    "has_default": false,
+    "nullable": true
+   },
+   "engine_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "explicit_count": {
+    "has_default": false,
+    "nullable": true
+   },
+   "finished_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "ratio": {
+    "has_default": false,
+    "nullable": true
+   },
+   "started_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "trigger": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
   "interface_consumer": {
    "api_key_id": {
     "has_default": false,
@@ -27560,6 +30252,10 @@
     "has_default": false,
     "nullable": true
    },
+   "effort_synced_at": {
+    "has_default": false,
+    "nullable": true
+   },
    "goal_ids": {
     "has_default": false,
     "nullable": true
@@ -27567,6 +30263,10 @@
    "id": {
     "has_default": true,
     "nullable": false
+   },
+   "implementation_work_package_id": {
+    "has_default": false,
+    "nullable": true
    },
    "implements_capabilities": {
     "has_default": false,
@@ -27593,6 +30293,10 @@
     "nullable": true
    },
    "labels": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
     "has_default": false,
     "nullable": true
    },
@@ -27641,6 +30345,14 @@
     "nullable": true
    },
    "target_start_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "time_estimate_seconds": {
+    "has_default": false,
+    "nullable": true
+   },
+   "time_spent_seconds": {
     "has_default": false,
     "nullable": true
    },
@@ -27855,6 +30567,10 @@
    "normalization_level": {
     "has_default": false,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "supports_concurrency": {
     "has_default": true,
@@ -29109,6 +31825,88 @@
     "nullable": false
    }
   },
+  "measure_definitions": {
+   "aggregation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "baseline_amount": {
+    "has_default": false,
+    "nullable": true
+   },
+   "baseline_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "baseline_value": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cadence": {
+    "has_default": false,
+    "nullable": true
+   },
+   "currency": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "metric_name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "outcome_commitment_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_adapter": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_key": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_amount": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_value": {
+    "has_default": false,
+    "nullable": true
+   },
+   "tolerance": {
+    "has_default": false,
+    "nullable": true
+   },
+   "tolerance_amount": {
+    "has_default": false,
+    "nullable": true
+   },
+   "unavailable_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "unit": {
+    "has_default": false,
+    "nullable": false
+   },
+   "version": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
   "migration_plan_documents": {
    "adm_phase": {
     "has_default": false,
@@ -29300,6 +32098,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "purpose": {
     "has_default": false,
     "nullable": true
@@ -29348,6 +32150,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "outcome": {
@@ -29410,6 +32216,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "technology_stack": {
@@ -30233,6 +33043,52 @@
     "nullable": false
    }
   },
+  "operation_results": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "natural_key": {
+    "has_default": false,
+    "nullable": false
+   },
+   "object_ids": {
+    "has_default": false,
+    "nullable": false
+   },
+   "operation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "receipt_generation": {
+    "has_default": false,
+    "nullable": false
+   },
+   "receipt_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "request_digest": {
+    "has_default": false,
+    "nullable": false
+   },
+   "response_json": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "optimization_runs": {
    "completed_at": {
     "has_default": false,
@@ -30667,6 +33523,48 @@
     "nullable": true
    }
   },
+  "outcome_measurements": {
+   "benefit_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "observed_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "recorded_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_identity": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "unavailable_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "value": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
   "outcomes": {
    "achieved_date": {
     "has_default": false,
@@ -30720,6 +33618,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "realization_status": {
     "has_default": true,
     "nullable": true
@@ -30735,6 +33637,36 @@
    "updated_at": {
     "has_default": true,
     "nullable": true
+   }
+  },
+  "pending_invitations": {
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "expires_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "invited_by": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "role": {
+    "has_default": true,
+    "nullable": false
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": false
    }
   },
   "permissions": {
@@ -30802,6 +33734,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "schema_name": {
@@ -30877,6 +33813,10 @@
    "operational_since": {
     "has_default": false,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "status": {
     "has_default": true,
@@ -30954,6 +33894,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "power_consumption_watts": {
@@ -31058,6 +34002,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "owner": {
     "has_default": false,
     "nullable": true
@@ -31146,6 +34094,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "recyclable": {
@@ -31477,6 +34429,10 @@
    "id": {
     "has_default": true,
     "nullable": false
+   },
+   "initiative_id": {
+    "has_default": false,
+    "nullable": true
    },
    "name": {
     "has_default": false,
@@ -32204,6 +35160,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "rationale": {
     "has_default": false,
     "nullable": true
@@ -32391,6 +35351,10 @@
    "operation_frequency": {
     "has_default": false,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "process_id": {
     "has_default": false,
@@ -32886,6 +35850,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "pricing_model": {
     "has_default": false,
     "nullable": true
@@ -32927,6 +35895,90 @@
     "nullable": true
    },
    "value_proposition": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "programme_outcome_commitments": {
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "improvement_direction": {
+    "has_default": false,
+    "nullable": false
+   },
+   "lifecycle": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "owner_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "programme_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "statement": {
+    "has_default": false,
+    "nullable": false
+   },
+   "target_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "version": {
+    "has_default": true,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "programme_role_assignments": {
+   "assigned_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "effective_from": {
+    "has_default": false,
+    "nullable": false
+   },
+   "effective_to": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "programme_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "role": {
+    "has_default": false,
+    "nullable": false
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "version": {
+    "has_default": true,
+    "nullable": false
+   },
+   "workstream_id": {
     "has_default": false,
     "nullable": true
    }
@@ -32987,6 +36039,60 @@
    "taken_at": {
     "has_default": true,
     "nullable": true
+   }
+  },
+  "programme_workstreams": {
+   "archived_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "lead_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "lifecycle_stage": {
+    "has_default": true,
+    "nullable": false
+   },
+   "objective": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "programme_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "scope_expression": {
+    "has_default": true,
+    "nullable": false
+   },
+   "target_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_date_unavailable_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "version": {
+    "has_default": true,
+    "nullable": false
+   },
+   "workstream_type": {
+    "has_default": false,
+    "nullable": false
    }
   },
   "project_constraints": {
@@ -33244,6 +36350,10 @@
     "has_default": false,
     "nullable": true
    },
+   "project_manager_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "requirement_id": {
     "has_default": false,
     "nullable": true
@@ -33262,6 +36372,10 @@
    },
    "updated_date": {
     "has_default": true,
+    "nullable": true
+   },
+   "work_package_id": {
+    "has_default": false,
     "nullable": true
    }
   },
@@ -33617,6 +36731,106 @@
    "version": {
     "has_default": false,
     "nullable": true
+   }
+  },
+  "raid_items": {
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "description": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "kind": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "owner": {
+    "has_default": false,
+    "nullable": true
+   },
+   "programme_name": {
+    "has_default": false,
+    "nullable": true
+   },
+   "resolution_notes": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "strategic_initiative_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": true
+   }
+  },
+  "rate_cards": {
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "currency": {
+    "has_default": true,
+    "nullable": false
+   },
+   "effective_from": {
+    "has_default": false,
+    "nullable": true
+   },
+   "effective_to": {
+    "has_default": false,
+    "nullable": true
+   },
+   "hourly_rate": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "is_default": {
+    "has_default": true,
+    "nullable": false
+   },
+   "notes": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "role": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
    }
   },
   "rationalization_audit_entries": {
@@ -34270,6 +37484,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "representation_type": {
     "has_default": false,
     "nullable": true
@@ -34852,6 +38070,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "quality_score": {
     "has_default": false,
     "nullable": true
@@ -35203,7 +38425,37 @@
     "nullable": true
    }
   },
+  "risk_entity_links": {
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "entity_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "entity_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "risk_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "risks": {
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "created_at": {
     "has_default": true,
     "nullable": true
@@ -35613,6 +38865,10 @@
    "migration_type": {
     "has_default": false,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "owners": {
     "has_default": false,
@@ -36072,6 +39328,10 @@
     "has_default": false,
     "nullable": true
    },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "description": {
     "has_default": false,
     "nullable": true
@@ -36082,6 +39342,10 @@
    },
    "name": {
     "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
     "nullable": false
    },
    "solution_id": {
@@ -37648,7 +40912,7 @@
   "solution_archimate_elements": {
    "created_at": {
     "has_default": true,
-    "nullable": false
+    "nullable": true
    },
    "created_by_id": {
     "has_default": false,
@@ -37699,7 +40963,7 @@
     "nullable": true
    },
    "updated_at": {
-    "has_default": false,
+    "has_default": true,
     "nullable": true
    }
   },
@@ -38376,6 +41640,10 @@
     "has_default": true,
     "nullable": true
    },
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "constraint_type": {
     "has_default": false,
     "nullable": false
@@ -39040,6 +42308,10 @@
     "has_default": true,
     "nullable": true
    },
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "description": {
     "has_default": false,
     "nullable": true
@@ -39354,6 +42626,10 @@
    },
    "ai_generated": {
     "has_default": true,
+    "nullable": true
+   },
+   "archimate_element_id": {
+    "has_default": false,
     "nullable": true
    },
    "description": {
@@ -40912,6 +44188,10 @@
     "has_default": false,
     "nullable": true
    },
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "archimate_requirement_id": {
     "has_default": false,
     "nullable": true
@@ -41172,6 +44452,10 @@
    }
   },
   "solution_risks": {
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "constraint_id": {
     "has_default": false,
     "nullable": true
@@ -42321,6 +45605,10 @@
    "version": {
     "has_default": true,
     "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "spec_webhooks": {
@@ -42471,6 +45759,10 @@
     "nullable": false
    },
    "is_active": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
     "has_default": true,
     "nullable": false
    },
@@ -42759,8 +46051,30 @@
     "nullable": true
    }
   },
+  "strategic_initiative_goals": {
+   "contribution_level": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "goal_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "strategic_initiative_id": {
+    "has_default": true,
+    "nullable": false
+   }
+  },
   "strategic_initiatives": {
    "actual_completion_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "archived_at": {
     "has_default": false,
     "nullable": true
    },
@@ -42811,6 +46125,14 @@
    "priority": {
     "has_default": true,
     "nullable": true
+   },
+   "record_kind": {
+    "has_default": false,
+    "nullable": true
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
    },
    "risk_level": {
     "has_default": true,
@@ -42994,6 +46316,10 @@
     "has_default": true,
     "nullable": true
    },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "dependencies": {
     "has_default": false,
     "nullable": true
@@ -43026,6 +46352,18 @@
     "has_default": false,
     "nullable": true
    },
+   "materialisation_key": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "programme_workstream_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "quarter": {
     "has_default": false,
     "nullable": true
@@ -43040,6 +46378,10 @@
    },
    "updated_at": {
     "has_default": true,
+    "nullable": true
+   },
+   "work_package_id": {
+    "has_default": false,
     "nullable": true
    },
    "year": {
@@ -44143,6 +47485,40 @@
     "nullable": true
    }
   },
+  "tech_radar_entries": {
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": true
+   },
+   "ring": {
+    "has_default": false,
+    "nullable": false
+   },
+   "set_by_user_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": true
+   }
+  },
   "technical_capabilities": {
    "acm_domain": {
     "has_default": false,
@@ -44542,6 +47918,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "updated_at": {
     "has_default": true,
     "nullable": true
@@ -44824,6 +48204,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "redundancy_mode": {
     "has_default": false,
     "nullable": true
@@ -44889,6 +48273,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "redundancy_mode": {
     "has_default": false,
@@ -44975,6 +48363,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "provider": {
     "has_default": false,
@@ -45250,6 +48642,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "packet_forwarding_rate_mpps": {
     "has_default": false,
     "nullable": true
@@ -45476,6 +48872,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "remediation_action": {
     "has_default": false,
     "nullable": true
@@ -45561,6 +48961,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "output_type": {
     "has_default": false,
@@ -45667,6 +49071,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "protocol": {
     "has_default": false,
@@ -45777,6 +49185,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "packet_loss_percent": {
     "has_default": false,
@@ -46072,6 +49484,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "os_architecture": {
     "has_default": false,
     "nullable": true
@@ -46202,6 +49618,10 @@
     "has_default": true,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "packet_loss_percent": {
     "has_default": false,
     "nullable": true
@@ -46307,6 +49727,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "process_category": {
     "has_default": false,
@@ -46451,6 +49875,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "pricing_model": {
     "has_default": false,
@@ -46653,6 +50081,76 @@
    "vendor_template_id": {
     "has_default": false,
     "nullable": true
+   }
+  },
+  "technology_standards": {
+   "approval_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "approved_by": {
+    "has_default": false,
+    "nullable": true
+   },
+   "approved_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "category": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "is_active": {
+    "has_default": true,
+    "nullable": false
+   },
+   "notes": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "owner_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "rationale": {
+    "has_default": false,
+    "nullable": true
+   },
+   "replacement_technology": {
+    "has_default": false,
+    "nullable": true
+   },
+   "review_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "sunset_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "technology_name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
    }
   },
   "technology_system_software": {
@@ -46951,6 +50449,10 @@
    "operational_status": {
     "has_default": true,
     "nullable": true
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
    },
    "patch_level": {
     "has_default": false,
@@ -47263,6 +50765,286 @@
     "nullable": true
    },
    "validation_method": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
+  "transformation_candidates": {
+   "accepted_at": {
+    "has_default": false,
+    "nullable": false
+   },
+   "accepted_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "inclusion_reason": {
+    "has_default": false,
+    "nullable": false
+   },
+   "inclusion_status": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "ruleset_digest": {
+    "has_default": false,
+    "nullable": true
+   },
+   "ruleset_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "subject_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "subject_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "transformation_option_versions": {
+   "benefit_max": {
+    "has_default": false,
+    "nullable": false
+   },
+   "benefit_min": {
+    "has_default": false,
+    "nullable": false
+   },
+   "candidate_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "captured_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "captured_by_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": false
+   },
+   "content_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "cost_max": {
+    "has_default": false,
+    "nullable": false
+   },
+   "cost_min": {
+    "has_default": false,
+    "nullable": false
+   },
+   "currency": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "option_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "risk_max": {
+    "has_default": false,
+    "nullable": false
+   },
+   "risk_min": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source_revision": {
+    "has_default": false,
+    "nullable": false
+   },
+   "technology_required": {
+    "has_default": false,
+    "nullable": false
+   },
+   "version": {
+    "has_default": false,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "transformation_options": {
+   "action_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "affected_capability_ids": {
+    "has_default": true,
+    "nullable": false
+   },
+   "affected_value_stream_ids": {
+    "has_default": true,
+    "nullable": false
+   },
+   "assumptions": {
+    "has_default": true,
+    "nullable": false
+   },
+   "benefit_max": {
+    "has_default": false,
+    "nullable": true
+   },
+   "benefit_min": {
+    "has_default": false,
+    "nullable": true
+   },
+   "candidate_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cost_max": {
+    "has_default": false,
+    "nullable": true
+   },
+   "cost_min": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "currency": {
+    "has_default": false,
+    "nullable": true
+   },
+   "dependencies": {
+    "has_default": true,
+    "nullable": false
+   },
+   "description": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "impacts": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "recommendation_rationale": {
+    "has_default": false,
+    "nullable": true
+   },
+   "reversibility": {
+    "has_default": false,
+    "nullable": true
+   },
+   "revision": {
+    "has_default": true,
+    "nullable": false
+   },
+   "risk_max": {
+    "has_default": false,
+    "nullable": true
+   },
+   "risk_min": {
+    "has_default": false,
+    "nullable": true
+   },
+   "risks": {
+    "has_default": true,
+    "nullable": false
+   },
+   "technology_required": {
+    "has_default": false,
+    "nullable": true
+   },
+   "title": {
+    "has_default": false,
+    "nullable": false
+   },
+   "transition_approach": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "workstream_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "transformation_outbox_events": {
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "delivery_attempts": {
+    "has_default": true,
+    "nullable": false
+   },
+   "event_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "event_type": {
+    "has_default": false,
+    "nullable": false
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "operation_result_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "ordinal": {
+    "has_default": false,
+    "nullable": false
+   },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "payload_json": {
+    "has_default": false,
+    "nullable": false
+   },
+   "published_at": {
     "has_default": false,
     "nullable": true
    }
@@ -47623,7 +51405,7 @@
     "nullable": true
    },
    "current_maturity_level": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "description": {
@@ -47710,6 +51492,10 @@
     "has_default": false,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "parent_capability_id": {
     "has_default": false,
     "nullable": true
@@ -47726,7 +51512,15 @@
     "has_default": false,
     "nullable": true
    },
+   "reference_capability_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "reliability_score": {
+    "has_default": false,
+    "nullable": true
+   },
+   "retired_into_id": {
     "has_default": false,
     "nullable": true
    },
@@ -47742,7 +51536,27 @@
     "has_default": false,
     "nullable": true
    },
+   "scope": {
+    "has_default": false,
+    "nullable": true
+   },
    "security_score": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_checksum": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_org_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "source_table": {
     "has_default": false,
     "nullable": true
    },
@@ -47771,7 +51585,7 @@
     "nullable": true
    },
    "target_maturity_level": {
-    "has_default": true,
+    "has_default": false,
     "nullable": true
    },
    "target_state_description": {
@@ -48753,6 +52567,44 @@
     "nullable": false
    }
   },
+  "user_sessions": {
+   "created_at": {
+    "has_default": true,
+    "nullable": false
+   },
+   "ip": {
+    "has_default": false,
+    "nullable": true
+   },
+   "last_seen_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "revoked_at": {
+    "has_default": false,
+    "nullable": true
+   },
+   "revoked_reason": {
+    "has_default": false,
+    "nullable": true
+   },
+   "sid": {
+    "has_default": true,
+    "nullable": false
+   },
+   "user_agent": {
+    "has_default": false,
+    "nullable": true
+   },
+   "user_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
   "users": {
    "app_count": {
     "has_default": false,
@@ -48859,6 +52711,10 @@
     "nullable": true
    },
    "team_size": {
+    "has_default": false,
+    "nullable": true
+   },
+   "welcome_banner_dismissed_at": {
     "has_default": false,
     "nullable": true
    }
@@ -49064,6 +52920,10 @@
    }
   },
   "value_streams": {
+   "archimate_element_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "business_owner": {
     "has_default": false,
     "nullable": true
@@ -51261,6 +55121,40 @@
     "nullable": true
    }
   },
+  "vendor_product_aliases": {
+   "alias": {
+    "has_default": false,
+    "nullable": false
+   },
+   "alias_type": {
+    "has_default": false,
+    "nullable": true
+   },
+   "confidence_score": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "product_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "source": {
+    "has_default": false,
+    "nullable": true
+   }
+  },
   "vendor_product_apqc_mapping": {
    "analyst_report_references": {
     "has_default": false,
@@ -51549,8 +55443,8 @@
     "nullable": true
    },
    "organization_id": {
-    "has_default": false,
-    "nullable": true
+    "has_default": true,
+    "nullable": false
    },
    "out_of_box_percentage": {
     "has_default": false,
@@ -51609,6 +55503,148 @@
     "nullable": true
    }
   },
+  "vendor_product_details": {
+   "api_capabilities": {
+    "has_default": false,
+    "nullable": true
+   },
+   "availability_status": {
+    "has_default": false,
+    "nullable": true
+   },
+   "company_sizes": {
+    "has_default": false,
+    "nullable": true
+   },
+   "competitive_positioning": {
+    "has_default": false,
+    "nullable": true
+   },
+   "compliance_standards": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "current_version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "customer_satisfaction_score": {
+    "has_default": false,
+    "nullable": true
+   },
+   "deployment_model": {
+    "has_default": false,
+    "nullable": true
+   },
+   "description": {
+    "has_default": false,
+    "nullable": true
+   },
+   "differentiation_factors": {
+    "has_default": false,
+    "nullable": true
+   },
+   "end_of_support_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "family_id": {
+    "has_default": false,
+    "nullable": false
+   },
+   "free_tier_available": {
+    "has_default": true,
+    "nullable": true
+   },
+   "geographic_availability": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "implementation_complexity": {
+    "has_default": false,
+    "nullable": true
+   },
+   "key_features": {
+    "has_default": false,
+    "nullable": true
+   },
+   "licensing_complexity": {
+    "has_default": false,
+    "nullable": true
+   },
+   "minimum_requirements": {
+    "has_default": false,
+    "nullable": true
+   },
+   "price_range_max": {
+    "has_default": false,
+    "nullable": true
+   },
+   "price_range_min": {
+    "has_default": false,
+    "nullable": true
+   },
+   "pricing_model": {
+    "has_default": false,
+    "nullable": true
+   },
+   "product_code": {
+    "has_default": false,
+    "nullable": true
+   },
+   "product_name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "release_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "sla_uptime_percentage": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "support_level": {
+    "has_default": false,
+    "nullable": true
+   },
+   "support_response_time": {
+    "has_default": false,
+    "nullable": true
+   },
+   "supported_integrations": {
+    "has_default": false,
+    "nullable": true
+   },
+   "target_industries": {
+    "has_default": false,
+    "nullable": true
+   },
+   "trial_period_days": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": true
+   }
+  },
   "vendor_product_embeddings": {
    "created_at": {
     "has_default": true,
@@ -51635,6 +55671,92 @@
     "nullable": true
    },
    "vendor_product_id": {
+    "has_default": false,
+    "nullable": false
+   }
+  },
+  "vendor_product_families": {
+   "average_total_cost": {
+    "has_default": false,
+    "nullable": true
+   },
+   "category": {
+    "has_default": false,
+    "nullable": true
+   },
+   "created_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "created_by_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "deployment_models": {
+    "has_default": false,
+    "nullable": true
+   },
+   "description": {
+    "has_default": false,
+    "nullable": true
+   },
+   "end_of_life_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "family_code": {
+    "has_default": false,
+    "nullable": true
+   },
+   "family_name": {
+    "has_default": false,
+    "nullable": false
+   },
+   "first_release_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "gartner_recognition": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "integration_complexity": {
+    "has_default": false,
+    "nullable": true
+   },
+   "last_update_date": {
+    "has_default": false,
+    "nullable": true
+   },
+   "market_leader": {
+    "has_default": true,
+    "nullable": true
+   },
+   "market_share_percentage": {
+    "has_default": false,
+    "nullable": true
+   },
+   "status": {
+    "has_default": true,
+    "nullable": true
+   },
+   "target_market": {
+    "has_default": false,
+    "nullable": true
+   },
+   "typical_implementation_time": {
+    "has_default": false,
+    "nullable": true
+   },
+   "updated_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "vendor_id": {
     "has_default": false,
     "nullable": false
    }
@@ -53434,6 +57556,10 @@
     "has_default": false,
     "nullable": true
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "payload": {
     "has_default": false,
     "nullable": false
@@ -53472,6 +57598,10 @@
     "has_default": true,
     "nullable": false
    },
+   "organization_id": {
+    "has_default": true,
+    "nullable": false
+   },
    "payload": {
     "has_default": false,
     "nullable": false
@@ -53507,6 +57637,10 @@
     "nullable": false
    },
    "is_active": {
+    "has_default": true,
+    "nullable": false
+   },
+   "organization_id": {
     "has_default": true,
     "nullable": false
    },
@@ -53690,6 +57824,10 @@
     "has_default": true,
     "nullable": false
    },
+   "decision_brief_version_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "dependencies": {
     "has_default": false,
     "nullable": true
@@ -53726,6 +57864,10 @@
     "has_default": true,
     "nullable": true
    },
+   "materialisation_key": {
+    "has_default": false,
+    "nullable": true
+   },
    "name": {
     "has_default": false,
     "nullable": false
@@ -53754,6 +57896,10 @@
     "has_default": true,
     "nullable": true
    },
+   "programme_workstream_id": {
+    "has_default": false,
+    "nullable": true
+   },
    "sequence_order": {
     "has_default": false,
     "nullable": true
@@ -53764,6 +57910,10 @@
    },
    "status": {
     "has_default": true,
+    "nullable": true
+   },
+   "strategic_initiative_id": {
+    "has_default": false,
     "nullable": true
    },
    "summary": {
@@ -53785,6 +57935,52 @@
    "updated_at": {
     "has_default": true,
     "nullable": false
+   }
+  },
+  "workbench_artifact_evidence": {
+   "actor_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "captured_at": {
+    "has_default": true,
+    "nullable": true
+   },
+   "content_hash": {
+    "has_default": false,
+    "nullable": true
+   },
+   "id": {
+    "has_default": true,
+    "nullable": false
+   },
+   "name": {
+    "has_default": false,
+    "nullable": true
+   },
+   "organization_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "payload": {
+    "has_default": false,
+    "nullable": true
+   },
+   "solution_id": {
+    "has_default": false,
+    "nullable": true
+   },
+   "state": {
+    "has_default": false,
+    "nullable": true
+   },
+   "version": {
+    "has_default": false,
+    "nullable": true
+   },
+   "workspace_id": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "workflow_cleanup_nodes": {
