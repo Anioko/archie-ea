@@ -12,9 +12,13 @@
              (ARCH-103: two hamburgers stacked when the sidebar was closed on mobile). -->
 
         <!-- Desktop sidebar collapse trigger (shadcn SidebarTrigger pattern) -->
+        {# A static aria-label is the accessible name until Alpine hydrates and
+           the :aria-label binding below refines it to the current state — an
+           icon-only button with no aria-label at all until then has none. #}
         <button type="button" x-data
                 @click="$store.sidebar.toggle()"
                 class="hidden lg:flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-collapse-btn"
+                aria-label="Toggle sidebar"
                 :title="$store.sidebar.collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'"
                 :aria-label="$store.sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
             <i data-lucide="panel-left" class="h-5 w-5" aria-hidden="true"></i>
