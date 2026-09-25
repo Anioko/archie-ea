@@ -11,8 +11,11 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, plus twelve additions
-# below (twenty-eight total), exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
+# the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
+# additions, the L4 lens's own two plus its withdrawal reason, the
+# role-gating addition, the four T-S1 additions and the Programme lens's own
+# plateau/gap pair below (thirty-three total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -91,6 +94,29 @@ REASON_CODES = frozenset(
         # not_costed/no_budget_recorded already use for a different kind of
         # absence.
         "financial_data_restricted",
+        # PR #107 defect remediation (2026-09-23): the L4 Accountability
+        # lens's ownership read is withdrawn -- the original implementation
+        # read ApplicationOwnership/OrganizationUnit directly with a real,
+        # unreviewed tenant-isolation gap on OrganizationUnit (no
+        # TenantMixin, no tenant predicate on the fetch), rather than reuse
+        # the existing tenant-checked _resolve_owners_batch pattern. Every
+        # accountability response carries this reason until a shared,
+        # tenant-safe reader exists -- see
+        # IntelligenceQueryService.accountability_for_element's docstring.
+        # Distinct from a "decision pending" state: the data source is
+        # already decided, only the safe reader is missing.
+        "ownership_reader_not_built",
+        # T-S1 (value streams at risk, curated path) additions: absence
+        # conditions the original vocabulary has no member for. T-S1 emits
+        # the first two -- no value stream recorded for this tenant, and a
+        # value stream with no capability recorded against it by any path.
+        # The other two are reserved for T-S3, which adds the graph path
+        # (an explicit or derived dependency) this task deliberately does
+        # not read -- they are not reachable until that task lands.
+        "no_value_stream_recorded",
+        "no_capability_linked",
+        "value_stream_not_linked_to_model",
+        "dependency_direction_unknown",
         # The programme lens's own plateau/gap block: a work package's stored
         # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
         # point at a record belonging to a different tenant (the FK itself

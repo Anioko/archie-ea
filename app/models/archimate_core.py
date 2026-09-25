@@ -239,11 +239,13 @@ VALID_RELATIONSHIPS = {
     ("aggregation", "application", "application"): True,
     ("aggregation", "technology", "technology"): True,
     ("aggregation", "motivation", "motivation"): True,
+    ("aggregation", "strategy", "strategy"): True,  # ArchiMate 3.2 §5.1.2: Capability/Resource hierarchies (same type)
     # Assignment — within same layer and specific cross-layer
     ("assignment", "business", "business"): True,
     ("assignment", "application", "application"): True,
     ("assignment", "technology", "technology"): True,
     ("assignment", "technology", "application"): True,
+    ("assignment", "strategy", "strategy"): True,  # ArchiMate 3.2 §7.4: Resource assigned to Capability
     # Realization — typically lower layer realizes upper layer
     ("realization", "business", "business"): True,
     ("realization", "application", "business"): True,
@@ -295,6 +297,12 @@ VALID_RELATIONSHIPS = {
     ("association", "technology", "application"): True,
     ("association", "business", "motivation"): True,
     ("association", "motivation", "business"): True,
+    ("association", "strategy", "implementation"): True,  # ArchiMate 3.2 §5.2.4: option ↔ plan item
+    ("association", "implementation", "strategy"): True,  # ArchiMate 3.2 §5.2.4: plan item ↔ option
+    ("association", "motivation", "implementation"): True,  # ArchiMate 3.2 §5.2.4: outcome ↔ work package
+    ("association", "implementation", "motivation"): True,  # ArchiMate 3.2 §5.2.4: work package ↔ outcome
+    ("association", "business", "strategy"): True,  # ArchiMate 3.2 §5.2.4: key partner ↔ resource/capability
+    ("association", "strategy", "business"): True,  # ArchiMate 3.2 §5.2.4: resource/capability ↔ key partner
     # Specialization — within same layer
     ("specialization", "business", "business"): True,
     ("specialization", "application", "application"): True,

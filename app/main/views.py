@@ -1,7 +1,11 @@
+import csv
+import io
 import json
 
+from email_validator import EmailNotValidError, validate_email
 from flask import (
     Blueprint,
+    Response,
     current_app,
     jsonify,
     redirect,
@@ -15,10 +19,11 @@ from flask_login import current_user, login_required
 from app import db
 
 # Import capability framework blueprint
-from app.decorators import admin_required
+from app.core.auth.decorators import admin_required
 from app.main.capability_framework_routes import capability_framework_bp
 from app.main.framework_management_routes import framework_management_bp
 from app.models.business_capabilities import BusinessCapability
+from app.services.rate_limiter import rate_limit
 from app.services.vendor_analysis.capability_based_vendor_selector import (
     CapabilityBasedVendorSelector,
 )
@@ -30,11 +35,72 @@ main.register_blueprint(capability_framework_bp)
 main.register_blueprint(framework_management_bp)
 
 
-@main.route("/")
+@main.route("/", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
 def index():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard.overview"))
-    return render_template("main/index.html")
+
+    thanks = False
+    error = None
+
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        consent = request.form.get("consent")
+
+        if not email:
+            error = "Please enter an email address."
+        elif not consent:
+            error = "You must agree that your email will be used only for launch news."
+        else:
+            try:
+                valid = validate_email(email, check_deliverability=False)
+                email = valid.normalized
+            except EmailNotValidError:
+                error = "Please enter a valid email address."
+                return render_template("main/index.html", thanks=False, error=error)
+
+            from app.models.waitlist_signup import WaitlistSignup
+
+            existing = WaitlistSignup.query.filter_by(email=email).first()
+            if existing is None:
+                signup = WaitlistSignup(
+                    email=email,
+                    source="home_page",
+                    consent_text="Email used only for launch news about Entelim.",
+                )
+                db.session.add(signup)
+                db.session.commit()
+            thanks = True
+
+    return render_template("main/index.html", thanks=thanks, error=error)
+
+
+@main.route("/admin/waitlist.csv")
+@login_required
+@admin_required
+def waitlist_csv():
+    """Export the waiting list as CSV. Admin only."""
+    from app.models.waitlist_signup import WaitlistSignup
+
+    rows = (
+        WaitlistSignup.query
+        .order_by(WaitlistSignup.created_at.desc())
+        .all()
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["email", "created_at", "source", "consent_text"])
+    for row in rows:
+        writer.writerow([row.email, row.created_at.isoformat(), row.source, row.consent_text])
+
+    csv_content = output.getvalue()
+    return Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=waitlist.csv"},
+    )
 
 
 @main.route("/login")
@@ -109,12 +175,135 @@ def robots_txt():
 
 @main.route("/sitemap.xml")
 def sitemap_xml():
-    """Serve sitemap.xml for SEO"""
-    return send_from_directory("static", "sitemap.xml")
+    """Serve sitemap.xml for SEO — generated from public content pages."""
+    from app.services.public_pages import load_all_pages
+
+    pages = load_all_pages()
+    base_url = "https://entelim.org"
+    urls = []
+    # Homepage is not a content page but is the most important URL
+    urls.append(
+        f"  <url><loc>{base_url}/</loc><priority>1.0</priority></url>"
+    )
+    for p in pages:
+        urls.append(
+            f"  <url><loc>{base_url}{p.url}</loc></url>"
+        )
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' + "\n".join(urls) + "\n</urlset>"
+    from flask import Response
+    return Response(xml, mimetype="application/xml")
 
 
-# NOTE: /health route removed — canonical version is global_health_check
-# in app/_bootstrap/routes.py (CSRF-exempt, Redis + DB + memory checks).
+@main.route("/llms.txt")
+def llms_txt():
+    """Serve llms.txt listing every public content page."""
+    from app.services.public_pages import load_all_pages
+
+    pages = load_all_pages()
+    base_url = "https://entelim.org"
+    lines = ["# Entelim"]
+    lines.append("")
+    lines.append(
+        "> Entelim is the open-source Enterprise Intelligence Model: "
+        "enter your website address and see your company."
+    )
+    lines.append("")
+    for p in pages:
+        lines.append(f"- [{p.title}]({base_url}{p.url})")
+    text = "\n".join(lines) + "\n"
+    from flask import Response
+    return Response(text, mimetype="text/plain")
+
+
+# ============================================================================
+# PUBLIC CONTENT PAGES
+# ============================================================================
+
+
+@main.route("/vision")
+def public_vision():
+    """The vision / home narrative page."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("vision")
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/modules/<slug>")
+def public_module(slug):
+    """A module content page."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("module", slug=slug)
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/use-cases/<slug>")
+def public_use_case(slug):
+    """A function-per-segment content page."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("function-per-segment", slug=slug)
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/vs/<slug>")
+def public_comparison(slug):
+    """A comparison content page."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("comparison", slug=slug)
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/how-archiet-runs-on-entelim")
+def public_dogfood():
+    """The dogfood / proof story page."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("dogfood")
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route(
+    "/<any(about, security, privacy, terms, contact, features, pricing, docs):slug>"
+)
+def public_site_page(slug):
+    """A fixed top-level marketing/legal page (one file per page under content/pages/site/)."""
+    from app.services.public_pages import build_jsonld, load_page
+
+    page = load_page("site", slug=slug)
+    if page is None:
+        from flask import abort
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
+@main.route("/signup")
+def public_signup_redirect():
+    """/signup is not a second form — it redirects to the real sign-up page."""
+    return redirect(url_for("account.register"), code=301)
+
+
+@main.route("/register")
+def public_register_redirect():
+    """/register is not a second form — it redirects to the real sign-up page."""
+    return redirect(url_for("account.register"), code=301)
 
 
 # ============================================================================
@@ -450,3 +639,17 @@ def save_system_settings():
 from app.main import routes_ea_workflows
 
 routes_ea_workflows.register_ea_workflow_routes(main)
+
+
+# ── demo company website page ──────────────────────────────────────────────
+
+
+@main.route("/demo/lantern-quay")
+def demo_lantern_quay():
+    """Public one-page website for the Lantern Quay Systems demonstration."""
+    from app.models.organization import Organization
+
+    org = Organization.query.filter_by(slug="lantern-quay").first()
+    if org is None:
+        return render_template("main/demo_lantern_quay.html", org=None)
+    return render_template("main/demo_lantern_quay.html", org=org)
