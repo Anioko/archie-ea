@@ -350,6 +350,11 @@ class TransformationProgrammeService:
         )
         session.add_all([programme, assignment, workstream, outcome, measure])
         session.flush()
+
+        from app.services.archimate_backbone import sync_archimate_element
+
+        sync_archimate_element(workstream, session=session, organization_id=actor.organization_id)
+
         object_ids = {
             "programme_id": programme.id,
             "role_assignment_id": assignment.id,
@@ -773,6 +778,11 @@ class TransformationProgrammeService:
         )
         session.add(workstream)
         session.flush()
+
+        from app.services.archimate_backbone import sync_archimate_element
+
+        sync_archimate_element(workstream, session=session, organization_id=actor.organization_id)
+
         response = {
             "programme_id": programme.id,
             "workstream_id": workstream.id,
@@ -783,6 +793,83 @@ class TransformationProgrammeService:
             response,
             response,
             ({"event_type": "workstream.created", "payload": {**response, "actor_id": actor.user_id}},),
+        )
+
+    @classmethod
+    def add_workstream_to_model(
+        cls, *, actor: ActorContext, programme_id: int, workstream_id: int, command_key: str
+    ) -> CommandResult:
+        """R1-05 (US-11): give an existing workstream its ArchiMate WorkPackage
+        element. Idempotent -- sync_archimate_element leaves an already-synced
+        row alone, so a replay or a second click creates nothing further."""
+        natural_key = f"workstream-add-to-model:{command_key}"
+        return CommandService.execute(
+            actor=actor,
+            operation="workstream.add_to_model",
+            idempotency_key=command_key,
+            payload={"programme_id": programme_id, "workstream_id": workstream_id},
+            natural_key=natural_key,
+            authorizer=cls.authorise_add_to_model(programme_id, workstream_id, natural_key),
+            natural_key_resolver=CommandService.fail_closed_pre_envelope_recovery,
+            handler=lambda session, claim: cls._add_workstream_to_model_locked(
+                session, actor, programme_id, workstream_id, claim
+            ),
+        )
+
+    @classmethod
+    def authorise_add_to_model(cls, programme_id: int, workstream_id: int, natural_key: str) -> OperationAuthorizer:
+        def authorize(session: Session, actor: ActorContext, operation: str, supplied_key: str) -> None:
+            if operation != "workstream.add_to_model" or supplied_key != natural_key:
+                raise NotAuthorised("workstream_add_to_model_command_mismatch")
+            programme = cls._programme_query(session, actor, programme_id).scalar_one_or_none()
+            if programme is None:
+                raise NotFound("programme_not_found")
+            workstream = session.scalar(
+                select(ProgrammeWorkstream.id).where(
+                    ProgrammeWorkstream.id == workstream_id,
+                    ProgrammeWorkstream.programme_id == programme_id,
+                    ProgrammeWorkstream.organization_id == actor.organization_id,
+                )
+            )
+            if workstream is None:
+                raise NotFound("workstream_not_found")
+            cls._require_programme_authority(
+                session, actor, programme_id, workstream_id, LINK_ROLES,
+                "workstream_add_to_model_not_authorised",
+            )
+
+        return authorize
+
+    @classmethod
+    def _add_workstream_to_model_locked(cls, session, actor, programme_id, workstream_id, claim):
+        workstream = session.scalar(
+            select(ProgrammeWorkstream).where(
+                ProgrammeWorkstream.id == workstream_id,
+                ProgrammeWorkstream.programme_id == programme_id,
+                ProgrammeWorkstream.organization_id == actor.organization_id,
+            )
+            .with_for_update()
+        )
+        if workstream is None:
+            raise NotFound("workstream_not_found")
+        cls._require_programme_authority(
+            session, actor, programme_id, workstream_id, LINK_ROLES,
+            "workstream_add_to_model_not_authorised",
+            lock=True,
+        )
+
+        from app.services.archimate_backbone import sync_archimate_element
+
+        sync_archimate_element(workstream, session=session, organization_id=actor.organization_id)
+        response = {
+            "programme_id": programme_id,
+            "workstream_id": workstream.id,
+            "archimate_element_id": workstream.archimate_element_id,
+        }
+        return DomainMutationResult(
+            response,
+            response,
+            ({"event_type": "workstream.added_to_model", "payload": {**response, "actor_id": actor.user_id}},),
         )
 
     @classmethod

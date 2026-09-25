@@ -303,6 +303,13 @@ def init_cli(app):
         app.logger.warning(f"⚠️  Failed to register outcome tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_workstream_elements import init_app as init_backfill_workstream_elements
+        init_backfill_workstream_elements(app)
+        app.logger.info("Workstream ArchiMate element backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register workstream element backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_architect_role import init_app as init_backfill_architect
         init_backfill_architect(app)
         app.logger.info("\u2705 Architect-role backfill CLI command registered")
