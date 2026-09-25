@@ -302,8 +302,7 @@ def _delete_api_settings(**filters):
         return existing
 
 
-@pytest.fixture(scope="session")
-def seeded(live_server, request, ai_protocol_stub):
+def _seed_standard_org(request, ai_protocol_stub):
     """One organisation, one user per archetype, and the fixtures they need.
 
     Returns {archetype: email} plus the ids the journeys navigate to.
@@ -312,6 +311,13 @@ def seeded(live_server, request, ai_protocol_stub):
     have no create path for their own entity - which was itself a finding - and a
     journey should not be blocked from testing a read screen by a missing write
     screen.
+
+    A plain function, not a fixture: `seeded` below calls it once for the
+    session-wide organisation every ordinary smoke test shares, and a second
+    caller (test_visual_regression.py's `visual_org`) calls it again for a
+    dedicated organisation of exactly the same shape, so a screen capture
+    that needs real content does not also need the shared organisation to be
+    in whatever state 500 other tests have left it in.
     """
     from app import create_app, db
 
@@ -592,6 +598,14 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
 
     return out
+
+
+@pytest.fixture(scope="session")
+def seeded(live_server, request, ai_protocol_stub):
+    """The one organisation, one user per archetype, and their fixtures
+    every ordinary smoke test in this session shares. See
+    `_seed_standard_org` above for what it contains."""
+    return _seed_standard_org(request, ai_protocol_stub)
 
 
 PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))

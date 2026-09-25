@@ -25,7 +25,7 @@ import os
 import pytest
 from PIL import Image, ImageChops
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import PAGE_TIMEOUT, PASSWORD, _seed_standard_org
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -98,7 +98,27 @@ def _diff_fraction(baseline_path, current_img):
 
 
 @pytest.fixture(scope="module")
-def captured(browser, live_server, seeded):
+def visual_org(request, ai_protocol_stub, live_server):
+    """A fresh organisation, seeded exactly like every other smoke test's
+    shared `seeded` fixture (same function, see conftest._seed_standard_org)
+    but not shared with them.
+
+    `seeded` is session-scoped: every other smoke test in the run writes
+    into the one organisation it returns, and several of them (creating an
+    application, a licence, a capability) are meant to leave what they
+    create behind. A pixel comparison against a baseline captured from a
+    freshly seeded organisation cannot use that fixture and stay
+    deterministic - the screens below would show a different portfolio,
+    licence and capability count depending on how much of the suite had
+    already run first, which is exactly what made this file's regressions
+    unreproducible in isolation. A dedicated organisation, seeded the same
+    way and touched by nothing else, renders the same screens every time.
+    """
+    return _seed_standard_org(request, ai_protocol_stub)
+
+
+@pytest.fixture(scope="module")
+def captured(browser, live_server, visual_org):
     """Screenshot every screen in the matrix once, keyed by its slug."""
     os.makedirs(BASELINE_DIR, exist_ok=True)
     results = {}
@@ -109,7 +129,7 @@ def captured(browser, live_server, seeded):
         ctx.set_default_navigation_timeout(PAGE_TIMEOUT)
         page = ctx.new_page()
         try:
-            _login(page, live_server, seeded["emails"][archetype])
+            _login(page, live_server, visual_org["emails"][archetype])
             page.goto(live_server + path, wait_until="networkidle", timeout=PAGE_TIMEOUT)
             try:
                 page.eval_on_selector_all(
