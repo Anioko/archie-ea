@@ -21,7 +21,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
 def _seed_portfolio_graph(org_id):
     from app import create_app, db
-    from app.models.archimate_core import ArchiMateElement
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.application_portfolio import ApplicationComponent
 
     app = create_app("testing")
@@ -48,6 +48,13 @@ def _seed_portfolio_graph(org_id):
             organization_id=org_id,
         )
         db.session.add(committee)
+        db.session.commit()
+
+        # One relationship so the impact question has a row to show.
+        db.session.add(ArchiMateRelationship(
+            type="Serving", source_id=service_element.id, target_id=committee.id,
+            organization_id=org_id,
+        ))
         db.session.commit()
 
         out.update(

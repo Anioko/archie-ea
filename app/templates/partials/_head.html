@@ -1,4 +1,5 @@
 <meta charset="utf-8">
+{# smoke-coverage-ok: CSP nonce fix on <style>; covered by tests/test_capability_map_a11y_csp.py and tests/test_csp_nonce.py #}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!-- Theme init: apply dark class before first paint to prevent flash.
@@ -13,7 +14,7 @@
 </script>
 
 <!-- Alpine.js x-cloak: prevent flash of unstyled content -->
-<style>[x-cloak] { display: none !important; }</style>
+<style nonce="{{ csp_nonce }}">[x-cloak] { display: none !important; }</style>
 
 <!-- Tailwind CSS (local JIT build — run: python scripts/build_css.py) -->
 <link rel="stylesheet" href="{{ 'css/shadcn_tokens.css' | asset_url }}">
