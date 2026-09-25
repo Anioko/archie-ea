@@ -116,6 +116,13 @@ def test_created_diagram_survives_every_export_format_intact(browser, live_serve
     page.get_by_role("button", name=re.compile("^Save$")).click()
     expect(save_modal).to_be_hidden(timeout=PAGE_TIMEOUT)
 
+    # The modal hides synchronously on click, before the save request that
+    # sets currentSavedVpId has resolved -- wait for that request to actually
+    # land rather than reading the id the instant the modal disappears.
+    page.wait_for_function(
+        "() => !!Alpine.$data(document.querySelector('[x-data^=\"composerApp\"]')).currentSavedVpId",
+        timeout=PAGE_TIMEOUT,
+    )
     vp_id = page.evaluate(
         '() => Alpine.$data(document.querySelector(\'[x-data^="composerApp"]\')).currentSavedVpId'
     )
