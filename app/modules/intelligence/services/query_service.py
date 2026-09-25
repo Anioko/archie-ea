@@ -892,6 +892,21 @@ class IntelligenceQueryService:
         return {"application_component_id": component.id, "reasons": []}
 
     @staticmethod
+    def _owner_user_tenant_predicate(org_id):
+        """The explicit ``User.organization_id == org_id`` predicate on the
+        work package owner lookup, isolated as its own seam so a mutation
+        test can replace it and watch the foreign-owner test go red.
+
+        ``User`` carries no ``TenantMixin``, so the ORM listener does not
+        fence it. Without this, a work package whose ``owner_id`` names a
+        user in another organisation would return that user's name or
+        email. A user with no organisation is excluded (fail closed).
+        """
+        from app.models.user import User
+
+        return User.organization_id == org_id
+
+    @staticmethod
     def programme_for_element(
         element_id: int,
         *,
@@ -975,9 +990,11 @@ class IntelligenceQueryService:
             owners_by_id: Dict[int, str] = {}
             if owner_ids:
                 for user in db.session.execute(
-                    db.select(User).where(User.id.in_(owner_ids))
+                    db.select(User)
+                    .where(User.id.in_(owner_ids))
+                    .where(IntelligenceQueryService._owner_user_tenant_predicate(org_id))
                 ).scalars():
-                    owners_by_id[user.id] = user.full_name or user.email
+                    owners_by_id[user.id] = user.full_name() or user.email
 
             all_elements: Dict[str, Dict[str, Any]] = {}
             wp_payloads: List[Dict[str, Any]] = []
