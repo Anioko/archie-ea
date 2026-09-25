@@ -1,5 +1,9 @@
 {# Unified Mapping Modal Component
-   smoke-coverage-ok: CSP inline style fix (moved to Tailwind classes); covered by tests/test_capability_map_a11y_csp.py
+   smoke-coverage-ok: CSP inline style fix; the z-index scale is set by a
+   nonce'd <style> block (same mechanism as layouts/admin_base.html and
+   partials/_head.html) instead of a static style= attribute, so
+   style-src-elem stays satisfied; covered by tests/test_capability_map_a11y_csp.py
+   and tests/test_modal_shell_consistency.py
      Context modes: 'capability' (default), 'archimate', 'apqc', 'vendor'
      Supports two-step workflow:
        Step 1: Target Selection (browse/search vendors or APQC processes)
@@ -10,12 +14,16 @@
        - Discovery mode: openUnifiedMappingModalDiscovery({ context: 'vendor' })
 #}
 
-<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 items-center justify-center p-4 z-[var(--modal-z,1000)]" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
+<style nonce="{{ csp_nonce }}">
+#unified-mapping-modal { z-index: var(--modal-z, 1000); }
+#unified-mapping-modal [data-modal-panel] { z-index: calc(var(--modal-z, 1000) + 1); }
+</style>
+<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
     <!-- Backdrop -->
     <div data-modal-backdrop="unified-mapping-modal" aria-hidden="true"
          class="modal-backdrop absolute inset-0 bg-background/80 transition-opacity duration-200"></div>
     <div data-modal-panel
-         class="modal-panel relative w-full max-w-5xl p-6 border border-border shadow-lg rounded-lg bg-card text-card-foreground max-h-[90vh] overflow-y-auto z-[calc(var(--modal-z,1000)+1)]">
+         class="modal-panel relative w-full max-w-5xl p-6 border border-border shadow-lg rounded-lg bg-card text-card-foreground max-h-[90vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex justify-between items-center mb-4">
             <h3 id="unified-modal-heading" class="text-lg font-bold">

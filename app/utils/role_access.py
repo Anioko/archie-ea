@@ -427,7 +427,13 @@ _LIBRARY_LINKS = [
     _link("Applications", "unified_applications.application_list", "list"),
     _link("Capabilities", "capability_map.index", "map"),
     _link("Canvases", "business_model.index", "layout-grid"),
-    _link("Frameworks", "maturity_management.frameworks_overview", "layers"),
+    # "layers" collided with an existing link's icon in the same collapsed
+    # menu for two roles -- portfolio_manager's "Consolidation List" and
+    # data_architect's "Capability Map" both already used it, and this link
+    # is shared into every role's Library zone, so it must not match any
+    # icon used anywhere else in role_access.py. "library" is unused
+    # elsewhere in this file and reads directly as "a library of frameworks".
+    _link("Frameworks", "maturity_management.frameworks_overview", "library"),
     _link("Vendors", "unified_applications.vendors", "building"),
     _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),

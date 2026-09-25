@@ -85,11 +85,16 @@ def sso_callback_oidc():
     code = request.args.get("code", "")
     state = request.args.get("state", "")
 
-    # Validate anti-CSRF state
+    # Validate anti-CSRF state. A callback reached without a matching state
+    # (no SSO flow was ever initiated in this session, or it was replayed/
+    # tampered with) is simply a bad request -- it must not redirect into
+    # /account/login, which re-renders the sign-in form and reads as ending
+    # whatever session the visitor already has. Answer 400 directly and
+    # leave the existing session (its _sid, its Flask-Login state) untouched;
+    # nothing above this point has written to it other than the state pop.
     expected_state = session.pop("sso_state", None)
     if not expected_state or expected_state != state:
-        flash("SSO authentication failed: invalid state parameter.", "error")
-        return redirect(url_for("account.login"))
+        return render_template("errors/400.html"), 400
 
     org_id = session.pop("sso_org_id", None)
     session.pop("sso_email", None)
