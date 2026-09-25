@@ -49,7 +49,7 @@ mark_blueprint_guardrailed(unified_applications_bp)
 # raises the floor, it never lowers a ceiling a route already set.
 @unified_applications_bp.before_request
 def _default_deny_unauthorized_writes():
-    from flask import jsonify, request
+    from flask import abort, g, jsonify, request
     from flask_login import current_user
 
     if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
@@ -61,13 +61,22 @@ def _default_deny_unauthorized_writes():
         # authentication.
         return None
     if request.endpoint == "unified_applications.delete_document_file":
-        # Document delete resolves tenant scope and ownership itself (see
-        # delete_document_file in document_routes.py) before it would ever
-        # reach a permission check. Applying the coarse floor here, ahead of
-        # that lookup, made a document in another organisation 403 instead of
-        # 404 -- confirming it exists before the view got a chance to say
-        # otherwise. Deferred to the view, which still refuses the write.
-        return None
+        # This floor runs ahead of the view, so a document in another
+        # organisation (or a missing one) previously 403'd here -- confirming
+        # a row exists -- before delete_document_file's own tenant-scoped
+        # lookup ever ran. Repeat that same lookup here, exactly as the view
+        # does, so an out-of-tenant or missing document 404s instead. A
+        # same-organisation document falls through to the unchanged floor
+        # below, which still answers 403 for a caller without
+        # Permission.GENERAL.
+        from app.models.miscellaneous import ApplicationDocument
+
+        doc_id = (request.view_args or {}).get("doc_id")
+        query = ApplicationDocument.query.filter_by(id=doc_id)
+        if not getattr(current_user, "is_platform_admin", False):
+            query = query.filter_by(organization_id=g.current_org_id)
+        if query.first() is None:
+            abort(404)
     from app.models.user import Permission
 
     if current_user.can(Permission.GENERAL):

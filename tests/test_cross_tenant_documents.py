@@ -349,6 +349,126 @@ def test_cross_tenant_delete_refused_unified_route(app, _two_org_fixture):
     )
 
 
+@pytest.fixture
+def _same_org_no_permission_fixture(app):
+    """One organisation, a document in it, and a caller with no write
+    permission in that same organisation (Viewer role, permissions=0).
+
+    Role rows are seeded by Role.insert_roles() in normal deploys; a fresh
+    test database may not have run it, so create-if-missing the same way
+    tests/test_r32_ai_permission_gate.py's _make_user helper does.
+
+    Uses explicit commits so the data is visible to HTTP requests made through
+    the test client (the db_session fixture wraps everything in a transaction
+    that is never committed, so data created inside it is invisible to the
+    request-handling connection).
+    """
+    import os as _os
+
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.miscellaneous import ApplicationDocument
+    from app.models.organization import Organization
+    from app.models.user import Permission, Role, User
+
+    suffix = _uuid.uuid4().hex[:10]
+
+    with app.app_context():
+        org = Organization(
+            name=f"Test viewer-org {suffix}", slug=f"test-viewer-org-{suffix}"
+        )
+        db.session.add(org)
+        db.session.flush()
+
+        role = Role.query.filter_by(name="Viewer").first()
+        if role is None:
+            role = Role(name="Viewer", permissions=0, index="main", default=False)
+            db.session.add(role)
+            db.session.flush()
+
+        viewer = User(
+            email=f"viewer-{_uuid.uuid4().hex[:8]}@example.com",
+            first_name="Viewer",
+            last_name="NoWrite",
+            organization_id=org.id,
+            confirmed=True,
+            enterprise_role="solution_architect",
+        )
+        viewer.role = role
+        db.session.add(viewer)
+        db.session.flush()
+
+        app_component = ApplicationComponent(
+            name=f"App-Viewer-{_uuid.uuid4().hex[:8]}",
+            organization_id=org.id,
+        )
+        db.session.add(app_component)
+        db.session.flush()
+
+        upload_dir = _os.path.join(
+            app.instance_path, "uploads", str(org.id), "documents"
+        )
+        _os.makedirs(upload_dir, exist_ok=True)
+        file_path = _os.path.join(upload_dir, f"test-{_uuid.uuid4().hex[:8]}.txt")
+        with open(file_path, "w") as fh:
+            fh.write("same-organisation, no write permission test file")
+
+        doc = ApplicationDocument(
+            organization_id=org.id,
+            application_component_id=app_component.id,
+            title="Same-org document",
+            file_name="same-org.txt",
+            file_extension="TXT",
+            file_path=file_path,
+            file_size=_os.path.getsize(file_path),
+            uploaded_by="someone-else",
+        )
+        db.session.add(doc)
+        db.session.flush()
+
+        db.session.commit()
+
+        ids = {
+            "org_id": org.id,
+            "viewer_id": viewer.id,
+            "doc_id": doc.id,
+            "file_path": file_path,
+        }
+
+    yield ids
+
+
+def test_delete_refused_same_org_without_general_permission(
+    app, _same_org_no_permission_fixture
+):
+    """A same-organisation caller without Permission.GENERAL is refused (403),
+    not the 404 an out-of-tenant or missing document gets, and the document
+    is left in place.
+    """
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _same_org_no_permission_fixture
+    client_viewer = _make_client(app, f["viewer_id"])
+
+    resp = client_viewer.post(
+        f"/applications/documents/{f['doc_id']}/delete",
+        data={"csrf_token": "test-bypass"},
+    )
+    assert resp.status_code == 403, (
+        f"Unexpected status {resp.status_code}"
+    )
+
+    with app.app_context():
+        doc_still = db.session.get(ApplicationDocument, f["doc_id"])
+        assert doc_still is not None, (
+            "Document was destroyed despite the caller lacking write permission"
+        )
+    assert os.path.exists(f["file_path"]), (
+        "Document file was deleted from disk despite the caller lacking write permission"
+    )
+
+
 def test_cross_tenant_download_refused_legacy_route(app, _two_org_fixture):
     """Org A's admin GETs /dashboard/documents/<B's doc>/download → refused."""
     f = _two_org_fixture
