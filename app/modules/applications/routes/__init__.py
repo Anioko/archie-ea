@@ -60,6 +60,14 @@ def _default_deny_unauthorized_writes():
         # permission floor for authenticated users, it does not replace
         # authentication.
         return None
+    if request.endpoint == "unified_applications.delete_document_file":
+        # Document delete resolves tenant scope and ownership itself (see
+        # delete_document_file in document_routes.py) before it would ever
+        # reach a permission check. Applying the coarse floor here, ahead of
+        # that lookup, made a document in another organisation 403 instead of
+        # 404 -- confirming it exists before the view got a chance to say
+        # otherwise. Deferred to the view, which still refuses the write.
+        return None
     from app.models.user import Permission
 
     if current_user.can(Permission.GENERAL):

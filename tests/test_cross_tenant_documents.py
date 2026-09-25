@@ -454,6 +454,47 @@ def test_analyze_refuses_org_b_document(app, _two_org_fixture):
     assert "Document not found" in resp.get_data(as_text=True)
 
 
+def test_analyze_document_id_non_integer_returns_400(app, _two_org_fixture):
+    """A non-integer document_id is refused at the edge, before any query.
+
+    Under psycopg 3 a string id reaching the ApplicationDocument query makes
+    PostgreSQL refuse to compare an integer column to varchar (a 500), rather
+    than a clean 400.
+    """
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    resp = client_a.post(
+        f"/dashboard/api/applications/{f['app_a_id']}/analyze-document",
+        data={"document_id": "not-an-id"},
+    )
+    assert resp.status_code == 400, (
+        f"Expected 400 for a non-integer document_id; got {resp.status_code}"
+    )
+
+
+def test_analyze_document_id_integer_org_b_returns_404(app, _two_org_fixture):
+    """A well-formed integer id for another organisation's document still 404s.
+
+    Guards against the edge-parsing fix above swallowing a valid integer id
+    into the 400 path instead of letting it reach the existing organisation
+    scoping check.
+    """
+    f = _two_org_fixture
+    client_a = _make_client(app, f["user_a_id"])
+
+    doc_id = f["doc_b_id"]
+    assert isinstance(doc_id, int)
+
+    resp = client_a.post(
+        f"/dashboard/api/applications/{f['app_a_id']}/analyze-document",
+        data={"document_id": str(doc_id)},
+    )
+    assert resp.status_code == 404, (
+        f"Expected 404 for Org B's document; got {resp.status_code}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # D-1: Platform administrator cross-org access
 # ---------------------------------------------------------------------------
