@@ -343,7 +343,7 @@ class TestNonceBinding:
 
 class TestClaimEdgeCases:
     def test_audience_as_an_array_containing_the_client_id_passes(self):
-        claims = _verify(_make_token({"aud": ["other-client", _CLIENT_ID]}))
+        claims = _verify(_make_token({"aud": ["other-client", _CLIENT_ID], "azp": _CLIENT_ID}))
         assert _CLIENT_ID in claims["aud"]
 
     def test_audience_array_without_the_client_id_is_refused(self):
@@ -621,7 +621,7 @@ class TestRouteWiring:
         with client.session_transaction() as sess:
             assert sess["sso_nonce"] == "nonce-abc"
 
-    def test_callback_receives_the_stored_nonce_and_a_replay_is_refused(self, client):
+    def test_callback_receives_the_stored_nonce_and_a_replay_is_refused(self, app, client):
         from app.models.organization import Organization
         from app.modules.auth import sso_routes as routes_module
 
@@ -639,7 +639,10 @@ class TestRouteWiring:
 
         query = mock.MagicMock()
         query.get.return_value = org
-        with mock.patch.object(Organization, "query", query), mock.patch.object(
+        # Patching a class-level query property reads its current value
+        # first (to restore it afterwards), and Flask-SQLAlchemy's query
+        # property needs a current application to do that.
+        with app.app_context(), mock.patch.object(Organization, "query", query), mock.patch.object(
             routes_module._svc, "handle_oidc_callback", side_effect=_handle_callback
         ), mock.patch.object(
             routes_module._svc, "provision_user", return_value=types.SimpleNamespace(id=1)
