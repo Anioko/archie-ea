@@ -41,10 +41,15 @@ def test_canvas_detail_titles_wrap_only_between_words(browser, live_server, seed
         _login(page, live_server, seeded["emails"]["business_architect"])
 
         # Navigate to the canvas list and click the first canvas, or create one.
+        # Scoped to the canvas grid, not `a[href*="/business-model/"]` on the
+        # whole page: the Library zone now carries a "Canvases" sidebar link
+        # to this same index on every page (including this one), which an
+        # unscoped selector would click instead of a canvas card, looping
+        # back to the index and timing out below.
         index_url = live_server + "/business-model/"
         page.goto(index_url, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
 
-        canvas_links = page.locator('a[href*="/business-model/"]')
+        canvas_links = page.locator('[data-testid="bmc-canvas-grid"] a[href*="/business-model/"]')
         if canvas_links.count() == 0:
             page.get_by_role("button", name=re.compile("New Canvas", re.I)).first.click()
             form = page.locator('[data-testid="bmc-create-form"]')
