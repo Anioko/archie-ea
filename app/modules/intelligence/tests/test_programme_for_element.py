@@ -284,6 +284,6 @@ def test_the_owner_tenant_predicate_is_what_stops_the_foreign_owner_leak(
 
     result = _foreign_owner_result(app, db_session, make_org, "mutation")
 
-    # Any owner name at all proves the foreign user was read; the exact text
-    # comes from User.full_name, which varies with the database's column set.
-    assert result["work_packages"][0]["owner"] is not None
+    # The foreign user's real name, not just a truthy value, proves the
+    # predicate seam is what stops the leak rather than something else.
+    assert result["work_packages"][0]["owner"] == "Fran Foreign"

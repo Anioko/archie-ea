@@ -982,7 +982,7 @@ class IntelligenceQueryService:
                     .where(User.id.in_(owner_ids))
                     .where(IntelligenceQueryService._owner_user_tenant_predicate(org_id))
                 ).scalars():
-                    owners_by_id[user.id] = user.full_name or user.email
+                    owners_by_id[user.id] = user.full_name() or user.email
 
             all_elements: Dict[str, Dict[str, Any]] = {}
             wp_payloads: List[Dict[str, Any]] = []
