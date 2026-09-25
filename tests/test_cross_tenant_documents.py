@@ -811,16 +811,16 @@ def _same_name_fixture(app):
             db.session.add(user_role)
             db.session.flush()
 
-        # Ensure the "Architect" role exists (admin-equivalent for delete).
-        arch_role = Role.query.filter_by(name="Architect").first()
-        if arch_role is None:
-            arch_role = Role(
-                name="Architect", permissions=Permission.GENERAL, index="main", default=True
+        # Ensure the "Administrator" role exists (carries ADMINISTER permission).
+        admin_role = Role.query.filter_by(name="Administrator").first()
+        if admin_role is None:
+            admin_role = Role(
+                name="Administrator", permissions=Permission.ADMINISTER, index="main", default=False
             )
-            db.session.add(arch_role)
+            db.session.add(admin_role)
             db.session.flush()
 
-        # Two users with the SAME first and last name.
+        # Two users with the SAME first and last name, both User role.
         a1 = User(
             email=f"a1-{_uuid.uuid4().hex[:8]}@example.com",
             first_name="Same",
@@ -829,7 +829,7 @@ def _same_name_fixture(app):
             confirmed=True,
             enterprise_role="solution_architect",
         )
-        a1.role = arch_role
+        a1.role = user_role
         db.session.add(a1)
         db.session.flush()
 
@@ -843,6 +843,19 @@ def _same_name_fixture(app):
         )
         a2.role = user_role
         db.session.add(a2)
+        db.session.flush()
+
+        # Administrator user in the same organisation.
+        admin_user = User(
+            email=f"admin-{_uuid.uuid4().hex[:8]}@example.com",
+            first_name="Admin",
+            last_name="User",
+            organization_id=org.id,
+            confirmed=True,
+            enterprise_role="solution_architect",
+        )
+        admin_user.role = admin_role
+        db.session.add(admin_user)
         db.session.flush()
 
         app_component = ApplicationComponent(
@@ -904,6 +917,7 @@ def _same_name_fixture(app):
             "org_id": org.id,
             "a1_id": a1.id,
             "a2_id": a2.id,
+            "admin_id": admin_user.id,
             "app_id": app_component.id,
             "doc_a1_id": doc_a1.id,
             "doc_a1_path": file_path_a1,
@@ -945,7 +959,8 @@ def test_same_name_user_cannot_delete_others_document(app, _same_name_fixture):
 
 
 def test_uploader_can_delete_own_document(app, _same_name_fixture):
-    """(b) User A1 can delete their own document — the row and file are removed."""
+    """(b) A User-role (non-admin) uploader deletes their own document —
+    the row is removed and the file is deleted from disk."""
     from app import db
     from app.models.miscellaneous import ApplicationDocument
 
@@ -957,7 +972,7 @@ def test_uploader_can_delete_own_document(app, _same_name_fixture):
         f"/applications/documents/{f['doc_a1_id']}/delete",
         data={"csrf_token": token},
     )
-    # A1 is an Architect (admin-equivalent), so the delete succeeds.
+    # A1 is the uploader (uploaded_by_id matches), so the delete succeeds.
     assert resp.status_code == 302, (
         f"Expected redirect (success); got {resp.status_code}"
     )
@@ -967,6 +982,9 @@ def test_uploader_can_delete_own_document(app, _same_name_fixture):
         assert doc_gone is None, (
             "A1's document row should have been deleted"
         )
+    assert not os.path.exists(f["doc_a1_path"]), (
+        "A1's document file should have been deleted from disk"
+    )
 
 
 def test_legacy_document_without_uploader_id_cannot_be_deleted_by_name_match(
@@ -999,3 +1017,130 @@ def test_legacy_document_without_uploader_id_cannot_be_deleted_by_name_match(
     assert os.path.exists(f["doc_legacy_path"]), (
         "Legacy document file was deleted from disk by A2 despite uploaded_by_id=None"
     )
+
+
+def test_administrator_can_delete_legacy_and_others_document_unified_route(
+    app, _same_name_fixture
+):
+    """(d) An Administrator (role with ADMINISTER, same organisation) deletes a
+    legacy row and another user's row on the unified route — both succeed."""
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _same_name_fixture
+    client_admin = _make_client(app, f["admin_id"])
+    token = _csrf_token(client_admin, app)
+
+    # Delete the legacy document (uploaded_by_id=None).
+    resp = client_admin.post(
+        f"/applications/documents/{f['doc_legacy_id']}/delete",
+        data={"csrf_token": token},
+    )
+    assert resp.status_code == 302, (
+        f"Expected redirect (admin deletes legacy); got {resp.status_code}"
+    )
+    with app.app_context():
+        doc_gone = db.session.get(ApplicationDocument, f["doc_legacy_id"])
+        assert doc_gone is None, (
+            "Administrator should be able to delete a legacy document"
+        )
+
+    # Delete A1's document (uploaded_by_id=A1, not admin).
+    token2 = _csrf_token(client_admin, app)
+    resp2 = client_admin.post(
+        f"/applications/documents/{f['doc_a1_id']}/delete",
+        data={"csrf_token": token2},
+    )
+    assert resp2.status_code == 302, (
+        f"Expected redirect (admin deletes another user's doc); got {resp2.status_code}"
+    )
+    with app.app_context():
+        doc_gone2 = db.session.get(ApplicationDocument, f["doc_a1_id"])
+        assert doc_gone2 is None, (
+            "Administrator should be able to delete another user's document"
+        )
+
+
+def test_legacy_route_ownership_check(app, _same_name_fixture):
+    """(e) On the legacy route /dashboard/documents/<id>/delete, a non-admin
+    who is not the uploader is refused (row and file survive); the uploader
+    succeeds."""
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _same_name_fixture
+
+    # A2 (non-admin, not the uploader) is refused.
+    client_a2 = _make_client(app, f["a2_id"])
+    resp = client_a2.post(f"/dashboard/documents/{f['doc_a1_id']}/delete")
+    # Refused with redirect (flash).
+    assert resp.status_code == 302, (
+        f"Expected redirect (refused); got {resp.status_code}"
+    )
+    with app.app_context():
+        doc_still = db.session.get(ApplicationDocument, f["doc_a1_id"])
+        assert doc_still is not None, (
+            "A2 (non-admin, not uploader) should not delete via legacy route"
+        )
+    assert os.path.exists(f["doc_a1_path"]), (
+        "A2 should not delete file via legacy route"
+    )
+
+    # A1 (uploader) succeeds on the legacy route.
+    client_a1 = _make_client(app, f["a1_id"])
+    resp2 = client_a1.post(f"/dashboard/documents/{f['doc_a1_id']}/delete")
+    assert resp2.status_code == 302, (
+        f"Expected redirect (uploader succeeds); got {resp2.status_code}"
+    )
+    with app.app_context():
+        doc_gone = db.session.get(ApplicationDocument, f["doc_a1_id"])
+        assert doc_gone is None, (
+            "A1 (uploader) should be able to delete their own document via legacy route"
+        )
+
+
+def test_real_upload_saves_organization_and_uploader_id(app, _same_name_fixture):
+    """(f) A real upload through the unified route by a signed-in user creates
+    exactly one row with organization_id equal to the application's and
+    uploaded_by_id equal to the user's id."""
+    import io
+
+    from app import db
+    from app.models.miscellaneous import ApplicationDocument
+
+    f = _same_name_fixture
+    client_a1 = _make_client(app, f["a1_id"])
+    token = _csrf_token(client_a1, app)
+
+    upload_data = {
+        "csrf_token": token,
+        "title": "Test upload for org-id check",
+        "file": (io.BytesIO(b"test content for upload"), "test-upload.txt"),
+    }
+    resp = client_a1.post(
+        f"/applications/{f['app_id']}/upload-document",
+        data=upload_data,
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 302, (
+        f"Expected redirect (upload success); got {resp.status_code}"
+    )
+
+    with app.app_context():
+        doc = ApplicationDocument.query.filter_by(
+            application_component_id=f["app_id"],
+            title="Test upload for org-id check",
+        ).first()
+        assert doc is not None, "Uploaded document row should exist"
+        assert doc.organization_id is not None, (
+            "organization_id must not be None"
+        )
+        assert doc.organization_id == f["org_id"], (
+            f"Expected organization_id={f['org_id']}, got {doc.organization_id}"
+        )
+        assert doc.uploaded_by_id is not None, (
+            "uploaded_by_id must not be None"
+        )
+        assert doc.uploaded_by_id == f["a1_id"], (
+            f"Expected uploaded_by_id={f['a1_id']}, got {doc.uploaded_by_id}"
+        )
