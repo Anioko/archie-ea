@@ -30,6 +30,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, joinedload
 from app.utils.pagination import safe_int_arg
 
@@ -313,10 +314,9 @@ def delete_user_request(user_id):
     return render_template("admin/manage_user.html", user=user)
 
 
-@admin_bp.route("/user/<int:user_id>/_delete")
+@admin_bp.route("/user/<int:user_id>/_delete", methods=["POST"])
 @login_required
 @admin_required
-@audit_log("admin_user_delete")
 def delete_user(user_id):
     """Delete a user's account."""
     if current_user.id == user_id:
@@ -327,8 +327,26 @@ def delete_user(user_id):
         )
     else:
         user = _svc.get_user_or_404(user_id)
-        success, message = _svc.delete_user(user)
-        flash(message, "success")
+        try:
+            success, message = _svc.delete_user(user)
+            flash(message, "success")
+            from app.models.audit_log import AuditLog
+            AuditLog.log(
+                action="admin_user_delete",
+                entity_type="admin_user",
+                entity_id=user_id,
+                user_id=current_user.id,
+                user_email=current_user.email,
+                ip_address=request.remote_addr,
+                description=f"admin_user_delete via {request.path}",
+            )
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "This user still owns records and cannot be deleted.",
+                "error",
+            )
+            return redirect(url_for("admin.user_info", user_id=user_id))
     return redirect(url_for("admin.registered_users"))
 
 
@@ -3790,7 +3808,7 @@ def power_platform_discover():
         row.jira_url or "", row.jira_email or "", row.api_key or ""
     )
 
-    # Annotate with ARCHIE link status
+    # Annotate with Entelim link status
     linked_ids = {
         r.source_identifier
         for r in ApplicationComponent.query.filter(
