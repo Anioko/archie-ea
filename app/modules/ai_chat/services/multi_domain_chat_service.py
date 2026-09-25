@@ -4597,7 +4597,19 @@ Use enterprise architecture terminology appropriate for this role."""
             if context_filter and "layer" in context_filter:
                 target_layer = context_filter["layer"]
 
-            elements_query = ArchiMateElement.query
+            # Ordered by name, the same ordering the element list pages already
+            # use (api_elements_search) -- with no explicit order the database
+            # is free to return an organisation's rows in whatever order its
+            # physical layout happens to put them in, which is stable within
+            # one run but not across two (confirmed: the same organisation,
+            # captured the same way, listed a different element in an early
+            # visible slot depending on how much unrelated data existed
+            # elsewhere in the table). LIMIT then a possible re-sort by
+            # rel_counts both need a deterministic starting order to mean
+            # anything -- which 100 (or 200) rows the limit keeps, and which
+            # element wins a tie in the rel_counts sort below, both depend on
+            # it.
+            elements_query = ArchiMateElement.query.order_by(ArchiMateElement.name)
             if target_layer:
                 elements_query = elements_query.filter(ArchiMateElement.layer == target_layer)
                 detail_elements = elements_query.limit(200).all()
@@ -6267,7 +6279,7 @@ Instructions:
                     f"{portfolio.get('total_vendors', 0)} vendors\n"
                 )
 
-            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (A.R.C.H.I.E.).
+            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (Entelim).
 The user is searching for information across the organisation's architecture portfolio.
 
 USER SEARCH QUERY: {message}
@@ -6366,7 +6378,7 @@ Instructions:
 
             # Build a system instruction mentioning the attached diagram
             system_instruction = (
-                "You are A.R.C.H.I.E., an AI Architecture Assistant specialising in "
+                "You are Entelim, an AI Architecture Assistant specialising in "
                 "enterprise architecture (TOGAF 9.2, ArchiMate 3.2). "
                 "The user has attached an architecture diagram for analysis. "
                 "Describe the diagram contents, identify architectural elements, "
@@ -6595,7 +6607,7 @@ Instructions:
                     if _apps:
                         blast_radius_block = self._compute_capability_blast_radius(_apps[0])
 
-            prompt = f"""You are A.R.C.H.I.E., an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
+            prompt = f"""You are Entelim, an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
 
 USER QUESTION: {message}
 
