@@ -1899,8 +1899,10 @@ def render_application_detail(id):
     Restored after BE-054 god-file decomposition dropped this shared handler.
     """
     from app.models.application_portfolio import ApplicationComponent
+    from app.modules.applications.routes._helpers import owners_section_context
 
     app_obj = ApplicationComponent.query.get_or_404(id)
+    owners_context = owners_section_context(app_obj)
 
     # --- Capabilities ---
     # Query ApplicationCapabilityMapping (populated by Abacus sync — 410 rows)
@@ -2375,4 +2377,7 @@ def render_application_detail(id):
         linked_solutions=linked_solutions,
         archimate_info=archimate_info,
         archimate_relationships=archimate_relationships,
+        owners_by_type=owners_context["owners_by_type"],
+        text_owners=owners_context["text_owners"],
+        can_assign_owners=owners_context["can_assign_owners"],
     )

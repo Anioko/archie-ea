@@ -11,9 +11,10 @@ ADR Reference: docs/adr/0011-application-manager-persona.md
 from datetime import datetime
 
 from .. import db
+from .mixins.core import TenantMixin
 
 
-class ApplicationOwner(db.Model):
+class ApplicationOwner(TenantMixin, db.Model):
     """
     Junction table linking users to applications they own.
 
@@ -24,6 +25,8 @@ class ApplicationOwner(db.Model):
     - business: Business/product owner
 
     Used by Application Manager persona to filter views to only owned apps.
+    Tenant-fenced by TenantMixin: organization_id is stamped on insert and the
+    ORM tenant-isolation listener scopes every select to the acting org.
     """
     __tablename__ = "application_owners"
     __table_args__ = (
@@ -54,12 +57,6 @@ class ApplicationOwner(db.Model):
         db.ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    organization_id = db.Column(
-        db.Integer,
-        db.ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
 
     # Ownership details
     ownership_type = db.Column(
@@ -81,17 +78,24 @@ class ApplicationOwner(db.Model):
     )
     user = db.relationship(
         "User",
-        backref=db.backref("owned_applications", lazy="dynamic"),
+        # passive_deletes=True: the FK already carries ON DELETE CASCADE and
+        # the schema baseline agrees, so the database removes this row when
+        # its user goes. Without this, the ORM's own unit of work tries to
+        # null out user_id (NOT NULL) before the delete instead of letting
+        # the database cascade, and AdminUserService.delete_user's bare
+        # db.session.delete(user) fails. user_sessions is the precedent for
+        # letting the database do it (see its own module docstring).
+        backref=db.backref("owned_applications", lazy="dynamic", passive_deletes=True),
         foreign_keys=[user_id],
     )
     assigner = db.relationship(
         "User",
         foreign_keys=[assigned_by],
     )
-    organization = db.relationship(
-        "Organization",
-        backref=db.backref("application_owners", lazy="dynamic"),
-    )
+    # TenantMixin supplies `organization_id` and an `organization` relationship
+    # (no backref) — the explicit relationship this model used to declare had
+    # its own backref, `Organization.application_owners`, which nothing read
+    # (grep over app/ and tests/ confirms) and is dropped with it.
 
     # Valid ownership types
     OWNERSHIP_TYPES = ["primary", "backup", "technical", "business"]
@@ -124,7 +128,14 @@ class ApplicationOwner(db.Model):
 
     @classmethod
     def get_owners_for_application(cls, application_id, organization_id):
-        """Get all owners for an application."""
+        """Get all owners for an application.
+
+        Tenancy is two layers, as in query_service.py: TenantMixin's listener
+        already fences any select inside a request, and the explicit
+        organization_id predicate below is defence in depth, keeping this
+        method correct when called with no ambient request context (a job,
+        a CLI command, a test looping tenants in one session).
+        """
         return cls.query.filter(
             cls.application_id == application_id,
             cls.organization_id == organization_id,
@@ -132,7 +143,8 @@ class ApplicationOwner(db.Model):
 
     @classmethod
     def get_applications_for_user(cls, user_id, organization_id):
-        """Get all application IDs owned by a user."""
+        """Get all application IDs owned by a user. Two-layer tenancy — see
+        get_owners_for_application."""
         return [
             row.application_id
             for row in cls.query.filter(
@@ -143,7 +155,8 @@ class ApplicationOwner(db.Model):
 
     @classmethod
     def is_owner(cls, user_id, application_id, organization_id):
-        """Check if user owns an application."""
+        """Check if user owns an application. Two-layer tenancy — see
+        get_owners_for_application."""
         return cls.query.filter(
             cls.user_id == user_id,
             cls.application_id == application_id,
