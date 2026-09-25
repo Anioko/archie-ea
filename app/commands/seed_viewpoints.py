@@ -1362,13 +1362,112 @@ def seed_viewpoints():
 
     db.session.commit()
     logger.info("QA-CMP-004: Seeded viewpoints - created=%d, updated=%d (total: %d)", created, updated, len(_STANDARD_VIEWPOINTS))
+
+    seed_canvas_templates()
+
     return created, updated
+
+
+def _canvas_viewpoint_row_data(tpl):
+    """Shape one CANVAS_TEMPLATES entry into the fields _apply_viewpoint_fields
+    expects."""
+    from app.config.archimate_viewpoints import VIEWPOINTS
+
+    element_types = sorted({t for zone in tpl["zones"] for t in zone["element_types"]})
+    layers_included = {
+        VIEWPOINTS[vp_key].layer for vp_key in tpl["projects"] if vp_key in VIEWPOINTS
+    }
+    return {
+        "standard_number": None,
+        "viewpoint_type": "canvas",
+        "description": (
+            f"Business-language viewpoint over the one model: {tpl['name']}, "
+            "pre-populated from the tenant's existing elements."
+        ),
+        "purpose": f"Show the tenant's model as a {tpl['name']} without a notation lesson.",
+        "concerns": [zone["label"] for zone in tpl["zones"]],
+        "typical_stakeholders": ["Founder", "Sponsor"],
+        "allowed_element_types": element_types,
+        "allowed_relationship_types": [],
+        "includes_strategy_layer": "strategy" in layers_included,
+        "includes_business_layer": "business" in layers_included,
+        "includes_application_layer": "application" in layers_included,
+        "includes_technology_layer": "technology" in layers_included,
+        "includes_physical_layer": "physical" in layers_included,
+        "includes_motivation_layer": "motivation" in layers_included,
+        "includes_implementation_layer": "implementation" in layers_included,
+        "typical_usage_scenario": None,
+        "example_questions": None,
+        "related_viewpoints": None,
+    }
+
+
+def seed_canvas_templates():
+    """Upsert (a) one ArchiMateViewpoint catalogue row per CANVAS_TEMPLATES
+    entry — ``viewpoint_type="canvas"``, ``is_standard=False`` — so the
+    Composer catalogue lists Lean Canvas, Business Model Canvas and business
+    case without a fourth catalogue, and (b) one ``profile`` AcmPropertyTemplate
+    row per element type the templates use, with ``enum_options`` set to every
+    profile value that type takes across the three templates
+    (CANVAS_PROFILE_OPTIONS_BY_TYPE). Idempotent — upsert by name for (a), by
+    ``(archimate_type, property_key)`` for (b); running twice changes neither.
+    Returns
+    ``(viewpoints_created, viewpoints_updated, profiles_created, profiles_updated)``.
+    """
+    from app.config.archimate_viewpoints import CANVAS_PROFILE_OPTIONS_BY_TYPE, CANVAS_TEMPLATES
+    from app.models.acm_property_template import AcmPropertyTemplate
+    from app.models.archimate_viewpoint import ArchiMateViewpoint
+
+    vp_created = 0
+    vp_updated = 0
+    for tpl in CANVAS_TEMPLATES.values():
+        data = _canvas_viewpoint_row_data(tpl)
+        existing = ArchiMateViewpoint.query.filter_by(name=tpl["name"]).first()
+        if existing:
+            _apply_viewpoint_fields(existing, data)
+            existing.is_standard = False  # canvas rows are not standard viewpoints
+            vp_updated += 1
+        else:
+            vp = ArchiMateViewpoint(name=tpl["name"])
+            _apply_viewpoint_fields(vp, data)
+            vp.is_standard = False
+            db.session.add(vp)
+            vp_created += 1
+
+    profile_created = 0
+    profile_updated = 0
+    for archimate_type, options in sorted(CANVAS_PROFILE_OPTIONS_BY_TYPE.items()):
+        existing = AcmPropertyTemplate.query.filter_by(
+            archimate_type=archimate_type, property_key="profile",
+        ).first()
+        if existing:
+            existing.display_name = "Profile"
+            existing.property_type = "enum"
+            existing.enum_options = options
+            existing.required_for_tier = "standard"
+            profile_updated += 1
+        else:
+            db.session.add(AcmPropertyTemplate(
+                archimate_type=archimate_type, property_key="profile",
+                display_name="Profile", property_type="enum",
+                enum_options=options, required_for_tier="standard",
+            ))
+            profile_created += 1
+
+    db.session.commit()
+    logger.info(
+        "Canvas templates seeded - viewpoints created=%d updated=%d; "
+        "profile templates created=%d updated=%d",
+        vp_created, vp_updated, profile_created, profile_updated,
+    )
+    return vp_created, vp_updated, profile_created, profile_updated
 
 
 @click.command("seed-viewpoints")
 @with_appcontext
 def seed_viewpoints_command():
-    """Seed the 25 ArchiMate viewpoints (all standard, idempotent)."""
+    """Seed the 25 ArchiMate viewpoints (all standard, idempotent), the
+    business-language canvas templates and their `profile` property rows."""
     created, updated = seed_viewpoints()
     click.echo(f"Viewpoints seeded: {created} created, {updated} updated.")
 

@@ -363,11 +363,21 @@ def test_names_come_only_from_the_impact_answers_element_map():
     for name, source in _everything().items():
         assert "/detail" not in source, name
         assert "localStorage" not in source and "sessionStorage" not in source, name
+    # This allowlist drifted out of sync with reality some time before this
+    # fix -- the L3/L5/L6 briefs each added a fetch URL to core.js (risk,
+    # portfolio, programme) without updating it. Found while adding the L2
+    # brief's own strategy URL; corrected to the real, current set rather
+    # than bumped by one on top of a stale base.
     urls = set(re.findall(r"'(/[a-z0-9_/.-]*)'", _scripts()["core.js"]))
     assert urls == {
         "/archimate/api/elements/search",
         "/api/v1/intelligence/impact/",
         "/api/v1/intelligence/derivation/recompute",
+        "/api/v1/intelligence/risk/",
+        "/api/v1/intelligence/portfolio/",
+        "/api/v1/intelligence/programme/",
+        "/api/v1/intelligence/strategy/",
+        "/api/v1/intelligence/accountability/",
     }
 
 

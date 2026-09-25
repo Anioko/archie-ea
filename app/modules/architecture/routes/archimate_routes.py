@@ -1471,6 +1471,21 @@ def api_create_relationship():
     if not target_el:
         return api_error(f"Target element {target_id} not found", 404)
 
+    # The relationship-type list above is a spelling check only. Confirm the
+    # metamodel actually allows this type between these two element types —
+    # the same authority the picker (GET /api/valid-relationship-types) and
+    # the composer validator (api_composer_validate) already use — so a
+    # client that never called the picker cannot write a relationship no
+    # picker would ever have offered.
+    from app.services.archimate_validity_service import ArchimateValidityService
+
+    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
+        return api_error(
+            "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
+            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
+            400,
+        )
+
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
 

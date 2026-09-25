@@ -103,7 +103,7 @@ else:
 
 
 class Config:
-    APP_NAME = os.environ.get("APP_NAME", "A.R.C.H.I.E.")
+    APP_NAME = os.environ.get("APP_NAME", "Entelim")
     SECRET_KEY = os.environ.get("SECRET_KEY")
     if not SECRET_KEY:
         import secrets
@@ -374,6 +374,10 @@ class Config:
     # Page-aware AI guide is fail-closed by default and only activates when
     # this flag is explicitly enabled and an LLM provider is configured.
     AI_PAGE_GUIDE_ENABLED = _env_bool("AI_PAGE_GUIDE_ENABLED", False)
+
+    # Architecture monitoring API is off by default; mounted only when this
+    # flag is explicitly enabled.
+    ARCHITECTURE_MONITORING_API_ENABLED = _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
 
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
