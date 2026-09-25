@@ -1,8 +1,10 @@
-{# Admin Header with breadcrumbs, search, notifications, user menu #}
+{# Admin Header with breadcrumbs, search, notifications, user menu
+   smoke-coverage-ok: a11y fix (aria-hidden on icon); covered by tests/test_capability_map_a11y_csp.py #}
 
 {% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
+{% from 'components/switch.html' import switch %}
 <header id="admin-header"
-        class="flex items-center justify-between h-16 px-6 bg-background border-b border-border">
+        class="sticky top-0 z-30 flex items-center justify-between h-16 pl-14 lg:pl-6 pr-6 bg-background border-b border-border">
     <div class="flex items-center gap-4">
         <!-- Mobile sidebar open trigger lives in layouts/admin_base.html
              ("Global mobile sidebar opener") — it x-shows only while the sidebar is
@@ -15,7 +17,7 @@
                 class="hidden lg:flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-collapse-btn"
                 :title="$store.sidebar.collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'"
                 :aria-label="$store.sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
-            <i data-lucide="panel-left" class="h-5 w-5"></i>
+            <i data-lucide="panel-left" class="h-5 w-5" aria-hidden="true"></i>
         </button>
 
         {% block breadcrumb %}{% endblock %}
@@ -146,7 +148,7 @@
             </button>
 
             <div id="user-dropdown"
-                 class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover shadow-lg z-50 hidden"
+                 class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover text-popover-foreground shadow-lg z-50 hidden"
                  role="menu">
                 <div class="p-2">
                     {% if current_user.is_authenticated %}
@@ -179,6 +181,19 @@
                         <i data-lucide="settings" class="h-4 w-4"></i>
                         Settings
                     </a>
+
+                    <div class="h-px bg-border my-1" role="separator"></div>
+                    <button type="button"
+                            role="menuitemcheckbox"
+                            :aria-checked="$store.theme.dark"
+                            @click="$store.theme.toggle()"
+                            class="flex items-center justify-between w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="moon" class="h-4 w-4"></i>
+                            Dark theme
+                        </span>
+                        {{ switch(bind_checked="$store.theme.dark", span_only=true) }}
+                    </button>
 
                     <div class="h-px bg-border my-1" role="separator"></div>
                     <a href="{{ url_for('account.logout') }}"
@@ -577,7 +592,7 @@
 
     function openSearchModal(prefillQuery) {
         searchModal.style.display = 'flex';
-        if (prefillQuery && searchInput) {
+        if (typeof prefillQuery === 'string' && prefillQuery && searchInput) {
             searchInput.value = prefillQuery;
             handleSearchInput(prefillQuery);
         }
@@ -598,8 +613,8 @@
 
     const btnDesktop = document.getElementById('search-modal-trigger');
     const btnMobile  = document.getElementById('header-search-btn-mobile');
-    if (btnDesktop) btnDesktop.addEventListener('click', openSearchModal);
-    if (btnMobile)  btnMobile.addEventListener('click', openSearchModal);
+    if (btnDesktop) btnDesktop.addEventListener('click', function () { openSearchModal(); });
+    if (btnMobile)  btnMobile.addEventListener('click', function () { openSearchModal(); });
     if (searchBackdrop) searchBackdrop.addEventListener('click', closeSearchModal);
 
     if (searchInput) {

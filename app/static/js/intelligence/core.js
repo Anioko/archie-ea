@@ -137,16 +137,21 @@
        package was never costed, matching the server's own not_costed
        reason rather than inventing a number. */
     function workPackageModel(wp) {
+        var hasCostVariance = wp.cost_variance_pct != null;
+        var costRedacted = wp.cost_reason === 'financial_data_restricted';
         return {
             workPackageId: wp.work_package_id,
             name: wp.name,
             status: wp.status,
+            statusLabel: statusLabel(wp.status),
             progressPercentage: wp.progress_percentage,
             startDate: wp.start_date,
             endDate: wp.end_date,
             isOverdue: wp.is_overdue,
             owner: wp.owner || null,
-            costVariancePct: wp.cost_variance_pct != null ? wp.cost_variance_pct : null,
+            costVariancePct: hasCostVariance ? wp.cost_variance_pct : null,
+            hasCostVariance: hasCostVariance,
+            costRedacted: costRedacted,
             costReason: wp.cost_reason || null,
             affectedRows: wp.affected_rows || [],
             affectedSummary: wp.affected_summary || {}
@@ -177,10 +182,13 @@
        no_budget_recorded reason rather than inventing a number. Success
        metrics are nested as-is (already a small, flat list server-side). */
     function initiativeModel(initiative) {
+        var hasBudgetVariance = initiative.budget_variance_pct != null;
+        var budgetRedacted = initiative.budget_reason === 'financial_data_restricted';
         return {
             initiativeId: initiative.initiative_id,
             name: initiative.name,
             status: initiative.status,
+            statusLabel: statusLabel(initiative.status),
             priority: initiative.priority,
             healthStatus: initiative.health_status,
             completionPercentage: initiative.completion_percentage,
@@ -188,7 +196,9 @@
             targetEndDate: initiative.target_end_date,
             executiveSponsor: initiative.executive_sponsor || null,
             programManager: initiative.program_manager || null,
-            budgetVariancePct: initiative.budget_variance_pct != null ? initiative.budget_variance_pct : null,
+            budgetVariancePct: hasBudgetVariance ? initiative.budget_variance_pct : null,
+            hasBudgetVariance: hasBudgetVariance,
+            budgetRedacted: budgetRedacted,
             budgetReason: initiative.budget_reason || null,
             successMetrics: (initiative.success_metrics || []).map(function (m) {
                 return {
@@ -208,14 +218,13 @@
         return (payload.initiatives || []).map(initiativeModel);
     }
 
-    /* L4: owners of the element's ApplicationComponent. No max_depth/
-       include_derived -- this lens is a pure ownership lookup, not a
-       blast-radius traversal, unlike every other lens. See
-       app/modules/intelligence/routes/api.py:accountability_for_element for
-       what "reasons" can carry (element_not_found, no_tenant_context,
-       no_application_component, no_ownership_records,
-       capacity_not_available -- the last one is present on every response,
-       not just an absence case). */
+    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
+       server-side (see IntelligenceQueryService.accountability_for_element's
+       docstring) -- every response carries ownership_reader_not_built and
+       capacity_not_available regardless of element_id, no owners array
+       ever populated. No max_depth/include_derived -- this lens is a pure
+       ownership lookup, not a blast-radius traversal, unlike every other
+       lens. */
     function fetchAccountability(elementId) {
         return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
             return resp && resp.data ? resp.data : {};
@@ -272,6 +281,23 @@
         var active = document.activeElement;
         var onButton = active && active.hasAttribute && active.hasAttribute('data-recompute-button');
         if (onButton || !active || active === document.body) heading.focus();
+    }
+
+    /* After an answer arrives, scroll its results heading into view and move
+       focus to it so the answer is visible without scrolling and announced
+       for screen readers (the heading already carries tabindex="-1"). */
+    function showResults(heading) {
+        if (!heading) return;
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        heading.focus();
+    }
+
+    /* Convert a snake_case status code to a readable label: "in_progress" →
+       "In Progress", "Active" → "Active". Matches the Python-side pattern
+       status.replace("_", " ").title() used across this codebase. */
+    function statusLabel(status) {
+        if (!status) return '';
+        return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
     function failureStatus(err) {
@@ -479,6 +505,8 @@
         timeText: timeText,
         refreshIcons: refreshIcons,
         keepPlace: keepPlace,
+        showResults: showResults,
+        statusLabel: statusLabel,
         failureStatus: failureStatus,
         bandFor: bandFor,
         pluralThings: pluralThings,
