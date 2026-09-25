@@ -444,3 +444,5 @@ else:
     # ArchiMateRelationship model (type="DataFlow" between DataObject
     # elements) — no new table required; see
     # app/modules/data_lineage/services.py.
+    from .waitlist_signup import WaitlistSignup  # noqa: F401
+    from .pending_invitation import PendingInvitation  # noqa: F401

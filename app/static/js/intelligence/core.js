@@ -17,6 +17,8 @@
     var RISK_URL = '/api/v1/intelligence/risk/';
     var PORTFOLIO_URL = '/api/v1/intelligence/portfolio/';
     var PROGRAMME_URL = '/api/v1/intelligence/programme/';
+    var STRATEGY_URL = '/api/v1/intelligence/strategy/';
+    var ACCOUNTABILITY_URL = '/api/v1/intelligence/accountability/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
 
     var ERROR_LINE = 'We could not answer that just now.';
@@ -135,16 +137,21 @@
        package was never costed, matching the server's own not_costed
        reason rather than inventing a number. */
     function workPackageModel(wp) {
+        var hasCostVariance = wp.cost_variance_pct != null;
+        var costRedacted = wp.cost_reason === 'financial_data_restricted';
         return {
             workPackageId: wp.work_package_id,
             name: wp.name,
             status: wp.status,
+            statusLabel: statusLabel(wp.status),
             progressPercentage: wp.progress_percentage,
             startDate: wp.start_date,
             endDate: wp.end_date,
             isOverdue: wp.is_overdue,
             owner: wp.owner || null,
-            costVariancePct: wp.cost_variance_pct != null ? wp.cost_variance_pct : null,
+            costVariancePct: hasCostVariance ? wp.cost_variance_pct : null,
+            hasCostVariance: hasCostVariance,
+            costRedacted: costRedacted,
             costReason: wp.cost_reason || null,
             affectedRows: wp.affected_rows || [],
             affectedSummary: wp.affected_summary || {}
@@ -153,6 +160,95 @@
 
     function buildWorkPackages(payload) {
         return (payload.work_packages || []).map(workPackageModel);
+    }
+
+    /* L2: initiatives seeded on an element, each with its own blast-radius.
+       Same request shape as fetchProgramme. See
+       app/modules/intelligence/routes/api.py:strategy_for_element for what
+       "reasons" can carry (element_not_found, no_tenant_context,
+       no_initiative_linked). */
+    function fetchStrategy(elementId, options) {
+        return Platform.fetch.get(STRATEGY_URL + elementId, {
+            include_derived: options && options.includeDerived ? 'true' : 'false',
+            max_depth: (options && options.maxDepth) || 3
+        }, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One initiative's server payload turned into the flat camelCase shape
+       ask.js's template reads -- budgetVariancePct is null (not 0) when the
+       initiative was never budgeted, matching the server's own
+       no_budget_recorded reason rather than inventing a number. Success
+       metrics are nested as-is (already a small, flat list server-side). */
+    function initiativeModel(initiative) {
+        var hasBudgetVariance = initiative.budget_variance_pct != null;
+        var budgetRedacted = initiative.budget_reason === 'financial_data_restricted';
+        return {
+            initiativeId: initiative.initiative_id,
+            name: initiative.name,
+            status: initiative.status,
+            statusLabel: statusLabel(initiative.status),
+            priority: initiative.priority,
+            healthStatus: initiative.health_status,
+            completionPercentage: initiative.completion_percentage,
+            startDate: initiative.start_date,
+            targetEndDate: initiative.target_end_date,
+            executiveSponsor: initiative.executive_sponsor || null,
+            programManager: initiative.program_manager || null,
+            budgetVariancePct: hasBudgetVariance ? initiative.budget_variance_pct : null,
+            hasBudgetVariance: hasBudgetVariance,
+            budgetRedacted: budgetRedacted,
+            budgetReason: initiative.budget_reason || null,
+            successMetrics: (initiative.success_metrics || []).map(function (m) {
+                return {
+                    metricName: m.metric_name,
+                    metricType: m.metric_type,
+                    targetValue: m.target_value,
+                    actualValue: m.actual_value,
+                    status: m.status
+                };
+            }),
+            affectedRows: initiative.affected_rows || [],
+            affectedSummary: initiative.affected_summary || {}
+        };
+    }
+
+    function buildInitiatives(payload) {
+        return (payload.initiatives || []).map(initiativeModel);
+    }
+
+    /* L4: owners of the element's ApplicationComponent. Currently WITHDRAWN
+       server-side (see IntelligenceQueryService.accountability_for_element's
+       docstring) -- every response carries ownership_reader_not_built and
+       capacity_not_available regardless of element_id, no owners array
+       ever populated. No max_depth/include_derived -- this lens is a pure
+       ownership lookup, not a blast-radius traversal, unlike every other
+       lens. */
+    function fetchAccountability(elementId) {
+        return Platform.fetch.get(ACCOUNTABILITY_URL + elementId, {}, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    /* One ownership row's server payload turned into the flat camelCase
+       shape ask.js's template reads. organizationUnit passes through
+       as-is (already a small, flat object or null server-side). */
+    function ownerModel(owner) {
+        return {
+            ownerId: owner.owner_id,
+            ownershipType: owner.ownership_type,
+            ownershipPercentage: owner.ownership_percentage,
+            primaryContact: owner.primary_contact || null,
+            contactEmail: owner.contact_email || null,
+            startDate: owner.start_date,
+            endDate: owner.end_date,
+            organizationUnit: owner.organization_unit || null
+        };
+    }
+
+    function buildOwners(payload) {
+        return (payload.owners || []).map(ownerModel);
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
@@ -185,6 +281,23 @@
         var active = document.activeElement;
         var onButton = active && active.hasAttribute && active.hasAttribute('data-recompute-button');
         if (onButton || !active || active === document.body) heading.focus();
+    }
+
+    /* After an answer arrives, scroll its results heading into view and move
+       focus to it so the answer is visible without scrolling and announced
+       for screen readers (the heading already carries tabindex="-1"). */
+    function showResults(heading) {
+        if (!heading) return;
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        heading.focus();
+    }
+
+    /* Convert a snake_case status code to a readable label: "in_progress" →
+       "In Progress", "Active" → "Active". Matches the Python-side pattern
+       status.replace("_", " ").title() used across this codebase. */
+    function statusLabel(status) {
+        if (!status) return '';
+        return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
     function failureStatus(err) {
@@ -384,10 +497,16 @@
         fetchPortfolioComponent: fetchPortfolioComponent,
         fetchProgramme: fetchProgramme,
         buildWorkPackages: buildWorkPackages,
+        fetchStrategy: fetchStrategy,
+        buildInitiatives: buildInitiatives,
+        fetchAccountability: fetchAccountability,
+        buildOwners: buildOwners,
         recompute: recompute,
         timeText: timeText,
         refreshIcons: refreshIcons,
         keepPlace: keepPlace,
+        showResults: showResults,
+        statusLabel: statusLabel,
         failureStatus: failureStatus,
         bandFor: bandFor,
         pluralThings: pluralThings,

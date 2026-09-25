@@ -17,7 +17,7 @@ import logging
 from datetime import datetime
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
+from app.middleware.tenant_decorators import platform_admin_required
 
 from app import db
 from app.decorators import audit_log
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 @framework_config_bp.route("/configurations", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_configurations():
     """
     Get all framework configurations
@@ -106,7 +106,7 @@ def get_configurations():
 
 
 @framework_config_bp.route("/configurations", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("framework_config_create")
 def create_configuration():
     """
@@ -185,7 +185,7 @@ def create_configuration():
 
 
 @framework_config_bp.route("/configurations/<int:config_id>", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_configuration(config_id):
     """
     Get framework configuration by ID
@@ -225,7 +225,7 @@ def get_configuration(config_id):
 
 
 @framework_config_bp.route("/configurations/<int:config_id>", methods=["PUT"])
-@login_required
+@platform_admin_required
 @audit_log("framework_config_update")
 def update_configuration(config_id):
     """
@@ -284,7 +284,7 @@ def update_configuration(config_id):
 
 
 @framework_config_bp.route("/configurations/<int:config_id>", methods=["DELETE"])
-@login_required
+@platform_admin_required
 @audit_log("framework_config_delete")
 def delete_configuration(config_id):
     """
@@ -330,7 +330,7 @@ def delete_configuration(config_id):
 
 
 @framework_config_bp.route("/configurations/<int:config_id>/validate", methods=["POST"])
-@login_required
+@platform_admin_required
 def validate_configuration(config_id):
     """
     Validate framework configuration
@@ -365,7 +365,7 @@ def validate_configuration(config_id):
 
 
 @framework_config_bp.route("/configurations/active", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_active_configuration():
     """
     Get active configuration for organization
@@ -406,7 +406,7 @@ def get_active_configuration():
 
 
 @framework_config_bp.route("/extensions", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_available_extensions():
     """
     Get available framework extensions
@@ -462,7 +462,7 @@ def get_available_extensions():
 
 
 @framework_config_bp.route("/extensions/<extension_code>", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_extension_details(extension_code):
     """
     Get extension details by code
@@ -534,7 +534,7 @@ def get_extension_details(extension_code):
 @framework_config_bp.route(
     "/configurations/<int:config_id>/extensions/<extension_code>/install", methods=["POST"]
 )
-@login_required
+@platform_admin_required
 @audit_log("framework_extension_install")
 def install_extension(config_id, extension_code):
     """
@@ -590,7 +590,7 @@ def install_extension(config_id, extension_code):
 
 
 @framework_config_bp.route("/templates", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_configuration_templates():
     """
     Get available configuration templates
@@ -684,7 +684,7 @@ def get_configuration_templates():
 
 
 @framework_config_bp.route("/templates/<int:template_id>/deploy", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("framework_template_deploy")
 def deploy_template(template_id):
     """
@@ -764,7 +764,7 @@ def deploy_template(template_id):
 
 
 @framework_config_bp.route("/migrations", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("framework_migration_create")
 def create_migration_mapping():
     """
@@ -849,7 +849,7 @@ def create_migration_mapping():
 
 
 @framework_config_bp.route("/migrations/<int:migration_id>/execute", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("framework_migration_execute")
 def execute_migration(migration_id):
     """
@@ -894,7 +894,7 @@ def execute_migration(migration_id):
 
 
 @framework_config_bp.route("/instances", methods=["GET"])
-@login_required
+@platform_admin_required
 def get_framework_instances():
     """
     Get framework instances
@@ -980,7 +980,7 @@ def get_framework_instances():
 
 
 @framework_config_bp.route("/instances", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("framework_instance_create")
 def create_framework_instance():
     """
@@ -1083,7 +1083,7 @@ def create_framework_instance():
 
 
 @framework_config_bp.route("/health", methods=["GET"])
-@login_required
+@platform_admin_required
 def health_check():
     """
     Framework Config API Health Check

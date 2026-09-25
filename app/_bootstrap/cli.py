@@ -247,6 +247,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register AI chat approval tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_review_queue_org import init_app as init_review_queue_org
+        init_review_queue_org(app)
+        app.logger.info("Review queue tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
@@ -399,6 +406,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")
 
+    try:
+        from app.commands.purge_copilot_insights import init_app as init_purge_copilot_insights
+        init_purge_copilot_insights(app)
+        app.logger.info("Copilot insights purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:
         from app.commands import seed_strategic_demo
@@ -406,3 +420,11 @@ def init_cli(app):
         app.logger.info("✅ Strategic demo seed CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register strategic demo seed CLI: {e}")
+
+    # T-DEMO-1: Lantern Quay demonstration company
+    try:
+        from app.commands import seed_demo_company
+        seed_demo_company.init_app(app)
+        app.logger.info("✅ Demo company seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo company seed CLI: {e}")

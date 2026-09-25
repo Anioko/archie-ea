@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_twenty_eight_members,
+    13 -> test_reason_codes_has_exactly_thirty_three_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -11,18 +11,31 @@ one more -- ``p95_above_highest_bucket`` (D3) -- for the yield endpoint's
 p95 bucket-edge read having no honest number to report when the 95th
 percentile falls in the histogram's +Inf overflow bucket. Ask's Portfolio
 lens (L3) added ``no_application_component``; the Programme lens (L5) added
-two more -- ``no_work_package_recorded`` and ``not_costed``. T-S1 (value
-streams at risk, curated path) added four more -- ``no_value_stream_recorded``,
+two more -- ``no_work_package_recorded`` and ``not_costed``. The Strategy
+lens (L2) added ``no_budget_recorded``; the Accountability lens (L4) added
+``no_ownership_records``/``capacity_not_available``, later
+``ownership_reader_not_built`` when its read was withdrawn per external
+review. Role-gating added ``financial_data_restricted``. T-S1 (value streams
+at risk, curated path) added four more -- ``no_value_stream_recorded``,
 ``no_capability_linked``, ``value_stream_not_linked_to_model`` and
 ``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
 the other two are reserved for T-S3's graph path. The maturity read helper
 added two more -- ``no_maturity_target_recorded`` (a current level recorded
 with no target to compare it against) and ``no_capability_in_chain``
 (reserved for a later reader whose chain resolves to no Capability element
-at all). "Closed" means no endpoint may invent an absence string inline, not
-that the set is frozen at sixteen forever; the module's own docstring says a
-new absence condition adds a member here, and nowhere else. This test is
-updated in lockstep.
+at all).
+
+"Closed" means no endpoint may invent an absence string inline, not that the
+set is frozen at sixteen forever; the module's own docstring says a new
+absence condition adds a member here, and nowhere else. This test is
+updated in lockstep -- this ``_EXPECTED`` list has drifted out of sync with
+reality more than once already (found and corrected twice tonight,
+independently, by two different lenses' briefs each adding a member without
+re-deriving the true count); merging two branches that each added members
+independently (L2/L4/role-gating on one side, the maturity read helper on
+the other) is a third instance of the same class of drift, resolved here by
+re-deriving the real count (33) rather than trusting either side's own
+stale number.
 """
 
 from __future__ import annotations
@@ -38,8 +51,9 @@ from app.modules.intelligence.services.reason_codes import (
 
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
-# lenses' three additions, T-S1's four additions, plus the maturity read
-# helper's two additions, plus T-MAT-3's no_budget_recorded addition.
+# lenses' three additions, the Strategy/Accountability/role-gating
+# additions, T-S1's four additions, plus the maturity read helper's two
+# additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -63,18 +77,22 @@ _EXPECTED = {
     "no_application_component",
     "no_work_package_recorded",
     "not_costed",
+    "no_budget_recorded",
+    "no_ownership_records",
+    "capacity_not_available",
+    "financial_data_restricted",
+    "ownership_reader_not_built",
     "no_value_stream_recorded",
     "no_capability_linked",
     "value_stream_not_linked_to_model",
     "dependency_direction_unknown",
     "no_maturity_target_recorded",
     "no_capability_in_chain",
-    "no_budget_recorded",
 }
 
 
-def test_reason_codes_has_exactly_twenty_nine_members():
-    assert len(REASON_CODES) == 29
+def test_reason_codes_has_exactly_thirty_three_members():
+    assert len(REASON_CODES) == 33
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

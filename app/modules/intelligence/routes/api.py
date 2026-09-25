@@ -7,6 +7,8 @@
   GET  /api/v1/intelligence/risk/<element_id>
   GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/programme/<element_id>
+  GET  /api/v1/intelligence/strategy/<element_id>
+  GET  /api/v1/intelligence/accountability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -36,10 +38,41 @@ from app.utils.api_response import error_response, not_found_response, success_r
 # body of the exact 400/404 responses that ARE their real, reachable home.
 _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
+_FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
+
+# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
+# already gates rationalization/TCO/procurement views to this same set) --
+# reused, not a new authority list invented for this endpoint.
+_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
 )
+
+
+def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: str) -> None:
+    """Redacts *fields* in place on every dict in *rows* for a caller without
+    budget authority (least-privilege on the one sensitive data category this
+    codebase's EA surfaces gate today -- financial figures; matches how
+    ROLE_SECTION_ACCESS already treats rationalization/TCO/procurement, per
+    field here rather than per page, since only Strategy/Programme carry
+    financial figures on an otherwise uniformly-visible lens).
+
+    Redaction is honest, not silent: each redacted field becomes ``None`` and
+    *reason_field* (e.g. ``"budget_reason"``) is set to
+    ``financial_data_restricted`` -- distinct from ``not_costed``/
+    ``no_budget_recorded``, which mean "nobody recorded this," not "you
+    can't see this." A caller with budget authority sees the real value and
+    this function is a no-op for them.
+    """
+    from app.utils.role_access import get_user_role
+
+    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+        return
+    for row in rows:
+        for field in fields:
+            row[field] = None
+        row[reason_field] = _FINANCIAL_DATA_RESTRICTED_REASON
 
 
 def _current_organization_id() -> int | None:
@@ -631,11 +664,138 @@ def programme_for_element(element_id: int):
         include_derived=include_derived,
     )
 
+    work_packages = result["work_packages"]
+    _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+
     return success_response(
         {
-            "work_packages": result["work_packages"],
+            "work_packages": work_packages,
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/strategy/<int:element_id>", methods=["GET"])
+@login_required
+def strategy_for_element(element_id: int):
+    """L2: "what are we trying to achieve, and how's it tracking?"
+    Serialises ``IntelligenceQueryService.strategy_for_element`` through
+    ``success_response`` -- same shape/error-handling pattern as
+    ``programme_for_element`` above, no business logic here.
+    """
+    include_derived, err = _parse_bool_param(
+        request.args.get("include_derived"), default=True, param_name="include_derived"
+    )
+    if err is not None:
+        return err
+
+    max_depth_raw = request.args.get("max_depth")
+    if max_depth_raw is None:
+        max_depth = 3
+    else:
+        try:
+            max_depth = int(max_depth_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "max_depth must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= max_depth <= 5):
+            return error_response(
+                "max_depth must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.strategy_for_element(
+        element_id,
+        max_depth=max_depth,
+        include_derived=include_derived,
+    )
+
+    initiatives = result["initiatives"]
+    _redact_financial_fields(initiatives, ("budget_variance_pct",), "budget_reason")
+
+    return success_response(
+        {
+            "initiatives": initiatives,
+            "reasons": result.get("reasons") or [],
+            "elements": result.get("elements") or {},
+        }
+    )
+
+
+@intelligence_api.route("/accountability/<int:element_id>", methods=["GET"])
+@login_required
+def accountability_for_element(element_id: int):
+    """L4: "who's accountable for ___, and can they take on more?"
+    Serialises ``IntelligenceQueryService.accountability_for_element``
+    through ``success_response`` -- same error-handling pattern as the
+    other lenses, no business logic here. No max_depth/include_derived
+    params: this lens is a pure ownership lookup, not a blast-radius
+    traversal, unlike every other lens on this blueprint.
+
+    The ownership read itself is currently WITHDRAWN -- see the service
+    method's own docstring (a real tenant-isolation gap found in external
+    review of the original PR; no shared, tenant-safe reader exists yet).
+    This route's element/tenant pre-checks are unchanged and still real;
+    only the body of the answer is a permanent honest empty state until
+    that reader exists.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.models import ArchiMateElement
+
+    element = ArchiMateElement.query.filter_by(id=element_id).first()
+    if element is None:
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.accountability_for_element(element_id)
+
+    return success_response(
+        {
+            "owners": result["owners"],
+            "capacity_not_available": result.get("capacity_not_available", True),
+            "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 
