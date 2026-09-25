@@ -73,7 +73,17 @@ def test_oef_import_preview_execute_reload_persists(browser, live_server, seeded
         # Open the element detail drawer for real and read the rendered
         # properties panel, not the API response — this is the DOGFOOD-004
         # acceptance criterion (status/source/layer visible on the page).
-        search_box = page.locator("input[type=search], input[placeholder*='Search' i]").first
+        #
+        # The page also carries a sidebar "Search navigation..." box and a
+        # hidden global command-palette search, both of which also match
+        # input[placeholder*='Search' i] and sort before this page's own
+        # element search in the DOM -- .first silently picked the sidebar
+        # box, which filters nothing here, so the row search only ever
+        # worked by accident (the imported element already being on the
+        # unfiltered first page in a lightly-seeded org). The element list's
+        # own search box carries a placeholder no other control on the page
+        # uses.
+        search_box = page.locator("input[placeholder='Search by name...']")
         search_box.fill("M-CON-10G-FREE-PILOTS")
         target_row = page.locator("tr[data-testid='element-row']", has_text="M-CON-10G-FREE-PILOTS")
         expect(target_row).to_have_count(1, timeout=PAGE_TIMEOUT)
