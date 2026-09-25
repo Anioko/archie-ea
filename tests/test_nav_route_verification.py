@@ -59,7 +59,12 @@ NAV_PAGES = {
         "/consolidation-list/",
         "Consolidation List Dashboard",
     ),
-    "dashboard_pages.import_history": ("/dashboard/import-history", "Import History"),
+    # Canvas/framework UI fix, round 2 (25 Sep 2026): dashboard_pages.
+    # import_history was intentionally folded from platform_admin's Admin
+    # zone (with Batch Import above) to stay within the link budget once
+    # "Canvases" and "Frameworks" joined every role's Library zone. Both are
+    # tiles on the admin dashboard page instead of a sidebar zone entry --
+    # see app/utils/role_access.py's _ADMIN_LINKS comment.
     "dashboard_pages.rationalization_scorecard": (
         "/dashboard/rationalization/scorecard",
         "Executive Rationalization Scorecard",

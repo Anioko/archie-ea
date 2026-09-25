@@ -572,15 +572,14 @@ _MY_WORK_LINKS = {
         # behind one glyph are the same button.
         _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
         _link("Capability Health", "strategic.capability_health", "activity"),
-        # "Duplicate Detection" (unified_duplicate.simple_dashboard) folded out
-        # in the canvas/framework UI fix, round 2 (25 Sep 2026): this zone has
-        # one link of headroom and "Canvases" plus "Frameworks" joining every
-        # role's Library zone need two. Of this zone's twelve links this is
-        # the data-hygiene utility rather than an architecture-practice page,
-        # and it is also reached in context from the Rationalization
-        # dashboard's duplicate-groups panel (app/templates/applications/
-        # rationalization.html) for the personas who own that workflow; for
-        # enterprise_architect it is still one click away via "All modules".
+        # "Duplicate Detection" (unified_duplicate.simple_dashboard) moved out
+        # of this zone in the canvas/framework UI fix, round 2 (25 Sep 2026):
+        # this zone has one link of headroom and "Canvases" plus "Frameworks"
+        # joining every role's Library zone need two. It moved rather than
+        # dropped -- see ROLE_PORTFOLIO_MANAGER below, the persona that owns
+        # the Rationalization workflow it is reached from in context
+        # (app/templates/applications/rationalization.html); it stays in a
+        # sidebar zone, just not this one, so it is not directory-only again.
         # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): the Data
         # Architect and Technical Architect personas the register flagged as
         # underserved are folded into enterprise_architect here — there is no
@@ -692,6 +691,12 @@ _MY_WORK_LINKS = {
         _link("Consolidation List", "consolidation_list.dashboard", "layers"),
         # NAV-1: see the CTO entry above — same page, the other owning persona.
         _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
+        # Moved from enterprise_architect in the canvas/framework UI fix,
+        # round 2 (25 Sep 2026): that zone had no headroom left once
+        # "Canvases" and "Frameworks" joined the shared Library zone. This
+        # zone has ample headroom, and portfolio_manager already owns
+        # Rationalization above, from which this page is reached in context.
+        _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from

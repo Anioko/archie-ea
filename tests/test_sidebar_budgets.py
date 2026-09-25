@@ -295,7 +295,13 @@ def test_business_architect_my_work_membership():
 
 
 def test_portfolio_manager_my_work_membership():
-    """S-11 remainder: Consolidation List was directory-only."""
+    """S-11 remainder: Consolidation List was directory-only.
+
+    Round 2 (25 Sep 2026): "Duplicate Detection" moved here from
+    enterprise_architect's My work, which had no headroom left once
+    "Canvases" and "Frameworks" joined the shared Library zone. This zone
+    had ample headroom, and portfolio_manager already owns Rationalization,
+    from which the page is reached in context."""
     assert _my_work_labels(ROLE_PORTFOLIO_MANAGER) == [
         "Ask a question",
         "Portfolio",
@@ -305,6 +311,7 @@ def test_portfolio_manager_my_work_membership():
         "Consolidation List",
         # NAV-1: see test_cto_my_work_membership — same page, other owner.
         "Portfolio KPIs",
+        "Duplicate Detection",
     ]
 
 
