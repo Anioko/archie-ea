@@ -122,12 +122,22 @@ def analyze_document_for_application(application_id):
         provider = request.form.get("provider", "claude")
 
         # Check if analyzing existing document or uploading new one
-        document_id = request.form.get("document_id")
+        document_id_raw = request.form.get("document_id")
         file = None
         file_name = None
         file_content_type = None
 
-        if document_id:
+        if document_id_raw:
+            # Parse at the edge, before any query. Under psycopg 3 a string id
+            # makes SQLAlchemy emit application_documents.id = '5'::VARCHAR,
+            # and PostgreSQL refuses to compare an integer column to varchar
+            # rather than coercing it, turning a bad id into a 500 instead of
+            # a clean refusal.
+            try:
+                document_id = int(document_id_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "document_id must be an integer."}), 400
+
             # Analyze existing document
             query = ApplicationDocument.query.filter_by(id=document_id)
             if not getattr(current_user, "is_platform_admin", False):
