@@ -124,8 +124,13 @@ def test_created_diagram_survives_every_export_format_intact(browser, live_serve
     csrf_token = page.evaluate(
         "() => document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''"
     )
+    # Quick-add creates ApplicationComponent elements, and the metamodel
+    # only allows composition, aggregation, serving, specialization and
+    # association directly between two of those (triggering is a behavior
+    # relationship and does not apply structure-to-structure), so the three
+    # distinct types drawn here are chosen from that set.
     relationship_specs = [
-        (real_element_ids[0], real_element_ids[1], "triggering"),
+        (real_element_ids[0], real_element_ids[1], "aggregation"),
         (real_element_ids[1], real_element_ids[2], "serving"),
         (real_element_ids[0], real_element_ids[3], "association"),
     ]
