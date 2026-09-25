@@ -83,7 +83,7 @@ def _make_user(db_session, org, role, *, is_platform_admin=False, email=None):
         is_platform_admin=is_platform_admin,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
     return user
