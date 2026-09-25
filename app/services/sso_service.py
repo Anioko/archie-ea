@@ -21,6 +21,18 @@ from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
+# Signing algorithms this service will ever accept for an id_token. "none"
+# and every HMAC ("HS*") algorithm are deliberately absent: HS* keys the
+# signature with the IdP's public key material, which every client already
+# holds, so accepting it here would let anyone forge a token.
+_ID_TOKEN_ALGORITHMS = (
+    "RS256", "RS384", "RS512",
+    "PS256", "PS384", "PS512",
+    "ES256", "ES384", "ES512",
+)
+# Clock-skew allowance applied to exp, iat and nbf.
+_ID_TOKEN_LEEWAY_SECONDS = 120
+
 
 class SSONotConfiguredError(Exception):
     """Raised when SSO is not configured or a required env var is missing."""
@@ -126,16 +138,26 @@ class SSOService:
         return jwks
 
     def _verify_id_token(
-        self, id_token: str, config, discovery: dict, expected_nonce: str
+        self,
+        id_token: str,
+        config,
+        discovery: dict,
+        expected_nonce: str,
+        access_token: Optional[str] = None,
     ) -> dict:
         """Verify id_token signature, issuer, audience, expiry and nonce.
 
         Uses the IdP's JWKS (from the OIDC discovery document) to verify the
-        JWT signature via authlib.  Validates that the ``iss`` claim matches
-        the discovery document's issuer, ``aud`` includes the configured
-        client_id, ``exp`` is not in the past, and the ``nonce`` claim equals
-        the nonce generated for this login and kept in the caller's session,
-        so a token captured from another login cannot be replayed here.
+        JWT signature, decoding with joserfc and validating the claims with
+        authlib's own ``CodeIDToken`` claim class: ``iss``, ``sub``, ``aud``,
+        ``exp`` and ``iat`` are required; ``aud`` must include the configured
+        client_id; ``azp`` is checked when present and required when ``aud``
+        holds more than one value; ``at_hash`` is checked when the token
+        carries one and an access token was passed in; and the ``nonce``
+        claim must equal the nonce generated for this login and kept in the
+        caller's session, so a token captured from another login cannot be
+        replayed here. Only RSA/EC/RSA-PSS signatures are accepted, pinned to
+        whichever of them the discovery document advertises.
 
         Args:
             id_token: The ID token string from the token response.
@@ -144,6 +166,8 @@ class SSOService:
                 and ``issuer``).
             expected_nonce: The nonce sent in this login's authorization
                 request. Required: a missing value refuses the token.
+            access_token: The access token issued alongside this id_token, if
+                any, so an ``at_hash`` claim can be checked against it.
 
         Returns:
             Dict of decoded JWT claims.
@@ -170,35 +194,65 @@ class SSOService:
                 "OIDC discovery document missing 'issuer'"
             )
 
+        advertised_algorithms = (
+            discovery.get("id_token_signing_alg_values_supported") or ["RS256"]
+        )
+        allowed_algorithms = [
+            alg for alg in advertised_algorithms if alg in _ID_TOKEN_ALGORITHMS
+        ]
+        if not allowed_algorithms:
+            raise SSONotConfiguredError(
+                "id_token verification failed: the identity provider does not "
+                "advertise an acceptable signing algorithm"
+            )
+
         claims_options = {
             "iss": {"essential": True, "value": issuer},
             "aud": {"essential": True, "value": config.client_id},
-            "nonce": {"essential": True, "value": expected_nonce},
+        }
+        claims_params = {
+            "nonce": expected_nonce,
+            "client_id": config.client_id,
+            "access_token": access_token,
         }
 
-        from authlib.jose import jwt
+        from authlib.oidc.core import CodeIDToken
+        from joserfc import jwt
+        from joserfc.errors import BadSignatureError, InvalidKeyIdError
+        from joserfc.jwk import KeySet
+        from joserfc.jws import JWSRegistry
 
         def _decode(jwks: dict) -> dict:
-            claims = jwt.decode(id_token, jwks, claims_options=claims_options)
-            claims.validate()
+            key_set = KeySet.import_key_set(jwks)
+            registry = JWSRegistry(algorithms=allowed_algorithms, strict_check_header=False)
+            token = jwt.decode(id_token, key_set, registry=registry)
+            claims = CodeIDToken(token.claims, token.header, claims_options, claims_params)
+            claims.validate(leeway=_ID_TOKEN_LEEWAY_SECONDS)
             return dict(claims)
 
         jwks = self._get_jwks(jwks_uri)
         try:
             return _decode(jwks)
-        except Exception as first_exc:
+        except (InvalidKeyIdError, BadSignatureError) as first_exc:
             # The signing key may have rotated since the key set was cached:
-            # refetch once and try again before refusing the token.
+            # refetch once and try again before refusing the token. Any other
+            # failure (claims, algorithm, malformed token) refuses at once,
+            # below, with no refetch.
             try:
                 fresh = self._get_jwks(jwks_uri, force=True)
-                if fresh == jwks:
-                    raise first_exc
+            except Exception as fetch_exc:
+                logger.warning("id_token key refetch failed: %s", fetch_exc)
+                raise SSONotConfiguredError("id_token verification failed") from first_exc
+            if fresh == jwks:
+                raise SSONotConfiguredError("id_token verification failed") from first_exc
+            try:
                 return _decode(fresh)
-            except SSONotConfiguredError:
-                raise
-            except Exception as exc:
-                logger.warning("id_token verification failed: %s", exc)
-                raise SSONotConfiguredError("id_token verification failed") from exc
+            except Exception as second_exc:
+                logger.warning("id_token verification failed: %s", second_exc)
+                raise SSONotConfiguredError("id_token verification failed") from second_exc
+        except Exception as exc:
+            logger.warning("id_token verification failed: %s", exc)
+            raise SSONotConfiguredError("id_token verification failed") from exc
 
     def initiate_oidc_flow(self, config, redirect_uri: str) -> dict:
         """Build the OIDC authorization URL.
@@ -331,7 +385,11 @@ class SSOService:
             if id_token:
                 try:
                     userinfo = self._verify_id_token(
-                        id_token, config, discovery, expected_nonce or ""
+                        id_token,
+                        config,
+                        discovery,
+                        expected_nonce or "",
+                        access_token=token_data.get("access_token") or None,
                     )
                 except SSONotConfiguredError:
                     raise
