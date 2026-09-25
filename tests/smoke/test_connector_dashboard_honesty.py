@@ -47,8 +47,11 @@ def test_connector_dashboard_does_not_claim_working_sync(browser, live_server, s
         # The old subtitle named specific external systems ("Datadog, Jira,
         # ServiceNow, Salesforce") as monitored integrations -- Salesforce in
         # particular has no connector implementation anywhere in the repo.
-        body_text = page.locator("body").inner_text()
-        assert "Salesforce" not in body_text
+        # Scoped to the dashboard's own content, not the whole page: the
+        # admin sidebar separately links to an unrelated "Salesforce
+        # Integration" settings page that this change does not touch.
+        dashboard_text = page.locator('[x-data="connectorDashboard()"]').inner_text()
+        assert "Salesforce" not in dashboard_text
 
         # Every rendered "sync" control (card buttons and the modal's
         # "Trigger Sync") must be disabled, not a live action.
@@ -61,6 +64,14 @@ def test_connector_dashboard_does_not_claim_working_sync(browser, live_server, s
         # Cards only render once the connector list finishes loading; either
         # there are zero connectors (empty state, nothing to assert on) or
         # every rendered sync control is the disabled "Not Available" one.
+        # Deliberately not seeding a real ConnectorConfig row to force the
+        # non-empty branch here: GET /integrations/api/connectors (unrelated
+        # to this change) 500s for any row that exists, because
+        # api_list_connectors reads conn.connector_type.value /
+        # conn.status.value / conn.sync_mode.value as if those columns were
+        # Enum members, when ConnectorConfig stores them as plain strings --
+        # a second, separate honesty bug in this same file, out of scope for
+        # this change and left for a follow-up.
         card_sync_controls = page.locator(
             'button[aria-label="Sync is not available for this connector yet"]'
         )
