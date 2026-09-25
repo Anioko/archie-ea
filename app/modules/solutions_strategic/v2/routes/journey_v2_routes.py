@@ -98,6 +98,27 @@ DELIVERABLE_TOOL_ENDPOINTS = {
 }
 
 
+def _programme_type_options():
+    """Offered programme types for the start form (R1-04, US-1 AC2), each
+    with counts read from the loaded template -- never a literal in markup."""
+    from app.modules.transformation_room.programme_types.loader import ProgrammeTypeCatalogue
+
+    options = []
+    for programme_type in ProgrammeTypeCatalogue().offered_types():
+        deliverable_count = sum(
+            len(stage.get("deliverables") or ()) for stage in programme_type.stages.values()
+        )
+        options.append({
+            "key": programme_type.key,
+            "name": programme_type.name,
+            "summary": programme_type.summary,
+            "workstream_count": len(programme_type.workstreams),
+            "deliverable_count": deliverable_count,
+            "gate_count": len(programme_type.stages),
+        })
+    return options
+
+
 def _available_deliverable_tools(journey=None):
     """Build only links whose optional blueprint registered successfully.
 
@@ -439,6 +460,7 @@ def index():
         intent_options=JOURNEY_INTENT_OPTIONS,
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
+        programme_type_options=_programme_type_options(),
         requested_intent=(request.args.get("intent") or "").replace("-", "_"),
         solutions=in_progress,
         solution_id=None,
@@ -486,6 +508,18 @@ def start_architecture_journey():
     if outcome_type not in OUTCOME_TYPES:
         return api_error("Choose a valid outcome", 400)
 
+    # R1-04 (US-1): programme_type is accepted only if it is one of the
+    # currently offered types (security.md 5.1) -- validated before
+    # db.session.add, so an unknown or not-yet-offered key creates no row.
+    programme_type_value = data.get("programme_type")
+    programme_type = (
+        programme_type_value.strip() if isinstance(programme_type_value, str) else None
+    ) or None
+    if programme_type is not None:
+        offered_keys = {option["key"] for option in _programme_type_options()}
+        if programme_type not in offered_keys:
+            return api_error("That programme type is not available", 400)
+
     journey = ArchitectureJourney(
         owner_id=current_user.id,
         organization_id=current_user.organization_id,
@@ -496,6 +530,7 @@ def start_architecture_journey():
         outcome_type=outcome_type,
         evidence_manifest=[],
         journey_state={"framing": {"purpose": title}},
+        programme_type=programme_type,
     )
     db.session.add(journey)
     db.session.commit()
@@ -526,6 +561,13 @@ def architecture_journey_workspace(journey_id):
         JOURNEY_LINK_RELATIONS,
     )
 
+    programme_type_name = None
+    if journey.programme_type:
+        from app.modules.transformation_room.programme_types.loader import ProgrammeTypeCatalogue
+
+        template = ProgrammeTypeCatalogue().get(journey.programme_type)
+        programme_type_name = template.name if template else journey.programme_type
+
     return render_template(
         "architecture_assistant/architecture_journey_workspace.html",
         journey=journey,
@@ -536,6 +578,7 @@ def architecture_journey_workspace(journey_id):
         layer_options=JOURNEY_LAYER_OPTIONS,
         deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
         deliverable_tool_urls=_available_deliverable_tools(journey),
+        programme_type_name=programme_type_name,
     )
 
 

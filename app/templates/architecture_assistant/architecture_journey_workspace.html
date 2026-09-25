@@ -39,7 +39,7 @@
 
   {{ page_shell(
       title=journey.title,
-      subtitle=home.purpose.label,
+      subtitle=(home.purpose.label ~ ' · ' ~ programme_type_name) if programme_type_name else home.purpose.label,
       breadcrumb=[
         ('Home', url_for('main.index')),
         ('Architecture Journey', url_for('architecture_journey.index')),
@@ -65,6 +65,11 @@
 
     {# ── purpose, stage, next action ─────────────────────────────────────── #}
     <section class="rounded-xl border border-border bg-card p-5 sm:p-6" aria-labelledby="journey-progress-title">
+      {% if programme_type_name %}
+      <p data-testid="journey-programme-type" class="mb-3 inline-flex items-center rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+        {{ programme_type_name }}
+      </p>
+      {% endif %}
       <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div class="min-w-0">
           <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current stage</p>
