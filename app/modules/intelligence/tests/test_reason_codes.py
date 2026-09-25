@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_one_members,
+    13 -> test_reason_codes_has_exactly_thirty_five_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -19,18 +19,16 @@ review. Role-gating added ``financial_data_restricted``. T-S1 (value streams
 at risk, curated path) added four more -- ``no_value_stream_recorded``,
 ``no_capability_linked``, ``value_stream_not_linked_to_model`` and
 ``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
-the other two are reserved for T-S3's graph path.
-
-"Closed" means no endpoint may invent an absence string inline, not that the
-set is frozen at sixteen forever; the module's own docstring says a new
-absence condition adds a member here, and nowhere else. This test is
-updated in lockstep -- this ``_EXPECTED`` list has drifted out of sync with
-reality more than once already (found and corrected twice tonight,
-independently, by two different lenses' briefs each adding a member without
-re-deriving the true count); merging two branches that each added members
-independently (L2/L4/role-gating on one side, T-S1 on the other) is a third
-instance of the same class of drift, resolved here by re-deriving the real
-count (31) rather than trusting either side's own stale number.
+``value_stream_not_linked_to_model`` is also emitted by T-S4 (on a different
+key -- see reason_codes.py's own comment), and ``dependency_direction_unknown``
+is reserved for T-S3's graph path. T-S4 (initiatives and success metrics)
+added two more -- ``capability_not_linked_to_model`` and
+``no_success_metric_recorded``. T-WIRE-5 (strategy outcomes and importance)
+added two more -- ``no_outcome_recorded`` and ``no_criticality_recorded``.
+"Closed" means no endpoint may invent an
+absence string inline, not that the set is frozen at sixteen forever; the
+module's own docstring says a new absence condition adds a member here, and
+nowhere else. This test is updated in lockstep.
 """
 
 from __future__ import annotations
@@ -46,7 +44,9 @@ from app.modules.intelligence.services.reason_codes import (
 
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
-# lenses' three additions, plus T-S1's four additions.
+# lenses' three additions, the Strategy and Accountability lenses' five
+# additions, the role-gating addition, T-S1's four additions, T-S4's
+# two additions, plus T-WIRE-5's two additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -79,11 +79,15 @@ _EXPECTED = {
     "no_capability_linked",
     "value_stream_not_linked_to_model",
     "dependency_direction_unknown",
+    "capability_not_linked_to_model",
+    "no_success_metric_recorded",
+    "no_outcome_recorded",
+    "no_criticality_recorded",
 }
 
 
-def test_reason_codes_has_exactly_thirty_one_members():
-    assert len(REASON_CODES) == 31
+def test_reason_codes_has_exactly_thirty_five_members():
+    assert len(REASON_CODES) == 35
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
