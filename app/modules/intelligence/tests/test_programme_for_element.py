@@ -235,3 +235,55 @@ def test_multiple_work_packages_on_one_element_each_get_their_own_row(app, db_se
 
     names = {wp["name"] for wp in result["work_packages"]}
     assert names == {"Phase 1", "Phase 2"}
+
+
+def _foreign_owner_result(app, db_session, make_org, suffix):
+    from app.models.user import User
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    org = make_org(f"programme-lens-foreign-owner-{suffix}")
+    other = make_org(f"programme-lens-foreign-owner-other-{suffix}")
+    a = _element(db_session, org.id, "A")
+    foreigner = User(
+        email=f"foreign-{suffix}@example.com", first_name="Fran", last_name="Foreign",
+        organization_id=other.id,
+    )
+    db_session.add(foreigner)
+    db_session.flush()
+    _work_package(db_session, a, name="Owned by someone elsewhere", owner_id=foreigner.id)
+    db_session.commit()
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+        return IntelligenceQueryService.programme_for_element(a.id)
+
+
+def test_a_work_package_owner_from_another_organisation_is_never_named(app, db_session, make_org):
+    result = _foreign_owner_result(app, db_session, make_org, "fence")
+
+    row = result["work_packages"][0]
+    assert row["owner"] is None
+    assert "Fran" not in repr(result) and "foreign-fence@example.com" not in repr(result)
+
+
+def test_the_owner_tenant_predicate_is_what_stops_the_foreign_owner_leak(
+    app, db_session, make_org, monkeypatch
+):
+    """Mutation proof: replace the seam with a predicate that matches every
+    user and the foreign owner IS named, so the test above is not passing
+    by accident."""
+    import sqlalchemy as sa
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    monkeypatch.setattr(
+        IntelligenceQueryService, "_owner_user_tenant_predicate", staticmethod(lambda org_id: sa.true())
+    )
+
+    result = _foreign_owner_result(app, db_session, make_org, "mutation")
+
+    # The foreign user's real name, not just a truthy value, proves the
+    # predicate seam is what stops the leak rather than something else.
+    assert result["work_packages"][0]["owner"] == "Fran Foreign"
