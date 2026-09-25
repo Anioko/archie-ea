@@ -525,6 +525,11 @@ def create_solution_stakeholder(solution_id):
 def delete_solution_stakeholder(solution_id, row_id):
     """Delete a stakeholder."""
     from app.models.solution_sad_models import SolutionStakeholderSAD
+    from app.utils.route_guards import require_entity
+
+    # The solution is tenant-fenced: a solution id from another organisation is a 404,
+    # so its stakeholder rows are never reached through the URL.
+    require_entity(Solution, solution_id, description="Solution not found")
     row = SolutionStakeholderSAD.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
     db.session.commit()
