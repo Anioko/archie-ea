@@ -1,7 +1,30 @@
 """
 Team management routes — org member listing and role management (COM-007).
 
-Blueprint: team_bp  |  URL prefix: /admin  |  All routes: org_admin only
+Blueprint: team_bp  |  URL prefix: /admin  |  All routes: org_admin or platform admin
+
+``rbac_service.require_role("org_admin")`` reads only the per-org OrgRole
+table (see app/services/rbac_service.py), a vocabulary separate from
+platform-wide admin status (``app.middleware.tenant_decorators.is_platform_admin``
+— ``current_user.is_platform_admin`` combined with ``Permission.ADMINISTER``,
+the same pair ``platform_admin_required`` checks). A platform admin with no
+OrgRole row for their org defaults to "viewer" there and was refused every
+route below. ``_require_org_or_platform_admin`` admits either, reusing both
+existing checks rather than adding a third: the platform-admin half calls
+``tenant_decorators.is_platform_admin`` directly (the predicate
+``platform_admin_required`` itself now calls, so there is exactly one
+implementation of it), and the org half calls ``rbac_service.is_org_admin``
+unchanged.
+
+``app/utils/rbac.py``'s ``require_role("org_admin")`` was considered and not
+used here: its role comes from ``User.is_org_admin`` / ``User.is_platform_admin``
+booleans, not the ``OrgRole`` table this blueprint's own writes maintain.
+``team_change_role()`` below, and ``PendingInvitation`` acceptance
+(app/models/pending_invitation.py), grant "org_admin" by writing an
+``OrgRole`` row only — neither ever sets ``User.is_org_admin`` — so a member
+promoted to org_admin through this very page would immediately fail
+``app/utils/rbac.py``'s check while still passing ``rbac_service.is_org_admin``
+correctly. Switching to it would have swapped one access gap for another.
 """
 
 import logging
@@ -10,6 +33,7 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required
 
 from app import db
+from app.middleware.tenant_decorators import is_platform_admin
 from app.models.user import User
 from app.models.org_role import OrgRole, VALID_ORG_ROLES
 from app.services.rbac_service import rbac_service
@@ -27,12 +51,21 @@ def _require_org_id():
     return org_id
 
 
+def _require_org_or_platform_admin(org_id):
+    """Abort 403 unless the current user is this org's admin or a platform admin."""
+    if is_platform_admin(current_user):
+        return
+    if rbac_service.is_org_admin(org_id, current_user.id):
+        return
+    abort(403)
+
+
 @team_bp.route("/team")
 @login_required
-@rbac_service.require_role("org_admin")
 def team():
     """List org members with their roles."""
     org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
     members = User.query.filter_by(organization_id=org_id).all()
     role_map = {
         m.id: rbac_service.get_user_role(org_id, m.id) for m in members
@@ -47,7 +80,6 @@ def team():
 
 @team_bp.route("/team/invite", methods=["POST"])
 @login_required
-@rbac_service.require_role("org_admin")
 def team_invite():
     """Create a pending invitation for an existing user to join the org.
 
@@ -55,6 +87,7 @@ def team_invite():
     pending invitations for the same org+user are refused.
     """
     org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
     email = (request.form.get("email") or "").strip().lower()
     role = request.form.get("role", "viewer")
 
@@ -66,6 +99,9 @@ def team_invite():
     user = User.find_by_email(email)
     if user is None:
         return jsonify({"error": f"No user found with email {email}"}), 404
+
+    if OrgRole.get_role(org_id, user.id) is not None:
+        return jsonify({"error": "This user is already a member of the organisation"}), 409
 
     from app.models.pending_invitation import PendingInvitation
 
@@ -85,10 +121,10 @@ def team_invite():
 
 @team_bp.route("/team/role", methods=["POST"])
 @login_required
-@rbac_service.require_role("org_admin")
 def team_change_role():
     """Change a member's role within the org."""
     org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
     user_id = request.form.get("user_id", type=int)
     role = request.form.get("role", "")
 
@@ -108,10 +144,10 @@ def team_change_role():
 
 @team_bp.route("/team/member/<int:user_id>", methods=["DELETE"])
 @login_required
-@rbac_service.require_role("org_admin")
 def team_remove_member(user_id):
     """Remove a user's org role (does not delete the user account)."""
     org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
 
     # Prevent org_admin from removing themselves
     if user_id == current_user.id:
