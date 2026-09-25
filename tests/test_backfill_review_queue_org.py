@@ -59,9 +59,16 @@ def _archimate_element(db_session, org, label="ae"):
 
 
 def _item(db_session, org_id=None, item_name=None, item_type="capability_mapping",
-          item_id=1, assigned_to_id=None,
+          item_id=None, assigned_to_id=None,
           reviewed_by_id=None, escalated_to_id=None):
-    """Create a review queue item, optionally with NULL organization_id."""
+    """Create a review queue item, optionally with NULL organization_id.
+
+    item_id defaults to None (no reviewed-item reference) so a caller that
+    only sets up user FKs exercises the user-fallback resolution path, not
+    whatever row happens to occupy item_id=1 in a shared test database.
+    Tests exercising reviewed-item resolution must pass an item_id that
+    points at an application or ArchiMate element they created themselves.
+    """
     from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
     if item_name is None:
