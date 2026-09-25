@@ -104,15 +104,21 @@ def backfill_review_queue_org(dry_run):
         r0_counts[item_type] = count
         r0 += count
 
-    # Count NULL-org rows with unregistered item_type
+    # Count NULL-org rows with unregistered item_type.
+    # A tuple bound to `NOT IN :known` compiles fine under psycopg2 but is a
+    # syntax error under psycopg 3 (which does not expand a single bound
+    # parameter into a list). SQLAlchemy's expanding bind parameter compiles
+    # to the right placeholder count for either driver.
+    from sqlalchemy import bindparam
+
     unknown_types = db.session.execute(
         db.text(
             "SELECT item_type, COUNT(*) FROM review_queue_items "
             "WHERE organization_id IS NULL "
             "AND item_type NOT IN :known "
             "GROUP BY item_type"
-        ),
-        {"known": tuple(_ITEM_TYPE_TABLE.keys())},
+        ).bindparams(bindparam("known", expanding=True)),
+        {"known": list(_ITEM_TYPE_TABLE.keys())},
     ).fetchall()
     for row in unknown_types:
         r0_unknown_types[row[0]] = row[1]
