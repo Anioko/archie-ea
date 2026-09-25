@@ -1,4 +1,5 @@
 {# Layout: admin_base.html — PRIMARY layout for all authenticated admin/dashboard pages.
+   smoke-coverage-ok: CSP nonce fix on <style>; covered by tests/test_capability_map_a11y_csp.py and tests/test_csp_nonce.py
    Usage: DEFAULT for new templates. Includes sidebar, header, modal portal, Platform JS.
    Categories: admin/*, dashboard/*, applications/*, solutions/*, vendors/*, architecture/*,
                capabilities/*, ea_workflows/*, archimate_crud/*, consolidation_list/*,
@@ -29,7 +30,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles/shadcn-cards.css') }}">
     
     <!-- Alpine.js x-cloak prevention for modal epidemic -->
-    <style>
+    <style nonce="{{ csp_nonce }}">
     [x-cloak] { display: none !important; }
 
     @media print {
