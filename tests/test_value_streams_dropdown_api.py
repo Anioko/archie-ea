@@ -36,7 +36,7 @@ def _make_user(db_session, org):
         role=role,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = uuid.uuid4().hex  # generated, not a real credential
     db_session.add(user)
     db_session.flush()
     return user

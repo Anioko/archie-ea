@@ -33,7 +33,7 @@ def _make_platform_admin(db_session, org):
         is_platform_admin=True,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = uuid.uuid4().hex  # generated, not a real credential
     db_session.add(user)
     db_session.flush()
     return user

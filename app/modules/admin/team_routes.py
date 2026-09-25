@@ -5,13 +5,26 @@ Blueprint: team_bp  |  URL prefix: /admin  |  All routes: org_admin or platform 
 
 ``rbac_service.require_role("org_admin")`` reads only the per-org OrgRole
 table (see app/services/rbac_service.py), a vocabulary separate from
-platform-wide admin status (``current_user.is_platform_admin`` combined
-with ``Permission.ADMINISTER`` — the same pair app/middleware/
-tenant_decorators.py's ``platform_admin_required`` checks). A platform
-admin with no OrgRole row for their org defaults to "viewer" there and was
-refused every route below. ``_is_org_or_platform_admin`` admits either, so
-neither vocabulary is weakened and a platform admin is no longer locked out
-of an administration surface they are entitled to.
+platform-wide admin status (``app.middleware.tenant_decorators.is_platform_admin``
+— ``current_user.is_platform_admin`` combined with ``Permission.ADMINISTER``,
+the same pair ``platform_admin_required`` checks). A platform admin with no
+OrgRole row for their org defaults to "viewer" there and was refused every
+route below. ``_require_org_or_platform_admin`` admits either, reusing both
+existing checks rather than adding a third: the platform-admin half calls
+``tenant_decorators.is_platform_admin`` directly (the predicate
+``platform_admin_required`` itself now calls, so there is exactly one
+implementation of it), and the org half calls ``rbac_service.is_org_admin``
+unchanged.
+
+``app/utils/rbac.py``'s ``require_role("org_admin")`` was considered and not
+used here: its role comes from ``User.is_org_admin`` / ``User.is_platform_admin``
+booleans, not the ``OrgRole`` table this blueprint's own writes maintain.
+``team_change_role()`` below, and ``PendingInvitation`` acceptance
+(app/models/pending_invitation.py), grant "org_admin" by writing an
+``OrgRole`` row only — neither ever sets ``User.is_org_admin`` — so a member
+promoted to org_admin through this very page would immediately fail
+``app/utils/rbac.py``'s check while still passing ``rbac_service.is_org_admin``
+correctly. Switching to it would have swapped one access gap for another.
 """
 
 import logging
@@ -20,7 +33,7 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 from flask_login import current_user, login_required
 
 from app import db
-from app.models import Permission
+from app.middleware.tenant_decorators import is_platform_admin
 from app.models.user import User
 from app.models.org_role import OrgRole, VALID_ORG_ROLES
 from app.services.rbac_service import rbac_service
@@ -40,11 +53,7 @@ def _require_org_id():
 
 def _require_org_or_platform_admin(org_id):
     """Abort 403 unless the current user is this org's admin or a platform admin."""
-    is_platform_admin = bool(
-        getattr(current_user, "is_platform_admin", False)
-        and current_user.can(Permission.ADMINISTER)
-    )
-    if is_platform_admin:
+    if is_platform_admin(current_user):
         return
     if rbac_service.is_org_admin(org_id, current_user.id):
         return
