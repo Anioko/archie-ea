@@ -58,6 +58,105 @@ for _llm_api_key_env_var in _LLM_API_KEY_ENV_VARS:
 os.environ["PYTHON_DOTENV_DISABLED"] = "1"
 
 
+def _give_this_xdist_worker_its_own_database() -> None:
+    """Under pytest-xdist, point this worker at a database no other worker
+    touches, creating it first if needed.
+
+    Confirmed on real infrastructure (an IBM Cloud VM run, not guessed): -n 2
+    finished in 59 minutes but 8 tests failed and 3 errored that pass on
+    `main` serially (test_csrf_coverage, test_modules_directory, three in
+    test_transformation_db_guards, test_typed_arb_*,
+    test_my_applications_ownership_numbers, two sidebar journeys); re-running
+    each alone on the same VM and database passed every time. That is the
+    signature of two workers racing on one shared database, not a broken
+    environment or a genuine correctness bug in those tests -- each worker is
+    a separate OS process running a disjoint slice of the suite against the
+    SAME TEST_DATABASE_URL/DATABASE_URL, and plenty of older test modules
+    predate the transactional db_session fixture (see this file's own
+    docstring) and mutate shared/singleton rows directly rather than inside a
+    rolled-back transaction.
+
+    Runs once per worker PROCESS at conftest import time (xdist spawns one
+    Python process per worker, each importing conftest fresh), before any
+    fixture -- in particular before tests/conftest.py's own `app` fixture
+    calls create_app(), which is what actually reads these env vars.
+    Non-xdist runs (PYTEST_XDIST_WORKER unset) are untouched: same shared
+    database as today, same behaviour as before this function existed.
+
+    Correction after a real CI run of the first version of this function
+    (which issued a bare ``CREATE DATABASE``, no template): 22 tests failed,
+    most with ``relation "organizations" does not exist`` or permission
+    errors traceable to missing seed rows -- a genuinely empty database has
+    no schema, and this file's own ``_schema`` fixture (``db.create_all()``,
+    session-scoped) does not run for every test module. Its own docstring
+    says why: eight pre-existing modules hand-roll their own module-scoped
+    ``app`` fixture and pytest resolves the *closest* definition, so those
+    never reach the shared ``_schema`` fixture at all -- safe under the old
+    single-shared-database model, where the database always already had a
+    schema from CI's own "Create schema" step, but not once each worker gets
+    a database nothing has touched yet. Cloning the already-schema'd base
+    database via Postgres's ``CREATE DATABASE ... TEMPLATE`` fixes this at
+    the one place every worker's database is created, rather than chasing
+    down and fixing eight (or more) individual test modules' fixtures.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if not worker:
+        return
+
+    from urllib.parse import urlsplit, urlunsplit
+
+    import psycopg2
+    from psycopg2 import errors as psycopg2_errors
+    from psycopg2 import sql as psycopg2_sql
+
+    for env_key in ("TEST_DATABASE_URL", "DATABASE_URL"):
+        base_url = os.environ.get(env_key)
+        if not base_url:
+            continue
+        parts = urlsplit(base_url)
+        base_db_name = parts.path.lstrip("/")
+        if not base_db_name:
+            continue
+        worker_db_name = f"{base_db_name}_{worker}"
+
+        # CREATE DATABASE cannot run inside a transaction block, and cannot
+        # target the database the connection is already in -- connect to
+        # Postgres's own always-present `postgres` administrative database,
+        # with autocommit, to issue it.
+        admin_parts = parts._replace(path="/postgres")
+        admin_conn = psycopg2.connect(urlunsplit(admin_parts))
+        admin_conn.autocommit = True
+        try:
+            with admin_conn.cursor() as cursor:
+                try:
+                    # TEMPLATE clones the base database's full schema (CI's
+                    # own "Create schema" step already ran init-db +
+                    # reconcile-schema against it before pytest starts) so
+                    # every worker's database has every table from the
+                    # moment it exists, regardless of which fixture path any
+                    # given test module takes to reach it. Database
+                    # identifiers cannot be bound parameters (they aren't
+                    # values); psycopg2.sql.Identifier quotes and escapes
+                    # them properly rather than hand-building the statement
+                    # string.
+                    cursor.execute(
+                        psycopg2_sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                            psycopg2_sql.Identifier(worker_db_name),
+                            psycopg2_sql.Identifier(base_db_name),
+                        )
+                    )
+                except psycopg2_errors.DuplicateDatabase:
+                    pass
+        finally:
+            admin_conn.close()
+
+        worker_parts = parts._replace(path=f"/{worker_db_name}")
+        os.environ[env_key] = urlunsplit(worker_parts)
+
+
+_give_this_xdist_worker_its_own_database()
+
+
 @pytest.fixture(scope="session")
 def app():
     """Boot the application once per test session."""

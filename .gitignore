@@ -327,3 +327,4 @@ recheck.py
 docs/superpowers/evidence/
 route_verification.json
 route_verification.accum.json
+.route_verification_workers/

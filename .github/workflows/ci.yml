@@ -193,9 +193,43 @@ jobs:
         # enforce it immediately. This job includes rendered UI regressions;
         # the separate smoke jobs own full-app browser journeys.
         # --maxfail keeps the log readable while still surfacing many failures.
+        #
+        # -n 2, not -n auto: -n auto (this runner's full core count) made the
+        # job run over 3h against a ~1h23m-2h30m serial range measured across
+        # tonight's other PRs. First guess was Postgres connection-pool
+        # exhaustion -- TestingConfig's own comment (config.py) documents a
+        # SERIAL run's connection count already came close to the default
+        # max_connections=100, why NullPool is used there at all -- but the
+        # actual evidence doesn't match that theory: the run reached 91%
+        # progress then went completely silent (no further dot-progress) for
+        # 2+ hours until killed, rather than slowing down gradually the way
+        # connection contention would. That is a deadlock/hang signature, not
+        # exhaustion -- most likely something in the last ~9% of run order
+        # assuming single-process state that two xdist workers can both reach
+        # (a shared fixture, a lock, a temp resource); not yet identified
+        # which test, since -q suppresses per-test names and the run was
+        # killed before junitxml/coverage could flush anything to inspect.
+        # --timeout below exists specifically to turn the next hang into a
+        # named TIMEOUT failure with a traceback instead of another blind
+        # multi-hour wait. -n 2 is kept as a real mitigation regardless (fewer
+        # concurrent workers narrows the interleaving window a race needs to
+        # trigger, and doesn't rule out connection pressure as a contributing
+        # factor even if it isn't the primary cause) -- but is not yet trusted
+        # as a fix for the hang itself. If this run also times out, treat that
+        # as confirmation of a real parallel-safety bug in the suite and
+        # revert to serial (drop -n 2) rather than keep tuning worker counts.
+        #
+        # --timeout=300: pytest-timeout is already a project dependency
+        # (requirements-test.txt, already installed by this job), just not
+        # wired into this job's invocation before now. 300s, not the smoke
+        # jobs' 900s, because this job's own comment above notes it includes
+        # some rendered-UI Playwright regressions but not the full-app
+        # browser journeys tests/smoke owns -- keeping it far below the
+        # hang's multi-hour scale while allowing real headroom over a
+        # legitimately slow browser-backed test.
         run: |
           rm -f route_verification.json
-          pytest -q --maxfail=20 --ignore=tests/smoke \
+          pytest -q --maxfail=20 --ignore=tests/smoke -n 2 --timeout=300 \
             --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
             -o xfail_strict=true --junitxml=backend-tests.xml \
             -p scripts.route_verification_audit
