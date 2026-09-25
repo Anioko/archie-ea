@@ -97,7 +97,7 @@ def backfill_review_queue_org(dry_run):
                 f"JOIN {table_name} t ON t.id = r.item_id "
                 f"WHERE r.organization_id IS NULL "
                 f"AND r.item_type = :item_type "
-                f"AND t.organization_id IS NOT NULL"
+                f"AND t.organization_id IS NOT NULL"  # nosec B608 -- only fixed table and column names from a mapping in code are interpolated; values are bound parameters
             ),
             {"item_type": item_type},
         ).scalar() or 0
@@ -198,7 +198,7 @@ def backfill_review_queue_org(dry_run):
                 f"WHERE t.id = r.item_id "
                 f"AND r.organization_id IS NULL "
                 f"AND r.item_type = :item_type "
-                f"AND t.organization_id IS NOT NULL"
+                f"AND t.organization_id IS NOT NULL"  # nosec B608 -- only fixed table and column names from a mapping in code are interpolated; values are bound parameters
             ),
             {"item_type": item_type},
         )
