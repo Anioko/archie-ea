@@ -378,3 +378,18 @@ class TestAggregateFinancials:
             assert "capex" not in report["applied_fields"]
             assert report["cross_checks"]["capex"]["current"] == 5000.0
             assert report["cross_checks"]["capex"]["suggested"] == 100000.0
+
+
+class TestBusinessCaseDetailTemplate:
+    """Canvas/framework UI fix: the three linked drop-downs must read "Not linked"
+    instead of "None" when no link is selected."""
+
+    def test_detail_template_uses_not_linked(self):
+        import os
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "app", "templates", "business_case", "detail.html"
+        )
+        with open(path) as fh:
+            content = fh.read()
+        assert ">Not linked<" in content, "detail.html must use 'Not linked' not 'None'"
+        assert ">None<" not in content, "detail.html must not contain 'None' as an option"
