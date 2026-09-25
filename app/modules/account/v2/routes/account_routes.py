@@ -61,13 +61,22 @@ _svc = AccountService
 def login():
     """Log in an existing user."""
     # Opening /login while already signed in must not disturb the existing
-    # session (it is still fully valid) -- send the user on to the dashboard
-    # instead of re-rendering the sign-in form, which otherwise reads as an
-    # unexpected sign-out even though the session was never touched. Same
+    # session (it is still fully valid) -- send the user on rather than
+    # re-rendering the sign-in form, which otherwise reads as an unexpected
+    # sign-out even though the session was never touched. Same
     # already-authenticated guard as reset_password_request()/reset_password()
-    # below, reused here rather than duplicated with new logic.
+    # below, reused here rather than duplicated with new logic. Honour a
+    # same-origin ?next= the way a successful login below already does --
+    # arriving here signed in from a deep link (e.g. a bookmarked page whose
+    # session just outlived a tab) must land back on that page, not always
+    # the dashboard; safe_next_url() is the same allow-list guard against an
+    # off-site next, reused rather than re-implemented here.
     if current_user.is_authenticated:
-        return redirect(url_for("dashboard.overview"))
+        from app.utils.safe_redirect import safe_next_url
+
+        return redirect(
+            safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+        )
     form = LoginForm()
     if form.validate_on_submit():
         # COM-005: Check email-domain SSO config before password auth.

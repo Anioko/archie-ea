@@ -181,6 +181,58 @@ class TestOpeningAPageNeverSignsOut:
         _assert_still_signed_in(client)
 
 
+class TestLoginRedirectHonoursSafeNext:
+    """Landing on /account/login already signed in (e.g. a deep link, or a
+    bookmarked page opened in a tab whose session outlived it) must return
+    the visitor to where they were headed, not always the dashboard -- but
+    only when that destination is actually on this site."""
+
+    def test_safe_relative_next_is_honoured(self, app, db_session, make_org, client):
+        org = make_org("nosignoutnext1")
+        user = _make_user(db_session, org)
+        _login_via_form(client, user.email, _PASSWORD)
+
+        _clear_g_cache()
+        resp = client.get(
+            "/account/login?next=/capability-map/hierarchy", follow_redirects=False
+        )
+        assert resp.status_code in (302, 303), resp.status_code
+        assert resp.headers["Location"] == "/capability-map/hierarchy"
+        _assert_still_signed_in(client)
+
+    def test_absolute_off_site_next_falls_back_to_dashboard(
+        self, app, db_session, make_org, client
+    ):
+        org = make_org("nosignoutnext2")
+        user = _make_user(db_session, org)
+        _login_via_form(client, user.email, _PASSWORD)
+
+        _clear_g_cache()
+        resp = client.get(
+            "/account/login?next=https://evil.example/x", follow_redirects=False
+        )
+        assert resp.status_code in (302, 303), resp.status_code
+        assert "/dashboard" in resp.headers["Location"]
+        assert "evil.example" not in resp.headers["Location"]
+        _assert_still_signed_in(client)
+
+    def test_protocol_relative_off_site_next_falls_back_to_dashboard(
+        self, app, db_session, make_org, client
+    ):
+        org = make_org("nosignoutnext3")
+        user = _make_user(db_session, org)
+        _login_via_form(client, user.email, _PASSWORD)
+
+        _clear_g_cache()
+        resp = client.get(
+            "/account/login?next=//evil.example", follow_redirects=False
+        )
+        assert resp.status_code in (302, 303), resp.status_code
+        assert "/dashboard" in resp.headers["Location"]
+        assert "evil.example" not in resp.headers["Location"]
+        _assert_still_signed_in(client)
+
+
 class TestChangeEmailReauthenticationReturnsToTheForm:
     """The POST side of the sensitive change keeps requiring the password
     (Constraints: that control must not weaken) -- a wrong password sends
