@@ -324,6 +324,15 @@ def init_cli(app):
         app.logger.warning(f"Failed to register capability projection CLI: {e}")
 
     try:
+        from app.commands.repoint_journey_decision_links import (
+            init_app as init_repoint_journey_decision_links,
+        )
+        init_repoint_journey_decision_links(app)
+        app.logger.info("Journey decision-link repoint CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register journey decision-link repoint CLI: {e}")
+
+    try:
         from app.commands.apply_unified_capability_provenance_migration import (
             init_app as init_capability_provenance_migration,
         )
