@@ -97,11 +97,25 @@ def _diff_fraction(baseline_path, current_img):
     return changed / total_pixels, None
 
 
-@pytest.fixture(scope="module")
+VISUAL_ORG_SUFFIX = "visualreg"
+
+# A second dict, not a second pytest scope, guards the one-seed-per-process
+# guarantee below. pytest's own fixture cache turned out not to be enough:
+# `scope="session"` only dedupes calls to a fixture *as resolved from one
+# particular module*, so a second test module that also requested
+# `visual_org` (verified while building this) re-ran the fixture body and
+# tried to insert the same fixed-suffix organisation a second time,
+# UniqueViolation on the slug. Nothing else in this suite imports
+# `visual_org` today, but the whole point of this cache is to not depend on
+# that staying true.
+_visual_org_cache = {}
+
+
+@pytest.fixture(scope="session")
 def visual_org(request, ai_protocol_stub, live_server):
     """A fresh organisation, seeded exactly like every other smoke test's
     shared `seeded` fixture (same function, see conftest._seed_standard_org)
-    but not shared with them.
+    but not shared with them, and with fixed rather than random names.
 
     `seeded` is session-scoped: every other smoke test in the run writes
     into the one organisation it returns, and several of them (creating an
@@ -113,8 +127,26 @@ def visual_org(request, ai_protocol_stub, live_server):
     already run first, which is exactly what made this file's regressions
     unreproducible in isolation. A dedicated organisation, seeded the same
     way and touched by nothing else, renders the same screens every time.
+
+    The ordinary random suffix is not enough for every screen, though:
+    ai-chat's own Context Panel lists several of this organisation's
+    ArchiMate elements by name, and a random suffix makes that name -- real,
+    rendered content, not just a count -- different every run. A fixed
+    suffix makes every name this organisation's records carry identical
+    from one run to the next, which is what that screen actually needs.
+
+    A fixed suffix reused for a second `_seed_standard_org` call in the same
+    database collides on the organisation's slug (and the seeded users'
+    emails) -- `_visual_org_cache` above makes that call happen at most once
+    per test process regardless of how many fixture requests reach here, and
+    the whole suite runs against a freshly created database in both CI and
+    this file's own verification, so "once per process" is also "once per
+    database" in practice.
     """
-    return _seed_standard_org(request, ai_protocol_stub)
+    if "org" not in _visual_org_cache:
+        _visual_org_cache["org"] = _seed_standard_org(
+            request, ai_protocol_stub, fixed_suffix=VISUAL_ORG_SUFFIX)
+    return _visual_org_cache["org"]
 
 
 @pytest.fixture(scope="module")
