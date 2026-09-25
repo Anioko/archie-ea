@@ -10,9 +10,8 @@ source: app/services/public_pages.py (bleach sanitisation), app/models/user.py (
 
 ## Your data, your infrastructure, if you choose
 
-Entelim is open source under AGPL-3.0. Self-host it and your data never leaves your own
-infrastructure unless you connect something that does. You can read every line that touches your
-data, because all of it is public.
+Entelim is licensed under AGPL-3.0. Self-hosted, your data never leaves your own infrastructure
+unless you connect something that does.
 
 ## Tenant isolation is enforced, not just documented
 
@@ -36,9 +35,8 @@ sign-up are rate-limited against automated abuse.
 
 ## Reporting a problem
 
-If you find a security issue, please report it privately through the
-[GitHub repository's security advisories](https://github.com/archiet-ltd/entelim/security), rather
-than opening a public issue, so it can be fixed before it's disclosed.
+If you find a security issue, please report it privately through [contact](/contact) rather than
+disclosing it publicly, so it can be fixed first.
 
 ## What we don't claim
 

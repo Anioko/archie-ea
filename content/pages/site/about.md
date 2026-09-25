@@ -24,11 +24,12 @@ documented on [how Archiet runs on Entelim](/how-archiet-runs-on-entelim).
 
 ## Open source, so nobody's locked in
 
-Entelim runs under the GNU Affero General Public License (AGPL-3.0). Self-host it, read the code,
-keep your data on your own infrastructure, free, at any size, for as long as you want. A commercial
-licence exists for organisations that want it run for them or need different terms — the open-source
-path was never the trial version; it is the product. Entelim is also built on the ArchiMate 3.2 open
-standard, so your model is never locked into a proprietary format.
+Entelim is licensed under the GNU Affero General Public License (AGPL-3.0), the same licence that
+governs every self-hosted deployment: keep your data on your own infrastructure, free, at any size,
+for as long as you want. A commercial licence exists for organisations that want it run for them or
+need different terms — the open-source path was never the trial version; it is the product. Entelim
+is also built on the ArchiMate 3.2 open standard, so your model is never locked into a proprietary
+format.
 
 ## What Entelim answers
 
@@ -36,5 +37,4 @@ What breaks if this fails, and who gets called. What you're paying for twice. Wh
 are at risk and why. Who's accountable, and where that trail runs cold. Every answer carries its own
 reasoning, open to check, never just a number on a page.
 
-See [what Entelim covers](/features), [how it's priced](/pricing), or
-[read the code](https://github.com/archiet-ltd/entelim).
+See [what Entelim covers](/features), [how it's priced](/pricing), or [get in touch](/contact).

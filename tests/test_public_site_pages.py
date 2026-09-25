@@ -149,3 +149,21 @@ def test_site_pages_included_in_sitemap_and_llms_txt(app, slug):
         llms = client.get("/llms.txt").data.decode()
         assert f"/{slug}" in sitemap, f"/sitemap.xml missing /{slug}"
         assert f"/{slug}" in llms, f"/llms.txt missing /{slug}"
+
+
+# ── No dead link to the not-yet-public repository ──────────────────────────
+
+
+def test_no_page_links_to_the_private_repository(app):
+    """Nothing on the home page or any site page links to the archiet-ltd/entelim
+    repository: it is not public, so that link 404s for every visitor."""
+    with app.test_client() as client:
+        pages_to_check = ["/"] + [f"/{slug}" for slug in SITE_PAGES]
+        for path in pages_to_check:
+            html = client.get(path).data.decode()
+            assert "archiet-ltd/entelim" not in html, (
+                f"{path} links to the private archiet-ltd/entelim repository"
+            )
+            assert "github.com" not in html, (
+                f"{path} links to github.com; the repository is not public"
+            )

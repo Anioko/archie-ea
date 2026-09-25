@@ -34,10 +34,9 @@ key by default, supported self-hosting, and a named contact.
 
 ## Self-hosting is always free
 
-Entelim runs under AGPL-3.0. Self-host it on your own infrastructure at any size, for as long as you
-want, at no cost — that path is not a trial, it is the product. A commercial licence exists for
-organisations that want Entelim run for them or need different terms; see
-[the commercial licence summary](https://github.com/archiet-ltd/entelim/blob/main/COMMERCIAL-LICENSE.md)
-or [get in touch](/contact).
+Entelim is licensed under AGPL-3.0. Self-hosting your own infrastructure, at any size, for as long
+as you want, is always free — that path is not a trial, it is the product. A commercial licence
+exists for organisations that want Entelim run for them or need different terms;
+[get in touch](/contact) either way.
 
 [Join the waiting list](/#waitlist) or [sign in if you already have an account](/account/login).

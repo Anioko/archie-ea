@@ -8,23 +8,22 @@ source: LICENSE, COMMERCIAL-LICENSE.md, README.md, read 2026-09-25
 
 # Terms
 
-This page is a plain-language summary. Where it differs from the licence texts it links to, those
-texts govern.
+This page is a plain-language summary. Where it differs from the licence itself, the licence
+governs.
 
 ## Two ways to use Entelim
 
-**Self-hosted.** Entelim is free and open source under the GNU Affero General Public License v3.0.
-You may use, modify and self-host it at no cost, subject to the AGPL's terms — including that if you
-run a modified version as a network service, you must make your modified source available to the
-users of that service. The full licence is in the
-[LICENSE file](https://github.com/archiet-ltd/entelim/blob/main/LICENSE).
+**Self-hosted.** Entelim is licensed under the GNU Affero General Public License v3.0 — the same
+terms that apply to any AGPL-3.0-licensed software: you may use, modify and self-host it at no
+cost, subject to the AGPL's terms, including that if you run a modified version as a network
+service, you must make your modified source available to the users of that service. The full
+licence text is the standard
+[GNU AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html).
 
 **Commercially licensed or hosted.** If Archiet Ltd runs Entelim for you, or you need rights the
 AGPL doesn't grant — embedding it in closed-source software, offering it as a hosted service without
 publishing your changes, or a warranty and support agreement — that use is governed by a separate,
-written commercial agreement, not by this page. See the
-[commercial licence summary](https://github.com/archiet-ltd/entelim/blob/main/COMMERCIAL-LICENSE.md)
-or [get in touch](/contact) to arrange one.
+written commercial agreement, not by this page. [Get in touch](/contact) to arrange one.
 
 ## Using an account
 
