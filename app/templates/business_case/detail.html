@@ -93,7 +93,7 @@
           <label for="bc-link-capability" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Capability</label>
           <select id="bc-link-capability" x-model="capabilityId" @change="saveMeta()" data-testid="bc-link-capability"
             class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-            <option value="">None</option>
+            <option value="">Not linked</option>
             {% for cap in capabilities %}
             <option value="{{ cap.id }}">{{ cap.name }}</option>
             {% endfor %}
@@ -103,7 +103,7 @@
           <label for="bc-link-initiative" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Strategic Initiative</label>
           <select id="bc-link-initiative" x-model="strategicInitiativeId" @change="saveMeta()" data-testid="bc-link-initiative"
             class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-            <option value="">None</option>
+            <option value="">Not linked</option>
             {% for init in initiatives %}
             <option value="{{ init.id }}">{{ init.name }}</option>
             {% endfor %}
@@ -113,7 +113,7 @@
           <label for="bc-link-solution" class="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Linked Solution</label>
           <select id="bc-link-solution" x-model="solutionId" @change="saveMeta()" data-testid="bc-link-solution"
             class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-            <option value="">None</option>
+            <option value="">Not linked</option>
             {% for sol in solutions %}
             <option value="{{ sol.id }}">{{ sol.name }}</option>
             {% endfor %}

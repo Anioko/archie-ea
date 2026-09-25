@@ -92,6 +92,11 @@ def test_sidebar_link_budget_is_31():
     work, and platform_admin renders it like everyone else. The rendered-link
     test asserts the count EQUALS this number, so the ceiling moves with the
     link rather than leaving slack that does not exist.
+
+    Canvas/framework UI fix, round 2 (25 Sep 2026): two new Library links
+    ("Canvases", "Frameworks") were added for every role and the ceiling did
+    not move — see role_access.py's SIDEBAR_LINK_BUDGET comment for the folds
+    that paid for them.
     """
     assert SIDEBAR_LINK_BUDGET == 31
 
@@ -223,7 +228,11 @@ def test_enterprise_architect_my_work_membership():
         # S-11 remainder: directory-only, never in a sidebar zone.
         "Impact Analysis",
         "Capability Health",
-        "Duplicate Detection",
+        # "Duplicate Detection" removed in the canvas/framework UI fix, round 2
+        # (25 Sep 2026): this zone had one link of headroom and "Canvases"
+        # plus "Frameworks" joining the shared Library zone needed two. Still
+        # reachable via "All modules" (see role_access.py's comment on this
+        # role's entry).
         # ARCH-123 / ARCH-124 (QA register closure, 18 Aug 2026): Data
         # Architecture (existing, previously undiscoverable) and Tech Radar
         # (new), folded into enterprise_architect's My work since there is
@@ -256,30 +265,19 @@ def test_cto_my_work_membership():
 
 
 def test_business_architect_my_work_membership():
-    """S-11 remainder: Stakeholder Map and Capability Frameworks were real,
-    working pages reachable only from /modules/, never from any sidebar
-    zone.
+    """Canvas/framework UI fix (24 Sep 2026): "Capability Frameworks" removed
+    from this persona's My work — it is now in the shared Library zone as
+    "Frameworks", so keeping it here would duplicate it.
 
-    BA-A1/A2 (20 Aug 2026): the persona carried 4 links against a budget of
-    27 while enterprise_architect carried 13, so most of what a business
-    architect needs was reachable only by typing a URL. "Capability
-    Frameworks" was replaced by "Capability Maturity" pointing at the
-    heatmap — frameworks_overview is the one maturity page that renders
-    near-empty, and it was this persona's only maturity link.
-
-    BA-A3 (21 Aug 2026): the /business-architecture practice landing page
-    added first, as the front door to all twelve BA outputs.
-
-    Corrected same day: "Capability Frameworks" is restored ALONGSIDE the
-    heatmap rather than replaced by it. Repointing this persona's only maturity
-    link had removed frameworks_overview from every sidebar zone, regressing the
-    S-11 finding above — the full suite caught it; the targeted runs did not."""
+    Round 2 (25 Sep 2026): "Capability Map" also removed — same endpoint as
+    Library's "Capabilities" (capability_map.index), the exact duplicate
+    enterprise_architect's My work had already dropped for the same reason.
+    This zone had no headroom left once "Canvases" and "Frameworks" joined
+    the shared Library zone; dropping a same-page duplicate loses nothing."""
     assert _my_work_labels(ROLE_BUSINESS_ARCHITECT) == [
         "Ask a question",
         "Architecture Journey",
-        "Capability Map",
         "Capability Maturity",
-        "Capability Frameworks",
         "Value Streams",
         "Stakeholder Map",
         "Gap Analysis",
@@ -287,25 +285,23 @@ def test_business_architect_my_work_membership():
         "Work Packages",
         "Traceability Matrix",
         "Capability Health",
-        "Impact Analysis",  # Same link and icon as enterprise_architect
+        "Impact Analysis",
         "Data Architecture",
-        # NAV-1 (27 Aug 2026): nav-coverage outputs 5, 6 and 10 — information/
-        # data maps, strategy-to-execution and products & services — all had
-        # working routes and no sidebar link in any persona. Every one of these
-        # endpoints already shipped.
         "Data Lineage",
         "Motivation Model",
         "Products & Services",
-        # Wave 4 nav audit: organization.routes' own docstring claimed this was
-        # "linked from the sidebar by the orchestrator post-merge" and it never
-        # was -- reachable only via /modules or a typed URL. business_architect
-        # is the persona whose remit (org chart + RACI) this is.
         "Org Chart & RACI",
     ]
 
 
 def test_portfolio_manager_my_work_membership():
-    """S-11 remainder: Consolidation List was directory-only."""
+    """S-11 remainder: Consolidation List was directory-only.
+
+    Round 2 (25 Sep 2026): "Duplicate Detection" moved here from
+    enterprise_architect's My work, which had no headroom left once
+    "Canvases" and "Frameworks" joined the shared Library zone. This zone
+    had ample headroom, and portfolio_manager already owns Rationalization,
+    from which the page is reached in context."""
     assert _my_work_labels(ROLE_PORTFOLIO_MANAGER) == [
         "Ask a question",
         "Portfolio",
@@ -315,6 +311,7 @@ def test_portfolio_manager_my_work_membership():
         "Consolidation List",
         # NAV-1: see test_cto_my_work_membership — same page, other owner.
         "Portfolio KPIs",
+        "Duplicate Detection",
     ]
 
 
@@ -397,6 +394,13 @@ def test_platform_admin_zone_link_total_is_pinned():
     27 -> 28: "Ask a question" added to every persona's My work, platform_admin
     included. It is the only link the Ask and Twin map pages add; the Twin map
     is reached from the Ask page.
+
+    Canvas/framework UI fix, round 2 (25 Sep 2026): stays 28. "Canvases" and
+    "Frameworks" join this role's Library zone (+2); "Import History" and
+    "Batch Import" fold out of the Admin zone onto the admin dashboard page
+    (-2), and Framework Management / Framework Configuration are added to
+    that same dashboard page rather than the Admin zone, so they add zero
+    here. Net zero.
     """
     assert len(_all_links(ROLE_PLATFORM_ADMIN)) == 28
 
