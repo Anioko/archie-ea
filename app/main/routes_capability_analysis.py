@@ -74,14 +74,14 @@ def unmapped_capabilities():
                     ELSE 5
                 END,
                 uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params
         ).fetchall()
 
         # Get summary statistics
         total_capabilities = db.session.execute(  # tenant-filtered
-            text(f"SELECT COUNT(*) FROM unified_capabilities uc WHERE 1=1 {_org_clause}"),
+            text(f"SELECT COUNT(*) FROM unified_capabilities uc WHERE 1=1 {_org_clause}"),  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             _org_params
         ).scalar()
         mapped_capabilities = db.session.execute(  # tenant-filtered
@@ -91,7 +91,7 @@ def unmapped_capabilities():
             FROM unified_application_capability_mapping uacm
             JOIN unified_capabilities uc ON uc.id = uacm.unified_capability_id
             WHERE 1=1 {_org_clause}
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params
         ).scalar()
@@ -112,7 +112,7 @@ def unmapped_capabilities():
             WHERE 1=1 {_org_clause.replace('AND uc.', 'AND uc.')}
             GROUP BY bd.id, bd.name, bd.code
             ORDER BY bd.strategic_weight DESC, bd.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params
         )
@@ -138,7 +138,7 @@ def unmapped_capabilities():
                     WHEN 'medium' THEN 3
                     WHEN 'low' THEN 4
                 END
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params
         )
@@ -204,7 +204,7 @@ def export_unmapped_capabilities():
             WHERE uacm.unified_capability_id IS NULL
             {_org_clause}
             ORDER BY uc.name
-        """
+        """  # nosec B608 -- only the org_scope fragment is interpolated; values are bound parameters
             ),
             _org_params
         ).fetchall()
