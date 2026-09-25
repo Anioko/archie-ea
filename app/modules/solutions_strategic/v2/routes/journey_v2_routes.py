@@ -6141,6 +6141,29 @@ def _structure_template_view(template):
     return workstreams, stages
 
 
+def _structure_deliverable(row, org):
+    """One deliverable row for the created view, with its credit status read
+    from the edge table (R1-07). n of m; zero is "None yet"."""
+    from app.modules.transformation_room.deliverable_credit_service import credit_status
+    from app.modules.transformation_room.programme_types.labels import element_type_label
+
+    status = credit_status(db.session, org, row[2]) or {}
+    declared = status.get("declared") or []
+    return {
+        "id": row[2],
+        "name": row[0],
+        "declared": declared,
+        "declared_options": [{"key": key, "label": element_type_label(key)} for key in declared],
+        "n": status.get("n"),
+        "m": status.get("m"),
+        "elements": [
+            {**e, "type_label": element_type_label(e["type"])} for e in status.get("elements") or []
+        ],
+        "completed": status.get("completed"),
+        "completion_reason": status.get("completion_reason"),
+    }
+
+
 def _structure_created_view(journey, actor):
     """Read the created records back from the database (never the template:
     records are a snapshot, ADR 0012 decision 4). Returns (allowed, view)."""
@@ -6170,7 +6193,7 @@ def _structure_created_view(journey, actor):
         ).order_by(ProgrammeWorkstream.id)
     ).scalars().all()
     rows = db.session.execute(
-        _select(Deliverable.name, Deliverable.journey_stage)
+        _select(Deliverable.name, Deliverable.journey_stage, Deliverable.id)
         .join(WorkPackage, WorkPackage.id == Deliverable.work_package_id)
         .where(WorkPackage.strategic_initiative_id == programme.id, WorkPackage.organization_id == org)
         .order_by(Deliverable.id)
@@ -6192,7 +6215,7 @@ def _structure_created_view(journey, actor):
         stages.append({
             "label": journey_stage_label(stage_key),
             "gate": gate_names[index] if index < len(gate_names) else None,
-            "deliverables": [{"name": r[0]} for r in rows if r[1] == stage_key],
+            "deliverables": [_structure_deliverable(r, org) for r in rows if r[1] == stage_key],
         })
     return True, {
         "programme_id": programme.id,
@@ -6231,6 +6254,9 @@ def _structure_context(journey, *, error=None, form=None):
         "created": None,
         "read_allowed": True,
     }
+    # Persona-based; the service re-checks LINK_ROLES (which also admits an
+    # assigned contributor) on every write, so this only hides the controls.
+    context["can_credit"] = context["can_create"]
     if journey.programme_id:
         allowed, view = _structure_created_view(journey, actor_from_request())
         context["created"] = view if allowed else {"programme_name": None}
@@ -6398,3 +6424,145 @@ def programme_lead_search(journey_id):
         if (u.first_name or u.last_name)
     ]
     return api_success(data={"people": people})
+
+
+# ── deliverable element credit and completion (R1-07, US-4) ──────────────────
+
+
+def _credit_context(journey_id, deliverable_id):
+    """(journey, deliverable) for a deliverable that belongs to this journey's
+    programme, or a 404. Deliverable is untenanted: it is reached only through
+    deliverable_for_org (a WorkPackage join with the org predicate)."""
+    from app.modules.transformation_room.deliverable_credit_service import deliverable_for_org
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    found = deliverable_for_org(db.session, journey.organization_id, deliverable_id)
+    if found is None or not journey.programme_id or found[1].strategic_initiative_id != journey.programme_id:
+        abort(404)
+    return journey, found[0]
+
+
+def _credit_error(error):
+    from app.modules.transformation_room.domain import (
+        CommandConflict,
+        NotAuthorised,
+        NotFound,
+        TransformationError,
+    )
+
+    if isinstance(error, NotAuthorised):
+        _log_structure_denial(None, error.reason)
+        return api_error("You cannot change this deliverable", 403)
+    if isinstance(error, NotFound):
+        return api_error("Not found", 404)
+    if isinstance(error, CommandConflict):
+        return api_error("That change conflicts with an earlier one", 409)
+    if isinstance(error, TransformationError):
+        return api_error(error.reason, error.http_status if error.http_status < 500 else 400)
+    return api_error(str(error), 400)
+
+
+def _credit_key(data):
+    value = data.get("command_key") if isinstance(data, dict) else None
+    return value.strip() if isinstance(value, str) and value.strip() else _uuid.uuid4().hex
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/deliverables/<int:deliverable_id>/elements", methods=["POST"])
+@login_required
+@_require_journey_editor
+def add_deliverable_element(journey_id, deliverable_id):
+    from app.modules.transformation_room.deliverable_credit_service import DeliverableCreditService
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.routes import actor_from_request
+
+    _credit_context(journey_id, deliverable_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        actor = actor_from_request()
+        if data.get("element_id") is not None:
+            if not isinstance(data["element_id"], int):
+                return api_error("Choose an element from the list", 400)
+            result = DeliverableCreditService.credit_existing(
+                actor=actor, deliverable_id=deliverable_id, element_id=data["element_id"],
+                command_key=_credit_key(data),
+            )
+        else:
+            result = DeliverableCreditService.create_and_credit(
+                actor=actor, deliverable_id=deliverable_id,
+                element_type=data.get("element_type") or "", name=data.get("name") or "",
+                description=data.get("description"), command_key=_credit_key(data),
+            )
+    except (TransformationError, ValueError, TypeError) as error:
+        return _credit_error(error)
+    return api_success(data=dict(result.response), status_code=201 if result.created else 200)
+
+
+@journey_v2_bp.route(
+    "/work/<int:journey_id>/deliverables/<int:deliverable_id>/elements/<int:element_id>", methods=["DELETE"]
+)
+@login_required
+@_require_journey_editor
+def remove_deliverable_element(journey_id, deliverable_id, element_id):
+    from app.modules.transformation_room.deliverable_credit_service import DeliverableCreditService
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.routes import actor_from_request
+
+    _credit_context(journey_id, deliverable_id)
+    try:
+        result = DeliverableCreditService.remove_credit(
+            actor=actor_from_request(), deliverable_id=deliverable_id, element_id=element_id,
+            command_key=_credit_key(request.get_json(silent=True) or {}),
+        )
+    except (TransformationError, ValueError, TypeError) as error:
+        return _credit_error(error)
+    return api_success(data=dict(result.response))
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/deliverables/<int:deliverable_id>/complete", methods=["POST"])
+@login_required
+@_require_journey_editor
+def complete_deliverable(journey_id, deliverable_id):
+    from app.modules.transformation_room.deliverable_credit_service import DeliverableCreditService
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.routes import actor_from_request
+
+    _credit_context(journey_id, deliverable_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        result = DeliverableCreditService.complete(
+            actor=actor_from_request(), deliverable_id=deliverable_id,
+            reason=data.get("reason"), command_key=_credit_key(data),
+        )
+    except (TransformationError, ValueError, TypeError) as error:
+        return _credit_error(error)
+    return api_success(data=dict(result.response))
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/deliverables/<int:deliverable_id>/element-search", methods=["GET"])
+@login_required
+@_require_journey_editor
+@rate_limit(60, "1m")
+def deliverable_element_search(journey_id, deliverable_id):
+    """Same-org elements of the deliverable's declared types, for the picker
+    (DESIGN.md entity-field rule: never free text)."""
+    journey, deliverable = _credit_context(journey_id, deliverable_id)
+    query = (request.args.get("q") or "").strip()
+    if len(query) < 2:
+        return api_error("Type at least 2 characters", 400)
+    declared = list(deliverable.declared_element_types or [])
+    pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    rows = db.session.execute(
+        select(ArchiMateElement.id, ArchiMateElement.name, ArchiMateElement.type)
+        .where(
+            ArchiMateElement.organization_id == journey.organization_id,
+            ArchiMateElement.type.in_(declared),
+            ArchiMateElement.name.ilike(pattern, escape="\\"),
+        )
+        .order_by(ArchiMateElement.name.asc(), ArchiMateElement.id.asc())
+        .limit(20)
+    ).all()
+    from app.modules.transformation_room.programme_types.labels import element_type_label
+
+    return api_success(data={
+        "elements": [{"id": r.id, "name": r.name, "type": r.type, "type_label": element_type_label(r.type)} for r in rows]
+    })

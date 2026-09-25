@@ -410,6 +410,40 @@ WorkPackage.deliverables = db.relationship(
 )
 
 
+CREDIT_KINDS = ("created", "existing")
+
+
+class DeliverableArchimateElement(TenantMixin, db.Model):
+    """The one store for "this element is credited to this deliverable" (ADR
+    0013's 2026-09-25 amendment, tech-lead ruling C5). Deliverable itself is
+    untenanted, so this edge carries its own organization_id in the unique key
+    -- which also keeps it visible to the tenant-scoping gate. Counting reads
+    this table only; element provenance is written but never counted.
+    credit_kind is validated in code (CREDIT_KINDS), with no DB CHECK, so
+    reconcile-schema never needs to widen a constraint."""
+
+    __tablename__ = "deliverable_archimate_elements"
+
+    id = db.Column(db.Integer, primary_key=True)
+    deliverable_id = db.Column(
+        db.Integer, db.ForeignKey("deliverables.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    archimate_element_id = db.Column(
+        db.Integer, db.ForeignKey("archimate_elements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    credit_kind = db.Column(db.String(20), nullable=False)
+    approval_id = db.Column(db.Integer, nullable=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id", "deliverable_id", "archimate_element_id",
+            name="uq_deliverable_element_credit",
+        ),
+    )
+
+
 class ImplementationEvent(TenantMixin, db.Model):
     """Milestones or significant occurrences during implementation."""
 

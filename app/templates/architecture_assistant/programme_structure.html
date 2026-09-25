@@ -70,8 +70,72 @@
             <p class="text-sm font-medium text-foreground">{{ stage.label }}
               {% if stage.gate %}<span class="ml-2 text-xs text-muted-foreground">Gate: {{ stage.gate }}</span>{% endif %}</p>
             {% if stage.deliverables %}
-            <ul class="mt-2 space-y-1">
-              {% for d in stage.deliverables %}<li class="text-sm text-foreground">{{ d.name }}</li>{% endfor %}
+            <ul class="mt-2 space-y-3">
+              {% for d in stage.deliverables %}
+              <li class="rounded-md border border-border p-3" data-testid="deliverable-{{ d.id }}"
+                  x-data="deliverableCredit()" data-config='{{ {"journey_id": journey.id, "deliverable_id": d.id, "declared": d.declared_options}|tojson }}'>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <p class="text-sm font-medium text-foreground">{{ d.name }}</p>
+                  <p class="text-xs text-muted-foreground" data-testid="deliverable-count-{{ d.id }}">
+                    {% if d.n %}{{ d.n }} of {{ d.m }} in the model{% elif d.elements %}None of the {{ d.m }} declared types yet{% else %}None yet{% endif %}
+                    {% if d.completed %}&middot; Completed{% endif %}
+                  </p>
+                </div>
+                {% if d.elements %}
+                <ul class="mt-2 space-y-1">
+                  {% for e in d.elements %}
+                  <li class="flex items-center justify-between gap-2 text-sm text-foreground">
+                    <span>{{ e.name }} <span class="text-xs text-muted-foreground">{{ e.type_label }}</span></span>
+                    {% if not d.completed and can_credit %}
+                    <button type="button" @click="removeElement({{ e.id }})" :disabled="busy" aria-label="Remove {{ e.name }} from this deliverable"
+                      class="text-xs text-muted-foreground hover:text-destructive">Remove</button>
+                    {% endif %}
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% endif %}
+                {% if d.completion_reason %}<p class="mt-2 text-xs text-muted-foreground">Completed with no model content: {{ d.completion_reason }}</p>{% endif %}
+                {% if not d.completed and can_credit %}
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <button type="button" @click="showExisting" data-testid="add-existing-{{ d.id }}"
+                    class="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent">Add existing element</button>
+                  <button type="button" @click="showNew" data-testid="add-new-{{ d.id }}"
+                    class="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent">Create new element</button>
+                </div>
+                <div x-show="mode === 'existing'" x-cloak class="relative mt-3">
+                  <label for="ex-{{ d.id }}" class="text-xs font-medium text-foreground">Element</label>
+                  <input id="ex-{{ d.id }}" type="search" x-model="query" @input.debounce.300ms="search" autocomplete="off" placeholder="Search by name (2+ characters)"
+                    class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                  <div x-show="results.length" x-cloak role="listbox" class="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover p-1">
+                    <template x-for="element in results" :key="element.id">
+                      <button type="button" role="option" @click="choose(element)" class="flex w-full justify-between rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-accent">
+                        <span x-text="element.name"></span><span class="text-xs text-muted-foreground" x-text="element.type_label"></span>
+                      </button>
+                    </template>
+                  </div>
+                  <button type="button" @click="addExisting" :disabled="busy" data-testid="credit-existing-{{ d.id }}"
+                    class="mt-2 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Add to this deliverable</button>
+                </div>
+                <div x-show="mode === 'new'" x-cloak class="mt-3 grid gap-2 sm:grid-cols-3">
+                  <label class="grid gap-1 text-xs font-medium text-foreground">Type
+                    <select x-model="newType" data-testid="new-type-{{ d.id }}" class="h-9 rounded-md border border-input bg-background px-3 text-sm">
+                      {% for o in d.declared_options %}<option value="{{ o.key }}">{{ o.label }}</option>{% endfor %}
+                    </select></label>
+                  <label class="grid gap-1 text-xs font-medium text-foreground sm:col-span-2">Name
+                    <input x-model="newName" maxlength="100" data-testid="new-name-{{ d.id }}" class="h-9 rounded-md border border-input bg-background px-3 text-sm"></label>
+                  <button type="button" @click="addNew" :disabled="busy" data-testid="create-new-{{ d.id }}"
+                    class="inline-flex h-8 w-fit items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">Create and add</button>
+                </div>
+                <div class="mt-3 flex flex-wrap items-end gap-2">
+                  <label class="grid gap-1 text-xs font-medium text-foreground">Reason (required when nothing is in the model)
+                    <input x-model="reason" data-testid="complete-reason-{{ d.id }}" class="h-8 w-72 max-w-full rounded-md border border-input bg-background px-3 text-sm"></label>
+                  <button type="button" @click="complete" :disabled="busy" data-testid="complete-{{ d.id }}"
+                    class="inline-flex h-8 items-center rounded-md border border-input bg-background px-3 text-xs font-medium text-foreground hover:bg-accent disabled:opacity-50">Complete</button>
+                </div>
+                {% endif %}
+                <p x-show="error" x-cloak class="mt-2 text-xs text-destructive-emphasis" role="alert" data-testid="deliverable-error-{{ d.id }}" x-text="error"></p>
+              </li>
+              {% endfor %}
             </ul>
             {% else %}<p class="mt-2 text-sm text-muted-foreground">None yet</p>{% endif %}
           </div>
