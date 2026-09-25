@@ -6102,3 +6102,299 @@ def save_ux_preferences(solution_id: int):
         return api_error("Failed to save UX preferences", 500)
 
     return api_success(data={"ux_preferences": prefs}, message="UX preferences saved")
+
+
+# ── programme structure: preview, confirm, lead search (R1-06, US-3) ─────────
+
+import uuid as _uuid  # noqa: E402
+
+from app.services.rate_limiter import rate_limit  # noqa: E402
+
+
+def _structure_template_view(template):
+    """Plain-language view of a template for the preview (labels.py is the one
+    label map; counts and names come from the template, never from markup)."""
+    from app.modules.transformation_room.programme_types.labels import (
+        element_type_label,
+        journey_stage_label,
+        workstream_type_label,
+    )
+
+    workstreams = [
+        {"key": w["key"], "name": w["name"], "type_label": workstream_type_label(w["workstream_type"])}
+        for w in template.workstreams
+    ]
+    stages = []
+    for stage_key in JOURNEY_STAGES:
+        stage = template.stages.get(stage_key) or {}
+        stages.append({
+            "label": journey_stage_label(stage_key),
+            "gate": stage.get("gate"),
+            "deliverables": [
+                {
+                    "name": d["name"],
+                    "element_labels": [element_type_label(t) for t in d.get("element_types") or ()],
+                }
+                for d in stage.get("deliverables") or ()
+            ],
+        })
+    return workstreams, stages
+
+
+def _structure_created_view(journey, actor):
+    """Read the created records back from the database (never the template:
+    records are a snapshot, ADR 0012 decision 4). Returns (allowed, view)."""
+    from sqlalchemy import select as _select
+    from app.models.implementation_migration import Deliverable, ImplementationEvent, WorkPackage
+    from app.models.relationship_tables import work_package_events
+    from app.models.transformation_programme import ProgrammeWorkstream
+    from app.modules.transformation_room.domain import NotAuthorised, NotFound
+    from app.modules.transformation_room.programme_service import TransformationProgrammeService
+    from app.modules.transformation_room.programme_types.labels import (
+        journey_stage_label,
+        workstream_type_label,
+    )
+
+    try:
+        programme = TransformationProgrammeService.load_programme_for_tenant(actor, journey.programme_id)
+        # S8: journey access is not programme read authority.
+        TransformationProgrammeService.authorise_read(actor, programme)
+    except (NotAuthorised, NotFound):
+        return False, None
+
+    org = journey.organization_id
+    workstreams = db.session.execute(
+        _select(ProgrammeWorkstream).where(
+            ProgrammeWorkstream.programme_id == programme.id,
+            ProgrammeWorkstream.organization_id == org,
+        ).order_by(ProgrammeWorkstream.id)
+    ).scalars().all()
+    rows = db.session.execute(
+        _select(Deliverable.name, Deliverable.journey_stage)
+        .join(WorkPackage, WorkPackage.id == Deliverable.work_package_id)
+        .where(WorkPackage.strategic_initiative_id == programme.id, WorkPackage.organization_id == org)
+        .order_by(Deliverable.id)
+    ).all()
+    gates = db.session.execute(
+        _select(ImplementationEvent.name)
+        .join(work_package_events, work_package_events.c.implementation_event_id == ImplementationEvent.id)
+        .join(WorkPackage, WorkPackage.id == work_package_events.c.work_package_id)
+        .where(
+            WorkPackage.strategic_initiative_id == programme.id,
+            WorkPackage.organization_id == org,
+            ImplementationEvent.organization_id == org,
+            ImplementationEvent.event_type == "journey_stage_gate",
+        )
+    ).all()
+    gate_names = list(dict.fromkeys(g[0] for g in gates))
+    stages = []
+    for index, stage_key in enumerate(JOURNEY_STAGES):
+        stages.append({
+            "label": journey_stage_label(stage_key),
+            "gate": gate_names[index] if index < len(gate_names) else None,
+            "deliverables": [{"name": r[0]} for r in rows if r[1] == stage_key],
+        })
+    return True, {
+        "programme_id": programme.id,
+        "programme_name": programme.name,
+        "workstreams": [
+            {"name": w.name or w.objective, "type_label": workstream_type_label(w.workstream_type)}
+            for w in workstreams
+        ],
+        "stages": stages,
+    }
+
+
+def _structure_context(journey, *, error=None, form=None):
+    from app.models.transformation_programme import IMPROVEMENT_DIRECTIONS, MEASURE_AGGREGATIONS
+    from app.modules.transformation_room.programme_service import TransformationProgrammeService
+    from app.modules.transformation_room.programme_types.loader import ProgrammeTypeCatalogue
+    from app.modules.transformation_room.routes import actor_from_request
+
+    template = ProgrammeTypeCatalogue().get(journey.programme_type)
+    if template is None:
+        abort(404)
+    workstreams, stages = _structure_template_view(template)
+    context = {
+        "journey": journey,
+        "template": template,
+        "programme_type_name": template.name,
+        "template_workstreams": workstreams,
+        "template_stages": stages,
+        "can_create": TransformationProgrammeService.can_create_programme(current_user),
+        "command_key": _uuid.uuid4().hex,
+        "lead_search_url": url_for("architecture_journey.programme_lead_search", journey_id=journey.id),
+        "directions": IMPROVEMENT_DIRECTIONS,
+        "aggregations": MEASURE_AGGREGATIONS,
+        "form": form or {},
+        "error": error,
+        "created": None,
+        "read_allowed": True,
+    }
+    if journey.programme_id:
+        allowed, view = _structure_created_view(journey, actor_from_request())
+        context["created"] = view if allowed else {"programme_name": None}
+        context["read_allowed"] = allowed
+    return context
+
+
+def _log_structure_denial(journey_id, reason):
+    logger.warning(
+        "programme-structure denial: user=%s org=%s journey=%s endpoint=%s reason=%s",
+        getattr(current_user, "id", None), getattr(current_user, "organization_id", None),
+        journey_id, request.endpoint, reason,
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/programme-structure", methods=["GET"])
+@login_required
+@_require_journey_access
+def programme_structure(journey_id):
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    if not journey.programme_type:
+        abort(404)
+    return render_template(
+        "architecture_assistant/programme_structure.html", **_structure_context(journey)
+    )
+
+
+def _parse_structure_form(form, template):
+    """Form -> the service's request mapping. Raises ValueError with a
+    plain-language message on malformed input."""
+    def as_int(value):
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    owner_id = as_int(form.get("owner_id"))
+    outcome = {
+        "statement": form.get("outcome_statement", ""),
+        "owner_id": owner_id,
+        "direction": form.get("outcome_direction", ""),
+        "measure": {
+            "metric_name": form.get("metric_name", ""),
+            "unit": form.get("unit", ""),
+            "aggregation": form.get("aggregation", ""),
+            "baseline_value": (form.get("baseline_value") or "").strip() or None,
+            "unavailable_reason": (form.get("unavailable_reason") or "").strip() or None,
+            "target_value": (form.get("target_value") or "").strip() or None,
+        },
+    }
+    leads = {}
+    for workstream in template.workstreams:
+        value = as_int(form.get("lead__" + workstream["key"]))
+        if value:
+            leads[workstream["key"]] = value
+    return {
+        "name": form.get("name", ""),
+        "objective": form.get("objective", ""),
+        "owner_id": owner_id,
+        "target_date": (form.get("target_date") or "").strip() or None,
+        "target_date_unavailable_reason": (form.get("target_date_unavailable_reason") or "").strip() or None,
+        "outcome": outcome,
+        "leads": leads,
+    }
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/programme-structure", methods=["POST"])
+@login_required
+@_require_journey_editor
+def confirm_programme_structure(journey_id):
+    from flask import redirect
+
+    from app.modules.transformation_room.domain import (
+        CommandConflict,
+        NotAuthorised,
+        NotFound,
+        TransformationError,
+    )
+    from app.modules.transformation_room.programme_service import TransformationProgrammeService
+    from app.modules.transformation_room.programme_types.loader import ProgrammeTypeCatalogue
+    from app.modules.transformation_room.routes import actor_from_request
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    if not journey.programme_type:
+        abort(404)
+    if not TransformationProgrammeService.can_create_programme(current_user):
+        _log_structure_denial(journey_id, "programme_create_not_authorised")
+        abort(403)
+
+    template = ProgrammeTypeCatalogue().get(journey.programme_type)
+    if template is None:
+        abort(404)
+    try:
+        payload = _parse_structure_form(request.form, template)
+        TransformationProgrammeService.instantiate_template(
+            actor=actor_from_request(),
+            journey_id=journey.id,
+            command_key=(request.form.get("command_key") or "").strip() or _uuid.uuid4().hex,
+            request=payload,
+        )
+    except NotAuthorised as error:
+        _log_structure_denial(journey_id, error.reason)
+        abort(403)
+    except NotFound:
+        abort(404)
+    except CommandConflict:
+        return render_template(
+            "architecture_assistant/programme_structure.html",
+            **_structure_context(journey, error="This programme structure has already been created."),
+        ), 409
+    except (ValueError, TypeError) as error:
+        return render_template(
+            "architecture_assistant/programme_structure.html",
+            **_structure_context(journey, error=str(error), form=request.form),
+        ), 400
+    except TransformationError as error:
+        return render_template(
+            "architecture_assistant/programme_structure.html",
+            **_structure_context(journey, error=error.reason, form=request.form),
+        ), error.http_status if error.http_status not in (401, 403, 404) else 400
+    return redirect(
+        url_for("architecture_journey.architecture_journey_workspace", journey_id=journey.id), code=303
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/lead-search", methods=["GET"])
+@login_required
+@_require_journey_editor
+@rate_limit(30, "1m")
+def programme_lead_search(journey_id):
+    """Minimal person search for the programme-structure pickers (security.md
+    9.1): journey editor who can also create the programme, explicit org
+    filter (User is not TenantMixin), at least 2 characters, at most 20 rows
+    of {id, display_name}, no email, confirmed accounts only."""
+    from app.models.user import User
+    from app.modules.transformation_room.programme_service import TransformationProgrammeService
+
+    if not TransformationProgrammeService.can_create_programme(current_user):
+        _log_structure_denial(journey_id, "lead_search_not_authorised")
+        return api_error("You cannot search people for this step", 403)
+    query = (request.args.get("q") or "").strip()
+    if len(query) < 2:
+        return api_error("Type at least 2 characters", 400)
+    pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+    users = (
+        db.session.execute(
+            select(User)
+            .where(
+                User.organization_id == current_user.organization_id,
+                User.confirmed.is_(True),
+                or_(
+                    User.first_name.ilike(pattern, escape="\\"),
+                    User.last_name.ilike(pattern, escape="\\"),
+                ),
+            )
+            .order_by(User.first_name.asc(), User.last_name.asc(), User.id.asc())
+            .limit(20)
+        )
+        .scalars()
+        .all()
+    )
+    people = [
+        {"id": u.id, "display_name": " ".join(p for p in (u.first_name, u.last_name) if p)}
+        for u in users
+        if (u.first_name or u.last_name)
+    ]
+    return api_success(data={"people": people})
