@@ -92,7 +92,8 @@ def _ready(page, factory):
 def test_the_strategy_question_shows_the_seeded_initiative(
     page, live_server, seeded, strategy_graph
 ):
-    _login(page, live_server, seeded["emails"]["solution_architect"])
+    # A user WITH budget authority (CTO) sees the financial figure.
+    _login(page, live_server, seeded["emails"]["cto"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
@@ -106,6 +107,25 @@ def test_the_strategy_question_shows_the_seeded_initiative(
     expect(row).to_contain_text("modernisation")
     expect(row).to_contain_text("45% complete")
     expect(row).to_contain_text("Budget variance")
+    expect(row).to_contain_text("1 connection")
+
+    # A user WITHOUT budget authority (solution architect) sees the
+    # restricted message and never the financial figure.
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    _ready(page, "askSurface")
+
+    page.locator("#ask-question-strategy").click()
+    expect(page.locator("#ask-picker-input")).to_be_focused()
+    type_and_wait(page, "ask", strategy_graph["noun"])
+    page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
+
+    page.wait_for_selector("[data-ask-strategy-row]")
+    row = page.locator("[data-ask-strategy-row]")
+    expect(row).to_contain_text("modernisation")
+    expect(row).to_contain_text("45% complete")
+    expect(row).to_contain_text("Restricted to roles with budget authority")
+    expect(row).not_to_contain_text("Budget variance")
     expect(row).to_contain_text("1 connection")
 
 
