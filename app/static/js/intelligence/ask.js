@@ -124,7 +124,13 @@ function askSurface() {
             }
             this.busy = false;
             this.syncDrawer();
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.state === 'ready' || self.state === 'empty') {
+                    Intelligence.showResults(self.$refs.resultsHeading);
+                }
+            });
         },
 
         /* L6 counterpart of load(). No provenance-drawer sync -- the drawer
@@ -151,7 +157,13 @@ function askSurface() {
                 this.riskState = 'error';
             }
             this.riskBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.riskState === 'ready' || self.riskState === 'empty') {
+                    Intelligence.showResults(self.$refs.riskResultsHeading);
+                }
+            });
         },
 
         /* L3: no rows, no drawer -- just resolves whether a deep link exists
@@ -179,6 +191,12 @@ function askSurface() {
                 this.portfolioState = 'error';
             }
             this.portfolioBusy = false;
+            var self = this;
+            this.$nextTick(function () {
+                if (self.portfolioState === 'ready' || self.portfolioState === 'empty') {
+                    Intelligence.showResults(self.$refs.portfolioResultsHeading);
+                }
+            });
         },
 
         /* L5 counterpart of loadRisk(). No provenance-drawer sync, same
@@ -203,7 +221,13 @@ function askSurface() {
                 this.programmeState = 'error';
             }
             this.programmeBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.programmeState === 'ready' || self.programmeState === 'empty') {
+                    Intelligence.showResults(self.$refs.programmeResultsHeading);
+                }
+            });
         },
 
         /* L2 counterpart of loadProgramme(). No provenance-drawer sync, same
@@ -228,7 +252,13 @@ function askSurface() {
                 this.strategyState = 'error';
             }
             this.strategyBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.strategyState === 'ready' || self.strategyState === 'empty') {
+                    Intelligence.showResults(self.$refs.strategyResultsHeading);
+                }
+            });
         },
 
         /* L4 counterpart of loadStrategy(). No provenance-drawer sync, no
@@ -252,7 +282,13 @@ function askSurface() {
                 this.accountabilityState = 'error';
             }
             this.accountabilityBusy = false;
-            this.$nextTick(function () { Intelligence.refreshIcons(); });
+            var self = this;
+            this.$nextTick(function () {
+                Intelligence.refreshIcons();
+                if (self.accountabilityState === 'ready' || self.accountabilityState === 'empty') {
+                    Intelligence.showResults(self.$refs.accountabilityResultsHeading);
+                }
+            });
         },
 
         async recomputeNow() {
