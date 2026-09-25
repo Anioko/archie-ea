@@ -387,6 +387,10 @@ class User(UserMixin, db.Model):
         "assignment_changes": True,
         "weekly_digest": True,
         "mention_notifications": True,
+        # Usage-analytics opt-out (Settings > Enable Analytics, unchecked).
+        # Defaults to False (tracked) to match ENABLE_USAGE_ANALYTICS being on
+        # by default.
+        "analytics_opt_out": False,
     }
 
     def get_notification_preference(self, key):  # model-safety-ok
@@ -402,11 +406,19 @@ class User(UserMixin, db.Model):
         return prefs.get(key, self._DEFAULT_NOTIFICATION_PREFS.get(key, True))
 
     def set_notification_preferences(self, prefs_dict):
-        """Replace notification_preferences with validated dict. Only known keys are stored."""
+        """Merge validated keys into notification_preferences. Only known keys are stored.
+
+        Merges into whatever is already stored rather than replacing it outright: this
+        column holds more than one caller's preferences (e.g. the five notification
+        toggles on the account page, and the usage-analytics opt-out set from Settings),
+        and a caller that only knows about its own keys -- account_routes.py's
+        save_notification_preferences always rebuilds its own five-key dict -- must not
+        silently erase a key some other route wrote here.
+        """
         known_keys = set(self._DEFAULT_NOTIFICATION_PREFS.keys())
-        self.notification_preferences = {
-            k: bool(v) for k, v in prefs_dict.items() if k in known_keys
-        }
+        current = dict(getattr(self, "notification_preferences", None) or {})
+        current.update({k: bool(v) for k, v in prefs_dict.items() if k in known_keys})
+        self.notification_preferences = current
 
     def __repr__(self):
         return f"<User '{self.full_name()}'>"

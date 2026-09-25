@@ -67,6 +67,13 @@ def create_app(config=None):
     from app.middleware.analytics_middleware import install_analytics
     install_analytics(app)
 
+    # 1d-bis. In-product usage analytics: one page-view row per module-directory
+    # endpoint visited, keyed by endpoint name only — no IP address, user agent
+    # or referrer. ENABLE_USAGE_ANALYTICS (config.py) is on by default; a
+    # signed-in user can opt out for themselves from Settings.
+    from app.middleware.partial_features_analytics import PartialFeaturesAnalytics
+    PartialFeaturesAnalytics().init_app(app)
+
     # 1d. SOC 2 audit logging: SQLAlchemy mapper events for controlled models
     from app.middleware.audit_middleware import install_audit_logging
     install_audit_logging(app)

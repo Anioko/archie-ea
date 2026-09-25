@@ -201,6 +201,11 @@ class Config:
     GOOGLE_ANALYTICS_ID = os.environ.get("GOOGLE_ANALYTICS_ID", "")
     SEGMENT_API_KEY = os.environ.get("SEGMENT_API_KEY", "")
 
+    # In-product usage analytics: one page-view row per module-directory endpoint
+    # visited, keyed by endpoint name. No personal data is stored; a signed-in
+    # user can opt out for themselves from Settings.
+    ENABLE_USAGE_ANALYTICS = True
+
     # Admin account
     ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
     if not ADMIN_PASSWORD:
@@ -466,6 +471,10 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
     TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
+
+    # Off by default under test; a test that needs usage analytics sets this
+    # explicitly on its own app instance.
+    ENABLE_USAGE_ANALYTICS = False
 
     # credential_encryption.py raises RuntimeError when this is unset, by
     # design (it must not silently store a credential in plaintext). Generated
