@@ -38,6 +38,7 @@ NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 DERIVATION_NOT_COMPUTED_REASON = validate_reason_code("derivation_not_computed")
 NO_RISK_RECORDED_REASON = validate_reason_code("no_risk_recorded")
+INITIATIVE_NOT_ELEMENT_LINKED_REASON = validate_reason_code("initiative_not_element_linked")
 NO_APPLICATION_COMPONENT_REASON = validate_reason_code("no_application_component")
 NO_WORK_PACKAGE_RECORDED_REASON = validate_reason_code("no_work_package_recorded")
 NOT_COSTED_REASON = validate_reason_code("not_costed")
@@ -1052,9 +1053,32 @@ class IntelligenceQueryService:
         measured-zero discipline still applies: variance is only reported
         when ``total_budget`` is a real positive number, else the row
         carries the honest ``no_budget_recorded`` reason.
+
+        Each initiative also carries ``forecast_cost`` and
+        ``expected_roi_percentage`` as recorded (``Numeric`` cast to
+        ``float``), beside the budget and spend; nothing is computed from
+        them, no variance or ratio between the forecast and the budget.
+        ``forecast_reason`` is ``no_budget_recorded`` when nobody forecast a
+        cost. The three 1-100 self-ratings are listed in ``self_ratings`` with
+        their scale, as recorded, never combined or ranked. A missing rating
+        is null with no reason of its own: the one named exception to the
+        rule that an absence carries a reason, kept so one initiative reads
+        the same shape here as on the value-stream answer.
+
+        ``live_initiatives`` is a constant block on every branch: the
+        ``EnterpriseInitiative`` record the Portfolio screens use has no
+        ArchiMate element link (an ``archimate_element_id`` column would make
+        the read possible), so it is not read and is never matched by name,
+        code or title.
         """
         from app.models import ArchiMateElement
         from app.models.enterprise_intelligence import PortfolioInitiative
+
+        live_initiatives = {
+            "rows": None,
+            "reason": INITIATIVE_NOT_ELEMENT_LINKED_REASON,
+            "source": "enterprise_initiatives",
+        }
 
         org_id = current_org_id()
 
@@ -1066,6 +1090,7 @@ class IntelligenceQueryService:
                     "initiatives": [],
                     "reasons": [NO_TENANT_CONTEXT_REASON],
                     "elements": {},
+                    "live_initiatives": live_initiatives,
                 }
 
             element = db.session.execute(
@@ -1076,6 +1101,7 @@ class IntelligenceQueryService:
                     "initiatives": [],
                     "reasons": [ELEMENT_NOT_FOUND_REASON],
                     "elements": {},
+                    "live_initiatives": live_initiatives,
                 }
 
             seed_initiatives = (
@@ -1093,6 +1119,7 @@ class IntelligenceQueryService:
                     "initiatives": [],
                     "reasons": [NO_INITIATIVE_LINKED_REASON],
                     "elements": {},
+                    "live_initiatives": live_initiatives,
                 }
 
             all_elements: Dict[str, Dict[str, Any]] = {}
@@ -1140,6 +1167,28 @@ class IntelligenceQueryService:
                         "program_manager": initiative.program_manager,
                         "budget_variance_pct": budget_variance_pct,
                         "budget_reason": budget_reason,
+                        "forecast_cost": (
+                            float(initiative.forecast_cost)
+                            if initiative.forecast_cost is not None
+                            else None
+                        ),
+                        "expected_roi_percentage": (
+                            float(initiative.expected_roi_percentage)
+                            if initiative.expected_roi_percentage is not None
+                            else None
+                        ),
+                        "forecast_reason": (
+                            None
+                            if initiative.forecast_cost is not None
+                            else NO_BUDGET_RECORDED_REASON
+                        ),
+                        "self_ratings": {
+                            "business_value_score": initiative.business_value_score,
+                            "risk_score": initiative.risk_score,
+                            "strategic_alignment_score": initiative.strategic_alignment_score,
+                            "scale": "1-100",
+                            "truth_class": "authoritative_fact",
+                        },
                         "success_metrics": [
                             {
                                 "metric_name": m.metric_name,
@@ -1155,7 +1204,12 @@ class IntelligenceQueryService:
                     }
                 )
 
-        return {"initiatives": initiative_payloads, "reasons": [], "elements": all_elements}
+        return {
+            "initiatives": initiative_payloads,
+            "reasons": [],
+            "elements": all_elements,
+            "live_initiatives": live_initiatives,
+        }
 
     @staticmethod
     def accountability_for_element(element_id: int) -> Dict[str, Any]:

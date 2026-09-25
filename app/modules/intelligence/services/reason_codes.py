@@ -116,6 +116,10 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Strategy answer: the live initiative record (the one the Portfolio
+        # screens use) has no ArchiMate element link, so it cannot be read
+        # from an element and the answer says so instead of matching by name.
+        "initiative_not_element_linked",
     }
 )
 
