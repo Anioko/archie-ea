@@ -376,6 +376,24 @@ def join_from_invite(user_id, token):
     return redirect(url_for("main.index"))
 
 
+@account_bp.route("/invitation/<int:invitation_id>/accept", methods=["POST"])
+@login_required
+def accept_invitation(invitation_id):
+    """Accept a pending invitation and gain the offered role."""
+    success, message = _svc.accept_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
+
+
+@account_bp.route("/invitation/<int:invitation_id>/decline", methods=["POST"])
+@login_required
+def decline_invitation(invitation_id):
+    """Decline a pending invitation — no role is granted."""
+    success, message = _svc.decline_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
+
+
 @account_bp.before_app_request
 def before_request():
     """Force user to confirm email before accessing login-required routes."""

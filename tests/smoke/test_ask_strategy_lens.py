@@ -14,7 +14,7 @@ import uuid
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import PAGE_TIMEOUT, PASSWORD, type_and_wait
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -89,13 +89,6 @@ def _ready(page, factory):
     )
 
 
-def _type_and_wait(page, prefix, term):
-    box = page.locator("#%s-picker-input" % prefix)
-    box.press_sequentially(term, delay=15)
-    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
-    return box
-
-
 def test_the_strategy_question_shows_the_seeded_initiative(
     page, live_server, seeded, strategy_graph
 ):
@@ -105,7 +98,7 @@ def test_the_strategy_question_shows_the_seeded_initiative(
 
     page.locator("#ask-question-strategy").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", strategy_graph["noun"])
+    type_and_wait(page, "ask", strategy_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
     page.wait_for_selector("[data-ask-strategy-row]")
@@ -125,7 +118,7 @@ def test_an_element_with_no_initiatives_reads_as_an_honest_empty_state(
 
     page.locator("#ask-question-strategy").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", strategy_graph["noun"])
+    type_and_wait(page, "ask", strategy_graph["noun"])
     # Gateway has no initiative seeded on it, only Service does.
     page.locator("#ask-picker-listbox [role=option]", has_text="Gateway").click()
 
@@ -142,14 +135,14 @@ def test_all_five_questions_keep_their_own_answers_separate(
     _ready(page, "askSurface")
 
     page.locator("#ask-question-impact").click()
-    _type_and_wait(page, "ask", strategy_graph["noun"])
+    type_and_wait(page, "ask", strategy_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-row]")
     expect(page.locator("#ask-results")).to_be_visible()
     expect(page.locator("#ask-strategy-results")).to_be_hidden()
 
     page.locator("#ask-question-strategy").click()
-    _type_and_wait(page, "ask", strategy_graph["noun"])
+    type_and_wait(page, "ask", strategy_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-strategy-row]")
     expect(page.locator("#ask-strategy-results")).to_be_visible()
