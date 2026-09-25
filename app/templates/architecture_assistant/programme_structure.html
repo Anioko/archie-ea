@@ -26,8 +26,10 @@
 </div>
 {% endmacro %}
 
+{% from 'architecture_assistant/partials/_archimate_switch.html' import archimate_switch %}
+
 {% block content %}
-<div class="flex-1 overflow-auto">
+<div class="flex-1 overflow-auto" x-data="archimateSwitch()" data-detail="{{ '1' if archimate_detail else '0' }}">
   {{ page_header(
     title='Programme structure',
     description=(programme_type_name or 'Programme type') ~ ' — the stages, workstreams and deliverables this journey will create.',
@@ -40,6 +42,7 @@
   ) }}
 
   <div class="p-4 sm:p-6 space-y-6">
+    <div class="flex justify-end">{{ archimate_switch() }}</div>
     {% if error %}
     <p class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive-emphasis" role="alert" data-testid="structure-error">{{ error }}</p>
     {% endif %}
@@ -59,7 +62,7 @@
           {% for ws in created.workstreams %}
           <li class="flex items-center justify-between gap-3 p-3 text-sm">
             <span class="font-medium text-foreground">{{ ws.name or '—' }}</span>
-            <span class="text-xs text-muted-foreground">{{ ws.type_label }}</span>
+            <span class="text-xs text-muted-foreground">{{ ws.type_label }}<span x-show="detail" x-cloak> &middot; {{ ws.type_raw }}</span></span>
           </li>
           {% endfor %}
         </ul>
@@ -85,7 +88,7 @@
                 <ul class="mt-2 space-y-1">
                   {% for e in d.elements %}
                   <li class="flex items-center justify-between gap-2 text-sm text-foreground">
-                    <span>{{ e.name }} <span class="text-xs text-muted-foreground">{{ e.type_label }}</span></span>
+                    <span>{{ e.name }} <span class="text-xs text-muted-foreground">{{ e.type_label }}<span x-show="detail" x-cloak> &middot; {{ e.type }} ({{ e.layer }})</span></span></span>
                     {% if not d.completed and can_credit %}
                     <button type="button" @click="removeElement({{ e.id }})" :disabled="busy" aria-label="Remove {{ e.name }} from this deliverable"
                       class="text-xs text-muted-foreground hover:text-destructive">Remove</button>
@@ -156,7 +159,7 @@
         <ul class="mt-2 divide-y divide-border rounded-lg border border-border">
           {% for ws in template_workstreams %}
           <li class="p-3 text-sm"><span class="font-medium text-foreground">{{ ws.name }}</span>
-            <span class="ml-2 text-xs text-muted-foreground">{{ ws.type_label }}</span></li>
+            <span class="ml-2 text-xs text-muted-foreground">{{ ws.type_label }}<span x-show="detail" x-cloak> &middot; {{ ws.type_raw }}</span></span></li>
           {% endfor %}
         </ul>
         <h3 class="mt-5 text-sm font-semibold text-foreground">Deliverables by stage</h3>
@@ -167,7 +170,7 @@
             <ul class="mt-2 space-y-1">
               {% for d in stage.deliverables %}
               <li class="text-sm text-foreground">{{ d.name }}
-                <span class="text-xs text-muted-foreground">— creates {{ d.element_labels|join(', ') }}</span></li>
+                <span class="text-xs text-muted-foreground">— creates {{ d.element_labels|join(', ') }}<span x-show="detail" x-cloak> ({{ d.element_types_raw|join(', ') }})</span></span></li>
               {% endfor %}
             </ul>
           </div>
@@ -250,5 +253,6 @@
 
 {% block scripts %}
 {{ super() }}
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/architecture_assistant/archimate_switch.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='js/architecture_assistant/programme_structure.js') }}"></script>
 {% endblock %}

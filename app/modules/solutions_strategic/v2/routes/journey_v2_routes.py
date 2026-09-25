@@ -6121,7 +6121,8 @@ def _structure_template_view(template):
     )
 
     workstreams = [
-        {"key": w["key"], "name": w["name"], "type_label": workstream_type_label(w["workstream_type"])}
+        {"key": w["key"], "name": w["name"], "type_label": workstream_type_label(w["workstream_type"]),
+         "type_raw": w["workstream_type"]}
         for w in template.workstreams
     ]
     stages = []
@@ -6133,7 +6134,8 @@ def _structure_template_view(template):
             "deliverables": [
                 {
                     "name": d["name"],
-                    "element_labels": [element_type_label(t) for t in d.get("element_types") or ()],
+                    "element_labels": [element_type_label(et) for et in d.get("element_types") or ()],
+                    "element_types_raw": list(d.get("element_types") or ()),
                 }
                 for d in stage.get("deliverables") or ()
             ],
@@ -6147,6 +6149,8 @@ def _structure_deliverable(row, org):
     from app.modules.transformation_room.deliverable_credit_service import credit_status
     from app.modules.transformation_room.programme_types.labels import element_type_label
 
+    from app.modules.transformation_room.deliverable_credit_service import _LAYER_BY_TYPE
+
     status = credit_status(db.session, org, row[2]) or {}
     declared = status.get("declared") or []
     return {
@@ -6154,10 +6158,12 @@ def _structure_deliverable(row, org):
         "name": row[0],
         "declared": declared,
         "declared_options": [{"key": key, "label": element_type_label(key)} for key in declared],
+        "declared_raw": [{"type": key, "layer": _LAYER_BY_TYPE.get(key)} for key in declared],
         "n": status.get("n"),
         "m": status.get("m"),
         "elements": [
-            {**e, "type_label": element_type_label(e["type"])} for e in status.get("elements") or []
+            {**e, "type_label": element_type_label(e["type"]), "layer": _LAYER_BY_TYPE.get(e["type"])}
+            for e in status.get("elements") or []
         ],
         "completed": status.get("completed"),
         "completion_reason": status.get("completion_reason"),
@@ -6221,7 +6227,8 @@ def _structure_created_view(journey, actor):
         "programme_id": programme.id,
         "programme_name": programme.name,
         "workstreams": [
-            {"name": w.name or w.objective, "type_label": workstream_type_label(w.workstream_type)}
+            {"name": w.name or w.objective, "type_label": workstream_type_label(w.workstream_type),
+             "type_raw": w.workstream_type}
             for w in workstreams
         ],
         "stages": stages,
@@ -6253,6 +6260,7 @@ def _structure_context(journey, *, error=None, form=None):
         "error": error,
         "created": None,
         "read_allowed": True,
+        "archimate_detail": request.cookies.get("archimate_detail") == "1",
     }
     # Persona-based; the service re-checks LINK_ROLES (which also admits an
     # assigned contributor) on every write, so this only hides the controls.
