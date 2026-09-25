@@ -696,6 +696,31 @@ def type_and_wait(page, prefix, term):
     return box
 
 
+def sign_in(page, base, email):
+    """Sign in as *email* on *page*, clearing any prior session first.
+
+    A test that signs in as a second persona on the same ``page`` (to
+    compare what two roles see) leaves the browser context authenticated
+    as the first persona; navigating straight to ``/account/login`` then
+    redirects away before the form renders, so ``#email`` never appears.
+    Visiting ``/account/logout`` first guarantees the login form is
+    actually on the page for every sign-in, first or second.
+    """
+    page.goto(base + "/account/logout", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    page.fill("#email", email)
+    page.fill("#password", PASSWORD)
+    try:
+        page.click("#submit", no_wait_after=True)
+    except TypeError:
+        page.locator("#submit").click()
+    try:
+        page.wait_for_url(lambda url: "/account/login" not in url, timeout=PAGE_TIMEOUT)
+    except Exception:
+        pass
+    assert "/account/login" not in page.url, "could not sign in as %s" % email
+
+
 # Every enterprise role the product defines. The scope contract below prevents
 # a new or promoted persona from silently disappearing from browser coverage.
 ARCHETYPES = [

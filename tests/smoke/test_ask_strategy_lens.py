@@ -14,7 +14,7 @@ import uuid
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD, type_and_wait
+from .conftest import PAGE_TIMEOUT, sign_in, type_and_wait
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -66,21 +66,6 @@ def strategy_graph(seeded, live_server):
     return _seed_strategy_graph(seeded["ids"]["org"])
 
 
-def _login(page, base, email):
-    page.goto(base + "/account/login", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    page.fill("#email", email)
-    page.fill("#password", PASSWORD)
-    try:
-        page.click("#submit", no_wait_after=True)
-    except TypeError:
-        page.locator("#submit").click()
-    try:
-        page.wait_for_url(lambda url: "/account/login" not in url, timeout=PAGE_TIMEOUT)
-    except Exception:
-        pass
-    assert "/account/login" not in page.url, "could not sign in as %s" % email
-
-
 def _ready(page, factory):
     page.wait_for_function(
         "(f) => { const el = document.querySelector('[x-data=\"' + f + '()\"]');"
@@ -93,7 +78,7 @@ def test_the_strategy_question_shows_the_seeded_initiative(
     page, live_server, seeded, strategy_graph
 ):
     # A user WITH budget authority (CTO) sees the financial figure.
-    _login(page, live_server, seeded["emails"]["cto"])
+    sign_in(page, live_server, seeded["emails"]["cto"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
@@ -111,7 +96,7 @@ def test_the_strategy_question_shows_the_seeded_initiative(
 
     # A user WITHOUT budget authority (solution architect) sees the
     # restricted message and never the financial figure.
-    _login(page, live_server, seeded["emails"]["solution_architect"])
+    sign_in(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
@@ -132,7 +117,7 @@ def test_the_strategy_question_shows_the_seeded_initiative(
 def test_an_element_with_no_initiatives_reads_as_an_honest_empty_state(
     page, live_server, seeded, strategy_graph
 ):
-    _login(page, live_server, seeded["emails"]["solution_architect"])
+    sign_in(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
@@ -150,7 +135,7 @@ def test_all_five_questions_keep_their_own_answers_separate(
     page, live_server, seeded, strategy_graph
 ):
     """Regression guard: five questions now share one picker component."""
-    _login(page, live_server, seeded["emails"]["solution_architect"])
+    sign_in(page, live_server, seeded["emails"]["solution_architect"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
