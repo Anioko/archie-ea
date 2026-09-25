@@ -14,7 +14,7 @@ import uuid
 import pytest
 from playwright.sync_api import expect
 
-from .conftest import PAGE_TIMEOUT, PASSWORD
+from .conftest import PAGE_TIMEOUT, PASSWORD, type_and_wait
 
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
@@ -90,23 +90,17 @@ def _ready(page, factory):
     )
 
 
-def _type_and_wait(page, prefix, term):
-    box = page.locator("#%s-picker-input" % prefix)
-    box.press_sequentially(term, delay=15)
-    page.wait_for_selector("#%s-picker-listbox [role=option]" % prefix)
-    return box
-
-
 def test_the_programme_question_shows_the_seeded_work_package(
     page, live_server, seeded, programme_graph
 ):
-    _login(page, live_server, seeded["emails"]["solution_architect"])
+    # A user WITH budget authority (CTO) sees the financial figure.
+    _login(page, live_server, seeded["emails"]["cto"])
     page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
     _ready(page, "askSurface")
 
     page.locator("#ask-question-programme").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", programme_graph["noun"])
+    type_and_wait(page, "ask", programme_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
 
     page.wait_for_selector("[data-ask-programme-row]")
@@ -114,6 +108,25 @@ def test_the_programme_question_shows_the_seeded_work_package(
     expect(row).to_contain_text("cloud migration")
     expect(row).to_contain_text("55% complete")
     expect(row).to_contain_text("Cost variance")
+    expect(row).to_contain_text("1 connection")
+
+    # A user WITHOUT budget authority (solution architect) sees the
+    # restricted message and never the financial figure.
+    _login(page, live_server, seeded["emails"]["solution_architect"])
+    page.goto(live_server + "/intelligence/ask", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    _ready(page, "askSurface")
+
+    page.locator("#ask-question-programme").click()
+    expect(page.locator("#ask-picker-input")).to_be_focused()
+    type_and_wait(page, "ask", programme_graph["noun"])
+    page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
+
+    page.wait_for_selector("[data-ask-programme-row]")
+    row = page.locator("[data-ask-programme-row]")
+    expect(row).to_contain_text("cloud migration")
+    expect(row).to_contain_text("55% complete")
+    expect(row).to_contain_text("Restricted to roles with budget authority")
+    expect(row).not_to_contain_text("Cost variance")
     expect(row).to_contain_text("1 connection")
 
 
@@ -126,7 +139,7 @@ def test_an_element_with_no_work_packages_reads_as_an_honest_empty_state(
 
     page.locator("#ask-question-programme").click()
     expect(page.locator("#ask-picker-input")).to_be_focused()
-    _type_and_wait(page, "ask", programme_graph["noun"])
+    type_and_wait(page, "ask", programme_graph["noun"])
     # Gateway has no work package seeded on it, only Service does.
     page.locator("#ask-picker-listbox [role=option]", has_text="Gateway").click()
 
@@ -143,14 +156,14 @@ def test_all_four_questions_keep_their_own_answers_separate(
     _ready(page, "askSurface")
 
     page.locator("#ask-question-impact").click()
-    _type_and_wait(page, "ask", programme_graph["noun"])
+    type_and_wait(page, "ask", programme_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-row]")
     expect(page.locator("#ask-results")).to_be_visible()
     expect(page.locator("#ask-programme-results")).to_be_hidden()
 
     page.locator("#ask-question-programme").click()
-    _type_and_wait(page, "ask", programme_graph["noun"])
+    type_and_wait(page, "ask", programme_graph["noun"])
     page.locator("#ask-picker-listbox [role=option]", has_text="Service").click()
     page.wait_for_selector("[data-ask-programme-row]")
     expect(page.locator("#ask-programme-results")).to_be_visible()

@@ -13,7 +13,7 @@ Features:
 """
 
 from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
-from flask_login import login_required
+from app.middleware.tenant_decorators import platform_admin_required
 
 from app import db
 from app.models.framework_configuration import (
@@ -36,14 +36,14 @@ framework_config_ui_bp = Blueprint(
 
 
 @framework_config_ui_bp.route("/")
-@login_required
+@platform_admin_required
 def framework_config_dashboard():
     """Framework configuration dashboard - this page has been folded."""
     return redirect(url_for("maturity_management.frameworks_overview"), code=302)
 
 
 @framework_config_ui_bp.route("/configuration/new")
-@login_required
+@platform_admin_required
 def new_configuration():
     """Create new configuration — modal on dashboard handles creation inline"""
     from flask import redirect, url_for
@@ -52,7 +52,7 @@ def new_configuration():
 
 
 @framework_config_ui_bp.route("/configuration/<int:config_id>")
-@login_required
+@platform_admin_required
 def view_configuration(config_id):
     """View framework configuration details"""
     try:
@@ -92,7 +92,7 @@ def view_configuration(config_id):
 
 
 @framework_config_ui_bp.route("/configuration/<int:config_id>/edit")
-@login_required
+@platform_admin_required
 def edit_configuration(config_id):
     """Edit framework configuration"""
     try:
@@ -119,24 +119,16 @@ def edit_configuration(config_id):
 
 
 @framework_config_ui_bp.route("/extensions")
-@login_required
+@platform_admin_required
 def extensions():
     """Framework extensions management"""
     try:
         # Get available extensions
         extensions = FrameworkExtension.query.filter_by(status="active").all()
 
-        # Group by category
-        extensions_by_category = {}
-        for extension in extensions:
-            category = extension.extension_category or "other"
-            if category not in extensions_by_category:
-                extensions_by_category[category] = []
-            extensions_by_category[category].append(extension)
-
         return render_template(
-            "framework_config/dashboard.html",
-            extensions_by_category=extensions_by_category,
+            "framework_config/extensions.html",
+            extensions=extensions,
         )
 
     except Exception as e:
@@ -148,7 +140,7 @@ def extensions():
 
 
 @framework_config_ui_bp.route("/extensions/<extension_code>")
-@login_required
+@platform_admin_required
 def extension_details(extension_code):
     """Extension details page"""
     try:
@@ -186,7 +178,7 @@ def extension_details(extension_code):
 
 
 @framework_config_ui_bp.route("/templates")
-@login_required
+@platform_admin_required
 def templates():
     """Framework configuration templates"""
     try:
@@ -195,16 +187,8 @@ def templates():
             status="active"
         ).all()
 
-        # Group by type
-        templates_by_type = {}
-        for template in templates:
-            template_type = template.template_type or "other"
-            if template_type not in templates_by_type:
-                templates_by_type[template_type] = []
-            templates_by_type[template_type].append(template)
-
         return render_template(
-            "framework_config/dashboard.html", templates_by_type=templates_by_type
+            "framework_config/templates.html", templates=templates
         )
 
     except Exception as e:
@@ -216,7 +200,7 @@ def templates():
 
 
 @framework_config_ui_bp.route("/templates/<int:template_id>")
-@login_required
+@platform_admin_required
 def template_details(template_id):
     """Template details page"""
     try:
@@ -249,7 +233,7 @@ def template_details(template_id):
 
 
 @framework_config_ui_bp.route("/instances")
-@login_required
+@platform_admin_required
 def instances():
     """Framework instances management"""
     try:
@@ -269,7 +253,7 @@ def instances():
 
 
 @framework_config_ui_bp.route("/instances/<int:instance_id>")
-@login_required
+@platform_admin_required
 def instance_details(instance_id):
     """Instance details page"""
     try:
@@ -293,7 +277,7 @@ def instance_details(instance_id):
 
 
 @framework_config_ui_bp.route("/migration")
-@login_required
+@platform_admin_required
 def migration():
     """Framework migration management"""
     try:
@@ -313,7 +297,7 @@ def migration():
 
 
 @framework_config_ui_bp.route("/wizard")
-@login_required
+@platform_admin_required
 def configuration_wizard():
     """Configuration wizard step-by-step interface"""
     try:
@@ -323,9 +307,8 @@ def configuration_wizard():
         ).all()
 
         return render_template(
-            "framework_config/dashboard.html",
+            "framework_config/wizard.html",
             templates=templates,
-            step=1,
         )
 
     except Exception as e:
@@ -337,7 +320,7 @@ def configuration_wizard():
 
 
 @framework_config_ui_bp.route("/validation")
-@login_required
+@platform_admin_required
 def validation():
     """Framework validation dashboard"""
     try:
@@ -366,7 +349,7 @@ def validation():
 
 
 @framework_config_ui_bp.route("/help")
-@login_required
+@platform_admin_required
 def help():
     """Help and documentation"""
     try:
@@ -381,7 +364,7 @@ def help():
 
 
 @framework_config_ui_bp.route("/api/instances", methods=["GET"])
-@login_required
+@platform_admin_required
 def api_list_framework_instances():
     """List framework instances with pagination, search and sort."""
     page = safe_int_arg('page', 1, minimum=1)
@@ -446,7 +429,7 @@ def api_list_framework_instances():
 
 
 @framework_config_ui_bp.route("/api/instances/bulk", methods=["DELETE"])
-@login_required
+@platform_admin_required
 def api_bulk_delete_framework_instances():
     """Bulk delete framework instances by ID list."""
     data = request.get_json() or {}

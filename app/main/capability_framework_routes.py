@@ -10,7 +10,7 @@ from app.models import ApplicationComponent
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import BusinessDomain, UnifiedCapability
 from app.utils.route_guards import require_entity_json
-from flask_login import login_required
+from app.middleware.tenant_decorators import platform_admin_required
 
 capability_framework_bp = Blueprint(
     "capability_framework", __name__, url_prefix="/capability-framework"
@@ -18,14 +18,14 @@ capability_framework_bp = Blueprint(
 
 
 @capability_framework_bp.route("/")
-@login_required
+@platform_admin_required
 def dashboard():
     """Redirect to Capability Frameworks overview - this page has been folded."""
     return redirect(url_for("maturity_management.frameworks_overview"), code=302)
 
 
 @capability_framework_bp.route("/api/domains")
-@login_required
+@platform_admin_required
 def get_domains():
     """Get all business domains with capability counts"""
     domains = (
@@ -54,7 +54,7 @@ def get_domains():
 
 
 @capability_framework_bp.route("/api/capabilities")
-@login_required
+@platform_admin_required
 def get_capabilities():
     """Get capabilities with optional filtering"""
     domain_id = request.args.get("domain_id", type=int)
@@ -97,7 +97,7 @@ def get_capabilities():
 
 
 @capability_framework_bp.route("/api/capability/<int:capability_id>/applications")
-@login_required
+@platform_admin_required
 def get_capability_applications(capability_id):
     """Get applications mapped to a specific capability"""
     # Unknown capability -> 404, not an empty application list. The `main`
@@ -143,7 +143,7 @@ def get_capability_applications(capability_id):
 
 
 @capability_framework_bp.route("/api/statistics")
-@login_required
+@platform_admin_required
 def get_statistics():
     """Get framework statistics"""
     stats = {
@@ -173,7 +173,7 @@ def get_statistics():
 
 
 @capability_framework_bp.route("/api/maturity-heatmap")
-@login_required
+@platform_admin_required
 def get_maturity_heatmap():
     """Get maturity heatmap data: domains x maturity levels with health scores"""
     from app.services.capability_heatmap_service import CapabilityHeatmapService
@@ -184,7 +184,7 @@ def get_maturity_heatmap():
 
 
 @capability_framework_bp.route("/api/gap-alerts")
-@login_required
+@platform_admin_required
 def get_gap_alerts():
     """Get gap alerts: unmapped capabilities, low coverage, and maturity gaps"""
     from app.services.capability_heatmap_service import CapabilityHeatmapService
@@ -195,7 +195,7 @@ def get_gap_alerts():
 
 
 @capability_framework_bp.route("/api/domain-health")
-@login_required
+@platform_admin_required
 def get_domain_health():
     """Get domain health scores with status classification"""
     from app.services.capability_heatmap_service import CapabilityHeatmapService
