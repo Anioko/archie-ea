@@ -500,7 +500,12 @@ def _relationship_to_dict(r):
 @architecture_crud_bp.route("/api/elements", methods=["GET"])
 @login_required
 def api_list_elements():
-    """API: List elements (JSON) with relationship + solution counts (ARCH-002)."""
+    """API: List elements (JSON) with relationship + solution counts (ARCH-002).
+
+    Optional query params ``q`` (case-insensitive name search), ``type`` and
+    ``layer`` narrow the result; omitting all three preserves the original
+    behaviour (first 500 elements, unfiltered).
+    """
     from sqlalchemy import func, or_
 
     # Subquery: count relationships where element is source or target
@@ -535,7 +540,18 @@ def api_list_elements():
     except Exception:
         sol_sub = None
 
-    elements = ArchitectureElement.query.limit(500).all()
+    query = ArchitectureElement.query
+    search_q = request.args.get("q")
+    if search_q:
+        query = query.filter(ArchitectureElement.name.ilike(f"%{search_q}%"))
+    element_type = request.args.get("type")
+    if element_type:
+        query = query.filter(ArchitectureElement.type == element_type)
+    layer = request.args.get("layer")
+    if layer:
+        query = query.filter(ArchitectureElement.layer == layer)
+
+    elements = query.limit(500).all()
 
     # Build count lookup dicts for efficiency
     rel_src = {r.eid: r.cnt for r in db.session.query(rel_sub).all()}
@@ -551,6 +567,21 @@ def api_list_elements():
         result.append(_element_to_dict(e, rel_count=rc, sol_count=sc))
 
     return jsonify({"status": "success", "elements": result})
+
+
+@architecture_crud_bp.route("/api/elements/<int:element_id>", methods=["GET"])
+@login_required
+def api_get_element(element_id):
+    """API: Get a single element (JSON). 404 body is JSON, not the default error page."""
+    element = db.session.get(ArchitectureElement, element_id)
+    if element is None:
+        return jsonify({
+            "status": "error",
+            "error": "not_found",
+            "message": f"Element {element_id} not found",
+        }), 404
+
+    return jsonify({"status": "success", "element": _element_to_dict(element)})
 
 
 @architecture_crud_bp.route("/api/relationships", methods=["GET"])

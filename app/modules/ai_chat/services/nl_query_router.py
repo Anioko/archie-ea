@@ -287,33 +287,27 @@ class NLQueryRouter:
 
     def _call_api(self, pattern: Dict[str, Any]) -> Dict[str, Any]:
         """Call the internal Flask API endpoint and return its JSON payload."""
-        from flask import current_app
+        from app.utils.internal_api import call_internal_api
 
-        with current_app.test_client() as client:
-            # Use an internal test-client request so we reuse auth/session
-            # context without an external HTTP call.
-            #
-            # NOTE: For production use the test_client approach is lightweight
-            # and avoids network overhead.  The test_client shares the same
-            # in-process WSGI app.
-            if pattern["api_method"].upper() == "GET":
-                resp = client.get(pattern["api_path"], query_string=pattern.get("api_params", {}))
-            else:
-                resp = client.post(
-                    pattern["api_path"],
-                    json=pattern.get("api_params", {}),
-                )
+        is_get = pattern["api_method"].upper() == "GET"
+        result = call_internal_api(
+            pattern["api_method"],
+            pattern["api_path"],
+            params=pattern.get("api_params", {}) if is_get else None,
+            json_body=pattern.get("api_params", {}) if not is_get else None,
+            pass_session=True,
+        )
 
-            if resp.status_code == 200:
-                return resp.get_json() or {}
-            else:
-                logger.warning(
-                    "A95-002: API %s returned status %s",
-                    pattern["api_path"],
-                    resp.status_code,
-                )
-                # Return empty dict — formatter will produce a "no results" message
-                return {}
+        if result.status_code == 200:
+            return result.json or {}
+        else:
+            logger.warning(
+                "A95-002: API %s returned status %s",
+                pattern["api_path"],
+                result.status_code,
+            )
+            # Return empty dict — formatter will produce a "no results" message
+            return {}
 
     def _format_response(self, pattern: Dict[str, Any], api_data: Dict[str, Any]) -> Dict[str, Any]:
         """Format raw API data into a structured chat response with table."""
