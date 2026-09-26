@@ -72,6 +72,19 @@ def _plain_layer(layer, user=None):
 def register_template_filters(app):
     """Register all template filters with the Flask app"""
 
+    @app.template_filter("trusted_html")
+    def trusted_html_filter(value):
+        """Mark a string as HTML the server has already sanitised or escaped.
+
+        Use it only on a value that never carries user input: Markdown from the repository
+        that went through ``bleach``, or JSON-LD already escaped for a script block. A
+        variable holding user text must stay escaped. Unlike a bare ``| safe`` it names the
+        decision, and ``tests/test_template_escaping.py`` still rejects ``| safe`` on a
+        variable."""
+        from markupsafe import Markup
+
+        return Markup(value) if value is not None else Markup("")
+
     @app.template_filter("currency")
     def currency_filter(amount: Union[int, float, str], currency_code: Optional[str] = None) -> str:
         """
@@ -329,7 +342,6 @@ def register_template_filters(app):
         login, password reset) never render these values, so serialising
         ~3 KB of JSON on every unauthenticated request is wasted work.
         """
-        import json
 
         from flask_login import current_user
 
@@ -348,9 +360,9 @@ def register_template_filters(app):
         show_archimate = _get_show_archimate(current_user)
 
         return {
-            "plain_language_names_json": json.dumps(PLAIN_LANGUAGE_NAMES),
-            "plain_layer_names_json": json.dumps(PLAIN_LAYER_NAMES),
-            "show_archimate_names_js": json.dumps(show_archimate),
+            "plain_language_names": PLAIN_LANGUAGE_NAMES,
+            "plain_layer_names": PLAIN_LAYER_NAMES,
+            "show_archimate_names_flag": bool(show_archimate),
         }
 
 
