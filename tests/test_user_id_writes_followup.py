@@ -298,6 +298,28 @@ def test_create_task_refuses_assignee_of_another_organisation(app, db_session, c
     assert KanbanCard.query.filter(KanbanCard.board_id == board.id).count() == 0
 
 
+def test_create_task_refusal_leaves_no_auto_created_board(app, db_session, client, login_as):
+    """A caller with no board yet gets one auto-created by create_task. A
+    refused assignee must not leave that board behind (the audit decorator
+    commits after the view returns, refusals included)."""
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    newcomer = _user(db_session, org_a, "Nel", "New")
+    db_session.commit()
+
+    login_as(client, newcomer)
+    resp = client.post(
+        "/api/adm-kanban/v2/cards",
+        json={"title": "Card", "phase": phase.code, "assignee": theirs.id},
+    )
+
+    assert resp.status_code == 400, resp.get_json()
+
+    from app.models.adm_kanban import KanbanBoard
+
+    db_session.expire_all()
+    assert KanbanBoard.query.filter(KanbanBoard.created_by_id == newcomer.id).count() == 0
+
+
 def test_create_task_accepts_assignee_of_the_callers_organisation(app, db_session, client, login_as):
     org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
 
@@ -347,6 +369,136 @@ def test_update_task_accepts_assignee_of_the_callers_organisation(app, db_sessio
 
     refreshed = KanbanCard.query.get(card.id)
     assert str(refreshed.assignee) == str(mine.id)
+
+
+# -- a stored foreign assignee (written before the check) does not block editing ------
+#
+# Both edit forms send the stored assignee back unchanged on every save (the
+# card drawer's PATCH carries `assignee: card.assignee`; the board edit form's
+# PUT carries `assigned_to_id`). A card written before the organisation check
+# can hold another organisation's user id, and re-validating that unchanged
+# value refused every edit of the card.
+
+
+def test_update_task_with_unchanged_foreign_assignee_saves_other_fields(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    card = _card(db_session, board, phase, mine, assignee=str(theirs.id))
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.patch(
+        f"/api/adm-kanban/v2/cards/task:{card.id}",
+        json={"title": "Renamed", "assignee": str(theirs.id)},
+    )
+
+    assert resp.status_code == 200, resp.get_json()
+    body = resp.get_json()
+    assert body["card"]["title"] == "Renamed"
+    # The foreign user is still not named anywhere in the response.
+    assert body["card"]["assignee_label"] == ""
+    assert theirs.first_name not in str(body)
+    assert theirs.last_name not in str(body)
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Renamed"
+    assert refreshed.assignee == str(theirs.id)
+
+
+def test_update_task_still_refuses_changing_to_a_different_foreign_assignee(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    other_foreign = _user(db_session, org_b, "Oli", "Other")
+    card = _card(db_session, board, phase, mine, assignee=str(theirs.id))
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.patch(
+        f"/api/adm-kanban/v2/cards/task:{card.id}",
+        json={"title": "Renamed", "assignee": other_foreign.id},
+    )
+
+    assert resp.status_code == 400, resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Card"
+    assert refreshed.assignee == str(theirs.id)
+
+
+def test_update_task_can_clear_a_stored_foreign_assignee(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    card = _card(db_session, board, phase, mine, assignee=str(theirs.id))
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.patch(
+        f"/api/adm-kanban/v2/cards/task:{card.id}",
+        json={"assignee": None},
+    )
+
+    assert resp.status_code == 200, resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    assert KanbanCard.query.get(card.id).assignee is None
+
+
+def test_update_card_with_unchanged_foreign_assigned_to_id_saves_other_fields(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    card = _card(db_session, board, phase, mine, assigned_to_id=theirs.id)
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.put(
+        f"/api/adm-kanban/cards/{card.id}",
+        json={"title": "Renamed", "assigned_to_id": theirs.id},
+    )
+
+    assert resp.status_code == 200, resp.get_json()
+    assert theirs.first_name not in str(resp.get_json())
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Renamed"
+    assert refreshed.assigned_to_id == theirs.id
+
+    # The board API still shows no name for the stored foreign assignee.
+    board_resp = client.get(f"/api/adm-kanban/boards/{board.id}")
+    assert board_resp.status_code == 200, board_resp.get_json()
+    board_body = board_resp.get_json()
+    assert theirs.first_name not in str(board_body)
+    cards = [c for phase_cards in board_body["data"]["cards_by_phase"].values() for c in phase_cards]
+    edited = next(c for c in cards if c["id"] == card.id)
+    assert edited["assigned_to"] is None, edited
+
+
+def test_update_card_still_refuses_changing_to_a_different_foreign_assigned_to_id(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    other_foreign = _user(db_session, org_b, "Oli", "Other")
+    card = _card(db_session, board, phase, mine, assigned_to_id=theirs.id)
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.put(
+        f"/api/adm-kanban/cards/{card.id}",
+        json={"title": "Renamed", "assigned_to_id": other_foreign.id},
+    )
+
+    assert resp.status_code == 400, resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Card"
+    assert refreshed.assigned_to_id == theirs.id
 
 
 # -- kanban board API: batched assignee resolution stays fail-closed per card ---------

@@ -15,7 +15,7 @@ from flask_login import current_user, login_required
 from app import db
 from app.decorators import audit_log
 from app.middleware.tenant_context import current_org_id
-from app.utils.tenant_users import user_in_org
+from app.utils.tenant_users import same_user_id, user_in_org
 from app.services.kanban_projection_service import (
     COLUMNS,
     ADM_PHASES,
@@ -152,6 +152,13 @@ def create_task():
             {"success": False, "error": f"Phase '{phase_code}' not found. Run /adm-kanban/init-phases first."}
         ), 400
 
+    # Checked before anything is added to the session: the audit decorator
+    # commits after this view returns, even on a refusal, so an auto-created
+    # board added above a 400 would still be saved.
+    assignee = data.get('assignee')
+    if assignee and not user_in_org(assignee, current_org_id()):
+        return jsonify({"success": False, "error": "Invalid assignee"}), 400
+
     # Find or auto-create a default board for this user
     board = (
         KanbanBoard.query
@@ -189,9 +196,6 @@ def create_task():
     card.driver_ids = data.get('driver_ids', [])
     card.principle_ids = data.get('principle_ids', [])
     card.issue_type = data.get('issue_type', 'Task')
-    assignee = data.get('assignee')
-    if assignee and not user_in_org(assignee, current_org_id()):
-        return jsonify({"success": False, "error": "Invalid assignee"}), 400
     card.assignee = assignee
     card.story_points = data.get('story_points')
     card.labels = data.get('labels', [])
@@ -421,6 +425,24 @@ def update_task(card_ref):
 
     data = request.get_json() or {}
 
+    # Validate the assignee before changing anything: the audit decorator
+    # commits the session after this view returns, even on a refusal, so a
+    # field set before a 400 would still be saved.
+    #
+    # The card drawer sends the stored assignee back unchanged on every save.
+    # A card written before the organisation check may hold another
+    # organisation's user id; an unchanged value is left as it is rather than
+    # refusing the whole edit (the projection names it only inside the card's
+    # own organisation, so no foreign name is shown).
+    assignee_unchanged = "assignee" in data and same_user_id(data["assignee"], card.assignee)
+    if (
+        "assignee" in data
+        and not assignee_unchanged
+        and data["assignee"]
+        and not user_in_org(data["assignee"], current_org_id())
+    ):
+        return jsonify({"success": False, "error": "Invalid assignee"}), 400
+
     if "title" in data:
         title = (data["title"] or "").strip()
         if not title:
@@ -452,11 +474,8 @@ def update_task(card_ref):
         card.principle_ids = data["principle_ids"]
     if "issue_type" in data:
         card.issue_type = data["issue_type"]
-    if "assignee" in data:
-        assignee = data["assignee"]
-        if assignee and not user_in_org(assignee, current_org_id()):
-            return jsonify({"success": False, "error": "Invalid assignee"}), 400
-        card.assignee = assignee
+    if "assignee" in data and not assignee_unchanged:
+        card.assignee = data["assignee"]
     if "story_points" in data:
         card.story_points = data["story_points"]
     if "labels" in data:

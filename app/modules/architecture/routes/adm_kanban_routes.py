@@ -30,7 +30,7 @@ from app.models.adm_kanban import (
     create_adm_phases,
 )
 from app.models.user import User
-from app.utils.tenant_users import user_in_org
+from app.utils.tenant_users import same_user_id, user_in_org
 
 # ============================================================================
 # ADM WORKFLOW VALIDATION FUNCTIONS
@@ -658,7 +658,14 @@ def update_card(card_id):
         # Normalize nullable integer FK fields to None if empty string
         if "assigned_to_id" in data:
             data["assigned_to_id"] = data["assigned_to_id"] or None
-            if data["assigned_to_id"] and not user_in_org(
+            if same_user_id(data["assigned_to_id"], card.assigned_to_id):
+                # The edit form sends the stored assignee back unchanged. A card
+                # written before the organisation check may hold another
+                # organisation's user id; that must not block editing the other
+                # fields, so an unchanged value is left as it is (the board API
+                # still names it only inside the card's own organisation).
+                data.pop("assigned_to_id")
+            elif data["assigned_to_id"] and not user_in_org(
                 data["assigned_to_id"], current_org_id()
             ):
                 return jsonify({"success": False, "error": "Invalid assigned_to_id"}), 400
