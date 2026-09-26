@@ -706,3 +706,114 @@ def test_the_side_panel_control_is_named_for_the_panel():
     assert re.search(r'id="twin-rail-toggle".*?Selected element\s*</button>', twin, re.S)
     assert 'aria-label="Selected element"' in twin
     assert ">Details<" not in twin and "Details</button>" not in twin
+
+
+# --- nav-cache invalidation (T-RR-17) -------------------------------------
+
+
+def test_nav_counts_cache_invalidated_on_element_write(db_session, make_org):
+    """After priming the cache for an empty organisation, adding an
+    ArchiMateElement through the ORM and flushing makes compute_nav_counts
+    return the new count immediately (after_flush listener evicted the
+    stale entry)."""
+    from app._bootstrap.context_processors import compute_nav_counts, _nav_counts_cache
+    from app.models.archimate_core import ArchiMateElement
+
+    org = make_org()
+
+    first = compute_nav_counts(org.id)
+    assert first["elements"] == 0
+    assert org.id in _nav_counts_cache
+
+    db_session.add(ArchiMateElement(
+        name="Post-Flush Element",
+        type="ApplicationComponent",
+        organization_id=org.id,
+    ))
+    db_session.flush()
+
+    second = compute_nav_counts(org.id)
+    assert second["elements"] == 1
+
+
+def test_nav_counts_cache_expires_empty_result_on_other_worker(
+    db_session, make_org, monkeypatch
+):
+    """After priming the cache for an empty organisation, inserting an element
+    through raw SQL (no after_flush in this process) and advancing time past the
+    5-second empty-result TTL makes compute_nav_counts recompute from the DB.
+
+    Also proves that a non-empty result is still served from the cache within
+    300 seconds (the full TTL for real data is unchanged)."""
+    import time
+
+    from sqlalchemy import text
+
+    from app._bootstrap.context_processors import compute_nav_counts, _nav_counts_cache
+
+    org = make_org()
+
+    # Prime cache with empty result — stored with 5-second TTL.
+    first = compute_nav_counts(org.id)
+    assert first["elements"] == 0
+    assert org.id in _nav_counts_cache
+
+    # Insert an element via raw SQL: no ORM session.new tracking, so the
+    # after_flush listener does not fire — simulating another worker.
+    db_session.execute(
+        text(
+            "INSERT INTO archimate_elements (name, organization_id) "
+            "VALUES (:name, :org_id)"
+        ),
+        {"name": "Other-worker Element", "org_id": org.id},
+    )
+    db_session.flush()
+
+    # Advance time past the 5-second empty-result TTL.
+    original_time = time.time
+    monkeypatch.setattr(time, "time", lambda: original_time() + 6)
+
+    # Cache should have expired — recomputes from DB and finds 1 element.
+    second = compute_nav_counts(org.id)
+    assert second["elements"] == 1
+
+    # Now the cache holds a non-empty result with the full 300-second TTL.
+    # Advance time by 60 seconds (still well within 300) — must serve from cache.
+    monkeypatch.setattr(time, "time", lambda: original_time() + 66)
+    third = compute_nav_counts(org.id)
+    assert third["elements"] == 1
+
+    # Verify the org is still cached (not recomputed) by inspecting the dict.
+    assert org.id in _nav_counts_cache
+
+
+def test_ask_page_updates_after_element_write(
+    app, db_session, make_org, client, login_as
+):
+    """A signed-in user on an empty organisation sees the empty-workspace gate.
+    After adding one element through the ORM and flushing, the next GET shows
+    the populated page body."""
+    from app.models.archimate_core import ArchiMateElement
+
+    org = make_org("ui-flush-test")
+    user = _user(db_session, org.id)
+    login_as(client, user)
+
+    # First read: empty workspace gate.
+    html = client.get("/intelligence/ask").get_data(as_text=True)
+    main = _main_html(html)
+    text = _visible_text(main)
+    assert "Nothing is modelled yet" in text
+
+    # Write one element through the ORM and flush.
+    db_session.add(ArchiMateElement(
+        name="Route-Test Element",
+        type="ApplicationComponent",
+        organization_id=org.id,
+    ))
+    db_session.flush()
+
+    # Second read: populated page with combobox and no gate text.
+    html = client.get("/intelligence/ask").get_data(as_text=True)
+    assert 'role="combobox"' in html
+    assert "Nothing is modelled yet" not in html

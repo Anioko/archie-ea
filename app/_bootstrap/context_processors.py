@@ -28,6 +28,10 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
     ``VendorOrganization`` has no organization_id column at all, so its count is
     global by construction; that matches what the vendor list itself shows and
     is called out here rather than silently scoped to something it isn't.
+
+    Empty results (all four counts zero) are stored with a 5-second lifetime
+    instead of the default, so every server worker sees a new organisation's
+    first records at the next request after the write.
     """
     import time
 
@@ -39,7 +43,7 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
 
     now = time.time()
     hit = _nav_counts_cache.get(org_id)
-    if hit is not None and now - hit["timestamp"] < ttl:
+    if hit is not None and now - hit["timestamp"] < hit.get("ttl", ttl):
         return dict(hit["data"])
 
     def _scoped(model):
@@ -55,12 +59,45 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
         # Not tenant-scoped anywhere in the product — see docstring.
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
     }
-    _nav_counts_cache[org_id] = {"data": dict(counts), "timestamp": now}
+    entry = {"data": dict(counts), "timestamp": now}
+    if all(v == 0 for v in counts.values()):
+        entry["ttl"] = 5
+    _nav_counts_cache[org_id] = entry
     return counts
 
 
 def init_context_processors(app):
     """Register all context processors for Jinja templates."""
+
+    # T-RR-17: after_flush listener that clears nav_counts_cache when any of
+    # the four counted models are created or deleted — mirrors the session-level
+    # event registration in app/models/unified_capability.py:617,652.
+    from app.extensions import db
+
+    _NAV_COUNT_MODELS = (
+        "ApplicationComponent",
+        "ArchiMateElement",
+        "BusinessCapability",
+        "VendorOrganization",
+    )
+
+    def _invalidate_nav_counts(session, flush_context):
+        touched = set(session.new) | set(session.deleted)
+        if not touched:
+            return
+        # Check all touched objects before importing models (lazy import so the
+        # listener fires even when no write path loaded the models yet).
+        for obj in touched:
+            cls_name = type(obj).__name__
+            if cls_name not in _NAV_COUNT_MODELS:
+                continue
+            if cls_name == "VendorOrganization":
+                _nav_counts_cache.clear()
+            else:
+                _nav_counts_cache.pop(getattr(obj, "organization_id", None), None)
+            return  # one flush may touch multiple models — one sweep is enough
+
+    db.event.listen(db.session, "after_flush", _invalidate_nav_counts)
 
     _dashboard_categories_cache = {"data": None, "timestamp": 0}
     _applications_cache: dict = {}  # keyed by organisation id — see inject_applications
