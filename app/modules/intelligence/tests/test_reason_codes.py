@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_three_members,
+    13 -> test_reason_codes_has_exactly_thirty_five_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -19,7 +19,11 @@ review. Role-gating added ``financial_data_restricted``. T-S1 (value streams
 at risk, curated path) added four more -- ``no_value_stream_recorded``,
 ``no_capability_linked``, ``value_stream_not_linked_to_model`` and
 ``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
-the other two are reserved for T-S3's graph path.
+the other two are reserved for T-S3's graph path. The maturity read helper
+added two more -- ``no_maturity_target_recorded`` (a current level recorded
+with no target to compare it against) and ``no_capability_in_chain``
+(reserved for a later reader whose chain resolves to no Capability element
+at all).
 
 "Closed" means no endpoint may invent an absence string inline, not that the
 set is frozen at sixteen forever; the module's own docstring says a new
@@ -29,9 +33,9 @@ reality more than once already (found and corrected twice tonight,
 independently, by two different lenses' briefs each adding a member without
 re-deriving the true count); merging two branches that each added members
 independently (L2/L4/role-gating and the programme lens's own plateau/gap
-pair on one side, the value-stream additions on the other) is a third
-instance of the same class of drift, resolved here by re-deriving the real
-count (33) rather than trusting either side's own stale number.
+pair on one side, T-S1 and the maturity read helper on the other) is a
+fourth instance of the same class of drift, resolved here by re-deriving
+the real count (35) rather than trusting either side's own stale number.
 """
 
 from __future__ import annotations
@@ -45,10 +49,12 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# The original sixteen from the API specification, plus the Portfolio,
-# Programme and Strategy lenses' four additions, the Accountability lens's
-# two plus its withdrawal reason, role-gating's addition, the value-stream
-# path's four additions and the programme lens's own plateau/gap pair.
+# sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
+# addition (p95_above_highest_bucket, D3), the Portfolio, Programme and
+# Strategy lenses' four additions, the Accountability lens's two plus its
+# withdrawal reason, role-gating's addition, T-S1's four additions, the
+# programme lens's own plateau/gap pair and the maturity read helper's two
+# additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -83,11 +89,13 @@ _EXPECTED = {
     "dependency_direction_unknown",
     "no_plateau_recorded",
     "no_gap_recorded",
+    "no_maturity_target_recorded",
+    "no_capability_in_chain",
 }
 
 
-def test_reason_codes_has_exactly_thirty_three_members():
-    assert len(REASON_CODES) == 33
+def test_reason_codes_has_exactly_thirty_five_members():
+    assert len(REASON_CODES) == 35
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

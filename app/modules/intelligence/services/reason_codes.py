@@ -11,11 +11,12 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# The original sixteen members from the API specification, plus additions
-# from the Portfolio, Programme, Strategy, Accountability lenses and role
-# gating (four, two, one and one respectively), plus the value-stream
-# additions (four), plus the programme lens's own plateau/gap pair below
-# (thirty-three total), exactly, nothing invented.
+# sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
+# the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
+# additions, the Accountability lens's two plus its withdrawal reason,
+# role-gating's addition, the four T-S1 additions, the programme lens's own
+# plateau/gap pair and the two maturity-read-helper additions below
+# (thirty-five total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -124,6 +125,15 @@ REASON_CODES = frozenset(
         # enforces the boundary) -- both are honest absences, not errors.
         "no_plateau_recorded",
         "no_gap_recorded",
+        # Maturity read helper additions: the canonical maturity surface's
+        # one batched read (CapabilityHeatmapService.maturity_for_elements /
+        # .maturity_for_capability_ids) has two absence conditions the
+        # existing "no_maturity_recorded" does not distinguish -- a current
+        # level recorded with no target to compare it against, and (reserved
+        # for a later reader) an answer with no Capability element in its
+        # chain at all.
+        "no_maturity_target_recorded",
+        "no_capability_in_chain",
     }
 )
 
