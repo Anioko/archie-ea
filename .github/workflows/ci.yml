@@ -29,6 +29,18 @@ on:
   # Run the full suite against a work-in-progress branch without opening a PR.
   workflow_dispatch:
 
+# A pull request's own earlier CI run for the same PR is superseded the moment
+# a new commit lands on it -- nothing still reads its result. Without this,
+# three pushes to one PR in quick succession run three full, uncancelled CI
+# suites at once, each competing with the others for the same shared runner
+# capacity and queuing every job behind itself. Scoped to pull_request only:
+# a push to main/master never cancels another push's run, so every commit
+# that lands there still gets its own complete CI (and release-image build)
+# rather than losing to whichever push landed after it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
