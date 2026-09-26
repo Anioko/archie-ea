@@ -97,7 +97,12 @@ SKIP_DIRS = ("app/models/", "app/commands/", "app/_bootstrap/")
 AMBIGUOUS: set[str] = set()
 
 # Global reference data: shared by every organisation by design. Each needs a reason.
-GLOBAL_MODELS: dict[str, str] = {}
+GLOBAL_MODELS: dict[str, str] = {
+    "VendorOrganization": (
+        "shared vendor catalogue, deliberately not tenant-scoped (ADR-0003, see the model docstring): "
+        "facts about the vendor in the world, name globally unique"
+    ),
+}
 
 
 class ModelInfo:
