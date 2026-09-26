@@ -13,6 +13,7 @@
     "air_gap": 0,
     "raw_sql_tenancy": 0,
     "tenant_scoping": 0,
+    "untenanted_reads": 2990,
     "llm_boundary": 0,
     "broken_surfaces": 0,
     "dynamic_link_prefixes": 0,

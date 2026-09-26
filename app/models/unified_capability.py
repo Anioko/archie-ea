@@ -352,6 +352,26 @@ class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMix
         return f"<UnifiedCapability {self.name} (L{self.level})>"
 
     @classmethod
+    def visibility_predicate(cls, organization_id: int | None):
+        """The shared-reference visibility rule, in one place.
+
+        Visible: the caller's own rows, plus rows that are explicitly
+        ``scope == "reference"`` with a null organisation. An organisation-null
+        row that is *not* an explicit reference row is not shared and is
+        excluded either way — that is the "unclassified NULL-organisation row
+        is not automatically shared" rule. Callers that need to state their own
+        tenant scope explicitly (rather than depend on the ambient
+        ``do_orm_execute`` listener below) filter on this directly.
+        """
+
+        reference_scope = and_(
+            cls.scope == "reference", cls.organization_id.is_(None)
+        )
+        if organization_id is not None:
+            return or_(reference_scope, cls.organization_id == organization_id)
+        return reference_scope
+
+    @classmethod
     def visible_to_organization(cls, capability_id: int, organization_id: int | None):
         """Load a supplied identifier through an explicit hybrid-owner predicate.
 
@@ -360,13 +380,9 @@ class UnifiedCapability(HybridCapabilityTenantMixin, db.Model, OptimisticLockMix
         PostgreSQL and treats only explicit reference scope as shared.
         """
 
-        reference_scope = and_(
-            cls.scope == "reference", cls.organization_id.is_(None)
-        )
-        visibility = reference_scope
-        if organization_id is not None:
-            visibility = or_(reference_scope, cls.organization_id == organization_id)
-        return cls.query.filter(cls.id == capability_id, visibility).one_or_none()
+        return cls.query.filter(
+            cls.id == capability_id, cls.visibility_predicate(organization_id)
+        ).one_or_none()
 
     # ------------------------------------------------------------------ #
     # T-002: the single maturity accessor (ADR 0008 rule 3 — one accessor
