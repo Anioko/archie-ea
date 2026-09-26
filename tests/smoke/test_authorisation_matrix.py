@@ -55,12 +55,13 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
-    # ArchiMate OEF import (dogfood-import-fixes, Task 01): the route carries
-    # only @login_required -- no role gate at all -- despite update_existing
-    # being able to overwrite elements across the whole enterprise model, per
-    # refuter M9. Recording it here pins the actual (wide-open) boundary so a
-    # role gate added later shows up as a row change, and a further widening
-    # (e.g. an unauthenticated route) would also be visible.
+    # ArchiMate OEF import (dogfood-import-fixes, Task 01; retired as its own
+    # screen by T-L1-IMPORT-OPS): this URL now redirects to the canonical
+    # import screen at /architecture/import/oef, which carries the same
+    # @login_required-only boundary -- no role gate at all. Recording it
+    # here pins the actual (wide-open) boundary so a role gate added later
+    # shows up as a row change, and a further widening (e.g. an
+    # unauthenticated route) would also be visible.
     "/solutions/import/archimate": set(ARCHETYPES),
     # Error telemetry (10 Sep 2026): cross-tenant by design -- an error is an
     # operational fact about the platform, not a per-org one -- so gated by

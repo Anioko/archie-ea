@@ -1,11 +1,16 @@
-"""DOGFOOD-003/004 browser journey: upload the synthetic OEF fixture through
-the real UI control at /solutions/import/archimate, preview, execute,
-reload, and assert both the relationship count and the imported
-custom_properties actually persisted.
+"""T-L1-IMPORT-OPS browser journey: upload the synthetic OEF fixture through
+the real UI control at the canonical import screen, /architecture/import/oef,
+reached from the element catalog's "Import model file" action, and assert the
+elements and relationships actually persisted.
 
-"Done means DEMONSTRATED": this is the only check in the bucket that clicks
-the real Preview Import / Import Elements buttons rather than calling the
-service or the JSON API directly.
+"Done means DEMONSTRATED": this clicks the real Import model file button and
+the real upload form, rather than calling the service or the JSON API
+directly. The second import screen this journey used to drive
+(/solutions/import/archimate, a two-step preview/execute panel) has been
+retired in favour of this one, per T-L1-IMPORT-OPS; its own round-trip
+behaviour (relationship counts, custom-property preservation) stays covered
+at the service level by tests/test_oef_import_roundtrip.py, which exercises
+ArchiMateImportService directly.
 """
 import os
 
@@ -22,7 +27,7 @@ FIXTURE_PATH = os.path.join(
 )
 
 
-def test_oef_import_preview_execute_reload_persists(browser, live_server, seeded):
+def test_oef_import_via_catalog_button_persists_elements_and_relationships(browser, live_server, seeded):
     context = browser.new_context(viewport={"width": 1440, "height": 1000})
     context.set_default_timeout(PAGE_TIMEOUT)
     page = context.new_page()
@@ -30,32 +35,26 @@ def test_oef_import_preview_execute_reload_persists(browser, live_server, seeded
         email = seeded["emails"]["solution_architect"]
         _login(page, live_server, email)
 
-        page.goto(live_server + "/solutions/import/archimate", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-        expect(page.locator("h3", has_text="Import ArchiMate Model")).to_be_visible(timeout=PAGE_TIMEOUT)
+        page.goto(live_server + "/architecture/elements", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.click("[data-testid='import-oef-link']")
+        page.wait_for_url("**/architecture/import/oef", timeout=PAGE_TIMEOUT)
+        expect(page.locator("h1, h2", has_text="Import ArchiMate Model")).to_be_visible(timeout=PAGE_TIMEOUT)
 
-        page.set_input_files("input[type=file]", FIXTURE_PATH)
-        page.click("button:has-text('Preview Import')")
+        page.set_input_files("#oef_file", FIXTURE_PATH)
+        page.click("button[type=submit]:has-text('Import Model')")
 
-        # Preview must classify every element and land on the fixture's known
-        # shape before Execute is ever clicked.
-        total_locator = page.locator("p.text-2xl", has_text="15").first
-        expect(total_locator).to_be_visible(timeout=PAGE_TIMEOUT)
+        expect(page.locator("h2", has_text="Import Result")).to_be_visible(timeout=PAGE_TIMEOUT)
 
-        page.click("button:has-text('Import Model')")
-        expect(page.locator("h4", has_text="Import Complete")).to_be_visible(timeout=PAGE_TIMEOUT)
+        # The fixture's known shape (docs/buckets .../signup-to-first-answer-walk-v1.md):
+        # 15 elements, 13 relationships, no errors.
+        result_panel = page.locator("div", has=page.locator("h2", has_text="Import Result"))
+        result_text = result_panel.first.inner_text()
+        assert "15" in result_text, result_text
+        assert "13" in result_text, result_text
+        assert "No errors" in result_text, result_text
 
-        # B1 (refuter): the import result must actually show relationship
-        # results, not just element counts -- assert the new relationship
-        # panel is rendered and reports the fixture's known shape (12
-        # created, 1 failed -- the deliberately-invalid composition).
-        rel_result = page.locator("[data-testid='relationship-import-result']")
-        expect(rel_result).to_be_visible(timeout=PAGE_TIMEOUT)
-        rel_result_text = rel_result.inner_text()
-        assert "12" in rel_result_text
-        assert "1" in rel_result_text
-
-        # Reload a fresh page and confirm relationships/properties actually
-        # persisted server-side, not just in the import panel's own state.
+        # Reload a fresh page and confirm the import persisted server-side,
+        # not just in this request's own response.
         page.goto(live_server + "/architecture/elements", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         page.wait_for_timeout(1500)
 
@@ -71,38 +70,24 @@ def test_oef_import_preview_execute_reload_persists(browser, live_server, seeded
         element_id = matches[0]["id"]
 
         # Open the element detail drawer for real and read the rendered
-        # properties panel, not the API response — this is the DOGFOOD-004
-        # acceptance criterion (status/source/layer visible on the page).
-        #
-        # The page also carries a sidebar "Search navigation..." box and a
-        # hidden global command-palette search, both of which also match
-        # input[placeholder*='Search' i] and sort before this page's own
-        # element search in the DOM -- .first silently picked the sidebar
-        # box, which filters nothing here, so the row search only ever
-        # worked by accident (the imported element already being on the
-        # unfiltered first page in a lightly-seeded org). The element list's
-        # own search box carries a placeholder no other control on the page
-        # uses.
+        # type/layer badges, not the API response.
         search_box = page.locator("input[placeholder='Search by name...']")
         search_box.fill("M-CON-10G-FREE-PILOTS")
         target_row = page.locator("tr[data-testid='element-row']", has_text="M-CON-10G-FREE-PILOTS")
         expect(target_row).to_have_count(1, timeout=PAGE_TIMEOUT)
         target_row.click()
 
-        props_panel = page.locator("[data-testid='element-properties']")
-        expect(props_panel).to_be_visible(timeout=PAGE_TIMEOUT)
-        props_text = props_panel.inner_text()
-        assert "status" in props_text and "RULED" in props_text
-        assert "layer" in props_text and "Motivation" in props_text
+        drawer_heading = page.locator("h2", has_text="M-CON-10G-FREE-PILOTS")
+        expect(drawer_heading).to_be_visible(timeout=PAGE_TIMEOUT)
 
         detail_resp = page.request.get(
             live_server + "/archimate/api/elements/%s/detail" % element_id
         )
         assert detail_resp.ok
         detail = detail_resp.json()
-        assert detail["custom_properties"]["status"] == "RULED"
-        assert detail["custom_properties"]["layer"] == "Motivation"
-        assert "archie:imported_at" in detail["custom_properties"]
+        assert detail["name"] == "M-CON-10G-FREE-PILOTS"
+        assert detail["layer"] == "motivation"
+        assert detail["relationship_count"] >= 1
 
         rel_resp = page.request.get(live_server + "/archimate/api/relationships")
         assert rel_resp.ok
@@ -111,8 +96,8 @@ def test_oef_import_preview_execute_reload_persists(browser, live_server, seeded
         # convention: unwrap with json.data ?? json).
         payload = rel_data.get("data", rel_data)
         total = payload.get("total", len(payload.get("relationships", [])))
-        assert total >= 12, (
-            "expected at least the fixture's 12 valid relationships to persist, got %r" % rel_data
+        assert total >= 13, (
+            "expected at least the fixture's 13 relationships to persist, got %r" % rel_data
         )
     finally:
         context.close()
