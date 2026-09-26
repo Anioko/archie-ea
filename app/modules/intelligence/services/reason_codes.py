@@ -14,9 +14,10 @@ from __future__ import annotations
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
 # additions, the Accountability lens's two plus its withdrawal reason,
-# role-gating's addition, the four T-S1 additions, the programme lens's own
-# plateau/gap pair and the two maturity-read-helper additions below
-# (thirty-five total), exactly, nothing invented.
+# role-gating's addition, the four T-S1 additions, the impact criticality and
+# recovery objectives pair, the programme lens's own plateau/gap pair and the
+# two maturity-read-helper additions below
+# (thirty-seven total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -118,6 +119,12 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Impact criticality and recovery objectives: absence conditions on the
+        # cross-layer impact read path that the existing vocabulary does not
+        # cover. Added here, and nowhere else, per this module's own rule that
+        # no endpoint may invent an absence string inline.
+        "no_criticality_recorded",
+        "no_recovery_objective_recorded",
         # The programme lens's own plateau/gap block: a work package's stored
         # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
         # point at a record belonging to a different tenant (the FK itself
