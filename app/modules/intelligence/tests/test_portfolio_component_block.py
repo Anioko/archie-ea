@@ -515,9 +515,19 @@ def test_accountability_answer_is_unchanged_by_the_component_block(app, db_sessi
 
     # L4's own answer keeps its pre-existing shape exactly -- no `component`
     # key leaks in, and its own reuse pin is unaffected by this task.
+    # accountability_for_element's ownership read stays withdrawn (see its
+    # own docstring): it never queries ApplicationOwnership/OrganizationUnit,
+    # so a real owner row -- built above alongside this task's cost/health
+    # block on the same element -- still yields no owner and both withdrawal
+    # reason codes, exactly as the existing withdrawal regression guard
+    # (test_accountability_for_element.py::
+    # test_seeded_ownership_is_never_returned_the_regression_guard_that_matters)
+    # already pins for the same fixture shape. That is what "unchanged by the
+    # component block" means here: this task's additions do not touch L4 at
+    # all, on either side of the answer.
     assert set(result.keys()) == {"owners", "capacity_not_available", "reasons"}
-    assert len(result["owners"]) == 1
-    assert result["reasons"] == ["capacity_not_available"]
+    assert result["owners"] == []
+    assert result["reasons"] == ["ownership_reader_not_built", "capacity_not_available"]
 
 
 # --- (12) fabrication -----------------------------------------------------
