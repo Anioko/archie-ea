@@ -1,7 +1,7 @@
 """The intelligence module's query surfaces.
 
   POST /api/v1/intelligence/derivation/recompute
-  GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/derived/<derived_id>   (with its explanation)
   GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
@@ -234,6 +234,14 @@ def get_derived_fact_provenance(derived_id: int):
 
     fact_out = dict(fact)
     fact_out["expanded_chain"] = expanded
+
+    # The same chain as the facts a person reads when they ask "Why?": each
+    # drawn link with its two elements, who drew it and when, the rule, and
+    # the decisions recorded against those elements -- all of this
+    # organisation, each with a link to the record it names.
+    from app.modules.intelligence.services.explanation import explain_fact
+
+    fact_out["explanation"] = explain_fact(organization_id, fact)
     return success_response(fact_out)
 
 
