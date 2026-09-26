@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_four_members,
+    13 -> test_reason_codes_has_exactly_thirty_five_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -22,7 +22,10 @@ at risk, curated path) added four more -- ``no_value_stream_recorded``,
 the other two are reserved for T-S3's graph path. The Portfolio-block brief
 (2026-09-23) added three more -- ``no_cost_recorded``, ``no_health_recorded``
 and ``no_licence_recorded`` -- for the component block's cost, health and
-licence absence conditions.
+licence absence conditions. A fourth, ``licence_usage_not_synced``, covers a
+licence entry whose usage figures have never been synced from the source
+system -- distinct from ``no_licence_recorded``, which means no licence rows
+exist for the component at all.
 
 "Closed" means no endpoint may invent an absence string inline, not that the
 set is frozen at sixteen forever; the module's own docstring says a new
@@ -32,7 +35,7 @@ reality more than once already (found and corrected multiple times,
 independently, by different lenses' briefs each adding a member without
 re-deriving the true count); merging branches that each added members
 independently (L2/L4/role-gating, T-S1, and the Portfolio-block additions)
-is the same class of drift, resolved here by re-deriving the real count (34)
+is the same class of drift, resolved here by re-deriving the real count (35)
 rather than trusting any one side's own stale number.
 """
 
@@ -50,7 +53,7 @@ from app.modules.intelligence.services.reason_codes import (
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
 # lenses' three additions, the Strategy/Accountability/role-gating
-# additions, T-S1's four additions, plus the Portfolio-block's three
+# additions, T-S1's four additions, plus the Portfolio-block's four
 # additions.
 _EXPECTED = {
     "no_ownership_recorded",
@@ -87,11 +90,12 @@ _EXPECTED = {
     "no_cost_recorded",
     "no_health_recorded",
     "no_licence_recorded",
+    "licence_usage_not_synced",
 }
 
 
-def test_reason_codes_has_exactly_thirty_four_members():
-    assert len(REASON_CODES) == 34
+def test_reason_codes_has_exactly_thirty_five_members():
+    assert len(REASON_CODES) == 35
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

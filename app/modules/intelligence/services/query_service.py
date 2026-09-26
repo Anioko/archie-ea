@@ -63,6 +63,11 @@ OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_b
 NO_COST_RECORDED_REASON = validate_reason_code("no_cost_recorded")
 NO_HEALTH_RECORDED_REASON = validate_reason_code("no_health_recorded")
 NO_LICENCE_RECORDED_REASON = validate_reason_code("no_licence_recorded")
+# A licence whose usage has never been synced from the source system carries
+# quantity_used at its column default of zero -- comparing that default
+# against quantity_entitled would report an invented under-use finding, not
+# a measurement, so under_used is withheld with this reason instead.
+LICENCE_USAGE_NOT_SYNCED_REASON = validate_reason_code("licence_usage_not_synced")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -1014,6 +1019,12 @@ class IntelligenceQueryService:
 
             entries: List[Dict[str, Any]] = []
             for row in rows:
+                if row.last_usage_sync is None:
+                    under_used = None
+                    under_used_reason = LICENCE_USAGE_NOT_SYNCED_REASON
+                else:
+                    under_used = row.quantity_used < row.quantity_entitled
+                    under_used_reason = None
                 entries.append(
                     {
                         "entitlement_id": row.id,
@@ -1022,7 +1033,8 @@ class IntelligenceQueryService:
                         "quantity_entitled": row.quantity_entitled,
                         "quantity_deployed": row.quantity_deployed,
                         "quantity_used": row.quantity_used,
-                        "under_used": row.quantity_used < row.quantity_entitled,
+                        "under_used": under_used,
+                        "under_used_reason": under_used_reason,
                         "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
                         "compliance_status": row.compliance_status,
                         "access_reason": None,

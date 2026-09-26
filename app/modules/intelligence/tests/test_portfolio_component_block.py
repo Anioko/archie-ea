@@ -80,6 +80,7 @@ def _licence(
     quantity_used=0,
     unit_cost=None,
     compliance_status="compliant",
+    last_usage_sync=None,
 ):
     from app.models.license_entitlement import LicenseEntitlement
 
@@ -95,6 +96,7 @@ def _licence(
         quantity_used=quantity_used,
         unit_cost=unit_cost,
         compliance_status=compliance_status,
+        last_usage_sync=last_usage_sync,
     )
     db_session.add(row)
     db_session.flush()
@@ -369,19 +371,38 @@ def test_licences_absent_returns_honest_reason(app, db_session, make_org):
 
 
 def test_licence_under_used_comparison(app, db_session, make_org):
+    import datetime as _dt
+
     org = make_org("portfolio-block-licences-comparison")
     a = _element(db_session, org.id, "A")
     comp = _component(db_session, org.id, a)
     contract = _contract(db_session, org.id)
-    _licence(db_session, comp, org.id, contract, product_name="Over-entitled", quantity_entitled=100, quantity_used=60)
-    _licence(db_session, comp, org.id, contract, product_name="Fully used", quantity_entitled=50, quantity_used=50)
+    synced = _dt.datetime.utcnow()
+    _licence(db_session, comp, org.id, contract, product_name="Over-entitled", quantity_entitled=100, quantity_used=60, last_usage_sync=synced)
+    _licence(db_session, comp, org.id, contract, product_name="Fully used", quantity_entitled=50, quantity_used=50, last_usage_sync=synced)
     db_session.commit()
 
     result = _resolve(app, org.id, a.id)
     licences = {entry["product_name"]: entry for entry in result["component"]["licences"]}
     assert licences["Over-entitled"]["under_used"] is True
+    assert licences["Over-entitled"]["under_used_reason"] is None
     assert licences["Fully used"]["under_used"] is False
     assert 40 not in licences["Over-entitled"].values()
+
+
+def test_licence_under_used_is_none_when_usage_never_synced(app, db_session, make_org):
+    org = make_org("portfolio-block-licences-never-synced")
+    a = _element(db_session, org.id, "A")
+    comp = _component(db_session, org.id, a)
+    contract = _contract(db_session, org.id)
+    _licence(db_session, comp, org.id, contract, product_name="Never synced", quantity_entitled=10, quantity_used=0)
+    db_session.commit()
+
+    result = _resolve(app, org.id, a.id)
+    licence = result["component"]["licences"][0]
+    assert licence["quantity_used"] == 0
+    assert licence["under_used"] is None
+    assert licence["under_used_reason"] == "licence_usage_not_synced"
 
 
 # --- (9) shape and batching --------------------------------------------
@@ -401,7 +422,7 @@ def test_component_block_key_shapes(app, db_session, make_org):
     assert set(component.keys()) == {"name", "health", "cost", "cost_by_period", "licences", "licences_reason"}
     assert len(component["cost"]) == 11
     assert len(component["cost_by_period"]) == 7
-    assert len(component["licences"][0]) == 10
+    assert len(component["licences"][0]) == 11
 
 
 def test_early_branches_all_return_component_none(app, db_session, make_org):
@@ -550,13 +571,15 @@ def test_portfolio_route_carries_component_block(app, db_session, make_org, clie
 def test_portfolio_route_redacts_financial_figures_for_a_role_without_budget_authority(
     app, db_session, make_org, client, login_as
 ):
+    import datetime as _dt
+
     org = make_org("portfolio-block-route-redact")
     user = _make_user(db_session, org, enterprise_role="solution_architect")
     a = _element(db_session, org.id, "A")
     comp = _component(db_session, org.id, a, health_status="at_risk", total_cost_of_ownership=5000.0, maintenance_cost=1000.0)
     _cost_row(db_session, comp, fiscal_year=2026, total_cost=6000.0, total_budget=6500.0, variance=500.0)
     contract = _contract(db_session, org.id)
-    _licence(db_session, comp, org.id, contract, quantity_entitled=10, quantity_used=5, unit_cost=12.5)
+    _licence(db_session, comp, org.id, contract, quantity_entitled=10, quantity_used=5, unit_cost=12.5, last_usage_sync=_dt.datetime.utcnow())
     db_session.commit()
 
     login_as(client, user)

@@ -14,8 +14,8 @@ from __future__ import annotations
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
 # additions, the Strategy/Accountability/role-gating additions, the four
-# T-S1 additions and the Portfolio-block additions below, exactly, nothing
-# invented.
+# T-S1 additions, the Portfolio-block additions and the licence-sync
+# addition below, exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -129,6 +129,14 @@ REASON_CODES = frozenset(
         "no_cost_recorded",
         "no_health_recorded",
         "no_licence_recorded",
+        # A licence's usage columns are only ever populated once a sync has
+        # run against the source system; quantity_used carries a column
+        # default of zero for a licence that has never been synced, so
+        # comparing it against quantity_entitled would report an invented
+        # under-use finding rather than a measurement. Distinct from
+        # no_licence_recorded above, which means no licence rows exist for
+        # the component at all.
+        "licence_usage_not_synced",
     }
 )
 
