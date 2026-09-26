@@ -1502,11 +1502,15 @@ def _condition_actor_name(user_obj) -> str:
 
 
 def _user_display_name(user_id: int | None) -> str | None:
+    """Display name for a condition's actor, resolved only inside the caller's
+    organisation. ``owner_id`` comes from request JSON, so an id belonging to
+    another organisation must not be named."""
     if not user_id:
         return None
-    from app.models.user import User
+    from app.middleware.tenant_context import current_org_id
+    from app.utils.tenant_users import user_in_org
 
-    user_obj = db.session.get(User, user_id)
+    user_obj = user_in_org(user_id, current_org_id())
     if not user_obj:
         return None
     return _condition_actor_name(user_obj)
