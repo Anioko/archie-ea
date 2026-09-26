@@ -12,6 +12,8 @@ Usage:
 """
 
 
+import os
+
 from prometheus_client import (
     Counter,
     Histogram,
@@ -284,3 +286,53 @@ def get_metrics_response():
     from flask import Response
 
     return Response(generate_latest(REGISTRY), mimetype=CONTENT_TYPE_LATEST)
+
+
+# TB-0165: platform SLOs read HTTP_REQUESTS_TOTAL / HTTP_REQUEST_DURATION --
+# the existing counters above -- rather than adding a second metrics store
+# (CLAUDE.md ADR 0008, "one system of record per concept").
+
+
+def track_http_request_by_rule(
+    method: str, rule: str, status_code: int, duration_seconds: float
+) -> None:
+    """Record one request against the shared HTTP counters, labelled by the
+    matched Flask URL RULE (e.g. ``/api/v1/intelligence/cross-layer-impact``)
+    rather than the resolved path, so a caller such as
+    ``platform_slo_service`` can group requests by route prefix without a
+    per-request org id or path ever entering a label (REQ-NFR-005: the SLO
+    endpoint must not leak organisation names, user data or paths -- the
+    route *pattern* is not one of those).
+    """
+    HTTP_REQUESTS_TOTAL.labels(
+        method=method, endpoint=rule, status_code=status_code
+    ).inc()
+    HTTP_REQUEST_DURATION.labels(method=method, endpoint=rule).observe(
+        duration_seconds
+    )
+
+
+def get_http_metrics_registry() -> tuple[CollectorRegistry, bool]:
+    """Return the registry to read HTTP_REQUESTS_TOTAL/HTTP_REQUEST_DURATION
+    from, plus whether it is the multiprocess-aggregated view.
+
+    Gunicorn runs several worker processes (``gunicorn.conf.py``), each with
+    its own in-memory ``REGISTRY`` -- a counter incremented in one worker is
+    invisible to another. When ``PROMETHEUS_MULTIPROC_DIR`` is set,
+    ``prometheus_client``'s multiprocess mode combines every worker's counter
+    files from that directory into one registry; this is the correct read
+    path in that deployment. When it is not set (the case today -- nothing in
+    this repo sets it), this returns the single process-local ``REGISTRY``,
+    and the caller must treat attainment as reflecting only the worker that
+    served the request, not the whole fleet (documented in
+    ``docs/platform-slos.md``).
+    """
+    multiproc_dir = os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+    if not multiproc_dir:
+        return REGISTRY, False
+
+    from prometheus_client import multiprocess
+
+    combined = CollectorRegistry()
+    multiprocess.MultiProcessCollector(combined, path=multiproc_dir)
+    return combined, True
