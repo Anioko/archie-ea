@@ -136,9 +136,36 @@ jobs:
       - name: Real requests survive worker recycling
         run: python scripts/qa/check_worker_recycling.py
 
-  tests:
-    name: Tests (pytest + coverage)
+  # Split across 8 matrix shards, each with its own PostgreSQL service (no
+  # shared database), because this job alone had grown to ~2 hours and every
+  # merge waits on it. tests-shard does the running; tests (below) combines
+  # the shards' coverage data and route-verification evidence and applies the
+  # existing gates — kept as job id `tests` because release-image's `needs:`
+  # references that id, and because "Tests (pytest + coverage)" is the
+  # required-check name branch protection was configured against.
+  #
+  # Splitting: no per-test duration history exists for this suite (producing
+  # one means running the full two-hour suite once first, which defeats the
+  # purpose), and a plain hash of each test file's path was measured to put
+  # 1,194 of 6,690 tests in one bucket against an 836 average — 43% over,
+  # already enough on its own to miss the 30-minute target. Instead,
+  # scripts/ci/test_sharding.py has every shard collect the full test set (as
+  # pytest always does before filtering), group items by file, and run the
+  # same deterministic greedy bin-pack by file size that every shard process
+  # computes independently and agrees on. Measured on this suite: 836-837
+  # tests per shard, within 0.1% of even, and it re-derives file sizes from
+  # the real collection every run rather than a committed file that goes
+  # stale. All tests in one file stay in one shard, so file-local shared
+  # state (a module- or class-scoped fixture) is never split across two
+  # database sessions; it does not protect against state shared ACROSS files.
+  tests-shard:
+    name: Tests (pytest + coverage) — shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
+    strategy:
+      # A failing shard should not hide failures in the others.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
       postgres:
         image: postgres:16
@@ -159,6 +186,11 @@ jobs:
       # has no effect on config selection.
       FLASK_CONFIG: testing
       SECRET_KEY: ci-only-not-secret
+      # Must match matrix.shard's length above — scripts/ci/test_sharding.py
+      # takes this on trust rather than deriving it, so the two are kept in
+      # sync by hand.
+      CI_SHARD_TOTAL: "8"
+      COVERAGE_FILE: .coverage.${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -173,7 +205,9 @@ jobs:
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
       # tests/csp/test_csp_evaluator.py is part of this job and contains four
       # real-browser assertions. Without the binary pytest reports four skips,
-      # which is not valid release evidence.
+      # which is not valid release evidence. Every shard installs all three
+      # browsers because which shard this file lands in is a hash-independent
+      # bin-pack outcome, not a fixed assignment.
       - name: Install browsers for rendered UI regression tests
         run: python -m playwright install --with-deps chromium firefox webkit
       - name: Create schema
@@ -187,22 +221,87 @@ jobs:
       # that projection would fail or skip here on a schema production never has.
       - name: Apply the capability provenance migration
         run: flask --app manage apply-unified-capability-provenance-migration
-      - name: Run non-smoke tests with coverage and route verification
-        # route_verification.json is ignored execution evidence. Delete any
-        # stale copy, create it from this job's non-smoke pytest run, then
-        # enforce it immediately. This job includes rendered UI regressions;
-        # the separate smoke jobs own full-app browser journeys.
+      - name: Run this shard's tests with coverage and route verification
+        # route_verification.json is ignored execution evidence, scoped to
+        # this shard's slice of the suite; the tests job below unions every
+        # shard's copy before the nav-verified gate reads it.
         # --maxfail keeps the log readable while still surfacing many failures.
+        env:
+          CI_SHARD_INDEX: ${{ matrix.shard }}
         run: |
           rm -f route_verification.json
           pytest -q --maxfail=20 --ignore=tests/smoke \
-            --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
-            -o xfail_strict=true --junitxml=backend-tests.xml \
-            -p scripts.route_verification_audit
-          python scripts/verify.py --gate nav-verified
+            --cov=app --cov-report= \
+            -o xfail_strict=true --junitxml=backend-tests-${{ matrix.shard }}.xml \
+            -p scripts.route_verification_audit -p scripts.ci.test_sharding
+      # if: always() -- a failing shard (real test failures) must still upload
+      # its junit/coverage/route evidence, so the combine job can report which
+      # tests failed rather than only "a shard's artifact never arrived".
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: tests-shard-${{ matrix.shard }}
+          path: |
+            .coverage.${{ matrix.shard }}
+            backend-tests-${{ matrix.shard }}.xml
+            route_verification.json
+          if-no-files-found: error
+
+  tests:
+    name: Tests (pytest + coverage)
+    needs: tests-shard
+    if: always()
+    runs-on: ubuntu-latest
+    # No PostgreSQL service here: this job only imports the app to build its
+    # route/nav sets (for nav-verified) and combines files (coverage, junit).
+    # Confirmed by running route_verification_audit.py against an unreachable
+    # database -- the endpoint and nav counts it reports are identical with
+    # and without a live database, since building the url_map needs no query.
+    env:
+      FLASK_CONFIG: testing
+      SECRET_KEY: ci-only-not-secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install deps
+        # Needed to re-run the nav-verified gate (imports the app to build its
+        # route/nav sets) and to combine coverage data in the same format the
+        # shards wrote it in.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest-cov
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+      # if: always() from here down -- a shard that failed on real test
+      # failures still uploaded its junit/coverage/route evidence (see that
+      # step's own if: always()), and reporting exactly which tests failed is
+      # more useful than stopping at the first red step. The final step below
+      # is the one that actually fails this job for a shard that failed.
+      - uses: actions/download-artifact@v6
+        if: always()
+        with:
+          pattern: tests-shard-*
+          path: shard-artifacts
+      - name: Merge shard route-verification evidence
+        if: always()
+        run: python scripts/ci/combine_shard_results.py shard-artifacts 8
+      - name: Route verification (nav-verified)
+        if: always()
+        run: python scripts/verify.py --gate nav-verified
       - name: Require executed backend tests without skips
         if: always()
-        run: python scripts/ci/check_junit_qualification.py backend-tests.xml
+        run: >-
+          python scripts/ci/check_junit_qualification.py
+          shard-artifacts/tests-shard-*/backend-tests-*.xml
+      - name: Combine coverage and summarize
+        if: always()
+        run: |
+          coverage combine shard-artifacts/tests-shard-*/.coverage.*
+          coverage xml
+          coverage report -m --skip-covered
       - name: Coverage summary
         # Published, not gated. Establishing the number is step one; a
         # do-not-decrease gate follows once a baseline exists on main.
@@ -226,8 +325,17 @@ jobs:
           name: coverage-xml
           path: |
             coverage.xml
-            backend-tests.xml
+            shard-artifacts/tests-shard-*/backend-tests-*.xml
           if-no-files-found: ignore
+      # Final safety net: a shard can fail for a reason none of the evidence
+      # checks above see (its runner died before uploading anything at all,
+      # or GitHub cancelled it). Those checks already fail this job for any
+      # failure that left evidence behind; this catches the rest.
+      - name: Fail if any shard did not succeed
+        if: always() && needs.tests-shard.result != 'success'
+        run: |
+          echo "one or more tests-shard matrix jobs did not succeed (${{ needs.tests-shard.result }})"
+          exit 1
 
   # main grew a parallel `verify` job that ran --tag static / boot-health /
   # schema-drift with --require-db. Its coverage is already provided here by the
