@@ -25,7 +25,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 def _seed_accountability_graph(org_id):
     from app import create_app, db
     from app.models.application_portfolio import ApplicationComponent
-    from app.models.archimate_core import ArchiMateElement
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
     app = create_app("testing")
@@ -46,7 +46,7 @@ def _seed_accountability_graph(org_id):
         db.session.add(service_component)
         db.session.flush()
 
-        unit = OrganizationUnit(name="%s Finance" % noun, unit_type="Department")
+        unit = OrganizationUnit(organization_id=org_id, name="%s Finance" % noun, unit_type="Department")
         db.session.add(unit)
         db.session.flush()
 
@@ -54,10 +54,24 @@ def _seed_accountability_graph(org_id):
         # original (unsafe) implementation would have served. The withdrawn
         # method must never return this, regardless of what exists.
         db.session.add(ApplicationOwnership(
+            organization_id=org_id,
             application_id=service_component.id,
             organization_unit_id=unit.id,
             ownership_type="Business Owner",
             primary_contact="Jordan Owner",
+        ))
+
+        # A second ArchiMate element with a relationship so the impact
+        # question has a row to show.
+        target = ArchiMateElement(
+            name="%s Target" % noun, type="ApplicationComponent", layer="application",
+            organization_id=org_id,
+        )
+        db.session.add(target)
+        db.session.commit()
+        db.session.add(ArchiMateRelationship(
+            type="Serving", source_id=service.id, target_id=target.id,
+            organization_id=org_id,
         ))
         db.session.commit()
 

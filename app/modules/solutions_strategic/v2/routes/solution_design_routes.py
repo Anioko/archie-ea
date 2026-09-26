@@ -1352,6 +1352,7 @@ def list_solutions():
             hidden_by_bu_filter=hidden_by_bu_filter,
             hidden_by_search_filter=hidden_by_search_filter,
             hidden_by_filters=hidden_by_filters,
+            only_default_filter_active=_default_shell_filter_active and hidden_by_filters > 0 and hidden_by_role_filter == 0 and not domain_filter and not type_filter and not created_after and not created_before and not ws_filter,
             active_filter_descriptions=active_filter_descriptions,
             clear_filters_url=clear_filters_url,
             org_total=org_total,
@@ -1501,11 +1502,15 @@ def _condition_actor_name(user_obj) -> str:
 
 
 def _user_display_name(user_id: int | None) -> str | None:
+    """Display name for a condition's actor, resolved only inside the caller's
+    organisation. ``owner_id`` comes from request JSON, so an id belonging to
+    another organisation must not be named."""
     if not user_id:
         return None
-    from app.models.user import User
+    from app.middleware.tenant_context import current_org_id
+    from app.utils.tenant_users import user_in_org
 
-    user_obj = db.session.get(User, user_id)
+    user_obj = user_in_org(user_id, current_org_id())
     if not user_obj:
         return None
     return _condition_actor_name(user_obj)
@@ -1616,9 +1621,9 @@ def _serialize_arb_review_history_item(review) -> dict:
         "decision_label": (review.decision or review.status or "pending").replace("_", " ").title(),
         "submitted_at": _format_arb_history_timestamp(review.submitted_at),
         "decision_date": _format_arb_history_timestamp(review.decision_date),
-        "submitter_name": _condition_actor_name(review.submitter) if review.submitter else None,
-        "reviewer_name": _condition_actor_name(review.reviewer) if review.reviewer else None,
-        "decided_by_name": _condition_actor_name(review.decided_by) if review.decided_by else None,
+        "submitter_name": _user_display_name(review.submitter_id),
+        "reviewer_name": _user_display_name(review.reviewer_id),
+        "decided_by_name": _user_display_name(review.decided_by_id),
         "decision_rationale": review.decision_rationale,
         "conditions": [
             text for text in (_normalize_arb_review_condition(condition) for condition in (review.conditions or [])) if text
@@ -1626,7 +1631,7 @@ def _serialize_arb_review_history_item(review) -> dict:
         "comments": [
             {
                 "id": comment.id,
-                "author_name": _condition_actor_name(comment.user) if comment.user else "Unknown User",
+                "author_name": _user_display_name(comment.user_id) or "Unknown User",
                 "comment_type": comment.comment_type or "general",
                 "content": comment.content,
                 "created_at": _format_arb_history_timestamp(comment.created_at),

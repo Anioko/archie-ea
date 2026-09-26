@@ -7,7 +7,7 @@ Routes
 ------
 GET  /auth/sso/initiate?email=...    Look up domain config; redirect to IdP.
 GET  /auth/sso/callback/oidc         Handle OIDC callback; provision user; login.
-GET  /auth/sso/callback/saml         SAML stub (HTTP 501 until python3-saml added).
+GET  /auth/sso/callback/saml         SAML stub (HTTP 400 until python3-saml added).
 GET  /admin/sso                      Show SSO config form (admin only).
 POST /admin/sso                      Save SSO config (admin only).
 """
@@ -63,6 +63,7 @@ def sso_initiate():
         if config.protocol == "oidc":
             result = _svc.initiate_oidc_flow(config, redirect_uri)
             session["sso_state"] = result["state"]
+            session["sso_nonce"] = result["nonce"]
             session["sso_org_id"] = config.organization_id
             session["sso_email"] = email
             return redirect(result["redirect_url"])
@@ -85,12 +86,18 @@ def sso_callback_oidc():
     code = request.args.get("code", "")
     state = request.args.get("state", "")
 
-    # Validate anti-CSRF state
+    # Validate anti-CSRF state. A callback reached without a matching state
+    # (no SSO flow was ever initiated in this session, or it was replayed/
+    # tampered with) is simply a bad request -- it must not redirect into
+    # /account/login, which re-renders the sign-in form and reads as ending
+    # whatever session the visitor already has. Answer 400 directly and
+    # leave the existing session (its _sid, its Flask-Login state) untouched;
+    # nothing above this point has written to it other than the state pop.
     expected_state = session.pop("sso_state", None)
     if not expected_state or expected_state != state:
-        flash("SSO authentication failed: invalid state parameter.", "error")
-        return redirect(url_for("account.login"))
+        return render_template("errors/400.html"), 400
 
+    expected_nonce = session.pop("sso_nonce", None)
     org_id = session.pop("sso_org_id", None)
     session.pop("sso_email", None)
 
@@ -108,7 +115,9 @@ def sso_callback_oidc():
             return redirect(url_for("account.login"))
 
         redirect_uri = url_for("sso.sso_callback_oidc", _external=True)
-        userinfo = _svc.handle_oidc_callback(config, code, state, redirect_uri)
+        userinfo = _svc.handle_oidc_callback(
+            config, code, state, redirect_uri, expected_nonce=expected_nonce
+        )
         user = _svc.provision_user(org, userinfo)
 
         from app.services import session_registry
@@ -131,19 +140,27 @@ def sso_callback_oidc():
 def sso_callback_saml():
     """SAML 2.0 callback stub.
 
-    Returns HTTP 501 until python3-saml is installed and wired.
+    SAML federation is not implemented (no python3-saml, no assertion
+    handling), so this route can never process a real IdP response. It used
+    to answer 501, which is honest about "not implemented" but is still a
+    5xx: a client (or a browser that followed a stale bookmark or a
+    mis-configured IdP here) reads any 5xx as "the server broke", not as
+    "this endpoint was never wired up". Nothing about a request to this URL
+    is a server fault, so it answers 400 instead — no assertion is read, no
+    session is created, and no state changes; the only difference from
+    before is which status line reports that.
     """
     return (
         jsonify(
             {
-                "error": "SAML 2.0 callback not yet implemented",
+                "error": "SAML 2.0 callback not implemented",
                 "message": (
                     "SAML federation requires the python3-saml library. "
                     "Install with: pip install python3-saml"
                 ),
             }
         ),
-        501,
+        400,
     )
 
 

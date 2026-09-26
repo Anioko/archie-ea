@@ -487,6 +487,7 @@ def cross_layer_impact(element_id: int):
             "summary": result["summary"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+            "maturity_flags": result.get("maturity_flags"),
         }
     )
 
@@ -666,6 +667,9 @@ def programme_for_element(element_id: int):
 
     work_packages = result["work_packages"]
     _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+    _redact_financial_fields(
+        [wp["gap"] for wp in work_packages], ("estimated_cost",), "access_reason"
+    )
 
     return success_response(
         {
@@ -795,6 +799,7 @@ def accountability_for_element(element_id: int):
             "owners": result["owners"],
             "capacity_not_available": result.get("capacity_not_available", True),
             "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 

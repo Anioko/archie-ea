@@ -3,6 +3,7 @@ Context processors — global template variables.
 """
 
 import flask
+from sqlalchemy import event
 
 _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
 
@@ -12,7 +13,44 @@ _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabiliti
 _nav_counts_cache: dict = {}
 _NAV_COUNTS_TTL = 300
 
+_NAV_COUNT_MODELS = (
+    "ApplicationComponent",
+    "ArchiMateElement",
+    "BusinessCapability",
+    "VendorOrganization",
+)
+
 EM_DASH = "—"
+
+
+def _invalidate_nav_counts(session, flush_context):
+    """Evict nav-count cache entries for every organisation whose counted
+    records changed in this flush. Registered once at module level so that
+    multiple ``create_app()`` calls do not stack listeners."""
+    touched = set(session.new) | set(session.deleted)
+    if not touched:
+        return
+    org_ids = set()
+    clear_all = False
+    for obj in touched:
+        cls_name = type(obj).__name__
+        if cls_name not in _NAV_COUNT_MODELS:
+            continue
+        if cls_name == "VendorOrganization":
+            clear_all = True
+        else:
+            org_id = getattr(obj, "organization_id", None)
+            if org_id is not None:
+                org_ids.add(org_id)
+    if clear_all:
+        _nav_counts_cache.clear()
+    for org_id in org_ids:
+        _nav_counts_cache.pop(org_id, None)
+
+
+from app.extensions import db  # noqa: E402 — module-level db import safe here
+if not event.contains(db.session, "after_flush", _invalidate_nav_counts):
+    event.listen(db.session, "after_flush", _invalidate_nav_counts)
 
 
 
@@ -28,6 +66,15 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
     ``VendorOrganization`` has no organization_id column at all, so its count is
     global by construction; that matches what the vendor list itself shows and
     is called out here rather than silently scoped to something it isn't.
+
+    Empty results (all four counts zero) are stored with a 5-second lifetime
+    instead of the default, so every server worker sees a new organisation's
+    first records within 5 seconds of the write.
+
+    Writes that bypass the ORM session event system (raw SQL, ORM bulk
+    ``query.delete()``, ``session.execute(insert(...))``) do not invalidate
+    the cache. For the empty case the 5-second TTL covers it. A non-empty
+    entry stays stale for up to 300 seconds.
     """
     import time
 
@@ -39,7 +86,7 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
 
     now = time.time()
     hit = _nav_counts_cache.get(org_id)
-    if hit is not None and now - hit["timestamp"] < ttl:
+    if hit is not None and now - hit["timestamp"] < hit.get("ttl", ttl):
         return dict(hit["data"])
 
     def _scoped(model):
@@ -55,7 +102,10 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
         # Not tenant-scoped anywhere in the product — see docstring.
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
     }
-    _nav_counts_cache[org_id] = {"data": dict(counts), "timestamp": now}
+    entry = {"data": dict(counts), "timestamp": now}
+    if all(v == 0 for v in counts.values()):
+        entry["ttl"] = 5
+    _nav_counts_cache[org_id] = entry
     return counts
 
 

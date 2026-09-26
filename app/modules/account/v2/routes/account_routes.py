@@ -60,6 +60,23 @@ _svc = AccountService
 @timed_route
 def login():
     """Log in an existing user."""
+    # Opening /login while already signed in must not disturb the existing
+    # session (it is still fully valid) -- send the user on rather than
+    # re-rendering the sign-in form, which otherwise reads as an unexpected
+    # sign-out even though the session was never touched. Same
+    # already-authenticated guard as reset_password_request()/reset_password()
+    # below, reused here rather than duplicated with new logic. Honour a
+    # same-origin ?next= the way a successful login below already does --
+    # arriving here signed in from a deep link (e.g. a bookmarked page whose
+    # session just outlived a tab) must land back on that page, not always
+    # the dashboard; safe_next_url() is the same allow-list guard against an
+    # off-site next, reused rather than re-implemented here.
+    if current_user.is_authenticated:
+        from app.utils.safe_redirect import safe_next_url
+
+        return redirect(
+            safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+        )
     form = LoginForm()
     if form.validate_on_submit():
         # COM-005: Check email-domain SSO config before password auth.
@@ -400,13 +417,14 @@ def before_request():
         return redirect(url_for("account.unconfirmed"))
 
 
-@account_bp_v2.route("/manage/notification-preferences", methods=["POST"])
+@account_bp_v2.route("/manage/preferences", methods=["POST"])
 @login_required
 @timed_route
-def save_notification_preferences():
-    """PLT-017: Save in-app notification preferences for the current user."""
+def save_preferences():
+    """Save user preferences (notifications and display) for the current user."""
     from app import db
 
+    form_type = request.form.get("form_type", "")
     known_keys = [
         "arb_decisions",
         "solution_updates",
@@ -414,14 +432,20 @@ def save_notification_preferences():
         "weekly_digest",
         "mention_notifications",
     ]
-    prefs = {key: (request.form.get(key) == "on") for key in known_keys}
     try:
-        current_user.set_notification_preferences(prefs)
+        if form_type == "notifications":
+            prefs = {key: (request.form.get(key) == "on") for key in known_keys}
+            current_user.set_notification_preferences(prefs)
+        elif form_type == "display":
+            current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        else:
+            flash("Unknown preference form type.", "error")
+            return redirect(url_for("account.manage"))
         db.session.add(current_user)
         db.session.commit()
-        flash("Notification preferences saved.", "success")
+        flash("Preferences saved.", "success")
     except Exception as exc:
-        _log.error("Failed to save notification preferences for user %s: %s", current_user.id, exc)
+        _log.error("Failed to save preferences for user %s: %s", current_user.id, exc)
         db.session.rollback()
         flash("Could not save preferences. Please try again.", "error")
     return redirect(url_for("account.manage"))

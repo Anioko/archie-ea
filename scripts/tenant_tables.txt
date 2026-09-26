@@ -12,6 +12,7 @@ application_events
 application_functions
 application_import_history
 application_interfaces
+application_ownership
 application_processes
 application_rationalization_scores
 application_replacements
@@ -56,6 +57,7 @@ implementation_events
 kanban_boards
 license_entitlements
 migration_waves
+organization_units
 plateaus
 policy_violations
 projects

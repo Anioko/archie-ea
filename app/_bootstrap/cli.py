@@ -247,6 +247,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register AI chat approval tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_review_queue_org import init_app as init_review_queue_org
+        init_review_queue_org(app)
+        app.logger.info("Review queue tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
