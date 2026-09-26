@@ -1477,6 +1477,142 @@ def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, f
         )
 
 
+_EMBEDDING_TENANT_FKS = (
+    # (table, fk_column, fk_join_table, join_org_column, description)
+    (
+        "business_capability_embeddings",
+        "business_capability_id",
+        "business_capability",
+        "organization_id",
+        "BusinessCapability (TenantMixin)",
+    ),
+    (
+        "solution_embeddings",
+        "solution_id",
+        "solutions",
+        "organization_id",
+        "Solution (TenantMixin)",
+    ),
+    (
+        "application_component_embeddings",
+        "application_component_id",
+        "application_components",
+        "organization_id",
+        "ApplicationComponent (TenantMixin)",
+    ),
+    (
+        "chat_message_embeddings",
+        "user_id",
+        "users",
+        "organization_id",
+        "User (direct column)",
+    ),
+)
+# Tables with no FK chain to an org -- shared reference data, expected to stay NULL.
+_EMBEDDING_SHARED_TABLES = (
+    "vendor_product_embeddings",
+    "process_embeddings",
+    "vendor_organization_embeddings",
+)
+_ALL_EMBEDDING_TABLES = tuple(
+    [e[0] for e in _EMBEDDING_TENANT_FKS] + list(_EMBEDDING_SHARED_TABLES)
+)
+
+
+def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed):
+    """Backfill organization_id on embedding tables that have a reachable org
+    through their FK chain.
+
+    Tables whose parent is shared reference data
+    (vendor_product_embeddings, process_embeddings,
+    vendor_organization_embeddings) have no tenant provenance and stay NULL --
+    they are deliberately unscoped per ADR-0003.
+    """
+    from sqlalchemy import inspect, text
+
+    present = {t for t in _ALL_EMBEDDING_TABLES if t in existing_tables}
+    if not present:
+        return
+
+    for (
+        table,
+        fk_col,
+        join_table,
+        join_org_col,
+        description,
+    ) in _EMBEDDING_TENANT_FKS:
+        if table not in present:
+            continue
+        live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+        if "organization_id" not in live_columns:
+            continue
+
+        before = db.session.scalar(
+            text(
+                f"SELECT count(*) FROM {table} WHERE organization_id IS NULL"
+            )
+        )
+        if not before:
+            continue
+
+        eligible = db.session.scalar(
+            text(
+                f"""
+                SELECT count(*)
+                FROM {table} e
+                JOIN {join_table} j ON j.id = e.{fk_col}
+                WHERE e.organization_id IS NULL
+                  AND j.{join_org_col} IS NOT NULL
+                """
+            )
+        )
+        updated = eligible
+        if not dry_run and eligible:
+            result = db.session.execute(
+                text(
+                    f"""
+                    UPDATE {table} AS e
+                    SET organization_id = j.{join_org_col}
+                    FROM {join_table} AS j
+                    WHERE j.id = e.{fk_col}
+                      AND e.organization_id IS NULL
+                      AND j.{join_org_col} IS NOT NULL
+                    """
+                )
+            )
+            updated = result.rowcount
+            db.session.commit()
+
+        unresolved = before - updated
+        added.append(
+            f"backfill.{table}.organization_id :: before={before}, "
+            f"updated={updated}, unresolved={unresolved} "
+            f"(provenance: {description})"
+        )
+        if unresolved:
+            failed.append(
+                f"backfill.{table}.organization_id: {unresolved} row(s) "
+                f"whose {fk_col} names no live {join_table} row with a known "
+                f"organization"
+            )
+
+    for table in _EMBEDDING_SHARED_TABLES:
+        if table not in present:
+            continue
+        live_columns = {c["name"] for c in inspect(db.engine).get_columns(table)}
+        if "organization_id" not in live_columns:
+            continue
+        null_count = db.session.scalar(
+            text(f"SELECT count(*) FROM {table} WHERE organization_id IS NULL")
+        )
+        if null_count:
+            added.append(
+                f"backfill.{table}.organization_id :: "
+                f"shared reference data, no org provenance; "
+                f"{null_count} row(s) left NULL"
+            )
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1713,6 +1849,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_document_chunk_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _backfill_embedding_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
