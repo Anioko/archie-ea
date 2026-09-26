@@ -13,7 +13,7 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions and the four T-S1 additions below (twenty-six total), exactly,
+# additions and the four T-S1 additions below (thirty-three total), exactly,
 # nothing invented.
 REASON_CODES = frozenset(
     {
