@@ -1,0 +1,45 @@
+{% extends 'layouts/public_base.html' %}
+{% block title %}Authorize Access{% endblock %}
+
+{% block content %}
+<div class="flex min-h-full items-center justify-center px-4 py-16">
+  <div class="w-full max-w-md rounded-lg border border-border bg-card p-8 shadow-sm">
+    <h1 class="text-xl font-semibold text-foreground">Authorize access</h1>
+    <p class="mt-2 text-sm text-muted-foreground">
+      <strong class="text-foreground">{{ client_name }}</strong> wants to access your account.
+    </p>
+
+    <div class="mt-6 space-y-2">
+      <p class="text-sm text-muted-foreground">This application is requesting the following permissions:</p>
+      {% for scope in scopes %}
+      <div class="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+        {% if scope == "mcp:read" %}
+          <strong>Read your architecture data</strong> — view elements, canvases, and intelligence lenses
+        {% else %}
+          {{ scope }}
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="{{ url_for('oauth_provider.authorize') }}" class="mt-6 flex gap-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="client_id" value="{{ client_id }}">
+      <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+      <input type="hidden" name="code_challenge" value="{{ code_challenge }}">
+      <input type="hidden" name="code_challenge_method" value="{{ code_challenge_method }}">
+      <input type="hidden" name="state" value="{{ state or '' }}">
+      <input type="hidden" name="scope" value="{{ scope }}">
+      {% if resource %}<input type="hidden" name="resource" value="{{ resource }}">{% endif %}
+      <button type="submit" name="action" value="allow"
+              class="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+        Allow
+      </button>
+      <button type="submit" name="action" value="deny"
+              class="inline-flex items-center rounded-md bg-muted px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/80">
+        Deny
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

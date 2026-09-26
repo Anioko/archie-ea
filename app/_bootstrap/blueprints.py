@@ -11,21 +11,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _csrf_exempt_blueprint(app, blueprint):
-    """Exempt all routes in a blueprint from CSRF protection."""
-    # Iterate through all routes registered in the app
-    # Find routes that belong to this blueprint and mark their view functions as exempt
-    for rule in app.url_map.iter_rules():
-        if rule.endpoint.startswith(blueprint.name + "."):
-            view_func = app.view_functions.get(rule.endpoint)
-            if view_func is not None:
-                # Set the csrf_exempt attribute directly on the view function
-                view_func.csrf_exempt = True
-                logger.debug(f"[CSRF] Marked view as exempt: {rule.endpoint}")
-    
-    count = len([r for r in app.url_map.iter_rules() if r.endpoint.startswith(blueprint.name + ".")])
-    logger.info(f"[CSRF] Exempted {count} routes in blueprint '{blueprint.name}'")
-
 
 
 class _RegistrationFailureCapture(logging.Handler):
@@ -572,7 +557,30 @@ def _register_always_on_apis(app, csrf):
 
     app.register_blueprint(api_v1_bp)
     app.logger.info("[BLUEPRINT] API v1 registered at /api/v1")
-    
+
+    # OAuth 2.1 authorization server — the provider side of authlib
+    # (the client side is already in app/modules/account/ for SSO).
+    # Only /oauth/token is CSRF-exempt: it is called by OAuth clients with a
+    # Bearer token or no session cookie at all. /oauth/authorize stays CSRF-
+    # protected (its POST is the browser-session consent submission), and the
+    # metadata blueprint is GET-only so CSRF never applies to it regardless.
+    from app.modules.oauth_provider import oauth_provider_bp, oauth_metadata_bp
+    from app.modules.oauth_provider.routes import token as oauth_token_view
+
+    app.register_blueprint(oauth_provider_bp)
+    app.logger.info("[BLUEPRINT] OAuth provider registered at /oauth")
+    app.register_blueprint(oauth_metadata_bp)
+    app.logger.info("[BLUEPRINT] OAuth metadata registered at /.well-known")
+    csrf.exempt(oauth_token_view)
+
+    # MCP Streamable HTTP endpoint — the read-only lens tools. Bearer-only,
+    # no session cookie, so the whole blueprint is CSRF-exempt.
+    from app.modules.mcp import mcp_bp
+
+    app.register_blueprint(mcp_bp)
+    app.logger.info("[BLUEPRINT] MCP endpoint registered at /mcp")
+    csrf.exempt(mcp_bp)
+
     # api_v1 blueprint is NOT CSRF-exempt. Audited 2026-08-18 (finding A-04/ARCH-051/C-10):
     # every route under app/api/v1/ authenticates with @login_required (the browser
     # session cookie), not a Bearer token — there is no token-based auth path in this

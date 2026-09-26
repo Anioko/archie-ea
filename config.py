@@ -188,6 +188,15 @@ class Config:
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
 
+    # MCP server — OAuth-protected endpoint for AI assistants
+    MCP_ALLOWED_ORIGIN = os.environ.get("MCP_ALLOWED_ORIGIN", "")
+    MCP_ENDPOINT_URL = os.environ.get("MCP_ENDPOINT_URL", "")
+    # Explicit override for the OAuth issuer/authorization-server base URL.
+    # Unset by default: the metadata endpoints derive it from the incoming
+    # request instead, so a self-hosted install is never told to fetch
+    # tokens from a different operator's server (no hosted-product default).
+    MCP_OAUTH_BASE_URL = os.environ.get("MCP_OAUTH_BASE_URL", "")
+
     # Email
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.sendgrid.net")
     MAIL_PORT = os.environ.get("MAIL_PORT", 587)
