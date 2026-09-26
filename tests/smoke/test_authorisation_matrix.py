@@ -111,6 +111,16 @@ POLICY = {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
+    # Business Model Canvas / Business Case JSON list reads: both carry only
+    # @login_required, no role gate, same open shape as /ai-chat above -- so
+    # every archetype is expected to reach them. The by-id detail routes have
+    # the identical guard but need a real record to return 200 rather than a
+    # data-driven 404, so they are covered by
+    # test_archetype_reaches_business_artifact_detail below (seeded per
+    # test_canvas_pages_screenshots.py's own canvas_records precedent)
+    # instead of a static POLICY row.
+    "/business-model/api/list": set(ARCHETYPES),
+    "/business-case/api/list":  set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
@@ -690,3 +700,69 @@ def test_transformation_api_rejects_anonymous_browser_session(page, live_server)
     body = response.json()
     assert body["data"] is None
     assert body["errors"][0]["code"] == "not_authenticated"
+
+
+@pytest.fixture(scope="module")
+def business_artifact_records(seeded):
+    """One BusinessModelCanvas and one BusinessCase to probe the detail routes.
+
+    Same seeding shape as test_canvas_pages_screenshots.py's own
+    canvas_records fixture: one record per module under the shared seed
+    organisation, since GET /business-model/api/<id> and
+    /business-case/api/<id> carry only @login_required (no role gate) and
+    every archetype in `seeded` belongs to that one organisation.
+    """
+    from app import create_app, db
+    from app.models.business_case import BusinessCase
+    from app.models.business_model import BusinessModelCanvas
+
+    app = create_app("testing")
+    with app.app_context():
+        canvas = BusinessModelCanvas(name="Authz Matrix Canvas", organization_id=seeded["ids"]["org"])
+        case = BusinessCase(title="Authz Matrix Case", organization_id=seeded["ids"]["org"])
+        db.session.add_all([canvas, case])
+        db.session.commit()
+        return {"bmc": canvas.id, "case": case.id}
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_archetype_reaches_business_artifact_detail(
+    archetype, page, live_server, seeded, business_artifact_records
+):
+    """GET /business-model/api/<id> and /business-case/api/<id> carry only
+    @login_required -- same open shape as the two list routes in POLICY
+    above -- so every archetype is expected to reach a record in their own
+    (shared) organisation. Not a static POLICY row because it needs a real
+    seeded id to return 200 rather than a data-driven 404.
+    """
+    _login(page, live_server, seeded["emails"][archetype])
+    for kind, path in (
+        ("business-model", "/business-model/api/%d" % business_artifact_records["bmc"]),
+        ("business-case", "/business-case/api/%d" % business_artifact_records["case"]),
+    ):
+        actual = _observe(page, live_server, path)
+        assert actual == ALLOWED, (
+            f"{archetype} could not reach {kind} detail at {path}: "
+            f"expected ALLOWED (login_required only, shared organisation)"
+        )
+
+
+def test_business_model_detail_rejects_anonymous_browser_session(
+    page, live_server, business_artifact_records
+):
+    # Both paths contain "/api/", so the unauthorized handler in
+    # app/_bootstrap/extensions.py answers a clean 401 rather than
+    # redirecting to the login page -- same as the yield/impact routes above.
+    path = "/business-model/api/%d" % business_artifact_records["bmc"]
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    assert response.status == 401
+
+
+def test_business_case_detail_rejects_anonymous_browser_session(
+    page, live_server, business_artifact_records
+):
+    path = "/business-case/api/%d" % business_artifact_records["case"]
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert response is not None
+    assert response.status == 401
