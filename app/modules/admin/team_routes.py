@@ -66,11 +66,15 @@ def _render_team(org_id, error=None, status=200):
     from app.modules.account.services import invitation_service
 
     invitations = invitation_service.invitations_for(org_id)
-    invited_ids = {row.user_id for row in invitations}
+    # Accounts an invitation opened and nobody has taken up are listed as
+    # invitations, not as members.
     members = [
         m for m in User.query.filter_by(organization_id=org_id).all()
-        if not (m.id in invited_ids or invitation_service.is_unactivated(m))
+        if not invitation_service.is_unactivated(m)
     ]
+    has_account_ids = {
+        row.user_id for row in invitations if not invitation_service.is_unactivated(row.user)
+    }
     role_map = {
         m.id: rbac_service.get_user_role(org_id, m.id) for m in members
     }
@@ -80,6 +84,7 @@ def _render_team(org_id, error=None, status=200):
         role_map=role_map,
         valid_roles=VALID_ORG_ROLES,
         invitations=invitations,
+        has_account_ids=has_account_ids,
         personas=[(p, ROLE_DISPLAY_NAMES.get(p, p)) for p in invitation_service.INVITABLE_PERSONAS],
         mail_is_available=mail_available(),
         invite_error=error,
@@ -120,9 +125,7 @@ def team_invite():
     from app.modules.account.services import invitation_service
 
     user = User.find_by_email(email)
-    if user is None or (
-        user.organization_id == org_id and invitation_service.is_unactivated(user)
-    ):
+    if user is None or invitation_service.is_unactivated(user):
         try:
             _, delivered, error = invitation_service.invite_new_person(
                 org_id, current_user, email, org_role=role,
@@ -140,20 +143,26 @@ def team_invite():
     if OrgRole.get_role(org_id, user.id) is not None:
         return _render_team(org_id, "This user is already a member of the organisation.", 409)
 
-    from app.models.pending_invitation import PendingInvitation
-
-    _, created = PendingInvitation.create_for(
-        org_id, user.id, role, invited_by_id=current_user.id
-    )
-    if not created:
-        return _render_team(org_id, "An invitation for this user already exists.", 409)
-    db.session.commit()
-    # This person already has an account: the invitation waits for them in
-    # the product rather than in their inbox, and the admin is told so.
-    flash(
-        f"{email} already has an account. They will see the invitation the next time they sign in.",
-        "success",
-    )
+    try:
+        _, delivered, error = invitation_service.invite_existing_account(
+            org_id, current_user, user, role
+        )
+    except invitation_service.InvitationError as exc:
+        db.session.rollback()
+        return _render_team(org_id, exc.message, exc.status)
+    # This person already has an account: the e-mailed link asks them to
+    # sign in and accept. Without e-mail nobody can tell them, and the admin
+    # is told exactly that.
+    if delivered:
+        flash(f"Invitation sent to {email}. They already have an account and accept it after signing in.", "success")
+    elif delivered is None:
+        flash(
+            f"{email} already has an account. E-mail is not available on this server, "
+            "so they have not been told about the invitation.",
+            "error",
+        )
+    else:
+        flash(f"The invitation to {email} could not be sent: {error} Use Resend to try again.", "error")
     return redirect(url_for("team.team"))
 
 
@@ -183,17 +192,21 @@ def team_invitation_resend(invitation_id):
 @team_bp.route("/team/invitations/<int:invitation_id>/revoke", methods=["POST"])
 @login_required
 def team_invitation_revoke(invitation_id):
-    """Withdraw an open invitation so its link stops working."""
+    """Withdraw an invitation so its link stops working.
+
+    An account the invitation opened, and that nobody took up, is removed
+    with it, so the address is free to register or be invited elsewhere.
+    """
     org_id = _require_org_id()
     _require_org_or_platform_admin(org_id)
     from app.modules.account.services import invitation_service
 
     try:
-        row = invitation_service.revoke(org_id, invitation_id)
+        email = invitation_service.revoke(org_id, invitation_id)
     except invitation_service.InvitationError:
         db.session.rollback()
         abort(404)
-    flash(f"The invitation to {row.user.email} was withdrawn.", "success")
+    flash(f"The invitation to {email} was withdrawn.", "success")
     return redirect(url_for("team.team"))
 
 

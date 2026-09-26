@@ -1,15 +1,14 @@
 """
-AccountToken — the links sent by e-mail to reset a password, confirm an
-address, or join an organisation.
+AccountToken — the links sent by e-mail to reset a password or confirm an
+address. (An invitation's link lives on its ``PendingInvitation`` row, the one
+record of an invitation.)
 
 Only a SHA-256 digest of each link's secret is stored; the secret itself exists
 in the message and nowhere else. A token works once (``used_at``), stops working
 at ``expires_at``, and is withdrawn (``revoked_at``) when a newer link of the
 same purpose is issued for the same person, so only the latest one works.
 
-Each row belongs to the organisation of the person it was issued for. For an
-invitation that is the inviter's organisation, which is where accepting it puts
-the new member. The tenant filter scopes every signed-in read to the reader's
+Each row belongs to the organisation of the person it was issued for. The tenant filter scopes every signed-in read to the reader's
 organisation; the anonymous reads that redeem a link are scoped by the digest,
 which only the holder of the message can produce.
 """
@@ -25,12 +24,10 @@ from app.models.mixins.core import TenantMixin
 
 PURPOSE_PASSWORD_RESET = "password_reset"
 PURPOSE_CONFIRM_EMAIL = "confirm_email"
-PURPOSE_INVITATION = "invitation"
 
 LIFETIMES = {
     PURPOSE_PASSWORD_RESET: timedelta(hours=1),
     PURPOSE_CONFIRM_EMAIL: timedelta(days=7),
-    PURPOSE_INVITATION: timedelta(days=14),
 }
 
 
@@ -53,9 +50,6 @@ class AccountToken(TenantMixin, db.Model):  # migration-exempt
     user_id = db.Column(
         db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    # Invitations only: who sent it and which organisation role accepting grants.
-    invited_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    role = db.Column(db.String(50), nullable=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
     expires_at = db.Column(db.DateTime, nullable=False)
     used_at = db.Column(db.DateTime, nullable=True)
@@ -67,10 +61,9 @@ class AccountToken(TenantMixin, db.Model):  # migration-exempt
     delivered_at = db.Column(db.DateTime, nullable=True)
 
     user = db.relationship("User", foreign_keys=[user_id], lazy="joined")
-    invited_by = db.relationship("User", foreign_keys=[invited_by_id], lazy="select")
 
     @classmethod
-    def issue(cls, user, purpose, *, organization_id=None, invited_by_id=None, role=None):
+    def issue(cls, user, purpose, *, organization_id=None):
         """Create a token for ``user`` and return ``(row, raw_secret)``.
 
         Every earlier outstanding token of the same purpose for the same user is
@@ -96,8 +89,6 @@ class AccountToken(TenantMixin, db.Model):  # migration-exempt
             token_hash=digest(raw),
             user_id=user.id,
             organization_id=org_id,
-            invited_by_id=invited_by_id,
-            role=role,
             created_at=now,
             expires_at=now + LIFETIMES[purpose],
         )

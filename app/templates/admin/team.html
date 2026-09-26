@@ -89,13 +89,18 @@
                     <p class="text-sm text-muted-foreground">
                         Role: {{ inv.role or '—' }}
                         <span aria-hidden="true">·</span>
-                        {% if inv.state == 'expired' %}Link expired{% else %}Link works until {{ inv.expires_at.strftime('%d %b %Y') }}{% endif %}
+                        {% if inv.state == 'expired' %}Expired{% else %}Open until {{ inv.effective_expiry.strftime('%d %b %Y') }}{% endif %}
                     </p>
+                    {% if inv.user_id in has_account_ids %}
+                    <p class="text-sm text-muted-foreground" data-invitation-kind="has-account">Has an account: accepts after signing in</p>
+                    {% endif %}
                     <p class="text-sm" data-invitation-delivery="{{ inv.delivery_status or 'unknown' }}">
                         {% if inv.delivery_status == 'sent' %}
                             <span class="text-foreground">Sent {{ inv.delivered_at.strftime('%d %b %Y %H:%M') }} UTC</span>
                         {% elif inv.delivery_status == 'failed' %}
                             <span class="text-destructive-emphasis">Not sent: {{ inv.delivery_error or '—' }}</span>
+                        {% elif not inv.token_hash %}
+                            <span class="text-muted-foreground">Not e-mailed</span>
                         {% else %}
                             <span class="text-muted-foreground">Delivery —</span>
                         {% endif %}

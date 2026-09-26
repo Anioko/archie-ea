@@ -89,6 +89,10 @@ class AccountService:
         import re as _re
         import uuid as _uuid
         from app.models import Organization
+        from app.modules.account.services.invitation_service import release_for_registration
+
+        # An address held only by an invitation nobody took up is freed here.
+        release_for_registration(email)
         _label = ("{} {}".format(first_name or "", last_name or "").strip()
                   or (email.split("@")[0] if email else "New"))
         _base_slug = _re.sub(r"[^a-z0-9]+", "-",
@@ -152,7 +156,7 @@ class AccountService:
         before the address is looked up, so the answer is the same for every
         address), otherwise "requested" whether or not the address exists.
         """
-        from app.flask_email import deliver_email, mail_available
+        from app.flask_email import deliver_email_after_response, mail_available
         from app.models.account_token import PURPOSE_PASSWORD_RESET, AccountToken
 
         if not mail_available():
@@ -160,17 +164,27 @@ class AccountService:
         user = User.find_by_email(email)
         if user is not None and user.password_hash is not None:
             row, raw = AccountToken.issue(user, PURPOSE_PASSWORD_RESET)
-            reset_link = url_for("account.reset_password", token=raw, _external=True)
-            delivered, error = deliver_email(
+            db.session.commit()
+            token_id = row.id
+
+            def record(delivered, error):
+                # tenant-scoping-ok: the row this request just issued, by primary key
+                issued = db.session.get(AccountToken, token_id)
+                if issued is not None:
+                    issued.record_delivery(delivered, error)
+                    db.session.commit()
+
+            # Sent after the answer has gone out, so the answer takes as long
+            # for an address with an account as for one without.
+            deliver_email_after_response(
                 recipient=user.email,
                 subject="Reset your password",
                 template="account/email/reset_password",
                 user=user,
-                reset_link=reset_link,
+                reset_link=url_for("account.reset_password", token=raw, _external=True),
                 expires_at=row.expires_at,
+                on_result=record,
             )
-            row.record_delivery(delivered, error)
-            db.session.commit()
         return "requested"
 
     @staticmethod
@@ -322,42 +336,6 @@ class AccountService:
         return row.user, "Your e-mail address is confirmed."
 
     @staticmethod
-    def join_from_invite(user_id, token):
-        """Process a join-from-invite request.
-
-        Returns (user, token_valid: bool, message: str).
-        user is None if user_id not found.
-        """
-        # tenant-scoping-ok: pre-auth invite-join flow, no org context yet --
-        # the signed confirmation token checked below is the real gate.
-        new_user = User.query.get(user_id)
-        if new_user is None:
-            return None, False, "User not found."
-
-        if new_user.password_hash is not None:
-            return new_user, False, "You have already joined."
-
-        if new_user.confirm_account(token):
-            return new_user, True, "Account confirmed."
-        else:
-            # Re-send invite
-            new_token = new_user.generate_confirmation_token()
-            invite_link = url_for(
-                "account.join_from_invite", user_id=user_id, token=new_token, _external=True
-            )
-            _queue_email(
-                recipient=new_user.email,
-                subject="You Are Invited To Join",
-                template="account/email/invite",
-                user=new_user,
-                invite_link=invite_link,
-            )
-            return new_user, False, (
-                "The confirmation link is invalid or has expired. Another "
-                "invite email with a new link has been sent to you."
-            )
-
-    @staticmethod
     def accept_invitation(user, invitation_id):
         """Accept a pending invitation for the current user.
 
@@ -406,13 +384,3 @@ class AccountService:
         db.session.delete(invitation)
         db.session.commit()
         return True, "Invitation declined."
-
-    @staticmethod
-    def set_password(user, password):
-        """Set a user's password (for join-from-invite flow)."""
-        user.password = password
-        db.session.add(user)
-        db.session.commit()
-        # Defensive: there should be no prior session for a fresh
-        # join-from-invite user, but revoke everything just in case.
-        AccountService._revoke_other_sessions(user.id, "password_change", except_sid=None)

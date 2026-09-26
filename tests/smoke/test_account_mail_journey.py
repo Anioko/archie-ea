@@ -231,8 +231,9 @@ def test_an_invited_teammate_joins_the_inviters_organisation(browser, mail_serve
         _sign_in(page, mail_server, invitee, NEW_PASSWORD)
         assert "/account/" not in page.url
 
+        # Once taken up the link is spent, whoever opens it.
         page.goto(link, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-        page.get_by_text("Sign out to accept this invitation").wait_for(timeout=PAGE_TIMEOUT)
+        page.get_by_text("This invitation no longer works").wait_for(timeout=PAGE_TIMEOUT)
     finally:
         context.close()
 
@@ -255,6 +256,115 @@ def test_an_invited_teammate_joins_the_inviters_organisation(browser, mail_serve
         assert page.locator('[data-invitation-email="%s"]' % invitee).count() == 0
     finally:
         context.close()
+
+
+def _invite_from_team_page(page, base, address, role="architect"):
+    page.goto(base + "/admin/team", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    page.fill("#email", address)
+    page.select_option("#role", role)
+    page.get_by_role("button", name="Send invitation").click()
+    page.wait_for_url("**/admin/team", timeout=PAGE_TIMEOUT)
+    row = page.locator('[data-invitation-email="%s"]' % address)
+    row.wait_for(timeout=PAGE_TIMEOUT)
+    return row
+
+
+def test_someone_with_an_account_accepts_an_invitation_after_signing_in(
+    browser, mail_server, smtp_sink, app
+):
+    owner = _seed_member(app, org_admin=True)
+    elsewhere = _seed_member(app)
+    context = browser.new_context()
+    context.add_init_script(_DISMISS_ONBOARDING_SCRIPT)
+    page = context.new_page()
+    try:
+        _sign_in(page, mail_server, owner["email"])
+        row = _invite_from_team_page(page, mail_server, elsewhere["email"])
+        assert row.locator('[data-invitation-kind="has-account"]').count() == 1
+        assert row.locator('[data-invitation-delivery="sent"]').count() == 1
+        link = _link_in(smtp_sink.text_to(elsewhere["email"]), "/account/join/")
+    finally:
+        context.close()
+
+    context = browser.new_context()
+    context.add_init_script(_DISMISS_ONBOARDING_SCRIPT)
+    page = context.new_page()
+    try:
+        # Opening the link signed out goes to sign in, then back to the invitation.
+        page.goto(link, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.wait_for_url("**/account/login**", timeout=PAGE_TIMEOUT)
+        page.fill("#email", elsewhere["email"])
+        page.fill("#password", PASSWORD)
+        page.click("#submit")
+        page.get_by_role("heading", name="Join %s" % owner["org_name"]).wait_for(timeout=PAGE_TIMEOUT)
+        page.get_by_role("button", name="Accept invitation").click()
+        page.wait_for_url(lambda u: "/account/join/" not in u, timeout=PAGE_TIMEOUT)
+
+        page.goto(link, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.get_by_text("This invitation no longer works").wait_for(timeout=PAGE_TIMEOUT)
+    finally:
+        context.close()
+
+    with app.app_context():
+        from app.models.org_role import OrgRole
+        from app.models.user import User
+
+        member = User.find_by_email(elsewhere["email"])
+        assert OrgRole.get_role(owner["org_id"], member.id) == "architect"
+
+    # After a reload the owner no longer sees it as an open invitation.
+    context = browser.new_context()
+    context.add_init_script(_DISMISS_ONBOARDING_SCRIPT)
+    page = context.new_page()
+    try:
+        _sign_in(page, mail_server, owner["email"])
+        page.goto(mail_server + "/admin/team", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        assert page.locator('[data-invitation-email="%s"]' % elsewhere["email"]).count() == 0
+    finally:
+        context.close()
+
+
+def test_a_withdrawn_invitation_frees_the_address_to_register(browser, mail_server, smtp_sink, app):
+    owner = _seed_member(app, org_admin=True)
+    invitee = "withdrawn.%s@example.com" % uuid.uuid4().hex[:8]
+    context = browser.new_context()
+    context.add_init_script(_DISMISS_ONBOARDING_SCRIPT)
+    page = context.new_page()
+    try:
+        _sign_in(page, mail_server, owner["email"])
+        _invite_from_team_page(page, mail_server, invitee)
+        link = _link_in(smtp_sink.text_to(invitee), "/account/join/")
+        page.get_by_role("button", name="Withdraw invitation to %s" % invitee).click()
+        page.wait_for_url("**/admin/team", timeout=PAGE_TIMEOUT)
+        page.reload(wait_until="domcontentloaded")
+        assert page.locator('[data-invitation-email="%s"]' % invitee).count() == 0
+    finally:
+        context.close()
+
+    context = browser.new_context()
+    page = context.new_page()
+    try:
+        page.goto(link, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.get_by_text("This invitation no longer works").wait_for(timeout=PAGE_TIMEOUT)
+
+        page.goto(mail_server + "/account/register", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        page.fill("#first_name", "Freed")
+        page.fill("#last_name", "Address")
+        page.fill("#email", invitee)
+        page.fill("#password", NEW_PASSWORD)
+        page.fill("#password2", NEW_PASSWORD)
+        page.click("#submit")
+        page.wait_for_url(lambda u: "/account/register" not in u, timeout=PAGE_TIMEOUT)
+    finally:
+        context.close()
+
+    with app.app_context():
+        from app.models.user import User
+
+        registered = User.find_by_email(invitee)
+        assert registered is not None
+        assert registered.organization_id != owner["org_id"]
+        assert registered.verify_password(NEW_PASSWORD)
 
 
 def test_without_a_mail_server_the_reset_page_says_so(browser, live_server):

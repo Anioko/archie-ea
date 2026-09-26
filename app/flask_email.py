@@ -2,7 +2,7 @@ import logging
 import os
 import smtplib
 
-from flask import current_app, render_template
+from flask import after_this_request, current_app, has_request_context, render_template
 from flask_mail import Connection, Message
 
 from app import create_app, mail
@@ -45,6 +45,30 @@ class _BoundedConnection(Connection):
         return host
 
 
+def _compose(app, recipient, subject, template, **kwargs):
+    msg = Message(
+        app.config.get("EMAIL_SUBJECT_PREFIX", "") + " " + subject,
+        sender=mail_sender(app),
+        recipients=[recipient],
+    )
+    msg.body = render_template(template + ".txt", **kwargs)
+    msg.html = render_template(template + ".html", **kwargs)
+    return msg
+
+
+def _transmit(app, msg):
+    """Hand one composed message to the mail server. Returns ``(delivered, error)``."""
+    try:
+        with _BoundedConnection(app.extensions["mail"]) as conn:
+            conn.send(msg)
+        return True, None
+    except Exception as exc:
+        _log.error("account mail %r to recipient failed: %s", msg.subject, exc, exc_info=True)
+        return False, "The mail server did not accept the message ({}).".format(
+            type(exc).__name__
+        )
+
+
 def deliver_email(recipient, subject, template, **kwargs):
     """Render and send one message now, through the configured Flask-Mail settings.
 
@@ -57,21 +81,44 @@ def deliver_email(recipient, subject, template, **kwargs):
     if not mail_available(app):
         return False, "E-mail is not available on this server."
     try:
-        msg = Message(
-            app.config.get("EMAIL_SUBJECT_PREFIX", "") + " " + subject,
-            sender=mail_sender(app),
-            recipients=[recipient],
-        )
-        msg.body = render_template(template + ".txt", **kwargs)
-        msg.html = render_template(template + ".html", **kwargs)
-        with _BoundedConnection(app.extensions["mail"]) as conn:
-            conn.send(msg)
-        return True, None
+        msg = _compose(app, recipient, subject, template, **kwargs)
     except Exception as exc:
-        _log.error("account mail %r to recipient failed: %s", subject, exc, exc_info=True)
-        return False, "The mail server did not accept the message ({}).".format(
-            type(exc).__name__
-        )
+        _log.error("account mail %r could not be rendered: %s", subject, exc, exc_info=True)
+        return False, "The message could not be prepared ({}).".format(type(exc).__name__)
+    return _transmit(app, msg)
+
+
+def deliver_email_after_response(recipient, subject, template, on_result=None, **kwargs):
+    """Render one message now and hand it to the mail server once the response is sent.
+
+    For answers that must not depend on whether a message went out -- the
+    password-reset request answers the same for every address, and a reply
+    that waited on the mail server would say which addresses have accounts
+    by how long it took. Outside a request the message is sent at once.
+    ``on_result(delivered, error)`` is then called in an application context.
+    """
+    app = current_app._get_current_object()
+    if not mail_available(app):
+        return
+    msg = _compose(app, recipient, subject, template, **kwargs)
+
+    def transmit():
+        with app.app_context():
+            delivered, error = _transmit(app, msg)
+            if on_result is not None:
+                try:
+                    on_result(delivered, error)
+                except Exception:
+                    _log.error("recording the outcome of account mail %r failed", subject, exc_info=True)
+
+    if not has_request_context():
+        transmit()
+        return
+
+    @after_this_request
+    def _send_when_closed(response):
+        response.call_on_close(transmit)
+        return response
 
 
 def send_email(recipient, subject, template, **kwargs):

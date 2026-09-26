@@ -163,9 +163,30 @@ def confirm_view(token):
     return redirect(url_for("account.login"))
 
 
+def _invitation_gone():
+    return _link_expired(
+        "This invitation no longer works",
+        "It has expired, has already been used, or was withdrawn. Ask the "
+        "person who invited you to send a new one.",
+        "Go to sign in",
+        url_for("account.login"),
+    )
+
+
 def join_view(token):
-    """Take up an invitation: the invitee sets a password and becomes a member."""
+    """Take up an invitation.
+
+    Someone new sets a password and becomes a member; someone who already has
+    an account signs in as it and accepts or declines.
+    """
     from app.modules.account.services import invitation_service
+
+    invitation = invitation_service.find_joinable(token)
+    if invitation is None:
+        return _invitation_gone()
+    organisation_name = invitation_service.organisation_name(invitation.organization_id)
+    if not invitation_service.is_unactivated(invitation.user):
+        return _join_existing_view(token, invitation, organisation_name)
 
     if current_user.is_authenticated:
         return _link_expired(
@@ -175,28 +196,12 @@ def join_view(token):
             "Sign out",
             url_for("account.logout"),
         )
-    invitation = invitation_service.find_joinable(token)
-    if invitation is None:
-        return _link_expired(
-            "This invitation no longer works",
-            "It has expired, has already been used, or was withdrawn. Ask the "
-            "person who invited you to send a new one.",
-            "Go to sign in",
-            url_for("account.login"),
-        )
-    organisation_name = invitation_service.organisation_name(invitation.organization_id)
     form = CreatePasswordForm()
     form.submit.label.text = "Join {}".format(organisation_name)
     if form.validate_on_submit():
-        user = invitation_service.accept(token, form.password.data)
+        user = invitation_service.accept_new(token, form.password.data)
         if user is None:
-            return _link_expired(
-                "This invitation no longer works",
-                "It has expired, has already been used, or was withdrawn. Ask the "
-                "person who invited you to send a new one.",
-                "Go to sign in",
-                url_for("account.login"),
-            )
+            return _invitation_gone()
         flash(
             "You have joined {}. Sign in with {} and the password you just set.".format(
                 organisation_name, user.email
@@ -209,5 +214,43 @@ def join_view(token):
         form=form,
         organisation_name=organisation_name,
         email=invitation.user.email,
-        inviter=invitation.invited_by,
+        inviter=invitation.inviter,
+    )
+
+
+def _join_existing_view(token, invitation, organisation_name):
+    """An invitation for an account that already exists: its holder answers it."""
+    from app.modules.account.services import invitation_service
+
+    if current_user.is_anonymous:
+        flash("Sign in as {} to answer the invitation to {}.".format(
+            invitation.user.email, organisation_name), "info")
+        return redirect(url_for("account.login", next=request.path))
+    if current_user.id != invitation.user_id:
+        return _link_expired(
+            "This invitation is for another account",
+            "You are signed in as {}. Sign out, then sign in with the address the "
+            "invitation was sent to and open the link again.".format(current_user.email),
+            "Sign out",
+            url_for("account.logout"),
+        )
+    if request.method == "POST":
+        # CSRF is checked for every POST by the application-wide CSRFProtect.
+        accept = request.form.get("decision") == "accept"
+        org_id = invitation_service.answer_existing(token, current_user, accept)
+        if org_id is None:
+            return _invitation_gone()
+        if accept:
+            flash("You are now a member of {}.".format(organisation_name), "success")
+        else:
+            flash("You declined the invitation to {}.".format(organisation_name), "info")
+        return redirect(url_for("dashboard.overview"))
+    return render_template(
+        "account/join_invite.html",
+        form=None,
+        existing=True,
+        organisation_name=organisation_name,
+        email=invitation.user.email,
+        inviter=invitation.inviter,
+        role=invitation.role,
     )

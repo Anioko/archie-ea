@@ -297,26 +297,9 @@ class User(UserMixin, db.Model):
 
     # ---------------- Token Methods ----------------
 
-    def generate_confirmation_token(self):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        return s.dumps({"confirm": self.id})
-
     def generate_email_change_token(self, new_email):
         s = Serializer(current_app.config["SECRET_KEY"])
         return s.dumps({"change_email": self.id, "new_email": new_email})
-
-    def confirm_account(self, token, expiration=604800):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        try:
-            data = s.loads(token, max_age=expiration)
-        except (BadSignature, SignatureExpired):
-            return False
-        if data.get("confirm") != self.id:
-            return False
-        self.confirmed = True
-        db.session.add(self)
-        db.session.commit()
-        return True
 
     def change_email(self, token, expiration=3600):
         s = Serializer(current_app.config["SECRET_KEY"])

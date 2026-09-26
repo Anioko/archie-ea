@@ -37,7 +37,6 @@ from app.services.rate_limiter import rate_limit
 from app.modules.account.forms.account_forms import (
     ChangeEmailForm,
     ChangePasswordForm,
-    CreatePasswordForm,
     LoginForm,
 )
 from app.modules.account.routes import mail_views
@@ -314,37 +313,16 @@ def join(token):
 
 
 @account_bp_v2.route("/join-from-invite/<int:user_id>/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m")
 @timed_route
 def join_from_invite(user_id, token):
-    """Confirm new user's account with provided token and prompt them to set a password."""
-    if current_user is not None and current_user.is_authenticated:
-        flash("You are already logged in.", "error")
-        return redirect(url_for("main.index"))
+    """Retired invitation link: it is served by the one invitation flow.
 
-    new_user, token_valid, message = _svc.join_from_invite(user_id, token)
-
-    if new_user is None:
-        return redirect(404)
-
-    if not token_valid and new_user.password_hash is not None:
-        flash(message, "error")
-        return redirect(url_for("main.index"))
-
-    if token_valid:
-        form = CreatePasswordForm()
-        if form.validate_on_submit():
-            _svc.set_password(new_user, form.password.data)
-            flash(
-                "Your password has been set. After you log in, you can "
-                'go to the "Your Account" page to review your account '
-                "information and settings.",
-                "success",
-            )
-            return redirect(url_for("account.login"))
-        return render_template("account/join_invite.html", form=form)
-    else:
-        flash(message, "error")
-    return redirect(url_for("main.index"))
+    Links of this shape carried a reusable signed token that was never
+    stored. They set no password and send no mail any more; the token is
+    handed to ``/join/<token>``, which refuses anything it did not issue.
+    """
+    return redirect(url_for("account.join", token=token))
 
 
 @account_bp_v2.route("/invitation/<int:invitation_id>/accept", methods=["POST"])

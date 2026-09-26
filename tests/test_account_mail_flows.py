@@ -82,6 +82,17 @@ def _fresh(user):
     return db.session.get(User, user.id)
 
 
+def _request_reset(app, data):
+    """Ask for a reset link as a stranger would, and let the response finish.
+
+    The message goes out once the response is closed, as a server closes it
+    after sending, so the answer never waits on the mail server.
+    """
+    resp = _anonymous(app).post("/account/reset-password", data=data)
+    resp.close()
+    return resp
+
+
 def _session_user_id(client):
     with client.session_transaction() as sess:
         return sess.get("_user_id")
@@ -97,7 +108,7 @@ def test_reset_request_mails_a_link_whose_secret_is_stored_only_as_a_digest(
     user = _make_user(db_session, org)
     db_session.commit()
 
-    resp = _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    resp = _request_reset(app, {"email": user.email})
 
     assert resp.status_code == 200
     assert b"Check your e-mail" in resp.data
@@ -118,7 +129,7 @@ def test_reset_link_sets_the_password_once_and_signs_nobody_in(app, db_session, 
     org = _make_org(db_session, "R2")
     user = _make_user(db_session, org)
     db_session.commit()
-    _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    _request_reset(app, {"email": user.email})
     path = _link(outbox[0], "/account/reset-password/")
 
     client = _anonymous(app)
@@ -146,7 +157,7 @@ def test_an_expired_reset_link_is_refused_and_changes_nothing(app, db_session, m
     org = _make_org(db_session, "R3")
     user = _make_user(db_session, org)
     db_session.commit()
-    _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    _request_reset(app, {"email": user.email})
     path = _link(outbox[0], "/account/reset-password/")
     row = _tokens(user.id, "password_reset")[0]
     row.expires_at = _utcnow() - timedelta(seconds=1)
@@ -163,8 +174,8 @@ def test_a_newer_reset_link_withdraws_the_older_one(app, db_session, mail_on, ou
     org = _make_org(db_session, "R4")
     user = _make_user(db_session, org)
     db_session.commit()
-    _anonymous(app).post("/account/reset-password", data={"email": user.email})
-    _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    _request_reset(app, {"email": user.email})
+    _request_reset(app, {"email": user.email})
     first = _link(outbox[0], "/account/reset-password/")
     second = _link(outbox[1], "/account/reset-password/")
 
@@ -181,8 +192,8 @@ def test_an_unknown_address_gets_the_same_answer_and_no_mail(app, db_session, ma
     before = AccountToken.query.count()
     unknown = "nobody-{}@example.com".format(uuid.uuid4().hex[:8])
 
-    known_resp = _anonymous(app).post("/account/reset-password", data={"email": user.email})
-    unknown_resp = _anonymous(app).post("/account/reset-password", data={"email": unknown})
+    known_resp = _request_reset(app, {"email": user.email})
+    unknown_resp = _request_reset(app, {"email": unknown})
 
     assert unknown_resp.status_code == known_resp.status_code == 200
     assert _main(unknown_resp).replace(unknown, "ADDRESS") == _main(known_resp).replace(
@@ -201,7 +212,7 @@ def test_reset_without_a_mail_server_says_so_and_sends_nothing(app, db_session, 
     before = AccountToken.query.count()
 
     page = _anonymous(app).get("/account/reset-password")
-    resp = _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    resp = _request_reset(app, {"email": user.email})
 
     for r in (page, resp):
         assert r.status_code == 200
@@ -293,6 +304,12 @@ def test_sign_up_without_a_mail_server_is_usable_and_says_no_message_was_sent(
 # -- invitations ----------------------------------------------------------
 
 
+def _invitation(org_id, user_id):
+    from app.models.pending_invitation import PendingInvitation
+
+    return PendingInvitation.query.filter_by(organization_id=org_id, user_id=user_id).one()
+
+
 def _invite(client, login_as, admin, email, role="architect", persona="data_architect"):
     login_as(client, admin)
     return client.post("/admin/team/invite", data={"email": email, "role": role, "persona": persona})
@@ -342,7 +359,6 @@ def test_an_accepted_invitation_joins_the_inviters_organisation(
 def test_another_organisations_invitation_is_refused(
     app, db_session, login_as, client, mail_on, outbox
 ):
-    from app.models.account_token import AccountToken
     from app.models.org_role import OrgRole
     from app.models.user import User
 
@@ -355,7 +371,7 @@ def test_another_organisations_invitation_is_refused(
     _invite(client, login_as, admin_a, email)
     path = _link(outbox[0], "/account/join/")
     invitee = User.find_by_email(email)
-    token_id = AccountToken.query.filter_by(user_id=invitee.id, purpose="invitation").one().id
+    token_id = _invitation(org_a.id, invitee.id).id
 
     # Org B's administrator cannot resend or withdraw org A's invitation.
     client_b = app.test_client()
@@ -386,7 +402,7 @@ def test_another_organisations_invitation_is_refused(
 def test_an_expired_invitation_is_refused_and_grants_nothing(
     app, db_session, login_as, client, mail_on, outbox
 ):
-    from app.models.account_token import AccountToken, _utcnow
+    from app.models.pending_invitation import _utcnow
     from app.models.org_role import OrgRole
     from app.models.user import User
 
@@ -397,7 +413,7 @@ def test_an_expired_invitation_is_refused_and_grants_nothing(
     _invite(client, login_as, admin, email)
     path = _link(outbox[0], "/account/join/")
     invitee = User.find_by_email(email)
-    row = AccountToken.query.filter_by(user_id=invitee.id, purpose="invitation").one()
+    row = _invitation(org.id, invitee.id)
     row.expires_at = _utcnow() - timedelta(seconds=1)
     db_session.commit()
 
@@ -411,7 +427,6 @@ def test_an_expired_invitation_is_refused_and_grants_nothing(
 def test_resending_an_invitation_withdraws_the_earlier_link(
     app, db_session, login_as, client, mail_on, outbox
 ):
-    from app.models.account_token import AccountToken
     from app.models.user import User
 
     org = _make_org(db_session, "I4")
@@ -420,7 +435,7 @@ def test_resending_an_invitation_withdraws_the_earlier_link(
     email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
     _invite(client, login_as, admin, email)
     invitee = User.find_by_email(email)
-    token_id = AccountToken.query.filter_by(user_id=invitee.id, purpose="invitation").one().id
+    token_id = _invitation(org.id, invitee.id).id
 
     login_as(client, admin)
     assert client.post(f"/admin/team/invitations/{token_id}/resend").status_code == 302
@@ -470,3 +485,306 @@ def test_a_refused_message_is_shown_as_not_sent_with_its_reason(
 
     assert b"Not sent:" in team.data
     assert b"SMTPRecipientsRefused" in team.data
+
+
+# -- the retired invitation link ------------------------------------------
+
+
+def _old_style_token(app, user_id):
+    """A link token of the kind the retired route accepted: signed, reusable, never stored."""
+    from itsdangerous import URLSafeTimedSerializer
+
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"]).dumps({"confirm": user_id})
+
+
+def test_the_retired_invitation_url_sets_no_password_and_sends_no_mail(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.org_role import OrgRole
+    from app.models.user import User
+
+    org = _make_org(db_session, "OLD1")
+    admin = _make_user(db_session, org, org_admin=True)
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+    _invite(client, login_as, admin, email)
+    invitee = User.find_by_email(email)
+    assert len(outbox) == 1
+
+    for token in (_old_style_token(app, invitee.id), "not-a-token"):
+        old = "/account/join-from-invite/{}/{}".format(invitee.id, token)
+        guest = _anonymous(app)
+        page = guest.get(old)
+        assert page.status_code == 302
+        assert page.headers["Location"].endswith("/account/join/" + token)
+        assert guest.get(page.headers["Location"]).status_code == 410
+        posted = _anonymous(app).post(old, data={"password": NEW_PASSWORD, "password2": NEW_PASSWORD})
+        assert posted.status_code == 302
+        followed = _anonymous(app).post(
+            posted.headers["Location"], data={"password": NEW_PASSWORD, "password2": NEW_PASSWORD}
+        )
+        assert followed.status_code == 410
+
+    # Nothing was set, granted or sent, and the invitation is still open.
+    invitee = _fresh(invitee)
+    assert invitee.password_hash is None and invitee.confirmed is False
+    assert OrgRole.get_role(org.id, invitee.id) is None
+    assert len(outbox) == 1
+    assert _invitation(org.id, invitee.id) is not None
+    assert not hasattr(User, "confirm_account")
+    assert not hasattr(User, "generate_confirmation_token")
+
+
+def test_the_retired_invitation_url_is_rate_limited_for_strangers(app, db_session, monkeypatch):
+    monkeypatch.setitem(app.config, "RATE_LIMITING_ENABLED", True)
+    guest = _anonymous(app)
+    addr = {"REMOTE_ADDR": "203.0.113.{}".format(uuid.uuid4().int % 250 + 1)}
+    statuses = [
+        guest.get("/account/join-from-invite/1/x{}".format(i), environ_base=addr).status_code
+        for i in range(12)
+    ]
+    assert statuses[:10] == [302] * 10
+    assert statuses[-1] == 429
+
+
+# -- one record of an invitation, for new and existing accounts -----------
+
+
+def test_inviting_someone_with_an_account_is_listed_resent_and_withdrawn(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+
+    org_a = _make_org(db_session, "EX1")
+    org_b = _make_org(db_session, "EX2")
+    admin = _make_user(db_session, org_a, org_admin=True)
+    elsewhere = _make_user(db_session, org_b)
+    db_session.commit()
+
+    resp = _invite(client, login_as, admin, elsewhere.email, role="architect")
+    assert resp.status_code == 302
+    invitation = _invitation(org_a.id, elsewhere.id)
+    assert len(outbox) == 1 and outbox[0].recipients == [elsewhere.email]
+    assert "sign in as" in outbox[0].body
+    first_link = _link(outbox[0], "/account/join/")
+    assert invitation.token_hash == hashlib.sha256(first_link.rsplit("/", 1)[1].encode()).hexdigest()
+
+    # Visible on the Team page, marked as someone who already has an account.
+    login_as(client, admin)
+    team = client.get("/admin/team")
+    assert elsewhere.email.encode() in team.data
+    assert b'data-invitation-kind="has-account"' in team.data
+    assert b"Sent " in team.data
+
+    # Resend: a new link; the old one stops working.
+    login_as(client, admin)
+    assert client.post(f"/admin/team/invitations/{invitation.id}/resend").status_code == 302
+    assert len(outbox) == 2
+    second_link = _link(outbox[1], "/account/join/")
+    assert _anonymous(app).get(first_link).status_code == 410
+    assert _anonymous(app).get(second_link).status_code == 302  # to sign in
+
+    # Withdraw: gone from the page and the link; the account is untouched.
+    login_as(client, admin)
+    assert client.post(f"/admin/team/invitations/{invitation.id}/revoke").status_code == 302
+    assert PendingInvitation.query.filter_by(organization_id=org_a.id, user_id=elsewhere.id).count() == 0
+    login_as(client, admin)
+    assert 'data-invitation-email="{}"'.format(elsewhere.email).encode() not in client.get("/admin/team").data
+    assert _anonymous(app).get(second_link).status_code == 410
+    assert _fresh(elsewhere) is not None
+    assert OrgRole.get_role(org_b.id, elsewhere.id) == "viewer"
+    assert OrgRole.get_role(org_a.id, elsewhere.id) is None
+
+
+def test_someone_with_an_account_accepts_after_signing_in_as_that_account(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+
+    org_a = _make_org(db_session, "EX3")
+    org_b = _make_org(db_session, "EX4")
+    admin = _make_user(db_session, org_a, org_admin=True)
+    elsewhere = _make_user(db_session, org_b)
+    stranger = _make_user(db_session, org_b)
+    db_session.commit()
+    _invite(client, login_as, admin, elsewhere.email, role="architect")
+    link = _link(outbox[0], "/account/join/")
+
+    anonymous = _anonymous(app).get(link)
+    assert anonymous.status_code == 302 and "/account/login" in anonymous.headers["Location"]
+
+    other = app.test_client()
+    login_as(other, stranger)
+    refused = other.post(link, data={"decision": "accept"})
+    assert refused.status_code == 410
+    assert OrgRole.get_role(org_a.id, stranger.id) is None
+
+    invitee = app.test_client()
+    login_as(invitee, elsewhere)
+    page = invitee.get(link)
+    assert page.status_code == 200 and b"Accept invitation" in page.data
+    login_as(invitee, elsewhere)
+    accepted = invitee.post(link, data={"decision": "accept"})
+    assert accepted.status_code == 302
+    assert OrgRole.get_role(org_a.id, elsewhere.id) == "architect"
+    assert PendingInvitation.query.filter_by(organization_id=org_a.id, user_id=elsewhere.id).count() == 0
+    login_as(invitee, elsewhere)
+    assert invitee.post(link, data={"decision": "accept"}).status_code == 410
+
+
+# -- an invited address is never locked away ------------------------------
+
+
+def test_withdrawing_an_invitation_frees_the_address(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.user import User
+
+    org = _make_org(db_session, "LK1")
+    admin = _make_user(db_session, org, org_admin=True)
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+    _invite(client, login_as, admin, email)
+    invitee = User.find_by_email(email)
+    link = _link(outbox[0], "/account/join/")
+
+    login_as(client, admin)
+    assert client.post(f"/admin/team/invitations/{_invitation(org.id, invitee.id).id}/revoke").status_code == 302
+
+    assert User.find_by_email(email) is None
+    assert _anonymous(app).get(link).status_code == 410
+    guest = _anonymous(app)
+    assert _register(guest, email).status_code == 302
+    registered = User.find_by_email(email)
+    assert registered is not None and registered.organization_id != org.id
+    assert registered.verify_password(PASSWORD)
+
+
+def test_an_expired_invitation_lets_another_organisation_invite_the_address(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import _utcnow
+    from app.models.user import User
+
+    org_a = _make_org(db_session, "LK2")
+    org_b = _make_org(db_session, "LK3")
+    admin_a = _make_user(db_session, org_a, org_admin=True)
+    admin_b = _make_user(db_session, org_b, org_admin=True)
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+    _invite(client, login_as, admin_a, email)
+    held = User.find_by_email(email)
+
+    # While org A's invitation is open, org B is refused.
+    client_b = app.test_client()
+    assert _invite(client_b, login_as, admin_b, email).status_code == 409
+
+    row = _invitation(org_a.id, held.id)
+    row.expires_at = _utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    resp = _invite(client_b, login_as, admin_b, email)
+    assert resp.status_code == 302
+    invitee = User.find_by_email(email)
+    assert invitee.organization_id == org_b.id
+    assert invitee.id != held.id
+    path = _link(outbox[-1], "/account/join/")
+    joined = _anonymous(app).post(path, data={"password": NEW_PASSWORD, "password2": NEW_PASSWORD})
+    assert joined.status_code == 302
+    assert OrgRole.get_role(org_b.id, _fresh(invitee).id) == "architect"
+    assert _fresh(invitee).verify_password(NEW_PASSWORD)
+
+
+def test_an_expired_invitation_does_not_stop_the_person_registering(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.pending_invitation import _utcnow
+    from app.models.user import User
+
+    org = _make_org(db_session, "LK4")
+    admin = _make_user(db_session, org, org_admin=True)
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+    _invite(client, login_as, admin, email)
+    held = User.find_by_email(email)
+    row = _invitation(org.id, held.id)
+    row.expires_at = _utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    assert _register(_anonymous(app), email).status_code == 302
+
+    registered = User.find_by_email(email)
+    assert registered.id != held.id
+    assert registered.organization_id != org.id
+    assert registered.verify_password(PASSWORD)
+    login_as(client, admin)
+    assert 'data-invitation-email="{}"'.format(email).encode() not in client.get("/admin/team").data
+
+
+def test_registering_an_invited_address_withdraws_the_open_invitation(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+    from app.models.user import User
+
+    org = _make_org(db_session, "LK5")
+    admin = _make_user(db_session, org, org_admin=True)
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+    _invite(client, login_as, admin, email)
+    held = User.find_by_email(email)
+    link = _link(outbox[0], "/account/join/")
+
+    assert _register(_anonymous(app), email).status_code == 302
+
+    registered = User.find_by_email(email)
+    assert registered.id != held.id and registered.organization_id != org.id
+    # The new account has not proved it holds the address, so it inherits
+    # nothing: the invitation is withdrawn and its link opens nothing.
+    assert PendingInvitation.query.filter_by(organization_id=org.id).count() == 0
+    assert _anonymous(app).get(link).status_code == 410
+    assert OrgRole.get_role(org.id, registered.id) is None
+
+
+def test_a_reset_answer_does_not_wait_on_the_mail_server(app, db_session, mail_on, outbox):
+    """The reply is complete before any message is handed over, for every address."""
+    org = _make_org(db_session, "R7")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    resp = _anonymous(app).post("/account/reset-password", data={"email": user.email})
+    assert resp.status_code == 200 and b"Check your e-mail" in resp.data
+    assert outbox == []  # nothing handed to the mail server while answering
+
+    resp.close()  # a server closes the response once it is sent
+    assert [m.recipients for m in outbox] == [[user.email]]
+    assert _tokens(user.id, "password_reset")[0].delivery_status == "sent"
+
+
+def test_renewing_an_expired_invitation_does_not_revive_its_old_link(
+    app, db_session, login_as, client, mail_off, outbox
+):
+    from app.models.pending_invitation import PendingInvitation, _utcnow
+
+    org_a = _make_org(db_session, "RN1")
+    org_b = _make_org(db_session, "RN2")
+    admin = _make_user(db_session, org_a, org_admin=True)
+    elsewhere = _make_user(db_session, org_b)
+    db_session.commit()
+    invitation, _ = PendingInvitation.create_for(org_a.id, elsewhere.id, "viewer", invited_by_id=admin.id)
+    old_raw = invitation.issue_link()
+    invitation.expires_at = _utcnow() - timedelta(seconds=1)
+    db_session.commit()
+
+    # Invited again with no mail server: renewed, but the old link stays dead.
+    assert _invite(client, login_as, admin, elsewhere.email).status_code == 302
+    assert PendingInvitation.find_by_link(old_raw) is None
+    assert _invitation(org_a.id, elsewhere.id).token_hash is None
+    login_as(client, admin)
+    team = client.get("/admin/team")
+    assert 'data-invitation-email="{}"'.format(elsewhere.email).encode() in team.data
+    assert b"Not e-mailed" in team.data
