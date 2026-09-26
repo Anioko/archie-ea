@@ -7,16 +7,39 @@ through the same ``flask-login`` loader seam.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from app.extensions import db
+
+#: Redirect URIs must be https, or plain http restricted to loopback hosts
+#: (the standard OAuth 2.1 allowance for a client running on the user's own
+#: machine, e.g. a CLI or desktop assistant during development).
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def _new_token_id(prefix: str = "at") -> str:
     """A token identifier with enough entropy to resist enumeration."""
     return f"{prefix}_{secrets.token_urlsafe(32)}"
+
+
+def _hash_token(raw_token: str) -> str:
+    """One-way digest of a bearer token for storage — same construction the
+    marketplace API key path already uses (``api_marketplace_integration.py``:
+    ``hashlib.sha256(key_secret.encode()).hexdigest()``). A high-entropy
+    token needs a fast, deterministic lookup, not a slow password hash."""
+    return hashlib.sha256(raw_token.encode("ascii")).hexdigest()
+
+
+def is_allowed_redirect_uri_scheme(uri: str) -> bool:
+    """https always allowed; plain http only for a loopback host."""
+    parsed = urlparse(uri)
+    if parsed.scheme == "https":
+        return True
+    return parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS
 
 
 class OAuthAuthorizationCode(db.Model):
@@ -115,12 +138,25 @@ class OAuthClient(db.Model):
     @classmethod
     def register(cls, *, client_name: str | None = None,
                  redirect_uris: str | None = None) -> OAuthClient:
-        """Register a new client dynamically (RFC 7591)."""
+        """Register a new client dynamically (RFC 7591).
+
+        At least one redirect URI is required, and each one must be https,
+        or http restricted to a loopback host — a client with no registered
+        redirect URI would skip the exact-match check at /oauth/authorize and
+        accept any URI a caller supplied, including a ``javascript:`` link.
+        """
+        uris = (redirect_uris or "").split()
+        if not uris:
+            raise ValueError("at least one redirect_uri is required to register a client")
+        for uri in uris:
+            if not is_allowed_redirect_uri_scheme(uri):
+                raise ValueError(f"redirect_uri scheme not allowed: {uri}")
+
         client = cls(
             client_id=_new_token_id("cl"),
             client_name=client_name,
             redirect_uris=redirect_uris,
-            grant_types="authorization_code refresh_token",
+            grant_types="authorization_code",
         )
         db.session.add(client)
         db.session.flush()
@@ -134,11 +170,21 @@ class OAuthClient(db.Model):
 
 
 class OAuthToken(db.Model):
-    """An issued access token (and optional refresh token).
+    """An issued access token.
 
-    Resolves to a ``User`` through the MCP blueprint's ``_authenticate_request``,
-    which calls ``login_user()`` to set ``flask-login``'s ``current_user``.
+    Resolves to a ``User`` through the MCP blueprint's ``_authenticate_request``.
     Scoped to the MCP mount; not a general API key.
+
+    Only a SHA-256 digest of the token is stored (``access_token_hash``), the
+    same construction the marketplace API key path already uses — see
+    ``_hash_token``. The raw value is handed to the caller once, at issuance,
+    as ``issue()``'s transient ``plaintext_access_token`` attribute, and is
+    never persisted or re-derivable from the stored row.
+
+    No refresh token is issued: the token endpoint only ever accepted
+    ``grant_type=authorization_code``, so a previously-issued refresh token
+    could never actually be redeemed. Re-authorizing (a fresh code + PKCE
+    exchange) is the redemption path until a rotating refresh grant exists.
     """
 
     __tablename__ = "oauth_tokens"
@@ -146,8 +192,7 @@ class OAuthToken(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.String(128), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
-    access_token = db.Column(db.String(256), unique=True, nullable=False, index=True)
-    refresh_token = db.Column(db.String(256), unique=True, nullable=True, index=True)
+    access_token_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
     scope = db.Column(db.String(256), nullable=True)
     resource = db.Column(db.String(512), nullable=True)
     issued_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -160,13 +205,18 @@ class OAuthToken(db.Model):
     @classmethod
     def issue(cls, *, client_id: str, user_id: int, scope: str | None = None,
               resource: str | None = None, expires_in: int = 3600) -> OAuthToken:
-        """Issue a new access token."""
+        """Issue a new access token.
+
+        The returned instance carries the one-time raw value on
+        ``plaintext_access_token`` — read it immediately; it is not stored
+        and cannot be recovered later.
+        """
         now = datetime.now(timezone.utc)
+        raw_access_token = _new_token_id("at")
         token = cls(
             client_id=client_id,
             user_id=user_id,
-            access_token=_new_token_id("at"),
-            refresh_token=_new_token_id("rt"),
+            access_token_hash=_hash_token(raw_access_token),
             scope=scope,
             resource=resource,
             issued_at=now,
@@ -174,6 +224,7 @@ class OAuthToken(db.Model):
         )
         db.session.add(token)
         db.session.flush()
+        token.plaintext_access_token = raw_access_token
         return token
 
     @property
@@ -188,8 +239,6 @@ class OAuthToken(db.Model):
 
     @classmethod
     def find_by_access_token(cls, access_token: str) -> OAuthToken | None:
-        return cls.query.filter_by(access_token=access_token).first()
-
-    @classmethod
-    def find_by_refresh_token(cls, refresh_token: str) -> OAuthToken | None:
-        return cls.query.filter_by(refresh_token=refresh_token).first()
+        if not access_token:
+            return None
+        return cls.query.filter_by(access_token_hash=_hash_token(access_token)).first()

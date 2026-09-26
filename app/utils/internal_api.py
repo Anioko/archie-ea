@@ -36,20 +36,36 @@ def call_internal_api(
         A tuple of (status_code, data) where data is the parsed JSON response
         or an empty dict if parsing fails.
     """
-    from flask import current_app, session
+    from flask import current_app, g, session
 
-    with current_app.test_client() as client:
-        if pass_session:
-            with client.session_transaction() as sess:
-                sess.update(session)
+    # A nested call made through the test client here runs inside the SAME
+    # app context as the outer request (Flask only pushes a new one when the
+    # top of the stack belongs to a different app), so it shares this `g` —
+    # including flask-login's cached g._login_user. The session-policy
+    # before_request hook would otherwise see that identity, look for a
+    # matching server-side session record for the inner request's own (here,
+    # blank-or-copied) session, find none, and revoke/clear — which mutates
+    # the shared g and leaves the OUTER request looking logged out. The
+    # outer request already established its own identity through its own
+    # authentication path before making this call; the nested call is an
+    # implementation detail of serving it, not a second session to police.
+    previous_internal_call = getattr(g, "_internal_api_call", False)
+    g._internal_api_call = True
+    try:
+        with current_app.test_client() as client:
+            if pass_session:
+                with client.session_transaction() as sess:
+                    sess.update(session)
 
-        if method.upper() == "GET":
-            resp = client.get(path, query_string=query_string or {})
-        else:
-            resp = client.post(path, json=json_body or {})
+            if method.upper() == "GET":
+                resp = client.get(path, query_string=query_string or {})
+            else:
+                resp = client.post(path, json=json_body or {})
 
-        try:
-            data = resp.get_json()
-        except Exception:
-            data = {}
-        return resp.status_code, data if data is not None else {}
+            try:
+                data = resp.get_json()
+            except Exception:
+                data = {}
+            return resp.status_code, data if data is not None else {}
+    finally:
+        g._internal_api_call = previous_internal_call

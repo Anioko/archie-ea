@@ -191,6 +191,11 @@ class Config:
     # MCP server — OAuth-protected endpoint for AI assistants
     MCP_ALLOWED_ORIGIN = os.environ.get("MCP_ALLOWED_ORIGIN", "")
     MCP_ENDPOINT_URL = os.environ.get("MCP_ENDPOINT_URL", "")
+    # Explicit override for the OAuth issuer/authorization-server base URL.
+    # Unset by default: the metadata endpoints derive it from the incoming
+    # request instead, so a self-hosted install is never told to fetch
+    # tokens from a different operator's server (no hosted-product default).
+    MCP_OAUTH_BASE_URL = os.environ.get("MCP_OAUTH_BASE_URL", "")
 
     # Email
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.sendgrid.net")

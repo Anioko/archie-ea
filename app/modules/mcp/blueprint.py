@@ -13,7 +13,7 @@ import logging
 import time
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, g, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request, url_for
 from flask_login import current_user
 
 from app.modules.oauth_provider.models import OAuthToken
@@ -30,11 +30,15 @@ JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
 
+#: The only scope a token needs to call this server — kept in one place so
+#: the check at the door matches what /oauth/authorize is willing to grant.
+REQUIRED_SCOPE = "mcp:read"
+
 
 def _resolve_bearer_token() -> OAuthToken | None:
     """Resolve the current request's Bearer token to an OAuthToken.
 
-    Returns None if no valid token is present.
+    Returns None if no valid, correctly-scoped token is present.
     """
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
@@ -47,6 +51,8 @@ def _resolve_bearer_token() -> OAuthToken | None:
         return None
     if not token.is_active:
         return None
+    if REQUIRED_SCOPE not in (token.scope or "").split():
+        return None
     # Update last_used_at — an intentional write for token usage tracking
     # so that idle tokens can be identified and revoked.
     token.last_used_at = datetime.now(timezone.utc)
@@ -58,8 +64,16 @@ def _resolve_bearer_token() -> OAuthToken | None:
 def _authenticate_request() -> bool:
     """Authenticate the current request via Bearer token.
 
-    Sets flask_login's current_user from the token's user. Also sets
-    g.current_org_id and the database tenant context, because the
+    Resolves ``current_user`` for the rest of this request without touching
+    the Flask session: no session cookie, no remember-me cookie, and no
+    ``user_logged_in`` signal, because a read-only bearer credential is not a
+    browser login. flask-login reads ``g._login_user`` directly once it is
+    set (its own ``_get_user()`` only falls back to loading from the session
+    when that attribute is absent), so this is honoured for the rest of this
+    request and by any nested ``call_internal_api()`` call it makes, which
+    runs inside the same app context and therefore shares this ``g``.
+
+    Also sets g.current_org_id and the database tenant context, because the
     before_request handler runs before this view function and cannot
     see the yet-to-be-authenticated user. Returns True if authentication
     succeeded.
@@ -71,12 +85,10 @@ def _authenticate_request() -> bool:
     from app.models.user import User
     from app.extensions import db
     user = db.session.get(User, token.user_id)
-    if user is None:
+    if user is None or not getattr(user, "is_active", True):
         return False
 
-    # Set up the request context exactly as a session-cookie request would
-    from flask_login import login_user
-    login_user(user)
+    g._login_user = user
 
     # Re-establish tenant context now that current_user is set.
     # The before_request handler ran before authentication and left
@@ -97,6 +109,16 @@ def _jsonrpc_error(id_, code: int, message: str) -> dict:
 
 def _jsonrpc_result(id_, result: dict) -> dict:
     return {"jsonrpc": "2.0", "id": id_, "result": result}
+
+
+def _unauthenticated_response(req_id):
+    """401 with the WWW-Authenticate header a standards MCP client needs to
+    discover the authorization server (RFC 9728 / RFC 6750)."""
+    resp = jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR, "Authentication required"))
+    resp.status_code = 401
+    metadata_url = url_for("oauth_metadata.protected_resource_metadata", _external=True)
+    resp.headers["WWW-Authenticate"] = f'Bearer resource_metadata="{metadata_url}"'
+    return resp
 
 
 @mcp_bp.route("", methods=["POST"])
@@ -132,8 +154,7 @@ def mcp_endpoint():
 
     if method == "tools/list":
         if not _authenticate_request():
-            return jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR,
-                                          "Authentication required")), 401
+            return _unauthenticated_response(req_id)
         tools = []
         for name, handler in sorted(TOOL_REGISTRY.items()):
             tools.append({
@@ -149,14 +170,15 @@ def mcp_endpoint():
         tool_name = params.get("name", "")
         arguments = params.get("arguments", {})
 
+        # Authenticate before revealing anything about which tool names
+        # exist — checking existence first let an unauthenticated caller
+        # enumerate the (admittedly static) tool list for free.
+        if not _authenticate_request():
+            return _unauthenticated_response(req_id)
+
         if tool_name not in TOOL_REGISTRY:
             return jsonify(_jsonrpc_error(req_id, JSONRPC_METHOD_NOT_FOUND,
                                           f"Tool not found: {tool_name}")), 404
-
-        # Authenticate via Bearer token
-        if not _authenticate_request():
-            return jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR,
-                                          "Authentication required")), 401
 
         handler = TOOL_REGISTRY[tool_name]
 
@@ -185,10 +207,13 @@ def mcp_endpoint():
             return jsonify(_jsonrpc_result(req_id, {
                 "content": [{"type": "text", "text": json.dumps(result)}],
             }))
-        except Exception as exc:
+        except Exception:
+            # The real exception is logged server-side only — returning
+            # str(exc) to the caller can leak internal state (an attribute
+            # error naming a class, a query fragment, a file path).
             logger.exception("mcp_tool_call tool=%s failed", tool_name)
             return jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR,
-                                          str(exc))), 500
+                                          "Tool execution failed")), 500
 
     # Unknown method
     return jsonify(_jsonrpc_error(req_id, JSONRPC_METHOD_NOT_FOUND,

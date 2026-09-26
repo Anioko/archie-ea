@@ -6,17 +6,27 @@ GET /.well-known/oauth-authorization-server     — RFC 8414
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, jsonify, request
 
 oauth_metadata_bp = Blueprint("oauth_metadata", __name__)
 
 
 def _server_base_url() -> str:
-    """The product's own canonical base URL from config."""
-    raw = current_app.config.get("SERVER_NAME")
-    if raw is None:
-        return ""
-    return str(raw).rstrip("/")
+    """The product's own canonical base URL.
+
+    ``MCP_OAUTH_BASE_URL`` is an explicit override for a deployment that
+    wants a fixed value; otherwise the URL is derived from the current
+    request (scheme + host, corrected for a reverse proxy by the app's
+    ``ProxyFix`` middleware). There is deliberately no hosted-product
+    fallback — a self-hosted or staging install with no override must never
+    be told to fetch tokens from a different operator's server, and RFC 8414
+    requires these to be absolute URIs, so an empty/relative fallback is not
+    a valid alternative either.
+    """
+    configured = current_app.config.get("MCP_OAUTH_BASE_URL")
+    if configured:
+        return str(configured).rstrip("/")
+    return request.url_root.rstrip("/")
 
 
 @oauth_metadata_bp.route("/.well-known/oauth-protected-resource")
@@ -28,8 +38,8 @@ def protected_resource_metadata():
     """
     base = _server_base_url()
     return jsonify({
-        "resource": f"{base}/mcp" if base else "/mcp",
-        "authorization_servers": [base or "https://app.entelim.com"],
+        "resource": f"{base}/mcp",
+        "authorization_servers": [base],
         "bearer_methods_supported": ["header"],
         "scopes_supported": ["mcp:read"],
     })
@@ -40,7 +50,7 @@ def authorization_server_metadata():
     """RFC 8414: Authorization Server Metadata."""
     base = _server_base_url()
     return jsonify({
-        "issuer": base or "https://app.entelim.com",
+        "issuer": base,
         "authorization_endpoint": f"{base}/oauth/authorize",
         "token_endpoint": f"{base}/oauth/token",
         "scopes_supported": ["mcp:read"],

@@ -11,6 +11,8 @@ import hashlib
 import secrets
 import urllib.parse
 
+import pytest
+
 
 def _pkce_pair() -> tuple[str, str]:
     """Generate a code_verifier and its S256 code_challenge."""
@@ -146,7 +148,11 @@ class TestOAuthAuthorizationCodeFlow:
         data = resp.get_json()
         assert "access_token" in data
         assert data["token_type"] == "Bearer"
-        assert "refresh_token" in data
+        # No refresh token: the token endpoint only ever accepted
+        # grant_type=authorization_code, so a refresh token could never be
+        # redeemed. Re-running the authorization-code + PKCE flow is the
+        # supported way to get a new access token.
+        assert "refresh_token" not in data
         assert data["scope"] == "mcp:read"
 
         # Step 4: Verify the token resolves to the correct user
@@ -478,8 +484,28 @@ class TestDynamicClientRegistration:
         assert client.client_name == "Test App"
         assert client.is_active
 
-        client2 = OAuthClient.register(client_name="Test App 2")
+        client2 = OAuthClient.register(
+            client_name="Test App 2",
+            redirect_uris="https://example.com/callback",
+        )
         assert client2.client_id != client.client_id
+
+    def test_register_client_requires_redirect_uri(self, db_session):
+        """A client with no redirect URI cannot be registered."""
+        from app.modules.oauth_provider.models import OAuthClient
+
+        with pytest.raises(ValueError):
+            OAuthClient.register(client_name="No Redirect")
+
+    def test_register_client_rejects_non_loopback_http(self, db_session):
+        """A non-https, non-loopback redirect_uri is rejected at registration."""
+        from app.modules.oauth_provider.models import OAuthClient
+
+        with pytest.raises(ValueError):
+            OAuthClient.register(
+                client_name="Insecure",
+                redirect_uris="http://example.com/callback",
+            )
 
     def test_redirect_uri_list(self, db_session):
         """redirect_uri_list splits on whitespace."""
@@ -487,9 +513,9 @@ class TestDynamicClientRegistration:
 
         client = OAuthClient.register(
             client_name="Multi URI",
-            redirect_uris="http://localhost/callback http://example.com/cb",
+            redirect_uris="http://localhost/callback https://example.com/cb",
         )
         uris = client.redirect_uri_list
         assert len(uris) == 2
         assert "http://localhost/callback" in uris
-        assert "http://example.com/cb" in uris
+        assert "https://example.com/cb" in uris

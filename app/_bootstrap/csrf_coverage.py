@@ -81,12 +81,20 @@ VIEW_OPT_OUT = {
     "app.routes.webhook.teams_notifications":
         "Microsoft Graph change notifications — external platform, "
         "client-state/signature verified, no session.",
+    "app.modules.oauth_provider.routes.token":
+        "OAuth token endpoint — called by a client presenting an "
+        "authorization code and PKCE verifier, with a Bearer token or no "
+        "session cookie at all. /oauth/authorize (the consent submission) "
+        "stays CSRF-protected; only this exchange step is exempt.",
 }
 
 # Whole blueprints exempted. Every route in the blueprint must share the same
 # justification, or it belongs in VIEW_OPT_OUT instead of here.
 BLUEPRINT_OPT_OUT = {
     "health": "Unauthenticated monitoring probes (liveness/readiness), no session to ride.",
+    "mcp": "Bearer-token-only MCP endpoint — resolves identity from an OAuth "
+        "access token (app/modules/mcp/blueprint.py:_authenticate_request), "
+        "never a browser session cookie, so there is no CSRF token to carry.",
 }
 
 

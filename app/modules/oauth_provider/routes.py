@@ -6,25 +6,52 @@ POST /oauth/token       — token endpoint (authorization_code grant)
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import logging
+from urllib.parse import urlencode
 
 from flask import Blueprint, current_app, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
-from app.modules.oauth_provider.models import OAuthAuthorizationCode, OAuthClient, OAuthToken
+from app.modules.oauth_provider.models import (
+    OAuthAuthorizationCode,
+    OAuthClient,
+    OAuthToken,
+    is_allowed_redirect_uri_scheme,
+)
 
 logger = logging.getLogger(__name__)
 
 oauth_provider_bp = Blueprint("oauth_provider", __name__, url_prefix="/oauth")
+
+#: The only scope this server issues. Anything else requested at /authorize
+#: is rejected outright rather than stored and silently granted.
+ALLOWED_SCOPES = {"mcp:read"}
 
 
 def _hash_code_verifier(verifier: str) -> str:
     """S256 code challenge hash."""
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
     # Base64url-encode without padding, per RFC 7636 Appendix A
-    import base64
     return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _validate_scope(requested_scope: str | None) -> str | None:
+    """Return the normalised scope string, or None if any requested scope is
+    not one this server issues."""
+    scopes = (requested_scope or "mcp:read").split()
+    if not scopes or any(s not in ALLOWED_SCOPES for s in scopes):
+        return None
+    return " ".join(scopes)
+
+
+def _redirect_with_params(redirect_uri: str, params: dict) -> str:
+    """Build a redirect URL with properly encoded query parameters — a raw
+    ``"&".join(f"{k}={v}")`` lets an unescaped ``&`` in ``state`` inject an
+    extra parameter (e.g. a second ``code``)."""
+    separator = "&" if "?" in redirect_uri else "?"
+    return f"{redirect_uri}{separator}{urlencode(params)}"
 
 
 def _validate_resource(resource: str | None) -> str | None:
@@ -71,14 +98,24 @@ def authorize():
     if not redirect_uri:
         return jsonify({"error": "invalid_request", "error_description": "redirect_uri is required"}), 400
 
-    if client.redirect_uri_list and redirect_uri not in client.redirect_uri_list:
+    # Exact match against the client's registered list is required regardless
+    # of whether that list is empty — a client with no registered redirect
+    # URIs has nowhere valid to send a code or a decline, full stop.
+    if redirect_uri not in client.redirect_uri_list:
         return jsonify({"error": "invalid_request", "error_description": "redirect_uri mismatch"}), 400
+
+    if not is_allowed_redirect_uri_scheme(redirect_uri):
+        return jsonify({"error": "invalid_request", "error_description": "redirect_uri scheme not allowed"}), 400
 
     if not code_challenge:
         return jsonify({"error": "invalid_request", "error_description": "code_challenge (PKCE) is required"}), 400
 
     if code_challenge_method != "S256":
         return jsonify({"error": "invalid_request", "error_description": "only S256 code_challenge_method is supported"}), 400
+
+    validated_scope = _validate_scope(requested_scope)
+    if validated_scope is None:
+        return jsonify({"error": "invalid_scope", "error_description": "only mcp:read is supported"}), 400
 
     # Validate resource parameter
     if requested_resource:
@@ -90,7 +127,7 @@ def authorize():
 
     if request.method == "GET":
         # Show consent screen
-        scopes = [s.strip() for s in requested_scope.split() if s.strip()]
+        scopes = [s.strip() for s in validated_scope.split() if s.strip()]
         return render_template(
             "oauth/consent.html",
             client_name=client.client_name or client.client_id,
@@ -100,18 +137,24 @@ def authorize():
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             state=state,
-            scope=requested_scope,
+            scope=validated_scope,
             resource=validated_resource,
         )
 
-    # POST: process consent
+    # POST: the consent form carries an explicit action, Allow or Deny.
+    if request.form.get("action", "allow") == "deny":
+        params = {"error": "access_denied"}
+        if state:
+            params["state"] = state
+        return redirect(_redirect_with_params(redirect_uri, params))
+
     OAuthAuthorizationCode.clean_expired()
 
     auth_code = OAuthAuthorizationCode.issue(
         client_id=client_id,
         user_id=current_user.id,
         redirect_uri=redirect_uri,
-        scope=requested_scope,
+        scope=validated_scope,
         resource=validated_resource,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
@@ -121,9 +164,7 @@ def authorize():
     if state:
         params["state"] = state
 
-    separator = "&" if "?" in redirect_uri else "?"
-    location = redirect_uri + separator + "&".join(f"{k}={v}" for k, v in params.items())
-    return redirect(location)
+    return redirect(_redirect_with_params(redirect_uri, params))
 
 
 @oauth_provider_bp.route("/token", methods=["POST"])
@@ -168,7 +209,7 @@ def token():
     else:
         validated_resource = auth_code.resource
 
-    token = OAuthToken.issue(
+    issued_token = OAuthToken.issue(
         client_id=client_id,
         user_id=auth_code.user_id,
         scope=auth_code.scope or "mcp:read",
@@ -176,9 +217,8 @@ def token():
     )
 
     return jsonify({
-        "access_token": token.access_token,
+        "access_token": issued_token.plaintext_access_token,
         "token_type": "Bearer",
         "expires_in": 3600,
-        "refresh_token": token.refresh_token,
-        "scope": token.scope,
+        "scope": issued_token.scope,
     })

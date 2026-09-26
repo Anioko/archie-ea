@@ -129,7 +129,7 @@ def init_session_policy(app):
 
     @app.before_request
     def _enforce_session_policy():
-        from flask import request, session
+        from flask import g, request, session
         from flask_login import current_user, logout_user
 
         # Static assets and the liveness probe must not keep a session alive:
@@ -141,6 +141,15 @@ def init_session_policy(app):
         # build probe. Guessing "health" would have silently exempted nothing.
         endpoint = request.endpoint or ""
         if endpoint in _EXEMPT_ENDPOINTS or request.path.startswith("/static/"):
+            return None
+
+        # A request made by app/utils/internal_api.py:call_internal_api() —
+        # an in-process test-client call nested inside a request this app
+        # context is already serving, sharing this same g. The outer request
+        # already carries (or deliberately lacks) its own session; this
+        # nested call is not a second login to police, and revoking it here
+        # would clear the *shared* g and log the outer request out too.
+        if getattr(g, "_internal_api_call", False):
             return None
 
         try:
