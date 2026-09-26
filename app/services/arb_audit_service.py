@@ -130,11 +130,18 @@ class ARBAuditService:
         Returns:
             Created ARBAuditLog instance
         """
-        from app.models.user import User
+        from app.middleware.tenant_context import current_org_id
+        from app.utils.tenant_users import user_in_org
 
         # Get user email for denormalization. user_id may legitimately be
         # None for a system/refusal event (e.g. "no resolvable approver").
-        user = db.session.get(User, user_id) if user_id is not None else None
+        # user_id can also arrive here from request-supplied or stored data
+        # (an exception's requested_by_id/approved_by_id, forwarded by a
+        # caller with no organisation check of its own), so it is resolved
+        # only inside the acting session's own organisation, never by a
+        # bare id lookup.
+        acting_org_id = current_org_id() if has_request_context() else None
+        user = user_in_org(user_id, acting_org_id) if user_id is not None else None
         user_email = user.email if user else None
 
         # Get request context if available
