@@ -358,9 +358,33 @@ def get_board(board_id):
             if not has_access:
                 return jsonify({"success": False, "error": "Access denied"}), 403
 
+        # Batch-resolve assignees: one query for every assigned id on the board,
+        # restricted to each card's own organisation, instead of the one
+        # query per card user_in_org would run below. Same fail-closed
+        # predicate as user_in_org (id match AND organisation match), just
+        # evaluated for the whole board at once.
+        cards = list(board.cards)
+        assigned_pairs = {
+            (card.assigned_to_id, card.organization_id)
+            for card in cards
+            if card.assigned_to_id
+        }
+        assignees_by_pair = {}
+        org_ids = {org_id for _, org_id in assigned_pairs if org_id is not None}
+        if assigned_pairs and org_ids:
+            user_ids = {user_id for user_id, _ in assigned_pairs}
+            candidates = User.query.filter(
+                User.id.in_(user_ids), User.organization_id.in_(org_ids)
+            ).all()  # model-safety-ok
+            users_by_id = {u.id: u for u in candidates}
+            for user_id, org_id in assigned_pairs:
+                u = users_by_id.get(user_id)
+                if u is not None and u.organization_id == org_id:
+                    assignees_by_pair[(user_id, org_id)] = u
+
         # Group cards by ADM phase
         cards_by_phase = {}
-        for card in board.cards:
+        for card in cards:
             phase_code = card.adm_phase.code if card.adm_phase else "unknown"
             if phase_code not in cards_by_phase:
                 cards_by_phase[phase_code] = []
@@ -368,7 +392,7 @@ def get_board(board_id):
             # the assignee is named only when it resolves inside the card's own
             # organisation — a foreign id shows no name.
             assignee = (
-                user_in_org(card.assigned_to_id, card.organization_id)
+                assignees_by_pair.get((card.assigned_to_id, card.organization_id))
                 if card.assigned_to_id
                 else None
             )
