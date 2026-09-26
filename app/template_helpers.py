@@ -27,6 +27,20 @@ def safe_url_for_with_fallback(endpoint, fallback_url="#", **values):
         return fallback_url
 
 
+def _get_show_archimate(user=None):
+    """Read show_archimate_names from a user-like object, returning False
+    when the attribute is absent or an error occurs."""
+    if user is None:
+        return False
+    try:
+        return bool(getattr(user, "show_archimate_names", False))
+    except Exception:
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
+        return False
+
+
 def _plain_name(element_type, user=None):
     """Return the plain-language display name for an ArchiMate element type.
 
@@ -35,15 +49,7 @@ def _plain_name(element_type, user=None):
     """
     from app.models.archimate_element_types import plain_name_for
 
-    show_archimate = False
-    if user is not None:
-        try:
-            show_archimate = bool(getattr(user, "show_archimate_names", False))
-        except Exception:
-            import logging
-            _log = logging.getLogger(__name__)
-            _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
-
+    show_archimate = _get_show_archimate(user)
     if show_archimate:
         return element_type or "\u2014"
     return plain_name_for(element_type)
@@ -57,15 +63,7 @@ def _plain_layer(layer, user=None):
     """
     from app.models.archimate_element_types import plain_layer_name
 
-    show_archimate = False
-    if user is not None:
-        try:
-            show_archimate = bool(getattr(user, "show_archimate_names", False))
-        except Exception:
-            import logging
-            _log = logging.getLogger(__name__)
-            _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
-
+    show_archimate = _get_show_archimate(user)
     if show_archimate:
         return layer or "\u2014"
     return plain_layer_name(layer)
@@ -347,13 +345,7 @@ def register_template_filters(app):
 
         from app.models.archimate_element_types import PLAIN_LANGUAGE_NAMES, PLAIN_LAYER_NAMES
 
-        show_archimate = False
-        try:
-            show_archimate = bool(getattr(current_user, "show_archimate_names", False))
-        except Exception:
-            import logging
-            _log = logging.getLogger(__name__)
-            _log.warning("Could not read show_archimate_names for JS context", exc_info=True)
+        show_archimate = _get_show_archimate(current_user)
 
         return {
             "plain_language_names_json": json.dumps(PLAIN_LANGUAGE_NAMES),
