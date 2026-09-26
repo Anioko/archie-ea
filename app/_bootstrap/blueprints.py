@@ -114,6 +114,9 @@ def init_blueprints(app):
     # --- SSO federation (COM-005) ---
     _register_sso(app)
 
+    # --- Assistant (MCP) connector: OAuth server + /mcp endpoint ---
+    _register_mcp_connector(app)
+
     # --- Standalone feature blueprints the v2 module paths omit ---
     _register_optional_standalone(app)
 
@@ -178,6 +181,21 @@ def _register_sso(app):
         app.logger.info("[SSO] SSO federation blueprint registered (COM-005)")
     except Exception as exc:
         app.logger.warning("[SSO] Could not register SSO blueprint (non-fatal): %s", exc)
+
+
+def _register_mcp_connector(app):
+    """OAuth provider + /mcp endpoint. Both no-op unless MCP_ENABLED is true."""
+    try:
+        from app.modules.oauth_provider import register as _register_oauth
+        _register_oauth(app)
+    except Exception as exc:
+        app.logger.warning("[MCP] OAuth provider failed to register: %s", exc)
+
+    try:
+        from app.modules.mcp import register as _register_mcp
+        _register_mcp(app)
+    except Exception as exc:
+        app.logger.warning("[MCP] /mcp endpoint failed to register: %s", exc)
 
 
 def _warn_non_canonical_blueprints(app):

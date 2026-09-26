@@ -1,0 +1,64 @@
+{% extends 'layouts/public_base.html' %}
+{% import 'components/card.html' as card %}
+
+{% block title %}Connect an assistant{% endblock %}
+
+{% block content %}
+<div class="flex min-h-full items-center justify-center px-4 py-16">
+  <div class="w-full max-w-md">
+    {% call card.card() %}
+      {% call card.card_header() %}
+        {% call card.card_title() %}Connect an assistant{% endcall %}
+        {% call card.card_description() %}
+          <span class="font-medium text-foreground">{{ client_name }}</span>
+          is asking to connect to your account{% if organization_name %} at
+          <span class="font-medium text-foreground">{{ organization_name }}</span>{% endif %}.
+        {% endcall %}
+      {% endcall %}
+      {% call card.card_content() %}
+        <p class="text-sm font-medium text-foreground">It will be able to:</p>
+        <ul class="mt-2 space-y-2 text-sm text-muted-foreground">
+          {% if 'mcp:read' in scopes %}
+          <li class="flex items-start gap-2">
+            <i data-lucide="check" class="mt-0.5 h-4 w-4 text-success"></i>
+            <span>Read your architecture data</span>
+          </li>
+          {% endif %}
+          {% if 'mcp:propose' in scopes %}
+          <li class="flex items-start gap-2">
+            <i data-lucide="check" class="mt-0.5 h-4 w-4 text-success"></i>
+            <span>Propose changes for a person to review and approve</span>
+          </li>
+          {% endif %}
+        </ul>
+
+        <form method="post" action="{{ url_for('oauth_authorize.authorize_decision') }}" class="mt-6 space-y-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          {% if may_propose %}
+          <label class="flex items-start gap-2 text-sm text-foreground">
+            <input type="checkbox" name="grant_propose" class="mt-0.5 rounded border-input">
+            <span>Allow {{ client_name }} to propose changes</span>
+          </label>
+          {% endif %}
+
+          <div class="flex justify-end gap-2">
+            <button type="submit" name="decision" value="deny"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                           bg-secondary text-secondary-foreground hover:bg-secondary/80 h-9 px-4 py-2
+                           disabled:opacity-50 disabled:pointer-events-none">
+              Deny
+            </button>
+            <button type="submit" name="decision" value="allow"
+                    class="inline-flex items-center justify-center rounded-md text-sm font-medium
+                           bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2
+                           disabled:opacity-50 disabled:pointer-events-none">
+              Allow
+            </button>
+          </div>
+        </form>
+      {% endcall %}
+    {% endcall %}
+  </div>
+</div>
+{% endblock %}

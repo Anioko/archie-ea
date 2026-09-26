@@ -265,9 +265,55 @@ class Config:
     }
     UPLOAD_FOLDER = os.path.join(basedir, "uploads", "documents")
 
+    # --- Assistant (MCP) connector -------------------------------------------------
+    # Off by default: a self-hosted install that never enables MCP_ENABLED gets no
+    # OAuth routes, no bearer-identity loader, and no PUBLIC_BASE_URL requirement.
+    MCP_ENABLED = _env_bool("MCP_ENABLED", False)
+
+    # Every OAuth issuer/metadata URL and the MCP resource identifier are built from
+    # this single absolute origin (no scheme-relative or request-derived host: a
+    # forwarded/spoofed Host header must never end up in a token's audience).
+    PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or "").rstrip("/")
+
+    OAUTH_ACCESS_TOKEN_TTL = timedelta(hours=1)
+    OAUTH_REFRESH_TOKEN_TTL = timedelta(
+        days=int(os.environ.get("OAUTH_REFRESH_TOKEN_TTL_DAYS", "30"))
+    )
+    OAUTH_AUTHORIZATION_CODE_TTL = timedelta(minutes=10)
+
+    # Scopes an OAuth client may request; enforced as an allow-list on /oauth/authorize.
+    OAUTH_SUPPORTED_SCOPES = ("mcp:read", "mcp:propose")
+
+    OAUTH_CLIENT_REGISTRATION_RATE_LIMIT = int(
+        os.environ.get("OAUTH_CLIENT_REGISTRATION_RATE_LIMIT", "10")
+    )
+
+    MCP_SUPPORTED_PROTOCOL_VERSIONS = tuple(
+        v.strip()
+        for v in os.environ.get(
+            "MCP_SUPPORTED_PROTOCOL_VERSIONS", "2025-06-18,2025-03-26"
+        ).split(",")
+        if v.strip()
+    )
+
+    # Empty by default: no browser Origin is trusted, so a browser-based caller is
+    # always rejected. Set to a comma-separated allow-list to permit one.
+    MCP_ALLOWED_ORIGINS = tuple(
+        o.strip()
+        for o in os.environ.get("MCP_ALLOWED_ORIGINS", "").split(",")
+        if o.strip()
+    )
+
     @staticmethod
     def init_app(app):
         """Base class hook — subclasses override to customize app initialization."""
+        if app.config.get("MCP_ENABLED") and not app.config.get("PUBLIC_BASE_URL"):
+            raise RuntimeError(
+                "MCP_ENABLED is true but PUBLIC_BASE_URL is not set. The OAuth "
+                "issuer and every metadata URL are derived from PUBLIC_BASE_URL; "
+                "set it to this deployment's absolute origin (e.g. "
+                "https://app.example.com) or set MCP_ENABLED=false."
+            )
         return
 
 
@@ -312,6 +358,7 @@ class DevelopmentConfig(Config):
 
     @classmethod
     def init_app(cls, app):
+        super().init_app(app)
         # Ensure a sensible default exists for development (Postgres is the standard)
         if not app.config.get("SQLALCHEMY_DATABASE_URI"):
             app.logger.warning(
@@ -339,6 +386,8 @@ class TestingConfig(Config):
 
     @classmethod
     def init_app(cls, app):
+        super().init_app(app)
+
         # Validate PostgreSQL is being used (not SQLite)
         db_uri = app.config.get("SQLALCHEMY_DATABASE_URI", "")
         if "sqlite" in db_uri.lower():

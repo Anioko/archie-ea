@@ -1,0 +1,6 @@
+# Assistant (MCP) connector — OAuth provider, /mcp endpoint, and the
+# internal-only bridge/fencing utilities they depend on.
+/app/modules/oauth_provider/   @aniekanasuquookono-web
+/app/modules/mcp/              @aniekanasuquookono-web
+/app/utils/internal_api.py     @aniekanasuquookono-web
+/app/utils/text_sanitization.py @aniekanasuquookono-web
