@@ -16,10 +16,8 @@ import enum
 import logging
 from datetime import date, datetime
 
-from flask import g, has_request_context
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import or_
-from sqlalchemy.orm import with_loader_criteria
 
 from .. import db
 from .mixins import TenantMixin
@@ -1360,6 +1358,9 @@ class ScoringConfiguration(HybridCapabilityTenantMixin, db.Model):
 
     __tablename__ = "scoring_configurations"
 
+    # Plural noun used in shared/foreign write-refusal messages.
+    hybrid_owner_label = "scoring configurations"
+
     id = db.Column(db.Integer, primary_key=True)
 
     # Configuration scope
@@ -1596,37 +1597,6 @@ class ScoringConfiguration(HybridCapabilityTenantMixin, db.Model):
         }
 
 
-@db.event.listens_for(db.session, "do_orm_execute")
-def _scope_scoring_configuration_queries(orm_execute_state):
-    """Shared scoring configurations plus the current organisation's own.
-
-    Same hybrid-owner rule as ``UnifiedCapability``: reads see shared rows
-    (``organization_id IS NULL``) and the tenant's rows; bulk UPDATE and DELETE
-    reach only the tenant's rows, so a shared row cannot be changed from inside
-    an organisation.
-    """
-    if not has_request_context() or getattr(g, "current_org_id", None) is None:
-        return
-    if not (
-        orm_execute_state.is_select
-        or orm_execute_state.is_update
-        or orm_execute_state.is_delete
-    ):
-        return
-
-    organization_id = g.current_org_id
-    if orm_execute_state.is_select:
-        predicate = lambda cls: or_(  # noqa: E731
-            cls.organization_id == organization_id,
-            cls.organization_id.is_(None),
-        )
-    else:
-        predicate = lambda cls: cls.organization_id == organization_id  # noqa: E731
-    orm_execute_state.statement = orm_execute_state.statement.options(
-        with_loader_criteria(ScoringConfiguration, predicate, include_aliases=True)
-    )
-
-
 def _scoring_weights_changed(session, config, state):
     """True when a flush would store a weight different from the stored one.
 
@@ -1665,45 +1635,17 @@ def _scoring_weights_changed(session, config, state):
 
 
 @db.event.listens_for(db.session, "before_flush")
-def _govern_scoring_configuration_writes(session, flush_context, instances):
-    """Version weight changes, stamp tenant rows, and refuse shared-row edits."""
-    tenant_id = (
-        getattr(g, "current_org_id", None) if has_request_context() else None
-    )
+def _version_scoring_configuration_weights(session, flush_context, instances):
+    """Move a configuration to its next formula version when a weight changes.
 
-    if tenant_id is not None:
-        for config in (item for item in session.new if isinstance(item, ScoringConfiguration)):
-            if config.organization_id is None:
-                config.organization_id = tenant_id
-            if config.organization_id != tenant_id:
-                raise PermissionError(
-                    "scoring configurations owned by another organisation are read-only"
-                )
-
+    Tenant stamping and the refusal of shared or foreign writes come from the
+    hybrid-owner listeners in ``unified_capability``.
+    """
     for config in (item for item in session.dirty if isinstance(item, ScoringConfiguration)):
         if not session.is_modified(config, include_collections=False):
             continue
-        state = sa_inspect(config)
-        if tenant_id is not None:
-            history = state.attrs.organization_id.history
-            original = history.deleted[0] if history.deleted else config.organization_id
-            if original is None:
-                raise PermissionError(
-                    "shared scoring configurations are read-only inside an organisation"
-                )
-            if original != tenant_id or config.organization_id != tenant_id:
-                raise PermissionError(
-                    "scoring configurations owned by another organisation are read-only"
-                )
-        if _scoring_weights_changed(session, config, state):
+        if _scoring_weights_changed(session, config, sa_inspect(config)):
             config.formula_version = (config.formula_version or 1) + 1
-
-    if tenant_id is not None:
-        for config in (item for item in session.deleted if isinstance(item, ScoringConfiguration)):
-            if config.organization_id != tenant_id:
-                raise PermissionError(
-                    "shared or foreign scoring configurations cannot be deleted inside an organisation"
-                )
 
 
 # ============================================================================
