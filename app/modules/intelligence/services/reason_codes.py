@@ -15,8 +15,9 @@ from __future__ import annotations
 # the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
 # additions, the Accountability lens's two plus its withdrawal reason,
 # role-gating's addition, the four T-S1 additions, the impact criticality and
-# recovery objectives pair and the two maturity-read-helper additions below
-# (thirty-five total), exactly, nothing invented.
+# recovery objectives pair, the programme lens's own plateau/gap pair and the
+# two maturity-read-helper additions below
+# (thirty-seven total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -124,6 +125,13 @@ REASON_CODES = frozenset(
         # no endpoint may invent an absence string inline.
         "no_criticality_recorded",
         "no_recovery_objective_recorded",
+        # The programme lens's own plateau/gap block: a work package's stored
+        # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
+        # point at a record belonging to a different tenant (the FK itself
+        # carries no tenant check, so the select that resolves it is what
+        # enforces the boundary) -- both are honest absences, not errors.
+        "no_plateau_recorded",
+        "no_gap_recorded",
         # Maturity read helper additions: the canonical maturity surface's
         # one batched read (CapabilityHeatmapService.maturity_for_elements /
         # .maturity_for_capability_ids) has two absence conditions the
