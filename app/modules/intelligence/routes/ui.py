@@ -41,6 +41,22 @@ def _workspace_counts_available() -> bool:
         return False
 
 
+def _derivation_status():
+    """The tenant's worked-out connection state for the Ask page, or ``None``
+    when it could not be read (the page then says so rather than showing
+    counts of zero)."""
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return None
+    try:
+        from app.modules.intelligence.services.derived_facts import derivation_status
+
+        return derivation_status(int(org_id))
+    except Exception:
+        current_app.logger.warning("[MODULE] intelligence: derivation status unavailable")
+        return None
+
+
 @intelligence_ui.route("/ask", methods=["GET"])
 @login_required
 def ask():
@@ -48,6 +64,7 @@ def ask():
     return render_template(
         "intelligence/ask.html",
         workspace_counts_available=_workspace_counts_available(),
+        derivation_status=_derivation_status(),
     )
 
 
