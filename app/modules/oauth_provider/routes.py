@@ -19,6 +19,7 @@ from app.modules.oauth_provider.models import (
     OAuthClient,
     OAuthToken,
     is_allowed_redirect_uri_scheme,
+    resolve_server_base_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,13 +58,15 @@ def _redirect_with_params(redirect_uri: str, params: dict) -> str:
 def _validate_resource(resource: str | None) -> str | None:
     """Validate the ``resource`` parameter (RFC 8707) against the MCP endpoint URL.
 
-    Returns the canonical resource URL if valid, or None.
+    Returns the canonical resource URL if valid, or None. ``MCP_ENDPOINT_URL``
+    is an explicit override; unset does not mean "accept any resource" — it
+    falls back to this server's own derived base URL (the same one the
+    metadata endpoints publish), so a caller cannot bind a token to some
+    other resource just because the operator never set the variable.
     """
     if not resource:
         return None
-    mcp_url = current_app.config.get("MCP_ENDPOINT_URL", "")
-    if not mcp_url:
-        return resource  # Not configured — accept any resource
+    mcp_url = current_app.config.get("MCP_ENDPOINT_URL") or f"{resolve_server_base_url()}/mcp"
     # Strip trailing slash for comparison
     resource_clean = resource.rstrip("/")
     mcp_clean = mcp_url.rstrip("/")

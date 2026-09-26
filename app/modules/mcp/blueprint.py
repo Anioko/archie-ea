@@ -124,11 +124,17 @@ def _unauthenticated_response(req_id):
 @mcp_bp.route("", methods=["POST"])
 def mcp_endpoint():
     """Streamable HTTP MCP endpoint — accepts JSON-RPC messages."""
-    # Validate Origin header for DNS rebinding protection
+    # Validate Origin header for DNS rebinding protection. Only a browser
+    # ever sends this header, so its absence (the normal case for a non-
+    # browser assistant client) is not itself suspicious and is left alone.
+    # When it IS present, MCP_ALLOWED_ORIGIN is an explicit override; unset
+    # does not mean "accept any origin" — it falls back to this server's own
+    # origin, which is what a same-origin browser request would send anyway.
     origin = request.headers.get("Origin", "")
     if origin:
-        allowed_origin = current_app.config.get("MCP_ALLOWED_ORIGIN", "")
-        if allowed_origin and origin != allowed_origin:
+        from app.modules.oauth_provider.models import resolve_server_base_url
+        allowed_origin = current_app.config.get("MCP_ALLOWED_ORIGIN") or resolve_server_base_url()
+        if origin != allowed_origin:
             return jsonify({"error": "forbidden"}), 403
 
     try:

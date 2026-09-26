@@ -346,6 +346,43 @@ class TestOAuthAuthorizationCodeFlow:
         data = resp.get_json()
         assert data["error"] == "invalid_resource"
 
+    def test_resource_parameter_rejected_without_explicit_config(
+        self, client, db_session, make_org, login_as, app
+    ):
+        """Without MCP_ENDPOINT_URL set, a resource for a different server is
+        still rejected — falling back to this server's own derived URL,
+        not to accepting anything. app.config is a session-scoped fixture
+        another test in this class deliberately mutates, so force the
+        unconfigured state here rather than assuming it."""
+        org = make_org("oauth")
+        user = _make_user(db_session, org, "oauth-res-default@example.com")
+        login_as(client, user)
+
+        from app.modules.oauth_provider.models import OAuthClient
+        oauth_client = OAuthClient.register(
+            client_name="Test Client",
+            redirect_uris="http://localhost/callback",
+        )
+
+        app.config["MCP_ENDPOINT_URL"] = ""
+
+        verifier, challenge = _pkce_pair()
+        resp = client.post(
+            "/oauth/authorize",
+            data={
+                "client_id": oauth_client.client_id,
+                "redirect_uri": "http://localhost/callback",
+                "code_challenge": challenge,
+                "code_challenge_method": "S256",
+                "scope": "mcp:read",
+                "resource": "https://other-server.example/mcp",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["error"] == "invalid_resource"
+
     def test_revoked_token_returns_401(self, client, db_session, make_org, login_as):
         """A revoked token is inactive."""
         org = make_org("oauth")

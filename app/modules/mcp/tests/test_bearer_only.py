@@ -239,6 +239,60 @@ class TestToolExistenceCheckedAfterAuth:
         assert resp.status_code == 401, resp.get_json()
 
 
+class TestOriginAndResourceFailClosed:
+    """D13: an unconfigured Origin/resource check must not silently accept
+    everything — it falls back to comparing against this server's own
+    origin instead of skipping the check."""
+
+    def test_cross_origin_request_rejected_without_explicit_config(
+        self, app, client, db_session, make_org
+    ):
+        org = make_org("bearer-origin")
+        user = _make_user(db_session, org, "bearer-origin@example.com")
+        element = _make_element(db_session, org.id, "origin-test")
+        token = _mint_token_directly(db_session, org, user)
+
+        app.config["MCP_ALLOWED_ORIGIN"] = ""
+
+        payload = {
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "ask_impact", "arguments": {"element_id": element.id}},
+        }
+        resp = client.post(
+            "/mcp",
+            data=json.dumps(payload),
+            content_type="application/json",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Origin": "https://attacker.example",
+            },
+        )
+        assert resp.status_code == 403, resp.get_data(as_text=True)
+
+    def test_same_origin_request_still_works_without_explicit_config(
+        self, app, client, db_session, make_org
+    ):
+        org = make_org("bearer-origin-ok")
+        user = _make_user(db_session, org, "bearer-origin-ok@example.com")
+        element = _make_element(db_session, org.id, "origin-ok-test")
+        token = _mint_token_directly(db_session, org, user)
+
+        payload = {
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": "ask_impact", "arguments": {"element_id": element.id}},
+        }
+        with app.test_request_context("/"):
+            from flask import request as flask_request
+            same_origin = flask_request.url_root.rstrip("/")
+        resp = client.post(
+            "/mcp",
+            data=json.dumps(payload),
+            content_type="application/json",
+            headers={"Authorization": f"Bearer {token}", "Origin": same_origin},
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+
+
 class TestInactiveUserCleanRejection:
     """D18: an inactive user's token must not 500."""
 

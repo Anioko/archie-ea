@@ -42,6 +42,24 @@ def is_allowed_redirect_uri_scheme(uri: str) -> bool:
     return parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS
 
 
+def resolve_server_base_url() -> str:
+    """The product's own canonical base URL: an explicit config override, or
+    the current request's own scheme + host.
+
+    One implementation, used by both the well-known metadata endpoints and
+    the ``resource`` (RFC 8707) validation at /authorize and /token — neither
+    falls back to a hosted-product default or to "unconfigured means
+    accept anything": a self-hosted install with no override compares
+    against itself, not against a permissive blank.
+    """
+    from flask import current_app, request
+
+    configured = current_app.config.get("MCP_OAUTH_BASE_URL")
+    if configured:
+        return str(configured).rstrip("/")
+    return request.url_root.rstrip("/")
+
+
 class OAuthAuthorizationCode(db.Model):
     """A single-use authorization code, stored in the database so every
     worker process in a multi-worker deployment can redeem codes issued by

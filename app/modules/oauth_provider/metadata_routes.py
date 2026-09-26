@@ -6,27 +6,11 @@ GET /.well-known/oauth-authorization-server     — RFC 8414
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, jsonify
+
+from app.modules.oauth_provider.models import resolve_server_base_url
 
 oauth_metadata_bp = Blueprint("oauth_metadata", __name__)
-
-
-def _server_base_url() -> str:
-    """The product's own canonical base URL.
-
-    ``MCP_OAUTH_BASE_URL`` is an explicit override for a deployment that
-    wants a fixed value; otherwise the URL is derived from the current
-    request (scheme + host, corrected for a reverse proxy by the app's
-    ``ProxyFix`` middleware). There is deliberately no hosted-product
-    fallback — a self-hosted or staging install with no override must never
-    be told to fetch tokens from a different operator's server, and RFC 8414
-    requires these to be absolute URIs, so an empty/relative fallback is not
-    a valid alternative either.
-    """
-    configured = current_app.config.get("MCP_OAUTH_BASE_URL")
-    if configured:
-        return str(configured).rstrip("/")
-    return request.url_root.rstrip("/")
 
 
 @oauth_metadata_bp.route("/.well-known/oauth-protected-resource")
@@ -34,9 +18,14 @@ def protected_resource_metadata():
     """RFC 9728: Protected Resource Metadata.
 
     Published at the root so any client can discover the authorization server
-    before it ever reaches the MCP endpoint.
+    before it ever reaches the MCP endpoint. There is deliberately no
+    hosted-product fallback — a self-hosted or staging install with no
+    ``MCP_OAUTH_BASE_URL`` override must never be told to fetch tokens from
+    a different operator's server; ``resolve_server_base_url()`` derives the
+    request's own scheme + host instead (RFC 8414 requires an absolute URI
+    here, so an empty/relative fallback is not a valid alternative either).
     """
-    base = _server_base_url()
+    base = resolve_server_base_url()
     return jsonify({
         "resource": f"{base}/mcp",
         "authorization_servers": [base],
@@ -48,7 +37,7 @@ def protected_resource_metadata():
 @oauth_metadata_bp.route("/.well-known/oauth-authorization-server")
 def authorization_server_metadata():
     """RFC 8414: Authorization Server Metadata."""
-    base = _server_base_url()
+    base = resolve_server_base_url()
     return jsonify({
         "issuer": base,
         "authorization_endpoint": f"{base}/oauth/authorize",
