@@ -106,10 +106,10 @@ def _licence(
 def _make_user(db_session, org, *, enterprise_role=None):
     from app.models.user import Role, User
 
-    admin_role = Role.query.filter_by(name="Administrator").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()  # tenant-scoping-ok: Role is global reference data shared by every organisation
     if admin_role is None:
         Role.insert_roles()
-        admin_role = Role.query.filter_by(name="Administrator").first()
+        admin_role = Role.query.filter_by(name="Administrator").first()  # tenant-scoping-ok: Role is global reference data shared by every organisation
 
     user = User(
         email=f"portfolio-block-{uuid.uuid4().hex[:8]}@example.com",
