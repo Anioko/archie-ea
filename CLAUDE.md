@@ -476,7 +476,7 @@ to reconfirm the count before trusting it:**
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
 | `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
-| `untenanted-reads` | a read (`db.select`, `.query`, `session.get`) of ANY model with no `TenantMixin`, with no org predicate in the statement | ratchet @ 2988; a bare `tenant-scoping-ok` (no reason) or an org word inside another name does not clear a read |
+| `untenanted-reads` | a read (`db.select`, `.query`, `session.get`) of ANY model with no `TenantMixin`, with no org predicate in the statement | ratchet @ 2633; a bare `tenant-scoping-ok` (no reason) or an org word inside another name does not clear a read |
 | `unfenced-tables` | a database table with no `TenantMixin` that is not listed in `scripts/unfenced_tables.txt` (a new one is a decision) | ratchet @ 0 |
 | `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
 | `evidence-contract` | behavioural changes/checkers missing evidence or provenance | ratchet @ 29 |
