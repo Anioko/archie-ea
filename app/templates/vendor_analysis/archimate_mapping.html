@@ -1,4 +1,3 @@
-{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {% extends "layouts/admin_base.html" %}
 {% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Vendor Mapping Analysis{% endblock %}
@@ -131,8 +130,8 @@
     <!-- Detailed Analysis Sections -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 <!-- Orphaned Architecture Elements -->
-        <div class="bg-card border border-border rounded-lg p-6">
-            <div class="flex items-center justify-between mb-4">
+        <div class="bg-card border border-border rounded-lg">
+            <div class="p-4 border-b border-border">
                 <h3 class="text-lg font-semibold text-foreground">Orphaned Architecture Elements</h3>
                 <p class="text-sm text-muted-foreground">Elements referencing non-existent vendor products</p>
             </div>
