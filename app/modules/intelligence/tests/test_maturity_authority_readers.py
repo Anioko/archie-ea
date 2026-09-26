@@ -339,7 +339,7 @@ class TestEngineMaturityReadsGoThroughTheHelper:
         "app/modules/business_case/service.py",
     ]
 
-# The only files allowed to call the strict, capability-id-keyed
+    # The only files allowed to call the strict, capability-id-keyed
     # accessor directly. This list can only shrink: query_service.py's
     # value_streams_at_risk was repointed onto the batched helper, so only
     # capability_heatmap_service.py remains.

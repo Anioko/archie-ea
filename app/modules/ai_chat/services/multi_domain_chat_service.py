@@ -4609,7 +4609,9 @@ Use enterprise architecture terminology appropriate for this role."""
             # anything -- which 100 (or 200) rows the limit keeps, and which
             # element wins a tie in the rel_counts sort below, both depend on
             # it.
-            elements_query = ArchiMateElement.query.order_by(ArchiMateElement.name)
+            elements_query = ArchiMateElement.query.order_by(
+                ArchiMateElement.name, ArchiMateElement.id
+            )
             if target_layer:
                 elements_query = elements_query.filter(ArchiMateElement.layer == target_layer)
                 detail_elements = elements_query.limit(200).all()

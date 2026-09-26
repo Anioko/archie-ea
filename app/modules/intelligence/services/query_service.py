@@ -1,15 +1,16 @@
 """Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
-fails, what stops and who owns it"), ``risk_for_element`` (L6, "what could
-hurt this, and what does it touch" -- reuses the same traversal per risk
-seed), ``portfolio_component_for_element`` (L3, resolves an element to its
-ApplicationComponent for the one existing deep link), ``programme_for_element``
-(L5, "what are we changing, is it on time and on budget" -- reuses the same
-traversal per work-package seed), ``strategy_for_element`` (L2, "what are
-we trying to achieve, and how's it tracking" -- reuses the same traversal per
-initiative seed) and ``value_streams_at_risk`` -- "which value streams
-depend on a capability below threshold", the curated path only (T-S1).
-Coverage over derived and explicit relationships for the value-stream
-question is reserved for a later task and is not added here.
+fails, what stops and who owns it" -- every Capability row, and the whole
+answer, also carries the one batched maturity read), ``risk_for_element``
+(L6, "what could hurt this, and what does it touch" -- reuses the same
+traversal per risk seed), ``portfolio_component_for_element`` (L3, resolves
+an element to its ApplicationComponent for the one existing deep link),
+``programme_for_element`` (L5, "what are we changing, is it on time and on
+budget" -- reuses the same traversal per work-package seed), ``strategy_for_element``
+(L2, "what are we trying to achieve, and how's it tracking" -- reuses the
+same traversal per initiative seed) and ``value_streams_at_risk`` -- "which
+value streams depend on a capability below threshold", the curated path
+only (T-S1). Coverage over derived and explicit relationships for the
+value-stream question is reserved for a later task and is not added here.
 ``accountability_for_element`` (L4) exists as a route and question card
 but is currently WITHDRAWN -- it returns an honest
 ``ownership_reader_not_built`` reason on every call: the ownership data
@@ -26,9 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
 from app.middleware.tenant_context import current_org_id
-from app.modules.capabilities.services.capability_heatmap_service import (
-    CapabilityHeatmapService,
-)
+from app.modules.capabilities.services.capability_heatmap_service import CapabilityHeatmapService
 from app.modules.intelligence.services.derived_facts import list_derived_facts
 from app.modules.intelligence.services.latency_probe import record_query_latency
 from app.modules.intelligence.services.plain_terms import plain_terms_sentence
@@ -67,6 +66,7 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # Distinct from a "decision pending" state -- the ownership data source IS
 # decided; what doesn't exist yet is a shared, tenant-safe reader for it.
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
+NO_CAPABILITY_IN_CHAIN_REASON = validate_reason_code("no_capability_in_chain")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -474,6 +474,42 @@ def _derived_filter_args(
     return element_id, element_id, "both"
 
 
+def _maturity_flags(
+    reason: Optional[str],
+    maturity_by_element: Optional[Dict[int, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """The whole-answer ``maturity_flags`` block: four keys on every branch,
+    never fewer.
+
+    ``maturity_by_element`` is only ever passed non-empty from the one branch
+    that actually resolved a Capability's block -- the two lists are the
+    sorted element ids whose maturity block has ``assessed is False`` /
+    ``under_target is True`` respectively (an id can be in at most one), and
+    ``reason`` is ``None``: something was genuinely measured, even if both
+    lists come back empty. Every other caller -- no Capability anywhere in
+    the result, no tenant context, the element itself not found -- passes
+    only *reason*: both lists stay ``None``, never an empty list standing in
+    for "measured, found none" on a branch that measured nothing at all.
+    """
+    if maturity_by_element:
+        return {
+            "unassessed_capability_ids": sorted(
+                eid for eid, block in maturity_by_element.items() if block["assessed"] is False
+            ),
+            "under_target_capability_ids": sorted(
+                eid for eid, block in maturity_by_element.items() if block["under_target"] is True
+            ),
+            "reason": None,
+            "maturity_source": "unified_capabilities",
+        }
+    return {
+        "unassessed_capability_ids": None,
+        "under_target_capability_ids": None,
+        "reason": reason,
+        "maturity_source": "unified_capabilities",
+    }
+
+
 def _not_computed_counts() -> Dict[str, Any]:
     """T-005 task 02 acceptance item 12: the not-computed branch's null
     counts, isolated as their own seam (same pattern as
@@ -641,6 +677,7 @@ class IntelligenceQueryService:
                     "derivation_state": "not_computed",
                 }
                 reasons = [NO_TENANT_CONTEXT_REASON]
+                maturity_flags = _maturity_flags(NO_TENANT_CONTEXT_REASON)
             else:
                 from app.models import ArchiMateElement
 
@@ -657,6 +694,7 @@ class IntelligenceQueryService:
                         "derivation_state": "not_computed",
                     }
                     reasons = [ELEMENT_NOT_FOUND_REASON]
+                    maturity_flags = _maturity_flags(ELEMENT_NOT_FOUND_REASON)
                 else:
                     explicit_rows = _walk_explicit(element_id, max_depth, direction)
                     if layer is not None:
@@ -705,6 +743,28 @@ class IntelligenceQueryService:
                     elements = _resolve_elements_batch(_element_ids_in_rows(rows), org_id)
                     _attach_plain_terms(rows, elements)
 
+                    # The distinct Capability element ids the identity map
+                    # above already resolved under the tenant predicate --
+                    # rows' own elements and every id their chains pass
+                    # through. An id absent from ``elements`` is never a
+                    # capability here (the identity map's own tenant fence
+                    # already excluded it), so a foreign element can never
+                    # reach the helper. One batched call, inside this same
+                    # latency scope, only when there is at least one
+                    # Capability id to ask for.
+                    capability_ids = sorted(
+                        {
+                            eid
+                            for eid in _element_ids_in_rows(rows)
+                            if elements.get(str(eid), {}).get("type") == "Capability"
+                        }
+                    )
+                    maturity_by_element: Dict[int, Dict[str, Any]] = {}
+                    if capability_ids:
+                        maturity_by_element = CapabilityHeatmapService().maturity_for_elements(
+                            capability_ids, organization_id=org_id
+                        )
+
                     # M7 fix: batch owner resolution instead of N+1 --
                     # collect every distinct element id needing a lookup
                     # across the WHOLE result set first, then resolve in a
@@ -729,6 +789,14 @@ class IntelligenceQueryService:
                         # in when the row has no reason of its own yet.
                         existing_reason = row.get("reason")
                         row["reason"] = existing_reason if existing_reason else reason
+                        # A Capability row carries the block the helper
+                        # already computed for it, untouched; any other row
+                        # carries no ``maturity`` key at all --
+                        # not applicable is not an absence, and the row's own
+                        # ``reason`` above is unrelated to and unchanged by
+                        # this block (the block carries its own reason).
+                        if elements.get(str(row["element_id"]), {}).get("type") == "Capability":
+                            row["maturity"] = maturity_by_element[row["element_id"]]
                         # NEW-5: keep element_id on every row -- this task's
                         # whole point is "what stops", so a row that cannot
                         # name what element it is about is not answering the
@@ -751,9 +819,23 @@ class IntelligenceQueryService:
                         "derivation_state": derivation_state,
                     }
                     reasons = []
+                    # The whole-answer flags block: computed only when at
+                    # least one Capability id was found (capability_ids
+                    # non-empty, so maturity_by_element is non-empty too --
+                    # the helper guarantees every id asked for is present);
+                    # otherwise nothing was measured, so both lists stay
+                    # None with the honest reason, never an empty list
+                    # standing in for "measured, found none".
+                    maturity_flags = _maturity_flags(NO_CAPABILITY_IN_CHAIN_REASON, maturity_by_element)
 
         summary["latency_ms"] = scope.latency_ms
-        return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
+        return {
+            "rows": rows,
+            "summary": summary,
+            "reasons": reasons,
+            "elements": elements,
+            "maturity_flags": maturity_flags,
+        }
 
     @staticmethod
     def risk_for_element(
@@ -903,6 +985,21 @@ class IntelligenceQueryService:
         return {"application_component_id": component.id, "reasons": []}
 
     @staticmethod
+    def _owner_user_tenant_predicate(org_id):
+        """The explicit ``User.organization_id == org_id`` predicate on the
+        work package owner lookup, isolated as its own seam so a mutation
+        test can replace it and watch the foreign-owner test go red.
+
+        ``User`` carries no ``TenantMixin``, so the ORM listener does not
+        fence it. Without this, a work package whose ``owner_id`` names a
+        user in another organisation would return that user's name or
+        email. A user with no organisation is excluded (fail closed).
+        """
+        from app.models.user import User
+
+        return User.organization_id == org_id
+
+    @staticmethod
     def programme_for_element(
         element_id: int,
         *,
@@ -986,9 +1083,11 @@ class IntelligenceQueryService:
             owners_by_id: Dict[int, str] = {}
             if owner_ids:
                 for user in db.session.execute(
-                    db.select(User).where(User.id.in_(owner_ids))
+                    db.select(User)
+                    .where(User.id.in_(owner_ids))
+                    .where(IntelligenceQueryService._owner_user_tenant_predicate(org_id))
                 ).scalars():
-                    owners_by_id[user.id] = user.full_name or user.email
+                    owners_by_id[user.id] = user.full_name() or user.email
 
             all_elements: Dict[str, Dict[str, Any]] = {}
             wp_payloads: List[Dict[str, Any]] = []

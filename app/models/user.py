@@ -195,6 +195,24 @@ class User(UserMixin, db.Model):
     # Default: all types enabled. migration-exempt (DDL added in manage.py init_db)
     notification_preferences = db.Column(db.JSON, nullable=True)  # migration-exempt
 
+    # Plain-language display: when False (default), element types and layers use
+    # plain names (e.g. "Application" instead of "ApplicationComponent").
+    # When True, the standard ArchiMate names are shown everywhere.
+    # Stored inside notification_preferences JSON to keep user-level boolean
+    # toggles in one authority (ADR 0008).  The property delegates to
+    # get_notification_preference / set_notification_preferences so every
+    # access path — template filter, context processor, account route — reads
+    # and writes the same store.
+    @property
+    def show_archimate_names(self):
+        return self.get_notification_preference("show_archimate_names")
+
+    @show_archimate_names.setter
+    def show_archimate_names(self, value):
+        prefs = dict(self.notification_preferences or {})
+        prefs["show_archimate_names"] = bool(value)
+        self.notification_preferences = prefs
+
     @staticmethod
     def normalize_email(email):
         if email is None:
@@ -387,6 +405,7 @@ class User(UserMixin, db.Model):
         "assignment_changes": True,
         "weekly_digest": True,
         "mention_notifications": True,
+        "show_archimate_names": False,
     }
 
     def get_notification_preference(self, key):  # model-safety-ok
@@ -402,11 +421,21 @@ class User(UserMixin, db.Model):
         return prefs.get(key, self._DEFAULT_NOTIFICATION_PREFS.get(key, True))
 
     def set_notification_preferences(self, prefs_dict):
-        """Replace notification_preferences with validated dict. Only known keys are stored."""
+        """Update notification_preferences from a validated dict.
+
+        Only known keys are stored. A known key that is not in *prefs_dict*
+        keeps its current value: the display preference (``show_archimate_names``)
+        lives in this same JSON, so saving the notification form, which does not
+        carry it, must not reset it.
+        """
+        import json
+
         known_keys = set(self._DEFAULT_NOTIFICATION_PREFS.keys())
-        self.notification_preferences = {
-            k: bool(v) for k, v in prefs_dict.items() if k in known_keys
-        }
+        raw = getattr(self, "notification_preferences", None)
+        stored = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        merged = {k: bool(v) for k, v in stored.items() if k in known_keys}
+        merged.update({k: bool(v) for k, v in prefs_dict.items() if k in known_keys})
+        self.notification_preferences = merged
 
     def __repr__(self):
         return f"<User '{self.full_name()}'>"

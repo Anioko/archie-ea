@@ -71,11 +71,11 @@ def test_modules_directory_returns_200(app, db_session, make_org):
 
 def test_modules_directory_includes_zone_sourced_link(app, db_session, make_org):
     """Assert the directory surfaces real zone-sourced links — one that is
-    unambiguously zone-only and common to most roles: ArchiMate Elements
+    unambiguously zone-only and common to most roles: Architecture
     (library zone, every role)."""
     client = _make_logged_in_client(app, db_session, make_org)
     html = client.get("/modules").get_data(as_text=True)
-    assert "ArchiMate Elements" in html
+    assert "Architecture" in html
 
 
 def test_modules_directory_includes_curated_more_tools(app, db_session, make_org):

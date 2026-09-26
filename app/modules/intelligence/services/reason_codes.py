@@ -12,9 +12,10 @@ gate enforces this mechanically at the template layer, out of scope here).
 from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
-# the one T-005 addition, the Portfolio and Programme lenses' three
-# additions, the Strategy/Accountability/role-gating additions, the four
-# T-S1 additions and the two maturity-read-helper additions below, exactly,
+# the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
+# additions, the Accountability lens's two plus its withdrawal reason,
+# role-gating's addition, the four T-S1 additions and the two
+# maturity-read-helper additions below (thirty-three total), exactly,
 # nothing invented.
 REASON_CODES = frozenset(
     {

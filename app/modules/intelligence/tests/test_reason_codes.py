@@ -32,10 +32,10 @@ updated in lockstep -- this ``_EXPECTED`` list has drifted out of sync with
 reality more than once already (found and corrected twice tonight,
 independently, by two different lenses' briefs each adding a member without
 re-deriving the true count); merging two branches that each added members
-independently (L2/L4/role-gating on one side, the maturity read helper on
-the other) is a third instance of the same class of drift, resolved here by
-re-deriving the real count (33) rather than trusting either side's own
-stale number.
+independently (L2/L4/role-gating on one side, T-S1 and the maturity read
+helper on the other) is a third instance of the same class of drift,
+resolved here by re-deriving the real count (33) rather than trusting
+either side's own stale number.
 """
 
 from __future__ import annotations
@@ -50,10 +50,10 @@ from app.modules.intelligence.services.reason_codes import (
 )
 
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
-# addition (p95_above_highest_bucket, D3), the Portfolio and Programme
-# lenses' three additions, the Strategy/Accountability/role-gating
-# additions, T-S1's four additions, plus the maturity read helper's two
-# additions.
+# addition (p95_above_highest_bucket, D3), the Portfolio, Programme and
+# Strategy lenses' four additions, the Accountability lens's two plus its
+# withdrawal reason, role-gating's addition, T-S1's four additions and the
+# maturity read helper's two additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
