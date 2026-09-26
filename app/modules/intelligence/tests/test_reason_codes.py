@@ -82,11 +82,14 @@ _EXPECTED = {
     "no_data_recorded",
     "no_steward_recorded",
     "no_lineage_recorded",
+    "no_compliance_controls_recorded",
+    "no_control_evidence",
+    "no_policy_scan_recorded",
 }
 
 
-def test_reason_codes_has_exactly_thirty_four_members():
-    assert len(REASON_CODES) == 34
+def test_reason_codes_has_exactly_thirty_seven_members():
+    assert len(REASON_CODES) == 37
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

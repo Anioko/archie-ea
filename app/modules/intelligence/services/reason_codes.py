@@ -125,6 +125,15 @@ REASON_CODES = frozenset(
         "no_data_recorded",
         "no_steward_recorded",
         "no_lineage_recorded",
+        # Compliance (under L6) additions: Ask's Compliance question reads the
+        # controls an application is mapped to. No mapping is an honest
+        # absence (never "0% compliant"); a mapped control with neither
+        # evidence nor a verification date is a distinct fact from "not
+        # mapped"; and no policy scan on record means the last-scan time is
+        # unknown, not that everything passed.
+        "no_compliance_controls_recorded",
+        "no_control_evidence",
+        "no_policy_scan_recorded",
     }
 )
 
