@@ -957,6 +957,7 @@ def test_data_endpoint_foreign_element_reads_the_same_as_a_missing_one(
 
     from app.models.user import User
 
+    # tenant-scoping-ok: test fixture reloading the user this test just created, after expunge_all
     login_as(client, db_session.get(User, user_id))
     resp = client.get(f"/api/v1/intelligence/data/{foreign_id}")
 
