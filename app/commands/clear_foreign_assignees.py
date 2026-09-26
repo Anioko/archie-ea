@@ -12,6 +12,8 @@ One-off housekeeping command, not a scheduled job. Dry-run by default;
 clears only with ``--apply``.
 """
 
+import re
+
 import click
 
 _TABLES = (
@@ -19,12 +21,27 @@ _TABLES = (
     ("solution_issues", "assigned_to_id"),
 )
 
+# _TABLES above is a fixed module-level constant, never request- or
+# database-derived, so the table/column names interpolated below cannot
+# carry attacker input. This check makes that trust explicit and executable
+# (bandit B608 cannot know the source is trusted from a comment alone — see
+# the identical guard and note in backfill_layer_tenancy.py) rather than
+# leaving the interpolation looking unguarded.
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _checked(name):
+    if not _SAFE_IDENTIFIER.match(name):
+        raise RuntimeError(f"refusing to interpolate unexpected identifier {name!r}")
+    return name
+
 
 def _foreign_assignee_counts(conn):
     from sqlalchemy import text
 
     counts = {}
     for table, column in _TABLES:
+        table, column = _checked(table), _checked(column)
         counts[table] = conn.execute(
             text(
                 f'SELECT count(*) FROM "{table}" t JOIN users u ON u.id = t."{column}" '
@@ -42,6 +59,7 @@ def _clear_foreign_assignees(conn):
     from sqlalchemy import text
 
     for table, column in _TABLES:
+        table, column = _checked(table), _checked(column)
         conn.execute(
             text(
                 f'UPDATE "{table}" t SET "{column}" = NULL '
