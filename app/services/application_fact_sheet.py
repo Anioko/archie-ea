@@ -38,6 +38,24 @@ _COMPLETENESS_FIELDS = [
     ("description", "Description", 1),
 ]
 
+# The fields that a well-governed application record should carry. Weighted so
+# the score reflects decision-relevance, not just field count: ownership, cost,
+# criticality and lifecycle matter more to a portfolio decision than a support
+# URL. This is the rubric the completeness ring is scored against.
+_WEIGHTED_FIELDS = [
+    ("_has_owner_record", "Owner", 3),
+    ("business_domain", "Business domain", 2),
+    ("business_criticality", "Business criticality", 3),
+    ("lifecycle_status", "Lifecycle", 3),
+    ("total_cost_of_ownership", "Total cost of ownership", 3),
+    ("technology_stack", "Technology stack", 2),
+    ("deployment_model", "Hosting / deployment", 2),
+    ("data_classification", "Data classification", 2),
+    ("vendor_name", "Vendor", 2),
+    ("disaster_recovery_enabled", "Disaster recovery", 1),
+    ("description", "Description", 1),
+]
+
 # Lifecycle stages we treat as "sunset" for the end-of-life signal.
 _SUNSET_STAGES = {"retiring", "sunset", "decommissioning", "end_of_life",
                   "end-of-life", "deprecated", "retire"}
@@ -51,22 +69,32 @@ def _has_value(v: Any) -> bool:
     return True
 
 
-def compute_completeness(app: Any) -> Dict[str, Any]:
-    """Weighted % of key fields populated, plus the list of what is missing."""
+def compute_completeness(app: Any, owner_count: int = 0) -> Dict[str, Any]:
+    """Weighted % of key fields populated, plus the list of what is missing.
+
+    ``owner_count`` is the number of ApplicationOwner rows for this application.
+    When non-zero, the "Owner" field is considered populated regardless of the
+    legacy text column.
+    """
     got = 0
     total = 0
     missing: List[str] = []
-    for attr, label, weight in _COMPLETENESS_FIELDS:
+    for attr, label, weight in _WEIGHTED_FIELDS:
         total += weight
-        if _has_value(getattr(app, attr, None)):
+        if attr == "_has_owner_record":
+            if owner_count > 0 or _has_value(getattr(app, "application_owner", None)):
+                got += weight
+            else:
+                missing.append(label)
+        elif _has_value(getattr(app, attr, None)):
             got += weight
         else:
             missing.append(label)
     pct = round(100 * got / total) if total else 0
     band = "good" if pct >= 80 else "warn" if pct >= 50 else "poor"
     return {"pct": pct, "band": band, "missing": missing,
-            "filled": len(_COMPLETENESS_FIELDS) - len(missing),
-            "of": len(_COMPLETENESS_FIELDS)}
+            "filled": len(_WEIGHTED_FIELDS) - len(missing),
+            "of": len(_WEIGHTED_FIELDS)}
 
 
 def _lifecycle_signal(app: Any) -> Dict[str, Any]:
@@ -183,12 +211,30 @@ def _linked_risks(app_id: int) -> List[Dict[str, Any]]:
 def build_fact_sheet(app: Any) -> Dict[str, Any]:
     """Assemble the full fact sheet for one ApplicationComponent instance."""
     org_id = getattr(app, "organization_id", None)
+    # R1-B03: Load ApplicationOwner records for the fact sheet
+    from app.models.application_owner import ApplicationOwner  # noqa: PLC0415
+    from app.models.user import User  # noqa: PLC0415
+
+    owner_rows = ApplicationOwner.get_owners_for_application(app.id, org_id) if org_id else []
+    owner_labels = {"primary": "Primary", "backup": "Backup", "technical": "Technical", "business": "Business"}
+    application_owners = []
+    for o in owner_rows:
+        user = db.session.get(User, o.user_id)
+        application_owners.append({
+            "id": o.id,
+            "user_name": f"{user.first_name} {user.last_name}" if user else "Unknown",
+            "user_email": user.email if user else None,
+            "ownership_type": o.ownership_type,
+            "ownership_type_label": owner_labels.get(o.ownership_type, o.ownership_type.capitalize()),
+        })
+
     return {
         "app": app,
-        "completeness": compute_completeness(app),
+        "completeness": compute_completeness(app, len(application_owners)),
         "lifecycle": _lifecycle_signal(app),
         "capabilities": _capabilities(app.id, org_id),
         "dependencies": _dependencies(app),
         "diagrams": _diagrams(app),
         "linked_risks": _linked_risks(app.id),
+        "application_owners": application_owners,
     }

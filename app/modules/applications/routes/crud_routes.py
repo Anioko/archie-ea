@@ -13,6 +13,7 @@ from datetime import datetime
 from flask import (
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -33,6 +34,7 @@ from app.models.application_layer import (
     ApplicationService,
     DataObject,
 )
+from app.models.application_owner import ApplicationOwner
 from app.models.application_portfolio import (
     APPLICATION_LIFECYCLE_STAGES,
     ApplicationComponent,
@@ -48,6 +50,7 @@ from app.models.models import (  # dead-code-ok
     ArchiMateRelationship,
     ArchitectureModel,
 )
+from app.models.user import User
 from app.services.archimate.archimate_llm_service import ArchiMateLLMService
 from app.decorators import audit_log, require_roles
 from app.services.rate_limiter import rate_limit
@@ -832,10 +835,24 @@ def application_edit(id):
             ae = db.session.get(ArchiMateElement, app.archimate_element_id)
             if ae is not None:
                 architecture_state = ae.togaf_plateau
+
+        # R1-B03: load ApplicationOwner records for the edit form
+        org_id = g.current_org_id
+        owner_rows = ApplicationOwner.get_owners_for_application(id, org_id)
+        application_owners = []
+        for o in owner_rows:
+            owner_user = db.session.get(User, o.user_id)
+            application_owners.append({
+                "id": o.id,
+                "user_name": f"{owner_user.first_name} {owner_user.last_name}" if owner_user else "Unknown",
+                "ownership_type": o.ownership_type,
+            })
+
         return render_template(
             "applications/edit.html", application=app, architecture_state=architecture_state,
             lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
             lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+            application_owners=application_owners,
         )
 
     except Exception:
