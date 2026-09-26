@@ -178,6 +178,17 @@ class ArchitectureMonitoringService:
         db.session.add(row)
         db.session.commit()
 
+    def _unknown_drift(self, row, reason: str) -> Dict[str, Any]:
+        """A drift result that honestly reports nothing could be compared,
+        instead of fabricating a zero or crashing on a None comparison."""
+        return {
+            "success": True,
+            "status": "unknown",
+            "baseline_id": row.baseline_id,
+            "baseline_name": row.name,
+            "reason": reason,
+        }
+
     def _alert_to_api_dict(self, row) -> Dict[str, Any]:
         """Render a MonitoringAlert row in the shape the API has always returned."""
         return {
@@ -646,16 +657,11 @@ class ArchitectureMonitoringService:
             c.get("current_maturity") is None for c in capabilities_snapshot
         )
         if unassessed:
-            return {
-                "success": True,
-                "status": "unknown",
-                "baseline_id": row.baseline_id,
-                "baseline_name": row.name,
-                "reason": (
-                    "Baseline has no capability snapshot, or no capability in it has an "
-                    "assessed maturity level, so drift cannot be computed."
-                ),
-            }
+            return self._unknown_drift(
+                row,
+                "Baseline has no capability snapshot, or no capability in it has an "
+                "assessed maturity level, so drift cannot be computed.",
+            )
 
         baseline_coverage = snapshot.get("coverage", {})
         baseline_health = snapshot.get("health", {})
@@ -671,6 +677,32 @@ class ArchitectureMonitoringService:
             current_health = self._capture_health_snapshot()
             current_gaps = self._capture_gap_snapshot()
             current_vendors = self._capture_vendor_snapshot()
+
+            # Coverage and health drift are both a subtraction over an
+            # "average_*" figure that is None, by design, when nothing was
+            # measured (see _capture_health_snapshot / the health service's
+            # own None-not-zero comment) -- never 0. None minus None crashes
+            # a real tenant with capabilities but no health scores yet
+            # (reported against this service before this guard existed).
+            # Treating a missing measure on either side as 0 would fabricate
+            # a drift figure, so report the comparison as impossible instead.
+            missing_measures = []
+            if baseline_coverage.get("average_coverage") is None:
+                missing_measures.append("the baseline's average coverage")
+            if current_coverage.get("average_coverage") is None:
+                missing_measures.append("the current average coverage")
+            if baseline_health.get("average_health") is None:
+                missing_measures.append("the baseline's average health score")
+            if current_health.get("average_health") is None:
+                missing_measures.append("the current average health score")
+
+            if missing_measures:
+                return self._unknown_drift(
+                    row,
+                    "Drift cannot be computed because "
+                    f"{', '.join(missing_measures)} {'is' if len(missing_measures) == 1 else 'are'} "
+                    "not available.",
+                )
 
             # Analyze each dimension
             coverage_drift = self._analyze_coverage_drift(baseline_coverage, current_coverage)
@@ -1089,9 +1121,17 @@ class ArchitectureMonitoringService:
     def _analyze_coverage_drift(
         self, baseline: Dict[str, Any], current: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Analyze coverage drift."""
-        baseline_avg = baseline.get("average_coverage", 0)
-        current_avg = current.get("average_coverage", 0)
+        """Analyze coverage drift.
+
+        ``average_coverage`` is only absent from a very old snapshot; a
+        current one always sets it. Even so, this never treats a missing
+        value as 0 -- a caller that reaches this directly (bypassing
+        analyze_drift's own upfront guard) still gets ``None``, not a
+        fabricated zero delta or a crash on ``None - None``.
+        """
+        baseline_avg = baseline.get("average_coverage")
+        current_avg = current.get("average_coverage")
+        comparable = baseline_avg is not None and current_avg is not None
 
         baseline_uncovered = baseline.get("uncovered_capabilities", 0)
         current_uncovered = current.get("uncovered_capabilities", 0)
@@ -1099,19 +1139,27 @@ class ArchitectureMonitoringService:
         return {
             "baseline_average_coverage": baseline_avg,
             "current_average_coverage": current_avg,
-            "coverage_delta": round(current_avg - baseline_avg, 2),
+            "coverage_delta": round(current_avg - baseline_avg, 2) if comparable else None,
             "baseline_uncovered": baseline_uncovered,
             "current_uncovered": current_uncovered,
             "uncovered_delta": current_uncovered - baseline_uncovered,
-            "has_regression": current_avg < baseline_avg,
+            "has_regression": (current_avg < baseline_avg) if comparable else None,
         }
 
     def _analyze_health_drift(
         self, baseline: Dict[str, Any], current: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Analyze health score drift."""
-        baseline_health = baseline.get("average_health", 0)
-        current_health = current.get("average_health", 0)
+        """Analyze health score drift.
+
+        ``average_health`` is ``None``, by design, whenever no capability has
+        been assessed yet (a realistic tenant state, not an edge case) -- so
+        this never subtracts through a missing value as if it were 0. A
+        caller that reaches this directly (bypassing analyze_drift's own
+        upfront guard) still gets ``None`` deltas rather than a crash.
+        """
+        baseline_health = baseline.get("average_health")
+        current_health = current.get("average_health")
+        comparable = baseline_health is not None and current_health is not None
 
         baseline_at_risk = baseline.get("at_risk_capabilities", 0)
         current_at_risk = current.get("at_risk_capabilities", 0)
@@ -1119,11 +1167,11 @@ class ArchitectureMonitoringService:
         return {
             "baseline_average_health": baseline_health,
             "current_average_health": current_health,
-            "health_delta": round(current_health - baseline_health, 2),
+            "health_delta": round(current_health - baseline_health, 2) if comparable else None,
             "baseline_at_risk": baseline_at_risk,
             "current_at_risk": current_at_risk,
             "at_risk_delta": current_at_risk - baseline_at_risk,
-            "has_regression": current_health < baseline_health,
+            "has_regression": (current_health < baseline_health) if comparable else None,
         }
 
     def _analyze_gap_drift(

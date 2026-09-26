@@ -17,12 +17,30 @@ import pytest
 
 
 def _enable_monitoring_api(app, monkeypatch):
+    """Mount the monitoring blueprint on the shared session app.
+
+    A Flask Blueprint locks its setup methods (``before_request`` etc.) the
+    first time it is registered to ANY app -- that lock is a process-global
+    attribute on the blueprint object, not a per-app one. This module's own
+    real registration path (app/modules/architecture/v2/__init__.py) always
+    calls ``mark_blueprint_guardrailed()`` -- which adds exactly one
+    ``before_request`` handler, guarded by its own idempotency flag -- before
+    ``register_blueprint()``. Registering here without doing the same first
+    would let this fixture consume the one-shot lock, so the next real
+    ``create_app()`` call in the process (e.g.
+    app/modules/architecture/tests/test_architecture.py's own
+    ARCHITECTURE_MONITORING_API_ENABLED test) fails trying to add that same
+    handler afterwards. Calling it here, in the same order production does,
+    keeps that call a no-op wherever it runs later.
+    """
     monkeypatch.setenv("ARCHITECTURE_MONITORING_API_ENABLED", "true")
     if "architecture_monitoring" not in app.blueprints:
+        from app.core.compat import mark_blueprint_guardrailed
         from app.modules.architecture.routes.architecture_monitoring_routes import (
             architecture_monitoring_bp,
         )
 
+        mark_blueprint_guardrailed(architecture_monitoring_bp)
         app.register_blueprint(architecture_monitoring_bp)
 
 
@@ -218,6 +236,78 @@ class TestUnassessedBaselineDrift:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["status"] == "unknown"
+
+    def test_drift_returns_unknown_not_crash_when_no_health_scores_exist(
+        self, app, db_session, monitoring_users
+    ):
+        """Regression: a capability that has an assessed maturity level but no
+        health score anywhere in the organisation makes average_health None
+        (by design -- it means "nothing assessed", not zero). Comparing that
+        None against another None used to raise
+        ``TypeError: unsupported operand type(s) for -: 'NoneType' and
+        'NoneType'`` inside _analyze_health_drift, which the route surfaced as
+        a 400. It must report "unknown" instead."""
+        from flask import g
+
+        from app.models.unified_capability import UnifiedCapability
+
+        org_id = monitoring_users["org_a"].id
+
+        with app.test_request_context("/"):
+            g.current_org_id = org_id
+
+            cap = UnifiedCapability(
+                name="Assessed But No Health",
+                code=f"CAP{uuid.uuid4().hex[:8].upper()}",
+                level=1,
+                current_maturity_level=3,
+            )
+            db_session.add(cap)
+            db_session.commit()
+
+            from app.modules.architecture.services.architecture_monitoring_service import (
+                ArchitectureMonitoringService,
+            )
+
+            service = ArchitectureMonitoringService()
+            result = service.capture_baseline(name="No Health Scores", created_by="tester")
+            assert result["success"] is True
+            baseline_id = result["baseline"]["id"]
+
+            drift = service.analyze_drift(baseline_id)
+
+        assert drift["success"] is True
+        assert drift["status"] == "unknown"
+        assert "health" in drift["reason"].lower()
+
+    def test_drift_route_returns_200_not_400_when_no_health_scores_exist(
+        self, app, db_session, client, login_as, monitoring_users
+    ):
+        from flask import g
+
+        from app.models.unified_capability import UnifiedCapability
+
+        org_id = monitoring_users["org_a"].id
+
+        with app.test_request_context("/"):
+            g.current_org_id = org_id
+            cap = UnifiedCapability(
+                name="Assessed But No Health Route",
+                code=f"CAP{uuid.uuid4().hex[:8].upper()}",
+                level=1,
+                current_maturity_level=3,
+            )
+            db_session.add(cap)
+            db_session.commit()
+
+        baseline_id = _capture_baseline(
+            client, login_as, monitoring_users["user_a"], "No Health Scores Route"
+        )
+
+        login_as(client, monitoring_users["user_a"])
+        resp = client.get(f"/api/architecture-monitoring/drift/{baseline_id}")
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+        assert resp.get_json()["status"] == "unknown"
 
 
 class TestNoSharedState:
