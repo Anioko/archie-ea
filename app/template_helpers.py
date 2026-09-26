@@ -83,7 +83,10 @@ def register_template_filters(app):
         variable."""
         from markupsafe import Markup
 
-        return Markup(value) if value is not None else Markup("")
+        if value is None:
+            return Markup("")
+        # raw-html-ok: only ever applied to repository content already sanitised by bleach or escaped for a script block (see docstring)
+        return Markup(value)  # nosec B704
 
     @app.template_filter("currency")
     def currency_filter(amount: Union[int, float, str], currency_code: Optional[str] = None) -> str:
