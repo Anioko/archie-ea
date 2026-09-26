@@ -90,6 +90,9 @@ _EXPECTED = {
     "no_data_recorded",
     "no_steward_recorded",
     "no_lineage_recorded",
+    "no_compliance_controls_recorded",
+    "no_control_evidence",
+    "no_policy_scan_recorded",
     "no_plateau_recorded",
     "no_gap_recorded",
     "no_maturity_target_recorded",
@@ -97,8 +100,8 @@ _EXPECTED = {
 }
 
 
-def test_reason_codes_has_exactly_thirty_eight_members():
-    assert len(REASON_CODES) == 38
+def test_reason_codes_has_exactly_forty_one_members():
+    assert len(REASON_CODES) == 41
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
