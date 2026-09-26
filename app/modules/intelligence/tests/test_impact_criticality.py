@@ -163,7 +163,7 @@ def test_foreign_component_rating_not_visible_to_tenant_a(app, db_session, make_
 def test_mutation_proof_sec09_criticality_leak(app, db_session, make_org, monkeypatch):
     """Disabling _sec09_tenant_check makes the foreign rating leak — the red run.
     Calls _resolve_components_batch directly with a divergent org_id, the same
-    pattern as the existing SEC-09 mutation proof in test_query_service.py."""
+    pattern as the existing mutation proof for the tenant assertion in test_query_service.py."""
     from app.modules.intelligence.services import query_service
 
     org_a = make_org("crit-2mut-a")
@@ -174,14 +174,14 @@ def test_mutation_proof_sec09_criticality_leak(app, db_session, make_org, monkey
                             business_criticality="Critical")
     db_session.commit()
 
-    # SEC-09 intact: org_a's org_id blocks org_b's component.
+    # Tenant assertion intact: org_a's org_id blocks org_b's component.
     with app.test_request_context("/"):
         from flask import g
         g.current_org_id = org_b.id  # ORM filter allows org_b's component
         results = query_service._resolve_components_batch([target.id], org_a.id)
     assert target.id not in results
 
-    # Disable SEC-09: the foreign component now leaks through.
+    # Disable the tenant assertion: the foreign component now leaks through.
     monkeypatch.setattr(
         query_service, "_sec09_tenant_check", lambda component_org_id, org_id: True
     )
@@ -788,7 +788,7 @@ def test_nfr5_pinned_series_explicit_only_still_populated(app, db_session, make_
 
 # ---------------------------------------------------------------------------
 # Additional: element that is both a component and a resource takes the
-# component block (asserted in a test per Decision D).
+# component block.
 # ---------------------------------------------------------------------------
 
 

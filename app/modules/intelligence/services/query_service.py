@@ -102,7 +102,7 @@ def _build_criticality_block(
     rpo_hours: Optional[int] = None,
     source: str,
 ) -> Dict[str, Any]:
-    """The nine-key criticality block, one shape for both sources (Decision C).
+    """The nine-key criticality block, one shape for both sources (component and resource).
 
     Rules, in order: ``reason = "no_criticality_recorded"`` and
     ``critical = None`` when ``criticality`` and ``business_criticality`` are
@@ -182,7 +182,7 @@ def _resolve_components_batch(
     for comp in components:
         component_by_element.setdefault(comp.archimate_element_id, comp)
 
-    # SEC-09: drop any component that fails the tenant assertion.
+    # Tenant assertion: drop any component that fails the tenant check.
     return {
         eid: comp
         for eid, comp in component_by_element.items()
@@ -193,9 +193,9 @@ def _resolve_components_batch(
 def _resolve_owners_batch(
     element_ids: List[int], org_id: int
 ) -> Dict[int, Tuple[Optional[Dict[str, Any]], Optional[str]]]:
-    """AA-5/SEC-09 owner attach: element -> component -> ownership -> unit,
+    """Owner attach: element -> component -> ownership -> unit,
     batched across MANY element ids in a small constant number of queries
-    (M7 fix -- see the build report's B2/NEW-3 sections for why this is now
+    (batch fix -- see the latency register for why this is now
     the ONLY owner-resolution implementation on this path; a per-row
     ``_resolve_owner``/``_find_component_for_element`` pair used to exist
     alongside this and was deleted as dead code -- ``cross_layer_impact`` is
@@ -772,16 +772,15 @@ class IntelligenceQueryService:
                     elements = _resolve_elements_batch(_element_ids_in_rows(rows), org_id)
                     _attach_plain_terms(rows, elements)
 
-                    # Resolve components for criticality block (Decision A's
-                    # call site -- one select per answer, inside the latency
-                    # scope).
+                    # Resolve components for criticality block -- one select
+                    # per answer, inside the latency scope.
                     components_by_element: Dict[int, Any] = {}
                     if rows:
                         components_by_element = _resolve_components_batch(
                             [row["element_id"] for row in rows], org_id
                         )
 
-                    # Resource select for criticality (Decision B) -- keyed by
+                    # Resource select for criticality -- keyed by
                     # the identity map's ids only, so only ids already resolved
                     # for this tenant are asked for.
                     resources_by_element: Dict[int, Dict[str, Any]] = {}
@@ -842,7 +841,7 @@ class IntelligenceQueryService:
                         # is stripped.
                         row.pop("_endpoints", None)
 
-                        # Attach criticality block (Decision D): a row whose
+                        # Attach criticality block: a row whose
                         # element resolves to a guarded component gets the
                         # component block; a row whose element is a resource
                         # (but not a component) gets the resource block; a row
@@ -881,7 +880,7 @@ class IntelligenceQueryService:
                     }
                     reasons = []
 
-                    # Whole-answer criticality flags (Decision E).
+                    # Whole-answer criticality flags.
                     any_block = any(
                         row.get("criticality") is not None for row in rows
                     )
