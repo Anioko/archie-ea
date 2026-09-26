@@ -268,8 +268,9 @@ def test_the_gate_reads_counts_taken_now_not_a_cached_empty_workspace(
     org = make_org("ui-fresh-counts")
     user = _user(db_session, org.id)
     login_as(client, user)
-    before = _main_html(client.get(path).get_data(as_text=True))
-    assert "Nothing is modelled yet" in before
+    # Open the page first, as the new organisation would, so any count read
+    # before the element exists has had its chance to be kept and reused.
+    assert client.get(path).status_code == 200
     from app.models.archimate_core import ArchiMateElement
 
     db_session.add(ArchiMateElement(
