@@ -21,6 +21,7 @@ from app.decorators import audit_log
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import db
+from app.middleware.tenant_context import current_org_id
 from app.models.adm_kanban import (
     ARCHIMATE_ELEMENTS,
     ADMPhase,
@@ -29,6 +30,7 @@ from app.models.adm_kanban import (
     create_adm_phases,
 )
 from app.models.user import User
+from app.utils.tenant_users import user_in_org
 
 # ============================================================================
 # ADM WORKFLOW VALIDATION FUNCTIONS
@@ -362,6 +364,14 @@ def get_board(board_id):
             phase_code = card.adm_phase.code if card.adm_phase else "unknown"
             if phase_code not in cards_by_phase:
                 cards_by_phase[phase_code] = []
+            # assigned_to_id is request-supplied (see create_card/update_card), so
+            # the assignee is named only when it resolves inside the card's own
+            # organisation — a foreign id shows no name.
+            assignee = (
+                user_in_org(card.assigned_to_id, card.organization_id)
+                if card.assigned_to_id
+                else None
+            )
             cards_by_phase[phase_code].append(
                 {
                     "id": card.id,
@@ -374,10 +384,10 @@ def get_board(board_id):
                     "depends_on": card.depends_on,
                     "blocks": card.blocks,
                     "assigned_to": {
-                        "id": card.assigned_to.id,
-                        "name": card.assigned_to.full_name(),
+                        "id": assignee.id,
+                        "name": assignee.full_name(),
                     }
-                    if card.assigned_to
+                    if assignee
                     else None,
                     "created_at": card.created_at.isoformat()
                     if card.created_at
@@ -479,6 +489,8 @@ def create_card(board_id):
 
         # Normalize nullable integer FK fields — empty string from form should be None
         assigned_to_id = data.get("assigned_to_id") or None
+        if assigned_to_id and not user_in_org(assigned_to_id, current_org_id()):
+            return jsonify({"success": False, "error": "Invalid assigned_to_id"}), 400
         arb_review_id = data.get("arb_review_id") or None
 
         card = KanbanCard(
@@ -622,6 +634,10 @@ def update_card(card_id):
         # Normalize nullable integer FK fields to None if empty string
         if "assigned_to_id" in data:
             data["assigned_to_id"] = data["assigned_to_id"] or None
+            if data["assigned_to_id"] and not user_in_org(
+                data["assigned_to_id"], current_org_id()
+            ):
+                return jsonify({"success": False, "error": "Invalid assigned_to_id"}), 400
         for field in [
             "title",
             "description",

@@ -367,7 +367,8 @@ def assign_issue(solution_id, issue_id):
     try:
         issue = issue_service.assign_issue(
             issue_id=issue_id,
-            assigned_to_id=data.get('assigned_to_id')
+            assigned_to_id=data.get('assigned_to_id'),
+            organization_id=_current_org_id()
         )
         return jsonify(issue.to_dict()), 200
     except Exception as e:

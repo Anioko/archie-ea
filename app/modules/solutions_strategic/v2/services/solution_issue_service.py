@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 from app import db
 from app.models.solution_governance import SolutionIssue
+from app.utils.tenant_users import user_in_org
 
 
 class SolutionIssueService:
@@ -73,25 +74,31 @@ class SolutionIssueService:
     def assign_issue(
         self,
         issue_id: int,
-        assigned_to_id: int
+        assigned_to_id: int,
+        organization_id: Optional[int] = None
     ) -> SolutionIssue:
         """
         Assign issue to a user.
-        
+
         Args:
             issue_id: Issue to assign
             assigned_to_id: User to assign to
-        
+            organization_id: Caller's organisation; assigned_to_id is refused
+                unless it names a user of this organisation
+
         Returns:
             SolutionIssue: Updated issue
         """
         issue = db.session.query(SolutionIssue).get(issue_id)
         if not issue:
             raise ValueError(f"Issue {issue_id} not found")
-        
+
+        if assigned_to_id and not user_in_org(assigned_to_id, organization_id):
+            raise ValueError("Invalid assigned_to_id")
+
         issue.assigned_to_id = assigned_to_id
         db.session.commit()
-        
+
         return issue
     
     def escalate_issue(
