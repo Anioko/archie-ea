@@ -16,6 +16,14 @@
         ]
     ) }}
 
+    {% if duplicate_of is defined and duplicate_of %}
+    <div class="rounded-md border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis" role="alert" data-testid="vendor-duplicate">
+        {{ duplicate_of.name }} is already in the vendor catalogue.
+        <a href="{{ url_for('unified_applications.vendor_detail', vendor_id=duplicate_of.id) }}" class="font-medium underline">Open {{ duplicate_of.name }}</a>
+        and record its details there instead of adding it again.
+    </div>
+    {% endif %}
+
     {% call card() %}
         {% call card_content() %}
             <form method="POST" action="{{ url_for('unified_applications.vendors_create') }}" class="space-y-6">
@@ -64,6 +72,8 @@
                                placeholder="e.g. San Francisco, CA" aria-label="e.g. San Francisco, CA">
                     </div>
                 </div>
+
+                {% include 'vendors/_corporate_structure_fields.html' %}
 
                 <div class="flex justify-between pt-4">
                     <a href="{{ url_for('application_mgmt.vendors_dashboard') }}"

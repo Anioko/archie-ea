@@ -110,10 +110,15 @@ def vendors_create():
             flash("Vendor name is required.", "error")
             return render_template("vendors/create_simple.html")
 
-        existing = VendorOrganization.query.filter_by(name=name).first()
+        # Case- and spacing-insensitive, the same rule the other vendor create
+        # paths apply: "acme cloud" beside "Acme Cloud" is one vendor entered
+        # twice, and the catalogue is shared by every organisation.
+        from app.utils.duplicate_guard import find_duplicate_by_name
+
+        existing = find_duplicate_by_name(VendorOrganization, name)
         if existing:
-            flash(f"A vendor named '{name}' already exists.", "error")
-            return render_template("vendors/create_simple.html")
+            flash(f"A vendor named '{existing.name}' already exists.", "error")
+            return render_template("vendors/create_simple.html", duplicate_of=existing), 409
 
         try:
             import re
@@ -140,6 +145,11 @@ def vendors_create():
                 status="active",
                 created_by_id=getattr(current_user, "id", None),
             )
+            try:
+                vendor.apply_corporate_structure(request.form)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return render_template("vendors/create_simple.html"), 400
             db.session.add(vendor)
             db.session.commit()
             flash(f"Vendor '{name}' created successfully.", "success")
