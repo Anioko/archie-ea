@@ -300,18 +300,19 @@ the `RoadmapGap` rows converted out of it (what a gap is there is a product
 decision), `ComplianceGap`, `TechnologyRoadmapInitiative` and `DecisionLedger`.
 Measured on the demonstration organisation (`flask seed-demo-company`), four
 concepts genuinely disagree, each closed by writing the ADR 0008 projection
-for that concept, none of which has an open branch yet except where named:
+for that concept on its own branch:
 
-- `capabilities` — the existing finding above (`BusinessCapability` vs
-  `UnifiedCapability`); closed by `flask cutover-capability-tenancy --apply`
-  and the dashboard reading the unified store.
-- `work packages` — `UnifiedWorkPackage` holds the seeded packages while all
-  five list screens read the other three stores and show 0.
+- `capabilities` — `UnifiedCapability` vs `BusinessCapability` (the existing
+  finding above); closed by `feat/r1-one-capability-store`.
+- `work packages` — `UnifiedWorkPackage` holds the seeded packages while every
+  list screen reads the other stores and shows 0; closed by
+  `feat/r1-one-work-package-store`.
 - `application owners` — `ApplicationOwner` holds owners while
   `ApplicationOwnership` and the owner text columns on the application are
-  empty.
+  empty; closed by `feat/r1-one-owner-record`.
 - `applications with a recorded annual cost` — cost columns on the application
-  hold costs while `ApplicationCost` is empty.
+  hold costs while `ApplicationCost` is empty; closed by
+  `feat/r1-one-application-cost`.
 
 Each consolidation lowers the ratchet again. A fresh CI database with no
 organisation measures 0.
