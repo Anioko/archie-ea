@@ -1020,13 +1020,79 @@ class ArchiMateImportService:
     @staticmethod
     def _create_domain_row(element) -> None:
         """Give a newly created Driver / Goal / ApplicationComponent element
-        its domain row, linked back by ``archimate_element_id``."""
+        its domain row, linked back by ``archimate_element_id``.
+
+        Idempotent per organisation, whatever the strategy: a domain row the
+        organisation already holds for this element, or under the same name
+        (case-insensitive), is linked rather than duplicated. ``create_all``
+        creates a fresh element on every run; without this, every repeat of
+        the same file added another portfolio row for the same application.
+        """
+        from app.models.archimate_core import ArchiMateElement
+
+        if element.type in ("Driver", "Goal"):
+            from app.models.motivation import Driver, Goal
+
+            cls = Driver if element.type == "Driver" else Goal
+        elif element.type == "ApplicationComponent":
+            from app.models.application_portfolio import ApplicationComponent
+
+            cls = ApplicationComponent
+        else:
+            return
+        is_portfolio = element.type == "ApplicationComponent"
+
+        org_id = element.organization_id
+        name_key = (element.name or "").strip().lower()
         try:
             with db.session.begin_nested():
-                if element.type in ("Driver", "Goal"):
-                    from app.models.motivation import Driver, Goal
+                if is_portfolio:
+                    # Explicit organisation predicate: imports also run
+                    # outside a request (programme setup, CLI), where the
+                    # TenantMixin filter is absent.
+                    existing = cls.query.filter(  # model-safety-ok: one row per imported element
+                        cls.organization_id == org_id,
+                        db.or_(
+                            cls.archimate_element_id == element.id,
+                            db.func.lower(cls.name) == name_key,
+                        ),
+                    ).order_by(
+                        (cls.archimate_element_id == element.id).desc(), cls.id
+                    ).first()
+                else:
+                    # Driver and Goal carry no organization_id of their own;
+                    # their organisation is that of the element they realise,
+                    # so a row with no element is never matched across tenants.
+                    existing = (
+                        cls.query.join(  # model-safety-ok: one row per imported element
+                            ArchiMateElement, ArchiMateElement.id == cls.archimate_element_id
+                        )
+                        .filter(
+                            ArchiMateElement.organization_id == org_id,
+                            ArchiMateElement.type == element.type,
+                            db.or_(
+                                cls.archimate_element_id == element.id,
+                                db.func.lower(cls.name) == name_key,
+                            ),
+                        )
+                        .order_by((cls.archimate_element_id == element.id).desc(), cls.id)
+                        .first()
+                    )
 
-                    cls = Driver if element.type == "Driver" else Goal
+                if existing is not None:
+                    linked = existing.archimate_element_id
+                    if linked is None or db.session.get(ArchiMateElement, linked) is None:
+                        existing.archimate_element_id = element.id
+                        db.session.flush()
+                    return
+
+                if is_portfolio:
+                    row = cls(
+                        name=element.name,
+                        description=element.description,
+                        archimate_element_id=element.id,
+                    )
+                else:
                     row = cls(
                         name=element.name,
                         description=element.description,
@@ -1034,16 +1100,6 @@ class ArchiMateImportService:
                         architecture_id=element.architecture_id,
                         status="active",
                     )
-                elif element.type == "ApplicationComponent":
-                    from app.models.application_portfolio import ApplicationComponent
-
-                    row = ApplicationComponent(
-                        name=element.name,
-                        description=element.description,
-                        archimate_element_id=element.id,
-                    )
-                else:
-                    return
                 db.session.add(row)
                 db.session.flush()
         except Exception as exc:

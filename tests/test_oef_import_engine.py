@@ -318,3 +318,50 @@ def test_created_elements_get_their_domain_rows_once(app, db_session, make_org, 
         service.import_xml(doc, strategy="update_existing")
         assert Driver.query.filter_by(archimate_element_id=driver_el.id).count() == 1
         assert ApplicationComponent.query.filter_by(archimate_element_id=app_el.id).count() == 1
+
+
+@db_required
+def test_repeated_create_all_import_keeps_one_portfolio_row_per_application_per_org(
+    app, db_session, make_org, tenant_ctx
+):
+    """``create_all`` makes a fresh element on every run. The portfolio row
+    for an application component must not follow it: importing the same
+    file twice leaves one row per application, in each organisation."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.motivation import Driver
+    from app.services.archimate_import_service import ArchiMateImportService
+
+    doc = _oef(
+        '<element identifier="a1" xsi:type="ApplicationComponent"><name>Ledger Core</name></element>'
+        '<element identifier="a2" xsi:type="ApplicationComponent"><name>Payments Hub</name></element>'
+        '<element identifier="d1" xsi:type="Driver"><name>Ledger Driver</name></element>'
+    )
+    orgs = [make_org("oef-engine-idem-a"), make_org("oef-engine-idem-b")]
+    for org in orgs:
+        with tenant_ctx(org.id):
+            service = ArchiMateImportService()
+            assert service.import_xml(doc, strategy="create_all")["created"] == 3
+            assert service.import_xml(doc, strategy="create_all")["created"] == 3
+
+    for org in orgs:
+        db_session.expire_all()
+        with tenant_ctx(org.id):
+            # create_all still creates a second element per run, as it says.
+            assert ArchiMateElement.query.filter(
+                ArchiMateElement.organization_id == org.id,
+                ArchiMateElement.name == "Ledger Core",
+            ).count() == 2
+            for name in ("Ledger Core", "Payments Hub"):
+                rows = ApplicationComponent.query.filter(
+                    ApplicationComponent.organization_id == org.id,
+                    ApplicationComponent.name == name,
+                ).all()
+                assert len(rows) == 1, (org.id, name, len(rows))
+                assert rows[0].archimate_element_id is not None
+            drivers = (
+                Driver.query.join(ArchiMateElement, ArchiMateElement.id == Driver.archimate_element_id)
+                .filter(ArchiMateElement.organization_id == org.id, Driver.name == "Ledger Driver")
+                .count()
+            )
+            assert drivers == 1
