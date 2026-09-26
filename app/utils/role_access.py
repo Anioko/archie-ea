@@ -648,6 +648,11 @@ _MY_WORK_LINKS = {
         # finding nothing is precisely why maturity was reported as missing.
         _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
         _link("Value Streams", "value_stream.index", "waypoints"),
+        # The value streams that depend on a capability below a maturity
+        # threshold, answered by the intelligence API. Sits under Value
+        # Streams, the page where the capability links it reads are made.
+        # 28 -> 29 rendered links, within SIDEBAR_LINK_BUDGET (31).
+        _link("Value Streams at Risk", "intelligence_ui.value_streams_at_risk", "trending-down"),
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
         _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),
         _link("Roadmaps", "main.capability_roadmap", "milestone"),

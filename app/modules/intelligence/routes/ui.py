@@ -1,9 +1,11 @@
-"""Ask and Twin map: the two pages of the intelligence module's user interface.
+"""Ask, Twin map and Value streams at risk: the pages of the intelligence
+module's user interface.
 
-Both routes only render a page shell. The data is fetched in the browser from
+Every route only renders a page shell. The data is fetched in the browser from
 endpoints that already exist: element search from the ArchiMate picker
-endpoint and the impact answer from the intelligence API, so the pages carry no
-query of their own and no way to read another tenant's rows.
+endpoint, the impact answer and the value-streams-at-risk answer from the
+intelligence API, so the pages carry no query of their own and no way to read
+another tenant's rows.
 
 The provenance drawer is not a route. It opens over either page.
 """
@@ -65,6 +67,36 @@ def twin_map():
         "intelligence/twin_map.html",
         initial_element_id=initial_element_id,
         workspace_counts_available=_workspace_counts_available(),
+    )
+
+
+# The maturity threshold the value-streams-at-risk answer is asked for. The
+# same bounds and default as the API route that answers it; a value outside
+# them is ignored here and the page opens on the default, so the address bar
+# never carries a threshold the API would refuse.
+VALUE_STREAMS_AT_RISK_THRESHOLDS = (1, 2, 3, 4, 5)
+VALUE_STREAMS_AT_RISK_DEFAULT_THRESHOLD = 3
+
+
+@intelligence_ui.route("/value-streams-at-risk", methods=["GET"])
+@login_required
+def value_streams_at_risk():
+    """Show the organisation's value streams whose capabilities fall below a
+    maturity threshold.
+
+    The rows and counts are the intelligence API's own answer
+    (``GET /api/v1/intelligence/value-streams-at-risk``), fetched in the
+    browser; nothing is computed here. ``threshold`` (optional, 1 to 5,
+    default 3) is the value the page opens on, so a reload or a shared link
+    shows the same answer.
+    """
+    threshold = request.args.get("threshold", type=int)
+    if threshold not in VALUE_STREAMS_AT_RISK_THRESHOLDS:
+        threshold = VALUE_STREAMS_AT_RISK_DEFAULT_THRESHOLD
+    return render_template(
+        "intelligence/value_streams_at_risk.html",
+        threshold=threshold,
+        thresholds=VALUE_STREAMS_AT_RISK_THRESHOLDS,
     )
 
 
