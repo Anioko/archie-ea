@@ -68,6 +68,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -78,10 +79,22 @@ TABLE_LIST = REPO / "scripts" / "unfenced_tables.txt"
 FENCE_BASES = ("TenantMixin", "HybridCapabilityTenantMixin")
 MODEL_BASES = ("db.Model", "Model", "Base")
 MARKER = "tenant-scoping-ok"
-PREDICATE_WORDS = ("organization_id", "org_id", "tenant")
+# The hatch needs a reason: `tenant-scoping-ok: <why>`. A bare marker does not exempt a read.
+MARKER_WITH_REASON = re.compile(r"tenant-scoping-ok:\s*\S")
+# A predicate is the org column compared or passed as a filter: `organization_id == x`,
+# `organization_id=x`, `organization_id.in_(...)`, `x == ...organization_id`. The bare word
+# inside another name (`other_org_id`, `tenant_label`) or a comment does not count.
+_ORG = r"(?:organization_id|org_id|tenant_id)"
+PREDICATE = re.compile(
+    r"(?<![\w])" + _ORG + r"\b\s*(?:==|=(?!=)|\.in_\(|\bin\b)"
+    r"|==\s*[\w.]*(?<![\w])" + _ORG + r"\b"
+)
 
 # Directories whose code runs across tenants on purpose (operator commands, bootstrap).
 SKIP_DIRS = ("app/models/", "app/commands/", "app/_bootstrap/")
+
+# Model names defined more than once with different fencing; filled by unfenced_models().
+AMBIGUOUS: set[str] = set()
 
 # Global reference data: shared by every organisation by design. Each needs a reason.
 GLOBAL_MODELS: dict[str, str] = {}
@@ -163,11 +176,15 @@ def unfenced_models(classes):
     out = {}
     for name in classes:
         is_model, fenced, has_col = _resolve(name, classes)
-        if not is_model or fenced or name in GLOBAL_MODELS:
+        if not is_model or name in GLOBAL_MODELS:
             continue
-        # A name defined twice with different fencing is ambiguous: skip rather than guess.
+        # A name defined twice with different fencing is ambiguous: skip rather than guess,
+        # but say so (see --ambiguous), so a skipped model is never silent.
         statuses = {_resolve(name, {name: [i]})[1] for i in classes[name]}
         if len(classes[name]) > 1 and len(statuses) > 1:
+            AMBIGUOUS.add(name)
+            continue
+        if fenced:
             continue
         out[name] = {"has_col": has_col, "paths": sorted({i.path for i in classes[name]})}
     return out
@@ -225,8 +242,8 @@ class _Scan(ast.NodeVisitor):
         first, last = self._segment()
         block = "\n".join(self.lines[first - 1:last])
         before = self.lines[first - 2] if first >= 2 else ""
-        exempt = MARKER in block or MARKER in before
-        predicated = any(w in block.lower() for w in PREDICATE_WORDS)
+        exempt = bool(MARKER_WITH_REASON.search(block) or MARKER_WITH_REASON.search(before))
+        predicated = bool(PREDICATE.search(block))
         always = shape == "session.get"
         if exempt or (predicated and not always):
             return
@@ -282,6 +299,7 @@ def main() -> int:
     parser.add_argument("--count", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--models", action="store_true")
+    parser.add_argument("--ambiguous", action="store_true", help="model names skipped because they are defined twice with different fencing")
     parser.add_argument("--tables", action="store_true", help="print the unfenced table names")
     parser.add_argument("--new-tables", action="store_true", help="unfenced tables missing from the list")
     args = parser.parse_args()
@@ -303,6 +321,9 @@ def main() -> int:
         print(len(new))
         return 0
     models, hits = scan()
+    if args.ambiguous:
+        print(chr(10).join(sorted(AMBIGUOUS)))
+        return 0
     if args.models:
         for name, info in sorted(models.items()):
             print(f"{name:45s} column={'yes' if info['has_col'] else 'NO '}  {info['paths'][0]}")

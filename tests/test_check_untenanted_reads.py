@@ -129,6 +129,61 @@ def test_a_written_reason_clears_the_read(tmp_path):
     assert hits == []
 
 
+def test_a_bare_marker_with_no_reason_does_not_clear_the_read(tmp_path):
+    _, hits = _scan(tmp_path, """
+        def by_email(email):
+            # tenant-scoping-ok
+            return ColumnOnly.query.filter_by(id=email).first()
+    """)
+
+    assert [h["model"] for h in hits] == ["ColumnOnly"]
+
+
+def test_the_org_word_inside_another_name_does_not_clear_the_read(tmp_path):
+    _, hits = _scan(tmp_path, """
+        def by_id(row_id, other_org_id, tenant_label):
+            return ColumnOnly.query.filter_by(id=row_id).first() or other_org_id or tenant_label
+    """)
+
+    assert [h["model"] for h in hits] == ["ColumnOnly"]
+
+
+def test_the_org_word_in_a_comment_does_not_clear_the_read(tmp_path):
+    _, hits = _scan(tmp_path, """
+        def by_id(row_id):
+            # organization_id is checked by the caller
+            return db.session.execute(db.select(ColumnOnly).where(ColumnOnly.id == row_id)).scalars()
+    """)
+
+    assert [h["model"] for h in hits] == ["ColumnOnly"]
+
+
+def test_a_keyword_org_filter_clears_the_read(tmp_path):
+    _, hits = _scan(tmp_path, """
+        def rows(org_id):
+            return ColumnOnly.query.filter_by(organization_id=org_id).all()
+    """)
+
+    assert hits == []
+
+
+def test_a_model_defined_twice_with_different_fencing_is_reported_not_silent(tmp_path):
+    gate.AMBIGUOUS.clear()
+    models = MODELS + """
+
+class Twice(TenantMixin, db.Model):
+    __tablename__ = "twice_things"
+
+
+class Twice(db.Model):
+    __tablename__ = "twice_things"
+"""
+    app = _tree(tmp_path, "def f():\n    return 1\n", models=models)
+    gate.scan(app=app, repo=tmp_path)
+
+    assert "Twice" in gate.AMBIGUOUS
+
+
 def test_a_lookup_by_id_is_flagged_even_with_a_predicate_nearby(tmp_path):
     """session.get has nowhere to put a predicate, so it always needs a reason."""
     _, hits = _scan(tmp_path, """
