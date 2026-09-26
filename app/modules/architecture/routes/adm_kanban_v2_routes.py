@@ -425,10 +425,14 @@ def update_task(card_ref):
 
     data = request.get_json() or {}
 
-    # Validate the assignee before changing anything: the audit decorator
-    # commits the session after this view returns, even on a refusal, so a
-    # field set before a 400 would still be saved.
-    #
+    # Every refusal below runs before any field is changed: the audit
+    # decorator commits the session after this view returns, even on a
+    # refusal, so a field set before a 400 would still be saved.
+    if "title" in data:
+        title = (data["title"] or "").strip()
+        if not title:
+            return jsonify({"success": False, "error": "Title cannot be empty"}), 400
+
     # The card drawer sends the stored assignee back unchanged on every save.
     # A card written before the organisation check may hold another
     # organisation's user id; an unchanged value is left as it is rather than
@@ -444,9 +448,6 @@ def update_task(card_ref):
         return jsonify({"success": False, "error": "Invalid assignee"}), 400
 
     if "title" in data:
-        title = (data["title"] or "").strip()
-        if not title:
-            return jsonify({"success": False, "error": "Title cannot be empty"}), 400
         card.title = title
 
     if "description" in data:

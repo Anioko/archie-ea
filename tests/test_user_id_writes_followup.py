@@ -505,6 +505,82 @@ def test_update_card_still_refuses_changing_to_a_different_foreign_assigned_to_i
     assert refreshed.assigned_to_id == theirs.id
 
 
+# -- a refused edit changes nothing -------------------------------------------------
+#
+# The audit decorator on both update routes commits the session after the view
+# returns, refusals included, so every refusal has to run before any field is
+# set on the card.
+
+
+def test_update_task_refused_for_empty_title_leaves_the_card_unchanged(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    card = _card(db_session, board, phase, mine)
+    card.description = "original"
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.patch(
+        f"/api/adm-kanban/v2/cards/task:{card.id}",
+        json={"description": "changed", "priority": "critical", "title": "   "},
+    )
+
+    assert resp.status_code == 400, resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Card"
+    assert refreshed.description == "original"
+    assert refreshed.priority != "critical"
+
+
+def test_update_card_refused_for_phase_change_leaves_the_card_unchanged(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    other_phase = _phase(db_session)
+    card = _card(db_session, board, phase, mine)
+    board.current_adm_phase = phase.code
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.put(
+        f"/api/adm-kanban/cards/{card.id}",
+        json={"title": "Renamed", "priority": "critical", "adm_phase_id": other_phase.id},
+    )
+
+    assert resp.status_code == 400, resp.get_json()
+    assert "scoped" in resp.get_json()["error"], resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Card"
+    assert refreshed.priority != "critical"
+    assert refreshed.adm_phase_id == phase.id
+
+
+def test_update_card_accepts_an_allowed_phase_change_with_other_fields(app, db_session, client, login_as):
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    card = _card(db_session, board, phase, mine)
+    db_session.commit()
+
+    login_as(client, mine)
+    resp = client.put(
+        f"/api/adm-kanban/cards/{card.id}",
+        json={"title": "Renamed", "adm_phase_id": phase.id},
+    )
+
+    assert resp.status_code == 200, resp.get_json()
+
+    from app.models.adm_kanban import KanbanCard
+
+    db_session.expire_all()
+    refreshed = KanbanCard.query.get(card.id)
+    assert refreshed.title == "Renamed"
+    assert refreshed.adm_phase_id == phase.id
+
+
 # -- kanban board API: batched assignee resolution stays fail-closed per card ---------
 
 

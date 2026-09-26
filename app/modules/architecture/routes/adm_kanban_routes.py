@@ -13,6 +13,7 @@ Provides:
 """
 
 from datetime import datetime
+from types import SimpleNamespace
 
 from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user, login_required
@@ -669,27 +670,10 @@ def update_card(card_id):
                 data["assigned_to_id"], current_org_id()
             ):
                 return jsonify({"success": False, "error": "Invalid assigned_to_id"}), 400
-        for field in [
-            "title",
-            "description",
-            "card_type",
-            "status",
-            "priority",
-            "archimate_element_ids",
-            "application_ids",
-            "system_ids",
-            "initiative_ids",
-            "affects_applications",
-            "affects_systems",
-            "implements_capabilities",
-            "depends_on",
-            "blocks",
-            "assigned_to_id",
-        ]:
-            if field in data:
-                setattr(card, field, data[field])
 
-        # Handle ADM phase change with intelligent validation
+        # Validate an ADM phase change before any field is changed: the audit
+        # decorator commits the session after this view returns, refusals
+        # included, so a field set before one of these 400s would be saved.
         if "adm_phase_id" in data:
             new_phase = ADMPhase.query.get(data["adm_phase_id"])
             if not new_phase:
@@ -721,8 +705,14 @@ def update_card(card_id):
 
             # Validate dependencies before phase change
             if card.adm_phase_id != data["adm_phase_id"]:
+                # Judge the card as it will be after this edit (depends_on /
+                # blocks from the request win) without touching it yet.
                 dependency_result = validate_card_dependencies(
-                    card, data["adm_phase_id"]
+                    SimpleNamespace(
+                        blocks=data.get("blocks", card.blocks),
+                        depends_on=data.get("depends_on", card.depends_on),
+                    ),
+                    data["adm_phase_id"],
                 )
                 if not dependency_result["valid"]:
                     return (
@@ -738,6 +728,28 @@ def update_card(card_id):
                         400,
                     )
 
+        for field in [
+            "title",
+            "description",
+            "card_type",
+            "status",
+            "priority",
+            "archimate_element_ids",
+            "application_ids",
+            "system_ids",
+            "initiative_ids",
+            "affects_applications",
+            "affects_systems",
+            "implements_capabilities",
+            "depends_on",
+            "blocks",
+            "assigned_to_id",
+        ]:
+            if field in data:
+                setattr(card, field, data[field])
+
+        # Apply the phase change validated above
+        if "adm_phase_id" in data:
             card.adm_phase_id = data["adm_phase_id"]
 
         # Handle status changes
