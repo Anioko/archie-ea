@@ -50,6 +50,8 @@ than trusting any one side's own stale number.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app.modules.intelligence.services.reason_codes import (
@@ -136,3 +138,12 @@ def test_membership_is_closed_no_inline_invention():
     assert made_up not in REASON_CODES
     with pytest.raises(UnknownReasonCodeError):
         validate_reason_code(made_up)
+
+
+@pytest.mark.parametrize("code", sorted(REASON_CODES))
+def test_every_member_is_lower_snake_case(code):
+    """Every member of the closed vocabulary follows one naming convention --
+    lower-case letters, digits and underscores, starting with a letter -- so a
+    later addition that drifts (camelCase, a stray hyphen, a leading digit)
+    is caught here rather than reaching an API response unnoticed."""
+    assert re.fullmatch(r"[a-z][a-z0-9_]*", code), code
