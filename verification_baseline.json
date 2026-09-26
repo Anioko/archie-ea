@@ -5,6 +5,7 @@
   "_note3": "updated 2026-09-20: sidebar_links 27 -> 28 is real link growth, not a corrected measurement. The Ask page has one front door, \"Ask a question\", first in every persona's My work, so platform_admin (the worst case) renders one more. The Twin map has no link of its own and is reached from the Ask page. SIDEBAR_LINK_BUDGET moves 30 -> 31 with it.",
   "_note4": "updated 2026-09-21: an Impact Analysis My-work link (fix/t104-impact-sidebar) was added for solution_architect and business_architect, matching enterprise_architect's existing one. business_architect now also measures 28, tying platform_admin rather than trailing it -- _note3's \"platform_admin (the worst case)\" no longer names the only worst case. sidebar_links stays 28 (no ratchet change); this note only corrects which role(s) that number describes.",
   "_note5": "updated 2026-09-25: two new shared Library links (\"Canvases\", \"Frameworks\") were added for every role. sidebar_links stays 28 -- business_architect and platform_admin (zero headroom) each lost one same-page duplicate link, and enterprise_architect (one link of headroom) lost \"Duplicate Detection\", moved to portfolio_manager's My work (ample headroom there); it stays in a sidebar zone, just not enterprise_architect's. See app/utils/role_access.py's SIDEBAR_LINK_BUDGET and per-role comments for detail. No ratchet or budget change.",
+  "_note6": "updated 2026-09-26: untenanted_reads 2990 -> 2988. Two request-supplied/stored user ids (an ARB audit action's acting-user lookup, an ADM audit event's actor lookup) that used to resolve with a bare db.session.get(User, ...)/User.query.get(...) now go through app.utils.tenant_users.user_in_org, which the gate does not flag as unfenced.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -13,6 +14,7 @@
     "air_gap": 0,
     "raw_sql_tenancy": 0,
     "tenant_scoping": 0,
+    "untenanted_reads": 2988,
     "llm_boundary": 0,
     "broken_surfaces": 0,
     "dynamic_link_prefixes": 0,
