@@ -104,7 +104,10 @@ answers 0 while the store holds rows. Confirmed against the database by hand
 tests/test_store_agreement_concepts.py, which also plants a difference that IS
 legitimate (a declared narrower scope reading less than the whole) and asserts
 it is NOT reported, and seeds two organisations to show that one organisation's
-rows never move the other's counts.
+rows never move the other's counts. The same file seeds a real disagreement
+in the test database (an application recording a cost the cost store does not
+hold), runs observe_tenant and compare(), and asserts red; then records the
+cost and asserts green -- and asks the gaps screens as a signed-in user.
 
 """
 from __future__ import annotations
@@ -199,31 +202,39 @@ CONCEPTS = {
                 "/api/v1/applications/?per_page=1",
                 extract="len:data.applications", scope="page"),
     ],
-    # "How many planned gaps does this organisation have": four stores and
-    # three screens. /capability-map/api/roadmap/gaps computes its gaps live
-    # from capability coverage rather than reading a store -- it is the
-    # "173 gaps" tile, and it is registered because a user reads it as the
-    # same answer as the register beside it.
+    # The gaps register holds two kinds of row (Gap.gap_kind), and the Gap
+    # docstring names counting both as one number as the original defect. So
+    # every surface here is compared only with surfaces showing the SAME kinds:
+    #
+    #   all                  every row of the register, both kinds -- what the
+    #                        two list screens read (neither filters gap_kind).
+    #   capability shortfall the roadmap statistics tile, which excludes
+    #                        plateau_transition (roadmap_api.get_statistics).
+    #   plateau transition   the difference between two plateaus -- the
+    #                        ArchiMate Gap element, which ImplementationGap
+    #                        also records (its own docstring), in a second
+    #                        store.
     "gaps": [
-        Surface("orm:ImplementationGap", "orm",
-                "app.models.implementation_planning.ImplementationGap",
-                tenant_via=[("architecture_id", "architecture_models")]),
         Surface("orm:Gap", "orm", "app.models.implementation_migration.Gap"),
-        Surface("orm:RoadmapGap", "orm", "app.models.roadmap_models.RoadmapGap",
-                tenant_via=[("source_application_id", "application_components"),
-                            ("source_capability_id", "unified_capabilities"),
-                            ("created_by", "users")]),
-        Surface("orm:ComplianceGap", "orm",
-                "app.models.compliance_models.ComplianceGap",
-                tenant_via=[("identified_by_id", "users"),
-                            ("assigned_to_id", "users")]),
         Surface("GET /implementation/api/gaps", "http",
                 "/implementation/api/gaps", extract="len:gaps"),
         Surface("GET /api/roadmap/gaps", "http",
                 "/api/roadmap/gaps", extract="len:gaps"),
-        Surface("GET /capability-map/api/roadmap/gaps", "http",
-                "/capability-map/api/roadmap/gaps",
-                extract="statistics.total_gaps"),
+        Surface("orm:Gap(capability shortfall)", "orm",
+                "app.models.implementation_migration.Gap",
+                filter_eq={"gap_kind": "capability_shortfall"},
+                scope="capability shortfall"),
+        Surface("GET /api/roadmap/statistics", "http",
+                "/api/roadmap/statistics", extract="gaps.total",
+                scope="capability shortfall"),
+        Surface("orm:Gap(plateau transition)", "orm",
+                "app.models.implementation_migration.Gap",
+                filter_eq={"gap_kind": "plateau_transition"},
+                scope="plateau transition"),
+        Surface("orm:ImplementationGap", "orm",
+                "app.models.implementation_planning.ImplementationGap",
+                tenant_via=[("architecture_id", "architecture_models")],
+                scope="plateau transition"),
     ],
     # T-002: "how many capabilities have a maturity value recorded" -- a real
     # freshness question, not a bare population count. The projection
@@ -267,10 +278,6 @@ CONCEPTS = {
                             ("application_component_id", "application_components"),
                             ("capability_id", "unified_capabilities"),
                             ("created_by", "users")]),
-        Surface("orm:TechnologyRoadmapInitiative", "orm",
-                "app.models.implementation_migration.TechnologyRoadmapInitiative",
-                tenant_via=[("solution_id", "solutions"),
-                            ("architecture_id", "architecture_models")]),
         Surface("orm:RoadmapWorkPackage", "orm",
                 "app.models.roadmap_models.RoadmapWorkPackage",
                 tenant_via=[("created_by", "users")]),
@@ -322,32 +329,41 @@ CONCEPTS = {
                 "app.models.architecture_decision.ArchitectureDecision"),
         Surface("orm:ArchitectureDecisionRecord", "orm",
                 "app.models.adr.ArchitectureDecisionRecord"),
-        # No organisation column and no foreign key to attribute a row by:
-        # reported as unscoped once it holds rows.
-        Surface("orm:DecisionLedger", "orm",
-                "app.models.decision_ledger.DecisionLedger"),
         Surface("GET /arb/api/decisions", "http",
                 "/arb/api/decisions?per_page=1", extract="total"),
     ],
-    "pending change proposals": [
+    # Pending proposals are three different record types, each with its own
+    # queue screen, until one approval queue lands. Each is its own question;
+    # each screen shows a declared slice of its own store only.
+    "pending AI change approvals": [
         Surface("orm:AIChatCRUDApproval(pending)", "orm",
                 "app.models.ai_chat_crud_approval.AIChatCRUDApproval",
                 filter_eq={"status": "PENDING"}),
+        # The signed-in user's own unexpired requests: declared narrower.
+        Surface("GET /ai-chat/approvals/pending", "http",
+                "/ai-chat/approvals/pending", extract="len:approvals",
+                scope="own unexpired requests"),
+    ],
+    "pending review queue items": [
         Surface("orm:ReviewQueueItem(pending)", "orm",
                 "app.models.confidence_review.ReviewQueueItem",
                 filter_eq={"status": "PENDING"}),
+        Surface("GET /api/confidence/queue?status=pending", "http",
+                "/api/confidence/queue?status=pending&limit=100",
+                extract="len:items", scope="first 100"),
+    ],
+    "pending relationship suggestions": [
         Surface("orm:RelationshipSuggestion(pending)", "orm",
                 "app.models.archimate_core.RelationshipSuggestion",
                 filter_eq={"status": "pending"},
                 tenant_via=[("source_element_id", "archimate_elements"),
                             ("target_element_id", "archimate_elements")]),
-        Surface("orm:SolutionBlueprintProposal(proposed)", "orm",
-                "app.models.solution_blueprint_proposal.SolutionBlueprintProposal",
-                filter_eq={"status": "proposed"}),
-        # The signed-in user's own unexpired requests: declared narrower.
-        Surface("GET /ai-chat/approvals/pending", "http",
-                "/ai-chat/approvals/pending", extract="len:approvals",
-                scope="own unexpired requests"),
+        Surface("GET /capability-map/api/archimate/relationship-suggestions",
+                "http",
+                "/capability-map/api/archimate/relationship-suggestions"
+                "?status=pending&limit=100",
+                extract="len:suggestions",
+                scope="confidence at least 0.3, first 100"),
     ],
     "applications with a recorded annual cost": [
         Surface("orm:ApplicationComponent(annual cost recorded)", "orm",
@@ -391,6 +407,24 @@ CONCEPTS = {
 #                     detail rows hanging off analysis rows (a parent/child
 #                     cardinality, so unequal counts are correct). Registering
 #                     them under "gaps" would manufacture findings.
+#   live gaps         /capability-map/api/roadmap/gaps (the "173 gaps"
+#                     tile) computes gaps live from capability coverage
+#                     rather than reading a store, and RoadmapGap holds the
+#                     rows converted out of that analysis. Whether one of
+#                     those is the same "gap" as a row of the gaps register
+#                     is a product decision about what a gap is, not a gate:
+#                     registering either would manufacture findings.
+#   compliance gaps   ComplianceGap is a control a compliance framework
+#                     requires and the organisation does not meet -- not an
+#                     architecture gap.
+#   roadmap           TechnologyRoadmapInitiative is a technology roadmap
+#   initiatives       initiative, not a work package.
+#   decision ledger   DecisionLedger is an append-only log of governance
+#                     events, several per capability; it is not a register of
+#                     decisions, so its row count answers another question.
+#   blueprint         SolutionBlueprintProposal has no organisation-wide
+#   proposals         queue screen (it is read per solution), so there is no
+#                     second surface asking its question.
 #   RAID risks        RaidItem has no risk kind. Its kinds are issue and
 #                     dependency; the R of RAID is the Risk store registered
 #                     under "risks" (see RaidItem's own docstring).
@@ -721,7 +755,8 @@ def _observe_concepts(concepts, db, client, org_id, http, notes):
             elif not http:
                 continue
             else:
-                count, why = _ask(surface, db, client, org_id)
+                with _fresh_identity(org_id):
+                    count, why = _ask(surface, db, client, org_id)
                 unscoped = False
             if count is None:
                 notes.append("  %s [unanswered] %s: %s"
@@ -730,6 +765,44 @@ def _observe_concepts(concepts, db, client, org_id, http, notes):
             rows.append((surface.name, count, surface.scope, unscoped))
         observations[concept] = rows
     return observations
+
+
+class _fresh_identity:
+    """Ask a screen as the signed-in session, not as whoever `g` remembers.
+
+    The test client reuses an app context that is already active, and with it
+    `g`. Flask-Login caches the resolved user there (`_login_user`) and the
+    tenant middleware caches the organisation, so a screen asked inside the
+    caller's context runs as whatever identity that context resolved first --
+    measured: an anonymous user, cached before the session was registered,
+    turned every screen into a 302 to the login page. Clear both before the
+    request and put the organisation back after it, for the stores that follow.
+    """
+
+    _CACHED = ("_login_user", "_current_user", "current_org_id", "current_org")
+
+    def __init__(self, org_id):
+        self.org_id = org_id
+
+    def _clear(self):
+        from flask import g, has_app_context
+
+        if not has_app_context():
+            return None
+        for cached in self._CACHED:
+            if hasattr(g, cached):
+                delattr(g, cached)
+        return g
+
+    def __enter__(self):
+        self._clear()
+        return self
+
+    def __exit__(self, *exc):
+        g = self._clear()
+        if g is not None:
+            g.current_org_id = self.org_id
+        return False
 
 
 def _session_scoped(model):

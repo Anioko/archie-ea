@@ -46,7 +46,6 @@ EXPECTED = {
     "work packages": [
         "app.models.unified_work_package.UnifiedWorkPackage",
         "app.models.implementation_migration.WorkPackage",
-        "app.models.implementation_migration.TechnologyRoadmapInitiative",
         "app.models.roadmap_models.RoadmapWorkPackage",
         "app.models.implementation_planning.ImplementationWorkPackage",
         "/enterprise/api/work-packages",
@@ -57,11 +56,9 @@ EXPECTED = {
     ],
     "gaps": [
         "app.models.implementation_migration.Gap",
-        "app.models.roadmap_models.RoadmapGap",
         "app.models.implementation_planning.ImplementationGap",
-        "app.models.compliance_models.ComplianceGap",
-        "/capability-map/api/roadmap/gaps",
         "/api/roadmap/gaps",
+        "/api/roadmap/statistics",
         "/implementation/api/gaps",
     ],
     "risks": [
@@ -76,15 +73,19 @@ EXPECTED = {
     "architecture decisions": [
         "app.models.architecture_decision.ArchitectureDecision",
         "app.models.adr.ArchitectureDecisionRecord",
-        "app.models.decision_ledger.DecisionLedger",
         "/arb/api/decisions",
     ],
-    "pending change proposals": [
+    "pending AI change approvals": [
         "app.models.ai_chat_crud_approval.AIChatCRUDApproval",
-        "app.models.confidence_review.ReviewQueueItem",
-        "app.models.archimate_core.RelationshipSuggestion",
-        "app.models.solution_blueprint_proposal.SolutionBlueprintProposal",
         "/ai-chat/approvals/pending",
+    ],
+    "pending review queue items": [
+        "app.models.confidence_review.ReviewQueueItem",
+        "/api/confidence/queue",
+    ],
+    "pending relationship suggestions": [
+        "app.models.archimate_core.RelationshipSuggestion",
+        "/capability-map/api/archimate/relationship-suggestions",
     ],
     "applications with a recorded annual cost": [
         "app.models.application_portfolio.ApplicationComponent",
@@ -100,10 +101,26 @@ EXPECTED = {
     ],
 }
 
+# Stores and screens that answer a DIFFERENT question from every concept they
+# resemble, and so must never be registered: each would manufacture findings.
+NOT_REGISTERED = {
+    # computed live from capability coverage; what a gap is here is a product
+    # decision, not a gate's
+    "/capability-map/api/roadmap/gaps",
+    # rows converted out of that live analysis
+    "app.models.roadmap_models.RoadmapGap",
+    # a compliance control not met, not an architecture gap
+    "app.models.compliance_models.ComplianceGap",
+    # a technology roadmap initiative, not a work package
+    "app.models.implementation_migration.TechnologyRoadmapInitiative",
+    # append-only governance events, several per capability
+    "app.models.decision_ledger.DecisionLedger",
+}
+
 # Surfaces whose store has no organisation column, no link to attribute a row
 # by, and no shared declaration. Each is reported as unscoped once it holds
 # rows; adding one is a decision made here, in review.
-KNOWN_UNSCOPED = {"orm:DecisionLedger"}
+KNOWN_UNSCOPED = set()
 
 
 def _targets(concept):
@@ -115,6 +132,27 @@ def test_registry_asks_every_store_and_screen(concept):
     assert concept in gate.CONCEPTS, "%r is not registered" % concept
     missing = set(EXPECTED[concept]) - _targets(concept)
     assert not missing, "%r does not ask %s" % (concept, sorted(missing))
+
+
+def test_different_questions_are_not_registered():
+    registered = set()
+    for concept in gate.CONCEPTS:
+        registered |= _targets(concept)
+    assert not (NOT_REGISTERED & registered), sorted(NOT_REGISTERED & registered)
+
+
+def test_gaps_compare_only_surfaces_showing_the_same_kinds():
+    by_scope = {}
+    for surface in gate.CONCEPTS["gaps"]:
+        by_scope.setdefault(surface.scope, set()).add(surface.name)
+    assert by_scope == {
+        "all": {"orm:Gap", "GET /implementation/api/gaps",
+                "GET /api/roadmap/gaps"},
+        "capability shortfall": {"orm:Gap(capability shortfall)",
+                                 "GET /api/roadmap/statistics"},
+        "plateau transition": {"orm:Gap(plateau transition)",
+                               "orm:ImplementationGap"},
+    }
 
 
 def test_every_orm_surface_resolves_and_is_tenant_scoped(app):
@@ -209,7 +247,11 @@ def test_probe_agreeing_surfaces_pass(tmp_path, concept):
     assert count == 0, out
 
 
-@pytest.mark.parametrize("concept", sorted(EXPECTED))
+def _with_two_whole_population_surfaces():
+    return sorted(c for c in EXPECTED if len(_whole_population(c)) >= 2)
+
+
+@pytest.mark.parametrize("concept", _with_two_whole_population_surfaces())
 def test_probe_disagreement_names_both_surfaces_and_numbers(tmp_path, concept):
     first, second = _whole_population(concept)[:2]
     count, out = _run_probe(tmp_path, _probe(concept, 7, {second: 10}))
@@ -228,29 +270,47 @@ def test_probe_all_zero_is_no_evidence(tmp_path, concept):
     assert "%s [no-evidence]" % concept in out
 
 
-def test_probe_narrower_scope_exceeding_the_whole_is_reported(tmp_path):
-    probe = _probe("pending change proposals", 3)
-    for row in probe["pending change proposals"]:
-        if row["scope"] != "all":
-            row["count"] = 9
+@pytest.mark.parametrize("concept", sorted(
+    c for c in EXPECTED
+    if any(s.scope != "all" for s in gate.CONCEPTS[c])))
+def test_probe_narrower_scope_exceeding_the_whole_is_reported(tmp_path, concept):
+    probe = _probe(concept, 3)
+    narrower = [row for row in probe[concept] if row["scope"] != "all"]
+    narrower[0]["count"] = 9
+    count, out = _run_probe(tmp_path, probe)
+    assert count >= 1, out
+    assert "%s reports 9 under the declared narrowing" % narrower[0]["surface"] in out
+
+
+def test_probe_different_gap_kinds_are_not_a_disagreement(tmp_path):
+    # 5 rows in the register: 3 capability shortfalls and 2 plateau
+    # transitions. Each kind agrees with itself, so nothing is reported.
+    counts = {"all": 5, "capability shortfall": 3, "plateau transition": 2}
+    probe = {"gaps": [{"surface": s.name, "count": counts[s.scope],
+                       "scope": s.scope} for s in gate.CONCEPTS["gaps"]]}
+    count, out = _run_probe(tmp_path, probe)
+    assert count == 0, out
+
+    # One plateau transition the ArchiMate Gap store does not hold is a real
+    # disagreement between two stores answering the same question.
+    for row in probe["gaps"]:
+        if row["surface"] == "orm:ImplementationGap":
+            row["count"] = 1
     count, out = _run_probe(tmp_path, probe)
     assert count == 1, out
-    assert "MORE than the unfiltered population" in out
+    assert "orm:Gap(plateau transition)=2, orm:ImplementationGap=1" in out
 
 
 def test_probe_unscoped_store_with_rows_is_a_finding(tmp_path):
     probe = _probe("architecture decisions", 4)
-    for row in probe["architecture decisions"]:
-        if row["surface"] == "orm:DecisionLedger":
-            row["count"] = 11
-            row["unscoped"] = True
+    unscoped = {"surface": "orm:SomeUnscopedStore", "count": 11,
+                "scope": "all", "unscoped": True}
+    probe["architecture decisions"].append(unscoped)
     count, out = _run_probe(tmp_path, probe)
     assert count == 1, out
-    assert "[unscoped-store] orm:DecisionLedger holds 11 rows" in out
+    assert "[unscoped-store] orm:SomeUnscopedStore holds 11 rows" in out
 
-    for row in probe["architecture decisions"]:
-        if row["surface"] == "orm:DecisionLedger":
-            row["count"] = 0
+    unscoped["count"] = 0
     count, out = _run_probe(tmp_path, probe)
     assert count == 0, out
 
@@ -304,7 +364,7 @@ def _make_user(db_session, org):
 
     user = User(email="sa-%s@example.com" % uuid.uuid4().hex[:10],
                 first_name="Store", last_name="Agreement",
-                organization_id=org.id)
+                organization_id=org.id, confirmed=True)
     user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
@@ -319,7 +379,7 @@ def _counts(app, tenant_ctx, org_id):
             app, db, org_id, http=False,
             concepts={k: gate.CONCEPTS[k] for k in (
                 "application owners", "applications with a recorded annual cost",
-                "risks", "work packages", "pending change proposals",
+                "risks", "work packages", "pending AI change approvals",
                 "architecture decisions")})
     return ({concept: {row[0]: row[1] for row in rows if len(row) < 4 or not row[3]}
              for concept, rows in observations.items()},
@@ -344,8 +404,9 @@ def test_two_organisations_never_change_each_others_counts(
         "orm:ApplicationCost(applications)"] == 1
     assert before["risks"]["orm:Risk"] == 3
     assert before["work packages"]["orm:RoadmapWorkPackage"] == 1
-    assert before["pending change proposals"]["orm:AIChatCRUDApproval(pending)"] == 2
-    assert unscoped["architecture decisions"] == {"orm:DecisionLedger"}
+    assert before["pending AI change approvals"][
+        "orm:AIChatCRUDApproval(pending)"] == 2
+    assert all(not names for names in unscoped.values()), unscoped
 
     _seed(db_session, org_b, user_b, owners=5, costs=4, risks=6, packages=3,
           approvals=1)
@@ -358,7 +419,7 @@ def test_two_organisations_never_change_each_others_counts(
         "orm:ApplicationCost(applications)"] == 4
     assert b_counts["risks"]["orm:Risk"] == 6
     assert b_counts["work packages"]["orm:RoadmapWorkPackage"] == 3
-    assert b_counts["pending change proposals"][
+    assert b_counts["pending AI change approvals"][
         "orm:AIChatCRUDApproval(pending)"] == 1
 
 
@@ -382,3 +443,81 @@ def test_row_no_link_attributes_counts_for_no_organisation(
             surface, db, org.id)
     assert (count, why, unscoped) == (1, None, False)
     assert unattributed >= 1
+
+
+# ---------------------------------------------------------------------------
+# Live: seeded rows, the gate's own observation and comparison, red and green.
+# ---------------------------------------------------------------------------
+def _live_findings(app, tenant_ctx, org_id, user, concepts, http):
+    from app import db
+
+    with tenant_ctx(org_id):
+        observations, notes = gate.observe_tenant(
+            app, db, org_id, user, http=http,
+            concepts={k: gate.CONCEPTS[k] for k in concepts})
+    findings, more = gate.compare(observations)
+    return findings, notes + more, observations
+
+
+def test_live_seeded_disagreement_is_red_and_consistent_state_is_green(
+        app, db_session, make_org, tenant_ctx):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.enterprise_intelligence import ApplicationCost
+
+    concept = "applications with a recorded annual cost"
+    org = make_org("store-live")
+    user = _make_user(db_session, org)
+    application = ApplicationComponent(
+        name="Costed %s" % uuid.uuid4().hex[:6], organization_id=org.id,
+        license_cost=1200)
+    db_session.add(application)
+    db_session.flush()
+
+    # The application records a cost; the cost store holds nothing for it.
+    findings, notes, observations = _live_findings(
+        app, tenant_ctx, org.id, user, [concept], http=False)
+    assert len(findings) == 1, (findings, notes, observations)
+    assert "[store-disagreement]" in findings[0]
+    assert "orm:ApplicationComponent(annual cost recorded)=1" in findings[0]
+    assert "orm:ApplicationCost(applications)=0" in findings[0]
+
+    # Record the same cost in the cost store: both stores answer 1.
+    db_session.add(ApplicationCost(application_id=application.id,
+                                   fiscal_year=2026, total_cost=1200))
+    db_session.flush()
+    findings, notes, observations = _live_findings(
+        app, tenant_ctx, org.id, user, [concept], http=False)
+    assert findings == [], (findings, notes)
+    assert {row[0]: row[1] for row in observations[concept]} == {
+        "orm:ApplicationComponent(annual cost recorded)": 1,
+        "orm:ApplicationCost(applications)": 1}
+
+
+def test_live_gap_kinds_agree_across_stores_and_screens(
+        app, db_session, make_org, tenant_ctx):
+    """Screens are asked too: a register holding both kinds is not red."""
+    from app.models.implementation_migration import Gap
+
+    org = make_org("store-gaps")
+    user = _make_user(db_session, org)
+    for i in range(3):
+        db_session.add(Gap(name="Shortfall %s" % i, organization_id=org.id,
+                           gap_kind="capability_shortfall"))
+    db_session.flush()
+
+    findings, notes, observations = _live_findings(
+        app, tenant_ctx, org.id, user, ["gaps"], http=True)
+    counts = {row[0]: row[1] for row in observations["gaps"]}
+    assert findings == [], (findings, notes)
+    assert counts["orm:Gap"] == 3, (counts, notes)
+    assert counts["orm:Gap(capability shortfall)"] == 3, counts
+    assert counts.get("GET /api/roadmap/statistics") == 3, (counts, notes)
+    # The implementation-planning module is deprecated and answers 404 unless
+    # its feature flag is switched on; a screen nobody can open is reported
+    # unanswered, never compared.
+    if "GET /implementation/api/gaps" in counts:
+        assert counts["GET /implementation/api/gaps"] == 3, counts
+    else:
+        assert any("GET /implementation/api/gaps: HTTP 404" in n
+                   for n in notes), notes
+    assert counts.get("GET /api/roadmap/gaps") == 3, (counts, notes)
