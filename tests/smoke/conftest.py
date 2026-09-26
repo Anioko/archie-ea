@@ -171,11 +171,25 @@ def live_server(request, ai_protocol_stub, app):
     Integrity - which is precisely the class of defect these journeys exist to
     catch.
     """
-    port = _free_port()
     env = dict(os.environ)
-    _require_explicit_test_database(env)
     if ai_protocol_stub is not None:
         env = ai_protocol_stub.child_environment(env)
+    server = start_app_server(request, env, app)
+    yield server
+
+    if request.session.testsfailed:
+        print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
+
+
+def start_app_server(request, env, app=None):
+    """Boot the application as a subprocess with *env*; stopped at *request*'s end.
+
+    Shared by ``live_server`` and by journeys that need a server configured
+    differently (a payment provider stub, say) without changing the shared one.
+    """
+    port = _free_port()
+    env = dict(env)
+    _require_explicit_test_database(env)
     env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
     env.setdefault("FLASK_CONFIG", "testing")
     env["FLASK_DEBUG"] = "0"
@@ -272,11 +286,7 @@ def live_server(request, ai_protocol_stub, app):
     except Exception as exc:
         print("[smoke] live_server at %s NOT serving: %s" % (base, exc))
 
-    server = SmokeServer(base, log_path, app)
-    yield server
-
-    if request.session.testsfailed:
-        print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
+    return SmokeServer(base, log_path, app)
 
 
 def _delete_api_settings(**filters):
@@ -388,6 +398,12 @@ def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
 
         org = Organization(name="Smoke Org %s" % suffix, slug="smoke-%s" % suffix)
         db.session.add(org)
+        db.session.flush()
+        # One person per archetype is more than Community admits; the plan is
+        # recorded where every limit is read from, the subscriptions row.
+        from app.services.billing_plans import set_contract_plan
+
+        set_contract_plan(org, "enterprise", None)
         db.session.commit()
         out["ids"]["org"] = org.id
 

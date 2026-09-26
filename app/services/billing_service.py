@@ -113,6 +113,11 @@ def _api():
     if not key:
         raise BillingNotConfigured(NOT_CONFIGURED)
     stripe.api_key = key
+    # A local provider mock (stripe-mock, or the browser journeys' stub) in
+    # place of the provider's own API. Unset in production.
+    base = os.environ.get("STRIPE_API_BASE")
+    if base:
+        stripe.api_base = base
     return stripe
 
 
@@ -365,7 +370,7 @@ class BillingService:
     def list_invoices(cls, org, limit: int = 24) -> List[Dict]:
         """The organisation's invoices, newest first, as the provider holds them."""
         api = _api()
-        sub = billing_plans.ensure_subscription(org)
+        sub = billing_plans.current_subscription(org)
         if not sub.stripe_customer_id:
             return []
         result = _call(api.Invoice.list, customer=sub.stripe_customer_id, limit=limit)
@@ -393,7 +398,7 @@ class BillingService:
     def get_billing_details(cls, org) -> Dict:
         """Billing e-mail and purchase-order number held on the customer."""
         api = _api()
-        sub = billing_plans.ensure_subscription(org)
+        sub = billing_plans.current_subscription(org)
         if not sub.stripe_customer_id:
             return {"email": None, "po_number": None, "country": None}
         customer = _call(api.Customer.retrieve, sub.stripe_customer_id)
@@ -545,8 +550,7 @@ class BillingService:
                     event_type, obj.get("id"), sub.organization_id, sub.stripe_subscription_id,
                 )
                 return
-            if created is not None and sub.last_event_at is not None and created < sub.last_event_at:
-                logger.info("Ignoring %s older than the last applied event", event_type)
+            if cls._older_than_applied(sub, event_type, created):
                 return
             if event_type == "customer.subscription.deleted":
                 cls._apply_deleted(sub, obj)
@@ -556,13 +560,26 @@ class BillingService:
                 sub.last_event_at = created
             return
 
-        # invoice.paid / invoice.payment_failed
+        # invoice.paid / invoice.payment_failed. Ordered like the subscription
+        # events: a failure delivered after the payment that recovered it must
+        # not put a recovered subscription back to past due.
         if _invoice_subscription_id(obj) != sub.stripe_subscription_id or not sub.stripe_subscription_id:
+            return
+        if cls._older_than_applied(sub, event_type, created):
             return
         if event_type == "invoice.payment_failed":
             sub.status = SubscriptionStatus.past_due
         elif sub.status == SubscriptionStatus.past_due:
             sub.status = SubscriptionStatus.active
+        if created is not None:
+            sub.last_event_at = created
+
+    @staticmethod
+    def _older_than_applied(sub, event_type: str, created: Optional[datetime]) -> bool:
+        if created is not None and sub.last_event_at is not None and created < sub.last_event_at:
+            logger.info("Ignoring %s older than the last applied event", event_type)
+            return True
+        return False
 
     @staticmethod
     def _apply_deleted(sub, obj: Dict) -> None:

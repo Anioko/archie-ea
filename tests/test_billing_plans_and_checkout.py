@@ -147,22 +147,24 @@ def _fresh(db_session, org):
 
 
 def test_limits_are_enforced_per_organisation(db_session):
-    from app.services.billing_plans import PlanLimitReached, enforce_user_limit, user_limit_status
+    from app.services.billing_plans import PlanLimitReached, user_limit_status
 
     full = _org(db_session, "full")
     roomy = _org(db_session, "roomy")
     for _ in range(3):
         _user(db_session, full)
     _user(db_session, roomy)
+    db_session.commit()
 
     status = user_limit_status(full.id)
     assert (status["plan_name"], status["limit"], status["used"]) == ("Community", 3, 3)
     assert status["limit_reached"] is True
     with pytest.raises(PlanLimitReached):
-        enforce_user_limit(full.id)
+        _user(db_session, full)
+    db_session.rollback()
 
     assert user_limit_status(roomy.id)["limit_reached"] is False
-    enforce_user_limit(roomy.id)
+    _user(db_session, roomy)
 
 
 def test_team_counts_editors_and_leaves_readers_free(db_session):
@@ -507,7 +509,14 @@ def test_returning_with_another_organisations_checkout_is_refused(app, db_sessio
         resp = client.get("/admin/billing/checkout/complete?session_id=cs_other", follow_redirects=True)
 
     assert "This payment belongs to a different organisation." in resp.get_data(as_text=True)
-    assert _fresh(db_session, org).plan == SubscriptionPlan.free
+    from app.models.subscription import Subscription
+    from app.services.billing_plans import user_limit_status
+
+    db_session.expire_all()
+    # Nothing was written: not the other organisation's plan, and not even a
+    # subscriptions row, since showing the billing page only reads.
+    assert Subscription.query.filter_by(organization_id=org.id).first() is None
+    assert user_limit_status(org.id)["plan_key"] == SubscriptionPlan.free.value
 
 
 def test_administrator_downgrades_from_the_billing_page(app, db_session, client, login_as, billing, monkeypatch):
@@ -675,3 +684,119 @@ def test_an_event_is_matched_by_customer_never_by_its_own_org_reference(app, db_
     sub = _fresh(db_session, org)
     assert sub.plan == SubscriptionPlan.free and sub.stripe_subscription_id is None
     assert BillingEvent.query.filter_by(organization_id=org.id).count() == 0
+
+
+def test_a_late_payment_failure_does_not_mark_a_recovered_subscription_past_due(app, db_session, client, billing):
+    from app.models.subscription import SubscriptionPlan, SubscriptionStatus
+
+    org = _org(db_session, "lateinv")
+    _subscription(db_session, org, plan=SubscriptionPlan.startup,
+                  stripe_customer_id="cus_late", stripe_subscription_id="sub_late")
+    db_session.commit()
+    invoice = {"customer": "cus_late", "subscription": "sub_late"}
+    now = int(time.time())
+
+    with app.app_context():
+        _post_event(client, _event("invoice.paid", invoice, created=now))
+        # The failure that payment recovered from, delivered afterwards.
+        late = _post_event(client, _event("invoice.payment_failed", invoice, created=now - 600))
+    assert late.status_code == 200
+    assert _fresh(db_session, org).status == SubscriptionStatus.active
+
+    with app.app_context():
+        _post_event(client, _event("invoice.payment_failed", invoice, created=now + 600))
+    assert _fresh(db_session, org).status == SubscriptionStatus.past_due
+
+
+def _platform_admin(db_session):
+    org = _org(db_session, "platform")
+    admin = _user(db_session, org, admin=True)
+    admin.is_platform_admin = True
+    db_session.commit()
+    return admin
+
+
+def test_reading_limits_on_list_and_billing_pages_writes_nothing(app, db_session, client, login_as, no_billing):
+    from app.models.subscription import Subscription
+
+    org, admin = _admin_org(db_session, "readonly")
+    platform = _platform_admin(db_session)
+    with app.app_context():
+        login_as(client, admin)
+        assert client.get("/admin/billing/").status_code == 200
+        login_as(client, admin)
+        assert client.get("/admin/new-user").status_code == 200
+        login_as(client, platform)
+        assert client.get("/admin/organizations").status_code == 200
+        login_as(client, platform)
+        assert client.get(f"/admin/organizations/{org.id}").status_code == 200
+    db_session.expire_all()
+    assert Subscription.query.filter_by(organization_id=org.id).first() is None
+
+
+def test_the_organisation_form_reads_and_writes_the_subscription(app, db_session, client, login_as, no_billing):
+    from app.models.organization import Organization
+    from app.models.subscription import SubscriptionPlan
+
+    org, _admin = _admin_org(db_session, "form", plan=SubscriptionPlan.startup, seats_purchased=10)
+    org.plan = "enterprise"  # a stale retired value must not be what the form shows
+    db_session.commit()
+    platform = _platform_admin(db_session)
+
+    with app.app_context():
+        login_as(client, platform)
+        page = client.get(f"/admin/organizations/{org.id}/edit").get_data(as_text=True)
+    assert '<option value="startup" selected>' in page
+    assert '<option value="enterprise" selected>' not in page
+
+    with app.app_context():
+        login_as(client, platform)
+        resp = client.post(f"/admin/organizations/{org.id}/edit",
+                           data={"name": org.name, "slug": org.slug, "plan": "team", "seats": "25"})
+    assert resp.status_code == 302
+    sub = _fresh(db_session, org)
+    assert (sub.plan, sub.seats_purchased) == (SubscriptionPlan.team, 25)
+    assert db_session.get(Organization, org.id).plan == "enterprise"  # not written
+
+
+def test_the_organisation_form_does_not_edit_a_plan_paid_online(app, db_session, client, login_as, no_billing):
+    from app.models.subscription import SubscriptionPlan
+
+    org, _admin = _admin_org(db_session, "formpaid", plan=SubscriptionPlan.startup, seats_purchased=1,
+                             stripe_customer_id="cus_formpaid", stripe_subscription_id="sub_formpaid")
+    platform = _platform_admin(db_session)
+    with app.app_context():
+        login_as(client, platform)
+        page = client.get(f"/admin/organizations/{org.id}/edit").get_data(as_text=True)
+        login_as(client, platform)
+        client.post(f"/admin/organizations/{org.id}/edit",
+                    data={"name": org.name, "slug": org.slug, "plan": "enterprise"})
+    assert 'data-testid="org-plan-paid-online"' in page and 'name="plan"' not in page
+    assert _fresh(db_session, org).plan == SubscriptionPlan.startup
+
+
+def test_admin_losing_the_race_for_the_last_place_sees_the_limit(app, db_session, client, login_as, no_billing, monkeypatch):
+    """The form's own pre-check saw a free place; the save is still refused."""
+    from app.models.user import Role, User
+    from app.services import billing_plans
+
+    org, admin = _admin_org(db_session, "race")
+    _user(db_session, org)
+    _user(db_session, org)
+    db_session.commit()
+    real = billing_plans.user_limit_status
+    monkeypatch.setattr(billing_plans, "user_limit_status",
+                        lambda org_id: {**real(org_id), "limit_reached": False})
+    role = Role.query.filter_by(name="User").first()
+    password = uuid.uuid4().hex
+    email = f"race-{uuid.uuid4().hex[:8]}@example.com"
+    with app.app_context():
+        login_as(client, admin)
+        resp = client.post("/admin/new-user", data={
+            "role": str(role.id), "first_name": "Late", "last_name": "Comer", "email": email,
+            "password": password, "password2": password})
+
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Your organisation has reached its plan limit." in html
+    assert User.query.filter_by(email=email).first() is None

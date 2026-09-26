@@ -159,102 +159,115 @@ def effective_plan(sub) -> Plan:
     return get_plan(sub.plan.value if sub.plan is not None else None)
 
 
-def _contract_plan(org):
-    """(SubscriptionPlan, seats) for the plan a platform administrator set on
-    the organisation form (``organizations.plan`` / ``max_users``)."""
+def _seed_plan(legacy_plan: Optional[str], legacy_max_users: Optional[int]):
+    """(SubscriptionPlan, seats) for an organisation that has no subscriptions
+    row yet: one created before billing existed, whose plan a platform
+    administrator had recorded on ``organizations.plan`` / ``max_users``.
+
+    Those two columns are read only here, and only until the organisation's
+    subscriptions row exists; nothing writes them any more.
+    """
     from app.models.subscription import SubscriptionPlan
 
-    legacy = (getattr(org, "plan", None) or "").lower()
+    legacy = (legacy_plan or "").lower()
     if legacy == "enterprise":
-        return SubscriptionPlan.enterprise, org.max_users or 0
+        return SubscriptionPlan.enterprise, legacy_max_users or 0
     if legacy in ("pro", "team"):
-        return SubscriptionPlan.team, org.max_users or _BY_KEY["team"].default_seats
+        return SubscriptionPlan.team, legacy_max_users or _BY_KEY["team"].default_seats
     if legacy == "startup":
         return SubscriptionPlan.startup, _BY_KEY["startup"].user_limit
     return SubscriptionPlan.free, _BY_KEY["free"].user_limit
 
 
-def ensure_subscription(org):
-    """Return the organisation's subscriptions row, creating it when absent.
+def current_subscription(org):
+    """The organisation's subscriptions row, without writing anything.
 
-    An organisation created before billing existed carries its plan only on
-    ``organizations.plan`` (set by a platform administrator). The first time
-    its limits are read, that value is copied onto the subscriptions row once;
-    from then on the subscriptions row is the only answer.
+    When the row does not exist yet, returns an unsaved row holding the plan
+    it would be created with, so pages that only read (the billing page, the
+    organisation list, the add-user forms) never write.
     """
-    from sqlalchemy.exc import IntegrityError
-
-    from app import db
     from app.models.subscription import Subscription, SubscriptionStatus
 
     sub = _subscription_row(org.id)
     if sub is not None:
         return sub
-
-    plan, seats = _contract_plan(org)
-    sub = Subscription(
-        organization_id=org.id,
-        plan=plan,
-        status=SubscriptionStatus.active,
-        seats_purchased=seats,
+    plan, seats = _seed_plan(getattr(org, "plan", None), getattr(org, "max_users", None))
+    return Subscription(
+        organization_id=org.id, plan=plan, status=SubscriptionStatus.active, seats_purchased=seats
     )
-    db.session.add(sub)
+
+
+def ensure_subscription(org):
+    """Return the organisation's subscriptions row, creating it when absent.
+
+    For write paths only (checkout, provider events, plan changes): the row is
+    flushed, not committed, and is committed with the caller's own change.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from app import db
+
+    sub = _subscription_row(org.id)
+    if sub is not None:
+        return sub
+    sub = current_subscription(org)
     try:
-        db.session.commit()
+        with db.session.begin_nested():
+            db.session.add(sub)
     except IntegrityError:
         # Another request created it first.
-        db.session.rollback()
         sub = _subscription_row(org.id)
     return sub
 
 
-def apply_contract_plan(org) -> bool:
-    """Copy a plan a platform administrator set on the organisation form onto
-    the subscriptions row. Returns False, changing nothing, while the
-    organisation pays online: the payment provider owns that plan.
+def set_contract_plan(org, plan_key: str, seats: Optional[int]) -> bool:
+    """Record a plan a platform administrator sold by contract on the
+    organisation's subscriptions row. Returns False, changing nothing, while
+    the organisation pays online: the payment provider owns that plan.
+    The caller commits.
     """
-    from app import db
-    from app.models.subscription import SubscriptionStatus
+    from app.models.subscription import SubscriptionPlan, SubscriptionStatus
+    from app.services.billing_service import BillingService
 
     sub = ensure_subscription(org)
-    if sub.stripe_subscription_id and sub.status != SubscriptionStatus.cancelled:
+    if BillingService.has_live_subscription(sub):
         return False
-    sub.plan, sub.seats_purchased = _contract_plan(org)
+    plan = get_plan(plan_key)
+    sub.plan = SubscriptionPlan[plan.key]
+    if plan.per_seat:
+        sub.seats_purchased = seats if seats and seats > 0 else plan.default_seats
+    else:
+        sub.seats_purchased = plan.user_limit or 0
     sub.status = SubscriptionStatus.active
-    db.session.commit()
     return True
 
 
-def _count_members(org_id: int, counts: str) -> int:
-    from app import db
+def _limit_for(plan: Plan, seats: Optional[int]) -> Optional[int]:
+    return seats if plan.per_seat else plan.user_limit
+
+
+def _count_members(connection, org_id: int, counts: str) -> int:
+    """People (or, on an editors plan, people who are not read-only) in *org_id*.
+
+    Runs on a Core connection so it gives the same answer inside a flush.
+    """
+    from sqlalchemy import func, select
+
     from app.models.org_role import OrgRole
     from app.models.user import User
 
-    query = db.session.query(User.id).filter(User.organization_id == org_id)
+    users = User.__table__
+    stmt = select(func.count()).select_from(users).where(users.c.organization_id == org_id)
     if counts == "editors":
-        readers = db.session.query(OrgRole.user_id).filter(
-            OrgRole.organization_id == org_id, OrgRole.role == "viewer"
+        roles = OrgRole.__table__
+        readers = select(roles.c.user_id).where(
+            roles.c.organization_id == org_id, roles.c.role == "viewer"
         )
-        query = query.filter(~User.id.in_(readers))
-    return query.count()
+        stmt = stmt.where(users.c.id.not_in(readers))
+    return connection.execute(stmt).scalar_one()
 
 
-def user_limit_status(org_id: int) -> Dict:
-    """The people limit that applies to *org_id* and how much of it is used.
-
-    ``limit`` is None when the plan has no limit on people.
-    """
-    from app import db
-    from app.models.organization import Organization
-
-    org = db.session.get(Organization, org_id)
-    sub = ensure_subscription(org) if org is not None else None
-    plan = effective_plan(sub)
-    if plan.per_seat:
-        limit = sub.seats_purchased if sub is not None else None
-    else:
-        limit = plan.user_limit
-    used = _count_members(org_id, plan.counts)
+def _status(plan: Plan, limit: Optional[int], used: int) -> Dict:
     return {
         "plan_key": plan.key,
         "plan_name": plan.name,
@@ -266,21 +279,170 @@ def user_limit_status(org_id: int) -> Dict:
     }
 
 
+def user_limit_status(org_id: int) -> Dict:
+    """The people limit that applies to *org_id* and how much of it is used.
+
+    ``limit`` is None when the plan has no limit on people. Reads only.
+    """
+    from app import db
+    from app.models.organization import Organization
+
+    org = db.session.get(Organization, org_id)
+    sub = current_subscription(org) if org is not None else None
+    plan = effective_plan(sub)
+    limit = _limit_for(plan, sub.seats_purchased if sub is not None else None)
+    return _status(plan, limit, _count_members(db.session.connection(), org_id, plan.counts))
+
+
 class PlanLimitReached(Exception):
     """Raised when adding someone would take an organisation past its plan."""
 
     def __init__(self, status: Dict):
         self.status = status
+        people = "editors" if status["counts"] == "editors" else "people"
         super().__init__(
-            f"The {status['plan_name']} plan admits {status['limit']} "
-            f"{'editors' if status['counts'] == 'editors' else 'people'}; "
-            f"{status['used']} are already in use."
+            f"This organisation's {status['plan_name']} plan admits {status['limit']} "
+            f"{people} and it already has {status['used']}, so no one else can join it. "
+            "An administrator can upgrade the plan on the billing page."
         )
 
 
-def enforce_user_limit(org_id: int) -> Dict:
-    """Raise PlanLimitReached when *org_id* cannot add one more person."""
-    status = user_limit_status(org_id)
-    if status["limit_reached"]:
-        raise PlanLimitReached(status)
-    return status
+# --------------------------------------------------------------------------- #
+# The one enforcement point                                                    #
+# --------------------------------------------------------------------------- #
+
+# Users with no organisation are placed in the shared fallback organisation by
+# User's before_insert listener. It is the platform's holding area, not a
+# customer, and has no plan.
+_UNPLANNED_ORG_SLUGS = frozenset({"default"})
+
+
+@dataclass
+class _Change:
+    """What one flush does to an organisation's head count."""
+
+    joining: int = 0  # people added to, or moved into, the organisation
+    promoted: int = 0  # members who stop being read-only
+    demoted: int = 0  # members who become read-only
+
+
+def check_capacity(connection, org_id: int, change: "_Change") -> None:
+    """Refuse, with PlanLimitReached, a flush that takes *org_id* past its plan.
+
+    Locks the organisation's row (SELECT ... FOR UPDATE) before counting, so
+    two requests adding the last place at once are serialised: the second
+    counts after the first commits, and is refused.
+
+    On a plan that counts editors, a new person takes an editor place until
+    they are made read-only, and a read-only member made an editor takes one.
+    """
+    from sqlalchemy import select
+
+    from app.models.organization import Organization
+    from app.models.subscription import Subscription, SubscriptionStatus
+
+    orgs = Organization.__table__
+    org = connection.execute(
+        select(orgs.c.slug, orgs.c.plan, orgs.c.max_users)
+        .where(orgs.c.id == org_id)
+        .with_for_update()
+    ).first()
+    if org is None or org.slug in _UNPLANNED_ORG_SLUGS:
+        return
+    subs = Subscription.__table__
+    row = connection.execute(
+        select(subs.c.plan, subs.c.status, subs.c.seats_purchased)
+        .where(subs.c.organization_id == org_id)
+    ).first()
+    if row is None:
+        plan_enum, seats = _seed_plan(org.plan, org.max_users)
+        plan = get_plan(plan_enum.value)
+    elif row.status == SubscriptionStatus.cancelled:
+        plan, seats = _BY_KEY["free"], None
+    else:
+        plan, seats = get_plan(row.plan.value if row.plan is not None else None), row.seats_purchased
+    limit = _limit_for(plan, seats)
+    if limit is None:
+        return
+    used = _count_members(connection, org_id, plan.counts)
+    adding = change.joining
+    if plan.counts == "editors":
+        adding += change.promoted
+        used -= change.demoted
+    if adding > 0 and used + adding > limit:
+        raise PlanLimitReached(_status(plan, limit, used))
+
+
+def _flush_changes(session) -> Dict[int, _Change]:
+    """{organisation id: _Change} for the people and roles this flush writes."""
+    from sqlalchemy import inspect as sa_inspect
+
+    from app.models.org_role import OrgRole
+    from app.models.user import User
+
+    changes: Dict[int, _Change] = {}
+
+    def at(org_id: int) -> _Change:
+        return changes.setdefault(org_id, _Change())
+
+    for obj in session.new:
+        if isinstance(obj, User):
+            org_id = obj.organization_id
+            if org_id is None and obj.organization is not None:
+                org_id = obj.organization.id
+            # None: the shared fallback organisation, which has no plan, or
+            # an organisation created in this same flush, which has no
+            # members to count yet.
+            if org_id is not None:
+                at(org_id).joining += 1
+        elif isinstance(obj, OrgRole) and obj.organization_id is not None:
+            # A new row's role defaults to viewer. Before it, the member had no
+            # role and was counted as an editor.
+            if obj.role in (None, "viewer") and obj.user_id is not None:
+                at(obj.organization_id).demoted += 1
+    for obj in session.dirty:
+        if isinstance(obj, User):
+            history = sa_inspect(obj).attrs.organization_id.history
+            if history.added and history.added[0] is not None:
+                if not history.deleted or history.added[0] != history.deleted[0]:
+                    at(history.added[0]).joining += 1
+        elif isinstance(obj, OrgRole) and obj.organization_id is not None:
+            history = sa_inspect(obj).attrs.role.history
+            if not (history.added and history.deleted):
+                continue
+            was, now = history.deleted[0], history.added[0]
+            if was == "viewer" and now != "viewer":
+                at(obj.organization_id).promoted += 1
+            elif was != "viewer" and now == "viewer":
+                at(obj.organization_id).demoted += 1
+    leaving = {obj.id for obj in session.deleted if isinstance(obj, User)}
+    for obj in session.deleted:
+        if (isinstance(obj, OrgRole) and obj.organization_id is not None
+                and obj.role == "viewer" and obj.user_id not in leaving):
+            # Without a role row the member counts as an editor.
+            at(obj.organization_id).promoted += 1
+    return changes
+
+
+def _guard_flush(session, flush_context, instances) -> None:  # noqa: ARG001
+    changes = {
+        org_id: change
+        for org_id, change in _flush_changes(session).items()
+        if change.joining or change.promoted
+    }
+    if not changes:
+        return
+    connection = session.connection()
+    for org_id in sorted(changes):  # a fixed order, so two flushes cannot deadlock
+        check_capacity(connection, org_id, changes[org_id])
+
+
+def install_user_limit_guard() -> None:
+    """Every flush that adds a person to an organisation, or moves one into
+    it, passes check_capacity first: the admin forms, invitations, single
+    sign-on provisioning, signup and any future path alike."""
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    if not event.contains(Session, "before_flush", _guard_flush):
+        event.listen(Session, "before_flush", _guard_flush)

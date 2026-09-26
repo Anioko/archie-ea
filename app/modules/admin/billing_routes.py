@@ -66,7 +66,7 @@ def billing_index():
             error="No organisation found for your account.",
         )
 
-    sub = billing_plans.ensure_subscription(org)
+    sub = billing_plans.current_subscription(org)
     config = billing_plans.configuration_status()
     selected = request.args.get("plan")
     interval = request.args.get("interval") or "year"

@@ -43,6 +43,7 @@ except ImportError:
     get_queue = None
 
 from app.extensions import csrf, db
+from app.services.billing_plans import PlanLimitReached
 from ..forms.admin_forms import (
     APISettingsForm,
     ChangeAccountTypeForm,
@@ -133,8 +134,10 @@ def dashboard():
 def _plan_limit():
     """(org id, people-limit status) for the signed-in admin's organisation.
 
-    Adding someone past the plan's limit shows the limit and an upgrade link
-    on the form instead of creating the user.
+    The form shows the limit and an upgrade link instead of the submit when
+    the plan is full. The refusal itself is made when the user is saved
+    (billing_plans.check_capacity), which also covers two admins adding the
+    last place at once: the second sees the same limit message.
     """
     org_id = getattr(current_user, "organization_id", None)
     if org_id is None:
@@ -154,16 +157,21 @@ def new_user():
     form = NewUserForm()
     org_id, plan_limit = _plan_limit()
     if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
-        user = _svc.create_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-            role=form.role.data,
-            organization_id=org_id,
-        )
-        flash("User {} successfully created".format(user.full_name()), "form-success")
-        org_id, plan_limit = _plan_limit()
+        try:
+            user = _svc.create_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                password=form.password.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        else:
+            flash("User {} successfully created".format(user.full_name()), "form-success")
+            org_id, plan_limit = _plan_limit()
     return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
@@ -177,15 +185,20 @@ def invite_user():
     form = InviteUserForm()
     org_id, plan_limit = _plan_limit()
     if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
-        user = _svc.invite_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            role=form.role.data,
-            organization_id=org_id,
-        )
-        flash("User {} successfully invited".format(user.full_name()), "form-success")
-        org_id, plan_limit = _plan_limit()
+        try:
+            user = _svc.invite_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        else:
+            flash("User {} successfully invited".format(user.full_name()), "form-success")
+            org_id, plan_limit = _plan_limit()
     return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
