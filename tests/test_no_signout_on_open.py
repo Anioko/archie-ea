@@ -16,7 +16,7 @@ import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
 
-_PASSWORD = "Correct-Horse-9!"
+from tests.smoke.conftest import PASSWORD as _PASSWORD
 
 
 def _make_user(db_session, org, password=_PASSWORD, **kw):

@@ -361,3 +361,69 @@ def test_architecture_context_elements_are_name_ordered_and_stable_across_calls(
         "the same organisation's architecture context changed order between "
         "two calls with nothing in between that should have changed it"
     )
+
+
+def test_architecture_context_same_named_elements_are_id_ordered_and_stable_across_calls(
+    db_session, make_org, tenant_ctx
+):
+    """Two elements sharing one name are exactly the case the comment above
+    the fix describes: name alone does not distinguish them, so without an id
+    tie-breaker either one can come first and the two can swap between calls.
+
+    The row inserted first is given the higher id (an explicit id override),
+    so insertion order and id order disagree -- an id-ordered result and a
+    name-only one give different answers for which element comes first."""
+    from app.extensions import db as _db
+    from app.models.archimate_core import ArchiMateElement
+
+    org = make_org("architecture-tie")
+    suffix = uuid.uuid4().hex[:8]
+    shared_name = f"Tied Element {suffix}"
+
+    max_id = _db.session.query(_db.func.max(ArchiMateElement.id)).scalar() or 0
+    higher_id = max_id + 10001
+
+    first_inserted = ArchiMateElement(
+        id=higher_id, name=shared_name, type="ApplicationComponent",
+        layer="application", organization_id=org.id,
+    )
+    db_session.add(first_inserted)
+    db_session.flush()
+
+    second_inserted = ArchiMateElement(
+        name=shared_name, type="ApplicationComponent",
+        layer="application", organization_id=org.id,
+    )
+    db_session.add(second_inserted)
+    db_session.flush()
+
+    assert second_inserted.id < first_inserted.id, (
+        "test setup requires the second-inserted row to hold the lower id -- "
+        "got %r then %r" % (first_inserted.id, second_inserted.id)
+    )
+    expected_ids = [second_inserted.id, first_inserted.id]
+
+    with tenant_ctx(org.id):
+        first = _service().get_domain_context("architecture", {})
+        second = _service().get_domain_context("architecture", {})
+
+    assert first["success"], first
+    assert second["success"], second
+
+    def _tied_ids(result):
+        return [
+            e["id"] for e in result["context"]["architecture_elements"]
+            if e["name"] == shared_name
+        ]
+
+    first_ids = _tied_ids(first)
+    second_ids = _tied_ids(second)
+
+    assert first_ids == expected_ids, (
+        "two elements with the same name must be ordered by id, not left to "
+        "whatever order the database happens to return ties in"
+    )
+    assert second_ids == first_ids, (
+        "the tied pair changed order between two calls with nothing in "
+        "between that should have changed it"
+    )
