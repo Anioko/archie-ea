@@ -605,15 +605,15 @@ def test_clear_foreign_assignees_helpers_count_and_clear_only_foreign_ids(app, d
 
     conn = db_session.connection()
     before = _foreign_assignee_counts(conn)
-    assert before["kanban_cards"] >= 1
-    assert before["solution_issues"] >= 1
+    assert before["kanban_cards.assigned_to_id"] >= 1
+    assert before["solution_issues.assigned_to_id"] >= 1
 
     _clear_foreign_assignees(conn)
     db_session.commit()
 
     after = _foreign_assignee_counts(conn)
-    assert after["kanban_cards"] == 0
-    assert after["solution_issues"] == 0
+    assert after["kanban_cards.assigned_to_id"] == 0
+    assert after["solution_issues.assigned_to_id"] == 0
 
     db_session.expire_all()
     assert KanbanCard.query.get(foreign_card.id).assigned_to_id is None
@@ -635,14 +635,16 @@ def _invoke_clear_command(app, *args):
 
 def _foreign_rows(db_session):
     """A kanban card and a solution issue each assigned to another
-    organisation's user, alongside a same-organisation pair, plus a foreign id
-    in columns the command does not own (escalated_to_id, created_by_id)."""
+    organisation's user (the issue also escalated to that user), alongside a
+    same-organisation pair, plus a foreign id in a column the command does not
+    own (the card's created_by_id)."""
     org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
     foreign_card = _card(db_session, board, phase, theirs, assigned_to_id=theirs.id)
     own_card = _card(db_session, board, phase, mine, assigned_to_id=mine.id)
     foreign_issue = _issue(db_session, solution_a, assigned_to_id=theirs.id)
     foreign_issue.escalated_to_id = theirs.id
     own_issue = _issue(db_session, solution_a, assigned_to_id=mine.id)
+    own_issue.escalated_to_id = mine.id
     db_session.commit()
     return mine, theirs, foreign_card, own_card, foreign_issue, own_issue
 
@@ -656,17 +658,21 @@ def test_clear_foreign_assignees_command_without_apply_reports_and_changes_nothi
     output = _invoke_clear_command(app)
 
     assert "Dry run" in output, output
-    assert "kanban_cards:" in output and "solution_issues:" in output, output
+    assert "kanban_cards.assigned_to_id:" in output, output
+    assert "solution_issues.assigned_to_id:" in output, output
+    assert "solution_issues.escalated_to_id:" in output, output
     assert "after clearing" not in output, output
 
     db_session.expire_all()
     assert KanbanCard.query.get(foreign_card.id).assigned_to_id == theirs.id
     assert KanbanCard.query.get(own_card.id).assigned_to_id == mine.id
     assert SolutionIssue.query.get(foreign_issue.id).assigned_to_id == theirs.id
+    assert SolutionIssue.query.get(foreign_issue.id).escalated_to_id == theirs.id
     assert SolutionIssue.query.get(own_issue.id).assigned_to_id == mine.id
+    assert SolutionIssue.query.get(own_issue.id).escalated_to_id == mine.id
 
 
-def test_clear_foreign_assignees_command_with_apply_clears_only_foreign_assignees(app, db_session):
+def test_clear_foreign_assignees_command_with_apply_clears_only_foreign_user_ids(app, db_session):
     from app.models.adm_kanban import KanbanCard
     from app.models.solution_governance import SolutionIssue
 
@@ -675,19 +681,25 @@ def test_clear_foreign_assignees_command_with_apply_clears_only_foreign_assignee
     output = _invoke_clear_command(app, "--apply")
 
     assert "Dry run" not in output, output
-    assert "kanban_cards: 0 row(s) with a foreign assignee after clearing" in output, output
-    assert "solution_issues: 0 row(s) with a foreign assignee after clearing" in output, output
+    for name in (
+        "kanban_cards.assigned_to_id",
+        "solution_issues.assigned_to_id",
+        "solution_issues.escalated_to_id",
+    ):
+        assert f"{name}: 0 row(s) naming another organisation's user after clearing" in output, output
 
     db_session.expire_all()
     cleared_card = KanbanCard.query.get(foreign_card.id)
     cleared_issue = SolutionIssue.query.get(foreign_issue.id)
-    # Foreign assignees are cleared ...
+    kept_issue = SolutionIssue.query.get(own_issue.id)
+    # Foreign assignee and escalation ids are cleared ...
     assert cleared_card.assigned_to_id is None
     assert cleared_issue.assigned_to_id is None
-    # ... same-organisation assignees are kept ...
+    assert cleared_issue.escalated_to_id is None
+    # ... same-organisation ones are kept ...
     assert KanbanCard.query.get(own_card.id).assigned_to_id == mine.id
-    assert SolutionIssue.query.get(own_issue.id).assigned_to_id == mine.id
-    # ... and columns outside the command's two assignee columns are untouched,
-    # even where they also hold another organisation's user id.
+    assert kept_issue.assigned_to_id == mine.id
+    assert kept_issue.escalated_to_id == mine.id
+    # ... and a column the command does not own is untouched, even where it
+    # also holds another organisation's user id.
     assert cleared_card.created_by_id == theirs.id
-    assert cleared_issue.escalated_to_id == theirs.id

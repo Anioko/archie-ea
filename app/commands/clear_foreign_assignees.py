@@ -1,8 +1,8 @@
 """``flask clear-foreign-assignees`` — null out stored assignee ids that name
 another organisation's user.
 
-``kanban_cards.assigned_to_id`` and ``solution_issues.assigned_to_id`` were
-writable from a request with no organisation check before the tenant fence
+``kanban_cards.assigned_to_id``, ``solution_issues.assigned_to_id`` and
+``solution_issues.escalated_to_id`` were writable from a request with no organisation check before the tenant fence
 went in (see the writers in ``adm_kanban_routes.py`` and
 ``solution_issue_service.py``). Every reader is now fenced, so a row still
 holding a foreign id names nobody today — but the id itself is stale and
@@ -19,6 +19,7 @@ import click
 _TABLES = (
     ("kanban_cards", "assigned_to_id"),
     ("solution_issues", "assigned_to_id"),
+    ("solution_issues", "escalated_to_id"),
 )
 
 # _TABLES above is a fixed module-level constant, never request- or
@@ -42,7 +43,7 @@ def _foreign_assignee_counts(conn):
     counts = {}
     for table, column in _TABLES:
         table, column = _checked(table), _checked(column)
-        counts[table] = conn.execute(
+        counts[f"{table}.{column}"] = conn.execute(
             text(
                 f'SELECT count(*) FROM "{table}" t JOIN users u ON u.id = t."{column}" '
                 f'WHERE t."{column}" IS NOT NULL '
@@ -53,8 +54,8 @@ def _foreign_assignee_counts(conn):
 
 
 def _clear_foreign_assignees(conn):
-    """Null out assigned_to_id on every row whose stored id names a user of a
-    different organisation. Returns nothing; call ``_foreign_assignee_counts``
+    """Null out each listed user-id column on every row whose stored id names
+    a user of a different organisation. Returns nothing; call ``_foreign_assignee_counts``
     before and after to measure the effect."""
     from sqlalchemy import text
 
@@ -75,16 +76,16 @@ def init_app(app):
         "--apply",
         is_flag=True,
         default=False,
-        help="Actually clear foreign assignee ids. Without this flag the command prints counts only.",
+        help="Actually clear foreign assignee and escalation ids. Without this flag the command prints counts only.",
     )
     def clear_foreign_assignees(apply):
-        """Null out assigned_to_id where it names a user of another organisation."""
+        """Null out assignee/escalation user ids that name a user of another organisation."""
         from app import db
 
         conn = db.session.connection()
         before = _foreign_assignee_counts(conn)
-        for table, count in before.items():
-            click.echo(f"{table}: {count} row(s) with a foreign assignee")
+        for name, count in before.items():
+            click.echo(f"{name}: {count} row(s) naming another organisation's user")
 
         if not apply:
             click.echo("Dry run — use --apply to clear.")
@@ -94,5 +95,5 @@ def init_app(app):
         db.session.commit()
 
         after = _foreign_assignee_counts(conn)
-        for table, count in after.items():
-            click.echo(f"{table}: {count} row(s) with a foreign assignee after clearing")
+        for name, count in after.items():
+            click.echo(f"{name}: {count} row(s) naming another organisation's user after clearing")
