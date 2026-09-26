@@ -66,6 +66,18 @@ OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_b
 NO_PLATEAU_RECORDED_REASON = validate_reason_code("no_plateau_recorded")
 NO_GAP_RECORDED_REASON = validate_reason_code("no_gap_recorded")
 NO_CAPABILITY_IN_CHAIN_REASON = validate_reason_code("no_capability_in_chain")
+# The component block's three independent absence conditions -- no cost
+# figures entered, no owner-recorded health status, no licence entitlement
+# rows -- each distinct from NO_APPLICATION_COMPONENT_REASON above (which
+# means no component was resolved at all).
+NO_COST_RECORDED_REASON = validate_reason_code("no_cost_recorded")
+NO_HEALTH_RECORDED_REASON = validate_reason_code("no_health_recorded")
+NO_LICENCE_RECORDED_REASON = validate_reason_code("no_licence_recorded")
+# A licence whose usage has never been synced from the source system carries
+# quantity_used at its column default of zero -- comparing that default
+# against quantity_entitled would report an invented under-use finding, not
+# a measurement, so under_used is withheld with this reason instead.
+LICENCE_USAGE_NOT_SYNCED_REASON = validate_reason_code("licence_usage_not_synced")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -99,6 +111,24 @@ def _sec09_tenant_check(component_org_id: Optional[int], org_id: int) -> bool:
     source under test.
     """
     return component_org_id == org_id
+
+
+def _licence_tenant_predicate(org_id: int):
+    """The explicit ``LicenseEntitlement.organization_id ==`` predicate on
+    the portfolio component block's licence read, isolated as its own seam
+    -- the same pattern as ``_sec09_tenant_check`` above -- so a mutation
+    test can replace it and watch the cross-tenant licence test go red.
+
+    ``LicenseEntitlement`` carries ``TenantMixin`` so the ORM listener
+    already fences a normal request; the FK from ``license_entitlements``
+    to ``application_components`` carries no tenant check of its own,
+    though, so this predicate is what keeps the read correct when called
+    with no ambient request context (a job, a CLI command, a test looping
+    tenants in one session), where the listener would otherwise no-op.
+    """
+    from app.models.license_entitlement import LicenseEntitlement
+
+    return LicenseEntitlement.organization_id == org_id
 
 
 def _resolve_owners_batch(
@@ -958,19 +988,197 @@ class IntelligenceQueryService:
         element/app id) -- so this method, deliberately, resolves only what
         the one real page needs. Linking to a JSON response would not be a
         deep link a person can read; not built.
+
+        Beside ``application_component_id``, the answer carries a
+        ``component`` block: the resolved component's name, its
+        owner-recorded health, its entered cost figures, its latest
+        fiscal-period cost row and its licence entitlements -- built below
+        off the SAME ``component`` object resolved above (no second
+        component select), in exactly two more selects of its own. Every
+        early branch below returns ``component: None`` -- nothing was
+        resolved, and the branch's own reason already says why.
         """
         from app.models import ArchiMateElement
         from app.models.application_portfolio import ApplicationComponent
 
+        def _health_block(component) -> Dict[str, Any]:
+            """The ``health`` key: the owner-recorded ``health_status``
+            column carried exactly as recorded -- a recorded word, not a
+            computed health score (the reuse register's health-score
+            concept is a different, unrelated reader). ``None`` means not
+            assessed, per the model's own comment on the column; no default
+            status is ever invented.
+            """
+            status = component.health_status
+            return {
+                "status": status,
+                "reason": None if status is not None else NO_HEALTH_RECORDED_REASON,
+                "truth_class": "authoritative_fact",
+            }
+
+        def _cost_block(component) -> Dict[str, Any]:
+            """The ``cost`` key: the seven entered cost figures, read off
+            *component* -- the object the caller already holds, no select
+            of its own. ``total_cost_of_ownership`` is the entered annual
+            TCO figure exactly as recorded; nothing here sums, averages or
+            derives it from the other six. ``license_cost`` is not read
+            (superseded by ``license_cost_annual``, per the model's own
+            comment) and neither is ``roi_score`` (a self-rated column, not
+            an intelligence fact). ``implementation_cost`` is the one
+            one-time figure among the six annual ones; it is carried
+            through unmixed, never summed with the rest.
+            """
+            figures = {
+                "total_cost_of_ownership": component.total_cost_of_ownership,
+                "license_cost_annual": component.license_cost_annual,
+                "maintenance_cost": component.maintenance_cost,
+                "infrastructure_cost": component.infrastructure_cost,
+                "support_cost": component.support_cost,
+                "implementation_cost": component.implementation_cost,
+                "development_cost_annual": component.development_cost_annual,
+            }
+            all_absent = all(value is None for value in figures.values())
+            return {
+                **figures,
+                "basis": "annual_as_entered",
+                "reason": NO_COST_RECORDED_REASON if all_absent else None,
+                "access_reason": None,
+                "truth_class": "authoritative_fact",
+            }
+
+        def _cost_by_period_block(component, org_id: int) -> Dict[str, Any]:
+            """The ``cost_by_period`` key: the single latest
+            ``ApplicationCost`` row for *component* -- the first of this
+            method's two remaining selects, ordered newest fiscal
+            year/quarter first, one row only regardless of how many
+            periods exist. ``variance`` is the stored column, disclosed
+            only when both ``total_cost`` and ``total_budget`` on that same
+            row are themselves recorded -- nothing here recomputes it from
+            the two; a stored ``variance`` is withheld, not recalculated,
+            when either input is absent. Joins through ``ApplicationComponent``
+            for an explicit ``organization_id ==`` predicate (same rationale
+            as ``_licence_entries``'s ``_licence_tenant_predicate`` -- the FK
+            from ``application_costs`` to ``application_components`` carries
+            no tenant check of its own, so this is what keeps the read
+            correct when called with no ambient request context).
+            """
+            from app.models.enterprise_intelligence import ApplicationCost
+
+            row = (
+                db.session.execute(
+                    db.select(ApplicationCost)
+                    .join(ApplicationComponent, ApplicationCost.application_id == ApplicationComponent.id)
+                    .where(
+                        ApplicationCost.application_id == component.id,
+                        ApplicationComponent.organization_id == org_id,
+                    )
+                    .order_by(
+                        ApplicationCost.fiscal_year.desc(),
+                        ApplicationCost.fiscal_quarter.desc().nulls_last(),
+                        ApplicationCost.id.desc(),
+                    )
+                )
+                .scalars()
+                .first()
+            )
+
+            if row is None:
+                return {
+                    "fiscal_year": None,
+                    "fiscal_quarter": None,
+                    "total_cost": None,
+                    "total_budget": None,
+                    "variance": None,
+                    "reason": NO_COST_RECORDED_REASON,
+                    "access_reason": None,
+                }
+
+            total_cost = float(row.total_cost) if row.total_cost is not None else None
+            total_budget = float(row.total_budget) if row.total_budget is not None else None
+            variance = (
+                float(row.variance)
+                if row.variance is not None and total_cost is not None and total_budget is not None
+                else None
+            )
+            return {
+                "fiscal_year": row.fiscal_year,
+                "fiscal_quarter": row.fiscal_quarter,
+                "total_cost": total_cost,
+                "total_budget": total_budget,
+                "variance": variance,
+                "reason": None,
+                "access_reason": None,
+            }
+
+        def _licence_entries(component, org_id: int) -> List[Dict[str, Any]]:
+            """The ``licences`` key: every ``LicenseEntitlement`` row for
+            *component* -- this method's second remaining select, with its
+            own tenant predicate isolated in ``_licence_tenant_predicate``
+            (the FK to ``application_components`` carries no tenant check
+            of its own, so that predicate is load-bearing here, not
+            decorative). ``under_used`` compares two recorded integers --
+            never a difference, never a dollar figure for what is not
+            deployed or not used -- and only once the licence's usage has
+            actually been synced; see ``LICENCE_USAGE_NOT_SYNCED_REASON``
+            for the honest absence reported when it has not.
+            """
+            from app.models.license_entitlement import LicenseEntitlement
+
+            rows = (
+                db.session.execute(
+                    db.select(LicenseEntitlement)
+                    .where(
+                        LicenseEntitlement.application_id == component.id,
+                        _licence_tenant_predicate(org_id),
+                    )
+                    .order_by(LicenseEntitlement.id)
+                )
+                .scalars()
+                .all()
+            )
+
+            entries: List[Dict[str, Any]] = []
+            for row in rows:
+                if row.last_usage_sync is None:
+                    under_used = None
+                    under_used_reason = LICENCE_USAGE_NOT_SYNCED_REASON
+                else:
+                    under_used = row.quantity_used < row.quantity_entitled
+                    under_used_reason = None
+                entries.append(
+                    {
+                        "entitlement_id": row.id,
+                        "product_name": row.product_name,
+                        "license_metric": row.license_metric,
+                        "quantity_entitled": row.quantity_entitled,
+                        "quantity_deployed": row.quantity_deployed,
+                        "quantity_used": row.quantity_used,
+                        "under_used": under_used,
+                        "under_used_reason": under_used_reason,
+                        "unit_cost": float(row.unit_cost) if row.unit_cost is not None else None,
+                        "compliance_status": row.compliance_status,
+                        "access_reason": None,
+                    }
+                )
+            return entries
+
         org_id = current_org_id()
         if org_id is None:
-            return {"application_component_id": None, "reasons": [NO_TENANT_CONTEXT_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [NO_TENANT_CONTEXT_REASON],
+                "component": None,
+            }
 
         element = db.session.execute(
             db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
         ).scalar_one_or_none()
         if element is None:
-            return {"application_component_id": None, "reasons": [ELEMENT_NOT_FOUND_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [ELEMENT_NOT_FOUND_REASON],
+                "component": None,
+            }
 
         component = None
         if getattr(element, "application_component_id", None):
@@ -979,9 +1187,27 @@ class IntelligenceQueryService:
             component = ApplicationComponent.query.filter_by(archimate_element_id=element.id).first()
 
         if component is None:
-            return {"application_component_id": None, "reasons": [NO_APPLICATION_COMPONENT_REASON]}
+            return {
+                "application_component_id": None,
+                "reasons": [NO_APPLICATION_COMPONENT_REASON],
+                "component": None,
+            }
 
-        return {"application_component_id": component.id, "reasons": []}
+        licence_entries = _licence_entries(component, org_id)
+        component_block = {
+            "name": component.name,
+            "health": _health_block(component),
+            "cost": _cost_block(component),
+            "cost_by_period": _cost_by_period_block(component, org_id),
+            "licences": licence_entries if licence_entries else None,
+            "licences_reason": None if licence_entries else NO_LICENCE_RECORDED_REASON,
+        }
+
+        return {
+            "application_component_id": component.id,
+            "reasons": [],
+            "component": component_block,
+        }
 
     @staticmethod
     def _owner_user_tenant_predicate(org_id):
