@@ -169,6 +169,19 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # A self-hosted runner keeps its home directory between jobs. Installing
+        # straight into setup-python's interpreter can silently resolve against
+        # whatever an earlier job already left in ~/.local (pip's per-user
+        # site-packages, which sits outside both the venv and setup-python's own
+        # install and is picked up ahead of it) — observed in practice as Flask
+        # reported "already satisfied" from ~/.local while its console script was
+        # never on PATH, failing every later `flask` invocation. A venv scoped to
+        # this checkout disables the user-site fallback entirely and is removed by
+        # the next job's checkout, so nothing here depends on machine state.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Resolve the postgres service's mapped port
         # The service no longer binds host port 5432 (several of these jobs can run
         # at once on one self-hosted machine), so the docker-assigned host port has
