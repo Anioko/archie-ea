@@ -223,3 +223,60 @@ def test_affecting_elements_answers_by_organisation_with_or_without_a_request(wo
     assert {d.id for d in found} == {ours.id, legacy.id}
     assert ArchitectureDecision.affecting_elements([], world["org_a"].id) == []
     assert ArchitectureDecision.affecting_elements([world["platform"].id], None) == []
+
+
+def test_a_decision_recorded_in_a_solution_design_is_found_from_its_element(
+    world, db_session, client, login_as
+):
+    """The solution-design decision API records the elements in
+    ``related_element_ids``; the element page, the element-filtered list and
+    the one accessor all find it from there, still inside one organisation."""
+    from app.models.architecture_decision import ArchitectureDecision
+    from app.models.solution_models import Solution
+
+    solution = Solution(
+        name=f"Integration consolidation {uuid.uuid4().hex[:6]}",
+        organization_id=world["org_a"].id,
+        created_by_id=world["ada"].id,
+    )
+    db_session.add(solution)
+    db_session.commit()
+
+    title = f"Retire the second message bus {uuid.uuid4().hex[:6]}"
+    login_as(client, world["ada"])
+    resp = client.post(
+        f"/solutions/{solution.id}/decisions",
+        json={"title": title, "related_element_ids": [world["platform"].id]},
+    )
+    assert resp.status_code == 201, resp.get_data(as_text=True)
+    decision_id = resp.get_json()["data"]["id"]
+
+    found = ArchitectureDecision.affecting_elements([world["platform"].id], world["org_a"].id)
+    assert [d.id for d in found].count(decision_id) == 1
+    assert decision_id not in {
+        d.id for d in ArchitectureDecision.affecting_elements([world["platform"].id], world["org_b"].id)
+    }
+
+    login_as(client, world["ada"])
+    element_html = client.get(f"/archimate/elements/{world['platform'].id}/impact").get_data(as_text=True)
+    assert title in element_html
+
+    login_as(client, world["ada"])
+    list_html = client.get(f"/architecture/decisions/?element_id={world['platform'].id}").get_data(as_text=True)
+    assert title in list_html
+
+    # Another organisation never sees it from its own element pages.
+    login_as(client, world["bob"])
+    foreign = client.get(f"/architecture/decisions/?element_id={world['platform'].id}").get_data(as_text=True)
+    assert title not in foreign
+
+
+def test_a_decision_naming_an_element_in_both_columns_is_listed_once(world, db_session):
+    from app.models.architecture_decision import ArchitectureDecision
+
+    both = _decision(db_session, world["org_a"], "In both columns", [world["platform"].id])
+    both.related_element_ids = [world["platform"].id]
+    db_session.commit()
+
+    found = ArchitectureDecision.affecting_elements([world["platform"].id], world["org_a"].id)
+    assert [d.id for d in found].count(both.id) == 1

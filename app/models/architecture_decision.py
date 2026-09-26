@@ -142,6 +142,11 @@ class ArchitectureDecision(TenantMixin, db.Model):
         worked-out connection all read it, so they cannot disagree. The
         organisation predicate is explicit so the answer is the same with or
         without a request's tenant context. Newest first.
+
+        Two writers record the link in two columns: the decision form writes
+        ``archimate_element_ids`` and the solution-design decision API writes
+        ``related_element_ids``. Both are read here, so a decision is found
+        however it was recorded; one matching both appears once.
         """
         from sqlalchemy.dialects.postgresql import JSONB
 
@@ -153,11 +158,13 @@ class ArchitectureDecision(TenantMixin, db.Model):
                 continue
         if not ids or organization_id is None:
             return []
-        stored = db.cast(cls.archimate_element_ids, JSONB)
         # Ids are stored as numbers by the decision form; a string id written
         # by an older path still names the same element.
-        matches = [stored.contains([i]) for i in sorted(ids)]
-        matches += [stored.contains([str(i)]) for i in sorted(ids)]
+        matches = []
+        for column in (cls.archimate_element_ids, cls.related_element_ids):
+            stored = db.cast(column, JSONB)
+            matches += [stored.contains([i]) for i in sorted(ids)]
+            matches += [stored.contains([str(i)]) for i in sorted(ids)]
         stmt = (
             db.select(cls)
             .where(cls.organization_id == organization_id)
