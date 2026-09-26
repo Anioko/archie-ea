@@ -50,6 +50,10 @@ class VendorProductEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     vendor_product_id = db.Column(db.Integer, db.ForeignKey("vendor_products.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))  # all-MiniLM-L6-v2 uses 384 dimensions
     embedding_text = db.Column(Text)  # Original text used for embedding
@@ -80,6 +84,10 @@ class BusinessCapabilityEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     business_capability_id = db.Column(
         db.Integer, db.ForeignKey("business_capability.id"), nullable=False
     )
@@ -113,6 +121,10 @@ class ProcessEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     process_id = db.Column(db.Integer, db.ForeignKey("industry_apqc_process.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))
     embedding_text = db.Column(Text)
@@ -144,6 +156,10 @@ class ChatMessageEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     chat_session_id = db.Column(db.String(255), nullable=False)  # Session identifier
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     message_text = db.Column(Text, nullable=False)
@@ -170,6 +186,10 @@ class SolutionEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))
     embedding_text = db.Column(Text)
@@ -200,6 +220,10 @@ class VendorOrganizationEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     vendor_organization_id = db.Column(
         db.Integer, db.ForeignKey("vendor_organizations.id"), nullable=False
     )
@@ -232,6 +256,10 @@ class ApplicationComponentEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     application_component_id = db.Column(
         db.Integer, db.ForeignKey("application_components.id"), nullable=False
     )
