@@ -153,6 +153,7 @@ def test_the_two_pages_are_the_only_routes_this_blueprint_serves(app):
     assert rules == {
         "/intelligence/ask": ["GET"],
         "/intelligence/twin-map": ["GET"],
+        "/intelligence/value-streams-at-risk": ["GET"],
     }
     assert not [r for r in rules if r.startswith("/api/")]
 
@@ -422,17 +423,20 @@ def test_no_second_show_more_affordance_exists():
     for name, source in _scripts().items():
         assert not re.search(r"Show more|More questions", source, re.I), name
     # The only controls that carry aria-expanded: the one disclosure control,
-    # the combobox, the question card that opens the picker, and the button
-    # that collapses the Twin map's side panel.
+    # the combobox, the question card that opens the picker, the button
+    # that collapses the Twin map's side panel, and the Value streams at risk
+    # row toggle that opens one value stream's own capabilities.
     owners = {}
     for name, source in _templates().items():
         for tag in re.findall(r"<(?:button|input)[^>]*aria-expanded[^>]*>", source, re.S):
             key = ("full-detail" if "data-full-detail-toggle" in tag else
                    "combobox" if 'role="combobox"' in tag else
                    "question" if "ask-question-" in tag else
-                   "rail" if "twin-rail-toggle" in tag else "OTHER")
+                   "rail" if "twin-rail-toggle" in tag else
+                   "vsr-row" if "data-vsr-toggle" in tag else "OTHER")
             owners.setdefault(key, []).append(name)
-    assert set(owners) == {"full-detail", "combobox", "question", "rail"}, owners
+    assert set(owners) == {"full-detail", "combobox", "question", "rail", "vsr-row"}, owners
+    assert owners["vsr-row"] == ["value_streams_at_risk.html"], owners
 
 
 def test_the_map_table_is_present_without_a_toggle():
