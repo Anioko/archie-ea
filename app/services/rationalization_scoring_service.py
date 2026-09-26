@@ -37,6 +37,9 @@ from app.services.decorators import transactional
 
 logger = logging.getLogger(__name__)
 
+# Answer given when no governed scoring configuration resolves for an organisation.
+NO_FORMULA_MESSAGE = "No scoring formula is registered for this organisation"
+
 
 class RationalizationScoringService:
     """
@@ -556,7 +559,8 @@ class RationalizationScoringService:
             # Get scoring configuration
             if scoring_config is None:
                 scoring_config = RationalizationScoringService.get_scoring_configuration(
-                    scope_type="global"
+                    scope_type="global",
+                    organization_id=getattr(app, "organization_id", None),  # model-safety-ok
                 )
             if scoring_config is None:
                 logger.warning(
@@ -940,10 +944,11 @@ class RationalizationScoringService:
 
             if scoring_config is None:
                 scoring_config = RationalizationScoringService.get_scoring_configuration(
-                    scope_type="global"
+                    scope_type="global",
+                    organization_id=getattr(app, "organization_id", None),  # model-safety-ok
                 )
             if scoring_config is None:
-                return {"error": "No scoring configuration is registered for this organisation"}
+                return {"error": NO_FORMULA_MESSAGE, "no_formula": True}
 
             # Resolve policy overlay (read-only — no DB flush in this method).
             active_policy = RationalizationScoringService.resolve_policy(app)

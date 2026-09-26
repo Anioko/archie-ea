@@ -167,3 +167,77 @@ def test_weight_change_creates_next_version_and_old_score_keeps_its_version(
             + score.vendor_risk_score * 0.10
         )
         assert score.calculate_overall_score() == expected
+
+
+def test_scoring_outside_a_request_uses_the_application_organisation(
+    db_session, make_org, tenant_ctx
+):
+    from app.services.rationalization_scoring_service import RationalizationScoringService
+
+    # A shared default exists too; the organisation's own default must win.
+    _config(db_session, is_default=True)
+    org = make_org("batch")
+    with tenant_ctx(org.id):
+        own = _config(db_session, is_default=True)
+        app_row = _application(db_session, org)
+        own_id, own_version = own.id, own.formula_version
+    assert own.organization_id == org.id
+
+    # No request context here, as in a CLI or scheduled scoring run.
+    score = RationalizationScoringService.calculate_app_score(app_row.id, app_row)
+
+    assert score is not None
+    assert score.scoring_configuration_id == own_id
+    assert score.formula_version == own_version
+
+
+def test_scoring_route_answers_409_when_no_formula_is_registered(
+    db_session, make_org, client, login_as
+):
+    from app.models.application_rationalization import (
+        ApplicationRationalizationScore,
+        ScoringConfiguration,
+    )
+    from app.models.user import Permission, Role, User
+
+    # Withdraw every shared formula inside this rolled-back transaction.
+    ScoringConfiguration.query.filter(ScoringConfiguration.organization_id.is_(None)).update(
+        {"is_active": False}, synchronize_session=False
+    )
+    org = make_org("unformulated")
+    app_row = _application(db_session, org)
+    role = Role.query.filter_by(name="Formula Register Writer").first()
+    if role is None:
+        role = Role(
+            name="Formula Register Writer",
+            permissions=Permission.GENERAL,
+            index="main",
+            default=False,
+        )
+        db_session.add(role)
+        db_session.flush()
+    user = User(
+        role=role,
+        email=f"formula-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Formula",
+        last_name="Tester",
+        organization_id=org.id,
+        confirmed=True,
+        enterprise_role="portfolio_manager",
+    )
+    db_session.add(user)
+    db_session.flush()
+
+    login_as(client, user)
+    response = client.post(f"/applications/rationalization/api/score/{app_row.id}")
+
+    assert response.status_code == 409, response.get_data(as_text=True)[:300]
+    assert response.get_json()["error"] == (
+        "No scoring formula is registered for this organisation"
+    )
+    assert (
+        ApplicationRationalizationScore.query.filter_by(
+            application_component_id=app_row.id
+        ).first()
+        is None
+    )
