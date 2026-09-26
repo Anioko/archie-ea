@@ -147,9 +147,11 @@ def _gap(
 def _make_user(db_session, org, *, enterprise_role=None):
     from app.models.user import Role, User
 
+    # tenant-scoping-ok: Role is a global RBAC table with no organization_id column.
     admin_role = Role.query.filter_by(name="Administrator").first()
     if admin_role is None:
         Role.insert_roles()
+        # tenant-scoping-ok: Role is a global RBAC table with no organization_id column.
         admin_role = Role.query.filter_by(name="Administrator").first()
 
     user = User(
