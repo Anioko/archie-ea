@@ -199,8 +199,9 @@ jobs:
       FLASK_CONFIG: testing
       SECRET_KEY: ci-only-not-secret
       # Must match matrix.shard's length above — scripts/ci/test_sharding.py
-      # takes this on trust rather than deriving it, so the two are kept in
-      # sync by hand.
+      # takes this on trust rather than deriving it.
+      # tests/test_ci_nav_verification_lifecycle.py fails when this, the
+      # matrix and the tests job's combine count disagree.
       CI_SHARD_TOTAL: "8"
       COVERAGE_FILE: .coverage.${{ matrix.shard }}
     steps:
@@ -297,9 +298,14 @@ jobs:
         with:
           pattern: tests-shard-*
           path: shard-artifacts
+      # Evidence lifecycle, once over the whole suite: drop any stale copy,
+      # rebuild it as the union of every shard's fresh file (refusing when a
+      # shard's file is missing), then enforce nav-verified against it.
       - name: Merge shard route-verification evidence
         if: always()
-        run: python scripts/ci/combine_shard_results.py shard-artifacts 8
+        run: |
+          rm -f route_verification.json
+          python scripts/ci/combine_shard_results.py shard-artifacts 8
       - name: Route verification (nav-verified)
         if: always()
         run: python scripts/verify.py --gate nav-verified
