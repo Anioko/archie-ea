@@ -146,8 +146,7 @@ class ArchiMateImportService:
         # Implementation & Migration layer. DOGFOOD-002: the stored key must
         # be the one the Element Catalog counts and filters on
         # (``layer_order`` in app/modules/architecture/routes/archimate_routes.py
-        # and the OEF exporter's map in app/services/archimate_oef_service.py
-        # both use "Implementation"). Writing "Implementation & Migration"
+        # uses "Implementation"). Writing "Implementation & Migration"
         # here made 35 of customer zero's 168 elements land and vanish.
         "WorkPackage": "Implementation",
         "Deliverable": "Implementation",

@@ -54,8 +54,8 @@ def _user(db_session, make_org, label):
 
 
 def test_no_route_or_service_carries_a_second_oef_parser():
-    """The composer endpoint and the exchange service used to parse OEF
-    themselves. Both now defer to the engine."""
+    """The composer endpoint, the exchange service and the OEF export service
+    used to parse OEF themselves. All now defer to the engine."""
     from app.modules.architecture.routes import archimate_routes
     from app.modules.architecture.services.archimate_exchange_service import (
         ArchiMateExchangeService,
@@ -67,6 +67,19 @@ def test_no_route_or_service_carries_a_second_oef_parser():
     assert not hasattr(archimate_routes, "_OEF_VALID_TYPES")
     for retired in ("import_archimate_xml", "_import_element", "_import_relationship", "_create_domain_model"):
         assert not hasattr(ArchiMateExchangeService, retired), retired
+
+    # The OEF export service carried a third upsert importer with no callers.
+    # It exports only; nothing in it may parse or write imported OEF.
+    from app.services import archimate_oef_service
+    from app.services.archimate_oef_service import ArchiMateOEFService
+
+    for retired in ("import_model", "_element_type_to_archimate", "_TYPE_MAP"):
+        assert not hasattr(ArchiMateOEFService, retired), retired
+    oef_source = inspect.getsource(archimate_oef_service)
+    for parser_call in ("fromstring", "safe_xml", ".parse(", "iterparse"):
+        assert parser_call not in oef_source, parser_call
+    for name, member in inspect.getmembers(ArchiMateOEFService, inspect.isfunction):
+        assert "import" not in name.lower(), name
 
 
 def test_programme_setup_imports_through_the_engine_entry_point():
