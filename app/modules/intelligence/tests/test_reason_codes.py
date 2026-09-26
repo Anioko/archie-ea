@@ -29,9 +29,9 @@ reality more than once already (found and corrected twice tonight,
 independently, by two different lenses' briefs each adding a member without
 re-deriving the true count); merging two branches that each added members
 independently (L2/L4/role-gating and the programme lens's own plateau/gap
-pair on one side, T-S1 on the other) is a third instance of the same class
-of drift, resolved here by re-deriving the real count (33) rather than
-trusting either side's own stale number.
+pair on one side, the value-stream additions on the other) is a third
+instance of the same class of drift, resolved here by re-deriving the real
+count (33) rather than trusting either side's own stale number.
 """
 
 from __future__ import annotations
@@ -45,11 +45,10 @@ from app.modules.intelligence.services.reason_codes import (
     validate_reason_code,
 )
 
-# sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
-# addition (p95_above_highest_bucket, D3), the Portfolio, Programme and
-# Strategy lenses' four additions, the Accountability lens's two plus its
-# withdrawal reason, role-gating's addition, T-S1's four additions and the
-# programme lens's own plateau/gap pair.
+# The original sixteen from the API specification, plus the Portfolio,
+# Programme and Strategy lenses' four additions, the Accountability lens's
+# two plus its withdrawal reason, role-gating's addition, the value-stream
+# path's four additions and the programme lens's own plateau/gap pair.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",

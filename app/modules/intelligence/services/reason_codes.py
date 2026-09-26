@@ -11,11 +11,11 @@ gate enforces this mechanically at the template layer, out of scope here).
 
 from __future__ import annotations
 
-# sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
-# the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
-# additions, the L4 lens's own two plus its withdrawal reason, the
-# role-gating addition, the four T-S1 additions and the Programme lens's own
-# plateau/gap pair below (thirty-three total), exactly, nothing invented.
+# The original sixteen members from the API specification, plus additions
+# from the Portfolio, Programme, Strategy, Accountability lenses and role
+# gating (four, two, one and one respectively), plus the value-stream
+# additions (four), plus the programme lens's own plateau/gap pair below
+# (thirty-three total), exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",

@@ -1056,9 +1056,10 @@ class IntelligenceQueryService:
             # map ``_resolve_elements_batch`` builds inside each blast above
             # -- rather than re-walking every row's raw ``element_id``/
             # ``chain_elements`` again: a foreign-tenant id that never
-            # resolved into that map (SEC-02) never enters this IN list
-            # either, so a foreign element's classification is never even
-            # asked for, not merely filtered out of the answer.
+            # resolved into the tenant-filtered identity map never enters
+            # this IN list either, so a foreign element's classification
+            # is never even asked for, not merely filtered out of the
+            # answer.
             plateau_ids = {wp.plateau_id for wp in seed_packages if wp.plateau_id is not None}
             gap_ids = {wp.gap_id for wp in seed_packages if wp.gap_id is not None}
             plateau_element_ids = {int(eid) for eid in all_elements}
