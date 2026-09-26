@@ -454,6 +454,9 @@ class JourneyOrchestrator:
         }
 
         arch_model_id = None
+        # Read again by the required-chain pass below, which can run even when this
+        # block failed before resolving it; None then leaves the row unattributed.
+        _org_id = None
         try:
             from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
             from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
