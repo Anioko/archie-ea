@@ -3486,12 +3486,18 @@ def audit_log_viewer():
 
         query = query.order_by(AuditLog.created_at.desc())
 
-        # Get distinct action types and entity types (table names) for dropdowns
+        # Distinct action types and entity types (table names) for the dropdowns,
+        # from this organisation's own entries only: the choices themselves
+        # would otherwise tell one tenant what another's trail contains.
         action_types = [
-            r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all() if r[0]
+            r[0] for r in db.session.query(AuditLog.action)
+            .filter(AuditLog.organization_id == g.current_org_id)
+            .distinct().order_by(AuditLog.action).all() if r[0]
         ]
         entity_types = [
-            r[0] for r in db.session.query(AuditLog.table_name).distinct().order_by(AuditLog.table_name).all() if r[0]
+            r[0] for r in db.session.query(AuditLog.table_name)
+            .filter(AuditLog.organization_id == g.current_org_id)
+            .distinct().order_by(AuditLog.table_name).all() if r[0]
         ]
 
         if export_csv:

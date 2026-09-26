@@ -135,11 +135,19 @@ class AuditLog(db.Model):
     def description(self):
         if not self.action:
             return ""
+        if self.action == "tool_refused" and isinstance(self.new_value, dict):
+            # A refused AI tool call: which tool, and the rule that refused it.
+            return "AI tool '%s' refused. %s" % (
+                self.new_value.get("tool") or "unknown",
+                self.new_value.get("rule_description") or "",
+            )
         _rec = f"#{self.record_id}" if self.record_id else ""
         return f"{self.action} {self.table_name or ''}{_rec}".strip()
 
     @property
     def status(self):
+        if self.action == "tool_refused":
+            return "refused"
         return ""  # not tracked
 
     @property
