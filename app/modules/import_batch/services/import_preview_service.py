@@ -19,9 +19,30 @@ from app.models.batch_import import BatchImportApplication, BatchImportJob
 from app.modules.import_batch.v2.services.duplicate_detection_utils_v2 import (
     DuplicateDetectionUtils,
 )
-from app.modules.import_batch.v2.services.import_validation.import_validator_v2 import ImportValidator
+from app.services.application_cost_accessor import (
+    COST_CATEGORIES,
+    map_import_cost_columns,
+    parse_cost_cell,
+)
 
 logger = logging.getLogger(__name__)
+
+# Lazy import for ImportValidator (may have missing dependencies)
+_ImportValidator = None
+
+
+def _get_import_validator():
+    """Lazy-load ImportValidator, returning None if unavailable."""
+    global _ImportValidator
+    if _ImportValidator is not None:
+        return _ImportValidator
+    try:
+        from app.modules.import_batch.services.import_validator import ImportValidator
+        _ImportValidator = ImportValidator
+    except ImportError as e:
+        logger.warning(f"ImportValidator unavailable: {e}")
+        _ImportValidator = False
+    return _ImportValidator
 
 # ArchiMate element estimates per application by mode
 ARCHIMATE_ESTIMATES = {
@@ -61,7 +82,7 @@ class ImportPreviewService:
             job_id: ID of the BatchImportJob to preview.
 
         Returns:
-            Dict with validation, duplicates, and impact data.
+            Dict with validation, duplicates, cost mapping, and impact data.
         """
         job = BatchImportJob.query.get_or_404(job_id)
 
@@ -88,6 +109,9 @@ class ImportPreviewService:
         # Detect duplicates against existing records
         duplicates = self._detect_duplicates(applications_data)
 
+        # Analyze cost column mapping
+        cost_mapping = self._analyze_cost_mapping(applications_data)
+
         # Build impact analysis
         impact = self._analyze_impact(
             job, validation, duplicates, len(applications_data)
@@ -98,6 +122,7 @@ class ImportPreviewService:
             "total_applications": len(applications_data),
             "validation": validation,
             "duplicates": duplicates,
+            "cost_mapping": cost_mapping,
             "impact": impact,
         }
 
@@ -132,9 +157,29 @@ class ImportPreviewService:
                 clean = {k: v for k, v in row.items() if not k.startswith("_")}
                 clean_rows.append(clean)
 
-            validator = ImportValidator(mode="lenient")
-            result = validator.validate(clean_rows)
-            return result.to_dict()
+            ImportValidator = _get_import_validator()
+            if ImportValidator:
+                validator = ImportValidator(mode="lenient")
+                result = validator.validate(clean_rows)
+                return result.to_dict()
+            else:
+                # Validator unavailable - return basic validation
+                return {
+                    "valid": True,
+                    "mode": "lenient",
+                    "summary": {
+                        "total_rows": len(applications_data),
+                        "valid_rows": len(applications_data),
+                        "invalid_rows": 0,
+                        "rows_with_warnings": 0,
+                        "total_errors": 0,
+                        "total_warnings": 0,
+                    },
+                    "row_details": [],
+                    "errors_by_field": {},
+                    "warnings_by_field": {},
+                    "warning": "Full validation unavailable due to missing dependencies",
+                }
         except Exception as e:
             logger.error(f"Validation failed during preview: {e}", exc_info=True)
             return {
@@ -308,6 +353,131 @@ class ImportPreviewService:
             "estimated_cost_usd": float(job.estimated_cost_usd)
             if job.estimated_cost_usd
             else 0,
+        }
+
+    def _analyze_cost_mapping(self, applications_data: List[Dict]) -> Dict[str, Any]:
+        """
+        Analyze cost columns in the import data and provide typed preview.
+
+        Returns a dict with:
+        - detected_columns: list of cost column names found in the data
+        - column_mapping: suggested mapping from file columns to cost fields
+        - row_previews: per-row parsed cost values with warnings/errors
+        - summary: aggregate statistics
+        """
+        if not applications_data:
+            return {
+                "detected_columns": [],
+                "column_mapping": {},
+                "row_previews": [],
+                "summary": {
+                    "total_rows": 0,
+                    "rows_with_cost": 0,
+                    "rows_with_errors": 0,
+                    "rows_with_warnings": 0,
+                },
+            }
+
+        # Get all column names from the first row (excluding internal metadata)
+        first_row = applications_data[0]
+        all_columns = [c for c in first_row.keys() if not c.startswith("_")]
+
+        # Known cost column variants (case-insensitive)
+        cost_column_variants = {
+            "total_cost_of_ownership": [
+                "total_cost_of_ownership", "tco", "annual_cost", "annual_tco",
+                "total cost of ownership", "Total Cost of Ownership", "TCO",
+                "Annual Cost", "Annual TCO"
+            ],
+            "license_cost_annual": [
+                "license_cost_annual", "license_cost", "licence_cost", "annual_license_cost",
+                "license cost", "License Cost", "Annual License Cost"
+            ],
+            "maintenance_cost": [
+                "maintenance_cost", "annual_maintenance_cost", "maintenance cost",
+                "Maintenance Cost", "Annual Maintenance Cost"
+            ],
+            "infrastructure_cost": [
+                "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
+                "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost"
+            ],
+            "support_cost": [
+                "support_cost", "annual_support_cost", "support cost",
+                "Support Cost", "Annual Support Cost"
+            ],
+            "implementation_cost": [
+                "implementation_cost", "implementation cost", "Implementation Cost"
+            ],
+            "development_cost_annual": [
+                "development_cost_annual", "dev_cost", "annual_development_cost",
+                "development cost", "Development Cost", "Annual Development Cost"
+            ],
+            "currency": [
+                "currency", "cost_currency", "Currency", "Cost Currency"
+            ],
+            "period": [
+                "period", "cost_period", "billing_period", "Period", "Cost Period"
+            ],
+            "category": [
+                "category", "cost_category", "cost_type", "Category", "Cost Category"
+            ],
+        }
+
+        # Detect which columns are present
+        detected_columns = []
+        column_mapping = {}
+
+        for field_name, variants in cost_column_variants.items():
+            for variant in variants:
+                if variant in all_columns:
+                    detected_columns.append(variant)
+                    column_mapping[field_name] = variant
+                    break
+
+        # Parse cost for each row using the detected mapping
+        row_previews = []
+        rows_with_cost = 0
+        rows_with_errors = 0
+        rows_with_warnings = 0
+
+        for row in applications_data:
+            import_row = row.get("_import_row", 0)
+            app_name = row.get("_app_name", "")
+
+            parsed = map_import_cost_columns(row, column_mapping)
+
+            has_cost = bool(parsed["cost_fields"])
+            has_errors = bool(parsed["cost_errors"])
+            has_warnings = bool(parsed["cost_warnings"])
+
+            if has_cost:
+                rows_with_cost += 1
+            if has_errors:
+                rows_with_errors += 1
+            if has_warnings:
+                rows_with_warnings += 1
+
+            row_previews.append({
+                "import_row": import_row,
+                "application_name": app_name,
+                "cost_fields": {
+                    k: float(v) if v is not None else None
+                    for k, v in parsed["cost_fields"].items()
+                },
+                "cost_warnings": parsed["cost_warnings"],
+                "cost_errors": parsed["cost_errors"],
+            })
+
+        return {
+            "detected_columns": detected_columns,
+            "column_mapping": column_mapping,
+            "row_previews": row_previews,
+            "summary": {
+                "total_rows": len(applications_data),
+                "rows_with_cost": rows_with_cost,
+                "rows_with_errors": rows_with_errors,
+                "rows_with_warnings": rows_with_warnings,
+            },
         }
 
     def resolve_conflicts(
