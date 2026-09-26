@@ -333,11 +333,11 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_ten_routes(app):
+def test_module_registers_exactly_eleven_routes(app):
     """The impact, risk, portfolio, programme, strategy, accountability,
     value-streams-at-risk and yield routes all mount on this same existing
     blueprint rather than a new one each. Still exactly one blueprint, now
-    ten routes on it -- all six lenses of the catalogue plus the Strategic
+    eleven routes on it -- all six lenses of the catalogue plus the Strategic
     value-streams-at-risk surface plus recompute/derived/yield.
     """
     rules = [
@@ -354,6 +354,7 @@ def test_module_registers_exactly_ten_routes(app):
         "intelligence_api.programme_for_element",
         "intelligence_api.strategy_for_element",
         "intelligence_api.accountability_for_element",
+        "intelligence_api.data_for_element",
         "intelligence_api.derivation_yield",
     }
 
@@ -922,3 +923,69 @@ def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
     resp = client.get(f"/api/v1/intelligence/accountability/{a.id}")
     assert resp.status_code == 404
     assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+# --- L7: the Data lens ---------------------------------------------------------
+
+
+def test_data_endpoint_requires_login(client):
+    resp = client.get("/api/v1/intelligence/data/1")
+    assert resp.status_code in (302, 401)
+
+
+def test_data_endpoint_unknown_element_is_404(app, db_session, make_org, client, login_as):
+    org = make_org("data-route-404")
+    user = _make_user(db_session, org)
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get("/api/v1/intelligence/data/999999999")
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_data_endpoint_foreign_element_reads_the_same_as_a_missing_one(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("data-route-a"), make_org("data-route-b")
+    user = _make_user(db_session, org_a)
+    foreign = _make_element(db_session, org_b.id, "foreign")
+    db_session.commit()
+    user_id, foreign_id = user.id, foreign.id
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_id))
+    resp = client.get(f"/api/v1/intelligence/data/{foreign_id}")
+
+    assert resp.status_code == 404
+    assert resp.get_json()["error"]["details"]["reason"] == "element_not_found"
+
+
+def test_data_endpoint_returns_objects_and_flows_for_a_real_element(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.all_missing_models import DataLineage
+    from app.models.application_layer import DataObject
+
+    org = make_org("data-route-ok")
+    user = _make_user(db_session, org)
+    a = _make_element(db_session, org.id, "A")
+    b = _make_element(db_session, org.id, "B")
+    db_session.add(DataObject(name="Orders", archimate_element_id=a.id, organization_id=org.id,
+                              data_steward="Sam", pii_fields='["email"]'))
+    db_session.add(DataLineage(name="A to B", archimate_element_id=a.id,
+                               target_archimate_element_id=b.id, organization_id=org.id))
+    db_session.commit()
+
+    login_as(client, user)
+    resp = client.get(f"/api/v1/intelligence/data/{a.id}")
+
+    assert resp.status_code == 200
+    data = resp.get_json()["data"]
+    assert [o["name"] for o in data["data_objects"]] == ["Orders"]
+    assert data["data_objects"][0]["steward"] == "Sam"
+    assert [f["direction"] for f in data["flows"]] == ["out"]
+    assert data["reasons"] == []
+    assert "pii_fields" not in resp.get_data(as_text=True) and "email" not in str(data["data_objects"])

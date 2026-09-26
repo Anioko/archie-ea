@@ -118,6 +118,15 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # L7 (Data lens) additions: Ask's Data lens lists the DataObject rows
+        # linked to the picked element. Most elements have none, an honest
+        # absence; an object with neither a steward nor an owner recorded is a
+        # distinct fact (nobody is named, not that the name failed to load);
+        # and an object with no lineage edge recorded in or out has no known
+        # flow. Each stays tied to its own absence condition.
+        "no_data_recorded",
+        "no_steward_recorded",
+        "no_lineage_recorded",
         # The programme lens's own plateau/gap block: a work package's stored
         # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
         # point at a record belonging to a different tenant (the FK itself

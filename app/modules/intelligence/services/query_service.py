@@ -58,6 +58,9 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # Distinct from a "decision pending" state -- the ownership data source IS
 # decided; what doesn't exist yet is a shared, tenant-safe reader for it.
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
+NO_DATA_RECORDED_REASON = validate_reason_code("no_data_recorded")
+NO_STEWARD_RECORDED_REASON = validate_reason_code("no_steward_recorded")
+NO_LINEAGE_RECORDED_REASON = validate_reason_code("no_lineage_recorded")
 # The programme lens's own plateau/gap block: a work package's stored
 # plateau_id/gap_id may be unset (a nullable FK) or point at a record
 # outside the caller's tenant (the FK itself carries no tenant check, so the
@@ -1476,6 +1479,154 @@ class IntelligenceQueryService:
             "capacity_not_available": True,
             "reasons": [OWNERSHIP_READER_NOT_BUILT_REASON, CAPACITY_NOT_AVAILABLE_REASON],
         }
+
+    # ------------------------------------------------------------------ #
+    # L7: the Data lens.
+    # ------------------------------------------------------------------ #
+
+    _DATA_OBJECT_LIMIT = 200
+
+    @staticmethod
+    def _data_tenant_predicate(model, organization_id: int):
+        """The explicit ``organization_id ==`` predicate on every read of the Data lens,
+        isolated as its own seam so a mutation test can replace it and watch the
+        cross-tenant tests go red. ``DataObject``, ``DataLineage`` and
+        ``ArchiMateElement`` all carry ``TenantMixin``, so this is defence in depth in a
+        request and what keeps a caller correct with no ambient request context."""
+        return model.organization_id == organization_id
+
+    @staticmethod
+    def _lineage_other_end_visible(other_ids, organization_id: int) -> Dict[int, str]:
+        """id -> name for the lineage endpoints that are elements of THIS organisation.
+
+        The ORM filter fences the lineage row, not the element ids it names: a row can
+        point at another organisation's element. An endpoint missing from the result is
+        dropped by the caller and never named. Isolated as its own seam for the mutation
+        proof, like the ownership seams."""
+        from app.models import ArchiMateElement
+
+        ids = {i for i in other_ids if i is not None}
+        if not ids:
+            return {}
+        rows = db.session.execute(
+            db.select(ArchiMateElement.id, ArchiMateElement.name)
+            .where(ArchiMateElement.id.in_(ids))
+            .where(IntelligenceQueryService._data_tenant_predicate(ArchiMateElement, organization_id))
+        ).all()
+        return {row[0]: row[1] for row in rows}
+
+    @staticmethod
+    def data_for_element(element_id: int) -> Dict[str, Any]:
+        """L7, "what data does this hold or produce, who stewards it, and where does it
+        flow?": the ``DataObject`` rows linked to the element (directly, or through its
+        application component) and the lineage edges in and out of it.
+
+        Absence is stated, never filled: no data object is ``no_data_recorded``; objects
+        with neither a steward nor an owner recorded add ``no_steward_recorded``; no
+        lineage edge adds ``no_lineage_recorded``. A missing figure stays ``None``.
+
+        Steward and owner are FREE TEXT on the model, not users: they are returned as
+        recorded, flagged ``recorded_as_text``, and never joined to ``User``. Sensitive or
+        operational detail nobody asked for (``pii_fields``, ``storage_location``, schema
+        and table names, access roles) is not returned. A lineage edge whose other end is
+        not an element of this organisation is dropped, not named.
+        """
+        from datetime import datetime, timezone
+
+        from app.models import ArchiMateElement
+        from app.models.all_missing_models import DataLineage
+        from app.models.application_layer import DataObject
+        from app.models.application_portfolio import ApplicationComponent
+
+        predicate = IntelligenceQueryService._data_tenant_predicate
+        as_of = datetime.now(timezone.utc).isoformat()
+        empty = {"data_objects": [], "flows": [], "as_of": as_of}
+
+        org_id = current_org_id()
+        if org_id is None:
+            return {**empty, "reasons": [NO_TENANT_CONTEXT_REASON]}
+
+        element = db.session.execute(
+            db.select(ArchiMateElement)
+            .where(ArchiMateElement.id == element_id)
+            .where(predicate(ArchiMateElement, org_id))
+        ).scalar_one_or_none()
+        if element is None:
+            return {**empty, "reasons": [ELEMENT_NOT_FOUND_REASON]}
+
+        component_ids = list(db.session.execute(
+            db.select(ApplicationComponent.id)
+            .where(ApplicationComponent.archimate_element_id == element_id)
+            .where(predicate(ApplicationComponent, org_id))
+        ).scalars())
+        if getattr(element, "application_component_id", None):
+            component_ids.append(element.application_component_id)
+
+        object_filter = DataObject.archimate_element_id == element_id
+        if component_ids:
+            object_filter = db.or_(object_filter, DataObject.application_component_id.in_(component_ids))
+        objects = db.session.execute(
+            db.select(DataObject)
+            .where(object_filter)
+            .where(predicate(DataObject, org_id))
+            .order_by(DataObject.name, DataObject.id)
+            .limit(IntelligenceQueryService._DATA_OBJECT_LIMIT)
+        ).scalars().all()
+
+        data_objects = []
+        for obj in objects:
+            steward = (obj.data_steward or "").strip() or None
+            owner = (obj.data_owner or "").strip() or None
+            data_objects.append({
+                "id": obj.id,
+                "name": obj.name,
+                "data_type": obj.data_type,
+                "data_classification": obj.data_classification,
+                "is_master_data": bool(obj.is_master_data),
+                "contains_pii": bool(obj.contains_pii),
+                "gdpr_scope": bool(obj.gdpr_scope),
+                "retention_period_days": obj.retention_period_days,
+                "steward": steward,
+                "owner": owner,
+                "recorded_as_text": True,
+            })
+
+        edges = db.session.execute(
+            db.select(DataLineage)
+            .where(db.or_(
+                DataLineage.archimate_element_id == element_id,
+                DataLineage.target_archimate_element_id == element_id,
+            ))
+            .where(predicate(DataLineage, org_id))
+            .order_by(DataLineage.id)
+        ).scalars().all()
+        others = {
+            (e.target_archimate_element_id if e.archimate_element_id == element_id else e.archimate_element_id)
+            for e in edges
+        }
+        visible = IntelligenceQueryService._lineage_other_end_visible(others, org_id)
+        flows = []
+        for edge in edges:
+            outgoing = edge.archimate_element_id == element_id
+            other_id = edge.target_archimate_element_id if outgoing else edge.archimate_element_id
+            if other_id not in visible:
+                continue
+            flows.append({
+                "direction": "out" if outgoing else "in",
+                "other_element_id": other_id,
+                "other_element_name": visible[other_id],
+                "lineage_type": edge.lineage_type,
+                "frequency": edge.frequency,
+            })
+
+        reasons = []
+        if not data_objects:
+            reasons.append(NO_DATA_RECORDED_REASON)
+        elif all(o["steward"] is None and o["owner"] is None for o in data_objects):
+            reasons.append(NO_STEWARD_RECORDED_REASON)
+        if not flows:
+            reasons.append(NO_LINEAGE_RECORDED_REASON)
+        return {"data_objects": data_objects, "flows": flows, "as_of": as_of, "reasons": reasons}
 
     # ------------------------------------------------------------------ #
     # T-S1: value streams at risk -- the curated path (DA-S1). Helpers are

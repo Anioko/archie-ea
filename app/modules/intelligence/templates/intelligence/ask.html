@@ -41,6 +41,7 @@
     {'key': 'risk', 'before': 'What could hurt', 'blank': '___', 'after': 'and what does it touch?'},
     {'key': 'portfolio', 'before': 'What is the rationalization status of', 'blank': '___', 'after': '?'},
     {'key': 'programme', 'before': "What's changing at", 'blank': '___', 'after': ', and is it on track?'},
+    {'key': 'data', 'before': 'What data does', 'blank': '___', 'after': 'hold or produce, who stewards it, and where does it flow?'},
     {'key': 'accountability', 'before': "Who's accountable for", 'blank': '___', 'after': ', and can they take on more?'}
 ] %}
 {% macro _ps_actions() %}
@@ -299,6 +300,51 @@
         </ul>
         </template>
         <p class="mt-2 text-sm text-muted-foreground">Capacity and availability data is not yet connected.</p>
+    </div>
+
+    {# L7: the Data lens. One card per data object linked to the element, then
+       the lineage flows. Steward and owner are free text as recorded, never a
+       person; anything missing says "not recorded" (no blank, no zero). #}
+    <div id="ask-data-results" aria-busy="false" :aria-busy="dataBusy ? 'true' : 'false'" x-show="answeredKey === 'data' && dataState !== 'idle'" x-cloak class="space-y-4">
+        <h2 id="ask-data-results-heading" x-ref="dataResultsHeading" tabindex="-1" class="text-lg font-semibold text-foreground focus:outline-none">Results</h2>
+        <template x-if="dataState === 'loading'">
+            <div role="status" aria-label="Loading" class="h-16 animate-pulse rounded-lg border border-border bg-muted/30"></div>
+        </template>
+        <template x-if="dataState === 'empty'">
+            <p class="text-sm text-muted-foreground">No data objects or data flows are recorded for this element yet.</p>
+        </template>
+        <template x-if="dataState === 'error'">
+            <p class="text-sm text-destructive">Could not load the data recorded for this element.</p>
+        </template>
+        <template x-if="dataState === 'ready'">
+            <div class="space-y-4">
+                <p class="text-sm text-muted-foreground" x-show="!dataObjects.length">No data objects are recorded for this element.</p>
+                <ul class="space-y-3" x-show="dataObjects.length">
+                    <template x-for="obj in dataObjects" :key="obj.id">
+                        <li class="rounded-lg border border-border bg-card p-4" data-ask-data-row>
+                            <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+                                <h3 class="min-w-0 break-words text-base font-semibold text-foreground" x-text="obj.name"></h3>
+                                <span class="inline-flex h-6 items-center rounded-full border border-border px-2 text-xs font-medium text-foreground" x-show="obj.classification" x-text="obj.classification"></span>
+                            </div>
+                            <p class="mt-1 text-sm text-foreground"><span class="text-muted-foreground">Steward: </span><span x-text="obj.steward || 'Not recorded'"></span></p>
+                            <p class="mt-1 text-sm text-foreground"><span class="text-muted-foreground">Owner: </span><span x-text="obj.owner || 'Not recorded'"></span></p>
+                            <p class="mt-1 text-sm text-muted-foreground" x-show="obj.containsPii">Contains personal data</p>
+                            <p class="mt-1 text-sm text-muted-foreground" x-show="obj.retentionDays !== null" x-text="'Retained for ' + obj.retentionDays + ' days'"></p>
+                        </li>
+                    </template>
+                </ul>
+                <h3 class="text-base font-semibold text-foreground">Where it flows</h3>
+                <p class="text-sm text-muted-foreground" x-show="!dataFlows.length">No data flows are recorded for this element.</p>
+                <ul class="space-y-2" x-show="dataFlows.length">
+                    <template x-for="flow in dataFlows" :key="flow.direction + flow.otherElementId">
+                        <li class="text-sm text-foreground" data-ask-data-flow>
+                            <span class="font-medium" x-text="flow.direction === 'out' ? 'Flows to ' : 'Comes from '"></span><span x-text="flow.otherElementName"></span>
+                            <span class="text-muted-foreground" x-show="flow.lineageType || flow.frequency"> (<span x-text="[flow.lineageType, flow.frequency].filter(Boolean).join(', ')"></span>)</span>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </template>
     </div>
 
     {{ provenance_drawer() }}
