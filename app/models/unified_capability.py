@@ -822,6 +822,16 @@ class ValueStreamStage(TenantMixin, db.Model):
     current_duration = Column(db.Integer)  # Current in hours/days
     quality_gate = Column(db.Boolean, default=False)
 
+    # What must be true for work to enter / leave this stage, who takes part in
+    # it and what value it hands on (BIZBOK stage definition). Free text, one
+    # item per line for stakeholders and value items. Nullable so
+    # `flask reconcile-schema` can add them to existing databases; NULL means
+    # "not recorded" and renders as an em dash, never as an empty list.
+    entry_criteria = Column(db.Text, nullable=True)
+    exit_criteria = Column(db.Text, nullable=True)
+    stakeholders = Column(db.Text, nullable=True)
+    value_items = Column(db.Text, nullable=True)
+
     # Timestamps
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
