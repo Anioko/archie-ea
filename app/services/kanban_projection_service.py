@@ -783,11 +783,11 @@ class KanbanProjectionService:
         column = _TASK_COLUMN_MAP.get(card.status or "todo", "proposed")
 
         owner = None
-        if card.assigned_to:
-            try:
-                owner = card.assigned_to.full_name()
-            except Exception:
-                self.logger.debug(f"Could not resolve owner name for KanbanCard {card.id}", exc_info=True)
+        if card.assigned_to_id:
+            from app.utils.tenant_users import user_in_org
+            u = user_in_org(card.assigned_to_id, card.organization_id)
+            if u:
+                owner = ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
 
         # Blocker detection: count depends_on entries where the dependency is not done
         blockers = []
