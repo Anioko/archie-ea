@@ -209,7 +209,10 @@ DEPENDENCIES:
         {% set visible_links = group.links | selectattr('endpoint', 'in', flask.current_app.view_functions) | list %}
         {% if visible_links %}
         {% set holds_current_page = request.endpoint in (visible_links | map(attribute='endpoint') | list) %}
-        {% set is_open = (not group.title) or ns_total.count <= 12 or holds_current_page or ns_total.first_titled %}
+        {# Every group starts open: the headings organise the list, they do not hide it. Existing journeys
+           and the "reachable from your own sidebar" acceptance tests click these links directly, and a
+           role with many links can still collapse a group by hand with its heading. #}
+        {% set is_open = true %}
         {% if group.title %}{% set ns_total.first_titled = false %}{% endif %}
         <div class="px-3 py-2" data-sidebar-group="{{ group.group }}"
              x-data="{ open: {{ 'true' if is_open else 'false' }} }">

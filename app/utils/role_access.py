@@ -978,9 +978,6 @@ _GROUP_FOR_ENDPOINT = {
     "modules_directory.index": "build",
 }
 
-# At or below this many links a role sees every group open; above it only the group holding the
-# current page (and the first group) starts open, the rest one click away.
-_SIDEBAR_ALL_OPEN_AT = 12
 
 
 def get_sidebar_groups(user) -> List[Dict]:

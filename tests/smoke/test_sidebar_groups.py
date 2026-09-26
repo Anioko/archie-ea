@@ -1,6 +1,6 @@
 """The sidebar groups its links under the same question-shaped headings for every role, in a real
-browser: the Ask link first, the headings in the approved order, and a collapsed group opens when
-its heading is clicked and closes again.
+browser: the Ask link first, the headings in the approved order, every group open, and a heading
+collapses its group and opens it again.
 """
 
 import pytest
@@ -53,25 +53,20 @@ def test_the_sidebar_shows_the_approved_headings_and_a_collapsed_group_opens(pag
     assert all(h in APPROVED_ORDER for h in headings), headings
     assert [APPROVED_ORDER.index(h) for h in headings] == sorted(APPROVED_ORDER.index(h) for h in headings)
 
-    # A collapsed group hides its links until its heading is clicked, and closes again.
-    collapsed = nav.locator("button[aria-expanded='false']")
-    if collapsed.count():
-        # Pin the group by its key: "the first collapsed button" is a lazy locator and would
-        # re-resolve to the next collapsed group once this one opens.
-        key = collapsed.first.locator("xpath=ancestor::div[@data-sidebar-group][1]").get_attribute(
-            "data-sidebar-group"
-        )
-        group = nav.locator("[data-sidebar-group='%s']" % key)
-        heading = group.locator("button")
-        link = group.locator("a").first
-        expect(link).to_be_hidden()
-        heading.click()
-        expect(heading).to_have_attribute("aria-expanded", "true")
-        expect(link).to_be_visible()
-        heading.click()
-        expect(heading).to_have_attribute("aria-expanded", "false")
-        expect(link).to_be_hidden()
-    else:
-        # A role with few links starts with every group open: each heading says so.
-        for button in nav.locator("[data-sidebar-group] button[aria-expanded]").all():
-            expect(button).to_have_attribute("aria-expanded", "true")
+    # Every group starts open (the headings organise the list, they do not hide it), and a
+    # heading collapses its group by hand and opens it again.
+    buttons = nav.locator("[data-sidebar-group] button[aria-expanded]")
+    for button in buttons.all():
+        expect(button).to_have_attribute("aria-expanded", "true")
+    key = buttons.first.locator("xpath=ancestor::div[@data-sidebar-group][1]").get_attribute("data-sidebar-group")
+    # Pin the group by its key: "the first button" is a lazy locator and would re-resolve.
+    group = nav.locator("[data-sidebar-group='%s']" % key)
+    heading = group.locator("button")
+    link = group.locator("a").first
+    expect(link).to_be_visible()
+    heading.click()
+    expect(heading).to_have_attribute("aria-expanded", "false")
+    expect(link).to_be_hidden()
+    heading.click()
+    expect(heading).to_have_attribute("aria-expanded", "true")
+    expect(link).to_be_visible()
