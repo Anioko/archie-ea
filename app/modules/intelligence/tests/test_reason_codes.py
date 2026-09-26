@@ -1,7 +1,7 @@
 """T-001 acceptance criterion 13: the DE-14 reason-code vocabulary is closed.
 
 Mapping:
-    13 -> test_reason_codes_has_exactly_thirty_five_members,
+    13 -> test_reason_codes_has_exactly_thirty_nine_members,
           test_unknown_reason_code_is_rejected_not_passed_through
 
 T-004 (US-1) added two members -- ``no_tenant_context`` and
@@ -23,7 +23,10 @@ the other two are reserved for T-S3's graph path. The maturity read helper
 added two more -- ``no_maturity_target_recorded`` (a current level recorded
 with no target to compare it against) and ``no_capability_in_chain``
 (reserved for a later reader whose chain resolves to no Capability element
-at all).
+at all). The connection explanation ("Why?" on a derived row) added four --
+``relationship_not_recorded``, ``drawn_by_not_recorded``,
+``drawn_at_not_recorded`` and ``rule_not_recorded`` -- reusing the existing
+``element_not_found`` for an element on the chain that does not resolve.
 
 "Closed" means no endpoint may invent an absence string inline, not that the
 set is frozen at sixteen forever; the module's own docstring says a new
@@ -54,7 +57,7 @@ from app.modules.intelligence.services.reason_codes import (
 # Strategy lenses' four additions, the Accountability lens's two plus its
 # withdrawal reason, role-gating's addition, T-S1's four additions, the
 # programme lens's own plateau/gap pair and the maturity read helper's two
-# additions.
+# additions, and the connection explanation's four.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",
@@ -91,11 +94,15 @@ _EXPECTED = {
     "no_gap_recorded",
     "no_maturity_target_recorded",
     "no_capability_in_chain",
+    "relationship_not_recorded",
+    "drawn_by_not_recorded",
+    "drawn_at_not_recorded",
+    "rule_not_recorded",
 }
 
 
-def test_reason_codes_has_exactly_thirty_five_members():
-    assert len(REASON_CODES) == 35
+def test_reason_codes_has_exactly_thirty_nine_members():
+    assert len(REASON_CODES) == 39
     assert REASON_CODES == frozenset(_EXPECTED)
 
 

@@ -25,14 +25,29 @@ from flask import url_for
 from werkzeug.routing import BuildError
 
 from app.extensions import db
+from app.modules.intelligence.services.reason_codes import validate_reason_code
 
-# Why a value is absent. Each is shown as "not recorded" with its reason; none
-# is ever replaced by an invented value.
-RELATIONSHIP_NOT_RECORDED = "relationship_not_recorded"
-ELEMENT_NOT_RECORDED = "element_not_recorded"
-DRAWN_BY_NOT_RECORDED = "drawn_by_not_recorded"
-DRAWN_AT_NOT_RECORDED = "drawn_at_not_recorded"
-RULE_NOT_RECORDED = "rule_not_recorded"
+# Why a value is absent, from the one closed vocabulary (reason_codes). Each is
+# shown as "not recorded" with its reason; none is ever replaced by an invented
+# value. Validated at import, so a code missing from the vocabulary fails here
+# rather than reaching a response.
+RELATIONSHIP_NOT_RECORDED = validate_reason_code("relationship_not_recorded")
+ELEMENT_NOT_RECORDED = validate_reason_code("element_not_found")
+DRAWN_BY_NOT_RECORDED = validate_reason_code("drawn_by_not_recorded")
+DRAWN_AT_NOT_RECORDED = validate_reason_code("drawn_at_not_recorded")
+RULE_NOT_RECORDED = validate_reason_code("rule_not_recorded")
+
+# Every absence code an explanation can carry, so a test can pin the set
+# against the vocabulary.
+EXPLANATION_REASON_CODES = frozenset(
+    {
+        RELATIONSHIP_NOT_RECORDED,
+        ELEMENT_NOT_RECORDED,
+        DRAWN_BY_NOT_RECORDED,
+        DRAWN_AT_NOT_RECORDED,
+        RULE_NOT_RECORDED,
+    }
+)
 
 
 def _user_label(user) -> Optional[str]:
@@ -120,6 +135,9 @@ def explain_fact(organization_id: int, fact: Dict[str, Any]) -> Dict[str, Any]:
                 {
                     "position": position,
                     "relationship_id": None,
+                    # The id the derived row stored, so the chain can still be
+                    # read in full even where a link no longer resolves.
+                    "chain_id": rel_id,
                     "resolved": False,
                     "reason": RELATIONSHIP_NOT_RECORDED,
                 }
@@ -132,7 +150,10 @@ def explain_fact(organization_id: int, fact: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "position": position,
                 "relationship_id": rel.id,
+                "chain_id": rel.id,
                 "resolved": True,
+                "source_id": rel.source_id,
+                "target_id": rel.target_id,
                 "type": rel.type,
                 "sentence": link_sentence(
                     source_name=source["name"], target_name=target["name"], relation_type=rel.type
@@ -178,6 +199,32 @@ def explain_fact(organization_id: int, fact: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def expanded_chain(explanation: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The derived row's chain as relationship ids and endpoints, read from its
+    explanation's links rather than from a second query.
+
+    This is the ``expanded_chain`` shape the provenance API has always
+    returned: one entry per stored chain id, in order, with an unresolved link
+    kept as an explicit marker instead of shortening the list.
+    """
+    derived_id = explanation.get("derived_id")
+    out = []
+    for link in explanation.get("links") or []:
+        if not link.get("resolved"):
+            out.append({"id": link.get("chain_id"), "unresolved": True, "derived_from": derived_id})
+            continue
+        out.append(
+            {
+                "id": link["relationship_id"],
+                "type": link.get("type"),
+                "source_id": link.get("source_id"),
+                "target_id": link.get("target_id"),
+                "derived_from": derived_id,
+            }
+        )
+    return out
+
+
 def explain_derived_fact(organization_id: int, derived_id: int) -> Optional[Dict[str, Any]]:
     """The explanation of derived row ``derived_id``, or ``None`` when that row is
     not one of ``organization_id``'s (another organisation's id reads as absent)."""
@@ -189,4 +236,9 @@ def explain_derived_fact(organization_id: int, derived_id: int) -> Optional[Dict
     return explain_fact(organization_id, fact)
 
 
-__all__ = ["explain_derived_fact", "explain_fact"]
+__all__ = [
+    "EXPLANATION_REASON_CODES",
+    "expanded_chain",
+    "explain_derived_fact",
+    "explain_fact",
+]

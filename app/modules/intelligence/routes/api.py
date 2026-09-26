@@ -188,8 +188,6 @@ def get_derived_fact_provenance(derived_id: int):
     if fact is None:
         return not_found_response("Derived relationship")
 
-    from app.extensions import db
-
     # No tenant_scope() here (round-1 refuter finding D4): this route already
     # runs inside a request with g.current_org_id set by the normal request
     # lifecycle, and the existing do_orm_execute tenant-isolation listener
@@ -197,51 +195,20 @@ def get_derived_fact_provenance(derived_id: int):
     # harness whose db.session.remove() calls destroy the REQUEST's own
     # session (detaching flask_login's cached current_user, clobbering
     # g.current_org for the rest of the request) when used inside a request.
-    expanded = []
-    if fact["chain"]:
-        from app.models import ArchiMateRelationship
+    #
+    # The chain is read once, by the explanation: each drawn link with its two
+    # elements, who drew it and when, the rule, and the decisions recorded
+    # against those elements -- all of this organisation. ``expanded_chain``
+    # is the same links in the id-and-endpoint shape this route has always
+    # returned, so the two cannot disagree. A chain link that no longer
+    # resolves stays in both as an explicit unresolved marker (D6) rather than
+    # silently shortening the chain.
+    from app.modules.intelligence.services.explanation import expanded_chain, explain_fact
 
-        rows = (
-            db.session.execute(
-                db.select(ArchiMateRelationship).where(
-                    ArchiMateRelationship.id.in_(fact["chain"]),
-                    ArchiMateRelationship.organization_id == organization_id,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        by_id = {r.id: r for r in rows}
-        for rel_id in fact["chain"]:
-            rel = by_id.get(rel_id)
-            if rel is None:
-                # A chain link that no longer resolves (D6): recording an
-                # explicit unresolved marker instead of silently shortening
-                # the array -- a shorter-but-complete-looking chain is
-                # exactly the kind of fabricated-looking gap CLAUDE.md's
-                # "never invent data" rule warns about.
-                expanded.append({"id": rel_id, "unresolved": True, "derived_from": fact["id"]})
-                continue
-            expanded.append(
-                {
-                    "id": rel.id,
-                    "type": rel.type,
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                    "derived_from": fact["id"],
-                }
-            )
-
+    explanation = explain_fact(organization_id, fact)
     fact_out = dict(fact)
-    fact_out["expanded_chain"] = expanded
-
-    # The same chain as the facts a person reads when they ask "Why?": each
-    # drawn link with its two elements, who drew it and when, the rule, and
-    # the decisions recorded against those elements -- all of this
-    # organisation, each with a link to the record it names.
-    from app.modules.intelligence.services.explanation import explain_fact
-
-    fact_out["explanation"] = explain_fact(organization_id, fact)
+    fact_out["expanded_chain"] = expanded_chain(explanation)
+    fact_out["explanation"] = explanation
     return success_response(fact_out)
 
 

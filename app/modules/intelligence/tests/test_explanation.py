@@ -172,12 +172,22 @@ def test_the_explanation_lists_only_the_callers_organisations_facts(
         assert name not in text, name
     first, planted = why["links"]
     assert first["resolved"] is True and first["drawn_by"] is None
+    # The planted id is the one A's own derived row stored; it resolves to
+    # nothing of A's, so it is shown as not recorded, never as B's record.
     assert planted == {
-        "position": 2, "relationship_id": None, "resolved": False,
+        "position": 2, "relationship_id": None, "chain_id": w["b_rel"].id, "resolved": False,
         "reason": "relationship_not_recorded",
     }
     assert why["complete"] is False
-    assert why["target"] == {"id": None, "name": None, "href": None, "reason": "element_not_recorded"}
+    assert why["target"] == {"id": None, "name": None, "href": None, "reason": "element_not_found"}
+
+    # The id-and-endpoint chain is the same links, not a second read.
+    expanded = resp.get_json()["data"]["expanded_chain"]
+    assert [e["id"] for e in expanded] == [w["first"].id, w["b_rel"].id]
+    assert expanded[1] == {"id": w["b_rel"].id, "unresolved": True, "derived_from": row_id}
+    assert (expanded[0]["source_id"], expanded[0]["target_id"]) == (
+        first["source_id"], first["target_id"]
+    )
     assert [d["id"] for d in why["decisions"]] == [a_decision]
 
     # Every record the explanation names is one of A's.
@@ -307,3 +317,24 @@ def test_a_link_sentence_follows_the_one_wording_table_and_never_has_a_gap():
     )
     assert link_sentence(source_name=None, target_name="Portal", relation_type="Serving") is None
     assert link_sentence(source_name="A", target_name="B", relation_type="Unknown") is None
+
+
+def test_every_absence_code_an_explanation_carries_is_in_the_one_vocabulary():
+    """ADR 0008: absence codes come from reason_codes.REASON_CODES, never
+    invented inline. Pins both the declared set and every code-shaped value
+    explain_fact actually writes."""
+    import inspect
+
+    from app.modules.intelligence.services import explanation
+    from app.modules.intelligence.services.reason_codes import REASON_CODES
+
+    assert explanation.EXPLANATION_REASON_CODES <= REASON_CODES
+    assert "element_not_found" in explanation.EXPLANATION_REASON_CODES
+
+    # No reason string literal in the module other than through the names
+    # validated against the vocabulary.
+    source = inspect.getsource(explanation)
+    import re
+
+    literals = set(re.findall(r'"([a-z]+(?:_[a-z]+)*_not_[a-z_]+)"', source))
+    assert literals <= REASON_CODES, literals - REASON_CODES

@@ -15,8 +15,9 @@ from __future__ import annotations
 # the one T-005 addition, the Portfolio, Programme and Strategy lenses' four
 # additions, the Accountability lens's two plus its withdrawal reason,
 # role-gating's addition, the four T-S1 additions, the programme lens's own
-# plateau/gap pair and the two maturity-read-helper additions below
-# (thirty-five total), exactly, nothing invented.
+# plateau/gap pair, the two maturity-read-helper additions and the four
+# connection-explanation additions below (thirty-nine total), exactly,
+# nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -134,6 +135,18 @@ REASON_CODES = frozenset(
         # chain at all.
         "no_maturity_target_recorded",
         "no_capability_in_chain",
+        # Connection explanation additions: the "Why?" read of one derived
+        # row (services/explanation.py) turns its stored chain back into the
+        # drawn relationships. A chain id that no longer resolves inside the
+        # organisation, a relationship nobody is recorded as having drawn or
+        # with no creation time, and a rule id the rule table does not
+        # describe are each an honest absence shown as "not recorded" --
+        # never dropped, never filled in. An element on the chain that does
+        # not resolve reuses the existing element_not_found.
+        "relationship_not_recorded",
+        "drawn_by_not_recorded",
+        "drawn_at_not_recorded",
+        "rule_not_recorded",
     }
 )
 
