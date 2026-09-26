@@ -3,7 +3,6 @@ Capability Framework Dashboard Routes
 """
 
 from flask import Blueprint, jsonify, request
-from flask_login import login_required
 from sqlalchemy import func
 
 from app import db
@@ -176,7 +175,7 @@ def get_statistics():
 
 
 @capability_framework_bp.route("/api/maturity-heatmap")
-@login_required
+@platform_admin_required
 def get_maturity_heatmap():
     """Get maturity heatmap data: domains x maturity levels with health scores"""
     from app.services.capability_heatmap_service import CapabilityHeatmapService
