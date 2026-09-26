@@ -119,6 +119,25 @@ def test_tests_job_creates_fresh_nav_evidence_then_enforces_the_gate():
     )
 
 
+def test_every_shard_hands_its_coverage_data_to_the_combine_step():
+    """Each shard writes .coverage.<shard>, a dotfile upload-artifact skips
+    unless include-hidden-files is set; without it the tests job's coverage
+    combine has no data at all."""
+    jobs = _ci_jobs()
+    shard_job = jobs["tests-shard"]
+    coverage_file = shard_job["env"]["COVERAGE_FILE"]
+    upload = next(
+        step for step in shard_job["steps"]
+        if str(step.get("uses", "")).startswith("actions/upload-artifact")
+    )
+
+    assert coverage_file in upload["with"]["path"]
+    if coverage_file.startswith("."):
+        assert upload["with"].get("include-hidden-files") is True
+    combine = _step_index(jobs["tests"]["steps"], "coverage combine")
+    assert combine >= 0
+
+
 def test_merge_is_the_union_of_every_shard_and_refuses_a_missing_one(tmp_path, monkeypatch):
     import json
     import sys

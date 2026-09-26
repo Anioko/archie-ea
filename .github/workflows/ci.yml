@@ -259,6 +259,10 @@ jobs:
             backend-tests-${{ matrix.shard }}.xml
             route_verification.json
           if-no-files-found: error
+          # .coverage.N is a dotfile, which upload-artifact leaves out unless
+          # told otherwise -- and the tests job's coverage combine then finds
+          # nothing to combine.
+          include-hidden-files: true
 
   tests:
     name: Tests (pytest + coverage)
