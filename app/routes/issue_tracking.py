@@ -10,10 +10,34 @@ from flask_login import current_user, login_required
 from werkzeug.exceptions import HTTPException
 
 from app import db
-from app.models import User
 from app.models.solution_governance import SolutionIssue
 
 logger = logging.getLogger(__name__)
+
+def _org_id():
+    """The caller's organisation, or None (which makes every lookup below fail closed)."""
+    return getattr(current_user, "organization_id", None)
+
+
+def _user_label(user_id):
+    """The e-mail local part of ``user_id`` if that user is in the caller's organisation, else None.
+
+    ``User`` has no tenant filter, so an id stored from a request must be resolved through
+    ``user_in_org``: a user of another organisation is never named.
+    """
+    from app.utils.tenant_users import user_in_org
+
+    user = user_in_org(user_id, _org_id())
+    return user.email.split('@')[0] if user else None
+
+
+def _assignee_outside_org(data):
+    """True when the request names an ``assigned_to_id`` that is not a user of the caller's organisation."""
+    from app.utils.tenant_users import user_in_org
+
+    value = data.get('assigned_to_id')
+    return value not in (None, '') and user_in_org(value, _org_id()) is None
+
 
 # Create blueprint
 issue_bp = Blueprint('issue_tracking', __name__, url_prefix='/api/solutions/<int:solution_id>/issues')
@@ -76,17 +100,15 @@ def list_issues(solution_id):
             
             # Add assignee info
             if issue.assigned_to_id:
-                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-                assignee = User.query.get(issue.assigned_to_id)
-                if assignee:
-                    issue_dict['assigned_to'] = assignee.email.split('@')[0]
+                label = _user_label(issue.assigned_to_id)
+                if label:
+                    issue_dict['assigned_to'] = label
 
             # Add creator info
             if issue.created_by_id:
-                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-                creator = User.query.get(issue.created_by_id)
-                if creator:
-                    issue_dict['created_by'] = creator.email.split('@')[0]
+                label = _user_label(issue.created_by_id)
+                if label:
+                    issue_dict['created_by'] = label
 
             # Add impact description (from workflow task context if available)
             issue_dict['estimated_impact'] = issue.estimated_impact or 'Impact not assessed'
@@ -147,16 +169,14 @@ def get_issue(solution_id, issue_id):
 
         # Add related data
         if issue.assigned_to_id:
-            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-            assignee = User.query.get(issue.assigned_to_id)
-            if assignee:
-                issue_dict['assigned_to'] = assignee.email.split('@')[0]
+            label = _user_label(issue.assigned_to_id)
+            if label:
+                issue_dict['assigned_to'] = label
 
         if issue.created_by_id:
-            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-            creator = User.query.get(issue.created_by_id)
-            if creator:
-                issue_dict['created_by'] = creator.email.split('@')[0]
+            label = _user_label(issue.created_by_id)
+            if label:
+                issue_dict['created_by'] = label
 
         return jsonify(issue_dict)
 
@@ -174,6 +194,8 @@ def create_issue(solution_id):
     """
     try:
         data = request.get_json()
+        if _assignee_outside_org(data):
+            return jsonify({'error': 'assigned_to_id must be a user of your organisation'}), 400
 
         # Validate required fields
         if not data.get('title'):
@@ -238,6 +260,8 @@ def update_issue(solution_id, issue_id):
             return jsonify({'error': 'Issue not found'}), 404
 
         data = request.get_json()
+        if _assignee_outside_org(data):
+            return jsonify({'error': 'assigned_to_id must be a user of your organisation'}), 400
 
         # Update status
         if 'status' in data:
@@ -270,10 +294,9 @@ def update_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
-            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-            assignee = User.query.get(issue.assigned_to_id)
-            if assignee:
-                issue_dict['assigned_to'] = assignee.email.split('@')[0]
+            label = _user_label(issue.assigned_to_id)
+            if label:
+                issue_dict['assigned_to'] = label
 
         status_map_reverse = {
             'open': 'NEW',
@@ -319,10 +342,9 @@ def escalate_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
-            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
-            assignee = User.query.get(issue.assigned_to_id)
-            if assignee:
-                issue_dict['assigned_to'] = assignee.email.split('@')[0]
+            label = _user_label(issue.assigned_to_id)
+            if label:
+                issue_dict['assigned_to'] = label
 
         issue_dict['status'] = 'ESCALATED'
         priority_map = {'P1': 'P0', 'P2': 'P1', 'P3': 'P2'}
