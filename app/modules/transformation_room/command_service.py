@@ -883,10 +883,15 @@ class CommandService:
         ).scalar_one_or_none()
         if result is None:
             raise StaleClaim("operation_result_outside_claim", receipt_id=claim.receipt_id)
+        # Read the database clock before touching the receipt. Reading it after
+        # autoflushed a half-finalised receipt (succeeded, with a result but no
+        # completed_at), which the receipt guard rejects as an invalid
+        # transition -- so every programme creation failed with a 500.
+        completed_at = cls._database_now(session)
         receipt.status = "succeeded"
         receipt.operation_result_id = result.id
         receipt.lease_expires_at = None
-        receipt.completed_at = cls._database_now(session)
+        receipt.completed_at = completed_at
         session.flush()
 
     @classmethod
