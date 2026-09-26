@@ -102,6 +102,15 @@ GLOBAL_MODELS: dict[str, str] = {
         "shared vendor catalogue, deliberately not tenant-scoped (ADR-0003, see the model docstring): "
         "facts about the vendor in the world, name globally unique"
     ),
+    "APQCProcess": (
+        "the APQC process classification framework, a shared reference catalogue: rows are created only by "
+        "the seed commands (seed_capabilities, seed_apqc_vendor_mapping); the tenant-specific link is "
+        "SolutionAPQCProcess"
+    ),
+    "TechnicalCapability": (
+        "the ACM technical capability catalogue, shared reference data: code is globally unique and rows are "
+        "created only by the seed commands (seed_capabilities, acm seed-capabilities)"
+    ),
 }
 
 

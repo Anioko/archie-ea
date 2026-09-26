@@ -7,6 +7,7 @@
   "_note5": "updated 2026-09-25: two new shared Library links (\"Canvases\", \"Frameworks\") were added for every role. sidebar_links stays 28 -- business_architect and platform_admin (zero headroom) each lost one same-page duplicate link, and enterprise_architect (one link of headroom) lost \"Duplicate Detection\", moved to portfolio_manager's My work (ample headroom there); it stays in a sidebar zone, just not enterprise_architect's. See app/utils/role_access.py's SIDEBAR_LINK_BUDGET and per-role comments for detail. No ratchet or budget change.",
   "_note6": "updated 2026-09-26: untenanted_reads 2990 -> 2988. Two request-supplied/stored user ids (an ARB audit action's acting-user lookup, an ADM audit event's actor lookup) that used to resolve with a bare db.session.get(User, ...)/User.query.get(...) now go through app.utils.tenant_users.user_in_org, which the gate does not flag as unfenced.",
   "_note7": "updated 2026-09-26: untenanted_reads 2988 -> 2788. VendorOrganization (200 reads) is the shared vendor catalogue, deliberately not tenant-scoped (ADR-0003, see its docstring), so it is now listed in GLOBAL_MODELS in scripts/check_untenanted_reads.py with that reason instead of being counted as an unfenced read.",
+  "_note8": "updated 2026-09-26: untenanted_reads 2788 -> 2633. APQCProcess (97) and TechnicalCapability (58) are shared reference catalogues (rows created only by seed commands; the tenant link for APQC is SolutionAPQCProcess), now listed in GLOBAL_MODELS in scripts/check_untenanted_reads.py with the evidence. FeatureFlag and ElementTemplate were checked and deliberately left counted.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -15,7 +16,7 @@
     "air_gap": 0,
     "raw_sql_tenancy": 0,
     "tenant_scoping": 0,
-    "untenanted_reads": 2788,
+    "untenanted_reads": 2633,
     "llm_boundary": 0,
     "broken_surfaces": 0,
     "dynamic_link_prefixes": 0,

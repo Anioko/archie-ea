@@ -249,3 +249,9 @@ def test_a_model_listed_as_global_with_a_reason_is_not_flagged(tmp_path, monkeyp
 
 def test_the_vendor_catalogue_is_listed_as_global_with_its_decision():
     assert "ADR-0003" in gate.GLOBAL_MODELS["VendorOrganization"]
+
+
+def test_every_global_model_carries_a_written_reason():
+    assert gate.GLOBAL_MODELS
+    for name, reason in gate.GLOBAL_MODELS.items():
+        assert len(reason) > 40, "%s needs a real reason" % name
