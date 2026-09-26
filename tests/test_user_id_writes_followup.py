@@ -1,6 +1,6 @@
 """Follow-up fixes to the kanban/solution-issue tenant fence (PR 234, PR 212).
 
-The refuter reports on those PRs found four remaining gaps, all in the same
+Reviews of those PRs found four remaining gaps, all in the same
 "a request-supplied user id is written unchecked" shape:
 
 * ``SolutionIssue.escalated_to_id`` (written by ``escalate_issue``) and
@@ -13,9 +13,13 @@ The refuter reports on those PRs found four remaining gaps, all in the same
   a user id — see ``kanban_projection_service._resolve_user_label``) was
   still written from the request with no organisation check.
 * ``get_board`` resolved each card's assignee with one query per card; this
-  pins that the batched replacement stays fail-closed per card rather than
-  leaking one card's match onto another with the same numeric id.
-* the clean-up command for rows already holding a foreign id.
+  pins that the batched replacement still names a card's assignee only when
+  that user belongs to the card's organisation, and no longer issues one
+  ``users`` query per assigned card.
+* rows already holding a foreign id: editing such a card must still work
+  without naming the foreign user, and the ``clear-foreign-assignees``
+  clean-up command reports them by default and clears them only with
+  ``--apply``.
 """
 
 from __future__ import annotations
@@ -504,11 +508,11 @@ def test_update_card_still_refuses_changing_to_a_different_foreign_assigned_to_i
 # -- kanban board API: batched assignee resolution stays fail-closed per card ---------
 
 
-def test_board_api_batched_lookup_resolves_each_card_to_its_own_organisation(app, db_session, client, login_as):
-    """Two cards on one board: one assigned inside the caller's organisation,
-    one assigned to another organisation's user. The batched lookup that
-    replaced the per-card user_in_org query in get_board must not let one
-    card's match leak onto the other."""
+def test_board_api_batched_lookup_names_only_the_same_organisation_assignee(app, db_session, client, login_as):
+    """Two cards on one board: one assigned to a user of the card's own
+    organisation, one assigned to another organisation's user. After the
+    batched lookup that replaced the per-card user_in_org query in get_board,
+    the first card is named and the second shows no assignee."""
     org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
     own_card = _card(db_session, board, phase, mine, assigned_to_id=mine.id)
     foreign_card = _card(db_session, board, phase, mine, assigned_to_id=theirs.id)
@@ -530,8 +534,8 @@ def test_board_api_batched_lookup_resolves_each_card_to_its_own_organisation(app
 
 def test_get_board_does_not_cost_one_users_query_per_assigned_card(app, db_session, client, login_as):
     """get_board used to run one user_in_org query per assigned card. A board
-    with many assigned cards must not cost proportionally more `users`
-    queries than a board with one — that is the N+1 this fix removed."""
+    with ten assigned cards must issue no more organisation-filtered `users`
+    queries than the same board with one — that is the N+1 this fix removed."""
     from sqlalchemy import event
 
     from app import db
@@ -584,7 +588,7 @@ def test_get_board_does_not_cost_one_users_query_per_assigned_card(app, db_sessi
 # -- CLI: clear-foreign-assignees ------------------------------------------------------
 
 
-def test_clear_foreign_assignees_counts_and_clears_only_foreign_ids(app, db_session):
+def test_clear_foreign_assignees_helpers_count_and_clear_only_foreign_ids(app, db_session):
     from app.commands.clear_foreign_assignees import (
         _clear_foreign_assignees,
         _foreign_assignee_counts,
@@ -620,3 +624,70 @@ def test_clear_foreign_assignees_counts_and_clears_only_foreign_ids(app, db_sess
 
 def test_clear_foreign_assignees_command_is_registered(app):
     assert "clear-foreign-assignees" in app.cli.commands
+
+
+def _invoke_clear_command(app, *args):
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["clear-foreign-assignees", *args])
+    assert result.exit_code == 0, (result.output, result.exception)
+    return result.output
+
+
+def _foreign_rows(db_session):
+    """A kanban card and a solution issue each assigned to another
+    organisation's user, alongside a same-organisation pair, plus a foreign id
+    in columns the command does not own (escalated_to_id, created_by_id)."""
+    org_a, org_b, mine, theirs, phase, board, solution_a = _world(db_session)
+    foreign_card = _card(db_session, board, phase, theirs, assigned_to_id=theirs.id)
+    own_card = _card(db_session, board, phase, mine, assigned_to_id=mine.id)
+    foreign_issue = _issue(db_session, solution_a, assigned_to_id=theirs.id)
+    foreign_issue.escalated_to_id = theirs.id
+    own_issue = _issue(db_session, solution_a, assigned_to_id=mine.id)
+    db_session.commit()
+    return mine, theirs, foreign_card, own_card, foreign_issue, own_issue
+
+
+def test_clear_foreign_assignees_command_without_apply_reports_and_changes_nothing(app, db_session):
+    from app.models.adm_kanban import KanbanCard
+    from app.models.solution_governance import SolutionIssue
+
+    mine, theirs, foreign_card, own_card, foreign_issue, own_issue = _foreign_rows(db_session)
+
+    output = _invoke_clear_command(app)
+
+    assert "Dry run" in output, output
+    assert "kanban_cards:" in output and "solution_issues:" in output, output
+    assert "after clearing" not in output, output
+
+    db_session.expire_all()
+    assert KanbanCard.query.get(foreign_card.id).assigned_to_id == theirs.id
+    assert KanbanCard.query.get(own_card.id).assigned_to_id == mine.id
+    assert SolutionIssue.query.get(foreign_issue.id).assigned_to_id == theirs.id
+    assert SolutionIssue.query.get(own_issue.id).assigned_to_id == mine.id
+
+
+def test_clear_foreign_assignees_command_with_apply_clears_only_foreign_assignees(app, db_session):
+    from app.models.adm_kanban import KanbanCard
+    from app.models.solution_governance import SolutionIssue
+
+    mine, theirs, foreign_card, own_card, foreign_issue, own_issue = _foreign_rows(db_session)
+
+    output = _invoke_clear_command(app, "--apply")
+
+    assert "Dry run" not in output, output
+    assert "kanban_cards: 0 row(s) with a foreign assignee after clearing" in output, output
+    assert "solution_issues: 0 row(s) with a foreign assignee after clearing" in output, output
+
+    db_session.expire_all()
+    cleared_card = KanbanCard.query.get(foreign_card.id)
+    cleared_issue = SolutionIssue.query.get(foreign_issue.id)
+    # Foreign assignees are cleared ...
+    assert cleared_card.assigned_to_id is None
+    assert cleared_issue.assigned_to_id is None
+    # ... same-organisation assignees are kept ...
+    assert KanbanCard.query.get(own_card.id).assigned_to_id == mine.id
+    assert SolutionIssue.query.get(own_issue.id).assigned_to_id == mine.id
+    # ... and columns outside the command's two assignee columns are untouched,
+    # even where they also hold another organisation's user id.
+    assert cleared_card.created_by_id == theirs.id
+    assert cleared_issue.escalated_to_id == theirs.id
