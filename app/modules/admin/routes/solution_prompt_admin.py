@@ -13,7 +13,8 @@ from datetime import datetime
 from flask import Blueprint, jsonify, render_template, request
 from flask_login import current_user, login_required
 
-from app.decorators import admin_required, audit_log
+from app.decorators import audit_log
+from app.middleware.tenant_decorators import platform_admin_required
 from app.extensions import db
 from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 
@@ -181,7 +182,7 @@ def _override_key(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompts_page():
     """Render the solution AI prompt management page."""
     return render_template("admin/solution_prompts.html")
@@ -189,7 +190,7 @@ def solution_prompts_page():
 
 @solution_prompt_admin_bp.route("/solution-prompts/data")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompts_data():
     """JSON API: return all solution prompt configs merged with DB overrides."""
     defaults = _get_prompt_defaults()
@@ -218,7 +219,7 @@ def solution_prompts_data():
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/update", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_solution_prompt")
 def solution_prompt_update(prompt_key):
     """Save a custom override for a solution prompt."""
@@ -292,7 +293,7 @@ def solution_prompt_update(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/reset", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("reset_solution_prompt")
 def solution_prompt_reset(prompt_key):
     """Remove custom override, reverting to hardcoded default."""
@@ -342,7 +343,7 @@ def solution_prompt_reset(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/history")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompt_history(prompt_key):
     """A-05: version history for a prompt override, newest first.
 
@@ -401,7 +402,7 @@ def _version_content(prompt_key, version, override_name):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/diff")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompt_diff(prompt_key):
     """A-05: unified diff between two versions (or a version and "current").
 
@@ -444,7 +445,7 @@ def solution_prompt_diff(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("rollback_solution_prompt")
 def solution_prompt_rollback(prompt_key, version):
     """A-05: restore a prior version's content as the live override.

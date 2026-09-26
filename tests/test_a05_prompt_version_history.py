@@ -34,6 +34,8 @@ def admin_client(app, db_session, make_org, login_as):
         role=role,
         confirmed=True,
     )
+    # The platform's prompts are shared by every organisation, so only a platform admin edits them.
+    user.is_platform_admin = True
     db_session.add(user)
     db_session.flush()
 
