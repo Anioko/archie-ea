@@ -15,7 +15,7 @@ class GovernanceGate(TenantMixin, db.Model):
     # A gate name is unique within one organisation, not across the platform:
     # each organisation overrides the same system-default gate (for example
     # "arb_submission") by name. Existing databases carried a platform-wide
-    # UNIQUE(gate_name); `flask scope-governance-gate-names` replaces it.
+    # UNIQUE(gate_name); `flask scope-unique-keys-per-organisation` replaces it.
     __table_args__ = (
         db.UniqueConstraint("organization_id", "gate_name", name="uq_governance_gates_org_gate_name"),
         {"extend_existing": True},
