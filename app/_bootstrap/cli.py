@@ -355,6 +355,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register audit-log viewpoint-FK drop CLI: {e}")
 
+    # governance_gates: gate names unique per organisation (boot step)
+    try:
+        from app.commands.scope_governance_gate_names import init_app as init_scope_gate_names
+        init_scope_gate_names(app)
+        app.logger.info("\u2705 Governance-gate name scoping CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register governance-gate name scoping CLI: {e}")
+
     try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)
