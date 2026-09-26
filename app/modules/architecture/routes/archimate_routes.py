@@ -1479,12 +1479,20 @@ def api_create_relationship():
     # picker would ever have offered.
     from app.services.archimate_validity_service import ArchimateValidityService
 
-    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
-        return api_error(
-            "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
-            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
-            400,
-        )
+    validity = ArchimateValidityService()
+    if not validity.is_valid(source_el.type or "", target_el.type or "", rel_type):
+        # Name the types the metamodel does allow for this pair, so the person
+        # who attempted the connection is told what to draw instead.
+        valid_types = [
+            r["type"] for r in validity.get_valid_relationships(source_el.type or "", target_el.type or "")
+        ]
+        return jsonify({
+            "success": False,
+            "error": "ArchiMate 3.2 does not allow " + rel_type + " from " + (source_el.name or "")
+            + " (" + (source_el.type or "") + ") to " + (target_el.name or "")
+            + " (" + (target_el.type or "") + ")",
+            "valid_types": valid_types,
+        }), 400
 
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
@@ -2056,6 +2064,13 @@ def api_get_saved_viewpoint(vp_id):
             "routing_style": rp.routing_style if rp else "manhattan",
             "sequence_order": r.sequence_order,
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            # What was recorded on the relationship when it was drawn; the
+            # Composer's loader restores these, so a reopened view shows what a
+            # flow carries and how data is accessed, not just the bare type.
+            "description": r.description,
+            "access_mode": r.access_mode,
+            "flow_label": r.flow_label,
+            "custom_label": r.custom_label,
         })
 
     return jsonify({
