@@ -1936,19 +1936,32 @@ PLAIN_LAYER_NAMES: dict[str, str] = {
 def plain_name_for(element_type: str | None) -> str:
     """Return the plain-language display name for an ArchiMate element type.
 
-    Returns the original PascalCase name unchanged when no plain name is
+    Returns the original value unchanged when no plain name is
     registered (e.g. for Location, Grouping, Junction, or any future type).
+    Handles snake_case input by converting to PascalCase before lookup.
     """
     if not element_type:
-        return "—"
-    return PLAIN_LANGUAGE_NAMES.get(element_type, element_type)
+        return "\u2014"
+    if element_type in PLAIN_LANGUAGE_NAMES:
+        return PLAIN_LANGUAGE_NAMES[element_type]
+    # Try snake_case -> PascalCase conversion
+    pascal = "".join(word.capitalize() for word in element_type.split("_"))
+    if pascal in PLAIN_LANGUAGE_NAMES:
+        return PLAIN_LANGUAGE_NAMES[pascal]
+    return element_type
 
 
 def plain_layer_name(layer: str | None) -> str:
     """Return the plain-language display name for an ArchiMate layer."""
     if not layer:
-        return "—"
-    return PLAIN_LAYER_NAMES.get(layer, layer)
+        return "\u2014"
+    if layer in PLAIN_LAYER_NAMES:
+        return PLAIN_LAYER_NAMES[layer]
+    # Try snake_case -> PascalCase conversion
+    pascal = "".join(word.capitalize() for word in layer.split("_"))
+    if pascal.lower() in PLAIN_LAYER_NAMES:
+        return PLAIN_LAYER_NAMES[pascal.lower()]
+    return layer
 
 
 # =============================================================================
