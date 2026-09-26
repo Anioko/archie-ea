@@ -69,15 +69,62 @@ def test_user_in_org_fails_closed_on_bad_input(app, db_session):
 # -- the two callers -----------------------------------------------------------------
 
 
-def test_kanban_assignee_label_names_only_a_user_of_the_cards_organisation(app, db_session):
+def test_kanban_assignee_label_and_owner_name_only_users_of_the_cards_organisation(app, db_session):
+    """Two organisations, a card in organisation A whose assignee and
+    assigned_to_id point at a user in organisation B: neither the assignee
+    label nor the owner names that user."""
+    from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
     from app.services.kanban_projection_service import KanbanProjectionService
 
     org_a, org_b, mine, theirs = _world(db_session)
+
+    phase = ADMPhase(name="Test Phase A", code="A", order=1)
+    db_session.add(phase)
+    db_session.flush()
+
+    board = KanbanBoard(
+        name="Test Board", board_type="architecture_development",
+        created_by_id=mine.id, organization_id=org_a.id,
+    )
+    db_session.add(board)
+    db_session.flush()
+
+    # Card in org A whose assignee and assigned_to_id point at org B's user
+    foreign_card = KanbanCard(
+        title="Foreign assignee card", adm_phase_id=phase.id,
+        board_id=board.id, card_type="task", status="todo",
+        assignee=str(theirs.id), assigned_to_id=theirs.id,
+        created_by_id=mine.id, organization_id=org_a.id,
+    )
+    db_session.add(foreign_card)
+
+    # Card in org A whose assignee and assigned_to_id point at own user
+    own_card = KanbanCard(
+        title="Own assignee card", adm_phase_id=phase.id,
+        board_id=board.id, card_type="task", status="todo",
+        assignee=str(mine.id), assigned_to_id=mine.id,
+        created_by_id=mine.id, organization_id=org_a.id,
+    )
+    db_session.add(own_card)
+    db_session.commit()
+
     service = KanbanProjectionService()
 
-    assert service._resolve_user_label(mine.id, org_a.id) == "Mia Mine"
-    assert service._resolve_user_label(theirs.id, org_a.id) == ""
-    assert service._resolve_user_label(theirs.id, None) == ""
+    result = service._project_one_kanban_card(foreign_card)
+    assert result["assignee_label"] == "", (
+        f"Expected empty assignee_label for foreign user, got {result['assignee_label']!r}"
+    )
+    assert result["owner"] is None, (
+        f"Expected None owner for foreign user, got {result['owner']!r}"
+    )
+
+    result = service._project_one_kanban_card(own_card)
+    assert result["assignee_label"] == "Mia Mine", (
+        f"Expected 'Mia Mine' assignee_label for own user, got {result['assignee_label']!r}"
+    )
+    assert result["owner"] == "Mia Mine", (
+        f"Expected 'Mia Mine' owner for own user, got {result['owner']!r}"
+    )
 
 
 def test_condition_owner_name_names_only_a_user_of_the_callers_organisation(app, db_session):
