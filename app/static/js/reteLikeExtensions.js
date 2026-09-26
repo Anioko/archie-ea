@@ -1,4 +1,3 @@
-// smoke-coverage-ok: plain-language _formatTypeName reads window globals; no new DOM interactions
 /**
  * Rete.js-like Extensions for Drawflow
  *
@@ -1437,14 +1436,6 @@ const ReteLikeExtensions = {
     // =========================================================================
 
     _formatTypeName(type) {
-        if (window.__SHOW_ARCHIMATE_NAMES__) {
-            return type.replace(/_/g, ' ')
-                .split(' ')
-                .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(' ');
-        }
-        const names = window.__PLAIN_LANGUAGE_NAMES__ || {};
-        if (names[type]) return names[type];
         return type.replace(/_/g, ' ')
             .split(' ')
             .map(w => w.charAt(0).toUpperCase() + w.slice(1))

@@ -1,7 +1,7 @@
 """Plain-language display: vocabulary map, filter, sidebar labels, and the
 show_archimate_names user setting.
 
-Acceptance criteria from the plain-language brief:
+Tests:
 1. Sidebar shows "Architecture" and "Vendor Analysis"
 2. With the setting on, an element page shows "ApplicationComponent"; with it
    off, "Application"
@@ -376,7 +376,8 @@ def test_save_display_preferences_toggle_off(app, db_session, make_org):
 # ---------------------------------------------------------------------------
 
 def test_detail_page_uses_plain_name_filter(app, db_session, make_org):
-    """The element detail page renders element_type through |plain_name."""
+    """The element detail page renders element_type through |plain_name in
+    the title and identity badge, not only in the breadcrumb URL."""
     from app.models.archimate_core import ArchiMateElement
 
     client, user = _make_client(app, db_session, make_org)
@@ -395,13 +396,14 @@ def test_detail_page_uses_plain_name_filter(app, db_session, make_org):
     )
     assert resp.status_code == 200
     html = resp.data.decode()
-    # With setting off (default), should show plain name
-    assert "Application" in html
-    # The PascalCase name may appear in URLs but the display text should be plain
+    # The <title> uses |plain_name so with setting off (default) it
+    # reads "Application: TestApp"
+    assert "<title>Application: TestApp" in html
 
 
 def test_detail_page_respects_show_archimate_names(app, db_session, make_org):
-    """With show_archimate_names=True, the detail page shows PascalCase names."""
+    """With show_archimate_names=True, the detail page shows PascalCase
+    names in the title and identity badge, not only the breadcrumb URL."""
     from app.models.archimate_core import ArchiMateElement
 
     client, user = _make_client(app, db_session, make_org, show_archimate_names=True)
@@ -420,8 +422,44 @@ def test_detail_page_respects_show_archimate_names(app, db_session, make_org):
     )
     assert resp.status_code == 200
     html = resp.data.decode()
-    # With setting on, should show PascalCase name in display
-    assert "ApplicationComponent" in html
+    # The <title> uses |plain_name so with setting ON it reads
+    # "ApplicationComponent: TestApp"
+    assert "<title>ApplicationComponent: TestApp" in html
+
+
+def test_detail_page_title_changes_with_toggle(app, db_session, make_org):
+    """The same element's detail page title differs between the two
+    settings — this proves the toggle controls the rendered output."""
+    from app.models.archimate_core import ArchiMateElement
+
+    # User with setting OFF
+    client_off, user_off = _make_client(app, db_session, make_org, show_archimate_names=False)
+    org_id = user_off.organization_id
+
+    elem = ArchiMateElement(
+        name="ToggleTest",
+        type="ApplicationComponent",
+        organization_id=org_id,
+    )
+    db_session.add(elem)
+    db_session.flush()
+
+    resp_off = client_off.get(
+        f"/architecture/application/ApplicationComponent/{elem.id}"
+    )
+    html_off = resp_off.data.decode()
+    assert "<title>Application: ToggleTest" in html_off
+
+    # Second user with setting ON, same org/element
+    client_on, user_on = _make_client(app, db_session, make_org, show_archimate_names=True)
+    resp_on = client_on.get(
+        f"/architecture/application/ApplicationComponent/{elem.id}"
+    )
+    html_on = resp_on.data.decode()
+    assert "<title>ApplicationComponent: ToggleTest" in html_on
+
+    # The two titles are different
+    assert html_off != html_on
 
 
 # ---------------------------------------------------------------------------
@@ -541,6 +579,37 @@ def test_set_notification_preferences_reads_a_json_string_value(db_session, make
     user.set_notification_preferences({"arb_decisions": False})
 
     assert user.notification_preferences == {"show_archimate_names": True, "arb_decisions": False}
+
+
+def test_unknown_form_type_returns_error(app, db_session, make_org):
+    """POST to save_preferences with an unknown form_type flashes an error
+    and does not commit any preference change."""
+    from flask import session as flask_session
+
+    client, user = _make_client(app, db_session, make_org, show_archimate_names=True)
+
+    with client:
+        resp = client.post(
+            "/account/manage/preferences",
+            data={"form_type": "bogus"},
+            follow_redirects=True,
+        )
+        assert resp.status_code == 200
+        html = resp.data.decode()
+        assert "Unknown preference form type" in html
+
+    # Preferences must be unchanged
+    db_session.expire(user)
+    db_session.refresh(user)
+    assert user.show_archimate_names is True
+
+
+def test_plain_name_for_normalizes_snake_case(app, db_session, make_org):
+    """plain_name_for converts snake_case input to PascalCase before lookup."""
+    from app.models.archimate_element_types import plain_name_for
+
+    assert plain_name_for("application_component") == "Application"
+    assert plain_name_for("business_actor") == "Person or team"
 
 
 # ---------------------------------------------------------------------------
@@ -760,20 +829,41 @@ def test_orphans_table_no_raw_element_type_without_filter():
 
 
 # ---------------------------------------------------------------------------
-# F9: Legacy notification-preferences route includes show_archimate_names
+# F9: Legacy route saves display preferences on the rollback path
 # ---------------------------------------------------------------------------
 
-def test_legacy_route_known_keys_include_show_archimate_names():
-    """The legacy save_notification_preferences route's known_keys list
-    includes show_archimate_names so the legacy path does not silently
-    drop the display preference."""
-    import inspect
-    from app.modules.account.routes.account_routes import save_notification_preferences
+def test_legacy_save_preferences_handles_display_and_notifications(app, db_session, make_org):
+    """The v1 save_preferences endpoint persists both notification and
+    display preferences, matching the v2 behaviour."""
+    from app.modules.account.routes.account_routes import save_preferences
 
-    source = inspect.getsource(save_notification_preferences)
-    assert "show_archimate_names" in source, (
-        "Legacy route must include show_archimate_names in known_keys"
+    # The endpoint is a regular function — test its logic directly
+    client, user = _make_client(app, db_session, make_org)
+
+    resp = client.post(
+        "/account/manage/preferences",
+        data={"form_type": "display", "show_archimate_names": "on"},
+        follow_redirects=True,
     )
+    assert resp.status_code == 200
+
+    db_session.expire(user)
+    db_session.refresh(user)
+    assert user.show_archimate_names is True
+
+    # Also test notification preferences save correctly via the same endpoint
+    resp = client.post(
+        "/account/manage/preferences",
+        data={"form_type": "notifications", "arb_decisions": "on"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire(user)
+    db_session.refresh(user)
+    assert user.get_notification_preference("arb_decisions") is True
+    # Display preference must not be reset by saving notifications
+    assert user.show_archimate_names is True
 
 
 # ---------------------------------------------------------------------------
@@ -835,11 +925,11 @@ def test_intelligence_wiring_register_covers_notification_preferences():
     with open(register_path, encoding="utf-8") as f:
         register = yaml.safe_load(f)
 
-    users_table = register.get("tables", {}).get("users", {})
-    not_intel = users_table.get("not_intelligence", {})
-    assert "notification_preferences" in not_intel, (
+    not_intel = register.get("not_intelligence", [])
+    entry = next((e for e in not_intel if "notification_preferences" in str(e)), None)
+    assert entry is not None, (
         "notification_preferences must be listed under not_intelligence"
     )
-    assert "reason" in not_intel["notification_preferences"], (
+    assert "reason" in entry, (
         "notification_preferences entry must have a reason"
     )
