@@ -179,10 +179,7 @@ def test_two_organisation_component_block_carries_all_recorded_facts(app, db_ses
     assert names == {"Suite One", "Suite Two"}
 
 
-def test_cross_tenant_licence_row_never_appears_mutation_proved(app, db_session, make_org):
-    from app.extensions import db as _db
-    from app.models.license_entitlement import LicenseEntitlement
-
+def test_cross_tenant_licence_row_never_appears(app, db_session, make_org):
     org_a = make_org("portfolio-block-licence-tenant-a")
     org_b = make_org("portfolio-block-licence-tenant-b")
     a = _element(db_session, org_a.id, "A")
@@ -197,32 +194,50 @@ def test_cross_tenant_licence_row_never_appears_mutation_proved(app, db_session,
     ids = {row["entitlement_id"] for row in (result["component"]["licences"] or [])}
     assert foreign.id not in ids
 
-    # Mutation-proof: reconstruct what the answer would contain if the
-    # explicit organization_id predicate decision B requires were ever
-    # dropped, and confirm the assertion above is real -- it goes red
-    # against the unfiltered read, not vacuously true.  The unfiltered
-    # query must run without g.current_org_id so the ORM tenant-isolation
-    # listener does not inject its own WHERE organization_id = ... clause
-    # and mask the cross-tenant row.
-    from flask import g as _g
 
-    prior, _g.current_org_id = _g.current_org_id, None
-    try:
-        unfiltered_ids = set(
-            _db.session.execute(
-                _db.select(LicenseEntitlement.id).where(
-                    LicenseEntitlement.application_id == comp_a.id
-                )
-            )
-            .scalars()
-            .all()
-        )
-    finally:
-        _g.current_org_id = prior
+def test_cross_tenant_licence_row_appears_only_when_predicate_seam_is_neutered(
+    app, db_session, make_org, monkeypatch
+):
+    """Mutation-proof for ``_licence_tenant_predicate``. Called this way --
+    with no Flask ``g.current_org_id`` ever set -- the ORM's own automatic
+    tenant filter (``with_loader_criteria`` on ``TenantMixin``, which reads
+    ``g.current_org_id`` directly) never fires for either read below, so the
+    explicit predicate isolated in ``_licence_tenant_predicate`` is the only
+    thing standing between org A's read and org B's row; the read still
+    needs an organisation to resolve the element/component by, supplied by
+    monkeypatching ``current_org_id`` itself rather than a request context.
+    """
+    from sqlalchemy import true as sa_true
 
-    assert foreign.id in unfiltered_ids
+    from app.modules.intelligence.services import query_service
+
+    org_a = make_org("portfolio-block-licence-mut-a")
+    org_b = make_org("portfolio-block-licence-mut-b")
+    a = _element(db_session, org_a.id, "A")
+    comp_a = _component(db_session, org_a.id, a)
+    contract_b = _contract(db_session, org_b.id)
+    foreign = _licence(db_session, comp_a, org_b.id, contract_b, product_name="Foreign", quantity_entitled=10, quantity_used=1)
+    db_session.commit()
+
+    monkeypatch.setattr(query_service, "current_org_id", lambda: org_a.id)
+    real_predicate = query_service._licence_tenant_predicate
+
+    def _licence_ids():
+        result = query_service.IntelligenceQueryService.portfolio_component_for_element(a.id)
+        return {row["entitlement_id"] for row in (result["component"]["licences"] or [])}
+
+    # Control: the real seam keeps the foreign row out.
+    assert foreign.id not in _licence_ids()
+
+    # Mutation: neuter the seam -- the foreign row now passes the .where()
+    # clause that used to exclude it.
+    monkeypatch.setattr(query_service, "_licence_tenant_predicate", lambda org_id: sa_true())
     with pytest.raises(AssertionError):
-        assert foreign.id not in unfiltered_ids
+        assert foreign.id not in _licence_ids()
+
+    # Restore: the leak closes again.
+    monkeypatch.setattr(query_service, "_licence_tenant_predicate", real_predicate)
+    assert foreign.id not in _licence_ids()
 
 
 def test_cost_by_period_reads_only_the_resolved_components_own_row(app, db_session, make_org):

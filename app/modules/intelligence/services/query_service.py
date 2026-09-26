@@ -103,6 +103,24 @@ def _sec09_tenant_check(component_org_id: Optional[int], org_id: int) -> bool:
     return component_org_id == org_id
 
 
+def _licence_tenant_predicate(org_id: int):
+    """The explicit ``LicenseEntitlement.organization_id ==`` predicate on
+    the portfolio component block's licence read, isolated as its own seam
+    -- the same pattern as ``_sec09_tenant_check`` above -- so a mutation
+    test can replace it and watch the cross-tenant licence test go red.
+
+    ``LicenseEntitlement`` carries ``TenantMixin`` so the ORM listener
+    already fences a normal request; the FK from ``license_entitlements``
+    to ``application_components`` carries no tenant check of its own,
+    though, so this predicate is what keeps the read correct when called
+    with no ambient request context (a job, a CLI command, a test looping
+    tenants in one session), where the listener would otherwise no-op.
+    """
+    from app.models.license_entitlement import LicenseEntitlement
+
+    return LicenseEntitlement.organization_id == org_id
+
+
 def _resolve_owners_batch(
     element_ids: List[int], org_id: int
 ) -> Dict[int, Tuple[Optional[Dict[str, Any]], Optional[str]]]:
@@ -1009,7 +1027,7 @@ class IntelligenceQueryService:
                     db.select(LicenseEntitlement)
                     .where(
                         LicenseEntitlement.application_id == component.id,
-                        LicenseEntitlement.organization_id == org_id,
+                        _licence_tenant_predicate(org_id),
                     )
                     .order_by(LicenseEntitlement.id)
                 )
