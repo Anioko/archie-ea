@@ -11741,6 +11741,7 @@ def api_raci_matrix(solution_id):
 @login_required
 def api_set_raci(solution_id):
     """FRAG-030: Set RACI assignment."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.raci_service import set_raci_assignment
         data = request.get_json()
