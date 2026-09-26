@@ -1,11 +1,10 @@
 """T-L1-IMPORT-OPS: one ArchiMate model import screen, not two.
 
-Two screens used to import the same OEF XML file on different code: the
-sidebar-reached ``/architecture/import/oef`` (``architect_ui.import_oef``,
-built on ``ArchiMateExchangeService``) and ``/solutions/import/archimate``
-(built on ``ArchiMateImportService``, reached only from a header button on
-the element catalog). The decision: the sidebar-reached screen is canonical;
-the other now redirects to it rather than rendering its own page.
+Two screens used to import the same OEF XML file: the sidebar-reached
+``/architecture/import/oef`` (``architect_ui.import_oef``) and
+``/solutions/import/archimate``. The first is the screen; it now carries the
+preview and strategy choice the second had, over the one import engine
+(``ArchiMateImportService``). The old URL redirects (302) to it.
 """
 import os
 
@@ -56,7 +55,7 @@ def test_no_template_links_to_the_old_import_url():
 
 
 @db_required
-def test_old_import_url_redirects_permanently_to_the_canonical_screen(app, client, db_session, login_as, make_org):
+def test_old_import_url_redirects_to_the_canonical_screen(app, client, db_session, login_as, make_org):
     from app.models import User
 
     org = make_org("oef-entry-redirect")
@@ -67,7 +66,7 @@ def test_old_import_url_redirects_permanently_to_the_canonical_screen(app, clien
 
     login_as(client, user)
     resp = client.get("/solutions/import/archimate", follow_redirects=False)
-    assert resp.status_code in (301, 308), resp.status_code
+    assert resp.status_code == 302, resp.status_code
     assert resp.headers["Location"].endswith("/architecture/import/oef")
 
 
@@ -83,7 +82,7 @@ def test_old_import_url_preserves_query_string_on_redirect(app, client, db_sessi
 
     login_as(client, user)
     resp = client.get("/solutions/import/archimate?ref=catalog", follow_redirects=False)
-    assert resp.status_code in (301, 308), resp.status_code
+    assert resp.status_code == 302, resp.status_code
     assert resp.headers["Location"].endswith("/architecture/import/oef?ref=catalog")
 
 
@@ -123,3 +122,40 @@ def test_following_the_redirect_lands_on_a_real_200(app, client, db_session, log
     resp = client.get("/solutions/import/archimate", follow_redirects=True)
     assert resp.status_code == 200
     assert resp.request.path == "/architecture/import/oef"
+
+
+@db_required
+def test_old_import_url_survives_a_non_utf8_query_string(app, client, db_session, login_as, make_org):
+    from app.models import User
+
+    org = make_org("oef-entry-redirect-bytes")
+    user = User(email="oef-entry-redirect-bytes@example.com", organization_id=org.id, confirmed=True)
+    user.password = "x"
+    db_session.add(user)
+    db_session.flush()
+
+    login_as(client, user)
+    # A Latin-1 "é" as a client sends it: percent-encoded, so the bytes are
+    # not valid UTF-8 once unquoted. The redirect must carry it through
+    # untouched rather than 500. (A raw unencoded 0xE9 byte never reaches
+    # this route: Werkzeug's own request.args decode, read by middleware
+    # first, rejects it.)
+    resp = client.get("/solutions/import/archimate?ref=caf%E9", follow_redirects=False)
+    assert resp.status_code == 302, resp.status_code
+    assert resp.headers["Location"].endswith("/architecture/import/oef?ref=caf%E9")
+    assert "/architecture/import/oef?ref=caf" in resp.headers["Location"]
+
+
+def test_canonical_screen_offers_preview_and_every_strategy(app):
+    source = app.jinja_env.loader.get_source(app.jinja_env, "archimate_crud/import_oef.html")[0]
+    for needle in (
+        "architect_ui.import_oef_preview",
+        "'skip_duplicates'",
+        "'update_existing'",
+        "'create_all'",
+        'data-testid="btn-preview-import"',
+        'data-testid="relationship-import-result"',
+    ):
+        assert needle in source, needle
+    for native in ("alert(", "confirm(", "prompt("):
+        assert native not in source, native
