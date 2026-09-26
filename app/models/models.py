@@ -496,6 +496,12 @@ else:
         # BUG-CMP-002: Relationship metadata — persists properties across diagrams
         description = db.Column(db.Text, nullable=True)
         access_mode = db.Column(db.String(20), nullable=True)
+        # Which of Create/Read/Update/Delete an access relationship performs,
+        # as the letters in that order ("CU", "R", "CRUD"). ArchiMate's own
+        # access_mode above only says read/write; this is the finer record a
+        # data entity's CRUD matrix reads, with access_mode kept consistent
+        # with it. NULL means no CRUD detail was recorded.
+        crud_operations = db.Column(db.String(4), nullable=True)
         flow_label = db.Column(db.String(200), nullable=True)
         custom_label = db.Column(db.String(200), nullable=True)
         created_by_id = db.Column(db.Integer, nullable=True)

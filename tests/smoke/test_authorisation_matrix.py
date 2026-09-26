@@ -339,6 +339,45 @@ def test_interface_register_edit_route_authorisation(
 
 
 @pytest.fixture(scope="module")
+def seeded_data_entity(seeded):
+    """A real DataEntity in the seeded org, for the entity page's <id> path."""
+    from app import create_app, db
+    from app.models.process_data import DataDomain, DataEntity
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        entity = DataEntity.query.filter_by(organization_id=org_id).order_by(DataEntity.id.desc()).first()
+        if entity is None:
+            domain = DataDomain(name="Auth-matrix probe domain", organization_id=org_id)
+            db.session.add(domain)
+            db.session.flush()
+            entity = DataEntity(name="Auth-matrix probe entity", domain_id=domain.id, organization_id=org_id)
+            db.session.add(entity)
+            db.session.commit()
+        return entity.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_data_entity_page_authorisation(archetype, page, live_server, seeded, seeded_data_entity):
+    """GET /architecture/data-entities/<id> (the entity and its CRUD matrix)
+    carries @login_required and no role gate, like the entity catalog it is
+    opened from, so every archetype in the entity's organisation reaches it.
+    The data is fenced per tenant by the entity lookup, not by a role."""
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/architecture/data-entities/%d" % seeded_data_entity
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, "%s could not reach %s: expected ALLOWED" % (archetype, path)
+
+
+def test_data_entity_page_rejects_anonymous(page, live_server, seeded_data_entity):
+    path = "/architecture/data-entities/%d" % seeded_data_entity
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert "/account/login" in page.url or (response is not None and response.status >= 400), (
+        "%s was served without signing in" % path)
+
+
+@pytest.fixture(scope="module")
 def seeded_interface_initiative(seeded):
     """A real TechnologyRoadmapInitiative wired to an ArchitectureModel in the
     seeded org, for the comparison POST routes (D5) -- provision_comparison
