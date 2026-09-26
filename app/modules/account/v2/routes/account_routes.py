@@ -39,10 +39,8 @@ from app.modules.account.forms.account_forms import (
     ChangePasswordForm,
     CreatePasswordForm,
     LoginForm,
-    RegistrationForm,
-    RequestResetPasswordForm,
-    ResetPasswordForm,
 )
+from app.modules.account.routes import mail_views
 from app.modules.account.services.account_service import AccountService
 
 # Blueprint name MUST be "account" (not "account_v2") because the shared
@@ -139,17 +137,7 @@ def login():
 @timed_route
 def register():
     """Register a new user, and send them a confirmation email."""
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        (_svc.register_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-        ))
-        flash(f"Account created successfully. Welcome to {current_app.config['APP_NAME']}!", "success")
-        return redirect(url_for("main.index"))
-    return render_template("account/register.html", form=form)
+    return mail_views.register_view()
 
 
 @account_bp_v2.route("/logout")
@@ -221,38 +209,19 @@ def session_keepalive():
 
 
 @account_bp_v2.route("/reset-password", methods=["GET", "POST"])
+@rate_limit(5, "1m", methods=("POST",))  # SECURITY: each POST can send mail
 @timed_route
 def reset_password_request():
     """Respond to existing user's request to reset their password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = RequestResetPasswordForm()
-    if form.validate_on_submit():
-        from flask import current_app as _ca
-        try:
-            _svc.request_password_reset(form.email.data)
-        except Exception:
-            _ca.logger.exception("password reset request failed for %s", form.email.data)
-        flash("If an account exists for {}, a password reset link has been sent.".format(form.email.data), "info")
-        return redirect(url_for("account.login"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_request_view()
 
 
 @account_bp_v2.route("/reset-password/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
 @timed_route
 def reset_password(token):
     """Reset an existing user's password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        success, message = _svc.reset_password(token, form.email.data, form.new_password.data)
-        flash_cat = "form-success" if success else "form-error"
-        flash(message, flash_cat)
-        if success:
-            return redirect(url_for("account.login"))
-        return redirect(url_for("main.index"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_view(token)
 
 
 @account_bp_v2.route("/manage/change-password", methods=["GET", "POST"])
@@ -320,34 +289,28 @@ def change_email(token):
     return redirect(url_for("main.index"))
 
 
-@account_bp_v2.route("/confirm-account")
+@account_bp_v2.route("/confirm-account", methods=["GET", "POST"])
 @login_required
+@rate_limit(3, "1m", methods=("POST",))  # SECURITY: each POST sends mail
 @timed_route
 def confirm_request():
     """Respond to new user's request to confirm their account."""
-    from flask import current_app as _ca
-    if _ca.config.get("MAIL_USERNAME") or _ca.config.get("MAIL_PASSWORD"):
-        try:
-            _svc.send_confirmation_email(current_user)
-        except Exception:
-            _ca.logger.warning("confirmation email send failed")
-    else:
-        _ca.logger.info("mail not configured; skipping confirmation email")
-    flash("A new confirmation link has been sent to {}.".format(current_user.email), "warning")
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_request_view()
 
 
 @account_bp_v2.route("/confirm-account/<token>")
-@login_required
 @timed_route
 def confirm(token):
     """Confirm new user's account with provided token."""
-    if current_user.confirmed:
-        return redirect(url_for("main.index"))
-    success, message = _svc.confirm_account(current_user, token)
-    flash_cat = "success" if success else "error"
-    flash(message, flash_cat)
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_view(token)
+
+
+@account_bp_v2.route("/join/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
+@timed_route
+def join(token):
+    """Accept an e-mailed invitation into an organisation by setting a password."""
+    return mail_views.join_view(token)
 
 
 @account_bp_v2.route("/join-from-invite/<int:user_id>/<token>", methods=["GET", "POST"])
@@ -455,9 +418,7 @@ def save_preferences():
 @timed_route
 def unconfirmed():
     """Catch users with unconfirmed emails."""
-    if current_user.is_anonymous or current_user.confirmed:
-        return redirect(url_for("main.index"))
-    return render_template("account/unconfirmed.html")
+    return mail_views.unconfirmed_view()
 
 
 # ---------------------------------------------------------------------------

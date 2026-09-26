@@ -305,10 +305,6 @@ class User(UserMixin, db.Model):
         s = Serializer(current_app.config["SECRET_KEY"])
         return s.dumps({"change_email": self.id, "new_email": new_email})
 
-    def generate_password_reset_token(self):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        return s.dumps({"reset": self.id})
-
     def confirm_account(self, token, expiration=604800):
         s = Serializer(current_app.config["SECRET_KEY"])
         try:
@@ -344,18 +340,8 @@ class User(UserMixin, db.Model):
         db.session.commit()
         return True
 
-    def reset_password(self, token, new_password, expiration=3600):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        try:
-            data = s.loads(token, max_age=expiration)
-        except (BadSignature, SignatureExpired):
-            return False
-        if data.get("reset") != self.id:
-            return False
-        self.password = new_password
-        db.session.add(self)
-        db.session.commit()
-        return True
+    # Password-reset links are single-use, stored as digests and issued by
+    # AccountService.request_password_reset (app/models/account_token.py).
 
     # ── Enterprise RBAC helpers (ENT-068) ────────────────────────────
 

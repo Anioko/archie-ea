@@ -29,13 +29,15 @@ correctly. Switching to it would have swapped one access gap for another.
 
 import logging
 
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
+from app.flask_email import mail_available
 from app.middleware.tenant_decorators import is_platform_admin
-from app.models.user import User
+from app.models.user import ROLE_DISPLAY_NAMES, User
 from app.models.org_role import OrgRole, VALID_ORG_ROLES
+from app.services.rate_limiter import rate_limit
 from app.services.rbac_service import rbac_service
 
 logger = logging.getLogger(__name__)
@@ -60,13 +62,15 @@ def _require_org_or_platform_admin(org_id):
     abort(403)
 
 
-@team_bp.route("/team")
-@login_required
-def team():
-    """List org members with their roles."""
-    org_id = _require_org_id()
-    _require_org_or_platform_admin(org_id)
-    members = User.query.filter_by(organization_id=org_id).all()
+def _render_team(org_id, error=None, status=200):
+    from app.modules.account.services import invitation_service
+
+    invitations = invitation_service.invitations_for(org_id)
+    invited_ids = {row.user_id for row in invitations}
+    members = [
+        m for m in User.query.filter_by(organization_id=org_id).all()
+        if not (m.id in invited_ids or invitation_service.is_unactivated(m))
+    ]
     role_map = {
         m.id: rbac_service.get_user_role(org_id, m.id) for m in members
     }
@@ -75,16 +79,33 @@ def team():
         members=members,
         role_map=role_map,
         valid_roles=VALID_ORG_ROLES,
-    )
+        invitations=invitations,
+        personas=[(p, ROLE_DISPLAY_NAMES.get(p, p)) for p in invitation_service.INVITABLE_PERSONAS],
+        mail_is_available=mail_available(),
+        invite_error=error,
+    ), status
+
+
+@team_bp.route("/team")
+@login_required
+def team():
+    """List org members with their roles, and the invitations still open."""
+    org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
+    return _render_team(org_id)
 
 
 @team_bp.route("/team/invite", methods=["POST"])
 @login_required
+@rate_limit(20, "1m", methods=("POST",))  # SECURITY: each POST can send mail
 def team_invite():
-    """Create a pending invitation for an existing user to join the org.
+    """Invite someone into the org by e-mail.
 
-    The user must accept before a role or membership is granted.  Duplicate
-    pending invitations for the same org+user are refused.
+    An address with no account gets an account in THIS organisation and a
+    single-use link to set a password; the role is granted when they take it
+    up. An existing user from elsewhere gets a pending invitation they accept
+    after signing in. Neither grants a role or membership before acceptance,
+    and duplicate open invitations are refused.
     """
     org_id = _require_org_id()
     _require_org_or_platform_admin(org_id)
@@ -92,16 +113,32 @@ def team_invite():
     role = request.form.get("role", "viewer")
 
     if not email:
-        return jsonify({"error": "email required"}), 400
+        return _render_team(org_id, "Cannot invite: email required.", 400)
     if role not in VALID_ORG_ROLES:
-        return jsonify({"error": f"invalid role '{role}'"}), 400
+        return _render_team(org_id, f"Cannot invite: invalid role '{role}'.", 400)
+
+    from app.modules.account.services import invitation_service
 
     user = User.find_by_email(email)
-    if user is None:
-        return jsonify({"error": f"No user found with email {email}"}), 404
+    if user is None or (
+        user.organization_id == org_id and invitation_service.is_unactivated(user)
+    ):
+        try:
+            _, delivered, error = invitation_service.invite_new_person(
+                org_id, current_user, email, org_role=role,
+                persona=request.form.get("persona") or None,
+            )
+        except invitation_service.InvitationError as exc:
+            db.session.rollback()
+            return _render_team(org_id, exc.message, exc.status)
+        if delivered:
+            flash(f"Invitation sent to {email}.", "success")
+        else:
+            flash(f"The invitation to {email} could not be sent: {error} Use Resend to try again.", "error")
+        return redirect(url_for("team.team"))
 
     if OrgRole.get_role(org_id, user.id) is not None:
-        return jsonify({"error": "This user is already a member of the organisation"}), 409
+        return _render_team(org_id, "This user is already a member of the organisation.", 409)
 
     from app.models.pending_invitation import PendingInvitation
 
@@ -109,13 +146,54 @@ def team_invite():
         org_id, user.id, role, invited_by_id=current_user.id
     )
     if not created:
-        return jsonify({"error": "An invitation for this user already exists"}), 409
+        return _render_team(org_id, "An invitation for this user already exists.", 409)
     db.session.commit()
-
-    logger.info(
-        "STUB invite email to %s with role %s in org %s", email, role, org_id
+    # This person already has an account: the invitation waits for them in
+    # the product rather than in their inbox, and the admin is told so.
+    flash(
+        f"{email} already has an account. They will see the invitation the next time they sign in.",
+        "success",
     )
+    return redirect(url_for("team.team"))
 
+
+@team_bp.route("/team/invitations/<int:invitation_id>/resend", methods=["POST"])
+@login_required
+@rate_limit(20, "1m", methods=("POST",))  # SECURITY: each POST sends mail
+def team_invitation_resend(invitation_id):
+    """Send a fresh link for an open invitation; the previous link stops working."""
+    org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
+    from app.modules.account.services import invitation_service
+
+    try:
+        row, delivered, error = invitation_service.resend(org_id, current_user, invitation_id)
+    except invitation_service.InvitationError as exc:
+        db.session.rollback()
+        if exc.status == 404:
+            abort(404)
+        return _render_team(org_id, exc.message, exc.status)
+    if delivered:
+        flash(f"A new invitation link was sent to {row.user.email}.", "success")
+    else:
+        flash(f"The invitation to {row.user.email} could not be sent: {error}", "error")
+    return redirect(url_for("team.team"))
+
+
+@team_bp.route("/team/invitations/<int:invitation_id>/revoke", methods=["POST"])
+@login_required
+def team_invitation_revoke(invitation_id):
+    """Withdraw an open invitation so its link stops working."""
+    org_id = _require_org_id()
+    _require_org_or_platform_admin(org_id)
+    from app.modules.account.services import invitation_service
+
+    try:
+        row = invitation_service.revoke(org_id, invitation_id)
+    except invitation_service.InvitationError:
+        db.session.rollback()
+        abort(404)
+    flash(f"The invitation to {row.user.email} was withdrawn.", "success")
     return redirect(url_for("team.team"))
 
 

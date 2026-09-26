@@ -6,7 +6,7 @@ Extracted from: app/admin/views.py (user CRUD, invitations, role changes)
 import logging
 from typing import Tuple
 
-from flask import g, url_for
+from flask import g
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
@@ -126,39 +126,25 @@ class AdminUserService:
 
     @staticmethod
     def invite_user(first_name: str, last_name: str, email: str,
-                    role: Role) -> User:
-        """Create a new user via invitation and send invite email.
+                    role: Role):
+        """Invite a new person into the signed-in administrator's organisation.
 
-        Args:
-            first_name: User's first name.
-            last_name: User's last name.
-            email: User's email.
-            role: Role to assign.
+        Goes through the same invitation as the Team page: the account is
+        opened in the inviter's organisation and a single-use link is e-mailed.
 
-        Returns:
-            The newly created User.
+        Returns ``(user, delivered, error)``. Raises ``InvitationError`` when
+        no invitation can be made (for example, e-mail is not available).
         """
-        user = User(
-            first_name=first_name,
-            last_name=last_name,
-            email=email,
-            role=role,
-        )
-        db.session.add(user)
-        db.session.commit()
+        from flask_login import current_user
 
-        token = user.generate_confirmation_token()
-        invite_link = url_for(
-            "account.join_from_invite", user_id=user.id, token=token, _external=True
+        from app.modules.account.services import invitation_service
+
+        row, delivered, error = invitation_service.invite_new_person(
+            current_user.organization_id, current_user, email,
+            org_role="viewer", first_name=first_name, last_name=last_name,
+            platform_role=role,
         )
-        AdminUserService.queue_email(
-            recipient=user.email,
-            subject="You Are Invited To Join",
-            template="account/email/invite",
-            user=user,
-            invite_link=invite_link,
-        )
-        return user
+        return row.user, delivered, error
 
     @staticmethod
     def change_user_email(user: User, new_email: str) -> None:

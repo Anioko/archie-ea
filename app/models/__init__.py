@@ -446,3 +446,4 @@ else:
     # app/modules/data_lineage/services.py.
     from .waitlist_signup import WaitlistSignup  # noqa: F401
     from .pending_invitation import PendingInvitation  # noqa: F401
+    from .account_token import AccountToken  # noqa: F401
