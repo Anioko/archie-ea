@@ -111,6 +111,10 @@ POLICY = {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
+    # The organisation's audit trail (query, export, verify). Gated by
+    # governance_gate_reader_required: administrators, plus security
+    # architects as readers. Every other persona is denied.
+    "/admin/audit-log":        {"security_architect"},
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
