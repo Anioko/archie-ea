@@ -96,6 +96,7 @@ else:
     from .optimization import *  # noqa
     from .mapping_metrics import *  # noqa
     from .unified_work_package import *  # noqa - unified_work_packages (capability roadmap)
+    from .work_package_resource_demand import WorkPackageResourceDemand  # noqa: F401 - work_package_resource_demand
     from app.modules.codegen.services.scenario_tracker import ScenarioResult  # noqa - codegen_scenario_results
     from .architecture_decision import (  # noqa: F401
         ArchitectureDecision, DecisionCapabilityLink,

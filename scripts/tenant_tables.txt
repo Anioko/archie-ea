@@ -104,4 +104,5 @@ vendor_process_mappings
 vendor_service_catalog
 vendor_stack_templates
 vendor_taxonomy
+work_package_resource_demand
 work_packages
