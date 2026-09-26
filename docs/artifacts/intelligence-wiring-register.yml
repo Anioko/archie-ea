@@ -2,23 +2,24 @@
 # Every column that carries a fact about the tenant's enterprise must appear
 # here (with its pipeline role) or under not_intelligence (with a reason).
 #
-# Schema:
-#   tables:
-#     <table_name>:
-#       columns:
-#         <column_name>:
-#           role: <pipeline role description>
-#       not_intelligence:
-#         <column_name>: <reason this column is not intelligence-bearing>
+# Schema version 1:
+#   items:
+#     - id: IW-nn
+#       fact: <column description>
+#       status: pipeline | pending | retired
+#   not_intelligence:
+#     - id: IW-nn
+#       fact: <column description>
+#       reason: <why this column is not intelligence-bearing>
 
-tables:
-  users:
-    columns: {}
-    not_intelligence:
-      notification_preferences:
-        reason: >
-          User-level boolean toggles (notification channels, display
-          preferences including show_archimate_names).  These control the
-          UI experience for one user; they carry no fact about the
-          enterprise architecture and are never fed into any pipeline,
-          graph, or derived fact.
+schema_version: 1
+items: []
+not_intelligence:
+  - id: IW-001
+    fact: users.notification_preferences
+    reason: >
+      User-level boolean toggles (notification channels, display
+      preferences including show_archimate_names).  These control the
+      UI experience for one user; they carry no fact about the
+      enterprise architecture and are never fed into any pipeline,
+      graph, or derived fact.
