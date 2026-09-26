@@ -1433,6 +1433,38 @@ def gate_dependency_cves() -> Result:
     return Result("dependency-cves", PASS, detail, found, accepted)
 
 
+BANDIT_GATE = os.path.join("scripts", "ci", "bandit_gate.py")
+
+
+def gate_high_findings(targets: list[str] | None = None) -> Result:
+    """No release while a HIGH-severity static-analysis finding is open.
+
+    The security-sast job fails only on findings NEW against .bandit-baseline.json,
+    which is right for the medium backlog and wrong for a high one: fourteen HIGH
+    findings sat accepted in that baseline, so every change passed over them. This
+    counts every HIGH finding whether or not the baseline knows it, and does not
+    honour a bare `# nosec` -- a finding is dispositioned only by
+    `# nosec <test id> -- <reason>` on its own lines, which a reviewer can read.
+    Secrets and dependency advisories need no equivalent: gitleaks fails on any
+    leak, and dependency-cves on any advisory not deliberately accepted.
+    """
+    try:
+        import bandit  # noqa: F401
+    except ImportError:
+        return Result("high-findings", FAIL, "bandit is not installed",
+                      remediation="pip install -r requirements-test.txt (it pins bandit)")
+    cmd = [sys.executable, BANDIT_GATE, "--high"]
+    if targets:
+        cmd += ["--targets", *targets]
+    proc = _run(cmd, timeout=900)
+    output = (proc.stdout + proc.stderr).strip()
+    match = re.search(r"high-severity findings open: (\d+)", output)
+    if not match:
+        return Result("high-findings", FAIL, "bandit did not run:\n" + output[-1200:])
+    count = int(match.group(1))
+    return Result("high-findings", PASS if count == 0 else FAIL, output[-1800:], count, 0)
+
+
 def gate_boot_health() -> Result:
     """Boot + wiring. Database-free by design — see tests/test_boot_health.py."""
     proc = _run([sys.executable, "-m", "pytest", "tests/test_boot_health.py", "-q", "-p", "no:cacheprovider"])
@@ -1919,6 +1951,12 @@ def build_gates(baseline: dict) -> list[Gate]:
              gate_vendor_integrity,
              remediation="run: python scripts/vendor_assets.py",
              tags=["static", "ui", "airgap", "security"]),
+        Gate("high-findings", "No HIGH-severity static-analysis finding is open", "zero",
+             gate_high_findings,
+             remediation="run: python scripts/ci/bandit_gate.py --high; fix each finding, or "
+                         "disposition one that is not a vulnerability with "
+                         "# nosec <test id> -- <reason> on its own line",
+             tags=["static", "security"]),
         Gate("dependency-cves", "No NEW known CVEs in shipped dependencies", "ratchet",
              gate_dependency_cves,
              remediation="bump the affected package (watch for blocking upper bounds)",
