@@ -287,6 +287,9 @@ motivation_stakeholders
 motivation_values
 non_functional_requirement
 notifications
+oauth_authorization_codes
+oauth_clients
+oauth_tokens
 optimization_runs
 options_analysis
 org_connector_configs

@@ -16,28 +16,7 @@ import json
 
 import pytest
 
-
-def _make_user(db_session, org, email):
-    from app.models.user import Role, User
-
-    admin_role = Role.query.filter_by(name="Administrator").first()
-    if admin_role is None:
-        Role.insert_roles()
-        admin_role = Role.query.filter_by(name="Administrator").first()
-
-    user = User(
-        email=email,
-        first_name="Test",
-        last_name="User",
-        organization_id=org.id,
-        role=admin_role,
-        is_org_admin=True,
-        confirmed=True,
-    )
-    user.password = "test"
-    db_session.add(user)
-    db_session.flush()
-    return user
+from app.modules.mcp.tests.conftest import make_user as _make_user
 
 
 def _make_element(db_session, org_id, name_hint, type_="ApplicationComponent"):

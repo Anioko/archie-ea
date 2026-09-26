@@ -97,7 +97,11 @@ SKIP_DIRS = ("app/models/", "app/commands/", "app/_bootstrap/")
 AMBIGUOUS: set[str] = set()
 
 # Global reference data: shared by every organisation by design. Each needs a reason.
-GLOBAL_MODELS: dict[str, str] = {}
+GLOBAL_MODELS: dict[str, str] = {
+    "Role": "roles (Administrator, Architect, ...) are a fixed, shared "
+    "catalogue looked up by name across every organisation; the table "
+    "carries no organization_id column at all (app/models/user.py).",
+}
 
 
 class ModelInfo:

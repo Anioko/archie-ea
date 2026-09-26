@@ -117,7 +117,9 @@ def _unauthenticated_response(req_id):
     resp = jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR, "Authentication required"))
     resp.status_code = 401
     metadata_url = url_for("oauth_metadata.protected_resource_metadata", _external=True)
-    resp.headers["WWW-Authenticate"] = f'Bearer resource_metadata="{metadata_url}"'
+    # An HTTP header value, not HTML — metadata_url is a server-generated
+    # url_for() result, not caller-controlled content.
+    resp.headers["WWW-Authenticate"] = f'Bearer resource_metadata="{metadata_url}"'  # raw-html-ok: header value, not markup
     return resp
 
 

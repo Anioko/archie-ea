@@ -3,6 +3,15 @@
 Three tables — no second auth system. The token this authorization server
 issues resolves to the same ``User`` the session cookie already resolves to,
 through the same ``flask-login`` loader seam.
+
+None of the three carries ``TenantMixin`` (listed in
+``scripts/unfenced_tables.txt``): a client is a registered application, not
+an organisation's data; a code and a token are each scoped to one
+``user_id``, and every read they authorize is re-scoped through that user's
+own ``organization_id`` once resolved (the normal tenant-isolation path for
+the rest of the request) — adding a second, duplicate ``organization_id``
+column here would not add protection, only a second value that could drift
+from the first.
 """
 
 from __future__ import annotations
