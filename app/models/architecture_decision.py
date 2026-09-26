@@ -133,6 +133,39 @@ class ArchitectureDecision(TenantMixin, db.Model):
 
         return next_reference("architecture_decisions", "decision_id", "AD-")
 
+    @classmethod
+    def affecting_elements(cls, element_ids, organization_id):
+        """The decisions of ``organization_id`` recorded against any of ``element_ids``.
+
+        This is how a decision is found from the things it governs: the element
+        page, the decision list filtered by element and the explanation of a
+        worked-out connection all read it, so they cannot disagree. The
+        organisation predicate is explicit so the answer is the same with or
+        without a request's tenant context. Newest first.
+        """
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        ids = set()
+        for raw in element_ids or ():
+            try:
+                ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        if not ids or organization_id is None:
+            return []
+        stored = db.cast(cls.archimate_element_ids, JSONB)
+        # Ids are stored as numbers by the decision form; a string id written
+        # by an older path still names the same element.
+        matches = [stored.contains([i]) for i in sorted(ids)]
+        matches += [stored.contains([str(i)]) for i in sorted(ids)]
+        stmt = (
+            db.select(cls)
+            .where(cls.organization_id == organization_id)
+            .where(db.or_(*matches))
+            .order_by(cls.created_at.desc(), cls.id.desc())
+        )
+        return db.session.execute(stmt).scalars().all()
+
 
 VALID_LINK_TYPES = ['governs', 'constrains', 'enables']
 

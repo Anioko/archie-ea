@@ -7319,7 +7319,14 @@ def element_impact_graph_page(element_id):
     element = db.session.get(ArchiMateElement, element_id)
     if element is None:
         abort(404)
-    return render_template("architecture/impact_graph.html", element=element)
+    # The decisions recorded against this element, so a decision is found from
+    # the thing it governs.
+    from app.models.architecture_decision import ArchitectureDecision  # noqa: PLC0415
+
+    decisions = ArchitectureDecision.affecting_elements([element.id], element.organization_id)
+    return render_template(
+        "architecture/impact_graph.html", element=element, decisions=decisions
+    )
 
 
 @archimate_bp.route("/api/element/<int:element_id>/impact-graph", methods=["GET"])
