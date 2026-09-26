@@ -14,6 +14,8 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log
+from app.middleware.tenant_context import current_org_id
+from app.utils.tenant_users import user_in_org
 from app.services.kanban_projection_service import (
     COLUMNS,
     ADM_PHASES,
@@ -187,7 +189,10 @@ def create_task():
     card.driver_ids = data.get('driver_ids', [])
     card.principle_ids = data.get('principle_ids', [])
     card.issue_type = data.get('issue_type', 'Task')
-    card.assignee = data.get('assignee')
+    assignee = data.get('assignee')
+    if assignee and not user_in_org(assignee, current_org_id()):
+        return jsonify({"success": False, "error": "Invalid assignee"}), 400
+    card.assignee = assignee
     card.story_points = data.get('story_points')
     card.labels = data.get('labels', [])
     card.arch_layer = data.get('arch_layer')
@@ -448,7 +453,10 @@ def update_task(card_ref):
     if "issue_type" in data:
         card.issue_type = data["issue_type"]
     if "assignee" in data:
-        card.assignee = data["assignee"]
+        assignee = data["assignee"]
+        if assignee and not user_in_org(assignee, current_org_id()):
+            return jsonify({"success": False, "error": "Invalid assignee"}), 400
+        card.assignee = assignee
     if "story_points" in data:
         card.story_points = data["story_points"]
     if "labels" in data:
