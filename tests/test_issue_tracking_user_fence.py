@@ -21,7 +21,7 @@ def _user(db_session, org, first):
         email=f"{first.lower()}-{uuid.uuid4().hex[:6]}@example.test", first_name=first, last_name="Test",
         organization_id=org.id, confirmed=True,
     )
-    user.password = "Sup3rSecret!23"
+    user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
     return user
