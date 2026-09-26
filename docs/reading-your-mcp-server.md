@@ -39,17 +39,17 @@ or an estimate. The assistant never invents data to fill a gap.
 
 ## Connecting an assistant
 
-The MCP endpoint is at `https://app.entelim.com/mcp`. Authentication uses
-OAuth 2.1 with PKCE (S256), the standard flow both ChatGPT and Claude
-support for remote MCP servers.
+The MCP endpoint is at `/mcp` on your Entelim instance's own domain.
+Authentication uses OAuth 2.1 with PKCE (S256), the standard flow both
+ChatGPT and Claude support for remote MCP servers.
 
 1. In your assistant's connector settings, add a new remote MCP server
-   with the URL above.
+   with your instance's `/mcp` URL.
 2. The assistant redirects you to sign in to your account. After signing
    in, you see a consent screen listing the scopes being requested.
 3. Grant access. The assistant receives a token scoped to your
    organisation and the `mcp:read` permission.
-4. The assistant can now call any of the nine read tools on your behalf.
+4. The assistant can now call any of the ten read tools on your behalf.
 
 The token is tied to your user account, not to your organisation as a
 whole. It expires after one hour.
@@ -64,7 +64,6 @@ standards-compliant client can discover the flow automatically:
 ## Self-hosted installations
 
 A self-hosted install runs the same authorization server against its own
-domain. Point your assistant at your instance's `/mcp` URL instead of the
-hosted product's. A manually minted personal access token is also
-available for single-operator installations where a full OAuth flow is
-unnecessary.
+domain. Point your assistant at your instance's `/mcp` URL and sign in the
+same way — there is no separate connection method for a self-hosted
+install.

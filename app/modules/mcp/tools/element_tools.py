@@ -1,13 +1,13 @@
 """Element search and detail tools: search_elements, get_element.
 
 search_elements wraps the canonical GET /archimate/api/elements/search
-route only — none of the three duplicates named in the reuse register.
-get_element wraps GET /archimate/api/elements/<id>/detail.
+route only, not one of the other routes in the codebase that also search
+elements. get_element wraps GET /archimate/api/elements/<id>/detail.
 """
 
 from __future__ import annotations
 
-from app.utils.text_sanitization import neutralize_fence_lookalikes
+from app.utils.text_sanitization import fence_response_strings
 from app.utils.internal_api import call_internal_api
 from app.modules.mcp.tools import register_tool
 
@@ -55,12 +55,8 @@ def search_elements(args: dict) -> dict:
     query = str(args["query"])
     limit = int(args.get("limit", 30))
     result = _call_element_search(query, limit)
-    # Fence free-text fields
     if result and result.get("data"):
-        for item in result["data"]:
-            for key in ("name", "description"):
-                if key in item and isinstance(item[key], str):
-                    item[key] = neutralize_fence_lookalikes(item[key])
+        fence_response_strings(result["data"])
     return result
 
 
@@ -82,18 +78,6 @@ def search_elements(args: dict) -> dict:
 def get_element(args: dict) -> dict:
     element_id = int(args["element_id"])
     result = _call_element_detail(element_id)
-    # Fence free-text fields
     if isinstance(result, dict):
-        for key in ("name", "description"):
-            if key in result and isinstance(result[key], str):
-                result[key] = neutralize_fence_lookalikes(result[key])
-        for item in result.get("linked_solutions") or []:
-            if "name" in item and isinstance(item["name"], str):
-                item["name"] = neutralize_fence_lookalikes(item["name"])
-        for item in result.get("linked_capabilities") or []:
-            if "name" in item and isinstance(item["name"], str):
-                item["name"] = neutralize_fence_lookalikes(item["name"])
-        for item in result.get("connected_elements") or []:
-            if "name" in item and isinstance(item["name"], str):
-                item["name"] = neutralize_fence_lookalikes(item["name"])
+        fence_response_strings(result)
     return result

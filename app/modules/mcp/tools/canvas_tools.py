@@ -6,7 +6,7 @@ JSON API endpoints. get_canvas wraps the detail JSON API endpoints.
 
 from __future__ import annotations
 
-from app.utils.text_sanitization import neutralize_fence_lookalikes
+from app.utils.text_sanitization import fence_response_strings
 from app.utils.internal_api import call_internal_api
 from app.modules.mcp.tools import register_tool
 
@@ -20,17 +20,10 @@ def _call_canvas_list() -> dict:
         "GET", "/business-case/api/list", pass_session=True
     )
 
-    # Fence free-text fields in canvas list
     bmc_list = (bmc_data.get("data") or []) if isinstance(bmc_data, dict) else []
-    for c in bmc_list:
-        for key in ("name", "description"):
-            if key in c and isinstance(c[key], str):
-                c[key] = neutralize_fence_lookalikes(c[key])
-
     bc_list = (bc_data.get("data") or []) if isinstance(bc_data, dict) else []
-    for bc in bc_list:
-        if "title" in bc and isinstance(bc["title"], str):
-            bc["title"] = neutralize_fence_lookalikes(bc["title"])
+    fence_response_strings(bmc_list)
+    fence_response_strings(bc_list)
 
     return {
         "business_model_canvases": bmc_list,
@@ -81,13 +74,7 @@ def get_canvas(args: dict) -> dict:
         if status != 200 or not (isinstance(data, dict) and data.get("success")):
             return {"success": False, "error": {"code": "NOT_FOUND", "message": "Business Model Canvas not found"}}
         canvas_data = data["data"]
-        # Fence free-text fields
-        for key in ("name", "description"):
-            if key in canvas_data and isinstance(canvas_data[key], str):
-                canvas_data[key] = neutralize_fence_lookalikes(canvas_data[key])
-        for block_key, block_content in (canvas_data.get("blocks") or {}).items():
-            if isinstance(block_content, str):
-                canvas_data["blocks"][block_key] = neutralize_fence_lookalikes(block_content)
+        fence_response_strings(canvas_data)
         return {"success": True, "data": canvas_data}
 
     elif canvas_type == "business_case":
@@ -97,11 +84,7 @@ def get_canvas(args: dict) -> dict:
         if status != 200 or not (isinstance(data, dict) and data.get("success")):
             return {"success": False, "error": {"code": "NOT_FOUND", "message": "Business Case not found"}}
         case_data = data["data"]
-        # Fence free-text fields
-        for key in ("title", "description", "problem_statement", "options_considered",
-                     "recommended_option", "expected_benefits", "key_risks"):
-            if key in case_data and isinstance(case_data[key], str):
-                case_data[key] = neutralize_fence_lookalikes(case_data[key])
+        fence_response_strings(case_data)
         return {"success": True, "data": case_data}
 
     return {"success": False, "error": {"code": "INVALID_PARAMETER",

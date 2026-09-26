@@ -8,7 +8,7 @@ the existing REST routes through Flask's test client.
 
 from __future__ import annotations
 
-from app.utils.text_sanitization import neutralize_fence_lookalikes
+from app.utils.text_sanitization import fence_response_strings
 from app.utils.internal_api import call_internal_api
 from app.modules.mcp.tools import register_tool
 
@@ -24,43 +24,11 @@ def _call_intelligence_route(lens: str, element_id: int) -> dict:
         "GET", f"/api/v1/intelligence/{lens}/{element_id}", pass_session=True
     )
 
-    # Apply fencing to free-text fields in the response
+    # Apply fencing to every free-text field in the response
     if data and data.get("success") and data.get("data"):
-        _fence_response_text(data["data"])
+        fence_response_strings(data["data"])
 
     return data
-
-
-def _fence_response_text(payload: dict) -> None:
-    """Apply neutralize_fence_lookalikes to every free-text field in the payload.
-
-    Only fields that are strings and not known to be enums or numbers are fenced.
-    """
-    if not isinstance(payload, dict):
-        return
-
-    # Fields that are safe (enums, numbers, ids, booleans) — skip fencing
-    _safe_keys = {
-        "id", "element_id", "risk_id", "work_package_id", "initiative_id",
-        "application_component_id", "organization_unit_id", "depth",
-        "explicit_count", "derived_count", "stale_count", "latency_ms",
-        "likelihood", "impact", "risk_score", "progress_percentage",
-        "completion_percentage", "cost_variance_pct", "budget_variance_pct",
-        "target_value", "actual_value", "kind", "confidence", "stale",
-        "derived_id", "engine_version", "chain", "chain_elements",
-        "is_overdue", "capacity_not_available", "unresolved",
-        "organization_id", "ratio", "sample_count",
-    }
-
-    for key, value in list(payload.items()):
-        if isinstance(value, str) and key not in _safe_keys:
-            payload[key] = neutralize_fence_lookalikes(value)
-        elif isinstance(value, dict):
-            _fence_response_text(value)
-        elif isinstance(value, list):
-            for item in value:
-                if isinstance(item, dict):
-                    _fence_response_text(item)
 
 
 @register_tool(
@@ -165,8 +133,9 @@ def ask_risk(args: dict) -> dict:
 @register_tool(
     name="ask_accountability",
     description="Ask who is accountable for an element. "
-                "Currently returns an honest empty state — the ownership "
-                "reader is not yet built.",
+                "Returns an empty owners list with a named reason code "
+                "when ownership data is not currently available, rather "
+                "than a guess.",
     input_schema={
         "type": "object",
         "properties": {
