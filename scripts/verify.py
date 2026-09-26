@@ -1146,6 +1146,49 @@ def gate_tenant_scoping(baseline: int) -> Result:
     return Result("tenant-scoping", PASS if count <= baseline else FAIL, detail, count, baseline)
 
 
+def gate_untenanted_reads(baseline: int) -> Result:
+    """Reads of a model with no tenant fence, with no organisation predicate.
+
+    ``do_orm_execute`` filters only models that inherit TenantMixin. The older
+    tenant-scoping gate sees models that have the column but not the mixin, and
+    only the ``.query`` shapes. This one reads every ``db.select(Model)``,
+    ``Model.query``, ``session.query(Model)`` and ``session.get(Model, id)`` over
+    ANY unfenced model, including one with no tenant column at all (the shape of
+    the OrganizationUnit read and the work-package owner ``select(User)`` that
+    would have named another organisation's user).
+
+    A ratchet: the count may fall, never rise. It does not prove tenancy; it stops
+    a new read of an unfenced model arriving without a predicate or a written
+    reason. See scripts/check_untenanted_reads.py.
+    """
+    proc = _run([sys.executable, "scripts/check_untenanted_reads.py", "--count"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("untenanted-reads", FAIL, f"could not parse: {proc.stdout!r}")
+    detail = ""
+    if count > baseline:
+        detail = _run([sys.executable, "scripts/check_untenanted_reads.py"]).stdout[-1500:]
+    return Result("untenanted-reads", PASS if count <= baseline else FAIL, detail, count, baseline)
+
+
+def gate_unfenced_tables() -> Result:
+    """Every table whose model has no tenant fence is listed, so a new one is a decision.
+
+    scripts/unfenced_tables.txt is the inventory of tables with no TenantMixin. A new
+    table that is neither fenced nor listed fails, so whether it holds tenant data,
+    global reference data or rows reached only through a fenced parent is decided when
+    the table is created, not after a later feature reads it.
+    """
+    proc = _run([sys.executable, "scripts/check_untenanted_reads.py", "--new-tables"])
+    try:
+        count = int(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return Result("unfenced-tables", FAIL, f"could not parse: {proc.stdout!r}")
+    detail = proc.stdout[-1500:] if count else ""
+    return Result("unfenced-tables", PASS if count == 0 else FAIL, detail, count, 0)
+
+
 def gate_sidebar_links(baseline: int) -> Result:
     """Persona sidebar link-count budget (shell-overhaul Wave 1, Task 3).
 
@@ -1612,6 +1655,16 @@ def build_gates(baseline: dict) -> list[Gate]:
         Gate("tenant-scoping", "ORM queries on tenant-owned-but-unmixed models without an org predicate",
              "ratchet", lambda: gate_tenant_scoping(baseline["tenant_scoping"]),
              remediation="scope the query, or append 'tenant-scoping-ok: <reason>'",
+             tags=["static", "security"]),
+        Gate("untenanted-reads", "reads of a model with no tenant fence, without an org predicate",
+             "ratchet", lambda: gate_untenanted_reads(baseline["untenanted_reads"]),
+             remediation="scope the read to the caller's organisation, or append "
+                         "'tenant-scoping-ok: <reason>' on the statement",
+             tags=["static", "security"]),
+        Gate("unfenced-tables", "every table without a tenant fence is listed (a new one is a decision)",
+             "ratchet", gate_unfenced_tables,
+             remediation="give the model TenantMixin, or list the table in "
+                         "scripts/unfenced_tables.txt with a reason in review",
              tags=["static", "security"]),
         Gate("llm-boundary", "codegen emitters make no direct LLM calls (deterministic boundary)",
              "ratchet", lambda: gate_llm_boundary(baseline.get("llm_boundary", 0)),

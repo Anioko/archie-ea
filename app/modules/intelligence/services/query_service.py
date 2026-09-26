@@ -1,15 +1,16 @@
 """Cross-layer intelligence queries. ``cross_layer_impact`` (L1, "if this
-fails, what stops and who owns it"), ``risk_for_element`` (L6, "what could
-hurt this, and what does it touch" -- reuses the same traversal per risk
-seed), ``portfolio_component_for_element`` (L3, resolves an element to its
-ApplicationComponent for the one existing deep link), ``programme_for_element``
-(L5, "what are we changing, is it on time and on budget" -- reuses the same
-traversal per work-package seed), ``strategy_for_element`` (L2, "what are
-we trying to achieve, and how's it tracking" -- reuses the same traversal per
-initiative seed) and ``value_streams_at_risk`` -- "which value streams
-depend on a capability below threshold", the curated path only (T-S1).
-Coverage over derived and explicit relationships for the value-stream
-question is reserved for a later task and is not added here.
+fails, what stops and who owns it" -- every Capability row, and the whole
+answer, also carries the one batched maturity read), ``risk_for_element``
+(L6, "what could hurt this, and what does it touch" -- reuses the same
+traversal per risk seed), ``portfolio_component_for_element`` (L3, resolves
+an element to its ApplicationComponent for the one existing deep link),
+``programme_for_element`` (L5, "what are we changing, is it on time and on
+budget" -- reuses the same traversal per work-package seed), ``strategy_for_element``
+(L2, "what are we trying to achieve, and how's it tracking" -- reuses the
+same traversal per initiative seed) and ``value_streams_at_risk`` -- "which
+value streams depend on a capability below threshold", the curated path
+only (T-S1). Coverage over derived and explicit relationships for the
+value-stream question is reserved for a later task and is not added here.
 ``accountability_for_element`` (L4) exists as a route and question card
 but is currently WITHDRAWN -- it returns an honest
 ``ownership_reader_not_built`` reason on every call: the ownership data
@@ -26,6 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from app.extensions import db
 from app.middleware.tenant_context import current_org_id
+from app.modules.capabilities.services.capability_heatmap_service import CapabilityHeatmapService
 from app.modules.intelligence.services.derived_facts import list_derived_facts
 from app.modules.intelligence.services.latency_probe import record_query_latency
 from app.modules.intelligence.services.plain_terms import plain_terms_sentence
@@ -59,6 +61,14 @@ OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_b
 NO_DATA_RECORDED_REASON = validate_reason_code("no_data_recorded")
 NO_STEWARD_RECORDED_REASON = validate_reason_code("no_steward_recorded")
 NO_LINEAGE_RECORDED_REASON = validate_reason_code("no_lineage_recorded")
+# The programme lens's own plateau/gap block: a work package's stored
+# plateau_id/gap_id may be unset (a nullable FK) or point at a record
+# outside the caller's tenant (the FK itself carries no tenant check, so the
+# select that resolves it is what enforces the boundary) -- both read as the
+# same honest absence, not an error.
+NO_PLATEAU_RECORDED_REASON = validate_reason_code("no_plateau_recorded")
+NO_GAP_RECORDED_REASON = validate_reason_code("no_gap_recorded")
+NO_CAPABILITY_IN_CHAIN_REASON = validate_reason_code("no_capability_in_chain")
 
 # T-005 (D1): the NFR-5 measurement point is this exact, PINNED series --
 # never widened, never aggregated across label values.
@@ -466,6 +476,42 @@ def _derived_filter_args(
     return element_id, element_id, "both"
 
 
+def _maturity_flags(
+    reason: Optional[str],
+    maturity_by_element: Optional[Dict[int, Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """The whole-answer ``maturity_flags`` block: four keys on every branch,
+    never fewer.
+
+    ``maturity_by_element`` is only ever passed non-empty from the one branch
+    that actually resolved a Capability's block -- the two lists are the
+    sorted element ids whose maturity block has ``assessed is False`` /
+    ``under_target is True`` respectively (an id can be in at most one), and
+    ``reason`` is ``None``: something was genuinely measured, even if both
+    lists come back empty. Every other caller -- no Capability anywhere in
+    the result, no tenant context, the element itself not found -- passes
+    only *reason*: both lists stay ``None``, never an empty list standing in
+    for "measured, found none" on a branch that measured nothing at all.
+    """
+    if maturity_by_element:
+        return {
+            "unassessed_capability_ids": sorted(
+                eid for eid, block in maturity_by_element.items() if block["assessed"] is False
+            ),
+            "under_target_capability_ids": sorted(
+                eid for eid, block in maturity_by_element.items() if block["under_target"] is True
+            ),
+            "reason": None,
+            "maturity_source": "unified_capabilities",
+        }
+    return {
+        "unassessed_capability_ids": None,
+        "under_target_capability_ids": None,
+        "reason": reason,
+        "maturity_source": "unified_capabilities",
+    }
+
+
 def _not_computed_counts() -> Dict[str, Any]:
     """T-005 task 02 acceptance item 12: the not-computed branch's null
     counts, isolated as their own seam (same pattern as
@@ -633,6 +679,7 @@ class IntelligenceQueryService:
                     "derivation_state": "not_computed",
                 }
                 reasons = [NO_TENANT_CONTEXT_REASON]
+                maturity_flags = _maturity_flags(NO_TENANT_CONTEXT_REASON)
             else:
                 from app.models import ArchiMateElement
 
@@ -649,6 +696,7 @@ class IntelligenceQueryService:
                         "derivation_state": "not_computed",
                     }
                     reasons = [ELEMENT_NOT_FOUND_REASON]
+                    maturity_flags = _maturity_flags(ELEMENT_NOT_FOUND_REASON)
                 else:
                     explicit_rows = _walk_explicit(element_id, max_depth, direction)
                     if layer is not None:
@@ -697,6 +745,28 @@ class IntelligenceQueryService:
                     elements = _resolve_elements_batch(_element_ids_in_rows(rows), org_id)
                     _attach_plain_terms(rows, elements)
 
+                    # The distinct Capability element ids the identity map
+                    # above already resolved under the tenant predicate --
+                    # rows' own elements and every id their chains pass
+                    # through. An id absent from ``elements`` is never a
+                    # capability here (the identity map's own tenant fence
+                    # already excluded it), so a foreign element can never
+                    # reach the helper. One batched call, inside this same
+                    # latency scope, only when there is at least one
+                    # Capability id to ask for.
+                    capability_ids = sorted(
+                        {
+                            eid
+                            for eid in _element_ids_in_rows(rows)
+                            if elements.get(str(eid), {}).get("type") == "Capability"
+                        }
+                    )
+                    maturity_by_element: Dict[int, Dict[str, Any]] = {}
+                    if capability_ids:
+                        maturity_by_element = CapabilityHeatmapService().maturity_for_elements(
+                            capability_ids, organization_id=org_id
+                        )
+
                     # M7 fix: batch owner resolution instead of N+1 --
                     # collect every distinct element id needing a lookup
                     # across the WHOLE result set first, then resolve in a
@@ -721,6 +791,14 @@ class IntelligenceQueryService:
                         # in when the row has no reason of its own yet.
                         existing_reason = row.get("reason")
                         row["reason"] = existing_reason if existing_reason else reason
+                        # A Capability row carries the block the helper
+                        # already computed for it, untouched; any other row
+                        # carries no ``maturity`` key at all --
+                        # not applicable is not an absence, and the row's own
+                        # ``reason`` above is unrelated to and unchanged by
+                        # this block (the block carries its own reason).
+                        if elements.get(str(row["element_id"]), {}).get("type") == "Capability":
+                            row["maturity"] = maturity_by_element[row["element_id"]]
                         # NEW-5: keep element_id on every row -- this task's
                         # whole point is "what stops", so a row that cannot
                         # name what element it is about is not answering the
@@ -743,9 +821,23 @@ class IntelligenceQueryService:
                         "derivation_state": derivation_state,
                     }
                     reasons = []
+                    # The whole-answer flags block: computed only when at
+                    # least one Capability id was found (capability_ids
+                    # non-empty, so maturity_by_element is non-empty too --
+                    # the helper guarantees every id asked for is present);
+                    # otherwise nothing was measured, so both lists stay
+                    # None with the honest reason, never an empty list
+                    # standing in for "measured, found none".
+                    maturity_flags = _maturity_flags(NO_CAPABILITY_IN_CHAIN_REASON, maturity_by_element)
 
         summary["latency_ms"] = scope.latency_ms
-        return {"rows": rows, "summary": summary, "reasons": reasons, "elements": elements}
+        return {
+            "rows": rows,
+            "summary": summary,
+            "reasons": reasons,
+            "elements": elements,
+            "maturity_flags": maturity_flags,
+        }
 
     @staticmethod
     def risk_for_element(
@@ -917,10 +1009,10 @@ class IntelligenceQueryService:
         include_derived: bool = True,
     ) -> Dict[str, Any]:
         """L5, "what are we changing, is it on time and on budget, what does
-        each change touch?": every ``UnifiedWorkPackage`` seeded directly on
-        the picked element (``archimate_element_id`` FK), each with the SAME
-        blast-radius traversal L1/L6 already run -- no second traversal
-        algorithm.
+        each change touch, where does it land and what gap does it close?":
+        every ``UnifiedWorkPackage`` seeded directly on the picked element
+        (``archimate_element_id`` FK), each with the SAME blast-radius
+        traversal L1/L6 already run -- no second traversal algorithm.
 
         Tenant-safety note, verified not assumed: ``UnifiedWorkPackage``
         carries no ``TenantMixin``/``organization_id`` of its own. This
@@ -944,6 +1036,32 @@ class IntelligenceQueryService:
         Variance is only reported when ``estimated_cost`` is a real
         positive number; otherwise the row carries the honest
         ``not_costed`` reason.
+
+        Plateau and gap: ``UnifiedWorkPackage.plateau_id``/``gap_id`` are
+        resolved against the ``Plateau``/``Gap`` tables (each carrying its
+        own ``TenantMixin``) in two selects, tenant-scoped explicitly, in
+        addition to the ORM listener -- a foreign-tenant row a work package
+        happens to point at (the FK itself is not tenant-checked) simply
+        does not come back, and reads exactly like an unset FK: every field
+        ``None`` beside ``no_plateau_recorded``/``no_gap_recorded``. A
+        ``plateau_transition`` gap lists its own ``originating_plateau_id``/
+        ``target_plateau_id`` as the recorded ids -- no name lookup for
+        them. ``UnifiedWorkPackage.priority``/``risk_level`` and
+        ``Gap.resolution_status`` all carry a column default
+        (``"medium"``/``"medium"``/``"identified"``), so a stored value
+        cannot be told from an entered one; the value is carried as
+        recorded either way, and ``risk_level_default_possible``/
+        ``priority_default_possible`` disclose the possibility rather than
+        the read reinterpreting it. Every row of each package's own
+        ``affected_rows`` also carries the element's own recorded
+        classification (``plateau``: ``"Baseline"``/``"Target"``/
+        ``"Transition"``/``None``, from ``ArchiMateElement.togaf_plateau``)
+        in a third, separate select -- ``_resolve_elements_batch``'s
+        four-key identity-map projection is not widened to carry it.
+        ``is_baseline`` is read in that same select but not carried into the
+        answer: it would duplicate ``plateau == "Baseline"`` with a
+        ``False`` default that would misleadingly read as "confirmed not
+        baseline" for an element nobody has classified yet.
         """
         from app.models import ArchiMateElement
         from app.models.unified_work_package import UnifiedWorkPackage
@@ -997,10 +1115,17 @@ class IntelligenceQueryService:
                     .where(User.id.in_(owner_ids))
                     .where(IntelligenceQueryService._owner_user_tenant_predicate(org_id))
                 ).scalars():
+
                     owners_by_id[user.id] = user.full_name() or user.email
 
+            # cross_layer_impact is still called exactly once per seed
+            # package, unchanged -- but every blast is collected here,
+            # before the per-package payload loop below, so the plateau
+            # select further down can name every element and chain element
+            # across every package's rows in ONE batched read rather than
+            # one per package.
             all_elements: Dict[str, Dict[str, Any]] = {}
-            wp_payloads: List[Dict[str, Any]] = []
+            blasts: List[Dict[str, Any]] = []
             for wp in seed_packages:
                 blast = IntelligenceQueryService.cross_layer_impact(
                     element_id,
@@ -1009,6 +1134,79 @@ class IntelligenceQueryService:
                     with_owner=True,
                 )
                 all_elements.update(blast.get("elements") or {})
+                blasts.append(blast)
+
+            # Three selects beyond the base's, each a constant number
+            # regardless of how many packages or rows this element has, and
+            # skipped entirely when its own id set is empty. The element-id
+            # set for the plateau-classification select below is read off
+            # ``all_elements`` -- the SAME already tenant-filtered identity
+            # map ``_resolve_elements_batch`` builds inside each blast above
+            # -- rather than re-walking every row's raw ``element_id``/
+            # ``chain_elements`` again: a foreign-tenant id that never
+            # resolved into the tenant-filtered identity map never enters
+            # this IN list either, so a foreign element's classification
+            # is never even asked for, not merely filtered out of the
+            # answer.
+            plateau_ids = {wp.plateau_id for wp in seed_packages if wp.plateau_id is not None}
+            gap_ids = {wp.gap_id for wp in seed_packages if wp.gap_id is not None}
+            plateau_element_ids = {int(eid) for eid in all_elements}
+
+            plateaus_by_id: Dict[int, Any] = {}
+            if plateau_ids:
+                from app.models.implementation_migration import Plateau
+
+                for plateau in (
+                    db.session.execute(
+                        db.select(Plateau)
+                        .where(Plateau.id.in_(plateau_ids), Plateau.organization_id == org_id)
+                        .order_by(Plateau.id)
+                    )
+                    .scalars()
+                    .all()
+                ):
+                    plateaus_by_id[plateau.id] = plateau
+
+            gaps_by_id: Dict[int, Any] = {}
+            if gap_ids:
+                from app.models.implementation_migration import Gap
+
+                for gap in (
+                    db.session.execute(
+                        db.select(Gap)
+                        .where(Gap.id.in_(gap_ids), Gap.organization_id == org_id)
+                        .order_by(Gap.id)
+                    )
+                    .scalars()
+                    .all()
+                ):
+                    gaps_by_id[gap.id] = gap
+
+            elements_plateau_by_id: Dict[int, Optional[str]] = {}
+            if plateau_element_ids:
+                for eid, togaf_plateau, _is_baseline in db.session.execute(
+                    db.select(
+                        ArchiMateElement.id,
+                        ArchiMateElement.togaf_plateau,
+                        ArchiMateElement.is_baseline,
+                    ).where(
+                        ArchiMateElement.id.in_(plateau_element_ids),
+                        ArchiMateElement.organization_id == org_id,
+                    ).order_by(ArchiMateElement.id)
+                ).all():
+                    elements_plateau_by_id[eid] = togaf_plateau
+
+            wp_payloads: List[Dict[str, Any]] = []
+            for wp, blast in zip(seed_packages, blasts):
+                rows = blast.get("rows", [])
+                for row in rows:
+                    plateau_value = elements_plateau_by_id.get(row["element_id"])
+                    if plateau_value is None:
+                        row["plateau"] = None
+                        row["plateau_reason"] = NO_PLATEAU_RECORDED_REASON
+                    else:
+                        row["plateau"] = plateau_value
+                        row["plateau_reason"] = None
 
                 if wp.estimated_cost and wp.estimated_cost > 0:
                     cost_variance_pct = (
@@ -1018,6 +1216,60 @@ class IntelligenceQueryService:
                 else:
                     cost_variance_pct = None
                     cost_reason = NOT_COSTED_REASON
+
+                plateau_row = plateaus_by_id.get(wp.plateau_id)
+                if plateau_row is None:
+                    plateau_block: Dict[str, Any] = {
+                        "plateau_id": None,
+                        "name": None,
+                        "target_date": None,
+                        "sequence_order": None,
+                        "baseline_plateau_id": None,
+                        "reason": NO_PLATEAU_RECORDED_REASON,
+                    }
+                else:
+                    plateau_block = {
+                        "plateau_id": plateau_row.id,
+                        "name": plateau_row.name,
+                        "target_date": plateau_row.target_date.isoformat()
+                        if plateau_row.target_date
+                        else None,
+                        "sequence_order": plateau_row.sequence_order,
+                        "baseline_plateau_id": plateau_row.baseline_plateau_id,
+                        "reason": None,
+                    }
+
+                gap_row = gaps_by_id.get(wp.gap_id)
+                if gap_row is None:
+                    gap_block: Dict[str, Any] = {
+                        "gap_id": None,
+                        "name": None,
+                        "gap_kind": None,
+                        "gap_type": None,
+                        "resolution_status": None,
+                        "resolution_status_default_possible": True,
+                        "originating_plateau_id": None,
+                        "target_plateau_id": None,
+                        "owner_text": None,
+                        "estimated_cost": None,
+                        "access_reason": None,
+                        "reason": NO_GAP_RECORDED_REASON,
+                    }
+                else:
+                    gap_block = {
+                        "gap_id": gap_row.id,
+                        "name": gap_row.name,
+                        "gap_kind": gap_row.gap_kind,
+                        "gap_type": gap_row.gap_type,
+                        "resolution_status": gap_row.resolution_status,
+                        "resolution_status_default_possible": True,
+                        "originating_plateau_id": gap_row.originating_plateau_id,
+                        "target_plateau_id": gap_row.target_plateau_id,
+                        "owner_text": gap_row.owner,
+                        "estimated_cost": gap_row.estimated_cost,
+                        "access_reason": None,
+                        "reason": None,
+                    }
 
                 wp_payloads.append(
                     {
@@ -1031,7 +1283,14 @@ class IntelligenceQueryService:
                         "owner": owners_by_id.get(wp.owner_id),
                         "cost_variance_pct": cost_variance_pct,
                         "cost_reason": cost_reason,
-                        "affected_rows": blast.get("rows", []),
+                        "plateau": plateau_block,
+                        "gap": gap_block,
+                        "risk_level": wp.risk_level,
+                        "priority": wp.priority,
+                        "risk_mitigation": wp.risk_mitigation,
+                        "risk_level_default_possible": True,
+                        "priority_default_possible": True,
+                        "affected_rows": rows,
                         "affected_summary": blast.get("summary", {}),
                     }
                 )
