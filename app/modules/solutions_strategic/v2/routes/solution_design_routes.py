@@ -1621,9 +1621,9 @@ def _serialize_arb_review_history_item(review) -> dict:
         "decision_label": (review.decision or review.status or "pending").replace("_", " ").title(),
         "submitted_at": _format_arb_history_timestamp(review.submitted_at),
         "decision_date": _format_arb_history_timestamp(review.decision_date),
-        "submitter_name": _condition_actor_name(review.submitter) if review.submitter else None,
-        "reviewer_name": _condition_actor_name(review.reviewer) if review.reviewer else None,
-        "decided_by_name": _condition_actor_name(review.decided_by) if review.decided_by else None,
+        "submitter_name": _user_display_name(review.submitter_id),
+        "reviewer_name": _user_display_name(review.reviewer_id),
+        "decided_by_name": _user_display_name(review.decided_by_id),
         "decision_rationale": review.decision_rationale,
         "conditions": [
             text for text in (_normalize_arb_review_condition(condition) for condition in (review.conditions or [])) if text
@@ -1631,7 +1631,7 @@ def _serialize_arb_review_history_item(review) -> dict:
         "comments": [
             {
                 "id": comment.id,
-                "author_name": _condition_actor_name(comment.user) if comment.user else "Unknown User",
+                "author_name": _user_display_name(comment.user_id) or "Unknown User",
                 "comment_type": comment.comment_type or "general",
                 "content": comment.content,
                 "created_at": _format_arb_history_timestamp(comment.created_at),
