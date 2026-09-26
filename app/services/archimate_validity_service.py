@@ -531,6 +531,16 @@ class ArchimateValidityService:
                 "description": f"{source_type} triggers {target_type}",
             })
 
+        # Behaviour -> Active: Serving. A service serves the active structure
+        # element that uses it (ArchiMate 3.2 §5.4.1, e.g. an application
+        # service serves an application component).
+        if src_aspect == "behaviour" and tgt_aspect == "active":
+            results.append({
+                "type": "serving",
+                "tier": "standard",
+                "description": f"{source_type} serves {target_type}",
+            })
+
         # CMP-060: active→behaviour realization (ArchiMate 3.2 §5.3.1)
         # An active structure element can realize a behaviour element of the same layer
         # (e.g. ApplicationComponent realizes ApplicationService,
