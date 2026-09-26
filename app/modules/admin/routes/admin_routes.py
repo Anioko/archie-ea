@@ -53,6 +53,7 @@ from ..forms.admin_forms import (
 )
 from app.modules.account.forms.account_forms import CreatePasswordForm
 from app.decorators import admin_required, audit_log, governance_gate_reader_required
+from app.middleware.tenant_decorators import platform_admin_required
 from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
@@ -357,7 +358,7 @@ def delete_user(user_id):
 
 @admin_bp.route("/_update_editor_contents", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_editor_update")
 def update_editor_contents():
     """Update the contents of an editor."""
@@ -3547,7 +3548,7 @@ def vendor_pricing_import():
 
 @admin_bp.route("/vendor-pricing/confirm", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def vendor_pricing_confirm():
     """Confirm staged pricing items — write to VendorProductPricing as contract_verified."""
     from difflib import SequenceMatcher
