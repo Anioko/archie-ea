@@ -53,6 +53,10 @@ HTTP_REQUEST_DURATION = Histogram(
         0.5,
         0.75,
         1.0,
+        # TB-0165: an explicit 2.0s edge so the "answers" objective's 2-second
+        # p95 target (app/services/platform_slo_service.py) lands on a real
+        # declared bucket boundary rather than only ever reading the 2.5s one.
+        2.0,
         2.5,
         5.0,
         7.5,
@@ -289,27 +293,9 @@ def get_metrics_response():
 
 
 # TB-0165: platform SLOs read HTTP_REQUESTS_TOTAL / HTTP_REQUEST_DURATION --
-# the existing counters above -- rather than adding a second metrics store
+# the existing counters above, populated by the one request hook in
+# app/_bootstrap/security.py -- rather than adding a second metrics store
 # (CLAUDE.md ADR 0008, "one system of record per concept").
-
-
-def track_http_request_by_rule(
-    method: str, rule: str, status_code: int, duration_seconds: float
-) -> None:
-    """Record one request against the shared HTTP counters, labelled by the
-    matched Flask URL RULE (e.g. ``/api/v1/intelligence/cross-layer-impact``)
-    rather than the resolved path, so a caller such as
-    ``platform_slo_service`` can group requests by route prefix without a
-    per-request org id or path ever entering a label (REQ-NFR-005: the SLO
-    endpoint must not leak organisation names, user data or paths -- the
-    route *pattern* is not one of those).
-    """
-    HTTP_REQUESTS_TOTAL.labels(
-        method=method, endpoint=rule, status_code=status_code
-    ).inc()
-    HTTP_REQUEST_DURATION.labels(method=method, endpoint=rule).observe(
-        duration_seconds
-    )
 
 
 def get_http_metrics_registry() -> tuple[CollectorRegistry, bool]:

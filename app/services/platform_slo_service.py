@@ -7,7 +7,7 @@ from the counters and histogram already declared in
 ``HTTP_REQUEST_DURATION``. This module adds no table, no second registry and
 no second counter (CLAUDE.md ADR 0008): it is a pure read/aggregation layer
 over the existing exported metrics, grouped by the Flask URL rule those
-counters are labelled with (``app/routes/health_routes.py`` is the one place
+counters are labelled with (``app/_bootstrap/security.py`` is the one place
 that increments them, per request, for every route in the app).
 
 Objective definitions (brief R2-B02, "Platform and trust"):
@@ -41,10 +41,22 @@ _NOT_MEASURED_REASON = "not measured"
 # Multi-window burn-rate rule (Google SRE workbook): a burn rate above this
 # multiplier, sustained across both a long and a short window, means the
 # 30-day error budget would be exhausted before the window closes.
+# ``compute_burn_alert`` below implements the rule and is unit-tested in its
+# own right; it is not wired into ``_objective_status`` because this
+# deployment holds one process-lifetime cumulative counter, not a
+# time-series store with separate 1h/5m samples (adding a Prometheus server
+# to get one is forbidden by NFR-6) -- see the "burn_window_reason" field and
+# docs/platform-slos.md.
 _BURN_RATE_ALERT_THRESHOLD = 14.4
+_BURN_WINDOW_NOT_MEASURED_REASON = "window not measured; process-lifetime counts only"
 
 _REQUESTS_METRIC_NAME = "app_http_requests"
 _DURATION_METRIC_NAME = "app_http_request_duration_seconds"
+
+# Mirrors app.modules.intelligence.services.latency_probe's
+# _MIN_SAMPLES_FOR_P95 rule: below this many observations a bucket-edge read
+# is treated as unmeasured, never as an early, noisy percentile.
+_MIN_SAMPLES_FOR_LATENCY_P95 = 100
 
 
 @dataclass(frozen=True)
@@ -127,7 +139,7 @@ def _matching_latency_p95(family, route_prefix: str) -> Optional[float]:
         elif sample.name.endswith("_count"):
             series_total += sample.value
 
-    if series_total <= 0:
+    if series_total < _MIN_SAMPLES_FOR_LATENCY_P95:
         return None
 
     threshold = 0.95 * series_total
@@ -141,10 +153,12 @@ def _matching_latency_p95(family, route_prefix: str) -> Optional[float]:
         if bucket_totals[le] >= threshold:
             return float(le)
 
-    # The 95th percentile falls past every declared boundary -- an honest
-    # "unknown, at least this high" rather than an interpolated guess.
-    declared = [float(le) for le in bucket_totals if le != "+Inf"]
-    return max(declared) if declared else None
+    # The 95th percentile falls past every declared boundary: an honest
+    # "we don't know" rather than the last finite edge standing in for a
+    # real measurement (that edge is where 95% of requests are NOT, by
+    # construction -- reporting it as the p95 would be fabricating a number
+    # the histogram never actually measured).
+    return None
 
 
 def _objective_status(objective: SloObjective, families: dict) -> dict:
@@ -164,23 +178,14 @@ def _objective_status(objective: SloObjective, families: dict) -> dict:
             "latency_target_seconds": objective.latency_target_seconds,
             "meets_availability_target": None,
             "meets_latency_target": None,
-            "burn_rate": None,
+            "burn_rate_1h": None,
+            "burn_rate_5m": None,
             "burn_alert": None,
+            "burn_window_reason": _BURN_WINDOW_NOT_MEASURED_REASON,
         }
 
     availability = (total - bad) / total
     latency_p95 = _matching_latency_p95(duration_family, objective.route_prefix)
-
-    error_budget = 1 - objective.availability_target
-    burn_rate = (1 - availability) / error_budget if error_budget > 0 else None
-    # Both windows read the same single in-process observation: this
-    # deployment holds one cumulative counter per process, not a time-series
-    # store (NFR-6 forbids adding a Prometheus server -- see
-    # docs/platform-slos.md), so a true separate 1h/5m sample is not
-    # available yet. Feeding the one real measurement into both windows of
-    # the multi-window rule is a documented limitation, never an invented
-    # second number.
-    burn_alert = compute_burn_alert(burn_rate, burn_rate)
 
     return {
         "measured": True,
@@ -194,8 +199,16 @@ def _objective_status(objective: SloObjective, families: dict) -> dict:
         "meets_latency_target": (
             None if latency_p95 is None else latency_p95 <= objective.latency_target_seconds
         ),
-        "burn_rate": burn_rate,
-        "burn_alert": burn_alert,
+        # This process has no separate 1-hour/5-minute time-series samples --
+        # only a lifetime cumulative count -- so the multi-window burn rule
+        # cannot honestly be evaluated yet. Reporting the one real number
+        # twice, as if it were two independent windows, would be exactly the
+        # kind of invented precision CLAUDE.md's "never invent data" rule
+        # forbids, so every field here is null with a stated reason instead.
+        "burn_rate_1h": None,
+        "burn_rate_5m": None,
+        "burn_alert": None,
+        "burn_window_reason": _BURN_WINDOW_NOT_MEASURED_REASON,
     }
 
 

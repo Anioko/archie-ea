@@ -33,17 +33,22 @@ is summed:
 - **p95 latency** is read off the histogram's own declared bucket
   boundaries — the first bucket whose cumulative count reaches 95% of the
   matching total — never interpolated and never averaged across requests.
-- **Burn rate** = (1 − observed availability) / (1 − target availability):
-  how many times faster than the 30-day budget the service is currently
-  spending it.
-- **Burn alert** fires when both a 1-hour and a 5-minute burn rate exceed
-  14.4× (the standard multi-window rule, which needs both windows agreeing
-  before it fires so a short traffic blip does not trigger a page). This
-  process holds one cumulative counter per objective rather than a
-  time-series store, so both windows currently read the same single
-  observed rate; a genuine two-window read needs the counters to be
-  bucketed by time, which is future work, not something this endpoint
-  invents in the meantime.
+- **Burn rate** (Google SRE workbook) would be (1 − observed availability) /
+  (1 − target availability): how many times faster than the 30-day budget
+  the service is spending it. **Burn alert** would fire when both a 1-hour
+  and a 5-minute burn rate exceed 14.4× (the standard multi-window rule,
+  which needs both windows agreeing before it fires so a short traffic blip
+  does not trigger a page).
+
+  This process holds one process-lifetime cumulative counter per objective,
+  not a time-series store with separate 1-hour and 5-minute samples, so
+  neither window can honestly be computed today. `/health/slo` reports
+  `burn_rate_1h`, `burn_rate_5m` and `burn_alert` as `null`, with
+  `burn_window_reason: "window not measured; process-lifetime counts only"`
+  — never one real number presented twice as if it were two independent
+  windows. Closing this gap needs the counters bucketed by time, which is
+  future work; the lifetime availability and latency figures above remain
+  real and usable in the meantime.
 
 ## The endpoint
 
@@ -71,9 +76,11 @@ Add a step to the production watch that polls `/health/slo` and fails when
 any objective's `burn_alert` is `true`:
 
 ```
-curl -sf https://<host>/health/slo | jq -e '[.objectives[].burn_alert] | any'
+curl -sf https://<host>/health/slo | jq -e 'all(.objectives[]; .burn_alert != true)'
 ```
 
-A non-empty (truthy) result means at least one service is burning its error
-budget fast enough to exhaust it inside the day; treat it the same as any
-other production-watch failure.
+`jq -e` exits non-zero when the expression is `false` — `all(...)` is `true`
+whenever every objective's `burn_alert` is `false` or `null` (not yet
+measured), and only turns `false` when at least one objective is actually
+alerting, so a null burn alert counts as healthy rather than failing the
+watch on a limitation this endpoint has already disclosed.
