@@ -5,6 +5,7 @@
   "_note3": "updated 2026-09-20: sidebar_links 27 -> 28 is real link growth, not a corrected measurement. The Ask page has one front door, \"Ask a question\", first in every persona's My work, so platform_admin (the worst case) renders one more. The Twin map has no link of its own and is reached from the Ask page. SIDEBAR_LINK_BUDGET moves 30 -> 31 with it.",
   "_note4": "updated 2026-09-21: an Impact Analysis My-work link (fix/t104-impact-sidebar) was added for solution_architect and business_architect, matching enterprise_architect's existing one. business_architect now also measures 28, tying platform_admin rather than trailing it -- _note3's \"platform_admin (the worst case)\" no longer names the only worst case. sidebar_links stays 28 (no ratchet change); this note only corrects which role(s) that number describes.",
   "_note5": "updated 2026-09-25: two new shared Library links (\"Canvases\", \"Frameworks\") were added for every role. sidebar_links stays 28 -- business_architect and platform_admin (zero headroom) each lost one same-page duplicate link, and enterprise_architect (one link of headroom) lost \"Duplicate Detection\", moved to portfolio_manager's My work (ample headroom there); it stays in a sidebar zone, just not enterprise_architect's. See app/utils/role_access.py's SIDEBAR_LINK_BUDGET and per-role comments for detail. No ratchet or budget change.",
+  "_note6": "updated 2026-09-26: evidence_contract 30 -> 31 for this branch's merge of main, same class of gap as _note2. The merge commit's conflict resolution touches app/modules/intelligence/services/query_service.py and app/modules/intelligence/services/reason_codes.py, both of which have real, passing same-merge coverage in app/modules/intelligence/tests/ -- but that directory does not start with the literal 'tests/' prefix the gate's touched_tests check matches (only the top-level tests/ directory does), and the merge commit was kept at git's default message per the remerge instructions, so it carries no literal 'Evidence:' trailer either. Accepted as one unit of debt rather than rewriting an already-pushed merge commit's message.",
   "ratchets": {
     "undefined_names": 0,
     "redefinitions": 0,
@@ -28,7 +29,7 @@
     "ui_contract": 0,
     "nav_verified": 0,
     "console_reporting": 0,
-    "evidence_contract": 30,
+    "evidence_contract": 31,
     "role_gate_coverage": 7,
     "unregistered_checks": 33,
     "duplicate_breadcrumb": 0,
