@@ -254,6 +254,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_proposal_tenancy import init_app as init_proposal_tenancy
+        init_proposal_tenancy(app)
+        app.logger.info("Proposal path tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register proposal path tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
