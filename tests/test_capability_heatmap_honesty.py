@@ -452,6 +452,8 @@ def test_population_query_count_does_not_grow_with_capability_count(db_session, 
 
 
 def test_all_four_direct_callers_return_a_valid_body(app, db_session, make_org):
+    import werkzeug.exceptions
+
     from app.api.dashboard_routes import api_capability_heatmap as legacy_api
     from app.main.capability_framework_routes import get_maturity_heatmap as orphaned_api
     from app.modules.dashboard.routes.dashboard_pages_routes import (
@@ -466,7 +468,28 @@ def test_all_four_direct_callers_return_a_valid_body(app, db_session, make_org):
     domain = _domain(db_session, "four-callers")
     cap = _capability(db_session, org, domain=domain, current=2, target=4, name="Four-callers capability")
 
-    for view in (v1_api, v2_api, legacy_api, orphaned_api):
+    # A platform administrator for the capability framework view.
+    from app.models.user import Role, User
+
+    platform_admin = User(
+        email=f"pa-four-callers-{uuid.uuid4().hex[:8]}@example.com",
+        first_name="Platform",
+        last_name="Admin",
+        organization_id=org.id,
+        enterprise_role="platform_admin",
+        confirmed=True,
+        is_platform_admin=True,
+    )
+    platform_admin.password = "Sup3rSecret!23"
+    db_session.add(platform_admin)
+    db_session.flush()
+    Role.insert_roles()
+    role = Role.query.filter_by(name="Administrator").first()
+    platform_admin.role = role
+    db_session.flush()
+
+    # Three dashboard heatmap views accept a signed-in organisation user.
+    for view in (v1_api, v2_api, legacy_api):
         with app.test_request_context("/"):
             g.current_org_id = org.id
             login_user(actor)
@@ -477,6 +500,25 @@ def test_all_four_direct_callers_return_a_valid_body(app, db_session, make_org):
         assert status == 200, f"{view.__module__}.{view.__name__} returned {status}"
         payload = resp_obj.get_json()
         assert payload is not None, f"{view.__module__}.{view.__name__} returned no JSON body"
+
+    # The capability framework view requires a platform administrator.
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        login_user(platform_admin)
+        response = orphaned_api()
+    resp_obj, status = (
+        response if isinstance(response, tuple) else (response, response.status_code)
+    )
+    assert status == 200, f"orphaned_api returned {status}"
+    payload = resp_obj.get_json()
+    assert payload is not None, "orphaned_api returned no JSON body"
+
+    # A plain organisation user must be refused.
+    with pytest.raises(werkzeug.exceptions.Forbidden):
+        with app.test_request_context("/"):
+            g.current_org_id = org.id
+            login_user(actor)
+            orphaned_api()
 
     # Spot-check the v1 (live) shape carries the new fields and the recorded
     # capability, not a fabricated one.
