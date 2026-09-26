@@ -3,6 +3,7 @@ Context processors — global template variables.
 """
 
 import flask
+from sqlalchemy import event
 
 _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
 
@@ -12,7 +13,44 @@ _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabiliti
 _nav_counts_cache: dict = {}
 _NAV_COUNTS_TTL = 300
 
+_NAV_COUNT_MODELS = (
+    "ApplicationComponent",
+    "ArchiMateElement",
+    "BusinessCapability",
+    "VendorOrganization",
+)
+
 EM_DASH = "—"
+
+
+def _invalidate_nav_counts(session, flush_context):
+    """Evict nav-count cache entries for every organisation whose counted
+    records changed in this flush. Registered once at module level so that
+    multiple ``create_app()`` calls do not stack listeners."""
+    touched = set(session.new) | set(session.deleted)
+    if not touched:
+        return
+    org_ids = set()
+    clear_all = False
+    for obj in touched:
+        cls_name = type(obj).__name__
+        if cls_name not in _NAV_COUNT_MODELS:
+            continue
+        if cls_name == "VendorOrganization":
+            clear_all = True
+        else:
+            org_id = getattr(obj, "organization_id", None)
+            if org_id is not None:
+                org_ids.add(org_id)
+    if clear_all:
+        _nav_counts_cache.clear()
+    for org_id in org_ids:
+        _nav_counts_cache.pop(org_id, None)
+
+
+from app.extensions import db  # noqa: E402 — module-level db import safe here
+if not event.contains(db.session, "after_flush", _invalidate_nav_counts):
+    event.listen(db.session, "after_flush", _invalidate_nav_counts)
 
 
 
@@ -31,7 +69,12 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
 
     Empty results (all four counts zero) are stored with a 5-second lifetime
     instead of the default, so every server worker sees a new organisation's
-    first records at the next request after the write.
+    first records within 5 seconds of the write.
+
+    Writes that bypass the ORM session event system (raw SQL, ORM bulk
+    ``query.delete()``, ``session.execute(insert(...))``) do not invalidate
+    the cache. For the empty case the 5-second TTL covers it. A non-empty
+    entry stays stale for up to 300 seconds.
     """
     import time
 
@@ -68,36 +111,6 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
 
 def init_context_processors(app):
     """Register all context processors for Jinja templates."""
-
-    # T-RR-17: after_flush listener that clears nav_counts_cache when any of
-    # the four counted models are created or deleted — mirrors the session-level
-    # event registration in app/models/unified_capability.py:617,652.
-    from app.extensions import db
-
-    _NAV_COUNT_MODELS = (
-        "ApplicationComponent",
-        "ArchiMateElement",
-        "BusinessCapability",
-        "VendorOrganization",
-    )
-
-    def _invalidate_nav_counts(session, flush_context):
-        touched = set(session.new) | set(session.deleted)
-        if not touched:
-            return
-        # Check all touched objects before importing models (lazy import so the
-        # listener fires even when no write path loaded the models yet).
-        for obj in touched:
-            cls_name = type(obj).__name__
-            if cls_name not in _NAV_COUNT_MODELS:
-                continue
-            if cls_name == "VendorOrganization":
-                _nav_counts_cache.clear()
-            else:
-                _nav_counts_cache.pop(getattr(obj, "organization_id", None), None)
-            return  # one flush may touch multiple models — one sweep is enough
-
-    db.event.listen(db.session, "after_flush", _invalidate_nav_counts)
 
     _dashboard_categories_cache = {"data": None, "timestamp": 0}
     _applications_cache: dict = {}  # keyed by organisation id — see inject_applications

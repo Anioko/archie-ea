@@ -708,7 +708,7 @@ def test_the_side_panel_control_is_named_for_the_panel():
     assert ">Details<" not in twin and "Details</button>" not in twin
 
 
-# --- nav-cache invalidation (T-RR-17) -------------------------------------
+# --- nav-cache invalidation -------------------------------------
 
 
 def test_nav_counts_cache_invalidated_on_element_write(db_session, make_org):
@@ -743,8 +743,8 @@ def test_nav_counts_cache_expires_empty_result_on_other_worker(
     through raw SQL (no after_flush in this process) and advancing time past the
     5-second empty-result TTL makes compute_nav_counts recompute from the DB.
 
-    Also proves that a non-empty result is still served from the cache within
-    300 seconds (the full TTL for real data is unchanged)."""
+    Also proves that a non-empty result is still served from the cache for
+    nearly 300 seconds and only recomputes after the TTL expires."""
     import time
 
     from sqlalchemy import text
@@ -777,14 +777,73 @@ def test_nav_counts_cache_expires_empty_result_on_other_worker(
     second = compute_nav_counts(org.id)
     assert second["elements"] == 1
 
-    # Now the cache holds a non-empty result with the full 300-second TTL.
-    # Advance time by 60 seconds (still well within 300) — must serve from cache.
-    monkeypatch.setattr(time, "time", lambda: original_time() + 66)
+    # Now prime the cache with a non-empty result (1 element).
     third = compute_nav_counts(org.id)
     assert third["elements"] == 1
-
-    # Verify the org is still cached (not recomputed) by inspecting the dict.
     assert org.id in _nav_counts_cache
+
+    # Insert a second element via raw SQL — listener does not fire.
+    db_session.execute(
+        text(
+            "INSERT INTO archimate_elements (name, organization_id) "
+            "VALUES (:name, :org_id)"
+        ),
+        {"name": "Second raw element", "org_id": org.id},
+    )
+    db_session.flush()
+
+    # Advance time by 66 seconds from the priming timestamp (still well
+    # within 300 s TTL) — cache must still serve the old count of 1,
+    # proving the non-empty entry was NOT recomputed.
+    monkeypatch.setattr(time, "time", lambda: original_time() + 66)
+    fourth = compute_nav_counts(org.id)
+    assert fourth["elements"] == 1, "expected stale cached value at +66 s"
+    assert org.id in _nav_counts_cache
+
+    # Advance time past the 300-second TTL — cache must now recompute and
+    # find both elements.
+    monkeypatch.setattr(time, "time", lambda: original_time() + 307)
+    fifth = compute_nav_counts(org.id)
+    assert fifth["elements"] == 2
+
+
+def test_nav_counts_cache_evicts_two_orgs_in_one_flush(
+    db_session, make_org, monkeypatch
+):
+    """A single flush that adds tracked records for two different organisations
+    evicts both organisations' cache entries."""
+    from app._bootstrap.context_processors import compute_nav_counts, _nav_counts_cache
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+
+    org_a = make_org()
+    org_b = make_org()
+
+    # Prime both caches.
+    first_a = compute_nav_counts(org_a.id)
+    first_b = compute_nav_counts(org_b.id)
+    assert first_a["elements"] == 0
+    assert first_b["capabilities"] == 0
+    assert org_a.id in _nav_counts_cache
+    assert org_b.id in _nav_counts_cache
+
+    # One flush: element for org A, capability for org B.
+    db_session.add(ArchiMateElement(
+        name="OrgA Element",
+        type="ApplicationComponent",
+        organization_id=org_a.id,
+    ))
+    db_session.add(BusinessCapability(
+        name="OrgB Capability",
+        organization_id=org_b.id,
+    ))
+    db_session.flush()
+
+    # Both caches must be evicted — recompute returns the new values.
+    after_a = compute_nav_counts(org_a.id)
+    after_b = compute_nav_counts(org_b.id)
+    assert after_a["elements"] == 1
+    assert after_b["capabilities"] == 1
 
 
 def test_ask_page_updates_after_element_write(
