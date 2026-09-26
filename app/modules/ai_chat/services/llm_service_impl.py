@@ -2986,9 +2986,19 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             List of decision log entries
         """
         try:
+            from app.middleware.tenant_context import current_org_id
+
             query = LLMInteraction.query.filter_by(
                 provider="decision_log", model_name="audit_trail"
             )
+            # tenant-scoping-ok: reached from a @login_required route with no
+            # admin check (app/main/routes_agentic_gaps.py), so scope to the
+            # caller's own organisation rather than let it aggregate every
+            # tenant's decisions; current_org_id() is None outside a request
+            # (CLI/tests), which correctly leaves that path unfiltered
+            org_id = current_org_id()
+            if org_id is not None:
+                query = query.filter(LLMInteraction.organization_id == org_id)
 
             if user_id:
                 query = query.filter_by(user_id=user_id)

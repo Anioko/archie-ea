@@ -1111,11 +1111,25 @@ class PipelineStage(db.Model):
 
 
 class LLMInteraction(db.Model):
+    """Not TenantMixin-scoped by design: platform-admin cost views read this
+    table across every organisation. Tenant-facing reads (budget checks, an
+    organisation's own cost figures) must filter on organization_id explicitly
+    -- see LLMCostTracker. Consequence: pre-existing rows and any interaction
+    recorded outside a request context have organization_id NULL and count
+    towards no organisation's budget.
+    """
+
     __tablename__ = "llm_interactions"
 
     id = db.Column(db.Integer, primary_key=True)
     pipeline_stage_id = db.Column(db.Integer, db.ForeignKey("pipeline_stages.id"), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)  # For budget tracking
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     model_name = db.Column(db.String(50))  # gpt - 4, claude - 3 - opus, etc.
     provider = db.Column(db.String(50))  # openai, anthropic, azure
     prompt = db.Column(db.Text)

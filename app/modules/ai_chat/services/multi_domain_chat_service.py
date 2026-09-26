@@ -7479,6 +7479,9 @@ End with: "Type **'next'** to complete the design workflow."
             from app.models import LLMInteraction
             from sqlalchemy import func, distinct, cast, Date
 
+            # tenant-scoping-ok: scoped to one user's own history (user_id is
+            # always current_user.id from the route), never aggregated across
+            # users or organisations
             base = LLMInteraction.query.filter(LLMInteraction.user_id == user_id)
             total_messages = base.count()
             active_days = db.session.query(
@@ -7500,13 +7503,18 @@ End with: "Type **'next'** to complete the design workflow."
         try:
             from app.models import LLMInteraction
             from sqlalchemy import func
+            from flask import g as _g
+
+            # Reached from a @login_required route with no admin check
+            # (analytics_routes.py /analytics/domains); scope to the caller's
+            # own organisation rather than let it sum every tenant's messages.
+            org_id = getattr(_g, "current_org_id", None)
 
             # Count interactions per provider as a proxy (domain not stored directly)
-            rows = (
-                db.session.query(LLMInteraction.provider, func.count(LLMInteraction.id))
-                .group_by(LLMInteraction.provider)
-                .all()
-            )
+            domain_query = db.session.query(LLMInteraction.provider, func.count(LLMInteraction.id))
+            if org_id is not None:
+                domain_query = domain_query.filter(LLMInteraction.organization_id == org_id)
+            rows = domain_query.group_by(LLMInteraction.provider).all()
             domains = [{"domain": provider or "unknown", "message_count": count} for provider, count in rows]
             total = sum(d["message_count"] for d in domains)
 
@@ -7524,14 +7532,27 @@ End with: "Type **'next'** to complete the design workflow."
         try:
             from app.models import LLMInteraction
             from sqlalchemy import func
+            from flask import g as _g
 
-            total = LLMInteraction.query.count()
+            # Reached from a @login_required route with no admin check
+            # (analytics_routes.py /analytics/quality); scope to the caller's
+            # own organisation rather than let it read every tenant's quality.
+            org_id = getattr(_g, "current_org_id", None)
+
+            quality_base = LLMInteraction.query
+            if org_id is not None:
+                quality_base = quality_base.filter(LLMInteraction.organization_id == org_id)
+
+            total = quality_base.count()
             if total == 0:
                 return {"response_quality_score": None, "avg_response_time_ms": None, "success_rate": 0, "feedback_count": 0}
 
-            avg_latency = db.session.query(func.avg(LLMInteraction.latency_ms)).scalar()
+            latency_query = db.session.query(func.avg(LLMInteraction.latency_ms))
+            if org_id is not None:
+                latency_query = latency_query.filter(LLMInteraction.organization_id == org_id)
+            avg_latency = latency_query.scalar()
             # Success = has a non-empty response
-            success_count = LLMInteraction.query.filter(
+            success_count = quality_base.filter(
                 LLMInteraction.response.isnot(None),
                 LLMInteraction.response != "",
             ).count()
