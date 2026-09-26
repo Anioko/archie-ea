@@ -563,13 +563,32 @@ def risk_for_element(element_id: int):
     )
 
 
+# The component block's seven entered cost fields (matches
+# IntelligenceQueryService.portfolio_component_for_element's ``cost`` key) --
+# named once here so the redaction call below and any future caller share
+# the one list rather than each spelling it out.
+_SEVEN_COST_FIELDS = (
+    "total_cost_of_ownership",
+    "license_cost_annual",
+    "maintenance_cost",
+    "infrastructure_cost",
+    "support_cost",
+    "implementation_cost",
+    "development_cost_annual",
+)
+
+
 @intelligence_api.route("/portfolio/<int:element_id>", methods=["GET"])
 @login_required
 def portfolio_component_for_element(element_id: int):
-    """L3: resolves an element to its ApplicationComponent, the only fact
-    the frontend needs to build the one genuine deep link that exists today
-    (rationalization planning). No inline rows or cost figures -- see
-    ``IntelligenceQueryService.portfolio_component_for_element`` for why
+    """L3: resolves an element to its ApplicationComponent and the
+    ``component`` block -- name, owner-recorded health, entered cost/TCO
+    figures, latest fiscal-period cost row and licence position -- built by
+    ``IntelligenceQueryService.portfolio_component_for_element`` off that
+    same resolution. Financial figures in the block are redacted for a
+    caller without budget authority, same role set and same
+    ``_redact_financial_fields`` helper the Strategy/Programme routes
+    already use; see the service method's own docstring for why
     duplicate-detection and TCO history are not offered here.
     """
     organization_id = _current_organization_id()
@@ -596,10 +615,21 @@ def portfolio_component_for_element(element_id: int):
 
     result = IntelligenceQueryService.portfolio_component_for_element(element_id)
 
+    component = result.get("component")
+    if component is not None:
+        _redact_financial_fields([component["cost"]], _SEVEN_COST_FIELDS, "access_reason")
+        _redact_financial_fields(
+            [component["cost_by_period"]],
+            ("total_cost", "total_budget", "variance"),
+            "access_reason",
+        )
+        _redact_financial_fields(component["licences"] or [], ("unit_cost",), "access_reason")
+
     return success_response(
         {
             "application_component_id": result.get("application_component_id"),
             "reasons": result.get("reasons") or [],
+            "component": component,
         }
     )
 
