@@ -1478,17 +1478,12 @@ def seed_canvas_templates(org_id=None):
     return vp_created, vp_updated, profile_created, profile_updated
 
 
-def _resolve_seed_org_id(explicit):
-    """Same refusal-to-guess rule as ``backfill-layer-tenancy``: with exactly
-    one organization, seed into it; with several, the caller must say which
-    one owns the standard catalogue rows.
+def _resolve_seed_org_id():
+    """With exactly one organization, seed into it; with several, refuse
+    because standard viewpoints must not become the property of one organisation.
     """
     from app.models.organization import Organization
 
-    if explicit is not None:
-        if not Organization.query.filter_by(id=explicit).limit(1).count():
-            raise click.ClickException(f"No organization with id={explicit}.")
-        return explicit
     orgs = Organization.query.order_by(Organization.id).all()
     if len(orgs) == 1:
         return orgs[0].id
@@ -1496,23 +1491,17 @@ def _resolve_seed_org_id(explicit):
         return None
     listing = ", ".join(f"{o.id}={o.name}" for o in orgs)
     raise click.ClickException(
-        f"{len(orgs)} organizations exist ({listing}). Re-run with --org-id to say which one "
-        "owns the standard viewpoint and canvas template catalogue."
+        f"{len(orgs)} organisations exist ({listing}). This command seeds "
+        "only a single-organisation database."
     )
 
 
 @click.command("seed-viewpoints")
-@click.option(
-    "--org-id",
-    type=int,
-    default=None,
-    help="Organization the standard catalogue rows belong to. Required when more than one organization exists.",
-)
 @with_appcontext
-def seed_viewpoints_command(org_id):
+def seed_viewpoints_command():
     """Seed the 25 ArchiMate viewpoints (all standard, idempotent), the
     business-language canvas templates and their `profile` property rows."""
-    resolved_org_id = _resolve_seed_org_id(org_id)
+    resolved_org_id = _resolve_seed_org_id()
     created, updated = seed_viewpoints(org_id=resolved_org_id)
     click.echo(f"Viewpoints seeded: {created} created, {updated} updated.")
 
