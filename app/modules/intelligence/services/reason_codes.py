@@ -13,9 +13,9 @@ from __future__ import annotations
 
 # sdd-v2.md § API-8 — the original sixteen members, the two T-004 additions,
 # the one T-005 addition, the Portfolio and Programme lenses' three
-# additions, the Strategy/Accountability/role-gating additions, the four
-# T-S1 additions, the Portfolio-block additions and the licence-sync
-# addition below, exactly, nothing invented.
+# additions, the Strategy/Accountability/role-gating additions, the
+# value-streams-at-risk lens's four additions, the Portfolio-block
+# additions and the licence-sync addition below, exactly, nothing invented.
 REASON_CODES = frozenset(
     {
         "no_ownership_recorded",
@@ -117,15 +117,15 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
-        # Portfolio-block brief (2026-09-23): the Portfolio lens's component
-        # block adds cost, health and licence facts read from the columns
-        # already entered on the resolved ApplicationComponent (and the two
-        # tables keyed off it). Each part of that block carries its own
-        # absence condition, distinct from the pre-existing
-        # no_application_component (no component at all): a component can
-        # exist with no cost figures entered, no owner-recorded health
-        # status, no fiscal-period cost row and no licence entitlement rows,
-        # independently of one another.
+        # The Portfolio lens's component block adds cost, health and
+        # licence facts read from the columns already entered on the
+        # resolved ApplicationComponent (and the two tables keyed off it).
+        # Each part of that block carries its own absence condition,
+        # distinct from the pre-existing no_application_component (no
+        # component at all): a component can exist with no cost figures
+        # entered, no owner-recorded health status, no fiscal-period cost
+        # row and no licence entitlement rows, independently of one
+        # another.
         "no_cost_recorded",
         "no_health_recorded",
         "no_licence_recorded",

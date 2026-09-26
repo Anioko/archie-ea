@@ -56,10 +56,10 @@ CAPACITY_NOT_AVAILABLE_REASON = validate_reason_code("capacity_not_available")
 # Distinct from a "decision pending" state -- the ownership data source IS
 # decided; what doesn't exist yet is a shared, tenant-safe reader for it.
 OWNERSHIP_READER_NOT_BUILT_REASON = validate_reason_code("ownership_reader_not_built")
-# Portfolio-block brief: the component block's three independent absence
-# conditions -- no cost figures entered, no owner-recorded health status, no
-# licence entitlement rows -- each distinct from NO_APPLICATION_COMPONENT_REASON
-# above (which means no component was resolved at all).
+# The component block's three independent absence conditions -- no cost
+# figures entered, no owner-recorded health status, no licence entitlement
+# rows -- each distinct from NO_APPLICATION_COMPONENT_REASON above (which
+# means no component was resolved at all).
 NO_COST_RECORDED_REASON = validate_reason_code("no_cost_recorded")
 NO_HEALTH_RECORDED_REASON = validate_reason_code("no_health_recorded")
 NO_LICENCE_RECORDED_REASON = validate_reason_code("no_licence_recorded")
@@ -1011,14 +1011,15 @@ class IntelligenceQueryService:
 
         def _licence_entries(component, org_id: int) -> List[Dict[str, Any]]:
             """The ``licences`` key: every ``LicenseEntitlement`` row for
-            *component* -- this method's second remaining select,
-            explicitly scoped to the caller's own organisation on top of
-            the mixin's own tenant filter (the FK to
-            ``application_components`` carries no tenant check of its own,
-            so the explicit predicate is load-bearing here, not
-            decorative). ``under_used`` is the one honest comparison of two
-            recorded integers decision B allows: never a difference, never
-            a dollar figure for what is not deployed or not used.
+            *component* -- this method's second remaining select, with its
+            own tenant predicate isolated in ``_licence_tenant_predicate``
+            (the FK to ``application_components`` carries no tenant check
+            of its own, so that predicate is load-bearing here, not
+            decorative). ``under_used`` compares two recorded integers --
+            never a difference, never a dollar figure for what is not
+            deployed or not used -- and only once the licence's usage has
+            actually been synced; see ``LICENCE_USAGE_NOT_SYNCED_REASON``
+            for the honest absence reported when it has not.
             """
             from app.models.license_entitlement import LicenseEntitlement
 

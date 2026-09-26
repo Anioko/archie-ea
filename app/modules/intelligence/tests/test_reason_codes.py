@@ -19,8 +19,8 @@ review. Role-gating added ``financial_data_restricted``. T-S1 (value streams
 at risk, curated path) added four more -- ``no_value_stream_recorded``,
 ``no_capability_linked``, ``value_stream_not_linked_to_model`` and
 ``dependency_direction_unknown`` -- of which T-S1 emits only the first two;
-the other two are reserved for T-S3's graph path. The Portfolio-block brief
-(2026-09-23) added three more -- ``no_cost_recorded``, ``no_health_recorded``
+the other two are reserved for a later graph-based path. The Portfolio-block
+additions added three more -- ``no_cost_recorded``, ``no_health_recorded``
 and ``no_licence_recorded`` -- for the component block's cost, health and
 licence absence conditions. A fourth, ``licence_usage_not_synced``, covers a
 licence entry whose usage figures have never been synced from the source
@@ -34,7 +34,8 @@ updated in lockstep -- this ``_EXPECTED`` list has drifted out of sync with
 reality more than once already (found and corrected multiple times,
 independently, by different lenses' briefs each adding a member without
 re-deriving the true count); merging branches that each added members
-independently (L2/L4/role-gating, T-S1, and the Portfolio-block additions)
+independently (L2/L4/role-gating, the value-streams-at-risk lens, and the
+Portfolio-block additions)
 is the same class of drift, resolved here by re-deriving the real count (35)
 rather than trusting any one side's own stale number.
 """
@@ -53,8 +54,8 @@ from app.modules.intelligence.services.reason_codes import (
 # sdd-v2.md § API-8's original sixteen, T-004's two additions, T-005's one
 # addition (p95_above_highest_bucket, D3), the Portfolio and Programme
 # lenses' three additions, the Strategy/Accountability/role-gating
-# additions, T-S1's four additions, plus the Portfolio-block's four
-# additions.
+# additions, the value-streams-at-risk lens's four additions, plus the
+# Portfolio-block's four additions.
 _EXPECTED = {
     "no_ownership_recorded",
     "no_maturity_recorded",

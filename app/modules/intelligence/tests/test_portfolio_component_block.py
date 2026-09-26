@@ -138,7 +138,7 @@ def _resolve(app, org_id, element_id):
 
 class _PortfolioBlockStatementCounter:
     """Records every SELECT reaching ``application_costs`` or
-    ``license_entitlements`` -- the two tables decision B's block adds."""
+    ``license_entitlements`` -- the two tables the component block adds."""
 
     def __init__(self):
         self.application_costs = []
