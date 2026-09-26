@@ -96,6 +96,17 @@ _DERIVABLE_ORG = {
          WHERE u.id = s.organization_unit_id
            AND u.organization_id IS NULL
     """,
+    # A learned correction belongs to the organisation of the user who made it. user_id has no
+    # foreign key and can be NULL or name a user with no organisation; such a row stays NULL
+    # (hidden from every organisation, reported), never guessed. See _PROVENANCE_ONLY.
+    "extraction_feedback": """
+        UPDATE extraction_feedback f
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE f.user_id = u.id
+           AND f.organization_id IS NULL
+           AND u.organization_id IS NOT NULL
+    """,
 }
 
 # Tables whose remaining NULL rows carry per-row provenance rather than a
@@ -107,7 +118,7 @@ _DERIVABLE_ORG = {
 # reported, never a candidate for the single-organisation or --org-id orphan
 # assignment below. With exactly one organisation there is no other one it
 # could belong to, so the ordinary single-organisation rule still applies.
-_PROVENANCE_ONLY = {"application_ownership", "organization_units"}
+_PROVENANCE_ONLY = {"application_ownership", "extraction_feedback", "organization_units"}
 
 
 def _resolve_org_id(conn, explicit):
