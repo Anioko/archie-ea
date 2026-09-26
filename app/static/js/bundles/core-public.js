@@ -568,6 +568,13 @@
     // ── Mutating methods that require CSRF ───────────────────────────────────
     let MUTATING = { POST: true, PUT: true, PATCH: true, DELETE: true };
 
+    // ── Signed-out redirect guard ─────────────────────────────────────────────
+    // D-3: a 401 fires the sign-in redirect at most once per page load, and
+    // never from the sign-in page itself (which legitimately answers 401 on a
+    // failed credential submit -- that is a login failure, not a signed-out
+    // background call).
+    let authRedirectInProgress = false;
+
     // ── Navigation-in-progress flag ──────────────────────────────────────────
     // The browser rejects any in-flight fetch with a plain
     // `TypeError: Failed to fetch` when the document unloads mid-request --
@@ -709,6 +716,30 @@
                 // Error body is not guaranteed to be JSON; fall back to statusText/HTTP code below.
                 try { errData = await response.json(); }
                 catch(e) { /* swallow-ok: the error body may be HTML or empty; the failure itself is still reported below from statusText/HTTP code */ }
+
+                // D-1: the server's session policy (app/_bootstrap/session_policy.py)
+                // answers a background call with a bare 401 the instant a signed-in
+                // session goes stale (idle timeout or a server-side revocation) --
+                // that is deliberate and correct there. Nothing downstream of here
+                // has ever consumed that signal: every caller just toasted a generic
+                // error and kept polling a session that is never coming back. Handle
+                // it once, in this one shared place, for every Platform.fetch caller.
+                // D-2: an explicit opt-out for a caller that must not yank the user
+                // away from unsaved work; unused by any caller today.
+                // D-3: never redirect from the sign-in page itself, and never more
+                // than once per page load (a redirect is already navigating away).
+                if (response.status === 401 && !options.noAuthRedirect && !authRedirectInProgress &&
+                    global.location.pathname.indexOf('/account/login') !== 0) {
+                    authRedirectInProgress = true;
+                    const next = encodeURIComponent(global.location.pathname + global.location.search);
+                    log.debug('401 -- session gone, redirecting to sign-in', url);
+                    global.location.href = '/account/login?next=' + next;
+                    // The document is about to unload; never resolve so no caller's
+                    // .then()/.catch() runs a generic toast or blanks its fields in
+                    // the moment before navigation actually happens.
+                    return new Promise(function () {});
+                }
+
                 // ARCH-041: a validation 400 from the JSON API carries no top-level
                 // "message"/"error" — its detail lives in errData.errors, a
                 // {field: [msg, ...]} map (see e.g. app/modules/applications
