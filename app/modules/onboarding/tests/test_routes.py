@@ -75,7 +75,7 @@ def test_index_redirects_to_welcome_for_a_genuinely_new_org(app, db_session, mak
     assert resp.headers["Location"].endswith("/onboarding/welcome")
 
 
-def test_index_redirects_to_first_question_when_org_already_onboarded(app, db_session, make_org, client, login_as):
+def test_index_redirects_to_capabilities_when_org_already_onboarded(app, db_session, make_org, client, login_as):
     """An invited team member enters at Screen 3, per onboarding-prd-v1 §3."""
     from app.modules.onboarding.services import profile
 
@@ -85,7 +85,7 @@ def test_index_redirects_to_first_question_when_org_already_onboarded(app, db_se
     login_as(client, user)
     resp = client.get("/onboarding/", follow_redirects=False)
     assert resp.status_code in (302, 308)
-    assert resp.headers["Location"].endswith("/onboarding/first-question")
+    assert resp.headers["Location"].endswith("/onboarding/capabilities")
 
 
 def test_index_shows_saved_company_answers_to_someone_who_already_finished(
@@ -189,7 +189,7 @@ def test_company_step_json_post_returns_the_next_screen(app, db_session, make_or
     )
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
-    assert resp.get_json()["data"]["next"].endswith("/onboarding/first-question")
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/capabilities")
     from app.modules.onboarding.services import profile
 
     db_session.refresh(org)
@@ -204,13 +204,79 @@ def test_company_step_rejects_an_unknown_stage(app, db_session, make_org, client
     assert resp.status_code == 400
 
 
-def test_first_question_may_be_skipped_and_still_advances(app, db_session, make_org, client, login_as):
-    _logged_in(db_session, make_org, client, login_as, "first-question")
+def test_capabilities_screen_offers_what_fits_the_stage_and_size(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
 
-    resp = client.post("/onboarding/first-question", json={"answer": ""})
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-screen")
+    profile.write(org, stage="pre_revenue", size_band="micro")
+
+    html = client.get("/onboarding/capabilities").get_data(as_text=True)
+
+    assert "Product development" in html
+    assert "Procurement" not in html, "a tiny pre-revenue company is not asked about procurement"
+
+
+def test_capabilities_screen_for_a_large_established_company_offers_more(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-large")
+    profile.write(org, stage="established", size_band="large")
+
+    html = client.get("/onboarding/capabilities").get_data(as_text=True)
+
+    assert "Procurement" in html and "Business continuity" in html
+
+
+def test_posting_capabilities_saves_real_rows_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.business_capabilities import BusinessCapability
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    resp = client.post(
+        "/onboarding/capabilities",
+        json={"items": [{"key": "marketing", "owner": "Sam", "maturity": 2}]},
+    )
 
     assert resp.status_code == 200, resp.get_data(as_text=True)
-    assert resp.get_json()["data"]["next"].endswith("/onboarding/gaps")
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/people") and body["created"] == 1
+    assert BusinessCapability.query.filter_by(organization_id=org.id, name="Marketing").one().current_maturity_level == 2
+
+
+def test_posting_no_capabilities_is_fine_and_still_advances(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "cap-empty")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    resp = client.post("/onboarding/capabilities", json={"items": []})
+
+    assert resp.status_code == 200
+    assert resp.get_json()["data"]["next"].endswith("/onboarding/people")
+
+
+def test_the_company_step_records_the_size_band(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "band")
+
+    client.post("/onboarding/company", json={"stage": "growing", "size_band": "mid"})
+
+    db_session.refresh(org)
+    assert profile.read(org)["size_band"] == "mid"
+
+
+def test_an_unknown_size_band_is_ignored(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "band-bad")
+
+    client.post("/onboarding/company", json={"stage": "growing", "size_band": "gigantic"})
+
+    db_session.refresh(org)
+    assert "size_band" not in profile.read(org)
 
 
 def test_a_gap_can_be_accepted_with_a_reason_and_is_recorded(app, db_session, make_org, client, login_as):
@@ -520,3 +586,161 @@ def test_skip_breaks_the_redirect_loop_for_a_platform_admin_with_an_empty_worksp
         "a platform admin who just skipped onboarding must reach the "
         "dashboard, not be redirected straight back into onboarding"
     )
+
+
+def test_people_screen_asks_a_small_company_for_people_and_a_large_one_for_teams(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-size")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+    small = client.get("/onboarding/people").get_data(as_text=True)
+    profile.write(org, stage="established", size_band="large")
+    large = client.get("/onboarding/people").get_data(as_text=True)
+
+    assert "name each person" in small and "start from teams" not in small
+    assert "start from teams" in large in large
+
+
+def test_people_screen_with_no_capabilities_points_back_instead_of_showing_an_empty_form(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-none")
+    profile.write(org, stage="early_revenue", size_band="micro")
+
+    html = client.get("/onboarding/people").get_data(as_text=True)
+
+    assert "haven't recorded any capabilities" in html
+
+
+def test_posting_people_saves_real_actors_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.business_layer import BusinessActor
+    from app.models.organization_model import EnterpriseRaciAssignment
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "people-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+
+    resp = client.post(
+        "/onboarding/people",
+        json={"people": [{"name": "Sam", "kind": "person", "assignments": [{"key": "marketing", "role": "R", "proficiency": 2}]}]},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/tools") and body["people"] == 1 and body["assignments"] == 1
+    assert BusinessActor.query.filter_by(organization_id=org.id, name="Sam").count() == 1
+    assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).one().raci == "R"
+
+
+def test_goals_screen_renders_and_posting_saves_goal_and_change_then_advances(app, db_session, make_org, client, login_as):
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.unified_work_package import UnifiedWorkPackage as WorkPackage
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "goals-post")
+
+    assert client.get("/onboarding/goals").status_code == 200
+    resp = client.post(
+        "/onboarding/goals",
+        json={"goals": [{"name": "Grow revenue"}], "changes": [{"name": "Launch sign-up", "goal": "Grow revenue"}]},
+    )
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/gaps") and body["goals"] == 1 and body["links"] == 1
+    assert ArchiMateElement.query.filter_by(organization_id=org.id, type="Goal", name="Grow revenue").count() == 1
+    assert WorkPackage.query.filter_by(name="Launch sign-up").count() == 1
+
+
+def test_tools_screen_saves_a_real_application_and_advances(app, db_session, make_org, client, login_as):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.modules.onboarding.services import profile
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "tools-post")
+    profile.write(org, stage="early_revenue", size_band="micro")
+    client.post("/onboarding/capabilities", json={"items": [{"key": "marketing", "maturity": 2}]})
+
+    assert client.get("/onboarding/tools").status_code == 200
+    resp = client.post("/onboarding/tools", json={"tools": [{"name": "Mailchimp", "deployment": "saas", "supports": ["marketing"]}]})
+
+    assert resp.status_code == 200, resp.get_data(as_text=True)
+    body = resp.get_json()["data"]
+    assert body["next"].endswith("/onboarding/goals") and body["tools"] == 1 and body["links"] == 1
+    assert ApplicationComponent.query.filter_by(organization_id=org.id, name="Mailchimp").count() == 1
+
+
+def test_a_tool_named_like_an_expected_system_counts_as_recorded_in_the_gaps(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile, stage_gaps
+
+    org, _ = _logged_in(db_session, make_org, client, login_as, "tools-gaps")
+    profile.write(org, stage="pre_revenue", size_band="micro")
+    label = stage_gaps.label_for("code_repository")
+    client.post("/onboarding/tools", json={"tools": [{"name": label}]})
+
+    from app.modules.onboarding import routes
+
+    assert "code_repository" in routes._recorded_for_org(org)["systems"]
+
+
+def test_company_name_renames_the_auto_created_workspace(app, db_session, make_org, client, login_as):
+    org = make_org("rename")
+    user = _make_user(db_session, org, is_org_admin=True)
+    login_as(client, user)
+    org.name = "On Board's Workspace"
+    db_session.flush()
+
+    resp = client.post("/onboarding/company", json={"stage": "early_revenue", "company_name": "Lantern Quay"})
+
+    assert resp.status_code == 200
+    db_session.refresh(org)
+    assert org.name == "Lantern Quay"
+
+
+def test_the_company_screen_does_not_prefill_the_auto_created_name(app, db_session, make_org, client, login_as):
+    org = make_org("prefill")
+    user = _make_user(db_session, org, is_org_admin=True)
+    login_as(client, user)
+    org.name = "On Board's Workspace"
+    db_session.flush()
+
+    html = client.get("/onboarding/company").get_data(as_text=True)
+
+    assert "companyName: &#34;&#34;" in html
+
+
+def test_a_teammate_cannot_rewrite_an_existing_company_profile_but_keeps_their_role(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org = make_org("teammate")
+    profile.write(org, stage="growing", industry="Logistics")
+    user = _make_user(db_session, org)
+    login_as(client, user)
+    org.name = "Real Company"
+    db_session.flush()
+
+    resp = client.post(
+        "/onboarding/company",
+        json={"stage": "pre_revenue", "industry": "Hijacked", "company_name": "Renamed", "enterprise_role": "cto"},
+    )
+
+    assert resp.status_code == 200
+    db_session.refresh(org)
+    db_session.refresh(user)
+    assert org.name == "Real Company"
+    assert profile.read(org)["stage"] == "growing" and profile.read(org)["industry"] == "Logistics"
+    assert user.enterprise_role == "cto"
+
+
+def test_a_platform_admin_may_edit_the_company_profile(app, db_session, make_org, client, login_as):
+    from app.modules.onboarding.services import profile
+
+    org = make_org("padmin")
+    profile.write(org, stage="growing")
+    user = _make_user(db_session, org, is_platform_admin=True)
+    login_as(client, user)
+
+    resp = client.post("/onboarding/company", json={"stage": "established"})
+
+    assert resp.status_code == 200
+    assert profile.read(org)["stage"] == "established"

@@ -4,9 +4,11 @@
 
 {% block wizard_content %}
 <div x-data="{
+        companyName: {{ (company_name or '') | tojson | forceescape }},
         stage: {{ (current.stage or '') | tojson | forceescape }},
         companySize: {{ (current.company_size or '') | tojson | forceescape }},
         industry: {{ (current.industry or '') | tojson | forceescape }},
+        sizeBand: {{ (current.size_band or '') | tojson | forceescape }},
         sourceUrl: {{ (current.source_url or '') | tojson | forceescape }},
         regionEu: {{ (current.region_europe_or_eu_customers | default(false)) | tojson }},
         cardData: {{ (current.handles_card_data_directly | default(false)) | tojson }},
@@ -36,9 +38,11 @@
             window.Platform.fetch('{{ url_for('onboarding.company') }}', {
                 method: 'POST',
                 body: {
+                    company_name: this.companyName,
                     stage: this.stage,
                     company_size: this.companySize,
                     industry: this.industry,
+                    size_band: this.sizeBand,
                     source_url: this.sourceUrl,
                     region_europe_or_eu_customers: this.regionEu,
                     handles_card_data_directly: this.cardData,
@@ -82,6 +86,21 @@
     </a>
     {% endif %}
 
+    {% if not can_edit %}
+    <p class="rounded-lg border border-border p-3 text-sm text-muted-foreground" role="note">
+        Your organisation's company answers were set by its owner or an administrator, so they are shown here but
+        can only be changed by them. You can still choose your own role below.
+    </p>
+    {% endif %}
+    <fieldset {% if not can_edit %}disabled{% endif %} class="space-y-6 min-w-0 border-0 p-0 m-0">
+    <div>
+        <label for="company_name" class="text-sm font-medium text-foreground mb-1 block">Company name</label>
+        <input id="company_name" type="text" x-model="companyName" maxlength="200" placeholder="e.g. Lantern Quay"
+               class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1
+                      text-sm shadow-sm transition-colors placeholder:text-muted-foreground
+                      focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+        <p class="text-xs text-muted-foreground mt-1">This replaces the name we gave your workspace when you signed up.</p>
+    </div>
     <div>
         <label class="text-sm font-medium text-foreground mb-2 block" id="stage-label">What stage are you at?</label>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-labelledby="stage-label">
@@ -112,6 +131,21 @@
         </div>
     </div>
 
+    <div>
+        <label class="text-sm font-medium text-foreground mb-2 block" id="size-band-label">How big is the company?</label>
+        <div class="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="size-band-label">
+            {% for b in size_bands %}
+            <button type="button" @click="sizeBand = (sizeBand === '{{ b.key }}') ? '' : '{{ b.key }}'"
+                    :aria-pressed="sizeBand === '{{ b.key }}'"
+                    class="rounded-md border text-sm font-medium h-9 px-3"
+                    :class="sizeBand === '{{ b.key }}' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background border-input hover:bg-accent'">
+                {{ b.label }}
+            </button>
+            {% endfor %}
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">This decides how many questions we ask and how we ask about your people. A small company names people one by one; a large one starts from teams.</p>
+    </div>
+
     <div class="rounded-lg border border-border p-4 space-y-3">
         <label for="source_url" class="text-sm font-medium text-foreground block">Your website (optional)</label>
         <p class="text-xs text-muted-foreground">We'll read your site to save you typing — you'll confirm anything we find.</p>
@@ -137,6 +171,8 @@
             We handle card payment data directly
         </label>
     </div>
+
+    </fieldset>
 
     <p x-show="errorMessage" x-cloak x-text="errorMessage" class="text-sm text-destructive" role="alert"></p>
 

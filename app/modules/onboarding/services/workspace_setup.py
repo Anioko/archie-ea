@@ -57,15 +57,17 @@ from __future__ import annotations
 import json
 import re
 
+import sqlalchemy as sa
+
 from app import db
-from app.models.archimate_core import ArchiMateElement
+from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.organization import Organization
-from app.models.risk import Risk
+from app.models.risk import Risk, RiskStatus
 from app.models.unified_capability import UnifiedCapability
 from app.models.unified_work_package import UnifiedWorkPackage
 from app.services import archimate_backbone
 
-from . import reference_data
+from . import people, reference_data
 
 _MARKER_KEY = "onboarding_source"
 _MAX_STACK_TOKENS = 8
@@ -118,6 +120,83 @@ def _find_elements_by_marker_prefix(org_id: int, prefix: str, *, layer: str | No
 
 
 # ---------------------------------------------------------------------------
+# Deselect cleanup: remove only what nobody has built on
+# ---------------------------------------------------------------------------
+# Deselecting an answer removes the record that answer created. It must not take
+# work the user did on top of that record with it: a RACI assignment, a tool's
+# support link or a written mitigation plan is theirs. Such a record is *released*
+# (its onboarding marker is dropped so this cleanup never sees it again) and kept.
+
+
+def _element_has_relationships(element_id: int | None) -> bool:
+    if not element_id:
+        return False
+    return (
+        ArchiMateRelationship.query.filter(
+            (ArchiMateRelationship.source_id == element_id) | (ArchiMateRelationship.target_id == element_id)
+        ).first()
+        is not None
+    )
+
+
+def _capability_dependents() -> list:
+    """Every (table, column) with a foreign key to unified_capabilities.id, read
+    from the metadata so a table added later is protected without editing this."""
+    found = []
+    for table in db.metadata.tables.values():
+        if table.name == UnifiedCapability.__tablename__:
+            continue
+        for column in table.columns:
+            for fk in column.foreign_keys:
+                if fk.column.table.name == UnifiedCapability.__tablename__ and fk.column.name == "id":
+                    found.append((table, column))
+    return found
+
+
+def _capability_in_use(cap: UnifiedCapability) -> bool:
+    for table, column in _capability_dependents():
+        if db.session.execute(sa.select(sa.literal(1)).select_from(table).where(column == cap.id).limit(1)).first():
+            return True
+    return _element_has_relationships(cap.archimate_element_id)
+
+
+def _release_marker(element: ArchiMateElement | None) -> None:
+    if element is None:
+        return
+    props = dict(element.custom_properties or {})
+    marker = props.pop(_MARKER_KEY, None)
+    if marker is not None:
+        props["released_onboarding_source"] = marker
+    element.custom_properties = props
+
+
+def _prune_capability(cap: UnifiedCapability) -> bool:
+    """Delete an onboarding capability nobody has built on; otherwise release it.
+    Returns True only when it was deleted."""
+    element = db.session.get(ArchiMateElement, cap.archimate_element_id) if cap.archimate_element_id else None
+    if _capability_in_use(cap):
+        cap.source_id = "released:" + (cap.source_id or "")
+        _release_marker(element)
+        return False
+    if element is not None:
+        db.session.delete(element)
+    db.session.delete(cap)
+    return True
+
+
+def _prune_element(element: ArchiMateElement) -> bool:
+    if _element_has_relationships(element.id):
+        _release_marker(element)
+        return False
+    db.session.delete(element)
+    return True
+
+
+def _risk_was_worked_on(risk: Risk) -> bool:
+    return bool(risk.mitigation_plan or risk.owner) or (risk.status is not None and risk.status != RiskStatus.OPEN)
+
+
+# ---------------------------------------------------------------------------
 # Compliance standards -> Risk (the Risk lens's own model)
 # ---------------------------------------------------------------------------
 
@@ -141,6 +220,12 @@ def _apply_compliance(org: Organization, answers: dict) -> dict:
         marker = (element.custom_properties or {}).get(_MARKER_KEY, "")
         if marker not in keep_markers:
             risk = Risk.query.filter_by(organization_id=org.id, archimate_element_id=element.id).first()
+            if risk is not None and _risk_was_worked_on(risk):
+                _release_marker(element)
+                continue
+            if _element_has_relationships(element.id):
+                _release_marker(element)
+                continue
             if risk is not None:
                 db.session.delete(risk)
                 removed += 1
@@ -273,11 +358,8 @@ def _apply_frameworks(org: Organization, answers: dict) -> dict:
     ).all()
     for cap in existing:
         if (cap.source_id or "").startswith("tell_us_more:how_you_work:") and cap.source_id not in keep_markers:
-            if cap.archimate_element_id:
-                element = db.session.get(ArchiMateElement, cap.archimate_element_id)
-                if element is not None:
-                    db.session.delete(element)
-            db.session.delete(cap)
+            if not _prune_capability(cap):
+                continue
             removed += 1
 
     return {"capabilities_created": created, "capabilities_updated": updated, "capabilities_removed": removed}
@@ -400,11 +482,8 @@ def _apply_transformation(org: Organization, answers: dict) -> dict:
     for cap in existing_caps:
         sid = cap.source_id or ""
         if sid.startswith("tell_us_more:whats_changing:capability:") and sid not in keep_capability_markers:
-            if cap.archimate_element_id:
-                element = db.session.get(ArchiMateElement, cap.archimate_element_id)
-                if element is not None:
-                    db.session.delete(element)
-            db.session.delete(cap)
+            if not _prune_capability(cap):
+                continue
             capabilities_removed += 1
 
     # Remove work packages whose template was deselected.
@@ -421,6 +500,10 @@ def _apply_transformation(org: Organization, answers: dict) -> dict:
             source_data = {}
         wp_marker = source_data.get(_MARKER_KEY, "")
         if wp_marker.startswith("tell_us_more:whats_changing:") and wp_marker not in keep_work_package_markers:
+            if _element_has_relationships(wp.archimate_element_id) or wp.status not in (None, "planned"):
+                wp.source_data = json.dumps({"released_onboarding_source": wp_marker})
+                _release_marker(db.session.get(ArchiMateElement, wp.archimate_element_id) if wp.archimate_element_id else None)
+                continue
             if wp.archimate_element_id:
                 element = db.session.get(ArchiMateElement, wp.archimate_element_id)
                 if element is not None:
@@ -523,18 +606,16 @@ def _apply_implementation(org: Organization, answers: dict) -> dict:
     for cap in existing_caps:
         sid = cap.source_id or ""
         if sid.startswith("tell_us_more:how_you_build:") and sid not in keep_capability_markers:
-            if cap.archimate_element_id:
-                element = db.session.get(ArchiMateElement, cap.archimate_element_id)
-                if element is not None:
-                    db.session.delete(element)
-            db.session.delete(cap)
+            if not _prune_capability(cap):
+                continue
             capabilities_removed += 1
 
     # Remove technology elements whose answer was deselected.
     for element in _find_elements_by_marker_prefix(org.id, "tell_us_more:how_you_build:", layer="technology"):
         marker = (element.custom_properties or {}).get(_MARKER_KEY, "")
         if marker not in keep_technology_markers:
-            db.session.delete(element)
+            if not _prune_element(element):
+                continue
             technology_removed += 1
 
     return {
@@ -545,7 +626,13 @@ def _apply_implementation(org: Organization, answers: dict) -> dict:
     }
 
 
+def _apply_team(org: Organization, answers: dict) -> dict:
+    """"Who's on the team" rows become real people (the ones the People step edits)."""
+    return people.record_named(org, answers.get("people") or [])
+
+
 _HANDLERS = {
+    "team": _apply_team,
     "compliance": _apply_compliance,
     "how_you_work": _apply_frameworks,
     "whats_changing": _apply_transformation,

@@ -21,14 +21,18 @@ from flask import Blueprint, g, jsonify, redirect, render_template, request, url
 from flask_login import current_user, login_required
 
 from app import db
+from app.models.application_portfolio import ApplicationComponent
 from app.models.organization import Organization
 from app.utils.api_response import success_response
 
-from .services import completion, producers, profile, proposals, stage_gaps, tell_us_more
+from .services import capabilities as capability_capture
+from .services import completion, goals_changes, producers, profile, proposals, stage_gaps, tell_us_more, tools
+from .services import people as people_capture
 
 onboarding_bp = Blueprint("onboarding", __name__, template_folder="templates")
 
 _STAGES = ("pre_revenue", "early_revenue", "growing", "established")
+_SIZE_BANDS = tuple(b["key"] for b in capability_capture.size_bands())
 _STAGE_LABELS = {
     "pre_revenue": "Pre-revenue",
     "early_revenue": "Early revenue",
@@ -58,7 +62,7 @@ def index():
     if org_profile.get("stage"):
         # The org's own P0 already exists (someone else completed it) -- an
         # invited team member enters at Screen 3, per onboarding-prd-v1 S3.
-        return redirect(url_for("onboarding.first_question"))
+        return redirect(url_for("onboarding.capabilities"))
     return redirect(url_for("onboarding.welcome"))
 
 
@@ -68,6 +72,25 @@ def welcome():
     if current_user.onboarding_completed_at:
         return redirect(url_for("dashboard.overview"))
     return render_template("onboarding/screen1_welcome.html")
+
+
+def _can_edit_company_profile(org: Organization) -> bool:
+    """The owner or an administrator edits the company profile.
+
+    Until the organisation has any company answers, whoever is onboarding may
+    write them (the person who signed up is the one creating the profile)."""
+    if getattr(current_user, "is_org_admin", False) or getattr(current_user, "is_platform_admin", False):
+        return True
+    return not profile.read(org).get("stage")
+
+
+def _apply_company_name(org: Organization, raw) -> None:
+    """Rename the organisation (the auto-created "First Last's Workspace" is the
+    usual case). The slug is left alone so existing links keep working."""
+    name = (raw or "").strip()[:200]
+    if len(name) >= 2 and name != org.name:
+        org.name = name
+        db.session.add(org)
 
 
 @onboarding_bp.route("/company", methods=["GET", "POST"])
@@ -85,22 +108,35 @@ def company():
         # enterprise_role column and valid-role set as onboarding.finish and
         # the standalone workspace-setup page below, via completion.set_role.
         completion.set_role(current_user, data.get("enterprise_role"))
+        if not _can_edit_company_profile(org):
+            # A teammate joining an organisation that already has a company
+            # profile keeps their own role choice but does not rewrite the
+            # organisation's answers; only its owner or an administrator does.
+            db.session.commit()
+            if request.is_json:
+                return success_response({"next": url_for("onboarding.capabilities")})
+            return redirect(url_for("onboarding.capabilities"))
+        _apply_company_name(org, data.get("company_name"))
         profile.write(
             org,
             stage=stage,
             company_size=(data.get("company_size") or "").strip()[:100] or None,
+            size_band=data.get("size_band") if data.get("size_band") in _SIZE_BANDS else None,
             industry=(data.get("industry") or "").strip()[:200] or None,
             source_url=(data.get("source_url") or "").strip()[:500] or None,
             region_europe_or_eu_customers=bool(data.get("region_europe_or_eu_customers")),
             handles_card_data_directly=bool(data.get("handles_card_data_directly")),
         )
         if request.is_json:
-            return success_response({"next": url_for("onboarding.first_question")})
-        return redirect(url_for("onboarding.first_question"))
+            return success_response({"next": url_for("onboarding.capabilities")})
+        return redirect(url_for("onboarding.capabilities"))
 
     return render_template(
         "onboarding/screen2_company.html",
+        can_edit=_can_edit_company_profile(org),
+        company_name="" if (org.name or "").endswith("'s Workspace") else (org.name or ""),
         stages=[{"key": k, "label": v} for k, v in _STAGE_LABELS.items()],
+        size_bands=capability_capture.size_bands(),
         current=profile.read(org),
     )
 
@@ -124,18 +160,87 @@ def api_website_read():
     })
 
 
-@onboarding_bp.route("/first-question", methods=["GET", "POST"])
+def _stage_and_band(org: Organization) -> tuple[str, str]:
+    org_profile = profile.read(org)
+    stage = org_profile.get("stage") or "pre_revenue"
+    band = org_profile.get("size_band") or capability_capture.band_from_text(org_profile.get("company_size"))
+    return stage, band
+
+
+@onboarding_bp.route("/capabilities", methods=["GET", "POST"])
 @login_required
-def first_question():
+def capabilities():
+    """What the company can do and how mature each capability is.
+
+    Answers are written to the real capability table (see services/capabilities.py);
+    nothing is kept on the side."""
+    org = _current_org()
+    stage, band = _stage_and_band(org)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = capability_capture.save(data.get("items") or [], stage=stage, size_band=band)
+        return success_response({"next": url_for("onboarding.people"), **result})
+    return render_template(
+        "onboarding/screen3_capabilities.html",
+        rows=capability_capture.read(stage, band),
+        levels=capability_capture.maturity_levels(),
+        stage_label=_STAGE_LABELS.get(stage, stage),
+        band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
+    )
+
+
+@onboarding_bp.route("/people", methods=["GET", "POST"])
+@login_required
+def people():
+    """Who does what, and how well. How people are captured depends on company size.
+
+    People and teams are written as business actors with capability assignments
+    (see services/people.py); nothing is kept on the side."""
+    org = _current_org()
+    stage, band = _stage_and_band(org)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = people_capture.save(data.get("people") or [], stage=stage, size_band=band)
+        return success_response({"next": url_for("onboarding.tools_step"), **result})
+    return render_template(
+        "onboarding/screen3b_people.html",
+        state=people_capture.read(stage, band),
+        proficiency=list(people_capture.PROFICIENCY),
+        roles=list(people_capture.ROLES),
+        band=band,
+        band_label=next((b["label"] for b in capability_capture.size_bands() if b["key"] == band), band),
+    )
+
+
+@onboarding_bp.route("/tools", methods=["GET", "POST"])
+@login_required
+def tools_step():
+    """The tools the company runs on, and which capabilities each supports.
+
+    Tools become application components and support links (see services/tools.py);
+    nothing is kept on the side."""
+    org = _current_org()
+    stage, band = _stage_and_band(org)
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        result = tools.save(data.get("tools") or [], stage=stage, size_band=band, org_id=org.id)
+        return success_response({"next": url_for("onboarding.goals"), **result})
+    return render_template("onboarding/screen3d_tools.html", state=tools.read(stage, band, org.id))
+
+
+@onboarding_bp.route("/goals", methods=["GET", "POST"])
+@login_required
+def goals():
+    """What the company wants to achieve, and what is planned or under way.
+
+    Goals become ArchiMate Goal elements and changes become work packages
+    (see services/goals_changes.py); nothing is kept on the side."""
     org = _current_org()
     if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        answer = (data.get("answer") or "").strip()[:1000]
-        profile.write(org, first_question_answer=answer or None)
-        if request.is_json:
-            return success_response({"next": url_for("onboarding.gaps")})
-        return redirect(url_for("onboarding.gaps"))
-    return render_template("onboarding/screen3_first_question.html", current=profile.read(org))
+        data = request.get_json(silent=True) or {}
+        result = goals_changes.save(data.get("goals") or [], data.get("changes") or [], org=org)
+        return success_response({"next": url_for("onboarding.gaps"), **result})
+    return render_template("onboarding/screen3c_goals.html", state=goals_changes.read(org.id))
 
 
 def _recorded_for_org(org: Organization) -> dict:
@@ -149,7 +254,7 @@ def _recorded_for_org(org: Organization) -> dict:
     so today this is deliberately small, and every remaining gap reads
     "expected at your stage", never a fabricated fact."""
     org_profile = profile.read(org)
-    recorded = {"roles": [], "functions": [], "capabilities": [], "systems": [], "controls": []}
+    recorded = {"roles": [], "systems": [], "controls": []}
     assigned = org_profile.get("assigned_gaps", {})
     # assigned gap keys are stored as "<category>:<key>"
     for gap_id in assigned:
@@ -157,6 +262,10 @@ def _recorded_for_org(org: Organization) -> dict:
             cat, key = gap_id.split(":", 1)
             if cat in recorded:
                 recorded[cat].append(key)
+    named = {(a.name or "").strip().lower() for a in ApplicationComponent.query.filter_by(organization_id=org.id).all()}
+    for key in stage_gaps.expected_for_stage(org_profile.get("stage") or "pre_revenue").get("systems", []):
+        if stage_gaps.label_for(key).lower() in named and key not in recorded["systems"]:
+            recorded["systems"].append(key)
     return recorded
 
 

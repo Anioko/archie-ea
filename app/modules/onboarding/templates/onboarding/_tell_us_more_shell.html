@@ -9,7 +9,9 @@
    wizard one; a person arriving from the directory or returning later should
    land somewhere they can also navigate away from normally. Same card
    chrome as the wizard shell's screens for visual consistency of the
-   sections themselves. #}
+   sections themselves.
+   shell-ok: a centred card flow reached from onboarding, not a navigable
+   product page, so it carries no page_header/page_shell by design. #}
 {% extends 'layouts/admin_base.html' %}
 
 {% block title %}{{ page_title | default('Tell us more') }} — {{ config.APP_NAME }}{% endblock %}
