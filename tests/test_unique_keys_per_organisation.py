@@ -3,7 +3,7 @@
 Each organisation overrides a system-default governance gate by name and
 numbers its own vendor contracts, so two organisations must be able to hold
 the same gate name or contract number, while one organisation still cannot
-hold two. ``scope_unique_keys`` brings a database created with the old
+hold two. ``flask reconcile-schema`` brings a database created with the old
 platform-wide rules into line. A vendor contract is also mirrored into the
 architecture model as an ArchiMate Contract.
 """
@@ -85,12 +85,19 @@ def test_a_new_contract_is_mirrored_as_an_archimate_contract(db_session, make_or
         assert element.name == "Mirror MSA renamed"
 
 
-def test_scope_command_replaces_the_platform_wide_rules(db_session):
-    from app.commands.scope_unique_keys_per_organisation import scope_unique_keys
+def _reconcile(existing_tables, dry_run=False):
+    from app.commands.reconcile_schema import _ensure_tenant_scoped_unique_keys
 
+    added, failed = [], []
+    _ensure_tenant_scoped_unique_keys(dry_run=dry_run, existing_tables=existing_tables,
+                                      added=added, failed=failed)
+    return added, failed
+
+
+def test_reconcile_schema_replaces_the_platform_wide_rules(db_session):
     conn = db_session.connection()
     # Put both tables back the way older databases have them. Everything here,
-    # including the row removal that lets the old rules be re-created on a
+    # including the row changes that let the old rules be re-created on a
     # shared database, is rolled back at teardown.
     conn.execute(text("DELETE FROM governance_gates"))
     conn.execute(text("UPDATE vendor_contracts SET contract_number = NULL"))
@@ -101,15 +108,19 @@ def test_scope_command_replaces_the_platform_wide_rules(db_session):
     conn.execute(text("DROP INDEX IF EXISTS ix_vendor_contracts_contract_number"))
     conn.execute(text("CREATE UNIQUE INDEX ix_vendor_contracts_contract_number ON vendor_contracts (contract_number)"))
 
-    assert scope_unique_keys(conn) == [
-        "governance_gates: added uq_governance_gates_org_gate_name",
-        "governance_gates: dropped governance_gates_gate_name_key",
-        "vendor_contracts: added uq_vendor_contracts_org_contract_number",
-        "vendor_contracts: ix_vendor_contracts_contract_number is no longer unique",
+    tables = {"governance_gates", "vendor_contracts"}
+
+    planned, failed = _reconcile(tables, dry_run=True)
+    assert failed == [] and len(planned) == 2
+    added, failed = _reconcile(tables)
+    assert failed == []
+    assert [a.split(" ::")[0] for a in added] == [
+        "constraint.governance_gates.uq_governance_gates_org_gate_name",
+        "constraint.vendor_contracts.uq_vendor_contracts_org_contract_number",
     ]
     insp = inspect(conn)
     gate_uniques = {u["name"] for u in insp.get_unique_constraints("governance_gates")}
     assert gate_uniques == {"uq_governance_gates_org_gate_name"}
     contract_indexes = {ix["name"]: ix["unique"] for ix in insp.get_indexes("vendor_contracts")}
     assert contract_indexes["ix_vendor_contracts_contract_number"] is False
-    assert scope_unique_keys(conn) == []
+    assert _reconcile(tables) == ([], [])

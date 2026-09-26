@@ -14,7 +14,6 @@ flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy back
 flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy backfill skipped'
 flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram tenancy backfill skipped - composer diagrams keep nullable organization_id until it runs; rows left NULL are invisible to every org (CMP-01)'
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
-flask --app manage scope-unique-keys-per-organisation || echo 'WARN per-organisation unique-key scoping skipped - a second organisation cannot use a governance gate name or contract number another organisation already uses until it runs'
 flask --app manage backfill-architect-role
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per

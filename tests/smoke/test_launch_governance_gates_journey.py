@@ -11,7 +11,7 @@ The last step is the one the product used to fail: gate names were unique
 across the whole platform, so once one organisation had configured a gate
 every other organisation got "Failed to create gate" for the same name -
 which the dialog then reported as a network error. On an existing database
-run ``flask --app manage scope-unique-keys-per-organisation`` once (it is part of the
+run ``flask --app manage reconcile-schema`` once (it is part of the
 schema deploy) before this journey.
 """
 

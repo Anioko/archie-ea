@@ -758,7 +758,7 @@ class VendorContract(TenantMixin, db.Model):
     # Each organisation numbers its own contracts, so a contract number is
     # unique within one organisation, not across the platform. Existing
     # databases carried a platform-wide unique index;
-    # `flask scope-unique-keys-per-organisation` replaces it.
+    # `flask reconcile-schema` replaces it.
     __table_args__ = (
         db.UniqueConstraint("organization_id", "contract_number",
                             name="uq_vendor_contracts_org_contract_number"),

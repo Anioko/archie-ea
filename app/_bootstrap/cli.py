@@ -355,14 +355,6 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register audit-log viewpoint-FK drop CLI: {e}")
 
-    # Organisation-chosen business keys unique per organisation (boot step)
-    try:
-        from app.commands.scope_unique_keys_per_organisation import init_app as init_scope_unique_keys
-        init_scope_unique_keys(app)
-        app.logger.info("\u2705 Per-organisation unique-key scoping CLI command registered")
-    except Exception as e:
-        app.logger.warning(f"\u26a0\ufe0f  Failed to register per-organisation unique-key scoping CLI: {e}")
-
     try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)

@@ -3107,7 +3107,7 @@ class ToolExecutor:
             else args.get("quantity_used"),
             "unit_cost": args.get("unit_cost"),
         }
-        # Normalise Nones to "" so _apply_license_form's int(...) sees empties as 0.
+        # Normalise Nones to "" so _apply_license_form treats them as blanks (entitled 0; deployed/used not recorded).
         form = {k: ("" if v is None else v) for k, v in form.items()}
 
         if license_id is not None:

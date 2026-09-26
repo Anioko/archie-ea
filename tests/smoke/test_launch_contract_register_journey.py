@@ -14,7 +14,7 @@ record a contract under the same contract number, because each organisation
 numbers its own contracts. Before the per-organisation rule, that second
 contract was refused with "That contract number is already in use", which
 also told the second organisation the number existed somewhere else. On an
-existing database run ``flask --app manage scope-unique-keys-per-organisation``
+existing database run ``flask --app manage reconcile-schema``
 once (it is part of the schema deploy) before this journey.
 """
 
