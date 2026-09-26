@@ -438,6 +438,9 @@ def save_preferences():
             current_user.set_notification_preferences(prefs)
         elif form_type == "display":
             current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        else:
+            flash("Unknown preference form type.", "error")
+            return redirect(url_for("account.manage"))
         db.session.add(current_user)
         db.session.commit()
         flash("Preferences saved.", "success")
