@@ -20,6 +20,11 @@ from app.modules.import_batch.v2.services.unified_import.duplicate_detector_v2 i
     DuplicateDetector,
 )
 from app.modules.import_batch.v2.services.unified_import.file_parser_v2 import FileParser, FileStats
+from app.services.application_cost_accessor import (
+    COST_CATEGORIES,
+    apply_cost_to_application,
+    map_import_cost_columns,
+)
 
 if TYPE_CHECKING:
     from app.models.application_portfolio import ApplicationComponent
@@ -738,6 +743,60 @@ class ImportOrchestrator:
 
         return context
 
+    def _extract_cost_mapping(self, columns: List[str]) -> Dict[str, str]:
+        """
+        Build a cost column mapping from the available columns.
+
+        Returns a dict mapping cost field names to column names in the file.
+        """
+        cost_column_variants = {
+            "total_cost_of_ownership": [
+                "total_cost_of_ownership", "tco", "annual_cost", "annual_tco",
+                "total cost of ownership", "Total Cost of Ownership", "TCO",
+                "Annual Cost", "Annual TCO"
+            ],
+            "license_cost_annual": [
+                "license_cost_annual", "license_cost", "licence_cost", "annual_license_cost",
+                "license cost", "License Cost", "Annual License Cost"
+            ],
+            "maintenance_cost": [
+                "maintenance_cost", "annual_maintenance_cost", "maintenance cost",
+                "Maintenance Cost", "Annual Maintenance Cost"
+            ],
+            "infrastructure_cost": [
+                "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
+                "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost"
+            ],
+            "support_cost": [
+                "support_cost", "annual_support_cost", "support cost",
+                "Support Cost", "Annual Support Cost"
+            ],
+            "implementation_cost": [
+                "implementation_cost", "implementation cost", "Implementation Cost"
+            ],
+            "development_cost_annual": [
+                "development_cost_annual", "dev_cost", "annual_development_cost",
+                "development cost", "Development Cost", "Annual Development Cost"
+            ],
+            "currency": [
+                "currency", "cost_currency", "Currency", "Cost Currency"
+            ],
+            "period": [
+                "period", "cost_period", "billing_period", "Period", "Cost Period"
+            ],
+            "category": [
+                "category", "cost_category", "cost_type", "Category", "Cost Category"
+            ],
+        }
+
+        mapping = {}
+        for field_name, variants in cost_column_variants.items():
+            for variant in variants:
+                if variant in columns:
+                    mapping[field_name] = variant
+                    break
+        return mapping
+
     def _create_application(
         self, row: Dict, columns: List[str], user_id: int
     ) -> "ApplicationComponent":
@@ -755,6 +814,12 @@ class ImportOrchestrator:
             business_criticality=context.get("criticality"),
             created_by_id=user_id,
         )
+
+        # Apply cost fields through the accessor
+        cost_mapping = self._extract_cost_mapping(columns)
+        if cost_mapping:
+            parsed = map_import_cost_columns(row, cost_mapping)
+            apply_cost_to_application(app, parsed["cost_fields"])
 
         return app
 
@@ -791,6 +856,14 @@ class ImportOrchestrator:
                 # Merge: only update if the import data has a non-empty value
                 if value:
                     setattr(app, attr_name, value)
+
+        # Apply cost fields through the accessor (only in overwrite mode or when cost is provided)
+        cost_mapping = self._extract_cost_mapping(columns)
+        if cost_mapping:
+            parsed = map_import_cost_columns(row, cost_mapping)
+            # In merge mode, only apply cost if the import has a value for it
+            if mode == "overwrite" or parsed["cost_fields"]:
+                apply_cost_to_application(app, parsed["cost_fields"])
 
     def _store_elements(self, app: "ApplicationComponent", elements: List[Dict[str, Any]]) -> None:
         """Store generated ArchiMate elements for an application."""
