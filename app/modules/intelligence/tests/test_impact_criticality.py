@@ -200,43 +200,34 @@ def test_mutation_proof_sec09_criticality_leak(app, db_session, make_org, monkey
 
 
 def test_foreign_resource_not_in_select_in_list(app, db_session, make_org):
-    """A Resource row pointing at a B element id → A's answer never asks for it
-    because the identity map has no B ids."""
+    """A cross-tenant Resource on a foreign element that A's traversal
+    reaches must never appear. The only fence on the tenantless
+    ``archimate_resources`` table is the identity-map filter at
+    query_service line 793: ``str(row[\"element_id\"]) in elements``.
+    Build a B-owned element reachable from A, give it a Resource with a
+    rating, and assert the rating never appears in A's answer."""
     org_a = make_org("crit-3a")
     org_b = make_org("crit-3b")
 
     app_a = _element(db_session, org_a.id, "AppA")
-    app_b = _element(db_session, org_a.id, "AppB")
-    _relationship(db_session, org_a.id, app_a, app_b)
+    tech_b = _tech_element(db_session, org_b.id, "TechB")
+    _relationship(db_session, org_a.id, app_a, tech_b)
 
-    # Resource on B's element — should never appear in A's select.
-    foreign_el = _tech_element(db_session, org_b.id, "ForeignTech")
-    _resource(db_session, foreign_el.id, criticality="Critical")
+    # Resource on B's element with a rating.
+    _resource(db_session, tech_b.id, criticality="Critical")
     db_session.commit()
 
-    # Use a statement counter to capture the Resource select's IN list.
-    captured_params: list = []
+    result = _impact(app, org_a.id, app_a.id, include_derived=False, with_owner=False)
+    assert len(result["rows"]) == 1
 
-    def _capture(conn, cursor, statement, parameters, context, executemany):
-        stmt = str(statement)
-        if "FROM archimate_resources" in stmt:
-            for param in parameters:
-                if isinstance(param, (list, tuple)):
-                    captured_params.extend(param)
-                elif isinstance(param, int):
-                    captured_params.append(param)
-
-    from app.extensions import db
-    event.listen(db.engine, "before_cursor_execute", _capture)
-    try:
-        result = _impact(app, org_a.id, app_a.id, include_derived=False, with_owner=False)
-    finally:
-        event.remove(db.engine, "before_cursor_execute", _capture)
-
-    assert result["rows"]
-    # The Resource select's IN list must contain only A's element ids.
-    if captured_params:
-        assert foreign_el.id not in captured_params
+    row = result["rows"][0]
+    # The fence at line 793 keeps foreign element ids out of the Resource
+    # IN list, so no criticality block is attached to B's element.
+    block = row.get("criticality")
+    assert block is None, (
+        f"Expected no criticality block for cross-tenant row, "
+        f"got {block!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
