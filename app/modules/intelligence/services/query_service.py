@@ -35,6 +35,14 @@ from app.modules.intelligence.services.reason_codes import validate_reason_code
 
 VALID_DIRECTIONS = {"downstream", "upstream", "both"}
 
+VALUE_STREAM_RISK_REASONS = frozenset(
+    {
+        "capability_below_threshold",
+        "capability_under_target",
+        "capability_unassessed",
+    }
+)
+
 NO_OWNERSHIP_REASON = validate_reason_code("no_ownership_recorded")
 NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
@@ -1295,145 +1303,6 @@ class IntelligenceQueryService:
         return {"work_packages": wp_payloads, "reasons": [], "elements": all_elements}
 
     @staticmethod
-    def strategy_for_element(
-        element_id: int,
-        *,
-        max_depth: int = 3,
-        include_derived: bool = True,
-    ) -> Dict[str, Any]:
-        """L2, "what are we trying to achieve, and how's it tracking?": every
-        ``PortfolioInitiative`` seeded directly on the picked element
-        (``archimate_element_id`` FK), each with the SAME blast-radius
-        traversal L1/L5/L6 already run -- no second traversal algorithm.
-
-        Tenant-safety note, verified not assumed: ``PortfolioInitiative``
-        carries no ``TenantMixin``/``organization_id`` of its own, the same
-        gap ``UnifiedWorkPackage`` has (L5 brief). This method never lists
-        initiatives independently of an element -- every row it returns is
-        filtered by ``archimate_element_id == element_id``, and
-        ``element_id`` is only ever reached here after the element itself
-        was confirmed to belong to the caller's tenant (below). A
-        cross-tenant initiative cannot share a seed element id with the
-        wrong org's element, since ``archimate_elements.id`` is a real
-        primary key each row of which belongs to exactly one tenant. This
-        does not make ``PortfolioInitiative`` itself tenant-safe for any
-        OTHER read path against it -- a separate, pre-existing gap, not
-        fixed here (same category already flagged once for
-        ``UnifiedWorkPackage`` in the L5 brief).
-
-        Budget variance is read from the model's own ``total_budget``/
-        ``spent_to_date`` fields directly -- ``PortfolioInitiative`` has no
-        wrapping helper method to avoid, unlike L5's
-        ``calculate_budget_variance()``, but the same not-computed-vs-
-        measured-zero discipline still applies: variance is only reported
-        when ``total_budget`` is a real positive number, else the row
-        carries the honest ``no_budget_recorded`` reason.
-        """
-        from app.models import ArchiMateElement
-        from app.models.enterprise_intelligence import PortfolioInitiative
-
-        org_id = current_org_id()
-
-        with record_query_latency("strategy_for_element") as scope:
-            scope.organization_id = org_id
-
-            if org_id is None:
-                return {
-                    "initiatives": [],
-                    "reasons": [NO_TENANT_CONTEXT_REASON],
-                    "elements": {},
-                }
-
-            element = db.session.execute(
-                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
-            ).scalar_one_or_none()
-            if element is None:
-                return {
-                    "initiatives": [],
-                    "reasons": [ELEMENT_NOT_FOUND_REASON],
-                    "elements": {},
-                }
-
-            seed_initiatives = (
-                db.session.execute(
-                    db.select(PortfolioInitiative).where(
-                        PortfolioInitiative.archimate_element_id == element_id
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-            if not seed_initiatives:
-                return {
-                    "initiatives": [],
-                    "reasons": [NO_INITIATIVE_LINKED_REASON],
-                    "elements": {},
-                }
-
-            all_elements: Dict[str, Dict[str, Any]] = {}
-            initiative_payloads: List[Dict[str, Any]] = []
-            for initiative in seed_initiatives:
-                blast = IntelligenceQueryService.cross_layer_impact(
-                    element_id,
-                    include_derived=include_derived,
-                    max_depth=max_depth,
-                    with_owner=True,
-                )
-                all_elements.update(blast.get("elements") or {})
-
-                if initiative.total_budget and initiative.total_budget > 0:
-                    # total_budget/spent_to_date are Numeric (Decimal) columns,
-                    # unlike UnifiedWorkPackage's Float cost fields -- cast to
-                    # float before arithmetic so the response carries a plain
-                    # JSON number, not a string (Flask's JSON provider
-                    # serialises Decimal as str, which would silently break
-                    # every numeric consumer of this field, front end
-                    # included).
-                    total_budget = float(initiative.total_budget)
-                    spent_to_date = float(initiative.spent_to_date or 0.0)
-                    budget_variance_pct = (spent_to_date - total_budget) / total_budget * 100
-                    budget_reason = None
-                else:
-                    budget_variance_pct = None
-                    budget_reason = NO_BUDGET_RECORDED_REASON
-
-                initiative_payloads.append(
-                    {
-                        "initiative_id": initiative.id,
-                        "name": initiative.name,
-                        "status": initiative.status,
-                        "priority": initiative.priority,
-                        "health_status": initiative.health_status,
-                        "completion_percentage": initiative.completion_percentage,
-                        "start_date": initiative.start_date.isoformat()
-                        if initiative.start_date
-                        else None,
-                        "target_end_date": initiative.target_end_date.isoformat()
-                        if initiative.target_end_date
-                        else None,
-                        "executive_sponsor": initiative.executive_sponsor,
-                        "program_manager": initiative.program_manager,
-                        "budget_variance_pct": budget_variance_pct,
-                        "budget_reason": budget_reason,
-                        "success_metrics": [
-                            {
-                                "metric_name": m.metric_name,
-                                "metric_type": m.metric_type,
-                                "target_value": m.target_value,
-                                "actual_value": m.actual_value,
-                                "status": m.status,
-                            }
-                            for m in initiative.success_metrics
-                        ],
-                        "affected_rows": blast.get("rows", []),
-                        "affected_summary": blast.get("summary", {}),
-                    }
-                )
-
-        return {"initiatives": initiative_payloads, "reasons": [], "elements": all_elements}
-
-    @staticmethod
     def accountability_for_element(element_id: int) -> Dict[str, Any]:
         """L4, "who's accountable for ___, and can they take on more?":
         WITHDRAWN -- the ownership data source is decided, but no shared,
@@ -1543,13 +1412,13 @@ class IntelligenceQueryService:
         explicit-relationship walk) and no ``include_derived`` /
         ``include_stale`` / ``max_depth`` parameter -- those belong to T-S3.
 
-        Four batched selects regardless of row count, in this order,
+        Five batched selects regardless of row count, in this order,
         following ``_resolve_owners_batch``'s own collect-then-resolve shape:
         value streams for the tenant (narrowed by ``value_stream_id`` when
         given); mapping rows for those value-stream ids, joined to
         ``ValueStreamStage`` for the stage id and name; capability identity
-        for the distinct capability ids; maturity through the accessor.
-        Never one select per row.
+        for the distinct capability ids; maturity through the accessor;
+        the helper's own owner/element map select. Never one select per row.
 
         Tenancy (design § 3.2, § 9): ``ValueStream`` and
         ``CapabilityValueStreamMapping`` carry the strict, explicit predicate
@@ -1692,10 +1561,10 @@ class IntelligenceQueryService:
                     for cap_id, name, code in db.session.execute(identity_stmt).all():
                         identity_by_id[cap_id] = {"id": cap_id, "name": name, "code": code}
 
-                # Maturity through the accessor -- never off the columns.
+                # Maturity through the helper -- never off the columns.
                 # Strict predicate, required kwarg: a shared catalogue row's
                 # maturity is never read as this tenant's own.
-                maturity_by_id = UnifiedCapability.maturity_for_capability_ids(
+                maturity_by_id = CapabilityHeatmapService().maturity_for_capability_ids(
                     capability_ids, organization_id=organization_id
                 )
 
@@ -1738,18 +1607,22 @@ class IntelligenceQueryService:
                         capabilities_considered.add(mapping.capability_id)
 
                         maturity = maturity_by_id.get(mapping.capability_id) or {
-                            "current_maturity_level": None,
-                            "target_maturity_level": None,
-                            "reason_code": validate_reason_code("no_maturity_recorded"),
+                            "current": None,
+                            "target": None,
+                            "under_target": None,
+                            "target_gap": None,
+                            "reason": validate_reason_code("no_maturity_recorded"),
                         }
-                        current = maturity["current_maturity_level"]
-                        target = maturity["target_maturity_level"]
+                        current = maturity["current"]
+                        target = maturity["target"]
+                        under_target = maturity["under_target"]
+                        target_gap = maturity["target_gap"]
                         at_risk = IntelligenceQueryService._at_risk_for_maturity(
                             current, threshold
                         )
                         if current is None:
                             capabilities_with_no_maturity_ids.add(mapping.capability_id)
-                            cap_reason = maturity["reason_code"]
+                            cap_reason = maturity["reason"]
                         else:
                             cap_reason = None
                             if at_risk:
@@ -1763,6 +1636,8 @@ class IntelligenceQueryService:
                                 "code": identity["code"],
                                 "current_maturity": current,
                                 "target_maturity": target,
+                                "under_target": under_target,
+                                "target_gap": target_gap,
                                 "maturity_source": "unified_capabilities",
                                 "at_risk": at_risk,
                                 "dependency": {
@@ -1793,6 +1668,15 @@ class IntelligenceQueryService:
                         else None
                     )
 
+                    risk_reasons = []
+                    if at_risk_ids_in_row:
+                        risk_reasons.append("capability_below_threshold")
+                    if any(cr.get("under_target") is True for cr in capability_rows):
+                        risk_reasons.append("capability_under_target")
+                    if any(cr.get("current_maturity") is None for cr in capability_rows):
+                        risk_reasons.append("capability_unassessed")
+                    risk_reasons.sort()
+
                     at_risk_count = len(at_risk_ids_in_row)
                     rows.append(
                         {
@@ -1803,6 +1687,7 @@ class IntelligenceQueryService:
                                 "archimate_element_id": vs.archimate_element_id,
                             },
                             "at_risk_capability_count": at_risk_count,
+                            "risk_reasons": risk_reasons,
                             "capabilities": capability_rows,
                             "reason": row_reason,
                         }
@@ -1829,5 +1714,146 @@ class IntelligenceQueryService:
             "reasons": reasons,
         }
 
+    @staticmethod
+    def strategy_for_element(
+        element_id: int,
+        *,
+        max_depth: int = 3,
+        include_derived: bool = True,
+    ) -> Dict[str, Any]:
+        """L2, "what are we trying to achieve, and how's it tracking?": every
+        ``PortfolioInitiative`` seeded directly on the picked element
+        (``archimate_element_id`` FK), each with the SAME blast-radius
+        traversal L1/L5/L6 already run -- no second traversal algorithm.
+
+        Tenant-safety note, verified not assumed: ``PortfolioInitiative``
+        carries no ``TenantMixin``/``organization_id`` of its own, the same
+        gap ``UnifiedWorkPackage`` has (L5 brief). This method never lists
+        initiatives independently of an element -- every row it returns is
+        filtered by ``archimate_element_id == element_id``, and
+        ``element_id`` is only ever reached here after the element itself
+        was confirmed to belong to the caller's tenant (below). A
+        cross-tenant initiative cannot share a seed element id with the
+        wrong org's element, since ``archimate_elements.id`` is a real
+        primary key each row of which belongs to exactly one tenant.
+
+        Budget variance is read from the model's own ``total_budget``/
+        ``spent_to_date`` fields directly -- ``PortfolioInitiative`` has no
+        wrapping helper method to avoid, but the same not-computed-vs-
+        measured-zero discipline still applies: variance is only reported
+        when ``total_budget`` is a real positive number, else the row
+        carries the honest ``no_budget_recorded`` reason.
+
+        When the picked element is a Capability, each initiative row carries
+        the capability's maturity block from the T-MAT-1 helper.
+        """
+        from app.models import ArchiMateElement
+        from app.models.enterprise_intelligence import PortfolioInitiative
+
+        org_id = current_org_id()
+
+        with record_query_latency("strategy_for_element") as scope:
+            scope.organization_id = org_id
+
+            if org_id is None:
+                return {
+                    "initiatives": [],
+                    "reasons": [NO_TENANT_CONTEXT_REASON],
+                    "elements": {},
+                }
+
+            element = db.session.execute(
+                db.select(ArchiMateElement).where(ArchiMateElement.id == element_id)
+            ).scalar_one_or_none()
+            if element is None:
+                return {
+                    "initiatives": [],
+                    "reasons": [ELEMENT_NOT_FOUND_REASON],
+                    "elements": {},
+                }
+
+            seed_initiatives = (
+                db.session.execute(
+                    db.select(PortfolioInitiative).where(
+                        PortfolioInitiative.archimate_element_id == element_id
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+            if not seed_initiatives:
+                return {
+                    "initiatives": [],
+                    "reasons": [NO_INITIATIVE_LINKED_REASON],
+                    "elements": {},
+                }
+
+            # Capability maturity block: one call when the element is a Capability.
+            capability_maturity = None
+            if (element.type or "") == "Capability":
+                capability_maturity = CapabilityHeatmapService().maturity_for_elements(
+                    [element_id], organization_id=org_id
+                ).get(element_id)
+
+            all_elements: Dict[str, Dict[str, Any]] = {}
+            initiative_payloads: List[Dict[str, Any]] = []
+            for initiative in seed_initiatives:
+                blast = IntelligenceQueryService.cross_layer_impact(
+                    element_id,
+                    include_derived=include_derived,
+                    max_depth=max_depth,
+                    with_owner=True,
+                )
+                all_elements.update(blast.get("elements") or {})
+
+                if initiative.total_budget and initiative.total_budget > 0:
+                    total_budget = float(initiative.total_budget)
+                    spent_to_date = float(initiative.spent_to_date or 0.0)
+                    budget_variance_pct = (spent_to_date - total_budget) / total_budget * 100
+                    budget_reason = None
+                else:
+                    budget_variance_pct = None
+                    budget_reason = NO_BUDGET_RECORDED_REASON
+
+                payload = {
+                    "initiative_id": initiative.id,
+                    "name": initiative.name,
+                    "status": initiative.status,
+                    "priority": initiative.priority,
+                    "health_status": initiative.health_status,
+                    "completion_percentage": initiative.completion_percentage,
+                    "start_date": initiative.start_date.isoformat()
+                    if initiative.start_date
+                    else None,
+                    "target_end_date": initiative.target_end_date.isoformat()
+                    if initiative.target_end_date
+                    else None,
+                    "executive_sponsor": initiative.executive_sponsor,
+                    "program_manager": initiative.program_manager,
+                    "budget_variance_pct": budget_variance_pct,
+                    "budget_reason": budget_reason,
+                    "success_metrics": [
+                        {
+                            "metric_name": m.metric_name,
+                            "metric_type": m.metric_type,
+                            "target_value": m.target_value,
+                            "actual_value": m.actual_value,
+                            "status": m.status,
+                        }
+                        for m in initiative.success_metrics
+                    ],
+                    "affected_rows": blast.get("rows", []),
+                    "affected_summary": blast.get("summary", {}),
+                }
+                if capability_maturity is not None:
+                    payload["capability_maturity"] = capability_maturity
+                initiative_payloads.append(payload)
+
+        return {
+            "initiatives": initiative_payloads,
+            "reasons": [],
+            "elements": all_elements,
+        }
 
 __all__ = ["IntelligenceQueryService"]
