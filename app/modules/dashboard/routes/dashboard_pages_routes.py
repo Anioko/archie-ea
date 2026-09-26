@@ -132,7 +132,13 @@ def api_capability_heatmap():
             # Attach investment totals to each domain row
             inv_lookup = {d["domain_code"]: d for d in investment_by_domain}
             for domain_row in heatmap_data.get("domains", []):
-                code = domain_row.get("code", "")
+                code = domain_row.get("code")
+                if code is None:
+                    # No-domain group: investment cannot be established by a
+                    # domain-code lookup. Leave the fields unset rather than
+                    # writing a fabricated 0/0/{} — the template renders the
+                    # absence marker for an unset value.
+                    continue
                 inv = inv_lookup.get(code, {})
                 domain_row["total_investment"] = inv.get("total_investment", 0)
                 domain_row["solution_count"] = inv.get("solution_count", 0)

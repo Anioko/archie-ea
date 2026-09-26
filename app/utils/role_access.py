@@ -435,7 +435,7 @@ _LIBRARY_LINKS = [
     # elsewhere in this file and reads directly as "a library of frameworks".
     _link("Frameworks", "maturity_management.frameworks_overview", "library"),
     _link("Vendors", "unified_applications.vendors", "building"),
-    _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
+    _link("Architecture", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
 ]
 
@@ -795,7 +795,7 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
-        _link("ArchiMate Model", "archimate_crud.dashboard", "boxes"),
+        _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
