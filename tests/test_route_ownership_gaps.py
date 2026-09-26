@@ -53,10 +53,20 @@ def _analysis_with_input(db_session, org, creator, stakeholder):
     capability = BusinessCapability(name=f"Cap {uuid.uuid4().hex[:6]}", organization_id=org.id)
     db_session.add(capability)
     db_session.flush()
-    analysis = OptionsAnalysis(name="Gap analysis", capability_id=capability.id, created_by_id=creator.id)
+    # These models gain a tenant column in a separate change; set it when it exists so this
+    # test is correct before and after that change lands.
+    def extra(model):
+        return {"organization_id": org.id} if hasattr(model, "organization_id") else {}
+
+    analysis = OptionsAnalysis(
+        name="Gap analysis", capability_id=capability.id, created_by_id=creator.id, **extra(OptionsAnalysis)
+    )
     db_session.add(analysis)
     db_session.flush()
-    row = StakeholderInput(analysis_id=analysis.id, stakeholder_id=stakeholder.id, stakeholder_role="technical")
+    row = StakeholderInput(
+        analysis_id=analysis.id, stakeholder_id=stakeholder.id, stakeholder_role="technical",
+        **extra(StakeholderInput),
+    )
     db_session.add(row)
     db_session.flush()
     return analysis, row
