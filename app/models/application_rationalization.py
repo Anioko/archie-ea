@@ -16,8 +16,14 @@ import enum
 import logging
 from datetime import date, datetime
 
+from flask import g, has_request_context
+from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import or_
+from sqlalchemy.orm import with_loader_criteria
+
 from .. import db
 from .mixins import TenantMixin
+from .unified_capability import HybridCapabilityTenantMixin
 
 
 # ============================================================================
@@ -706,6 +712,14 @@ class ApplicationRationalizationScore(TenantMixin, db.Model):
     )
     policy_name = db.Column(db.String(100), nullable=True)
 
+    # Formula register: the scoring configuration and the formula version that
+    # produced this score. Nullable so scores written before the register
+    # existed remain valid; written by calculate_app_score on every scoring run.
+    scoring_configuration_id = db.Column(
+        db.Integer, db.ForeignKey("scoring_configurations.id"), nullable=True, index=True
+    )
+    formula_version = db.Column(db.Integer, nullable=True)
+
     # Relationships
     application = db.relationship("ApplicationComponent", backref="rationalization_score")
     policy = db.relationship("RationalizationPolicy", back_populates="scores")
@@ -748,15 +762,16 @@ class ApplicationRationalizationScore(TenantMixin, db.Model):
                 return self.override_disposition
         return self.disposition_action
 
-    def calculate_overall_score(self):
+    def calculate_overall_score(self, scoring_config=None):
         """
-        Calculate weighted overall health score.
+        Calculate the weighted overall health score.
 
-        Weights (must sum to 100):
-        - Technical Health: 30%
-        - Business Value: 35%
-        - Cost Efficiency: 25%
-        - Vendor Risk: 10%
+        The weights come from the scoring configuration that produced this
+        score (``scoring_configuration_id``), or from ``scoring_config`` when
+        the caller has already resolved one, overlaid by the recorded policy's
+        dimension weights. When no configuration resolves, or a dimension
+        score is missing, there is no overall score: ``None``, never a default
+        weighting.
         """
         if any(
             score is None
@@ -769,11 +784,25 @@ class ApplicationRationalizationScore(TenantMixin, db.Model):
         ):
             return None
 
+        config = scoring_config
+        if config is None and self.scoring_configuration_id is not None:
+            config = ScoringConfiguration.query.filter(
+                ScoringConfiguration.id == self.scoring_configuration_id,
+                ScoringConfiguration.visibility_predicate(self.organization_id),
+            ).first()
+        if config is None:
+            return None
+
+        if self.policy is not None:
+            weights = self.policy.get_effective_weights(config)
+        else:
+            weights = config.get_weights_dict()
+
         weighted = (
-            self.technical_health_score * 0.30
-            + self.business_value_score * 0.35
-            + self.cost_efficiency_score * 0.25
-            + self.vendor_risk_score * 0.10
+            self.technical_health_score * weights["technical_health"]
+            + self.business_value_score * weights["business_value"]
+            + self.cost_efficiency_score * weights["cost_efficiency"]
+            + self.vendor_risk_score * weights["vendor_risk"]
         )
 
         return int(round(weighted))
@@ -1302,9 +1331,16 @@ class ReplacementPlan(db.Model):
 # ============================================================================
 
 
-class ScoringConfiguration(db.Model):
+class ScoringConfiguration(HybridCapabilityTenantMixin, db.Model):
     """
-    Configurable scoring weights for application rationalization.
+    The rationalisation formula register: governed scoring weights.
+
+    Each row is one governed formula (inputs, weights, owner, reviewer,
+    version, effective date, scope). ``organization_id IS NULL`` marks a shared
+    row, readable by every organisation and never writable from inside one;
+    an organisation's own rows are visible only to it. Changing a weight
+    creates the next ``formula_version``; scores keep the version that
+    produced them.
 
     Enables business units to customize the importance of each
     scoring dimension based on their specific priorities and mission needs.
@@ -1380,8 +1416,35 @@ class ScoringConfiguration(db.Model):
     notes = db.Column(db.Text)
     configuration_version = db.Column(db.Integer, default=1)
 
+    # ==== FORMULA REGISTER GOVERNANCE ====
+    # Incremented whenever a weight changes; scores record the version they used.
+    formula_version = db.Column(
+        db.Integer, nullable=True, default=1, server_default=db.text("1")
+    )
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    reviewer_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    effective_from = db.Column(db.Date, nullable=True)
+    rule_text = db.Column(db.Text, nullable=True)
+
     # Relationships
-    created_by = db.relationship("User", backref="scoring_configs_created")
+    created_by = db.relationship(
+        "User", foreign_keys=[created_by_id], backref="scoring_configs_created"
+    )
+
+    WEIGHT_FIELDS = (
+        "technical_health_weight",
+        "business_value_weight",
+        "cost_efficiency_weight",
+        "vendor_risk_weight",
+    )
+
+    @classmethod
+    def visibility_predicate(cls, organization_id):
+        """Shared rows plus, when an organisation is given, that organisation's own."""
+        shared = cls.organization_id.is_(None)
+        if organization_id is not None:
+            return or_(shared, cls.organization_id == organization_id)
+        return shared
 
     def __repr__(self):
         return f"<ScoringConfiguration {self.name} ({self.scope_type}) Tech:{self.technical_health_weight}% Bus:{self.business_value_weight}% Cost:{self.cost_efficiency_weight}% Vend:{self.vendor_risk_weight}%"
@@ -1523,7 +1586,124 @@ class ScoringConfiguration(db.Model):
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "configuration_version": self.configuration_version,
+            "organization_id": self.organization_id,
+            "is_shared": self.organization_id is None,
+            "formula_version": self.formula_version,
+            "owner_user_id": self.owner_user_id,
+            "reviewer_user_id": self.reviewer_user_id,
+            "effective_from": self.effective_from.isoformat() if self.effective_from else None,
+            "rule_text": self.rule_text,
         }
+
+
+@db.event.listens_for(db.session, "do_orm_execute")
+def _scope_scoring_configuration_queries(orm_execute_state):
+    """Shared scoring configurations plus the current organisation's own.
+
+    Same hybrid-owner rule as ``UnifiedCapability``: reads see shared rows
+    (``organization_id IS NULL``) and the tenant's rows; bulk UPDATE and DELETE
+    reach only the tenant's rows, so a shared row cannot be changed from inside
+    an organisation.
+    """
+    if not has_request_context() or getattr(g, "current_org_id", None) is None:
+        return
+    if not (
+        orm_execute_state.is_select
+        or orm_execute_state.is_update
+        or orm_execute_state.is_delete
+    ):
+        return
+
+    organization_id = g.current_org_id
+    if orm_execute_state.is_select:
+        predicate = lambda cls: or_(  # noqa: E731
+            cls.organization_id == organization_id,
+            cls.organization_id.is_(None),
+        )
+    else:
+        predicate = lambda cls: cls.organization_id == organization_id  # noqa: E731
+    orm_execute_state.statement = orm_execute_state.statement.options(
+        with_loader_criteria(ScoringConfiguration, predicate, include_aliases=True)
+    )
+
+
+def _scoring_weights_changed(session, config, state):
+    """True when a flush would store a weight different from the stored one.
+
+    An expired attribute keeps no prior value in its history, so the stored
+    weights are read back from the row itself in that case.
+    """
+    changed = [
+        name
+        for name in ScoringConfiguration.WEIGHT_FIELDS
+        if state.attrs[name].history.has_changes()
+    ]
+    if not changed:
+        return False
+    stored = None
+    for name in changed:
+        history = state.attrs[name].history
+        if history.deleted:
+            previous = history.deleted[0]
+        else:
+            if stored is None:
+                table = ScoringConfiguration.__table__
+                stored = (
+                    session.connection()
+                    .execute(
+                        db.select(*[table.c[f] for f in ScoringConfiguration.WEIGHT_FIELDS]).where(
+                            table.c.id == config.id
+                        )
+                    )
+                    .mappings()
+                    .first()
+                ) or {}
+            previous = stored.get(name)
+        if previous != getattr(config, name):
+            return True
+    return False
+
+
+@db.event.listens_for(db.session, "before_flush")
+def _govern_scoring_configuration_writes(session, flush_context, instances):
+    """Version weight changes, stamp tenant rows, and refuse shared-row edits."""
+    tenant_id = (
+        getattr(g, "current_org_id", None) if has_request_context() else None
+    )
+
+    if tenant_id is not None:
+        for config in (item for item in session.new if isinstance(item, ScoringConfiguration)):
+            if config.organization_id is None:
+                config.organization_id = tenant_id
+            if config.organization_id != tenant_id:
+                raise PermissionError(
+                    "scoring configurations owned by another organisation are read-only"
+                )
+
+    for config in (item for item in session.dirty if isinstance(item, ScoringConfiguration)):
+        if not session.is_modified(config, include_collections=False):
+            continue
+        state = sa_inspect(config)
+        if tenant_id is not None:
+            history = state.attrs.organization_id.history
+            original = history.deleted[0] if history.deleted else config.organization_id
+            if original is None:
+                raise PermissionError(
+                    "shared scoring configurations are read-only inside an organisation"
+                )
+            if original != tenant_id or config.organization_id != tenant_id:
+                raise PermissionError(
+                    "scoring configurations owned by another organisation are read-only"
+                )
+        if _scoring_weights_changed(session, config, state):
+            config.formula_version = (config.formula_version or 1) + 1
+
+    if tenant_id is not None:
+        for config in (item for item in session.deleted if isinstance(item, ScoringConfiguration)):
+            if config.organization_id != tenant_id:
+                raise PermissionError(
+                    "shared or foreign scoring configurations cannot be deleted inside an organisation"
+                )
 
 
 # ============================================================================
