@@ -30,7 +30,12 @@ def init_extensions(app):
             resp = jsonify({"success": False, "error": "Authentication required"})
             resp.status_code = 401
             return resp
-        return redirect(url_for("account.login", next=request.url))
+        # Site-relative, with the query string: the login view only follows a
+        # rooted path (safe_next_url), so an absolute request.url here was
+        # always discarded and every signed-out visitor landed on the dashboard
+        # instead of the page they asked for.
+        next_path = request.full_path.rstrip("?") if request.query_string else request.path
+        return redirect(url_for("account.login", next=next_path))
 
     csrf.init_app(app)
 

@@ -130,6 +130,20 @@ def dashboard():
 # ============================================================================
 
 
+def _plan_limit():
+    """(org id, people-limit status) for the signed-in admin's organisation.
+
+    Adding someone past the plan's limit shows the limit and an upgrade link
+    on the form instead of creating the user.
+    """
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is None:
+        return None, None
+    from app.services.billing_plans import user_limit_status
+
+    return org_id, user_limit_status(org_id)
+
+
 @admin_bp.route("/new-user", methods=["GET", "POST"])
 @login_required
 @rbac_service.require_role("org_admin")
@@ -138,26 +152,19 @@ def dashboard():
 def new_user():
     """Create a new user."""
     form = NewUserForm()
-    if form.validate_on_submit():
-        # Enforce seat limit before creating the user
-        org_id = getattr(current_user, "organization_id", None)
-        if org_id is not None:
-            from app.services.usage_metering_service import UsageMeteringService
-            if not UsageMeteringService.check_seat_limit(org_id):
-                return jsonify({
-                    "error": "seat_limit_exceeded",
-                    "message": "Upgrade your plan to add more users.",
-                }), 402
-
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
         user = _svc.create_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
             role=form.role.data,
+            organization_id=org_id,
         )
         flash("User {} successfully created".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+        org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp.route("/invite-user", methods=["GET", "POST"])
@@ -168,25 +175,18 @@ def new_user():
 def invite_user():
     """Invites a new user to create an account and set their own password."""
     form = InviteUserForm()
-    if form.validate_on_submit():
-        # Enforce seat limit before inviting the user
-        org_id = getattr(current_user, "organization_id", None)
-        if org_id is not None:
-            from app.services.usage_metering_service import UsageMeteringService
-            if not UsageMeteringService.check_seat_limit(org_id):
-                return jsonify({
-                    "error": "seat_limit_exceeded",
-                    "message": "Upgrade your plan to add more users.",
-                }), 402
-
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
         user = _svc.invite_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             role=form.role.data,
+            organization_id=org_id,
         )
         flash("User {} successfully invited".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+        org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp.route("/manage-users")

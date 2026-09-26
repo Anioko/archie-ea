@@ -385,6 +385,20 @@ def dashboard():
 # ============================================================================
 
 
+def _plan_limit():
+    """(org id, people-limit status) for the signed-in admin's organisation.
+
+    Adding someone past the plan's limit shows the limit and an upgrade link
+    on the form instead of creating the user.
+    """
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is None:
+        return None, None
+    from app.services.billing_plans import user_limit_status
+
+    return org_id, user_limit_status(org_id)
+
+
 @admin_bp_v2.route("/new-user", methods=["GET", "POST"])
 @timed_route
 @login_required
@@ -393,16 +407,19 @@ def dashboard():
 def new_user():
     """Create a new user."""
     form = NewUserForm()
-    if form.validate_on_submit():
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
         user = _svc.create_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
             role=form.role.data,
+            organization_id=org_id,
         )
         flash("User {} successfully created".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+        org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp_v2.route("/invite-user", methods=["GET", "POST"])
@@ -413,15 +430,18 @@ def new_user():
 def invite_user():
     """Invites a new user to create an account and set their own password."""
     form = InviteUserForm()
-    if form.validate_on_submit():
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
         user = _svc.invite_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             role=form.role.data,
+            organization_id=org_id,
         )
         flash("User {} successfully invited".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+        org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp_v2.route("/manage-users")
@@ -5280,11 +5300,17 @@ def governance_gates_delete(gate_id):
 @platform_admin_required
 def organizations_list():
     """List all organizations with user counts."""
+    from app.services.billing_plans import user_limit_status
+
     orgs = Organization.query.order_by(Organization.name).all()
     org_data = []
     for org in orgs:
         user_count = User.query.filter_by(organization_id=org.id).count()
-        org_data.append({"org": org, "user_count": user_count})
+        org_data.append({
+            "org": org,
+            "user_count": user_count,
+            "limits": user_limit_status(org.id),
+        })
     return render_template("admin/organizations/list.html", organizations=org_data)
 
 
@@ -5315,6 +5341,9 @@ def organization_create():
         org = Organization(name=name, slug=slug, plan=plan, max_users=max_users)
         db.session.add(org)
         db.session.commit()
+        from app.services.billing_plans import apply_contract_plan
+
+        apply_contract_plan(org)
         flash(f'Organization "{name}" created.', "success")
         return redirect(url_for("admin.organizations_list"))
 
@@ -5335,6 +5364,8 @@ _ORG_USER_SORT_COLUMNS = {
 @platform_admin_required
 def organization_detail(org_id):
     """View organization details and its users."""
+    from app.services.billing_plans import user_limit_status
+
     from app.utils.role_access import get_role_display_name
 
     org = Organization.query.get_or_404(org_id)
@@ -5348,6 +5379,7 @@ def organization_detail(org_id):
     users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
     return render_template(
         "admin/organizations/detail.html", org=org, users=users,
+        limits=user_limit_status(org.id),
         get_role_display_name=get_role_display_name,
         current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
         current_dir=direction if direction in ("asc", "desc") else "asc",
@@ -5379,7 +5411,16 @@ def organization_edit(org_id):
             flash("Max users must be a whole number.", "error")
             return render_template("admin/organizations/form.html", org=org)
         db.session.commit()
-        flash(f'Organization "{org.name}" updated.', "success")
+        from app.services.billing_plans import apply_contract_plan
+
+        if apply_contract_plan(org):
+            flash(f'Organization "{org.name}" updated.', "success")
+        else:
+            flash(
+                f'Organization "{org.name}" updated. Its plan is paid online, so the plan and '
+                "user limit set here were not applied; change them from its billing page.",
+                "warning",
+            )
         return redirect(url_for("admin.organization_detail", org_id=org.id))
 
     return render_template("admin/organizations/form.html", org=org)
