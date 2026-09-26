@@ -80,3 +80,26 @@ def test_no_tenant_context_does_not_poison_a_tenant_entry(app, db_session, two_t
     compute_nav_counts(small.id)
     compute_nav_counts(None)  # e.g. the login page
     assert compute_nav_counts(small.id)["applications"] == 1
+
+
+def test_a_record_created_after_a_read_is_counted_on_the_next_read(
+    app, db_session, two_tenants
+):
+    """No cross-request cache: the next page load after a create counts it.
+
+    The counts were held for five minutes per worker process, so the pages that
+    decide "is anything modelled yet" kept saying nothing for that long after
+    the first application was added.
+    """
+    from app.models.application_portfolio import ApplicationComponent
+
+    small, _large = two_tenants
+    with app.test_request_context("/"):
+        assert compute_nav_counts(small.id)["applications"] == 1
+    db_session.add(ApplicationComponent(name="Second App", organization_id=small.id))
+    db_session.commit()
+    with app.test_request_context("/"):
+        assert compute_nav_counts(small.id)["applications"] == 2, (
+            "a count read before the create was served again after it"
+        )
+    assert compute_nav_counts(small.id)["applications"] == 2

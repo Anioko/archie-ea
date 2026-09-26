@@ -6,18 +6,22 @@ import flask
 
 _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
 
-# Keyed by organisation id. Previously one shared dict with no tenant in the
-# key, so the first organisation to render a page served its numbers to every
-# other organisation for the whole TTL.
-_nav_counts_cache: dict = {}
-_NAV_COUNTS_TTL = 300
+# Not cached across requests. These counts were held for five minutes in a
+# per-process dict, so after a create or an import the pages that decide "is
+# anything modelled yet" (Ask, Twin map, the first-run card) kept answering
+# "nothing" until the entry expired -- and under gunicorn each worker held its
+# own copy, so clearing it in the worker that handled the write left every
+# other worker stale. The four counts are indexed single-column COUNTs, cheap
+# enough to read fresh; they are memoised for the length of one request only,
+# because a single page asks for them more than once.
+_NAV_COUNTS_MEMO_KEY = "entelim.nav_counts_by_org"  # in the WSGI environ: one request
 
 EM_DASH = "—"
 
 
 
-def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
-    """Sidebar entity counts for one organisation, cached per tenant.
+def compute_nav_counts(org_id):
+    """Sidebar entity counts for one organisation, read fresh for each request.
 
     Scoping is explicit. ``db.session.query(db.func.count(Model.id))`` is a
     COLUMN query, and the tenant isolation in this codebase is
@@ -29,7 +33,7 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
     global by construction; that matches what the vendor list itself shows and
     is called out here rather than silently scoped to something it isn't.
     """
-    import time
+    from flask import has_request_context, request
 
     from app import db
     from app.models.application_portfolio import ApplicationComponent
@@ -37,10 +41,11 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
     from app.models.business_capabilities import BusinessCapability
     from app.models.vendor.vendor_organization import VendorOrganization
 
-    now = time.time()
-    hit = _nav_counts_cache.get(org_id)
-    if hit is not None and now - hit["timestamp"] < ttl:
-        return dict(hit["data"])
+    memo = None
+    if has_request_context():
+        memo = request.environ.setdefault(_NAV_COUNTS_MEMO_KEY, {})
+        if org_id in memo:
+            return dict(memo[org_id])
 
     def _scoped(model):
         q = db.session.query(db.func.count(model.id))
@@ -55,15 +60,17 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
         # Not tenant-scoped anywhere in the product — see docstring.
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
     }
-    _nav_counts_cache[org_id] = {"data": dict(counts), "timestamp": now}
+    if memo is not None:
+        memo[org_id] = dict(counts)
     return counts
 
 
 def init_context_processors(app):
     """Register all context processors for Jinja templates."""
 
-    _dashboard_categories_cache = {"data": None, "timestamp": 0}
-    _applications_cache: dict = {}  # keyed by organisation id — see inject_applications
+    # Keyed by organisation id: the per-model counts below are tenant-filtered
+    # entity queries, so one shared entry served one tenant's counts to all.
+    _dashboard_categories_cache: dict = {}
     _cache_ttl = 300  # 5 minutes
 
     @app.context_processor
@@ -91,12 +98,13 @@ def init_context_processors(app):
         except Exception:
             return default_result
 
+        from flask import g, has_request_context
+
+        _org_key = getattr(g, "current_org_id", None) if has_request_context() else None
         current_time = time.time()
-        if (
-            _dashboard_categories_cache["data"] is not None
-            and current_time - _dashboard_categories_cache["timestamp"] < _cache_ttl
-        ):
-            result = _dashboard_categories_cache["data"].copy()
+        _hit = _dashboard_categories_cache.get(_org_key)
+        if _hit is not None and current_time - _hit["timestamp"] < _cache_ttl:
+            result = _hit["data"].copy()
             try:
                 result["dashboard_registry_url"] = url_for(
                     "dynamic_dashboards.model_registry_index"
@@ -165,10 +173,10 @@ def init_context_processors(app):
                     for m in sorted_categories[cat_name]
                 ]
 
-            _dashboard_categories_cache["data"] = {
-                "dashboard_categories": sorted_categories,
+            _dashboard_categories_cache[_org_key] = {
+                "data": {"dashboard_categories": sorted_categories},
+                "timestamp": current_time,
             }
-            _dashboard_categories_cache["timestamp"] = current_time
 
             try:
                 registry_url = url_for("dynamic_dashboards.model_registry_index")
@@ -194,8 +202,6 @@ def init_context_processors(app):
     @app.context_processor
     def inject_applications_and_vendors():
         """Make applications and vendors available to admin templates that need them"""
-        import time
-
         from flask import request
         from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -210,19 +216,11 @@ def init_context_processors(app):
         except Exception:  # fabricated-ok: empty nav lists, not measured data; page needs no app/vendor list here
             return {"applications": [], "vendors": []}
 
-        # Keyed by tenant. The query below IS tenant-filtered (entity query, so
-        # with_loader_criteria applies), but the RESULT was cached in a single
-        # module-level dict — so one organisation's application and vendor rows
-        # were served to every other organisation for the TTL. Same defect class
-        # as the nav counts, with real rows rather than numbers.
-        from flask import g, has_request_context
-
-        _org_key = getattr(g, "current_org_id", None) if has_request_context() else None
-        current_time = time.time()
-        _hit = _applications_cache.get(_org_key)
-        if _hit is not None and current_time - _hit["timestamp"] < _cache_ttl:
-            return _hit["data"]
-
+        # Not cached across requests. The query below is tenant-filtered (an
+        # entity query, so with_loader_criteria applies). Its result used to be
+        # held for five minutes per worker process, which both hid a newly
+        # created application from these pages and kept ORM rows alive past the
+        # session that loaded them.
         try:
             from app.models.application_portfolio import ApplicationComponent
 
@@ -236,9 +234,7 @@ def init_context_processors(app):
             except Exception:
                 vendors = []
 
-            result = {"applications": applications, "vendors": vendors}
-            _applications_cache[_org_key] = {"data": result, "timestamp": current_time}
-            return result
+            return {"applications": applications, "vendors": vendors}
         except (OperationalError, ProgrammingError):
             db.session.rollback()
             return {"applications": [], "vendors": []}
@@ -287,8 +283,8 @@ def init_context_processors(app):
         """Live entity counts for sidebar navigation labels.
 
         Replaces hardcoded counts that go stale (sidebar said 358 vendors
-        while the dashboard card said 17). Cached for 5 minutes per tenant —
-        these render on every page.
+        while the dashboard card said 17). Read fresh on each request, so a
+        record created a moment ago is counted on the next page load.
         """
         from flask import g, has_request_context
 

@@ -263,32 +263,23 @@ def test_an_empty_workspace_shows_the_setup_state_instead_of_the_picker(
 def test_the_gate_reads_counts_taken_now_not_a_cached_empty_workspace(
     app, db_session, make_org, client, login_as, path
 ):
-    """A new organisation opens a page (caching "nothing modelled"), then models
-    its first element: the next Ask or Twin map page must see it at once."""
-    import time
-
-    from app._bootstrap import context_processors
-    from app.models.archimate_core import ArchiMateElement
-
+    """A new organisation opens a page while empty, then models its first
+    element: the very next Ask or Twin map page must see it."""
     org = make_org("ui-fresh-counts")
     user = _user(db_session, org.id)
-    context_processors._nav_counts_cache[org.id] = {
-        "data": {"applications": 0, "elements": 0, "capabilities": 0, "vendors": 0},
-        "timestamp": time.time(),
-    }
+    login_as(client, user)
+    before = _main_html(client.get(path).get_data(as_text=True))
+    assert "Nothing is modelled yet" in before
+    from app.models.archimate_core import ArchiMateElement
+
     db_session.add(ArchiMateElement(
         name="Fresh element %s" % uuid.uuid4().hex[:6], type="ApplicationComponent",
         layer="application", organization_id=org.id,
     ))
     db_session.flush()
-    try:
-        login_as(client, user)
-        html = _main_html(client.get(path).get_data(as_text=True))
-        assert context_processors._nav_counts_cache[org.id]["data"]["elements"] == 1
-        assert 'role="combobox"' in html
-        assert "Nothing is modelled yet" not in html
-    finally:
-        context_processors._nav_counts_cache.pop(org.id, None)
+    html = _main_html(client.get(path).get_data(as_text=True))
+    assert 'role="combobox"' in html
+    assert "Nothing is modelled yet" not in html
 
 
 @pytest.mark.parametrize("path", PAGES)

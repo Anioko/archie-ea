@@ -27,19 +27,14 @@ def _workspace_counts_available() -> bool:
     Both pages show a "nothing is modelled yet" state only when those counts say
     the workspace is empty. The shell's own context processor answers a failed
     read with counts of zero, which is indistinguishable from an empty
-    workspace, so this asks the same function directly and reports whether it
-    worked. An unreadable count is never treated as an empty workspace.
-
-    The read bypasses the shell's five-minute cache (``ttl=0``) and refreshes
-    it, so the gate the page renders reads counts taken now. From the cache, a
-    new organisation that had opened any page before modelling its first
-    systems was told "nothing is modelled yet" about the model it had just
-    built, for up to five minutes.
+    workspace, so this asks the same function directly and reports
+    whether it worked. An unreadable count is never treated as an empty
+    workspace.
     """
     try:
         from app._bootstrap.context_processors import compute_nav_counts
 
-        compute_nav_counts(getattr(g, "current_org_id", None), ttl=0)
+        compute_nav_counts(getattr(g, "current_org_id", None))
         return True
     except Exception:
         current_app.logger.warning("[MODULE] intelligence: workspace counts unavailable")
