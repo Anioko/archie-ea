@@ -52,6 +52,7 @@ from app.models.vector_embeddings import (
     VendorOrganizationEmbedding,
     VendorProductEmbedding,
 )
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,11 @@ class PgvectorEmbeddingService:
                 return None
 
             # Delete existing embedding
-            VendorProductEmbedding.query.filter_by(vendor_product_id=vendor_product_id).delete()
+            _del_org_id = current_org_id()
+            q = VendorProductEmbedding.query.filter_by(vendor_product_id=vendor_product_id)
+            if _del_org_id is not None:
+                q = q.filter(VendorProductEmbedding.organization_id == _del_org_id)
+            q.delete()
 
             # Create new embedding
             embedding = VendorProductEmbedding(
@@ -161,7 +166,16 @@ class PgvectorEmbeddingService:
 
     def _search_embeddings_python(self, model_class, id_field, query_embedding, limit, threshold):
         """Generic Python-based cosine similarity search for JSON-stored embeddings."""
-        all_rows = model_class.query.all()
+        _org_id = current_org_id()
+        q = model_class.query
+        if _org_id is not None:
+            if model_class in (VendorProductEmbedding, ProcessEmbedding, VendorOrganizationEmbedding):
+                q = q.filter(
+                    db.or_(model_class.organization_id == _org_id, model_class.organization_id.is_(None))
+                )
+            else:
+                q = q.filter(model_class.organization_id == _org_id)
+        all_rows = q.all()
         scored = []
         for row in all_rows:
             vec = row.embedding
@@ -254,9 +268,13 @@ class PgvectorEmbeddingService:
                 return None
 
             # Delete existing
-            BusinessCapabilityEmbedding.query.filter_by(
+            _del_org_id = current_org_id()
+            q = BusinessCapabilityEmbedding.query.filter_by(
                 business_capability_id=capability_id
-            ).delete()
+            )
+            if _del_org_id is not None:
+                q = q.filter(BusinessCapabilityEmbedding.organization_id == _del_org_id)
+            q.delete()
 
             embedding = BusinessCapabilityEmbedding(
                 business_capability_id=capability_id,
@@ -359,6 +377,10 @@ class PgvectorEmbeddingService:
                 .limit(limit)
                 .all()
             )
+            # Scope results to current organisation
+            _chat_org_id = current_org_id()
+            if _chat_org_id is not None:
+                results = [r for r in results if r.organization_id == _chat_org_id or r.organization_id is None]
 
             return [
                 {
@@ -410,7 +432,11 @@ class PgvectorEmbeddingService:
                 embedding_vector = embedding_vector.tolist()
 
             # Upsert: remove existing row for this entity
-            embedding_model_cls.query.filter_by(**{fk_field: entity_id}).delete()
+            _gs_org_id = current_org_id()
+            gs_query = embedding_model_cls.query.filter_by(**{fk_field: entity_id})
+            if _gs_org_id is not None:
+                gs_query = gs_query.filter(embedding_model_cls.organization_id == _gs_org_id)
+            gs_query.delete()
 
             record = embedding_model_cls(
                 **{
@@ -477,15 +503,59 @@ class PgvectorEmbeddingService:
 
     def get_embedding_stats(self) -> Dict[str, int]:
         """Get statistics on stored embeddings."""
+        _stats_org_id = current_org_id()
         try:
+            # Scope each count to the current organisation when available
             stats = {
-                "vendor_product_embeddings": VendorProductEmbedding.query.count(),
-                "capability_embeddings": BusinessCapabilityEmbedding.query.count(),
-                "process_embeddings": ProcessEmbedding.query.count(),
-                "chat_message_embeddings": ChatMessageEmbedding.query.count(),
-                "solution_embeddings": SolutionEmbedding.query.count(),
-                "vendor_org_embeddings": VendorOrganizationEmbedding.query.count(),
-                "app_component_embeddings": ApplicationComponentEmbedding.query.count(),
+                "vendor_product_embeddings": (
+                    VendorProductEmbedding.query.filter(
+                        VendorProductEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else VendorProductEmbedding.query.count()
+                ),
+                "capability_embeddings": (
+                    BusinessCapabilityEmbedding.query.filter(
+                        BusinessCapabilityEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else BusinessCapabilityEmbedding.query.count()
+                ),
+                "process_embeddings": (
+                    ProcessEmbedding.query.filter(
+                        ProcessEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else ProcessEmbedding.query.count()
+                ),
+                "chat_message_embeddings": (
+                    ChatMessageEmbedding.query.filter(
+                        ChatMessageEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else ChatMessageEmbedding.query.count()
+                ),
+                "solution_embeddings": (
+                    SolutionEmbedding.query.filter(
+                        SolutionEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else SolutionEmbedding.query.count()
+                ),
+                "vendor_org_embeddings": (
+                    VendorOrganizationEmbedding.query.filter(
+                        VendorOrganizationEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else VendorOrganizationEmbedding.query.count()
+                ),
+                "app_component_embeddings": (
+                    ApplicationComponentEmbedding.query.filter(
+                        ApplicationComponentEmbedding.organization_id == _stats_org_id
+                    ).count()
+                    if _stats_org_id is not None
+                    else ApplicationComponentEmbedding.query.count()
+                ),
             }
             return stats
         except Exception as e:
