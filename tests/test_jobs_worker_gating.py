@@ -484,43 +484,37 @@ def test_worker_main_exits_one_when_no_scheduler(app, monkeypatch):
     )
 
 
-def test_worker_main_registers_abacus_job(app, monkeypatch):
-    """worker.main() registers the Abacus incremental sync job when a scheduler
-    is present, then blocks on threading.Event.wait."""
+def test_worker_main_does_not_register_abacus_job(app, monkeypatch):
+    """worker.main() does NOT register the Abacus incremental sync job
+    (M2: removed until it has tenant context and the correct method name)."""
     import threading
 
     import app as _app_module
     import app.jobs.worker as worker_mod
-
-    from apscheduler.schedulers.background import BackgroundScheduler
 
     def _make_app(*args, **kwargs):
         return app
 
     monkeypatch.setattr(_app_module, "create_app", _make_app)
 
+    from apscheduler.schedulers.background import BackgroundScheduler
+
     real_scheduler = BackgroundScheduler()
     real_scheduler.start()
     monkeypatch.setitem(app.extensions, "ea_workflow_scheduler", real_scheduler)
 
-    # Validate registration inside the capture — worker.main() shuts down the
-    # scheduler after Event.wait() returns, so checking after main() exits
-    # would find no jobs.
-    job_registered = [False]
+    init_abacus_called = [False]
 
     import app.tasks.abacus_sync_task as _abacus_mod
 
-    original_init = _abacus_mod.init_abacus_scheduler
-
-    def _capture_init_abacus(app, scheduler=None):
-        result = original_init(app, scheduler=scheduler)
-        job_registered[0] = scheduler.get_job("abacus_incremental_sync") is not None
-        return result
+    def _never_called(app, scheduler=None):
+        init_abacus_called[0] = True
+        return None
 
     monkeypatch.setattr(
         _abacus_mod,
         "init_abacus_scheduler",
-        _capture_init_abacus,
+        _never_called,
     )
 
     def _return_immediately(self, timeout=None):
@@ -535,9 +529,9 @@ def test_worker_main_registers_abacus_job(app, monkeypatch):
 
     worker_mod.main()
 
-    assert job_registered[0], (
-        "abacus_incremental_sync was not registered on the scheduler "
-        "by init_abacus_scheduler"
+    assert not init_abacus_called[0], (
+        "worker.main() called init_abacus_scheduler but M2 removed that "
+        "call until the job has tenant context and the correct method name"
     )
     try:
         real_scheduler.shutdown(wait=False)
