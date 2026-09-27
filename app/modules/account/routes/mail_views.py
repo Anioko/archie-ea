@@ -59,8 +59,8 @@ def register_view():
             )
             return redirect(url_for("account.unconfirmed"))
         flash(
-            "Account created. E-mail is not available on this server, so no "
-            "confirmation message was sent.",
+            "Account created. Welcome to {}! E-mail is not available on this "
+            "server, so no confirmation message was sent.".format(current_app.config['APP_NAME']),
             "info",
         )
         return redirect(url_for("main.index"))
