@@ -237,9 +237,7 @@ class LLMService:
                     from flask_login import current_user
                     if current_user and hasattr(current_user, 'id') and not current_user.is_anonymous:
                         user_id = current_user.id
-except ProviderNotAllowed:
-                raise
-            except Exception as e:
+                except Exception as e:
                     logger.debug("Failed to get current_user for LLM preference: %s", e)
 
             if user_id:
