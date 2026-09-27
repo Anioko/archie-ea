@@ -5,7 +5,7 @@ Reuses phase 1's credential_encryption.py Fernet pattern.
 ``CredentialVault`` (existing): stores credentials in ``codegen_connector_credentials``
 table encrypted with the shared ``CREDENTIAL_ENCRYPTION_KEY``.
 
-``OrgCredentialVault`` (PR 1 / TB-0148): stores credentials in
+``OrgCredentialVault``: stores credentials in
 ``org_connector_credentials`` table encrypted per-organisation with that org's
 own Fernet key. Never returns secrets after entry; retrieves only for sync
 operations and returns a masked representation on read.
@@ -80,7 +80,7 @@ class CredentialVault:
 
 
 # ---------------------------------------------------------------------------
-# Per-organisation credential vault (PR 1 / TB-0148)
+# Per-organisation credential vault
 # ---------------------------------------------------------------------------
 
 def _mask_value(value: str) -> str:

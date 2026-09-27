@@ -1,4 +1,4 @@
-"""PR 1 (TB-0148): Per-organisation credential store tests.
+"""Per-organisation credential store tests.
 
 Acceptance criteria covered:
 1. Two-organisation isolation: A's credentials cannot be decrypted with B's key;

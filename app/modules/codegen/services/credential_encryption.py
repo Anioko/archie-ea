@@ -3,7 +3,7 @@
 Used by:
 - SolutionInstance.database_url_encrypted (Phase 1)
 - CredentialVault for connector secrets (Phase 3b)
-- OrgCredentialVault for per-organisation encrypted credentials (PR 1 / TB-0148)
+- OrgCredentialVault for per-organisation encrypted credentials
 
 Single-key functions use ``CREDENTIAL_ENCRYPTION_KEY`` from app config.
 Per-organisation functions use ``ORG_ENCRYPTION_MASTER_KEY`` from app config to
@@ -62,7 +62,7 @@ def decrypt_credential(ciphertext: bytes | None) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Per-organisation encryption (PR 1 / TB-0148)
+# Per-organisation encryption
 # ---------------------------------------------------------------------------
 
 def _get_master_fernet() -> Fernet:

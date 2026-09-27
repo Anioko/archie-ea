@@ -4,7 +4,7 @@ ConnectorConfig model — per-organisation connector credentials and settings.
 Stores encrypted credentials for external connectors (ServiceNow, Jira, M365).
 Unique per (organization_id, connector_type).
 
-PR 1 (TB-0148): Added ``OrganizationEncryptionKey`` for per-org key storage and
+Added ``OrganizationEncryptionKey`` for per-org key storage and
 ``OrgConnectorCredential`` as the single credential store. Existing models
 retained for backward compatibility but marked RETIRED — new credentials must
 use ``OrgConnectorCredential`` via ``OrgCredentialVault``.
@@ -410,10 +410,10 @@ class LucidchartConnectorConfig(db.Model):  # migration-exempt — LUC-001
 
 
 # ============================================================================
-# PR 1 (TB-0148): Per-organisation encryption key store
+# Per-organisation encryption key store
 # ============================================================================
 
-class OrganizationEncryptionKey(db.Model):  # migration-exempt — MIG-C-0028
+class OrganizationEncryptionKey(db.Model):  # migration-exempt — per-org key store
     """One Fernet encryption key per organisation, itself encrypted with a
     master key from ``ORG_ENCRYPTION_MASTER_KEY``.
 
@@ -460,7 +460,7 @@ class OrganizationEncryptionKey(db.Model):  # migration-exempt — MIG-C-0028
         )
 
 
-class OrgConnectorCredential(db.Model):  # migration-exempt — MIG-C-0041
+class OrgConnectorCredential(db.Model):  # migration-exempt — per-org credential store
     """Single credential store for all connector types, encrypted with the
     organisation's own Fernet key (see ``OrganizationEncryptionKey``).
 
