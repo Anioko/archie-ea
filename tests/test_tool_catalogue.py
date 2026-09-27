@@ -36,9 +36,9 @@ class TestEveryToolHasNewFields:
         missing = [t["name"] for t in TOOL_SCHEMAS if "route" not in t]
         assert missing == [], f"tools missing 'route': {missing}"
 
-    def test_every_tool_has_fenced(self):
-        missing = [t["name"] for t in TOOL_SCHEMAS if "fenced" not in t]
-        assert missing == [], f"tools missing 'fenced': {missing}"
+    def test_every_tool_has_fenced_fields(self):
+        missing = [t["name"] for t in TOOL_SCHEMAS if "fenced_fields" not in t]
+        assert missing == [], f"tools missing 'fenced_fields': {missing}"
 
     def test_every_tool_has_risk_class(self):
         missing = [t["name"] for t in TOOL_SCHEMAS if "risk_class" not in t]
@@ -54,8 +54,10 @@ class TestEveryToolHasNewFields:
                 bad.append(f"{name}: surfaces items are not strings")
             if not isinstance(t.get("route"), str):
                 bad.append(f"{name}: route is not a string")
-            if not isinstance(t.get("fenced"), bool):
-                bad.append(f"{name}: fenced is not a bool")
+            if not isinstance(t.get("fenced_fields"), list):
+                bad.append(f"{name}: fenced_fields is not a list")
+            elif not all(isinstance(f, str) for f in t.get("fenced_fields", [])):
+                bad.append(f"{name}: fenced_fields items are not strings")
             if t.get("risk_class") not in VALID_RISK_CLASSES:
                 bad.append(f"{name}: risk_class '{t.get('risk_class')}' not in {VALID_RISK_CLASSES}")
         assert bad == [], "\n".join(bad)
@@ -72,15 +74,14 @@ class TestEveryToolHasNewFields:
         empty = [t["name"] for t in TOOL_SCHEMAS if not t.get("surfaces")]
         assert empty == [], f"tools with empty surfaces: {empty}"
 
-    def test_route_matches_tool_name(self):
-        """Each tool's route should match its tool name."""
-        mismatched = [
+    def test_route_does_not_equal_tool_name(self):
+        """Each tool's route should differ from its name — route identifies
+        the wrapped service function, not repeat the tool name."""
+        same = [
             t["name"] for t in TOOL_SCHEMAS
-            if t.get("route") not in (t["name"], None)
+            if t.get("route") == t["name"]
         ]
-        # Allow generated element tools whose route is the full candidate_name
-        # (which equals the tool name by construction).
-        assert not mismatched, f"tools where route != name: {mismatched}"
+        assert not same, f"tools where route == name (should be different): {same}"
 
 
 class TestRiskClassConsistency:
@@ -127,22 +128,22 @@ class TestRiskClassConsistency:
         assert bad == [], f"external_action tools not tier='approve': {bad}"
 
 
-class TestFencedConsistency:
-    """fenced=True indicates LLM-generated output that should be fenced."""
+class TestFencedFieldsConsistency:
+    """fenced_fields lists result fields holding untrusted/LLM-generated text."""
 
-    def test_fenced_tools_are_not_write(self):
-        """fenced=True tools generate content (LLM-produced), not direct writes."""
+    def test_fenced_fields_tools_are_not_write(self):
+        """Tools with fenced_fields generate content (LLM-produced), not direct writes."""
         for t in TOOL_SCHEMAS:
-            if t.get("fenced") and t.get("risk_class") == "write":
-                # generate_blueprint_narrative is fenced AND write — the narrative
+            if t.get("fenced_fields") and t.get("risk_class") == "write":
+                # generate_blueprint_narrative has fenced_fields AND write — the narrative
                 # is LLM-generated (fenced) but overwrites section text (write).
                 # This is the known exception.
                 if t["name"] != "generate_blueprint_narrative":
-                    pytest.fail(f"{t['name']}: fenced=True but risk_class='write'")
+                    pytest.fail(f"{t['name']}: fenced_fields={t['fenced_fields']} but risk_class='write'")
 
-    def test_fenced_is_always_a_bool(self):
-        bad = [t["name"] for t in TOOL_SCHEMAS if not isinstance(t.get("fenced"), bool)]
-        assert bad == [], f"tools with non-bool fenced: {bad}"
+    def test_fenced_fields_is_always_a_list(self):
+        bad = [t["name"] for t in TOOL_SCHEMAS if not isinstance(t.get("fenced_fields"), list)]
+        assert bad == [], f"tools with non-list fenced_fields: {bad}"
 
 
 # --------------------------------------------------------------------------- #
@@ -241,57 +242,57 @@ class TestFailClosedConfirmation:
 @pytest.mark.parametrize(
     "name,expected",
     [
-        ("build_architecture_plan", {"surfaces": ["chat"], "route": "build_architecture_plan", "fenced": False, "risk_class": "read"}),
-        ("bulk_update_application_status", {"surfaces": ["chat", "blueprint"], "route": "bulk_update_application_status", "fenced": False, "risk_class": "write"}),
-        ("create_adr", {"surfaces": ["chat", "blueprint"], "route": "create_adr", "fenced": False, "risk_class": "write"}),
-        ("create_archimate_element", {"surfaces": ["chat", "blueprint"], "route": "create_archimate_element", "fenced": False, "risk_class": "write"}),
-        ("create_archimate_relationship", {"surfaces": ["chat", "blueprint"], "route": "create_archimate_relationship", "fenced": False, "risk_class": "write"}),
-        ("create_constraint", {"surfaces": ["chat", "blueprint"], "route": "create_constraint", "fenced": False, "risk_class": "write"}),
-        ("create_contract", {"surfaces": ["chat"], "route": "create_contract", "fenced": False, "risk_class": "write"}),
-        ("create_driver", {"surfaces": ["chat", "blueprint"], "route": "create_driver", "fenced": False, "risk_class": "write"}),
-        ("create_goal", {"surfaces": ["chat", "blueprint"], "route": "create_goal", "fenced": False, "risk_class": "write"}),
-        ("create_option", {"surfaces": ["chat", "blueprint"], "route": "create_option", "fenced": False, "risk_class": "write"}),
-        ("create_programme", {"surfaces": ["chat", "blueprint"], "route": "create_programme", "fenced": False, "risk_class": "write"}),
-        ("create_requirement", {"surfaces": ["chat", "blueprint"], "route": "create_requirement", "fenced": False, "risk_class": "write"}),
-        ("create_risk", {"surfaces": ["chat", "blueprint"], "route": "create_risk", "fenced": False, "risk_class": "write"}),
-        ("create_solution", {"surfaces": ["chat", "blueprint"], "route": "create_solution", "fenced": False, "risk_class": "write"}),
-        ("create_vendor", {"surfaces": ["chat"], "route": "create_vendor", "fenced": False, "risk_class": "write"}),
-        ("diagnose_chain", {"surfaces": ["chat"], "route": "diagnose_chain", "fenced": False, "risk_class": "read"}),
-        ("explain_element", {"surfaces": ["chat"], "route": "explain_element", "fenced": False, "risk_class": "read"}),
-        ("extract_contract_from_document", {"surfaces": ["chat"], "route": "extract_contract_from_document", "fenced": True, "risk_class": "external_action"}),
-        ("find_applications", {"surfaces": ["chat"], "route": "find_applications", "fenced": False, "risk_class": "read"}),
-        ("find_applications_by_capability", {"surfaces": ["chat", "blueprint"], "route": "find_applications_by_capability", "fenced": False, "risk_class": "read"}),
-        ("find_technical_capabilities", {"surfaces": ["chat"], "route": "find_technical_capabilities", "fenced": False, "risk_class": "read"}),
-        ("generate_blueprint_narrative", {"surfaces": ["chat", "blueprint"], "route": "generate_blueprint_narrative", "fenced": True, "risk_class": "write"}),
-        ("get_arb_status", {"surfaces": ["chat"], "route": "get_arb_status", "fenced": False, "risk_class": "read"}),
-        ("get_completeness_score", {"surfaces": ["chat", "blueprint"], "route": "get_completeness_score", "fenced": False, "risk_class": "read"}),
-        ("get_executive_dashboard", {"surfaces": ["chat"], "route": "get_executive_dashboard", "fenced": False, "risk_class": "read"}),
-        ("get_investment_priorities", {"surfaces": ["chat"], "route": "get_investment_priorities", "fenced": False, "risk_class": "read"}),
-        ("get_solution_summary", {"surfaces": ["chat", "blueprint"], "route": "get_solution_summary", "fenced": False, "risk_class": "read"}),
-        ("infer_schema", {"surfaces": ["chat", "blueprint"], "route": "infer_schema", "fenced": True, "risk_class": "read"}),
-        ("link_application_to_capability", {"surfaces": ["chat", "blueprint"], "route": "link_application_to_capability", "fenced": False, "risk_class": "write"}),
-        ("link_application_to_solution", {"surfaces": ["chat", "blueprint"], "route": "link_application_to_solution", "fenced": False, "risk_class": "write"}),
-        ("link_capability_to_solution", {"surfaces": ["chat", "blueprint"], "route": "link_capability_to_solution", "fenced": False, "risk_class": "write"}),
-        ("link_vendor_product", {"surfaces": ["chat", "blueprint"], "route": "link_vendor_product", "fenced": False, "risk_class": "write"}),
-        ("mark_option_recommended", {"surfaces": ["chat", "blueprint"], "route": "mark_option_recommended", "fenced": False, "risk_class": "write"}),
-        ("merge_capabilities", {"surfaces": ["chat", "blueprint"], "route": "merge_capabilities", "fenced": False, "risk_class": "write"}),
-        ("poll_infrastructure", {"surfaces": ["chat"], "route": "poll_infrastructure", "fenced": False, "risk_class": "external_action"}),
-        ("propose_genome_patch", {"surfaces": ["chat"], "route": "propose_genome_patch", "fenced": False, "risk_class": "propose"}),
-        ("propose_rationalization", {"surfaces": ["chat"], "route": "propose_rationalization", "fenced": False, "risk_class": "read"}),
-        ("query_capability_gaps", {"surfaces": ["chat"], "route": "query_capability_gaps", "fenced": False, "risk_class": "read"}),
-        ("record_capability_maturity", {"surfaces": ["chat", "blueprint"], "route": "record_capability_maturity", "fenced": False, "risk_class": "write"}),
-        ("run_inference_engine", {"surfaces": ["chat", "blueprint"], "route": "run_inference_engine", "fenced": False, "risk_class": "write"}),
-        ("score_rationalization", {"surfaces": ["chat", "blueprint"], "route": "score_rationalization", "fenced": False, "risk_class": "write"}),
-        ("search_archimate_elements", {"surfaces": ["chat", "blueprint"], "route": "search_archimate_elements", "fenced": False, "risk_class": "read"}),
-        ("search_capabilities_by_problem", {"surfaces": ["chat"], "route": "search_capabilities_by_problem", "fenced": False, "risk_class": "read"}),
-        ("simulate_impact", {"surfaces": ["chat"], "route": "simulate_impact", "fenced": False, "risk_class": "read"}),
-        ("submit_for_arb_review", {"surfaces": ["chat", "blueprint"], "route": "submit_for_arb_review", "fenced": False, "risk_class": "write"}),
-        ("update_application_status", {"surfaces": ["chat", "blueprint"], "route": "update_application_status", "fenced": False, "risk_class": "write"}),
-        ("update_solution_fields", {"surfaces": ["chat", "blueprint"], "route": "update_solution_fields", "fenced": False, "risk_class": "write"}),
-        ("update_solution_phase", {"surfaces": ["chat", "blueprint"], "route": "update_solution_phase", "fenced": False, "risk_class": "write"}),
-        ("upsert_license", {"surfaces": ["chat"], "route": "upsert_license", "fenced": False, "risk_class": "write"}),
-        ("validate_sap_clean_core", {"surfaces": ["chat", "blueprint"], "route": "validate_sap_clean_core", "fenced": False, "risk_class": "read"}),
-        ("verify_codegen", {"surfaces": ["chat", "blueprint"], "route": "verify_codegen", "fenced": False, "risk_class": "read"}),
+        ("build_architecture_plan", {"surfaces": ["chat"], "route": "OrchestrationPlannerService.build_plan", "fenced_fields": [], "risk_class": "read"}),
+        ("bulk_update_application_status", {"surfaces": ["chat", "blueprint"], "route": "ApplicationComponent.lifecycle_status", "fenced_fields": [], "risk_class": "write"}),
+        ("create_adr", {"surfaces": ["chat", "blueprint"], "route": "ADRService.create_adr", "fenced_fields": [], "risk_class": "write"}),
+        ("create_archimate_element", {"surfaces": ["chat", "blueprint"], "route": "ArchiMateElement", "fenced_fields": [], "risk_class": "write"}),
+        ("create_archimate_relationship", {"surfaces": ["chat", "blueprint"], "route": "ArchiMateInferenceEngine.graph.get_or_create_relationship", "fenced_fields": [], "risk_class": "write"}),
+        ("create_constraint", {"surfaces": ["chat", "blueprint"], "route": "SolutionConstraint", "fenced_fields": [], "risk_class": "write"}),
+        ("create_contract", {"surfaces": ["chat"], "route": "VendorContract", "fenced_fields": [], "risk_class": "write"}),
+        ("create_driver", {"surfaces": ["chat", "blueprint"], "route": "SolutionDriver", "fenced_fields": [], "risk_class": "write"}),
+        ("create_goal", {"surfaces": ["chat", "blueprint"], "route": "SolutionGoal", "fenced_fields": [], "risk_class": "write"}),
+        ("create_option", {"surfaces": ["chat", "blueprint"], "route": "SolutionRecommendation", "fenced_fields": [], "risk_class": "write"}),
+        ("create_programme", {"surfaces": ["chat", "blueprint"], "route": "ProgrammeSetupService.create_business_first_programme", "fenced_fields": [], "risk_class": "write"}),
+        ("create_requirement", {"surfaces": ["chat", "blueprint"], "route": "SolutionRequirement", "fenced_fields": [], "risk_class": "write"}),
+        ("create_risk", {"surfaces": ["chat", "blueprint"], "route": "SolutionRisk", "fenced_fields": [], "risk_class": "write"}),
+        ("create_solution", {"surfaces": ["chat", "blueprint"], "route": "Solution", "fenced_fields": [], "risk_class": "write"}),
+        ("create_vendor", {"surfaces": ["chat"], "route": "AIDataInteractionService.create_vendor", "fenced_fields": [], "risk_class": "write"}),
+        ("diagnose_chain", {"surfaces": ["chat"], "route": "ArchiMateInferenceEngine.diagnose", "fenced_fields": [], "risk_class": "read"}),
+        ("explain_element", {"surfaces": ["chat"], "route": "ArchiMateInferenceEngine.explain", "fenced_fields": [], "risk_class": "read"}),
+        ("extract_contract_from_document", {"surfaces": ["chat"], "route": "ContractExtractionService.extract_contract_terms", "fenced_fields": ["terms", "parties", "dates", "obligations"], "risk_class": "external_action"}),
+        ("find_applications", {"surfaces": ["chat"], "route": "ApplicationComponent.query", "fenced_fields": [], "risk_class": "read"}),
+        ("find_applications_by_capability", {"surfaces": ["chat", "blueprint"], "route": "ApplicationCapabilityMapping.query", "fenced_fields": [], "risk_class": "read"}),
+        ("find_technical_capabilities", {"surfaces": ["chat"], "route": "TechnicalCapability.query", "fenced_fields": [], "risk_class": "read"}),
+        ("generate_blueprint_narrative", {"surfaces": ["chat", "blueprint"], "route": "generate_section_narrative", "fenced_fields": ["narrative"], "risk_class": "write"}),
+        ("get_arb_status", {"surfaces": ["chat"], "route": "ARBReviewItem.query", "fenced_fields": [], "risk_class": "read"}),
+        ("get_completeness_score", {"surfaces": ["chat", "blueprint"], "route": "BlueprintCompletenessService.score_all", "fenced_fields": [], "risk_class": "read"}),
+        ("get_executive_dashboard", {"surfaces": ["chat"], "route": "ExecutiveDashboardService.get_executive_summary", "fenced_fields": [], "risk_class": "read"}),
+        ("get_investment_priorities", {"surfaces": ["chat"], "route": "InvestmentPrioritizationService", "fenced_fields": [], "risk_class": "read"}),
+        ("get_solution_summary", {"surfaces": ["chat", "blueprint"], "route": "Solution.query", "fenced_fields": [], "risk_class": "read"}),
+        ("infer_schema", {"surfaces": ["chat", "blueprint"], "route": "SchemaInferenceService.infer", "fenced_fields": ["candidates"], "risk_class": "read"}),
+        ("link_application_to_capability", {"surfaces": ["chat", "blueprint"], "route": "ApplicationCapabilityMapping", "fenced_fields": [], "risk_class": "write"}),
+        ("link_application_to_solution", {"surfaces": ["chat", "blueprint"], "route": "Solution.applications", "fenced_fields": [], "risk_class": "write"}),
+        ("link_capability_to_solution", {"surfaces": ["chat", "blueprint"], "route": "SolutionCapabilityMapping", "fenced_fields": [], "risk_class": "write"}),
+        ("link_vendor_product", {"surfaces": ["chat", "blueprint"], "route": "Solution.vendor_products", "fenced_fields": [], "risk_class": "write"}),
+        ("mark_option_recommended", {"surfaces": ["chat", "blueprint"], "route": "SolutionRecommendation.is_recommended", "fenced_fields": [], "risk_class": "write"}),
+        ("merge_capabilities", {"surfaces": ["chat", "blueprint"], "route": "BusinessCapability.merge", "fenced_fields": [], "risk_class": "write"}),
+        ("poll_infrastructure", {"surfaces": ["chat"], "route": "InfrastructurePollingService.poll_infrastructure", "fenced_fields": [], "risk_class": "external_action"}),
+        ("propose_genome_patch", {"surfaces": ["chat"], "route": "genome.patch.proposer.propose_genome_patch", "fenced_fields": [], "risk_class": "propose"}),
+        ("propose_rationalization", {"surfaces": ["chat"], "route": "RationalizationProposalService.generate_proposals", "fenced_fields": [], "risk_class": "read"}),
+        ("query_capability_gaps", {"surfaces": ["chat"], "route": "BusinessCapability.current_maturity_level", "fenced_fields": [], "risk_class": "read"}),
+        ("record_capability_maturity", {"surfaces": ["chat", "blueprint"], "route": "BusinessCapability.maturity_levels", "fenced_fields": [], "risk_class": "write"}),
+        ("run_inference_engine", {"surfaces": ["chat", "blueprint"], "route": "ArchiMateInferenceEngine.repair", "fenced_fields": [], "risk_class": "write"}),
+        ("score_rationalization", {"surfaces": ["chat", "blueprint"], "route": "RationalizationScoringService.calculate_app_score", "fenced_fields": [], "risk_class": "write"}),
+        ("search_archimate_elements", {"surfaces": ["chat", "blueprint"], "route": "ArchiMateElement.query", "fenced_fields": [], "risk_class": "read"}),
+        ("search_capabilities_by_problem", {"surfaces": ["chat"], "route": "VectorEmbeddingService.embed_text", "fenced_fields": [], "risk_class": "read"}),
+        ("simulate_impact", {"surfaces": ["chat"], "route": "ArchiMateInferenceEngine.simulate_change_impact", "fenced_fields": [], "risk_class": "read"}),
+        ("submit_for_arb_review", {"surfaces": ["chat", "blueprint"], "route": "TypedARBSubmissionAdapter.submit_solution_for_actor", "fenced_fields": [], "risk_class": "write"}),
+        ("update_application_status", {"surfaces": ["chat", "blueprint"], "route": "ApplicationComponent.deployment_status", "fenced_fields": [], "risk_class": "write"}),
+        ("update_solution_fields", {"surfaces": ["chat", "blueprint"], "route": "Solution.fields", "fenced_fields": [], "risk_class": "write"}),
+        ("update_solution_phase", {"surfaces": ["chat", "blueprint"], "route": "Solution.adm_phase", "fenced_fields": [], "risk_class": "write"}),
+        ("upsert_license", {"surfaces": ["chat"], "route": "LicenseEntitlement", "fenced_fields": [], "risk_class": "write"}),
+        ("validate_sap_clean_core", {"surfaces": ["chat", "blueprint"], "route": "SAPCleanCoreService.validate", "fenced_fields": [], "risk_class": "read"}),
+        ("verify_codegen", {"surfaces": ["chat", "blueprint"], "route": "CodegenVerifierService.verify_solution", "fenced_fields": [], "risk_class": "read"}),
     ],
 )
 def test_hand_written_tool_contract(name, expected):
@@ -321,10 +322,10 @@ def test_generated_element_tools_have_contract():
         assert schema["surfaces"] == ["chat", "blueprint"], (
             f"{name}.surfaces: expected ['chat', 'blueprint']"
         )
-        assert schema["route"] == name, (
-            f"{name}.route: expected {name}"
+        assert schema["route"] == "ArchiMateElement", (
+            f"{name}.route: expected 'ArchiMateElement'"
         )
-        assert schema["fenced"] is False, f"{name}.fenced must be False"
+        assert schema["fenced_fields"] == [], f"{name}.fenced_fields must be []"
         assert schema["risk_class"] == "write", (
             f"{name}.risk_class must be 'write'"
         )
