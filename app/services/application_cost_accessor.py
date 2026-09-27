@@ -104,8 +104,7 @@ def parse_cost_cell(
     # Normalise period
     period = (period or "annual").strip().lower()
     if period not in PERIOD_VALUES:
-        warnings.append(f"Unknown period '{period}'; defaulting to annual")
-        period = "annual"
+        error = f"Unknown period '{period}'; valid values: annual, monthly"
 
     # Normalise category
     category = (category or "total_cost_of_ownership").strip().lower()
@@ -115,7 +114,8 @@ def parse_cost_cell(
 
     # Parse the numeric value
     if raw_value is None or (isinstance(raw_value, str) and raw_value.strip() == ""):
-        error = "Empty cost cell"
+        # Blank cell means "no value" — not an error
+        pass
     else:
         try:
             # Strip common currency symbols and thousands separators
@@ -292,7 +292,7 @@ _COST_COLUMN_VARIANTS: Dict[str, List[str]] = {
         "period", "cost_period", "billing_period", "Period", "Cost Period",
     ],
     "category": [
-        "category", "cost_category", "cost_type", "Category", "Cost Category",
+        "cost_category", "cost_type", "Cost Category", "Cost Type",
     ],
 }
 

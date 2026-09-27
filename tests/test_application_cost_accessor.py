@@ -132,11 +132,11 @@ class TestParseCostCell:
         assert result["value"] == Decimal("60000")  # 5000 * 12
         assert result["period"] == "monthly"
 
-    def test_parse_quarterly_period_defaults_to_annual_with_warning(self):
+    def test_parse_quarterly_period_returns_error(self):
         result = parse_cost_cell("10000", currency="USD", period="quarterly", category="total_cost_of_ownership")
-        assert result["value"] == Decimal("10000")
-        assert result["period"] == "annual"
-        assert any("Unknown period" in w for w in result["warnings"])
+        assert result["value"] is None
+        assert result["error"] is not None
+        assert "Unknown period" in result["error"]
 
     def test_parse_unknown_category_defaults_with_warning(self):
         result = parse_cost_cell("10000", currency="USD", period="annual", category="unknown_category")
@@ -144,15 +144,15 @@ class TestParseCostCell:
         assert result["category"] == "total_cost_of_ownership"
         assert any("Unknown cost category" in w for w in result["warnings"])
 
-    def test_parse_empty_string_returns_error_and_none_value(self):
+    def test_parse_empty_string_returns_none_value_no_error(self):
         result = parse_cost_cell("", currency="USD", period="annual", category="total_cost_of_ownership")
         assert result["value"] is None
-        assert result["error"] == "Empty cost cell"
+        assert result["error"] is None
 
-    def test_parse_none_returns_error_and_none_value(self):
+    def test_parse_none_returns_none_value_no_error(self):
         result = parse_cost_cell(None, currency="USD", period="annual", category="total_cost_of_ownership")
         assert result["value"] is None
-        assert result["error"] == "Empty cost cell"
+        assert result["error"] is None
 
     def test_parse_unparseable_returns_error_and_none_value(self):
         result = parse_cost_cell("not a number", currency="USD", period="annual", category="total_cost_of_ownership")
@@ -212,13 +212,13 @@ class TestMapImportCostColumns:
         assert "total_cost_of_ownership" not in result["cost_fields"]
         assert result["cost_fields"] == {}
 
-    def test_empty_cell_reported_in_errors_not_as_zero(self):
+    def test_blank_cell_skipped_not_errored(self):
         row = {"total_cost_of_ownership": "", "name": "Test App"}
         mapping = {"total_cost_of_ownership": "total_cost_of_ownership"}
         result = map_import_cost_columns(row, mapping)
 
-        assert "total_cost_of_ownership" in result["cost_errors"]
-        assert "total_cost_of_ownership" not in result["cost_fields"]
+        assert "total_cost_of_ownership" not in result["cost_errors"]
+        assert result["cost_fields"] == {}
 
     def test_global_currency_period_category_overrides(self):
         row = {
