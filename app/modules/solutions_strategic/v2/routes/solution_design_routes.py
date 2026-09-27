@@ -5292,11 +5292,15 @@ def _cascade_delete_solutions_batch(solution_ids):
 
     try:
         from app.models.vector_embeddings import SolutionEmbedding
+        _sd_org_id = getattr(g, "current_org_id", None)
         _sp = db.session.begin_nested()
         try:
-            db.session.query(SolutionEmbedding).filter(
-                SolutionEmbedding.solution_id.in_(sid_list)
-            ).delete(synchronize_session=False)
+            sd_query = db.session.query(SolutionEmbedding).filter(
+                SolutionEmbedding.solution_id.in_(sid_list),
+            )
+            if _sd_org_id is not None:
+                sd_query = sd_query.filter(SolutionEmbedding.organization_id == _sd_org_id)
+            sd_query.delete(synchronize_session=False)
             _sp.commit()
         except Exception:
             _sp.rollback()
@@ -5510,7 +5514,11 @@ def _cascade_delete_solution(solution_id):
 
     try:
         from app.models.vector_embeddings import SolutionEmbedding
-        db.session.query(SolutionEmbedding).filter_by(solution_id=solution_id).delete(synchronize_session=False)
+        _sd2_org_id = getattr(g, "current_org_id", None)
+        sd2_query = db.session.query(SolutionEmbedding).filter_by(solution_id=solution_id)
+        if _sd2_org_id is not None:
+            sd2_query = sd2_query.filter(SolutionEmbedding.organization_id == _sd2_org_id)
+        sd2_query.delete(synchronize_session=False)
     except Exception:
         logger.debug("embedding cascade skip", exc_info=True)
 

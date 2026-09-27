@@ -295,6 +295,13 @@ def api_capabilities_semantic_search():
         if not embeddings:
             return jsonify({"capabilities": [], "method": "no_embeddings"})
 
+        # Post-filter by organisation
+        _map_org_id = getattr(g, "current_org_id", None)
+        if _map_org_id is not None:
+            embeddings = [e for e in embeddings if e.organization_id == _map_org_id or e.organization_id is None]
+        if not embeddings:
+            return jsonify({"capabilities": [], "method": "no_embeddings"})
+
         import numpy as np
         query_vec = np.array(query_embedding, dtype=np.float32)
         query_norm = np.linalg.norm(query_vec)
