@@ -8,7 +8,7 @@ Addresses Gap #3: No Cost Control or Budget Management
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Optional, Tuple
 
@@ -121,7 +121,7 @@ class LLMCostTracker:
             Tuple of (allowed: bool, message: Optional[str])
         """
         # Get current month's spending
-        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # Calculate spending by user
         if user_id:

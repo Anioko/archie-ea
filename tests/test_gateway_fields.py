@@ -231,7 +231,7 @@ class TestTwoOrgGatewayIsolation:
         """Cost report for org B does not include org A's interactions."""
         from app.models import LLMInteraction
         from app.modules.ai_chat.services.llm_cost_tracker import LLMCostTracker
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         org_a = make_org("cost-a")
         org_b = make_org("cost-b")
@@ -246,7 +246,7 @@ class TestTwoOrgGatewayIsolation:
                 cost=0.005,
                 organization_id=org.id,
             )
-            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
             db_session.add(record)
         db_session.flush()
 
@@ -254,8 +254,8 @@ class TestTwoOrgGatewayIsolation:
             with tenant_ctx(org_b.id):
                 tracker = LLMCostTracker()
                 report = tracker.get_cost_report(
-                    start_date=datetime.utcnow() - timedelta(days=1),
-                    end_date=datetime.utcnow(),
+                    start_date=datetime.now(timezone.utc) - timedelta(days=1),
+                    end_date=datetime.now(timezone.utc),
                     organization_id=org_b.id,
                 )
         # Only one interaction (org_b) should be in the report
@@ -268,7 +268,7 @@ class TestTwoOrgGatewayIsolation:
         """Domain analytics for org B does not include org A's interactions."""
         from app.models import LLMInteraction
         from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         org_a = make_org("domain-a")
         org_b = make_org("domain-b")
@@ -282,7 +282,7 @@ class TestTwoOrgGatewayIsolation:
                 cost=0.001,
                 organization_id=org.id,
             )
-            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
             db_session.add(record)
         db_session.flush()
 
@@ -299,7 +299,7 @@ class TestTwoOrgGatewayIsolation:
         """Quality metrics for org B does not include org A's interactions."""
         from app.models import LLMInteraction
         from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         org_a = make_org("quality-a")
         org_b = make_org("quality-b")
@@ -315,7 +315,7 @@ class TestTwoOrgGatewayIsolation:
                 response="some response",
                 latency_ms=200,
             )
-            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
             db_session.add(record)
         db_session.flush()
 

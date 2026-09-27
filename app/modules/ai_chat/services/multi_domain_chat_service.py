@@ -23,7 +23,7 @@ Features:
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import g
@@ -565,7 +565,7 @@ class MultiDomainChatService:
             "domain_usage": {domain: 0 for domain in self.domains},
             "average_response_time": 0,
             "error_count": 0,
-            "last_reset": datetime.utcnow(),
+            "last_reset": datetime.now(timezone.utc),
         }
 
         # Initialize AI Chat Extension Services
