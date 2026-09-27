@@ -97,7 +97,7 @@ def parse_cost_cell(
     It is NEVER stored as 0.
     """
     warnings: List[str] = []
-    error: Optional[str] = None
+    errors: List[str] = []
     value: Optional[Decimal] = None
 
     # Normalise currency (None means "not specified" — caller should
@@ -105,13 +105,13 @@ def parse_cost_cell(
     if currency is not None:
         currency = currency.strip().upper()
         if len(currency) != 3:
-            error = f"Currency '{currency}' is not a 3-letter code"
+            errors.append(f"Currency '{currency}' is not a 3-letter code")
             currency = None
 
     # Normalise period
     period = (period or "annual").strip().lower()
     if period not in PERIOD_VALUES:
-        error = f"Unknown period '{period}'; valid values: annual, monthly"
+        errors.append(f"Unknown period '{period}'; valid values: annual, monthly")
         # Value is rejected when period is unrecognised
         value = None
 
@@ -122,7 +122,7 @@ def parse_cost_cell(
         category = "total_cost_of_ownership"
 
     # Parse the numeric value — skip if an earlier check (period) already set error
-    if error:
+    if errors:
         pass
     elif raw_value is None or (isinstance(raw_value, str) and raw_value.strip() == ""):
         # Blank cell means "no value" — not an error
@@ -138,10 +138,10 @@ def parse_cost_cell(
                 cleaned = "-" + cleaned[1:-1]
             value = Decimal(cleaned)
             if value < 0:
-                error = f"Negative cost value not accepted: {raw_value!r}"
+                errors.append(f"Negative cost value not accepted: {raw_value!r}")
                 value = None
         except (InvalidOperation, ValueError, TypeError):
-            error = f"Could not parse cost value: {raw_value!r}"
+            errors.append(f"Could not parse cost value: {raw_value!r}")
             value = None
 
     # Normalise monthly to annual for storage
@@ -157,7 +157,7 @@ def parse_cost_cell(
         "period": period,
         "category": category,
         "warnings": warnings,
-        "error": error,
+        "error": "; ".join(errors) if errors else None,
     }
 
 
@@ -192,7 +192,6 @@ def map_import_cost_columns(
     has_currency_col = column_mapping.get("currency")
     global_currency = row.get(has_currency_col, None) if has_currency_col else None
     global_period = row.get(column_mapping.get("period", ""), "annual") if column_mapping.get("period") else "annual"
-    global_category = row.get(column_mapping.get("category", ""), "total_cost_of_ownership") if column_mapping.get("category") else "total_cost_of_ownership"
 
     # Determine effective reporting currency
     effective_reporting = reporting_currency
@@ -205,9 +204,8 @@ def map_import_cost_columns(
         raw_value = row[col_name]
         currency = row.get(has_currency_col, global_currency) if has_currency_col else global_currency
         period = row.get(column_mapping.get("period", ""), global_period) if column_mapping.get("period") else global_period
-        category = row.get(column_mapping.get("category", ""), global_category) if column_mapping.get("category") else global_category
 
-        parsed = parse_cost_cell(raw_value, currency, period, category)
+        parsed = parse_cost_cell(raw_value, currency, period, field_name)
 
         if parsed["error"]:
             cost_errors[field_name] = parsed["error"]
