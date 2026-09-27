@@ -12,6 +12,10 @@ Tools always accept names (not IDs) — the EntityResolver converts them.
 TOOL_SCHEMAS = [
     {
         "name": "create_solution",
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_solution",
+        "fenced": False,
+        "risk_class": "write",
         "mutates": True,
         "description": (
             "Create a new architectural solution in the repository. "
@@ -57,7 +61,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "link_capability_to_solution",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "link_capability_to_solution",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Link a business capability to a solution to show what capabilities "
             "the solution delivers, enables, or affects. "
@@ -90,7 +97,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "link_application_to_capability",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "link_application_to_capability",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Map an application to a business capability it supports. "
             "Use when the user wants to record which applications cover a capability."
@@ -119,7 +129,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_archimate_element",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_archimate_element",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Create a new ArchiMate element and optionally attach it to a solution. "
             "Use when the user asks to model a component, service, process, data object, "
@@ -165,7 +178,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "update_application_status",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "update_application_status",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Update the deployment/lifecycle status of an application. "
             "Use when the user wants to mark an application as retiring, "
@@ -198,7 +214,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "submit_for_arb_review",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "submit_for_arb_review",
+        "fenced": False,
+        "risk_class": "external_action",
         "description": (
             "Submit a solution for Architecture Review Board (ARB) governance review. "
             "REQUIRES USER CONFIRMATION before executing."
@@ -221,7 +240,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "query_capability_gaps",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "query_capability_gaps",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Find business capabilities with no supporting applications, "
             "or capabilities below a specified maturity threshold. "
@@ -252,7 +274,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "find_applications",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "find_applications",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Search for applications by name, lifecycle status, or capability. "
             "Returns lifecycle_status (planning/development/testing/operational/"
@@ -296,7 +321,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "create_driver",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_driver",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a business driver to a solution (ArchiMate Motivation layer). "
             "Use when the user says a solution is motivated by cost pressure, compliance, "
@@ -320,7 +348,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_goal",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_goal",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a goal to a solution (ArchiMate Motivation layer). "
             "Use when the user describes a desired outcome or success criterion."
@@ -339,7 +370,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_constraint",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_constraint",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a constraint to a solution (ArchiMate Motivation layer). "
             "Use when the user mentions a hard limit: budget cap, regulatory requirement, timeline, etc."
@@ -362,7 +396,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_requirement",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_requirement",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a functional or non-functional requirement to a solution. "
             "Use when the user specifies something the solution MUST do or achieve."
@@ -384,7 +421,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_risk",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_risk",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a risk to a solution risk register. "
             "Use when the user identifies a threat, concern, or uncertainty for the solution."
@@ -404,7 +444,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_option",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_option",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Add a Phase E solution option/recommendation. "
             "Use when the user describes an approach: buy a product, build custom, reuse existing, etc."
@@ -425,7 +468,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "mark_option_recommended",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "mark_option_recommended",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Mark one solution option as the architect's recommended choice. "
             "Use when the user selects or endorses a specific option."
@@ -442,7 +488,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "link_application_to_solution",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "link_application_to_solution",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Link an existing application from the catalog to a solution. "
             "Use when the user says a solution involves, replaces, or integrates with an application."
@@ -464,7 +513,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "link_vendor_product",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "link_vendor_product",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Link a vendor product from the catalog to a solution (Phase E). "
             "Use when the user identifies a commercial product as part of the technology stack."
@@ -481,6 +533,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "run_inference_engine",
+        "surfaces": ["chat", "blueprint"],
+        "route": "run_inference_engine",
+        "fenced": False,
+        "risk_class": "write",
         # Real write, not read-only despite the "diagnose"-adjacent name:
         # _tool_run_inference_engine (tools/executor.py) defaults dry_run to
         # False from args.get("dry_run", False) and calls
@@ -512,7 +568,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "generate_blueprint_narrative",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "generate_blueprint_narrative",
+        "fenced": True,
+        "risk_class": "write",
         "description": (
             "Generate an AI narrative for a specific blueprint section. "
             "REQUIRES USER CONFIRMATION — this overwrites existing section text. "
@@ -534,7 +593,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "create_archimate_relationship",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_archimate_relationship",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Create a typed ArchiMate relationship between two existing elements. "
             "Use when the user wants to model how elements connect."
@@ -557,7 +619,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "diagnose_chain",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "diagnose_chain",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Show missing elements in an ArchiMate element's chain without repairing. "
             "Read-only. Use when the user asks what's incomplete or what's missing."
@@ -573,7 +638,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "explain_element",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "explain_element",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Explain why an ArchiMate element exists by tracing its upstream provenance chain. "
             "Read-only. Use when the user asks 'why does X exist?' or 'what drives X?'."
@@ -589,7 +657,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "simulate_impact",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "simulate_impact",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Show the blast radius if an ArchiMate element is retired or changed. "
             "Read-only. Returns all downstream dependents across all 6 layers."
@@ -608,7 +679,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "get_solution_summary",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "get_solution_summary",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Read the current state of a solution: maturity score, linked entity counts, "
             "ARB status, and completeness gaps. Read-only."
@@ -624,7 +698,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "get_completeness_score",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "get_completeness_score",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Get the blueprint completeness score with dimension breakdown "
             "(Elements %, Relationships %, Traceability %). Read-only."
@@ -640,7 +717,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "update_solution_fields",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "update_solution_fields",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Update solution metadata: owner, business_sponsor, technical_lead, or description. "
             "Use when the user assigns roles or updates the solution description."
@@ -660,7 +740,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "update_solution_phase",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "update_solution_phase",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Advance the solution's TOGAF ADM phase (A through H). "
             "Use when the user says they're done with a phase and ready to move on."
@@ -684,7 +767,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "search_capabilities_by_problem",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "search_capabilities_by_problem",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Semantic search over the business capability catalog to find which ones "
             "are most relevant to a stated problem or initiative. "
@@ -712,7 +798,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "find_applications_by_capability",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "find_applications_by_capability",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Find all applications already mapped to a specific business "
             "capability. "
@@ -733,7 +822,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "find_technical_capabilities",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "find_technical_capabilities",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Find technical capabilities from the ACM (Application Capability Model) taxonomy "
             "across 7 domains: USER-EXPERIENCE, APPLICATION-SERVICES, DATA-STORAGE, "
@@ -770,7 +862,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "search_archimate_elements",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "search_archimate_elements",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Search ArchiMate elements by name, layer, or type. Read-only. "
             "Use when the user asks what elements exist or wants to find a specific element."
@@ -794,7 +889,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "verify_codegen",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "verify_codegen",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Verify that a solution's generated artifacts trace back to ArchiMate sources. "
             "Checks application-layer coverage, data-layer coverage, technology-layer presence, "
@@ -814,7 +912,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "propose_rationalization",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "propose_rationalization",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Generate autonomous TIME (Tolerate/Invest/Migrate/Eliminate) rationalization proposals "
             "from portfolio data. Surfaces ELIMINATE candidates with no active programme, "
@@ -838,7 +939,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "build_architecture_plan",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "build_architecture_plan",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Build a multi-step architecture execution plan for a goal. "
             "Selects the right template (SAP transformation, rationalization, solution design, "
@@ -865,7 +969,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "poll_infrastructure",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "poll_infrastructure",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Check configured infrastructure endpoints for reachability. "
             "Probes: Abacus API connector, LLM API endpoints, integration pattern URLs. "
@@ -890,7 +997,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "infer_schema",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "infer_schema",
+        "fenced": True,
+        "risk_class": "read",
         "description": (
             "Parse SQL DDL or OpenAPI 3.x JSON/YAML and infer ArchiMate DataObject elements. "
             "Returns a list of DataObject candidates with field attributes, ready to create "
@@ -922,7 +1032,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "validate_sap_clean_core",
-        "mutates": False,
+        "surfaces": ["chat", "blueprint"],
+        "route": "validate_sap_clean_core",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Validate a solution's architecture against the SAP RISE clean-core extension model. "
             "Detects Tier 3/4 violations (RFC/BAPI integrations, CMOD/SMOD modifications, direct SAP coupling, "
@@ -963,6 +1076,10 @@ TOOL_SCHEMAS = [
         # approval (mutates=False w.r.t. the model); the real write happens in
         # the un-registered `apply_genome_patch` handler once a human approves.
         "name": "propose_genome_patch",
+        "surfaces": ["chat"],
+        "route": "propose_genome_patch",
+        "fenced": False,
+        "risk_class": "propose",
         "mutates": False,
         "description": (
             "Propose a change to the enterprise genome (the ArchiMate model) as a "
@@ -1002,7 +1119,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "get_investment_priorities",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "get_investment_priorities",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "CTO view: the ranked capability investment priorities for this "
             "organization, with the split across CRITICAL/HIGH/MEDIUM/LOW "
@@ -1026,7 +1146,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "get_executive_dashboard",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "get_executive_dashboard",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "CTO/CIO one-call executive summary: portfolio health and stats, "
             "programme (ADM-phase) progress, the ARB decision pipeline, and the "
@@ -1043,7 +1166,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "get_arb_status",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "get_arb_status",
+        "fenced": False,
+        "risk_class": "read",
         "description": (
             "Read a solution's Architecture Review Board status: each review "
             "item's status, decision (approved / approved_with_conditions / "
@@ -1066,7 +1192,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_adr",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_adr",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Author an Architecture Decision Record (ADR) for a solution â the "
             "artifact the solution-architect charter centres on. Captures the "
@@ -1123,7 +1252,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "record_capability_maturity",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "record_capability_maturity",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Record a maturity assessment against a business capability: set its "
             "current maturity (1-5) and, optionally, its target maturity (1-5). "
@@ -1160,7 +1292,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "score_rationalization",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "score_rationalization",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Compute and PERSIST an application's TIME (Tolerate/Invest/Migrate/"
             "Eliminate) rationalization score and disposition. This is the EA/"
@@ -1186,7 +1321,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "merge_capabilities",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "merge_capabilities",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Resolve a duplicate business capability by MERGING one into another "
             "(Capability-Gap Register G3 — the systemic duplication debt). The "
@@ -1225,7 +1363,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_vendor",
-        "mutates": True,
+        "surfaces": ["chat"],
+        "route": "create_vendor",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Register a new vendor organization in the shared vendor catalogue — the "
             "Procurement / vendor-management headline write. Use when the user wants to "
@@ -1270,7 +1411,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "extract_contract_from_document",
-        "mutates": False,
+        "surfaces": ["chat"],
+        "route": "extract_contract_from_document",
+        "fenced": True,
+        "risk_class": "read",
         "description": (
             "Extract structured contract terms from pasted contract / MSA text — the "
             "Procurement 'paste this contract' capability. Reads the text and returns a "
@@ -1302,7 +1446,10 @@ TOOL_SCHEMAS = [
     # ------------------------------------------------------------------ #
     {
         "name": "bulk_update_application_status",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "bulk_update_application_status",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Set the lifecycle stage of a SET of applications in one governed "
             "action — the portfolio / application-manager bulk write. "
@@ -1360,7 +1507,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_contract",
-        "mutates": True,
+        "surfaces": ["chat"],
+        "route": "create_contract",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Create a PROCUREMENT (commercial) vendor contract — the "
             "vendor-management / procurement headline write. Captures the "
@@ -1417,7 +1567,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "create_programme",
-        "mutates": True,
+        "surfaces": ["chat", "blueprint"],
+        "route": "create_programme",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Create a canonical business-first Transformation Programme — the "
             "same aggregate the /solutions/new-programme wizard creates, "
@@ -1483,7 +1636,10 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "upsert_license",
-        "mutates": True,
+        "surfaces": ["chat"],
+        "route": "upsert_license",
+        "fenced": False,
+        "risk_class": "write",
         "description": (
             "Create or update a licence entitlement under a procurement contract "
             "— the software-asset-management write. Records the product, licence "
@@ -1595,6 +1751,10 @@ def _archimate_element_schemas() -> list:
             candidate_name = "create_archimate_%s" % element_type
         schemas.append({
             "name": candidate_name,
+            "surfaces": ["chat", "blueprint"],
+            "route": candidate_name,
+            "fenced": False,
+            "risk_class": "write",
             "mutates": True,
             # 'approve', not 'auto'. These write typed elements into the model
             # of record, and REQUIRE_AI_APPROVAL exists so an operator decides
