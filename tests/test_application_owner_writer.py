@@ -743,3 +743,163 @@ def test_owner_picker_escapes_special_chars(db_session, make_org, client, login_
     assert resp.status_code == 200
     data = resp.get_json()
     assert len(data["results"]) == 1, "should match the exact name"
+
+
+# ── 12. Backfill collision / merge handling ─────────────────────────────────
+
+
+def test_backfill_legacy_and_text_same_owner(db_session, make_org):
+    """Backfill does not crash when legacy and text columns name the same owner.
+
+    A legacy row "Business Owner" with contact "Jane Test" and a text column
+    business_owner = "Jane Test" on the same application share the same
+    (application_id, user_id, ownership_type). The backfill must not raise
+    a UniqueViolation; it should skip the second occurrence.
+    """
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("own-merge1")
+    user = _make_user(db_session, org, "application_manager", "mergemgr")
+    app = _make_app(db_session, org, "Merge App",
+                    business_owner=f"{user.first_name} {user.last_name}")
+
+    unit = OrganizationUnit(name="Test", organization_id=org.id)
+    db_session.add(unit)
+    db_session.flush()
+    db_session.add(ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Business Owner",
+        primary_contact=f"{user.first_name} {user.last_name}",
+    ))
+    db_session.flush()
+
+    # Should not raise UniqueViolation
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
+    # One row for the legacy path, text column is a merge (same user+type)
+    assert len(rows) == 1, "only one row should be created for the merged case"
+    assert rows[0].user_id == user.id
+    assert stats["legacy_ownership_rows"] == 1
+    assert stats["text_owner_fields"] == 0
+    assert stats["skipped_existing"] >= 1
+
+
+def test_backfill_ui_owner_then_text(db_session, make_org):
+    """Backfill does not crash when owner was already added through the picker.
+
+    An owner added via the writer (source_table NULL) then backfilled from a
+    text column for the same application produces the same
+    (application_id, user_id, ownership_type). The backfill must not raise.
+    """
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("own-merge2")
+    user = _make_user(db_session, org, "application_manager", "mergemgr2")
+    app = _make_app(db_session, org, "Merge UI App",
+                    business_owner=f"{user.first_name} {user.last_name}")
+
+    # Pre-create the owner row as if it was added through the picker
+    db_session.add(ApplicationOwner(
+        application_id=app.id,
+        user_id=user.id,
+        organization_id=org.id,
+        ownership_type="business",
+    ))
+    db_session.flush()
+
+    # Backfill should skip the text column since the row already exists
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
+    assert len(rows) == 1, "should not create a duplicate row"
+    assert stats["text_owner_fields"] == 0
+    assert stats["skipped_existing"] >= 1
+
+
+def test_backfill_legacy_no_contact_is_listed(db_session, make_org):
+    """A legacy row with no contact name is reported as unresolved."""
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("own-nocontact")
+    app = _make_app(db_session, org, "No Contact App")
+    unit = OrganizationUnit(name="Test", organization_id=org.id)
+    db_session.add(unit)
+    db_session.flush()
+
+    # Legacy row with no primary_contact and no contact_email
+    db_session.add(ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Business Owner",
+        primary_contact="",
+    ))
+    db_session.flush()
+
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
+    assert len(rows) == 0, "no row should be created for a nameless contact"
+    # Should be reported as unresolved with "(no contact)"
+    assert stats["unresolved_orgs"] == 1, "should be counted as unresolved"
+    assert stats["legacy_ownership_rows"] == 0
+
+
+def test_backfill_two_legacy_rows_same_type_same_user(db_session, make_org):
+    """Two legacy rows mapping to the same type and user do not cause a crash.
+
+    "Business Owner" and "Budget Holder" both map to ownership_type "business".
+    If both name the same contact, the backfill should create one row and
+    record the second as a merge.
+    """
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("own-merge3")
+    user = _make_user(db_session, org, "application_manager", "mergemgr3")
+    app = _make_app(db_session, org, "Merge Two Legacy")
+
+    unit = OrganizationUnit(name="Test", organization_id=org.id)
+    db_session.add(unit)
+    db_session.flush()
+
+    db_session.add(ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Business Owner",
+        primary_contact=f"{user.first_name} {user.last_name}",
+    ))
+    db_session.add(ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Budget Holder",
+        primary_contact=f"{user.first_name} {user.last_name}",
+    ))
+    db_session.flush()
+
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
+    assert len(rows) == 1, "only one row for the same user+type"
+    assert stats["legacy_ownership_rows"] == 1
+    assert stats["skipped_existing"] >= 1
+    assert stats["merged_legacy_rows"] >= 1
