@@ -18,11 +18,11 @@ is therefore guarded by ``job_lock`` (a cross-process advisory lock, the same
 mechanism ``app/jobs/capability_projection_job.py`` uses for the same reason),
 not by ``tenant_scope`` -- there is no organisation to scope it by.
 
-The job is NOT registered by the worker process (``app/jobs/worker.py``) because
-the sync writes tenant-owned rows (ApplicationComponent, BusinessCapability,
-ArchiMateElement, ArchiMateRelationship) and the method it calls
-(``async_run_incremental_sync``) is not ``run_incremental_sync``.  The job will
-be re-registered once it has a tenant context and the correct method name.
+``init_abacus_scheduler`` is a no-op: the sync job is NOT registered, neither
+by the worker process (``app/jobs/worker.py``) nor by any other caller,
+because ``run_abacus_sync_job`` calls ``sync_service.run_incremental_sync()``
+which does not exist (the real method is ``async_run_incremental_sync``).
+The scheduler registration is disabled until a working sync method exists.
 """
 
 import asyncio
@@ -93,80 +93,20 @@ def init_abacus_scheduler(app, scheduler=None):
     """
     Initialize the Abacus sync job on an APScheduler instance.
 
-    Args:
-        app: Flask application instance
-        scheduler: Existing APScheduler instance to register the job on.
-                   When None (backward-compatible path for direct tests), a
-                   BackgroundScheduler is created, started and stored.
+    .. caution::
 
-    Note: called by the dedicated jobs worker (app/jobs/worker.py), which
-    passes the ``ea_workflow_scheduler`` from ``app.extensions`` so there is
-    never a second scheduler instance. Previously each call created its own.
+       This function is intentionally a no-op.  ``run_abacus_sync_job`` calls
+       ``sync_service.run_incremental_sync()`` which does not exist (the real
+       method on ``AbacusSyncService`` is ``async_run_incremental_sync``).
+       The job is not registered until a working sync method exists and the
+       scheduler registration path is re-enabled.
     """
-    try:
-        from apscheduler.triggers.cron import CronTrigger
-
-        # Check if APScheduler is available
-        logger.info("Initializing Abacus sync scheduler...")
-
-        own_scheduler = False
-        if scheduler is None:
-            from apscheduler.schedulers.background import BackgroundScheduler
-
-            scheduler = BackgroundScheduler()
-            own_scheduler = True
-
-        # Get sync schedule from configuration
-        # Default: Daily at 2 AM
-        sync_hour = app.config.get("ABACUS_SYNC_HOUR", 2)
-        sync_minute = app.config.get("ABACUS_SYNC_MINUTE", 0)
-
-        # Add job with cron trigger
-        scheduler.add_job(
-            func=lambda: run_abacus_sync_job(app),
-            trigger=CronTrigger(hour=sync_hour, minute=sync_minute),
-            id="abacus_incremental_sync",
-            name="Abacus Incremental Sync (Daily)",
-            replace_existing=True,
-        )
-
-        # Remove any undeclared job ids BEFORE starting the scheduler —
-        # this job itself must be declared in PLATFORM_JOBS or TENANT_JOBS
-        # in app/jobs/tenant_safe_job.py.  If enforcement raises, the
-        # scheduler is not started (fail closed).
-        try:
-            from app.jobs.tenant_safe_job import _remove_undeclared_jobs
-
-            _remove_undeclared_jobs(scheduler)
-        except Exception as exc:
-            logger.exception(
-                "init_abacus_scheduler: _remove_undeclared_jobs failed — "
-                "scheduler not started: %s",
-                exc,
-            )
-            raise
-
-        # Start scheduler only when this call owns it
-        if own_scheduler:
-            scheduler.start()
-
-        logger.info(f"Abacus sync scheduler: Daily at {sync_hour:02d}:{sync_minute:02d}")
-
-        # Store scheduler in app context for shutdown (backward compat)
-        app.abacus_scheduler = scheduler
-
-        return scheduler
-
-    except ImportError:
-        logger.warning(
-            "APScheduler not installed - Abacus scheduled sync disabled. "
-            "Install with: pip install APScheduler"
-        )
-        return None
-
-    except Exception as e:
-        logger.error(f"Failed to initialize Abacus scheduler: {e}", exc_info=True)
-        return None
+    logger.warning(
+        "Abacus sync scheduler NOT started — run_abacus_sync_job calls "
+        "run_incremental_sync() which does not exist. "
+        "Re-enable init_abacus_scheduler once a working sync method is in place."
+    )
+    return None
 
 
 def shutdown_abacus_scheduler(app):
