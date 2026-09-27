@@ -108,7 +108,7 @@ class ImplementationWorkPackage(db.Model):
         index=True,
     )
 
-    # R1-B04: this store is retired into unified_work_packages (never dropped).
+    # this store is retired into unified_work_packages (never dropped).
     # NULL until `merge-work-package-stores` copies the row across.
     retired_into_id = Column(
         BigInteger,

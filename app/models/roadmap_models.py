@@ -110,7 +110,7 @@ class RoadmapWorkPackage(db.Model):
     sync_status = Column(String(20), default="synced")  # synced, pending, error
     automation_metadata = Column(Text)  # JSON string for additional automation data
 
-    # R1-B04: this store is retired into unified_work_packages (never dropped).
+    # this store is retired into unified_work_packages (never dropped).
     # NULL until `merge-work-package-stores` copies the row across.
     retired_into_id = Column(
         BigInteger,

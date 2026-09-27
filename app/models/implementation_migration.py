@@ -59,7 +59,7 @@ class TechnologyRoadmapInitiative(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow)
 
-    # R1-B04: this store is retired into unified_work_packages (never dropped).
+    # this store is retired into unified_work_packages (never dropped).
     # NULL until `merge-work-package-stores` copies the row across.
     retired_into_id = db.Column(
         db.BigInteger,
@@ -180,7 +180,7 @@ class WorkPackage(TenantMixin, db.Model):
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=utcnow, onupdate=utcnow, nullable=False)
 
-    # R1-B04: this store is retired into unified_work_packages (never dropped).
+    # this store is retired into unified_work_packages (never dropped).
     # NULL until `merge-work-package-stores` copies the row across.
     retired_into_id = db.Column(
         db.BigInteger,

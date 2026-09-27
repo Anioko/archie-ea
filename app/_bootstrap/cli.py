@@ -436,7 +436,7 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
 
-    # R1-B04: unified_work_packages gained TenantMixin; four other stores merge into it
+    # unified_work_packages gained TenantMixin; four other stores merge into it
     try:
         from app.commands.consolidate_work_packages import init_app as init_consolidate_work_packages
         init_consolidate_work_packages(app)

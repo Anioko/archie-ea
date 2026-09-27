@@ -1,7 +1,7 @@
-"""backfill-work-package-org and merge-work-package-stores (R1-B04, PR 1).
+"""backfill-work-package-org and merge-work-package-stores.
 
 unified_work_packages predates TenantMixin, so it has no organisation column
-today. This backfills it with the R1-B04 attribution rule -- linked programme
+today. This backfills it with the attribution rule -- linked programme
 or element, else creator, else quarantine -- then merges
 technology_roadmap_initiatives, roadmap_work_packages and
 implementation_work_packages into it (work_packages already carries
