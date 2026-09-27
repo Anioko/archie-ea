@@ -1086,7 +1086,6 @@ def consolidation_status():
 @admin_bp_v2.route("/feature-flags")
 @timed_route
 @platform_admin_required
-@admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
     page = safe_int_arg('page', 1, minimum=1)
@@ -1188,7 +1187,7 @@ def feature_flags():
 @admin_bp_v2.route("/feature-flags/new", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("create_feature_flag")
 def feature_flag_new():
     """Create new feature flag."""
@@ -1237,7 +1236,7 @@ def feature_flag_new():
 @admin_bp_v2.route("/feature-flags/<int:id>/edit", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("edit_feature_flag")
 def feature_flag_edit(id):
     """Edit feature flag."""
@@ -1294,7 +1293,7 @@ def feature_flag_edit(id):
 @admin_bp_v2.route("/feature-flags/<int:id>/toggle", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("toggle_feature_flag")
 def feature_flag_toggle(id):
     """Quick toggle feature enabled/disabled."""
@@ -1321,7 +1320,7 @@ def feature_flag_toggle(id):
 @admin_bp_v2.route("/feature-flags/<int:id>/delete", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("delete_feature_flag")
 def feature_flag_delete(id):
     """Delete feature flag."""
@@ -1341,7 +1340,7 @@ def feature_flag_delete(id):
 @admin_bp_v2.route("/feature-flags/discover-sidebar")
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def feature_flags_discover_sidebar():
     """Discover sidebar menu items for feature flagging."""
     try:
@@ -1385,7 +1384,7 @@ def feature_flags_discover_sidebar():
 @admin_bp_v2.route("/feature-flags/discover-sidebar/create", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("create_feature_flags_from_sidebar")
 def feature_flags_create_from_sidebar():
     """Create feature flags from selected sidebar items."""
@@ -3441,15 +3440,51 @@ def api_assign_enterprise_role():
 # =============================================================================
 
 
-@admin_bp_v2.route("/audit-log")
+@admin_bp_v2.route("/audit-log", methods=["GET", "POST"])
 @login_required
-@admin_required
+@governance_gate_reader_required
 def audit_log_viewer():
-    """PLT-032: Admin audit log query UI for SOX/HIPAA compliance."""
+    """PLT-032: the organisation's audit trail — query, export in full, verify.
+
+    Readers are organisation administrators and security architects (the same
+    readers as the governance gates). Every read carries the caller's
+    organisation predicate, so an export or verification covers only the
+    caller's own organisation.
+
+    * ``GET``            — filtered, paginated listing.
+    * ``GET ?export=csv`` — every matching entry streamed as CSV, no row cap;
+      the row count and organisation are stated in the file and headers.
+    * ``POST``           — verify the organisation's integrity chain; the
+      result is itself recorded as an audit entry and shown on reload.
+    """
+    import csv
+    import io
     import logging
     from datetime import datetime as dt
 
+    from flask import Response, abort, stream_with_context
+    from sqlalchemy import func
+
+    from app.models.audit_log import AuditLog
+
     logger = logging.getLogger(__name__)
+
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        abort(403)
+
+    if request.method == "POST":
+        result = AuditLog.verify_and_record(org_id, user_id=current_user.id)
+        if result["status"] == "broken":
+            flash(
+                f"Integrity check failed at entry #{result['first_broken_id']}: {result['reason']}",
+                "error",
+            )
+        elif result["status"] == "intact":
+            flash(f"Integrity check passed: {result['checked']} entries verified.", "success")
+        else:
+            flash("There are no sealed entries to verify yet.", "info")
+        return redirect(url_for("admin.audit_log_viewer", **request.args.to_dict()))
 
     page = safe_int_arg('page', 1, minimum=1)
     per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
@@ -3462,107 +3497,158 @@ def audit_log_viewer():
     export_csv = request.args.get("export") == "csv"
 
     entries = []
-    total = 0
+    total = None
     action_types = []
     entity_types = []
+    latest_verification = None
+    load_error = False
 
     try:
-        from app.models.audit_log import AuditLog
-
-        # NOTE: AuditLog's real columns are created_at / user_id / table_name /
-        # record_id (no timestamp/user_email/entity_type/description/is_deleted).
-        # Filters below use the real columns; the model exposes the old names as
-        # read-only display properties for the template/CSV.
-        # admin_required is org-scoped admin, not platform_admin — restrict to
-        # the current org's audit trail.
-        query = AuditLog.query.filter_by(organization_id=g.current_org_id)
+        # AuditLog's real columns are created_at / user_id / table_name /
+        # record_id; the model exposes older names as display properties.
+        criteria = [AuditLog.org_predicate(org_id)]
 
         if date_from:
             try:
-                query = query.filter(AuditLog.created_at >= dt.fromisoformat(date_from))
+                criteria.append(AuditLog.created_at >= dt.fromisoformat(date_from))
             except ValueError:
                 logger.debug("PLT-032: invalid date_from: %s", date_from)
 
         if date_to:
             try:
-                to_dt = dt.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
-                query = query.filter(AuditLog.created_at <= to_dt)
+                to_dt = dt.fromisoformat(date_to).replace(hour=23, minute=59, second=59, microsecond=999999)
+                criteria.append(AuditLog.created_at <= to_dt)
             except ValueError:
                 logger.debug("PLT-032: invalid date_to: %s", date_to)
 
         if user_email:
             # AuditLog stores user_id, not email — resolve matching users first.
-            from app.models.user import User
-
             _uids = [
                 u.id
                 for u in User.query.filter(
                     User.email.ilike(f"%{user_email}%"),
-                    User.organization_id == g.current_org_id,
+                    User.organization_id == org_id,
                 ).all()
             ]
-            query = query.filter(AuditLog.user_id.in_(_uids or [-1]))
+            criteria.append(AuditLog.user_id.in_(_uids or [-1]))
 
         if action_filter:
-            query = query.filter(AuditLog.action == action_filter)
+            criteria.append(AuditLog.action == action_filter)
 
         if entity_type_filter:
-            query = query.filter(AuditLog.table_name == entity_type_filter)
+            criteria.append(AuditLog.table_name == entity_type_filter)
 
         if search_q:
-            query = query.filter(
+            criteria.append(
                 db.or_(
                     AuditLog.table_name.ilike(f"%{search_q}%"),
                     AuditLog.action.ilike(f"%{search_q}%"),
                 )
             )
 
-        query = query.order_by(AuditLog.created_at.desc())
-
-        # Get distinct action types and entity types (table names) for dropdowns
-        action_types = [
-            r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all() if r[0]
-        ]
-        entity_types = [
-            r[0] for r in db.session.query(AuditLog.table_name).distinct().order_by(AuditLog.table_name).all() if r[0]
-        ]
-
         if export_csv:
-            import csv
-            import io
-
-            rows = query.limit(10000).all()
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(["timestamp", "user_email", "action", "entity_type", "entity_id", "entity_name", "description", "status"])
-            for row in rows:
-                writer.writerow([
-                    row.timestamp.isoformat() if row.timestamp else "",
-                    row.user_email or "",
-                    row.action,
-                    row.entity_type,
-                    row.entity_id or "",
-                    row.entity_name or "",
-                    row.description or "",
-                    row.status or "",
-                ])
-
-            from flask import Response
-            return Response(
-                output.getvalue(),
-                mimetype="text/csv",
-                headers={"Content-Disposition": "attachment; filename=audit_log_export.csv"},
+            # Snapshot the newest id first so the stated count and the rows
+            # streamed describe the same set, however long the stream runs.
+            upto_id = (
+                db.session.query(func.max(AuditLog.id))
+                .filter(AuditLog.org_predicate(org_id))
+                .scalar()
+            ) or 0
+            row_count = (
+                db.session.query(func.count(AuditLog.id))
+                .filter(*criteria, AuditLog.id <= upto_id)
+                .scalar()
+            )
+            org = db.session.get(Organization, org_id)  # tenant-scoping-ok: the caller's own organisation, by its id
+            org_name = org.name if org is not None else str(org_id)
+            emails = dict(
+                db.session.query(User.id, User.email)
+                .filter(User.organization_id == org_id)
+                .all()
             )
 
+            def _cell(value):
+                if value is None:
+                    return ""
+                if isinstance(value, (dict, list)):
+                    return json.dumps(value, sort_keys=True, default=str)
+                text = str(value)
+                # Spreadsheet formula injection: never let a cell start a formula.
+                return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+            def _generate():
+                buf = io.StringIO()
+                writer = csv.writer(buf)
+                writer.writerow([
+                    "id", "organisation", "recorded_at", "user", "action",
+                    "entity_type", "entity_id", "description", "old_value",
+                    "new_value", "source_table", "source_id", "prev_hash", "row_hash",
+                ])
+                for row in AuditLog.iter_rows(criteria, upto_id):
+                    record = f"#{row['record_id']}" if row["record_id"] else ""
+                    writer.writerow([_cell(v) for v in (
+                        row["id"],
+                        org_name,
+                        row["created_at"].isoformat() if row["created_at"] else None,
+                        emails.get(row["user_id"], row["user_id"]),
+                        row["action"],
+                        row["table_name"],
+                        row["record_id"],
+                        f"{row['action']} {row['table_name'] or ''}{record}".strip(),
+                        row["old_value"],
+                        row["new_value"],
+                        row["source_table"],
+                        row["source_id"],
+                        row["prev_hash"],
+                        row["row_hash"],
+                    )])
+                    if buf.tell() > 65536:
+                        yield buf.getvalue()
+                        buf.seek(0)
+                        buf.truncate(0)
+                yield buf.getvalue()
+
+            stamp = dt.utcnow().strftime("%Y%m%d-%H%M%S")
+            slug = secure_filename(getattr(org, "slug", None) or f"org-{org_id}") or f"org-{org_id}"
+            return Response(
+                stream_with_context(_generate()),
+                mimetype="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=audit-log-{slug}-{stamp}.csv",
+                    "X-Audit-Row-Count": str(row_count),
+                    "X-Audit-Organisation": slug,
+                    "Cache-Control": "no-store",
+                },
+            )
+
+        # tenant-scoping-ok: criteria[0] is AuditLog.org_predicate(org_id)
+        query = AuditLog.query.filter(*criteria).order_by(
+            AuditLog.created_at.desc(), AuditLog.id.desc()
+        )
         total = query.count()
         entries = query.offset((page - 1) * per_page).limit(per_page).all()
 
-    except Exception as exc:
-        logger.warning("PLT-032: AuditLog query failed: %s", exc)
+        # Dropdown values come from this organisation's entries only.
+        action_types = [
+            r[0] for r in db.session.query(AuditLog.action)
+            .filter(AuditLog.org_predicate(org_id)).distinct().order_by(AuditLog.action).all() if r[0]
+        ]
+        entity_types = [
+            r[0] for r in db.session.query(AuditLog.table_name)
+            .filter(AuditLog.org_predicate(org_id)).distinct().order_by(AuditLog.table_name).all() if r[0]
+        ]
+        latest_verification = AuditLog.latest_verification(org_id)
 
-    total_pages = (total + per_page - 1) // per_page if per_page else 1
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning("PLT-032: AuditLog query failed: %s", exc, exc_info=True)
+        load_error = True
+
+    total_pages = ((total or 0) + per_page - 1) // per_page if per_page else 1
 
     if request.accept_mimetypes.best == "application/json":
+        if load_error:
+            return jsonify({"error": "The audit log could not be read."}), 500
         return jsonify({
             "entries": [e.to_dict() for e in entries],
             "total": total,
@@ -3586,6 +3672,8 @@ def audit_log_viewer():
         search_q=search_q,
         action_types=action_types,
         entity_types=entity_types,
+        latest_verification=latest_verification,
+        load_error=load_error,
     )
 
 
