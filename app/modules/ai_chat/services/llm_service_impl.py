@@ -1974,11 +1974,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # If interaction wasn't created by failover (no pipeline_stage_id), create it now
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # MEDIUM-1: default retention_setting from org config, never NULL for a new row
+        # Default retention_setting from org config, never NULL for a new row
         if retention_setting is None:
             retention_setting = "30d"  # sensible default; configurable per org/provider
 
-        # MEDIUM-2: persist interaction in a nested transaction so we never
+        # Persist interaction in a nested transaction so we never
         # commit the caller's pending work.  If a savepoint is not available
         # (e.g. the db_session fixture's outer transaction), fall through to
         # add() without committing — the test fixture handles rollback.
