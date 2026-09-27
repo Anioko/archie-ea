@@ -496,3 +496,14 @@ def _assign_default_organization(mapper, connection, target):
             orgs.insert().values(name="Default Organization", slug="default")
         )
         target.organization_id = result.inserted_primary_key[0]
+
+
+def _install_plan_limit_guard():
+    """Every flush that adds a person to an organisation is checked against its
+    plan here, whichever path creates them (see billing_plans.check_capacity)."""
+    from app.services.billing_plans import install_user_limit_guard
+
+    install_user_limit_guard()
+
+
+_install_plan_limit_guard()

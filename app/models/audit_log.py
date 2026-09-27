@@ -370,7 +370,10 @@ class AuditLog(db.Model):
                         "This entry does not follow the one before it: an entry "
                         "was removed, inserted or re-sealed.",
                     )
-                if chain_digest(row["prev_hash"], row) != row["row_hash"]:
+                if row["row_hash"] not in (
+                    chain_digest(row["prev_hash"], row),
+                    chain_digest(row["prev_hash"], row, LEGACY_CHAINED_COLUMNS),
+                ):
                     return cls._broken(result, row["id"], "This entry was altered after it was recorded.")
                 prev = row["row_hash"]
                 result["checked"] += 1
@@ -451,6 +454,9 @@ CHAINED_COLUMNS = (
     "old_value", "new_value", "ip_address", "user_agent", "created_at",
     "extra_json", "source_table", "source_id",
 )
+#: What entries sealed before the id left the seal covered: the same columns
+#: plus ``id``. Those seals stay valid, so verification accepts either form.
+LEGACY_CHAINED_COLUMNS = ("id", *CHAINED_COLUMNS)
 _JSON_COLUMNS = ("old_value", "new_value", "extra_json")
 _INT_COLUMNS = ("organization_id", "user_id", "record_id", "source_id")
 _STR_COLUMNS = ("action", "table_name", "ip_address", "user_agent", "source_table")
@@ -494,10 +500,10 @@ def _normalise(values):
     return values
 
 
-def chain_digest(prev_hash, values):
+def chain_digest(prev_hash, values, columns=CHAINED_COLUMNS):
     """SHA-256 over ``prev_hash`` and the canonical form of the chained columns."""
     body = {}
-    for key in CHAINED_COLUMNS:
+    for key in columns:
         value = values.get(key)
         if key in _JSON_COLUMNS:
             value = _canonical_json(value)
