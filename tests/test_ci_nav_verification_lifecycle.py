@@ -138,6 +138,17 @@ def test_every_shard_hands_its_coverage_data_to_the_combine_step():
     assert combine >= 0
 
 
+def test_shard_coverage_records_checkout_relative_paths():
+    """Shards run on different machines, each checking out into its own
+    directory. With absolute paths, coverage combine keeps one entry per
+    machine for the same file instead of merging them."""
+    import configparser
+
+    config = configparser.ConfigParser()
+    assert config.read(REPO / ".coveragerc"), "no .coveragerc at the repository root"
+    assert config.getboolean("run", "relative_files") is True
+
+
 def test_merge_is_the_union_of_every_shard_and_refuses_a_missing_one(tmp_path, monkeypatch):
     import json
     import sys
