@@ -1,4 +1,4 @@
-"""Tests for PR 1 of R1-B03: owner writer, person picker, backfill, and coverage view.
+"""Tests for one owner record with a writer.
 
 Two-organisation tests verify that an owner from organisation B cannot be
 assigned to organisation A's application, that coverage counts only the
@@ -170,14 +170,12 @@ def test_owner_list_scoped_to_caller_org(two_orgs, client, login_as):
     org_a = two_orgs["org_a"]
     org_b = two_orgs["org_b"]
 
-    # Add owner rows directly (not through API)
     db_session.add(ApplicationOwner(
         application_id=two_orgs["app_a"].id,
         user_id=two_orgs["manager_a"].id,
         organization_id=org_a.id,
         ownership_type="primary",
     ))
-    # Add a cross-org row (should not appear when org A lists owners)
     db_session.add(ApplicationOwner(
         application_id=two_orgs["app_a"].id,
         user_id=two_orgs["manager_b"].id,
@@ -193,6 +191,27 @@ def test_owner_list_scoped_to_caller_org(two_orgs, client, login_as):
     owner_ids = {o["user_id"] for o in data["owners"]}
     assert two_orgs["manager_a"].id in owner_ids
     assert two_orgs["manager_b"].id not in owner_ids
+
+
+def test_cross_org_application_write_refused(two_orgs, client, login_as):
+    """H2: a user cannot write an owner onto another organisation's application."""
+    login_as(client, two_orgs["manager_a"])
+
+    # Try to add manager A's user to org B's application
+    resp = _post_json(client, f"/applications/{two_orgs['app_b'].id}/owners", {
+        "user_id": two_orgs["manager_a"].id,
+        "ownership_type": "primary",
+    })
+    assert resp.status_code == 404, resp.get_data(as_text=True)
+    data = resp.get_json()
+    assert "Application not found" in data["error"]
+
+    # Verify no orphan row was created
+    from app.models.application_owner import ApplicationOwner
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == two_orgs["app_b"].id,
+    ).all()
+    assert len(rows) == 0
 
 
 # ── 3. Owner writer: change type & remove ───────────────────────────────────
@@ -328,13 +347,18 @@ def test_backfill_migrates_text_owners(db_session, make_org):
 
     org = make_org("r1b03-bftext")
     user = _make_user(db_session, org, "application_manager", "bftextuser")
-    _make_app(db_session, org, "Backfill Text", business_owner=f"{user.first_name} {user.last_name}")
+    app = _make_app(db_session, org, "Backfill Text", business_owner=f"{user.first_name} {user.last_name}")
 
-    stats = backfill_owner_data(dry_run=False)
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
     assert stats["text_owner_fields"] >= 1
 
-    rows = ApplicationOwner.query.all()
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
     assert len(rows) >= 1
+    assert rows[0].user_id == user.id
+    assert rows[0].source_table == "business_owner"
+    assert rows[0].source_id == app.id
 
 
 def test_backfill_keeps_organisations_apart(db_session, make_org):
@@ -350,7 +374,7 @@ def test_backfill_keeps_organisations_apart(db_session, make_org):
     _make_app(db_session, org_a, "OrgA App", business_owner=f"{user_a.first_name} {user_a.last_name}")
     _make_app(db_session, org_b, "OrgB App", business_owner=f"{user_b.first_name} {user_b.last_name}")
 
-    backfill_owner_data(dry_run=False)
+    backfill_owner_data(dry_run=False, organization_ids=[org_a.id, org_b.id])
 
     rows_a = (
         ApplicationOwner.query
@@ -368,8 +392,110 @@ def test_backfill_keeps_organisations_apart(db_session, make_org):
     assert len(rows_a) >= 1
     assert len(rows_b) >= 1
     for r in rows_a:
-        if r.user_id is not None:
-            assert r.user_id == user_a.id, "org A row points to wrong user"
+        assert r.user_id == user_a.id, "org A row points to wrong user"
+    for r in rows_b:
+        assert r.user_id == user_b.id, "org B row points to wrong user"
+
+
+def test_backfill_does_not_crash_on_unresolved_name(db_session, make_org):
+    """H3: an unresolved text owner does NOT cause a NotNullViolation crash.
+
+    Instead the name is only appended to the unresolved list, and no
+    ApplicationOwner row is created.
+    """
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("r1b03-unresolved")
+    user = _make_user(db_session, org, "application_manager", "unresmgr")
+    _make_app(db_session, org, "Unresolved Test",
+              business_owner=f"{user.first_name} {user.last_name}",
+              technical_owner="Nobody Known Here")
+
+    # Should not raise
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    # Should have created 1 row (for the resolved business_owner) and 0 for unresolved
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.organization_id == org.id,
+    ).all()
+    assert len(rows) == 1, "only the resolved name should create a row"
+    assert rows[0].user_id == user.id
+    assert rows[0].source_table == "business_owner"
+
+    # Unresolved should be reported
+    assert stats["unresolved_orgs"] == 1
+
+
+def test_backfill_unresolved_name_goes_to_list_only(db_session, make_org):
+    """H3: an unresolved name creates no row, only an unresolved entry."""
+    from app.commands.backfill_application_owners import backfill_owner_data, _record_unresolved
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("r1b03-unres2")
+    _make_app(db_session, org, "No Match App", business_owner="Completely Unknown Person")
+
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.organization_id == org.id,
+    ).all()
+    assert len(rows) == 0, "no row should be created for an unresolved name"
+    assert stats["text_owner_fields"] == 0
+    assert stats["unresolved_orgs"] == 1
+
+
+def test_backfill_legacy_unknown_type_goes_to_unresolved(db_session, make_org):
+    """M6: unknown legacy ownership_type goes to the unresolved list, not to 'primary'."""
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("r1b03-unktype")
+    user = _make_user(db_session, org, "application_manager", "unktypemanager")
+    app = _make_app(db_session, org, "Unknown Type App")
+    unit = OrganizationUnit(name="Test Unit", organization_id=org.id)
+    db_session.add(unit)
+    db_session.flush()
+    db_session.add(ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Some random type",
+        primary_contact=f"{user.first_name} {user.last_name}",
+    ))
+    db_session.flush()
+
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+
+    rows = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app.id,
+    ).all()
+    assert len(rows) == 0, "unknown type should not create an owner row"
+    assert stats["unresolved_orgs"] == 1
+
+
+def test_backfill_is_idempotent(db_session, make_org):
+    """M7: running backfill twice creates the same number of rows."""
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("r1b03-idem")
+    user = _make_user(db_session, org, "application_manager", "idemmanager")
+    _make_app(db_session, org, "Idempotent App", business_owner=f"{user.first_name} {user.last_name}")
+
+    stats1 = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+    rows1 = ApplicationOwner.query.filter(
+        ApplicationOwner.organization_id == org.id,
+    ).all()
+
+    stats2 = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+    rows2 = ApplicationOwner.query.filter(
+        ApplicationOwner.organization_id == org.id,
+    ).all()
+
+    assert len(rows1) == len(rows2), "second run should create no additional rows"
+    assert stats2["text_owner_fields"] == 0  # all skipped
+    assert stats2["skipped_existing"] >= 1
 
 
 # ── 6. Ownership coverage view ──────────────────────────────────────────────
@@ -386,20 +512,46 @@ def test_coverage_view_loads(db_session, make_org, client, login_as):
     assert resp.status_code == 200
 
 
+def test_coverage_view_forbidden_for_procurement(db_session, make_org, client, login_as):
+    """M13: procurement role gets 403 on coverage view."""
+    org = make_org("r1b03-cov403")
+    proc = _make_user(db_session, org, "procurement", "procurementcov")
+    login_as(client, proc)
+
+    resp = client.get("/applications/ownership-coverage")
+    assert resp.status_code == 403
+
+
+def test_coverage_view_overall_dash_when_no_apps(db_session, make_org, client, login_as):
+    """M13: an org with no applications shows em-dash for overall coverage."""
+    org = make_org("r1b03-covdash")
+    cto = _make_user(db_session, org, "cto", "ctodash")
+    login_as(client, cto)
+
+    resp = client.get("/applications/ownership-coverage")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "&mdash;" in html or "—" in html
+
+
 def test_coverage_view_org_isolation(two_orgs, client, login_as):
     """Coverage counts only the caller's organisation."""
     from app.models.enterprise_intelligence import OrganizationUnit
 
     db_session = two_orgs["db_session"]
+    org_a = two_orgs["org_a"]
 
     db_session.add(OrganizationUnit(
         name="Finance",
-        organization_id=two_orgs["org_a"].id,
+        organization_id=org_a.id,
     ))
-    _make_app(db_session, two_orgs["org_a"], "Finance App", business_domain="Finance")
+    _make_app(db_session, org_a, "Finance App", business_domain="Finance")
     db_session.flush()
 
-    login_as(client, two_orgs["manager_a"])
+    # Create a CTO user in org A - the coverage route requires cto role
+    cto_a = _make_user(db_session, org_a, "cto", "ctoaiso")
+
+    login_as(client, cto_a)
     resp = client.get("/applications/ownership-coverage")
     assert resp.status_code == 200
     assert b"Finance" in resp.data
@@ -449,6 +601,20 @@ def test_edit_form_has_readonly_text_owners(db_session, make_org, client, login_
     assert "Migrated to owner records" in html
 
 
+def test_edit_form_has_business_purpose(db_session, make_org, client, login_as):
+    """M14: business purpose input is present in the edit form."""
+    org = make_org("r1b03-bp")
+    manager = _make_user(db_session, org, "application_manager", "bpmanager")
+    app = _make_app(db_session, org, "BP Test")
+    login_as(client, manager)
+
+    resp = client.get(f"/applications/{app.id}/edit")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="business_purpose"' in html
+    assert 'name="business_purpose"' in html
+
+
 # ── 9. application_owners store-agreement concept ──────────────────────────
 
 
@@ -477,20 +643,27 @@ def test_can_assign_and_read_back_all_owner_types(db_session, make_org, client, 
 def test_cross_org_owner_not_counted_in_coverage(two_orgs, client, login_as):
     """Coverage does not count another organisation's owner records."""
     from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import OrganizationUnit
 
     db_session = two_orgs["db_session"]
+    org_a = two_orgs["org_a"]
+    org_b = two_orgs["org_b"]
 
-    # Add an owner from org B to org B's app
     db_session.add(ApplicationOwner(
         application_id=two_orgs["app_b"].id,
         user_id=two_orgs["manager_b"].id,
-        organization_id=two_orgs["org_b"].id,
+        organization_id=org_b.id,
         ownership_type="primary",
+    ))
+    db_session.add(OrganizationUnit(
+        name="Finance",
+        organization_id=org_a.id,
     ))
     db_session.flush()
 
-    # Org A should not see this owner in the coverage view
-    login_as(client, two_orgs["manager_a"])
+    # Use a CTO user for org A
+    cto_a = _make_user(db_session, org_a, "cto", "ctocross")
+    login_as(client, cto_a)
     resp = client.get("/applications/ownership-coverage")
     assert resp.status_code == 200
 
@@ -498,7 +671,6 @@ def test_cross_org_owner_not_counted_in_coverage(two_orgs, client, login_as):
 def test_app_owner_writer_assigns_back_to_user(two_orgs, client, login_as):
     """An owner assigned via the writer shows in that user's My Applications."""
 
-    # Manager A assigns Manager B (but since B is in another org, this fails)
     login_as(client, two_orgs["manager_a"])
     resp = _post_json(client, f"/applications/{two_orgs['app_a'].id}/owners", {
         "user_id": two_orgs["manager_b"].id,
@@ -506,15 +678,68 @@ def test_app_owner_writer_assigns_back_to_user(two_orgs, client, login_as):
     })
     assert resp.status_code == 404, "cross-org assignment must be refused"
 
-    # Manager A assigns themselves
     resp = _post_json(client, f"/applications/{two_orgs['app_a'].id}/owners", {
         "user_id": two_orgs["manager_a"].id,
         "ownership_type": "primary",
     })
     assert resp.status_code == 201
 
-    # Verify it shows in My Applications
     login_as(client, two_orgs["manager_a"])
     resp = client.get("/my-applications/")
     assert resp.status_code == 200
     assert two_orgs["app_a"].name.encode() in resp.data
+
+
+# ── 10. Owner list endpoint requires app in caller's org ───────────────────
+
+
+def test_list_owners_cross_org_app_refused(two_orgs, client, login_as):
+    """H2: listing owners for another org's application returns 404."""
+    login_as(client, two_orgs["manager_a"])
+
+    resp = client.get(f"/applications/{two_orgs['app_b'].id}/owners")
+    assert resp.status_code == 404, resp.get_data(as_text=True)
+
+
+def test_remove_owner_cross_org_app_refused(two_orgs, client, login_as):
+    """H2: removing an owner from another org's application returns 404."""
+    login_as(client, two_orgs["manager_a"])
+
+    resp = client.delete(f"/applications/{two_orgs['app_b'].id}/owners/1")
+    assert resp.status_code == 404, resp.get_data(as_text=True)
+
+
+def test_change_owner_type_cross_org_app_refused(two_orgs, client, login_as):
+    """H2: changing owner type on another org's application returns 404."""
+    login_as(client, two_orgs["manager_a"])
+
+    resp = _put_json(client, f"/applications/{two_orgs['app_b'].id}/owners/1", {
+        "ownership_type": "business",
+    })
+    assert resp.status_code == 404
+
+
+# ── 11. Picker ILIKE escaping ──────────────────────────────────────────────
+
+
+def test_owner_picker_escapes_special_chars(db_session, make_org, client, login_as):
+    """L18: picker search handles % and _ in the query literally."""
+    org = make_org("r1b03-esc")
+    manager = _make_user(db_session, org, "application_manager", "escmgr")
+    unique = "te_st_user_100"
+    manager.first_name = unique
+    db_session.flush()
+    app = _make_app(db_session, org, "Escape Test")
+    login_as(client, manager)
+
+    # Searching with % should not match everything
+    resp = client.get(f"/applications/{app.id}/owners/search?q=%")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["results"]) == 0, "% wildcard should not match all users"
+
+    # Searching with _ should be literal
+    resp = client.get(f"/applications/{app.id}/owners/search?q={unique}")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert len(data["results"]) == 1, "should match the exact name"
