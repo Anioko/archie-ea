@@ -584,13 +584,25 @@ for _evt in ("commit", "rollback", "rollback_savepoint"):
 #  Copies from the other audit stores (ADR 0008: one audit store).       #
 # ---------------------------------------------------------------------- #
 
+# One literal statement per table: table names are never interpolated into SQL.
+_ORG_OF_SQL = {
+    "saved_diagrams": "SELECT organization_id FROM saved_diagrams WHERE id = :id",  # tenancy-ok: attributing one row by its own key
+    "users": "SELECT organization_id FROM users WHERE id = :id",  # tenancy-ok: attributing one row by its own key
+    "application_components": "SELECT organization_id FROM application_components WHERE id = :id",  # tenancy-ok: attributing one row by its own key
+}
+
+#: Points one source row at its copy (``:audit_id``, ``:id``), per source table.
+RETIRE_SQL = {
+    "archimate_audit_logs": "UPDATE archimate_audit_logs SET retired_into_id = :audit_id WHERE id = :id",  # tenancy-ok: one row by its own key
+    "arb_audit_logs": "UPDATE arb_audit_logs SET retired_into_id = :audit_id WHERE id = :id",  # tenancy-ok: one row by its own key
+    "rationalization_audit_entries": "UPDATE rationalization_audit_entries SET retired_into_id = :audit_id WHERE id = :id",  # tenancy-ok: one row by its own key
+}
+
+
 def _org_of(connection, table, row_id):
     if row_id is None:
         return None
-    return connection.execute(
-        db.text(f"SELECT organization_id FROM {table} WHERE id = :id"),  # tenancy-ok: attributing one row by its own key
-        {"id": row_id},
-    ).scalar()
+    return connection.execute(db.text(_ORG_OF_SQL[table]), {"id": row_id}).scalar()
 
 
 def _existing_user(connection, user_id):
@@ -711,9 +723,7 @@ def mirror_source_row(connection, source_table, row):
                 return None
             audit_id = chain_insert(connection, **values)
             connection.execute(
-                db.text(
-                    f"UPDATE {source_table} SET retired_into_id = :audit_id WHERE id = :id"  # tenancy-ok: one row by its own key
-                ),
+                db.text(RETIRE_SQL[source_table]),
                 {"audit_id": audit_id, "id": row["id"]},
             )
         return audit_id

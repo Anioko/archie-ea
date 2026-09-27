@@ -61,6 +61,34 @@ _ATTRIBUTION_SQL = {
     ),
 }
 
+# Rows per organisation and how many are already copied, per source table,
+# using the same attribution as _ATTRIBUTION_SQL.
+_COUNT_SQL = {
+    "arb_audit_logs": (
+        "SELECT s.organization_id, COUNT(*), COUNT(s.retired_into_id) FROM arb_audit_logs s "  # tenancy-ok: measurement across every organisation
+        "GROUP BY 1 ORDER BY 1 NULLS FIRST"
+    ),
+    "archimate_audit_logs": (
+        "SELECT COALESCE(d.organization_id, u.organization_id), COUNT(*), COUNT(s.retired_into_id) "  # tenancy-ok: measurement across every organisation
+        "FROM archimate_audit_logs s "
+        "LEFT JOIN saved_diagrams d ON d.id = s.viewpoint_id "
+        "LEFT JOIN users u ON u.id = s.user_id "
+        "GROUP BY 1 ORDER BY 1 NULLS FIRST"
+    ),
+    "rationalization_audit_entries": (
+        "SELECT a.organization_id, COUNT(*), COUNT(s.retired_into_id) FROM rationalization_audit_entries s "  # tenancy-ok: measurement across every organisation
+        "LEFT JOIN application_components a ON a.id = s.application_id "
+        "GROUP BY 1 ORDER BY 1 NULLS FIRST"
+    ),
+}
+
+# Full rows of one batch of ids, per source table.
+_ROWS_SQL = {
+    "arb_audit_logs": "SELECT * FROM arb_audit_logs WHERE id = ANY(:ids) ORDER BY id",  # tenancy-ok: ids already attributed to this organisation
+    "archimate_audit_logs": "SELECT * FROM archimate_audit_logs WHERE id = ANY(:ids) ORDER BY id",  # tenancy-ok: ids already attributed to this organisation
+    "rationalization_audit_entries": "SELECT * FROM rationalization_audit_entries WHERE id = ANY(:ids) ORDER BY id",  # tenancy-ok: ids already attributed to this organisation
+}
+
 # ARB actions the earlier decision-only mirror already copied (without
 # provenance). Matching entries are merged into rather than duplicated.
 _PREVIOUSLY_MIRRORED_ARB_ACTIONS = ("decision", "exception_decision")
@@ -75,14 +103,8 @@ def init_app(app):
 def _counts(db):
     """{source: {org_id: (total, copied)}} using the same attribution as the copy."""
     out = {}
-    for source, sql in _ATTRIBUTION_SQL.items():
-        all_rows_sql = sql.replace("WHERE s.retired_into_id IS NULL ", "")
-        rows = db.session.execute(
-            db.text(
-                f"SELECT q.org_id, COUNT(*), COUNT(s2.retired_into_id) FROM ({all_rows_sql}) q "  # tenancy-ok: measurement across every organisation
-                f"JOIN {source} s2 ON s2.id = q.id GROUP BY q.org_id ORDER BY q.org_id NULLS FIRST"
-            )
-        ).all()
+    for source, sql in _COUNT_SQL.items():
+        rows = db.session.execute(db.text(sql)).all()
         out[source] = {org: (total, copied) for org, total, copied in rows}
     return out
 
@@ -135,11 +157,9 @@ def _earlier_arb_mirror(conn, row):
 
 def _point_at(conn, source, source_id, audit_id):
     from app.extensions import db
+    from app.models.audit_log import RETIRE_SQL
 
-    conn.execute(
-        db.text(f"UPDATE {source} SET retired_into_id = :a WHERE id = :i"),  # tenancy-ok: one row by its own key
-        {"a": audit_id, "i": source_id},
-    )
+    conn.execute(db.text(RETIRE_SQL[source]), {"audit_id": audit_id, "id": source_id})
 
 
 @click.command("backfill-audit-trail")
@@ -183,7 +203,7 @@ def backfill_audit_trail(dry_run, organization_id):
                 chunk = ids[start:start + _BATCH]
                 conn = db.session.connection()
                 rows = conn.execute(
-                    db.text(f"SELECT * FROM {source} WHERE id = ANY(:ids) ORDER BY id"),  # tenancy-ok: ids already attributed to this organisation
+                    db.text(_ROWS_SQL[source]),
                     {"ids": chunk},
                 ).mappings().all()
                 for row in rows:
