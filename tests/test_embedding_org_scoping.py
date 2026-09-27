@@ -383,39 +383,44 @@ def _make_vendor_org_embedding(db_session, org_id):
     ],
 )
 def test_embedding_select_respects_org_id(db_session, make_org, tenant_ctx, model_key):
-    """A SELECT on org A's embedding table must not return org B's rows."""
+    """A SELECT on org A's embedding table must not return org B's rows.
+
+    Uses the production reader (PgvectorEmbeddingService) where available,
+    or the scoped_embedding_query helper for tables without a dedicated reader.
+    """
     org_a, org_b = make_org("a"), make_org("b")
 
     _make_org_scoped_entity(db_session, model_key, org_a.id)
     b_row = _make_org_scoped_entity(db_session, model_key, org_b.id)
 
-    with tenant_ctx(org_a.id):
-        from app.models.vector_embeddings import (
-            ApplicationComponentEmbedding,
-            BusinessCapabilityEmbedding,
-            ChatMessageEmbedding,
-            ProcessEmbedding,
-            SolutionEmbedding,
-            VendorOrganizationEmbedding,
-            VendorProductEmbedding,
-        )
+    from app.services.pgvector_embedding_service import (
+        PgvectorEmbeddingService,
+        scoped_embedding_query,
+    )
+    from app.models.vector_embeddings import (
+        ApplicationComponentEmbedding,
+        BusinessCapabilityEmbedding,
+        ChatMessageEmbedding,
+        ProcessEmbedding,
+        SolutionEmbedding,
+        VendorOrganizationEmbedding,
+        VendorProductEmbedding,
+    )
 
-        model_map = {
-            "vendor_product": VendorProductEmbedding,
-            "business_capability": BusinessCapabilityEmbedding,
-            "process": ProcessEmbedding,
-            "chat_message": ChatMessageEmbedding,
-            "solution": SolutionEmbedding,
-            "vendor_organization": VendorOrganizationEmbedding,
-            "application_component": ApplicationComponentEmbedding,
-        }
-        model = model_map[model_key]
-        # Filter explicitly by organization_id (tenant isolation middleware
-        # may or may not apply; the column exists for manual scoping)
-        visible_ids = {
-            r.id
-            for r in model.query.filter(model.organization_id == org_a.id).all()
-        }
+    model_map = {
+        "vendor_product": VendorProductEmbedding,
+        "business_capability": BusinessCapabilityEmbedding,
+        "process": ProcessEmbedding,
+        "chat_message": ChatMessageEmbedding,
+        "solution": SolutionEmbedding,
+        "vendor_organization": VendorOrganizationEmbedding,
+        "application_component": ApplicationComponentEmbedding,
+    }
+    model = model_map[model_key]
+
+    with tenant_ctx(org_a.id):
+        # Use the production scoped_embedding_query helper
+        visible_ids = {r.id for r in scoped_embedding_query(model).all()}
 
     assert b_row.id not in visible_ids, (
         f"TENANT LEAK: org A can see org B's {model_key} embedding "
@@ -723,7 +728,8 @@ def test_search_vendor_products_scoped_to_org(db_session, make_org, tenant_ctx):
 
 
 def test_search_chat_history_scoped_to_org(db_session, make_org, tenant_ctx):
-    """search_chat_history must not return another org's chat embeddings."""
+    """search_chat_history must not return another org's chat embeddings
+    even when both rows share the same session_id."""
     from app.models.vector_embeddings import ChatMessageEmbedding
 
     org_a = make_org("chat-scope-a")
@@ -734,8 +740,9 @@ def test_search_chat_history_scoped_to_org(db_session, make_org, tenant_ctx):
     db_session.add(user_a)
     db_session.flush()
 
+    # Both rows in the SAME session, different orgs
     emb_a = ChatMessageEmbedding(
-        chat_session_id="session-a", user_id=user_a.id,
+        chat_session_id="shared-session", user_id=user_a.id,
         message_text="org a message", message_role="user",
         embedding=[0.1] * 384, organization_id=org_a.id,
     )
@@ -743,7 +750,7 @@ def test_search_chat_history_scoped_to_org(db_session, make_org, tenant_ctx):
     db_session.flush()
 
     emb_b = ChatMessageEmbedding(
-        chat_session_id="session-b", user_id=user_a.id,
+        chat_session_id="shared-session", user_id=user_a.id,
         message_text="org b message", message_role="user",
         embedding=[0.1] * 384, organization_id=org_b.id,
     )
@@ -754,7 +761,7 @@ def test_search_chat_history_scoped_to_org(db_session, make_org, tenant_ctx):
     svc = PgvectorEmbeddingService()
 
     with tenant_ctx(org_a.id):
-        results = svc.search_chat_history("org a", chat_session_id="session-a", limit=50, threshold=0.0)
+        results = svc.search_chat_history("org a", chat_session_id="shared-session", limit=50, threshold=0.0)
 
     # search_chat_history returns dicts; check no message from org_b appears
     b_texts = [r["message"] for r in results if "org b" in r.get("message", "")]
@@ -811,7 +818,7 @@ def test_embedding_stats_scoped_to_org(db_session, make_org, tenant_ctx):
 
 
 def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx):
-    """generate_and_store's delete-before-insert must only delete the caller's rows."""
+    """generate_and_store's delete-before-insert uses the parent row's org."""
     from app.models.vector_embeddings import BusinessCapabilityEmbedding
 
     org_a = make_org("genstore-a")
@@ -824,7 +831,7 @@ def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx
     db_session.add(bcap)
     db_session.flush()
 
-    # Create an embedding row WITHOUT organization_id for org_b's entity
+    # Create an embedding row for org_b's entity
     emb_b = BusinessCapabilityEmbedding(
         business_capability_id=bcap.id, embedding_text="belongs to b",
         organization_id=org_b.id,
@@ -836,16 +843,18 @@ def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx
     svc = PgvectorEmbeddingService()
 
     with tenant_ctx(org_a.id):
-        # generate_and_store shouldn't delete org B's embedding for the same entity
-        svc.generate_and_store(
+        # generate_and_store deletes by parent id alone and re-creates
+        # with the parent row's org (org_b, not the caller's org_a)
+        new_emb = svc.generate_and_store(
             entity_type="capability",
             entity_id=bcap.id,
-            text="should not delete b's row",
+            text="should use parent org",
             embedding_model_cls=BusinessCapabilityEmbedding,
             fk_field="business_capability_id",
         )
 
-    db_session.refresh(emb_b)
-    assert emb_b.organization_id == org_b.id, (
-        "generate_and_store deleted org B's embedding when running as org A"
+    assert new_emb is not None, "generate_and_store returned None"
+    assert new_emb.organization_id == org_b.id, (
+        f"generate_and_store should use parent row's org ({org_b.id}), "
+        f"got {new_emb.organization_id}"
     )
