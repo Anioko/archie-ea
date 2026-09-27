@@ -759,13 +759,18 @@ class KanbanProjectionService:
                 )
         return cards
 
-    def _resolve_user_label(self, user_id) -> str:
-        """Return display name for a user ID stored in card.assignee."""
+    def _resolve_user_label(self, user_id, org_id=None) -> str:
+        """Return display name for a user ID stored in card.assignee.
+
+        ``card.assignee`` is set from the request, so the user is resolved only
+        inside the card's own organisation: another organisation's user is
+        never named, and a missing organisation names nobody.
+        """
         if not user_id:
             return ''
         try:
-            from app.models import User
-            u = db.session.get(User, int(user_id))
+            from app.utils.tenant_users import user_in_org
+            u = user_in_org(user_id, org_id)
             if u:
                 return ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
         except Exception as e:
@@ -778,11 +783,11 @@ class KanbanProjectionService:
         column = _TASK_COLUMN_MAP.get(card.status or "todo", "proposed")
 
         owner = None
-        if card.assigned_to:
-            try:
-                owner = card.assigned_to.full_name()
-            except Exception:
-                self.logger.debug(f"Could not resolve owner name for KanbanCard {card.id}", exc_info=True)
+        if card.assigned_to_id:
+            from app.utils.tenant_users import user_in_org
+            u = user_in_org(card.assigned_to_id, card.organization_id)
+            if u:
+                owner = ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
 
         # Blocker detection: count depends_on entries where the dependency is not done
         blockers = []
@@ -823,7 +828,7 @@ class KanbanProjectionService:
             "principle_ids": card.principle_ids or [],
             "issue_type": card.issue_type or 'Task',
             "assignee": card.assignee,
-            "assignee_label": self._resolve_user_label(card.assignee),
+            "assignee_label": self._resolve_user_label(card.assignee, card.organization_id),
             "story_points": card.story_points,
             "labels": card.labels or [],
             "acceptance_criteria": card.acceptance_criteria,

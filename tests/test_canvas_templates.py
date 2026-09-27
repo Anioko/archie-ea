@@ -145,17 +145,17 @@ class TestSeedIdempotence:
         from app.models.acm_property_template import AcmPropertyTemplate
         from app.models.archimate_viewpoint import ArchiMateViewpoint
 
-        # A single organization so the tenant column's own single-tenant
-        # fallback (app/models/mixins/core.py _default_org_id) applies
-        # outside a request context, the same way the CLI command runs.
-        make_org("canvas-seed-idempotence")
+        # Named explicitly, the same way the CLI command takes --org-id: the
+        # seed does not have to guess a tenant among however many other
+        # organizations already exist in the database.
+        org = make_org("canvas-seed-idempotence")
 
         profile_type_count = len(CANVAS_PROFILE_OPTIONS_BY_TYPE)
 
-        first = seed_canvas_templates()
+        first = seed_canvas_templates(org_id=org.id)
         assert first == (3, 0, profile_type_count, 0)
 
-        second = seed_canvas_templates()
+        second = seed_canvas_templates(org_id=org.id)
         assert second == (0, 3, 0, profile_type_count)
 
         canvas_rows = ArchiMateViewpoint.query.filter_by(viewpoint_type="canvas").all()
@@ -172,12 +172,11 @@ class TestSeedIdempotence:
         from app.commands.seed_viewpoints import seed_viewpoints
         from app.models.archimate_viewpoint import ArchiMateViewpoint
 
-        # Same single-tenant fallback as above: seed_viewpoints() also
-        # inserts the standard viewpoints, which carry the same tenant
-        # column.
-        make_org("canvas-seed-viewpoints")
+        # Same explicit tenant as above: seed_viewpoints() also inserts the
+        # standard viewpoints, which carry the same tenant column.
+        org = make_org("canvas-seed-viewpoints")
 
-        seed_viewpoints()
+        seed_viewpoints(org_id=org.id)
         assert ArchiMateViewpoint.query.filter_by(viewpoint_type="canvas").count() == 3
 
 
@@ -252,7 +251,7 @@ class TestBothPagesRenderEmpty:
         for zone in zones:
             reason = soup.find(attrs={"data-testid": f"canvas-box-reason-{zone['box_key']}"})
             assert reason is not None, zone["box_key"]
-            assert "Nothing here yet — type to add" in reason.get_text()
+            assert "Nothing here yet" in reason.get_text()
             # The hint sits outside the input: never rendered inside the
             # existing textarea's own value/placeholder as example content.
             textarea = soup.find(attrs={"data-testid": f"bmc-textarea-{zone['box_key']}"})
@@ -294,7 +293,7 @@ class TestBothPagesRenderEmpty:
             if zone["empty_reason"] == "canvas_box_not_derived":
                 assert "Composed from the other sections" in reason.get_text()
             else:
-                assert "Nothing here yet — type to add" in reason.get_text()
+                assert "Nothing here yet" in reason.get_text()
 
         unclassified = soup.find(attrs={"data-testid": "canvas-unclassified"})
         assert unclassified is not None

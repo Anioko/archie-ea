@@ -503,7 +503,13 @@ def change_account_type(user_id):
         return redirect(url_for("admin.user_info", user_id=user_id))
 
     user = _svc.get_user_or_404(user_id)
-    form = ChangeAccountTypeForm()
+    # obj=user pre-populates the role field from the same user.role the
+    # read-only /admin/user/<id> page displays, so the drop-down opens on
+    # the account's current role instead of defaulting to the first
+    # choice in the query. Submitted form data still takes precedence over
+    # this default (WTForms applies obj data first, then overlays formdata),
+    # so POST behaviour is unchanged.
+    form = ChangeAccountTypeForm(obj=user)
     if form.validate_on_submit():
         _svc.change_user_role(user, form.role.data)
         role_name = user.role.name if user.role else "No Role"

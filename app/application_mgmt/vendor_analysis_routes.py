@@ -1652,6 +1652,16 @@ def api_get_value_streams():
             f"Value streams requested - domain_id: {domain_id}, domain_code: {domain_code}"
         )
 
+        if not domain_id and not domain_code:
+            # No domain filter chosen yet (e.g. the page's initial load,
+            # before the caller narrows by domain) — this is the honest
+            # empty state, not a lookup failure. It used to fall through to
+            # the "domain not found" branch below and answer 404 for a
+            # request that named no domain at all, which is what every one
+            # of this page's own initial loads did.
+            current_app.logger.info("Value streams requested with no domain filter — returning []")
+            return jsonify([])
+
         from app.models.unified_capability import BusinessDomain
 
         # Try to find domain by ID first, then by code
