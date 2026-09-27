@@ -1,9 +1,9 @@
 """
-Two-organisation tests for vendor merge, contract links and renewals (R1-B10 PR 1).
+Two-organisation tests for vendor merge, contract links and renewals.
 
-PR 1 scope:
+Scope:
   1. Consolidation of ``archimate_contracts`` into ``vendor_contracts``
-  2. One vendor record with legal entities and parent group (PB-0276)
+  2. One vendor record with legal entities and parent group
   3. Duplicate vendor merge (keep-oldest with reviewable list)
 """
 
@@ -192,7 +192,7 @@ class TestVendorMergeTwoOrg:
 
 
 # ===========================================================================
-# Vendor record with legal entities and parent group (PB-0276)
+# Vendor record with legal entities and parent group
 # ===========================================================================
 
 
@@ -405,7 +405,7 @@ class TestContractArchimateConsolidation:
 
 
 # ===========================================================================
-# Renewals view: notice period and last day to cancel (PR 2 scope marker)
+# Renewals view: notice period and last day to cancel
 # ===========================================================================
 
 
@@ -476,7 +476,7 @@ class TestContractRenewals:
         if c.notice_period_days and c.renewal_date:
             last_cancel = c.renewal_date - timedelta(days=c.notice_period_days)
         assert last_cancel is None
-        assert c.notice_period_days == 90  # default, but should be treated as unset for PR 2
+        assert c.notice_period_days == 90  # default value when notice period not explicitly set
 
 
 # ===========================================================================

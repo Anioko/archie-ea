@@ -1,5 +1,5 @@
 """
-Vendor Merge Service (PB-0276)
+Vendor Merge Service
 
 Detects duplicate vendors by name similarity, keeps the oldest record,
 and produces a reviewable list of merged duplicates. Re-points contract
