@@ -362,7 +362,7 @@ def test_embedding_select_respects_org_id(db_session, make_org, tenant_ctx, mode
     """A SELECT on org A's embedding table must not return org B's rows."""
     org_a, org_b = make_org("a"), make_org("b")
 
-    a_row = _make_org_scoped_entity(db_session, model_key, org_a.id)
+    _make_org_scoped_entity(db_session, model_key, org_a.id)
     b_row = _make_org_scoped_entity(db_session, model_key, org_b.id)
 
     with tenant_ctx(org_a.id):
@@ -561,5 +561,267 @@ def test_backfill_embedding_organizations_skips_shared_tables(
             t in f for t in _EMBEDDING_TABLES
         )]
         assert not shared_failures, (
-            f"shared-reference embedding tables should not produce failures"
+            "shared-reference embedding tables should not produce failures"
         )
+
+
+# ── Organisation-scoped read path tests ────────────────────────────────────
+# These verify that each read path in pgvector_embedding_service.py respects
+# the organisation boundary. They would fail on code that queries without the
+# organisation_id filter.
+
+
+def _make_unscoped_bcap_embedding(db_session, org_id):
+    """Create a BusinessCapabilityEmbedding row WITHOUT organisation_id
+    (simulates pre-migration state)."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+    bcap = BusinessCapability(
+        organization_id=org_id, name=f"ScopedCap {org_id}",
+        code=f"SC-{org_id}", level=1,
+    )
+    db_session.add(bcap)
+    db_session.flush()
+    emb = BusinessCapabilityEmbedding(
+        business_capability_id=bcap.id,
+        embedding_text=f"org {org_id} capability",
+        embedding=[0.1] * 384,
+    )
+    db_session.add(emb)
+    db_session.flush()
+    return emb, bcap
+
+
+def test_search_capabilities_scoped_to_org(db_session, make_org, tenant_ctx):
+    """search_capabilities must not return another org's capability embeddings."""
+    org_a = make_org("search-cap-a")
+    org_b = make_org("search-cap-b")
+    emb_a, _ = _make_unscoped_bcap_embedding(db_session, org_a.id)
+    emb_b, _ = _make_unscoped_bcap_embedding(db_session, org_b.id)
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        # Clear any cached embedding model to avoid generation errors;
+        # the test path is _search_embeddings_python which does not need it.
+        results = svc.search_capabilities("org a capability", limit=50, threshold=0.0)
+
+    b_ids = {r[0] for r in results if r[0] == getattr(emb_b, 'business_capability_id', None)}
+    assert not b_ids, (
+        f"search_capabilities leaked org B's capability (b_cap_id={emb_b.business_capability_id})"
+    )
+
+
+def test_search_applications_scoped_to_org(db_session, make_org, tenant_ctx):
+    """search_applications must not return another org's app embeddings."""
+    from app.models.vector_embeddings import ApplicationComponentEmbedding
+    org_a = make_org("search-app-a")
+    org_b = make_org("search-app-b")
+
+    from app.models.application_portfolio import ApplicationComponent
+    appc_a = ApplicationComponent(organization_id=org_a.id, name=f"AppA-{org_a.id}")
+    db_session.add(appc_a)
+    db_session.flush()
+    appc_b = ApplicationComponent(organization_id=org_b.id, name=f"AppB-{org_b.id}")
+    db_session.add(appc_b)
+    db_session.flush()
+
+    emb_a = ApplicationComponentEmbedding(
+        application_component_id=appc_a.id, embedding_text="org a app",
+        embedding=[0.1] * 384,
+    )
+    db_session.add(emb_a)
+    db_session.flush()
+    emb_b = ApplicationComponentEmbedding(
+        application_component_id=appc_b.id, embedding_text="org b app",
+        embedding=[0.1] * 384,
+    )
+    db_session.add(emb_b)
+    db_session.flush()
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        results = svc.search_applications("org a app", limit=50, threshold=0.0)
+
+    b_ids = {r[0] for r in results if r[0] == emb_b.application_component_id}
+    assert not b_ids, (
+        f"search_applications leaked org B's app (app_id={emb_b.application_component_id})"
+    )
+
+
+def test_search_vendor_products_scoped_to_org(db_session, make_org, tenant_ctx):
+    """search_vendor_products must not return another org's vendor product embeddings."""
+    from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+    from app.models.vector_embeddings import VendorProductEmbedding
+
+    org_a = make_org("search-vp-a")
+    org_b = make_org("search-vp-b")
+
+    vendor_a = VendorOrganization(name=f"VendorA-{org_a.id}", code=f"VA-{org_a.id}", seed_source_id=f"ss-{org_a.id}")
+    db_session.add(vendor_a)
+    db_session.flush()
+    product_a = VendorProduct(vendor_organization_id=vendor_a.id, name=f"ProdA-{org_a.id}")
+    db_session.add(product_a)
+    db_session.flush()
+    emb_a = VendorProductEmbedding(
+        vendor_product_id=product_a.id, embedding_text="org a product",
+        embedding=[0.1] * 384, organization_id=org_a.id,
+    )
+    db_session.add(emb_a)
+    db_session.flush()
+
+    vendor_b = VendorOrganization(name=f"VendorB-{org_b.id}", code=f"VB-{org_b.id}", seed_source_id=f"ss-{org_b.id}")
+    db_session.add(vendor_b)
+    db_session.flush()
+    product_b = VendorProduct(vendor_organization_id=vendor_b.id, name=f"ProdB-{org_b.id}")
+    db_session.add(product_b)
+    db_session.flush()
+    emb_b = VendorProductEmbedding(
+        vendor_product_id=product_b.id, embedding_text="org b product",
+        embedding=[0.1] * 384, organization_id=org_b.id,
+    )
+    db_session.add(emb_b)
+    db_session.flush()
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        results = svc.search_vendor_products("org a product", limit=50, threshold=0.0)
+
+    b_ids = {r[0] for r in results if r[0] == emb_b.vendor_product_id}
+    assert not b_ids, (
+        f"search_vendor_products leaked org B's product (vp_id={emb_b.vendor_product_id})"
+    )
+
+
+def test_search_chat_history_scoped_to_org(db_session, make_org, tenant_ctx):
+    """search_chat_history must not return another org's chat embeddings."""
+    from app.models.vector_embeddings import ChatMessageEmbedding
+
+    org_a = make_org("chat-scope-a")
+    org_b = make_org("chat-scope-b")
+
+    from app.models.user import User
+    user_a = User(email=f"chat-a@{org_a.id}.com", first_name="ChatA", last_name="User", organization_id=org_a.id)
+    db_session.add(user_a)
+    db_session.flush()
+
+    emb_a = ChatMessageEmbedding(
+        chat_session_id="session-a", user_id=user_a.id,
+        message_text="org a message", message_role="user",
+        embedding=[0.1] * 384, organization_id=org_a.id,
+    )
+    db_session.add(emb_a)
+    db_session.flush()
+
+    emb_b = ChatMessageEmbedding(
+        chat_session_id="session-b", user_id=user_a.id,
+        message_text="org b message", message_role="user",
+        embedding=[0.1] * 384, organization_id=org_b.id,
+    )
+    db_session.add(emb_b)
+    db_session.flush()
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        results = svc.search_chat_history("org a", chat_session_id="session-a", limit=50, threshold=0.0)
+
+    # search_chat_history returns dicts; check no message from org_b appears
+    b_texts = [r["message"] for r in results if "org b" in r.get("message", "")]
+    assert not b_texts, (
+        f"search_chat_history leaked org B's messages: {b_texts}"
+    )
+
+
+def test_embedding_stats_scoped_to_org(db_session, make_org, tenant_ctx):
+    """get_embedding_stats must count only the current organisation's rows."""
+    from app.models.vector_embeddings import (
+        BusinessCapabilityEmbedding,
+        ProcessEmbedding,
+    )
+
+    org_a = make_org("stats-org-a")
+    org_b = make_org("stats-org-b")
+
+    # Create embedding rows for each org using inline models
+    from app.models.business_capabilities import BusinessCapability
+    bcap_a = BusinessCapability(
+        organization_id=org_a.id, name=f"StatsCapA", code="SCA", level=1,
+    )
+    db_session.add(bcap_a)
+    db_session.flush()
+    emb_a = BusinessCapabilityEmbedding(
+        business_capability_id=bcap_a.id, embedding_text="stats a",
+        organization_id=org_a.id,
+    )
+    db_session.add(emb_a)
+    db_session.flush()
+
+    bcap_b = BusinessCapability(
+        organization_id=org_b.id, name=f"StatsCapB", code="SCB", level=1,
+    )
+    db_session.add(bcap_b)
+    db_session.flush()
+    emb_b = BusinessCapabilityEmbedding(
+        business_capability_id=bcap_b.id, embedding_text="stats b",
+        organization_id=org_b.id,
+    )
+    db_session.add(emb_b)
+    db_session.flush()
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        stats = svc.get_embedding_stats()
+
+    assert stats.get("capability_embeddings", 0) == 1, (
+        f"org A should see 1 capability embedding, got {stats.get('capability_embeddings')}"
+    )
+
+
+def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx):
+    """generate_and_store's delete-before-insert must only delete the caller's rows."""
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+
+    org_a = make_org("genstore-a")
+    org_b = make_org("genstore-b")
+
+    from app.models.business_capabilities import BusinessCapability
+    bcap = BusinessCapability(
+        organization_id=org_b.id, name="GenStoreCap", code="GSC", level=1,
+    )
+    db_session.add(bcap)
+    db_session.flush()
+
+    # Create an embedding row WITHOUT organization_id for org_b's entity
+    emb_b = BusinessCapabilityEmbedding(
+        business_capability_id=bcap.id, embedding_text="belongs to b",
+        organization_id=org_b.id,
+    )
+    db_session.add(emb_b)
+    db_session.flush()
+
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    svc = PgvectorEmbeddingService()
+
+    with tenant_ctx(org_a.id):
+        # generate_and_store shouldn't delete org B's embedding for the same entity
+        svc.generate_and_store(
+            entity_type="capability",
+            entity_id=bcap.id,
+            text="should not delete b's row",
+            embedding_model_cls=BusinessCapabilityEmbedding,
+            fk_field="business_capability_id",
+        )
+
+    db_session.refresh(emb_b)
+    assert emb_b.organization_id == org_b.id, (
+        "generate_and_store deleted org B's embedding when running as org A"
+    )
