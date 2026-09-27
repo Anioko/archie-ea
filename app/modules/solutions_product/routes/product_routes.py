@@ -474,8 +474,13 @@ def push_to_devops(solution_id):
     if not solution:
         return jsonify({"error": "Solution not found"}), 404
 
-    # Load connector config
-    config = DevOpsConnectorConfig.query.filter_by(id=connector_id).first()
+    # Load connector config. The connector must belong to the solution's own
+    # organisation (the solution is tenant-fenced): a connector id from another
+    # organisation is refused exactly like one that does not exist, so its stored
+    # token is never used on the caller's behalf.
+    config = DevOpsConnectorConfig.query.filter_by(
+        id=connector_id, organization_id=solution.organization_id
+    ).first()
     if not config or not config.enabled or config.provider != provider:
         return jsonify({"error": "Connector not found or not enabled for this provider"}), 400
 

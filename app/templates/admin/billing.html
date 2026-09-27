@@ -187,6 +187,10 @@
                     </a>
                 </div>
             </div>
+            <p class="mt-4 text-xs text-muted-foreground" data-checkout-legal>
+                Upgrading means you accept the terms that apply to your plan. Read them before you pay:
+                {% for link in legal_links %}<a href="{{ link.href }}" target="_blank" rel="noopener" class="text-primary hover:underline" data-legal-link="{{ link.slug }}">{{ link.label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+            </p>
         </div>
     </div>
     {% endif %}
@@ -231,6 +235,8 @@
     {% endif %}
 </div>
 {% endblock %}
+
+{% block extra_js %}
 <script>
 (function() {
     let upgradeBtn = document.getElementById('btn-toggle-upgrade-panel');
@@ -242,3 +248,4 @@
     }
 })();
 </script>
+{% endblock %}

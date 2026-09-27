@@ -417,13 +417,14 @@ def before_request():
         return redirect(url_for("account.unconfirmed"))
 
 
-@account_bp_v2.route("/manage/notification-preferences", methods=["POST"])
+@account_bp_v2.route("/manage/preferences", methods=["POST"])
 @login_required
 @timed_route
-def save_notification_preferences():
-    """PLT-017: Save in-app notification preferences for the current user."""
+def save_preferences():
+    """Save user preferences (notifications and display) for the current user."""
     from app import db
 
+    form_type = request.form.get("form_type", "")
     known_keys = [
         "arb_decisions",
         "solution_updates",
@@ -431,14 +432,20 @@ def save_notification_preferences():
         "weekly_digest",
         "mention_notifications",
     ]
-    prefs = {key: (request.form.get(key) == "on") for key in known_keys}
     try:
-        current_user.set_notification_preferences(prefs)
+        if form_type == "notifications":
+            prefs = {key: (request.form.get(key) == "on") for key in known_keys}
+            current_user.set_notification_preferences(prefs)
+        elif form_type == "display":
+            current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        else:
+            flash("Unknown preference form type.", "error")
+            return redirect(url_for("account.manage"))
         db.session.add(current_user)
         db.session.commit()
-        flash("Notification preferences saved.", "success")
+        flash("Preferences saved.", "success")
     except Exception as exc:
-        _log.error("Failed to save notification preferences for user %s: %s", current_user.id, exc)
+        _log.error("Failed to save preferences for user %s: %s", current_user.id, exc)
         db.session.rollback()
         flash("Could not save preferences. Please try again.", "error")
     return redirect(url_for("account.manage"))
