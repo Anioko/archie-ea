@@ -13,8 +13,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_solution",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_solution",
-        "fenced": False,
+        "route": "Solution",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -62,8 +62,8 @@ TOOL_SCHEMAS = [
     {
         "name": "link_capability_to_solution",
         "surfaces": ["chat", "blueprint"],
-        "route": "link_capability_to_solution",
-        "fenced": False,
+        "route": "SolutionCapabilityMapping",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -99,8 +99,8 @@ TOOL_SCHEMAS = [
     {
         "name": "link_application_to_capability",
         "surfaces": ["chat", "blueprint"],
-        "route": "link_application_to_capability",
-        "fenced": False,
+        "route": "ApplicationCapabilityMapping",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -132,8 +132,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_archimate_element",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_archimate_element",
-        "fenced": False,
+        "route": "ArchiMateElement",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -182,8 +182,8 @@ TOOL_SCHEMAS = [
     {
         "name": "update_application_status",
         "surfaces": ["chat", "blueprint"],
-        "route": "update_application_status",
-        "fenced": False,
+        "route": "ApplicationComponent.deployment_status",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -219,8 +219,8 @@ TOOL_SCHEMAS = [
     {
         "name": "submit_for_arb_review",
         "surfaces": ["chat", "blueprint"],
-        "route": "submit_for_arb_review",
-        "fenced": False,
+        "route": "TypedARBSubmissionAdapter.submit_solution_for_actor",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -246,8 +246,8 @@ TOOL_SCHEMAS = [
     {
         "name": "query_capability_gaps",
         "surfaces": ["chat"],
-        "route": "query_capability_gaps",
-        "fenced": False,
+        "route": "BusinessCapability.current_maturity_level",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -281,8 +281,8 @@ TOOL_SCHEMAS = [
     {
         "name": "find_applications",
         "surfaces": ["chat"],
-        "route": "find_applications",
-        "fenced": False,
+        "route": "ApplicationComponent.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -329,8 +329,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_driver",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_driver",
-        "fenced": False,
+        "route": "SolutionDriver",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -357,8 +357,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_goal",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_goal",
-        "fenced": False,
+        "route": "SolutionGoal",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -380,8 +380,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_constraint",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_constraint",
-        "fenced": False,
+        "route": "SolutionConstraint",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -407,8 +407,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_requirement",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_requirement",
-        "fenced": False,
+        "route": "SolutionRequirement",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -433,8 +433,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_risk",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_risk",
-        "fenced": False,
+        "route": "SolutionRisk",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -457,8 +457,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_option",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_option",
-        "fenced": False,
+        "route": "SolutionRecommendation",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -482,8 +482,8 @@ TOOL_SCHEMAS = [
     {
         "name": "mark_option_recommended",
         "surfaces": ["chat", "blueprint"],
-        "route": "mark_option_recommended",
-        "fenced": False,
+        "route": "SolutionRecommendation.is_recommended",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -503,8 +503,8 @@ TOOL_SCHEMAS = [
     {
         "name": "link_application_to_solution",
         "surfaces": ["chat", "blueprint"],
-        "route": "link_application_to_solution",
-        "fenced": False,
+        "route": "Solution.applications",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -529,8 +529,8 @@ TOOL_SCHEMAS = [
     {
         "name": "link_vendor_product",
         "surfaces": ["chat", "blueprint"],
-        "route": "link_vendor_product",
-        "fenced": False,
+        "route": "Solution.vendor_products",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -550,8 +550,8 @@ TOOL_SCHEMAS = [
     {
         "name": "run_inference_engine",
         "surfaces": ["chat", "blueprint"],
-        "route": "run_inference_engine",
-        "fenced": False,
+        "route": "ArchiMateInferenceEngine.repair",
+        "fenced_fields": [],
         "risk_class": "write",
        "mutates": True, # Real write, not read-only despite the "diagnose"-adjacent name:
         # _tool_run_inference_engine (tools/executor.py) defaults dry_run to
@@ -584,8 +584,8 @@ TOOL_SCHEMAS = [
     {
         "name": "generate_blueprint_narrative",
         "surfaces": ["chat", "blueprint"],
-        "route": "generate_blueprint_narrative",
-        "fenced": True,
+        "route": "generate_section_narrative",
+        "fenced_fields": ["narrative"],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -610,8 +610,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_archimate_relationship",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_archimate_relationship",
-        "fenced": False,
+        "route": "ArchiMateInferenceEngine.graph.get_or_create_relationship",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -637,8 +637,8 @@ TOOL_SCHEMAS = [
     {
         "name": "diagnose_chain",
         "surfaces": ["chat"],
-        "route": "diagnose_chain",
-        "fenced": False,
+        "route": "ArchiMateInferenceEngine.diagnose",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -657,8 +657,8 @@ TOOL_SCHEMAS = [
     {
         "name": "explain_element",
         "surfaces": ["chat"],
-        "route": "explain_element",
-        "fenced": False,
+        "route": "ArchiMateInferenceEngine.explain",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -677,8 +677,8 @@ TOOL_SCHEMAS = [
     {
         "name": "simulate_impact",
         "surfaces": ["chat"],
-        "route": "simulate_impact",
-        "fenced": False,
+        "route": "ArchiMateInferenceEngine.simulate_change_impact",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -700,8 +700,8 @@ TOOL_SCHEMAS = [
     {
         "name": "get_solution_summary",
         "surfaces": ["chat", "blueprint"],
-        "route": "get_solution_summary",
-        "fenced": False,
+        "route": "Solution.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -720,8 +720,8 @@ TOOL_SCHEMAS = [
     {
         "name": "get_completeness_score",
         "surfaces": ["chat", "blueprint"],
-        "route": "get_completeness_score",
-        "fenced": False,
+        "route": "BlueprintCompletenessService.score_all",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -740,8 +740,8 @@ TOOL_SCHEMAS = [
     {
         "name": "update_solution_fields",
         "surfaces": ["chat", "blueprint"],
-        "route": "update_solution_fields",
-        "fenced": False,
+        "route": "Solution.fields",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -764,8 +764,8 @@ TOOL_SCHEMAS = [
     {
         "name": "update_solution_phase",
         "surfaces": ["chat", "blueprint"],
-        "route": "update_solution_phase",
-        "fenced": False,
+        "route": "Solution.adm_phase",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -792,8 +792,8 @@ TOOL_SCHEMAS = [
     {
         "name": "search_capabilities_by_problem",
         "surfaces": ["chat"],
-        "route": "search_capabilities_by_problem",
-        "fenced": False,
+        "route": "VectorEmbeddingService.embed_text",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -824,8 +824,8 @@ TOOL_SCHEMAS = [
     {
         "name": "find_applications_by_capability",
         "surfaces": ["chat", "blueprint"],
-        "route": "find_applications_by_capability",
-        "fenced": False,
+        "route": "ApplicationCapabilityMapping.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -849,8 +849,8 @@ TOOL_SCHEMAS = [
     {
         "name": "find_technical_capabilities",
         "surfaces": ["chat"],
-        "route": "find_technical_capabilities",
-        "fenced": False,
+        "route": "TechnicalCapability.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -890,8 +890,8 @@ TOOL_SCHEMAS = [
     {
         "name": "search_archimate_elements",
         "surfaces": ["chat", "blueprint"],
-        "route": "search_archimate_elements",
-        "fenced": False,
+        "route": "ArchiMateElement.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -918,8 +918,8 @@ TOOL_SCHEMAS = [
     {
         "name": "verify_codegen",
         "surfaces": ["chat", "blueprint"],
-        "route": "verify_codegen",
-        "fenced": False,
+        "route": "CodegenVerifierService.verify_solution",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -942,8 +942,8 @@ TOOL_SCHEMAS = [
     {
         "name": "propose_rationalization",
         "surfaces": ["chat"],
-        "route": "propose_rationalization",
-        "fenced": False,
+        "route": "RationalizationProposalService.generate_proposals",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -970,8 +970,8 @@ TOOL_SCHEMAS = [
     {
         "name": "build_architecture_plan",
         "surfaces": ["chat"],
-        "route": "build_architecture_plan",
-        "fenced": False,
+        "route": "OrchestrationPlannerService.build_plan",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1001,8 +1001,8 @@ TOOL_SCHEMAS = [
     {
         "name": "poll_infrastructure",
         "surfaces": ["chat"],
-        "route": "poll_infrastructure",
-        "fenced": False,
+        "route": "InfrastructurePollingService.poll_infrastructure",
+        "fenced_fields": [],
         "risk_class": "external_action",
         "mutates": True,
         "description": (
@@ -1030,8 +1030,8 @@ TOOL_SCHEMAS = [
     {
         "name": "infer_schema",
         "surfaces": ["chat", "blueprint"],
-        "route": "infer_schema",
-        "fenced": True,
+        "route": "SchemaInferenceService.infer",
+        "fenced_fields": ["candidates"],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1066,8 +1066,8 @@ TOOL_SCHEMAS = [
     {
         "name": "validate_sap_clean_core",
         "surfaces": ["chat", "blueprint"],
-        "route": "validate_sap_clean_core",
-        "fenced": False,
+        "route": "SAPCleanCoreService.validate",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1112,7 +1112,7 @@ TOOL_SCHEMAS = [
         "name": "propose_genome_patch",
         "surfaces": ["chat"],
         "route": "propose_genome_patch",
-        "fenced": False,
+        "fenced_fields": [],
         "risk_class": "propose",
         "mutates": False,
         "description": (
@@ -1154,8 +1154,8 @@ TOOL_SCHEMAS = [
     {
         "name": "get_investment_priorities",
         "surfaces": ["chat"],
-        "route": "get_investment_priorities",
-        "fenced": False,
+        "route": "InvestmentPrioritizationService",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1182,8 +1182,8 @@ TOOL_SCHEMAS = [
     {
         "name": "get_executive_dashboard",
         "surfaces": ["chat"],
-        "route": "get_executive_dashboard",
-        "fenced": False,
+        "route": "ExecutiveDashboardService.get_executive_summary",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1203,8 +1203,8 @@ TOOL_SCHEMAS = [
     {
         "name": "get_arb_status",
         "surfaces": ["chat"],
-        "route": "get_arb_status",
-        "fenced": False,
+        "route": "ARBReviewItem.query",
+        "fenced_fields": [],
         "risk_class": "read",
         "mutates": False,
         "description": (
@@ -1230,8 +1230,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_adr",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_adr",
-        "fenced": False,
+        "route": "ADRService.create_adr",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1291,8 +1291,8 @@ TOOL_SCHEMAS = [
     {
         "name": "record_capability_maturity",
         "surfaces": ["chat", "blueprint"],
-        "route": "record_capability_maturity",
-        "fenced": False,
+        "route": "BusinessCapability.maturity_levels",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1332,8 +1332,8 @@ TOOL_SCHEMAS = [
     {
         "name": "score_rationalization",
         "surfaces": ["chat", "blueprint"],
-        "route": "score_rationalization",
-        "fenced": False,
+        "route": "RationalizationScoringService.calculate_app_score",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1362,8 +1362,8 @@ TOOL_SCHEMAS = [
     {
         "name": "merge_capabilities",
         "surfaces": ["chat", "blueprint"],
-        "route": "merge_capabilities",
-        "fenced": False,
+        "route": "BusinessCapability.merge",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1405,8 +1405,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_vendor",
         "surfaces": ["chat"],
-        "route": "create_vendor",
-        "fenced": False,
+        "route": "AIDataInteractionService.create_vendor",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1454,8 +1454,8 @@ TOOL_SCHEMAS = [
     {
         "name": "extract_contract_from_document",
         "surfaces": ["chat"],
-        "route": "extract_contract_from_document",
-        "fenced": True,
+        "route": "ContractExtractionService.extract_contract_terms",
+        "fenced_fields": ["terms", "parties", "dates", "obligations"],
         "risk_class": "external_action",
         "mutates": True,
         "description": (
@@ -1487,8 +1487,8 @@ TOOL_SCHEMAS = [
     {
         "name": "bulk_update_application_status",
         "surfaces": ["chat", "blueprint"],
-        "route": "bulk_update_application_status",
-        "fenced": False,
+        "route": "ApplicationComponent.lifecycle_status",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1549,8 +1549,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_contract",
         "surfaces": ["chat"],
-        "route": "create_contract",
-        "fenced": False,
+        "route": "VendorContract",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1610,8 +1610,8 @@ TOOL_SCHEMAS = [
     {
         "name": "create_programme",
         "surfaces": ["chat", "blueprint"],
-        "route": "create_programme",
-        "fenced": False,
+        "route": "ProgrammeSetupService.create_business_first_programme",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1680,8 +1680,8 @@ TOOL_SCHEMAS = [
     {
         "name": "upsert_license",
         "surfaces": ["chat"],
-        "route": "upsert_license",
-        "fenced": False,
+        "route": "LicenseEntitlement",
+        "fenced_fields": [],
         "risk_class": "write",
         "mutates": True,
         "description": (
@@ -1796,8 +1796,8 @@ def _archimate_element_schemas() -> list:
         schemas.append({
             "name": candidate_name,
             "surfaces": ["chat", "blueprint"],
-            "route": candidate_name,
-            "fenced": False,
+            "route": "ArchiMateElement",
+            "fenced_fields": [],
             "risk_class": "write",
             "mutates": True,
             # 'approve', not 'auto'. These write typed elements into the model
