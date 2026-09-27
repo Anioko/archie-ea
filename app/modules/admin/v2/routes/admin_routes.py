@@ -50,6 +50,7 @@ from html import escape
 
 from app import csrf
 from app.extensions import db
+from app.services.billing_plans import PlanLimitReached
 from app.core.compat import mark_blueprint_guardrailed
 from app.core.decorators import timed_route
 from ...forms.admin_forms import (
@@ -385,6 +386,22 @@ def dashboard():
 # ============================================================================
 
 
+def _plan_limit():
+    """(org id, people-limit status) for the signed-in admin's organisation.
+
+    The form shows the limit and an upgrade link instead of the submit when
+    the plan is full. The refusal itself is made when the user is saved
+    (billing_plans.check_capacity), which also covers two admins adding the
+    last place at once: the second sees the same limit message.
+    """
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is None:
+        return None, None
+    from app.services.billing_plans import user_limit_status
+
+    return org_id, user_limit_status(org_id)
+
+
 @admin_bp_v2.route("/new-user", methods=["GET", "POST"])
 @timed_route
 @login_required
@@ -393,16 +410,24 @@ def dashboard():
 def new_user():
     """Create a new user."""
     form = NewUserForm()
-    if form.validate_on_submit():
-        user = _svc.create_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-            role=form.role.data,
-        )
-        flash("User {} successfully created".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
+        try:
+            user = _svc.create_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                password=form.password.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        else:
+            flash("User {} successfully created".format(user.full_name()), "form-success")
+            org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp_v2.route("/invite-user", methods=["GET", "POST"])
@@ -413,15 +438,23 @@ def new_user():
 def invite_user():
     """Invites a new user to create an account and set their own password."""
     form = InviteUserForm()
-    if form.validate_on_submit():
-        user = _svc.invite_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            role=form.role.data,
-        )
-        flash("User {} successfully invited".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
+        try:
+            user = _svc.invite_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        else:
+            flash("User {} successfully invited".format(user.full_name()), "form-success")
+            org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp_v2.route("/manage-users")
@@ -5368,11 +5401,17 @@ def governance_gates_delete(gate_id):
 @platform_admin_required
 def organizations_list():
     """List all organizations with user counts."""
+    from app.services.billing_plans import user_limit_status
+
     orgs = Organization.query.order_by(Organization.name).all()
     org_data = []
     for org in orgs:
         user_count = User.query.filter_by(organization_id=org.id).count()
-        org_data.append({"org": org, "user_count": user_count})
+        org_data.append({
+            "org": org,
+            "user_count": user_count,
+            "limits": user_limit_status(org.id),
+        })
     return render_template("admin/organizations/list.html", organizations=org_data)
 
 
@@ -5385,28 +5424,61 @@ def organization_create():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         slug = request.form.get("slug", "").strip() or name.lower().replace(" ", "-")
-        plan = request.form.get("plan", "free")
-        try:
-            max_users = int(request.form.get("max_users") or 10)
-        except (ValueError, TypeError):
-            flash("Max users must be a whole number.", "error")
-            return render_template("admin/organizations/form.html", org=None)
+        plan_key, seats, error = _contract_plan_from_form()
+        if error:
+            flash(error, "error")
+            return _organization_form(None)
 
         if not name:
             flash("Organization name is required.", "error")
-            return render_template("admin/organizations/form.html", org=None)
+            return _organization_form(None)
 
         if Organization.query.filter_by(slug=slug).first():
             flash(f'An organization with slug "{slug}" already exists.', "error")
-            return render_template("admin/organizations/form.html", org=None)
+            return _organization_form(None)
 
-        org = Organization(name=name, slug=slug, plan=plan, max_users=max_users)
+        from app.services.billing_plans import set_contract_plan
+
+        org = Organization(name=name, slug=slug)
         db.session.add(org)
+        db.session.flush()
+        set_contract_plan(org, plan_key, seats)
         db.session.commit()
         flash(f'Organization "{name}" created.', "success")
         return redirect(url_for("admin.organizations_list"))
 
-    return render_template("admin/organizations/form.html", org=None)
+    return _organization_form(None)
+
+
+def _contract_plan_from_form():
+    """(plan key, seats, error) from the organisation form's plan fields."""
+    from app.services.billing_plans import get_plan
+
+    plan_key = request.form.get("plan", "free")
+    if get_plan(plan_key).key != plan_key:
+        return None, None, "Choose a plan from the list."
+    try:
+        seats = int(request.form.get("seats") or 0) or None
+    except (ValueError, TypeError):
+        return None, None, "Team seats must be a whole number."
+    if seats is not None and not 1 <= seats <= 10000:
+        return None, None, "Choose between 1 and 10,000 Team seats."
+    return plan_key, seats, None
+
+
+def _organization_form(org):
+    """The organisation form, its plan fields read from the subscriptions row."""
+    from app.services.billing_plans import current_subscription, effective_plan
+    from app.services.billing_service import BillingService
+
+    sub = current_subscription(org) if org is not None else None
+    return render_template(
+        "admin/organizations/form.html",
+        org=org,
+        plan_key=effective_plan(sub).key if sub is not None else "free",
+        seats=sub.seats_purchased if sub is not None else None,
+        paid_online=BillingService.has_live_subscription(sub),
+    )
 
 
 _ORG_USER_SORT_COLUMNS = {
@@ -5423,6 +5495,8 @@ _ORG_USER_SORT_COLUMNS = {
 @platform_admin_required
 def organization_detail(org_id):
     """View organization details and its users."""
+    from app.services.billing_plans import user_limit_status
+
     from app.utils.role_access import get_role_display_name
 
     org = Organization.query.get_or_404(org_id)
@@ -5436,6 +5510,7 @@ def organization_detail(org_id):
     users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
     return render_template(
         "admin/organizations/detail.html", org=org, users=users,
+        limits=user_limit_status(org.id),
         get_role_display_name=get_role_display_name,
         current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
         current_dir=direction if direction in ("asc", "desc") else "asc",
@@ -5457,20 +5532,31 @@ def organization_edit(org_id):
             existing = Organization.query.filter_by(slug=new_slug).first()
             if existing and existing.id != org.id:
                 flash(f'Slug "{new_slug}" is already taken.', "error")
-                return render_template("admin/organizations/form.html", org=org)
+                db.session.rollback()
+                return _organization_form(org)
             org.slug = new_slug
-        org.plan = request.form.get("plan", org.plan)
-        try:
-            org.max_users = int(request.form.get("max_users") or org.max_users)
-        except (ValueError, TypeError):
-            db.session.rollback()
-            flash("Max users must be a whole number.", "error")
-            return render_template("admin/organizations/form.html", org=org)
+        from app.services.billing_plans import set_contract_plan
+
+        applied = True
+        if "plan" in request.form:
+            plan_key, seats, error = _contract_plan_from_form()
+            if error:
+                db.session.rollback()
+                flash(error, "error")
+                return _organization_form(org)
+            applied = set_contract_plan(org, plan_key, seats)
         db.session.commit()
-        flash(f'Organization "{org.name}" updated.', "success")
+        if applied:
+            flash(f'Organization "{org.name}" updated.', "success")
+        else:
+            flash(
+                f'Organization "{org.name}" updated. Its plan is paid online, so the plan set '
+                "here was not applied; the organisation changes it from its billing page.",
+                "warning",
+            )
         return redirect(url_for("admin.organization_detail", org_id=org.id))
 
-    return render_template("admin/organizations/form.html", org=org)
+    return _organization_form(org)
 
 
 @admin_bp_v2.route("/organizations/<int:org_id>/toggle", methods=["POST"])
