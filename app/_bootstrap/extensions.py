@@ -221,9 +221,40 @@ def init_extensions(app):
         app.logger.warning(f"Redis cache initialization failed (non-critical): {e}")
 
 
+def _scheduler_belongs_in_this_process() -> bool:
+    """Whether THIS process (web or worker) should own the APScheduler jobs.
+
+    Every job below is registered exactly once, in whichever process calls
+    ``init_scheduler`` — there is no separate registration path for a worker.
+    Historically that call happened unconditionally inside ``create_app()``,
+    so a deployment with a dedicated jobs worker (``app/jobs/worker.py``,
+    built from ``Dockerfile.worker``) would run every job TWICE: once in the
+    web process and once in the worker.
+
+    ``JOBS_RUN_IN_WORKER`` opts a deployment into the split: set on the web
+    process only, it makes the web process skip registration entirely.
+    ``RUNNING_AS_JOBS_WORKER`` is set only by ``app/jobs/worker.py`` itself, so
+    that process registers unconditionally regardless of the first flag.
+    Neither var set (today's default, and every existing test) preserves the
+    original single-process behaviour exactly — the web process keeps running
+    the scheduler until a deployment sets ``JOBS_RUN_IN_WORKER=1`` on it.
+    """
+    import os
+
+    if os.environ.get("RUNNING_AS_JOBS_WORKER") == "1":
+        return True
+    return os.environ.get("JOBS_RUN_IN_WORKER") != "1"
+
+
 def init_scheduler(app):
     """Initialize APScheduler for background workflow execution."""
     if app.testing:
+        return
+    if not _scheduler_belongs_in_this_process():
+        app.logger.info(
+            "APScheduler not started in this process — JOBS_RUN_IN_WORKER=1 and "
+            "this is not the jobs worker; app/jobs/worker.py owns these jobs instead."
+        )
         return
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
@@ -233,7 +264,17 @@ def init_scheduler(app):
         scheduler = BackgroundScheduler()
 
         def run_scheduled_workflows():
-            """APScheduler job: execute due EA workflow schedules."""
+            """APScheduler job: execute due EA workflow schedules.
+
+            Declares its organisation per schedule rather than per whole run:
+            the due-schedule read has to span every organisation (there is no
+            single tenant to scope the enumeration by), so EAWorkflowEngine
+            reads schedule.organization_id off each due row and passes it
+            explicitly into start_workflow(organization_id=...) (see the
+            WAVE4-P0 note in app/services/ea_workflow_engine.py). That is not
+            this brief's file to change; this comment only records that the
+            job already satisfies "declares its organisation" this way.
+            """
             with app.app_context():
                 try:
                     from app.services.ea_workflow_engine import EAWorkflowEngine
@@ -257,7 +298,10 @@ def init_scheduler(app):
             max_instances=1,
         )
 
-        # PLT-009: Weekly data maturity digest (Monday 8am UTC)
+        # PLT-009: Weekly data maturity digest (Monday 8am UTC). Declares its
+        # organisation per run: send_data_maturity_digest calls
+        # app.jobs.tenant_safe_job.run_for_each_tenant, which sets
+        # g.current_org_id via tenant_scope() for every active organisation.
         def run_data_maturity_digest():
             with app.app_context():
                 try:
@@ -280,7 +324,9 @@ def init_scheduler(app):
             max_instances=1,
         )
 
-        # PLT-031: Weekly executive summary (Monday 7am UTC)
+        # PLT-031: Weekly executive summary (Monday 7am UTC). Declares its
+        # organisation per run via run_for_each_tenant / tenant_scope, same as
+        # the maturity digest above.
         def run_executive_summary():
             with app.app_context():
                 try:
@@ -308,6 +354,11 @@ def init_scheduler(app):
         # other digests here, because catching degradation promptly is the
         # whole point; _digest_emails.send_error_digest no-ops (and sends
         # nothing) when there is nothing new since the last run.
+        #
+        # Named platform job, deliberately: error_events carries no
+        # organisation predicate (an error is a platform fact, not a tenant
+        # one -- see _digest_emails._get_platform_admin_recipients), so there
+        # is no per-organisation tenant_scope to run this inside.
         def run_error_digest():
             with app.app_context():
                 try:
@@ -332,22 +383,53 @@ def init_scheduler(app):
         # every 3 days — renew twice daily; renew_if_needed re-creates the
         # subscription if Graph has already dropped it. No-op when the
         # integration was never configured.
+        #
+        # Declares its organisation per run: TeamsMeetingService reads its
+        # M365 configuration from APISettings, a TenantMixin model. Called
+        # with no tenant context (as this job previously did), the isolation
+        # listener applies no organisation predicate at all, so the query
+        # silently resolves whichever organisation's row the database happens
+        # to return first -- every other organisation's subscription then
+        # never renews. Looping through run_for_each_tenant fixes that
+        # without changing TeamsMeetingService itself: each iteration runs
+        # inside tenant_scope(organization_id), so the existing APISettings
+        # query is correctly filtered by that organisation.
         def run_teams_subscription_renewal():
             with app.app_context():
-                try:
+                import logging
+
+                from app.jobs.tenant_safe_job import run_for_each_tenant
+
+                log = logging.getLogger(__name__)
+
+                def _renew_one_tenant(organization_id):
                     from app.services.teams_meeting_service import TeamsMeetingService
-                    result = TeamsMeetingService.renew_if_needed()
-                    if result.get("status") == "ok":
-                        import logging
-                        logging.getLogger(__name__).info(
-                            "APScheduler: Teams subscription renewed until %s",
-                            result.get("expiry"),
+                    return TeamsMeetingService.renew_if_needed()
+
+                def _log_result(result):
+                    if not result.ok:
+                        log.error(
+                            "APScheduler teams-renewal error for organization_id=%s: %s",
+                            result.organization_id, result.error,
                         )
-                except Exception as exc:
-                    import logging
-                    logging.getLogger(__name__).error(
-                        "APScheduler teams-renewal error: %s", exc
+                        return
+                    status = (result.value or {}).get("status")
+                    if status == "ok":
+                        log.info(
+                            "APScheduler: Teams subscription renewed for "
+                            "organization_id=%s until %s",
+                            result.organization_id, (result.value or {}).get("expiry"),
+                        )
+
+                try:
+                    run_for_each_tenant(
+                        app,
+                        "teams-subscription-renewal",
+                        _renew_one_tenant,
+                        on_result=_log_result,
                     )
+                except Exception as exc:
+                    log.error("APScheduler teams-renewal error: %s", exc)
 
         scheduler.add_job(
             func=run_teams_subscription_renewal,
@@ -413,6 +495,9 @@ def init_scheduler(app):
         # T-002: recurring capability-maturity projection. Closes the gap PR
         # #23's write-time ORM sync listeners cannot: the three raw-SQL
         # maturity writers in maturity_routes.py never fire an ORM event.
+        # Named platform job (see the module docstring on
+        # app/jobs/capability_projection_job.py): the projection is
+        # deliberately all-tenant in one pass, guarded by job_lock alone.
         capability_projection_registered = False
         try:
             def run_capability_projection():
@@ -451,6 +536,8 @@ def init_scheduler(app):
         # T-003: recurring recompute of stale derived facts (DE-4, ADR-003).
         # The on-demand endpoint (POST /api/v1/intelligence/derivation/recompute)
         # covers the immediate case; this covers everything nobody clicked.
+        # Declares its organisation per run: recompute_derived_facts calls
+        # run_for_each_tenant, visiting only stale-carrying organisations.
         derived_recompute_registered = False
         try:
             def run_derived_recompute():
