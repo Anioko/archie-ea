@@ -13,6 +13,7 @@ from app import db
 from app.models.vector_embeddings import ChatMessageEmbedding
 from app.modules.ai_chat.services.llm_service_impl import LLMService
 from app.modules.ai_chat.services.page_guide_registry import get_entry_for_page_key
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -100,11 +101,15 @@ class PageGuideService:
 
     def get_history(self, page_key: str, scope_key: str) -> List[Dict[str, Any]]:
         session_id = self._build_session_id(page_key, scope_key)
+        _pg_org_id = current_org_id()
+        pg_query = ChatMessageEmbedding.query.filter(
+            ChatMessageEmbedding.chat_session_id == session_id,
+            ChatMessageEmbedding.user_id == self.user_id,
+        )
+        if _pg_org_id is not None:
+            pg_query = pg_query.filter(ChatMessageEmbedding.organization_id == _pg_org_id)
         messages = (
-            ChatMessageEmbedding.query.filter(
-                ChatMessageEmbedding.chat_session_id == session_id,
-                ChatMessageEmbedding.user_id == self.user_id,
-            )
+            pg_query
             .order_by(ChatMessageEmbedding.created_at.asc())
             .all()
         )
@@ -120,10 +125,14 @@ class PageGuideService:
 
     def clear_history(self, page_key: str, scope_key: str) -> Dict[str, Any]:
         session_id = self._build_session_id(page_key, scope_key)
-        cleared = ChatMessageEmbedding.query.filter(
+        _clr_org_id = current_org_id()
+        clr_query = ChatMessageEmbedding.query.filter(
             ChatMessageEmbedding.chat_session_id == session_id,
             ChatMessageEmbedding.user_id == self.user_id,
-        ).delete()
+        )
+        if _clr_org_id is not None:
+            clr_query = clr_query.filter(ChatMessageEmbedding.organization_id == _clr_org_id)
+        cleared = clr_query.delete()
         db.session.commit()
         return {"success": True, "cleared_count": cleared}
 
