@@ -22,6 +22,7 @@ from sqlalchemy import and_, func
 from app import db
 from app.models.vector_embeddings import ChatMessageEmbedding
 from app.services.pgvector_embedding_service import get_pgvector_service
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -118,14 +119,18 @@ class AIChatMemoryService:
             List of recent ChatMessageEmbedding objects
         """
         try:
+            _corg_id = current_org_id()
             messages = (
                 ChatMessageEmbedding.query.filter(
-                    ChatMessageEmbedding.chat_session_id == self.session_id
+                    ChatMessageEmbedding.chat_session_id == self.session_id,
                 )
                 .order_by(ChatMessageEmbedding.created_at.desc())
                 .limit(limit)
                 .all()
             )
+            # Post-filter by organisation (sessions are per-user, but embeddings may leak across orgs)
+            if _corg_id is not None:
+                messages = [m for m in messages if m.organization_id == _corg_id or m.organization_id is None]
             return list(reversed(messages))  # Return in chronological order
         except Exception as e:
             logger.error(f"Failed to retrieve recent messages: {e}")
@@ -139,14 +144,25 @@ class AIChatMemoryService:
             Dictionary with session metadata
         """
         try:
+            _sorg_id = current_org_id()
+            base_filter = (
+                [ChatMessageEmbedding.chat_session_id == self.session_id]
+                if _sorg_id is None
+                else [
+                    ChatMessageEmbedding.chat_session_id == self.session_id,
+                    ChatMessageEmbedding.organization_id == _sorg_id,
+                ]
+            )
+
             total_messages = ChatMessageEmbedding.query.filter(
-                ChatMessageEmbedding.chat_session_id == self.session_id
+                *base_filter
             ).count()
 
             user_messages = ChatMessageEmbedding.query.filter(
                 and_(
                     ChatMessageEmbedding.chat_session_id == self.session_id,
                     ChatMessageEmbedding.message_role == "user",
+                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
                 )
             ).count()
 
@@ -154,12 +170,16 @@ class AIChatMemoryService:
                 and_(
                     ChatMessageEmbedding.chat_session_id == self.session_id,
                     ChatMessageEmbedding.message_role == "assistant",
+                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
                 )
             ).count()
 
             domains = (
                 db.session.query(ChatMessageEmbedding.domain, func.count())
-                .filter(ChatMessageEmbedding.chat_session_id == self.session_id)
+                .filter(
+                    ChatMessageEmbedding.chat_session_id == self.session_id,
+                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
+                )
                 .group_by(ChatMessageEmbedding.domain)
                 .all()
             )
@@ -222,9 +242,13 @@ class AIChatMemoryService:
             True if successful, False otherwise
         """
         try:
-            ChatMessageEmbedding.query.filter(
-                ChatMessageEmbedding.chat_session_id == self.session_id
-            ).delete()
+            _clr_org_id = current_org_id()
+            clr_query = ChatMessageEmbedding.query.filter(
+                ChatMessageEmbedding.chat_session_id == self.session_id,
+            )
+            if _clr_org_id is not None:
+                clr_query = clr_query.filter(ChatMessageEmbedding.organization_id == _clr_org_id)
+            clr_query.delete()
             db.session.commit()
             logger.info(f"Cleared session {self.session_id}")
             return True
