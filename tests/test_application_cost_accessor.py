@@ -599,6 +599,50 @@ class TestWritePathIntegration:
 
             assert get_annual_cost(existing) == Decimal("75000")
 
+    def test_commit_application_create_with_cost(self, app, db_session, make_org, tenant_ctx):
+        """_commit_application create path writes cost through the accessor."""
+        from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
+        from app.models.batch_import import BatchImportApplication, BatchImportJob, BatchImportBatch, BatchJobStatus, BatchStatus
+        from app.models.user import User
+
+        org = make_org("commit-create-1")
+        with tenant_ctx(org.id):
+            user = User(email="commit-c@example.com", organization_id=org.id, confirmed=True)
+            db_session.add(user)
+            db_session.flush()
+
+            job = BatchImportJob(
+                job_uuid="commit-create-uuid", user_id=user.id,
+                name="Commit Create", filename="test.csv", file_path="/tmp/test.csv",
+                file_hash="abc123", total_applications=1, batch_size=10,
+                total_batches=1, status=BatchJobStatus.AWAITING_CONFIRMATION,
+                archimate_mode="standard", enable_ai_generation=False,
+            )
+            db_session.add(job)
+            db_session.flush()
+
+            batch = BatchImportBatch(
+                job_id=job.id, batch_number=1, status=BatchStatus.QUEUED, total_applications=1
+            )
+            db_session.add(batch)
+            db_session.flush()
+
+            import_app = BatchImportApplication(
+                batch_id=batch.id, row_number=1,
+                source_data={"name": "NewApp", "total_cost_of_ownership": "60000"},
+                application_name="NewApp", status="pending",
+            )
+            db_session.add(import_app)
+            db_session.commit()
+
+            svc = BatchApprovalService()
+            result = svc._commit_application(import_app)
+            db_session.commit()
+
+            assert result is not None
+            assert result.name == "NewApp"
+            assert get_annual_cost(result) == Decimal("60000")
+
 
 class TestOtherCategoriesPersisted:
     """Other cost categories are written through the accessor."""
