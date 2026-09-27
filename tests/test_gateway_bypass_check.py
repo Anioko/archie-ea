@@ -19,8 +19,6 @@ import shutil
 import textwrap
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------------------
@@ -322,21 +320,17 @@ def test_r1_bypasses_are_xfail():
     assert r1_expected_keys, "No R1 bypass sites in EXPECTED_BYPASSES"
 
 
-@pytest.mark.xfail(strict=True)
-def test_r1_bypasses_are_still_xfail():
-    """Demonstrate that R1 files still contain bypass sites.
+def test_r1_bypasses_still_present():
+    """R1 files still contain bypass sites (remediation not complete).
 
-    This test is marked strict-xfail. While bypass sites remain in R1
-    files, it FAILS (reported as XFAIL, which is green). When bypass sites
-    are fully removed from R1 files, this test PASSES (reported as XPASS,
-    which is red with strict=True), signaling that remediation is complete
-    and the xfail marker can be removed.
+    While bypass sites remain in R1 files, this test PASSES. When bypass
+    sites are fully removed from R1 files, this test FAILS, signaling
+    that remediation is complete and the test can be removed.
     """
     discovered = discover_bypass_sites()
     r1_sites = [(r, ln, p) for r, ln, p in discovered if r in R1_BYPASS_FILES]
-    assert r1_sites == [], (
-        "No bypass sites remain in R1 files -- remediation complete. "
-        "Remove strict-xfail from this test."
+    assert r1_sites, (
+        "No bypass sites remain in R1 files -- remediation complete."
     )
 
 
