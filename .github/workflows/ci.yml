@@ -248,6 +248,12 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-cov
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+      # tests/test_archimate_dashboard_init_runtime.py runs the dashboard script
+      # under Node and fails without it. GitHub-hosted runners ship Node; the
+      # ibm-vsi hosts do not all have it, so install it here like Python above.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       # tests/csp/test_csp_evaluator.py is part of this job and contains four
       # real-browser assertions. Without the binary pytest reports four skips,
       # which is not valid release evidence. Every shard installs all three
