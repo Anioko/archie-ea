@@ -35,8 +35,8 @@ def get_annual_cost(app: ApplicationComponent) -> Optional[Decimal]:
     """
     Return the application's annual cost as Decimal, or None if not recorded.
 
-    This is the single read accessor for Release 1. All screens, reports and
-    exports that need "the annual cost of this application" must call this.
+    All screens, reports and exports that need "the annual cost of this
+    application" must call this.
     """
     value = getattr(app, _ANNUAL_COST_COLUMN, None)
     if value is None:

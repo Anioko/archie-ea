@@ -1,4 +1,4 @@
-"""Tests for the Application Cost Accessor (R1-B08 PR 1).
+"""Tests for the Application Cost Accessor.
 
 Covers:
 - Single accessor for annual cost (get_annual_cost, set_annual_cost)
@@ -261,7 +261,7 @@ class TestApplyCostToApplication:
             assert get_annual_cost(app_comp) == Decimal("75000")
 
     def test_other_categories_accepted_but_not_persisted_in_r1(self, app, db_session, make_org, tenant_ctx):
-        """Release 1 only persists total_cost_of_ownership; other categories accepted for preview."""
+        """Only persists total_cost_of_ownership; other categories accepted for preview."""
         org = make_org("apply-cost-2")
         with tenant_ctx(org.id):
             app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
@@ -275,7 +275,7 @@ class TestApplyCostToApplication:
             })
             db_session.commit()
 
-            # Only TCO is written in R1
+            # Only TCO is written through the system-of-record column
             assert get_annual_cost(app_comp) == Decimal("100000")
 
 
@@ -360,7 +360,7 @@ class TestCostSummary:
 
 
 class TestApplyCostGuard:
-    """D1: apply_cost_to_application does not clear existing TCO when key missing."""
+    """apply_cost_to_application does not clear existing TCO when key missing."""
 
     def test_does_not_clear_when_key_missing(self, app, db_session, make_org, tenant_ctx):
         org = make_org("guard-d1-1")
@@ -399,7 +399,7 @@ class TestApplyCostGuard:
 
 
 class TestCurrencyRejection:
-    """D2: Currency mismatch is rejected when reporting_currency is set."""
+    """Currency mismatch is rejected when reporting_currency is set."""
 
     def test_rejects_non_reporting_currency(self):
         row = {"total_cost_of_ownership": "100", "currency_col": "EUR"}
@@ -426,7 +426,7 @@ class TestCurrencyRejection:
 
 
 class TestDetectCostColumns:
-    """D9: detect_cost_columns matches case-insensitively and shares one definition."""
+    """detect_cost_columns matches case-insensitively and shares one definition."""
 
     def test_detects_case_insensitive(self):
         result = detect_cost_columns(["TCO", "Annual Cost", "Licence Cost"])
@@ -454,7 +454,7 @@ class TestDetectCostColumns:
 
 
 class TestWritePathIntegration:
-    """D4: Each write path is exercised through the service layer."""
+    """Each write path is exercised through the service layer."""
 
     def test_extract_cost_mapping_and_apply(self, app, db_session, make_org, tenant_ctx):
         """_create_application's cost detection + apply chain works."""
@@ -484,7 +484,7 @@ class TestWritePathIntegration:
         assert mapping == {}
 
     def test_orchestrator_update_merge_preserves_tco(self, app, db_session, make_org, tenant_ctx):
-        """D1: _update_application with merge mode and no cost columns preserves TCO."""
+        """_update_application with merge mode and no cost columns preserves TCO."""
         from app.modules.import_batch.services.import_orchestrator import ImportOrchestrator
 
         org = make_org("write-path-3")
@@ -520,7 +520,7 @@ class TestWritePathIntegration:
             assert get_annual_cost(existing) == Decimal("75000")
 
     def test_merge_into_existing_preserves_tco_when_no_cost(self, app, db_session, make_org, tenant_ctx):
-        """D1/D4: _merge_into_existing does not clear stored TCO when no cost column."""
+        """_merge_into_existing does not clear stored TCO when no cost column."""
         from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
         from app.models.batch_import import BatchImportApplication
 
@@ -543,7 +543,7 @@ class TestWritePathIntegration:
             assert get_annual_cost(existing) == Decimal("50000")
 
     def test_merge_into_existing_writes_tco_from_source(self, app, db_session, make_org, tenant_ctx):
-        """D1/D4: _merge_into_existing writes TCO from source data."""
+        """_merge_into_existing writes TCO from source data."""
         from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
         from app.models.batch_import import BatchImportApplication
 
@@ -567,7 +567,7 @@ class TestWritePathIntegration:
 
 
 class TestOtherCategoriesPersisted:
-    """D6: Other cost categories are written through the accessor."""
+    """Other cost categories are written through the accessor."""
 
     def test_license_cost_persisted(self, app, db_session, make_org, tenant_ctx):
         org = make_org("other-cat-1")
@@ -589,7 +589,7 @@ class TestOtherCategoriesPersisted:
 
 
 class TestImportPreviewValidation:
-    """D3: Preview validation reports invalid rows."""
+    """Preview validation reports invalid rows."""
 
     def test_preview_reports_invalid_lifecycle_status(self, app, db_session, make_org, tenant_ctx):
         """Preview reports a row with an invalid lifecycle_status as invalid."""
