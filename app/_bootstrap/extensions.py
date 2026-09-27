@@ -264,25 +264,34 @@ def init_scheduler(app):
         scheduler = BackgroundScheduler()
 
         def run_scheduled_workflows():
-            """APScheduler job: execute due EA workflow schedules.
+            """APScheduler job: execute due EA workflow schedules per tenant.
 
-            Declares its organisation per schedule rather than per whole run:
-            the due-schedule read has to span every organisation (there is no
-            single tenant to scope the enumeration by), so EAWorkflowEngine
-            reads schedule.organization_id off each due row and passes it
-            explicitly into start_workflow(organization_id=...) (see
-            app/services/ea_workflow_engine.py).
+            EAWorkflowSchedule is a TenantMixin model, so the due-schedule
+            read and every downstream query (workflow definition, phase gate)
+            must run inside each organisation's tenant scope.  This function
+            visits every active organisation through run_for_each_tenant so
+            the ORM isolation listeners filter rows automatically.
             """
             with app.app_context():
                 try:
+                    from app.jobs.tenant_safe_job import run_for_each_tenant
                     from app.services.ea_workflow_engine import EAWorkflowEngine
-                    engine = EAWorkflowEngine()
-                    result = engine.run_due_schedules()
-                    if result["schedules_run"] > 0:
-                        import logging
-                        logging.getLogger(__name__).info(
-                            "APScheduler: ran %d EA workflow schedules", result["schedules_run"]
-                        )
+
+                    def _log_failure(result):
+                        if not result.ok:
+                            import logging
+                            logging.getLogger(__name__).error(
+                                "APScheduler ea-workflows failed for org %s: %s",
+                                result.organization_id,
+                                result.error,
+                            )
+
+                    run_for_each_tenant(
+                        app,
+                        "ea-workflow-schedules",
+                        lambda organization_id: EAWorkflowEngine().run_due_schedules(),
+                        on_result=_log_failure,
+                    )
                 except Exception as exc:
                     import logging
                     logging.getLogger(__name__).error("APScheduler ea-workflows error: %s", exc)

@@ -62,11 +62,12 @@ never runs.
 The two categories:
 
 * **PLATFORM_JOBS**: no per-organisation association — the work is global
-  (error_events, the Abacus connection) or spans every organisation in one pass
-  (capability projection, EA workflow schedules). These jobs are guarded by
-  ``job_lock`` alone.
+  (error_events, capability projection, the Abacus connection). These jobs are
+  guarded by ``job_lock`` alone.
 * **TENANT_JOBS**: visited per organisation through ``run_for_each_tenant`` /
   ``tenant_scope``, so each tenant's rows are isolated by the ORM listeners.
+  (EA workflow schedules are tenant-scoped because ``EAWorkflowSchedule`` is a
+  ``TenantMixin`` model.)
 """
 
 from __future__ import annotations
@@ -91,8 +92,6 @@ logger = logging.getLogger(__name__)
 PLATFORM_JOBS: frozenset[str] = frozenset({
     "error_digest",            # error_events carries no organisation predicate
     "capability_projection",   # all-tenant lock-guarded pass
-    "ea_workflow_scheduler",   # reads due schedules across all orgs, passes
-                               # organization_id explicitly to each workflow
     "abacus_incremental_sync", # ExternalSystem has no organisation predicate
 })
 
@@ -102,6 +101,7 @@ TENANT_JOBS: frozenset[str] = frozenset({
     "teams_subscription_renewal",   # visited via run_for_each_tenant
     "typed_arb_waiver_expiry",      # config-driven organisation ids
     "derived_facts_recompute",      # visited via run_for_each_tenant
+    "ea_workflow_scheduler",        # visited via run_for_each_tenant
 })
 
 
