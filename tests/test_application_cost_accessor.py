@@ -160,14 +160,17 @@ class TestParseCostCell:
         assert result["error"] is not None
         assert "Could not parse cost value" in result["error"]
 
-    def test_parse_negative_value_warns_but_stores(self):
+    def test_negative_value_returns_error(self):
         result = parse_cost_cell("-5000", currency="USD", period="annual", category="total_cost_of_ownership")
-        assert result["value"] == Decimal("-5000")
-        assert any("Negative cost value" in w for w in result["warnings"])
+        assert result["value"] is None
+        assert result["error"] is not None
+        assert "Negative cost value" in result["error"]
 
-    def test_parse_parentheses_as_negative(self):
+    def test_parentheses_as_negative_returns_error(self):
         result = parse_cost_cell("(5000)", currency="USD", period="annual", category="total_cost_of_ownership")
-        assert result["value"] == Decimal("-5000")
+        assert result["value"] is None
+        assert result["error"] is not None
+        assert "Negative cost value" in result["error"]
 
 
 class TestMapImportCostColumns:

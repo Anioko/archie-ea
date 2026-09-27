@@ -127,7 +127,8 @@ def parse_cost_cell(
                 cleaned = "-" + cleaned[1:-1]
             value = Decimal(cleaned)
             if value < 0:
-                warnings.append("Negative cost value parsed; stored as-is")
+                error = f"Negative cost value not accepted: {raw_value!r}"
+                value = None
         except (InvalidOperation, ValueError, TypeError):
             error = f"Could not parse cost value: {raw_value!r}"
             value = None
