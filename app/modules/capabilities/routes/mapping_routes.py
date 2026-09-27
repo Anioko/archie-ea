@@ -295,10 +295,10 @@ def api_capabilities_semantic_search():
         if not embeddings:
             return jsonify({"capabilities": [], "method": "no_embeddings"})
 
-        # Post-filter by organisation
+        # Post-filter by organisation (tenant table: strict equality)
         _map_org_id = getattr(g, "current_org_id", None)
         if _map_org_id is not None:
-            embeddings = [e for e in embeddings if e.organization_id == _map_org_id or e.organization_id is None]
+            embeddings = [e for e in embeddings if e.organization_id == _map_org_id]
         if not embeddings:
             return jsonify({"capabilities": [], "method": "no_embeddings"})
 

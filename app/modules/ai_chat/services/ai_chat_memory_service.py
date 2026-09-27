@@ -128,9 +128,9 @@ class AIChatMemoryService:
                 .limit(limit)
                 .all()
             )
-            # Post-filter by organisation (sessions are per-user, but embeddings may leak across orgs)
+            # Post-filter by organisation (tenant table: strict equality)
             if _corg_id is not None:
-                messages = [m for m in messages if m.organization_id == _corg_id or m.organization_id is None]
+                messages = [m for m in messages if m.organization_id == _corg_id]
             return list(reversed(messages))  # Return in chronological order
         except Exception as e:
             logger.error(f"Failed to retrieve recent messages: {e}")
