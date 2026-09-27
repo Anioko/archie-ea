@@ -34,6 +34,7 @@ from ... import db
 from .llm_cache import get_llm_cache
 from .llm_service import get_llm_service
 from .pgvector_embedding_service import get_embedding_model  # dead-code-ok
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,39 @@ EMBEDDING_TABLES = {
         "message_text",
     ),
 }
+
+# Tenant embedding tables (strict org equality)
+_TENANT_EMBEDDING_TABLES_SQL = {
+    "application_component_embeddings",
+    "business_capability_embeddings",
+    "solution_embeddings",
+    "chat_message_embeddings",
+}
+# Shared embedding tables (NULL-or-org)
+_SHARED_EMBEDDING_TABLES_SQL = {
+    "process_embeddings",
+    "vendor_product_embeddings",
+    "vendor_organization_embeddings",
+}
+
+
+def _org_predicate(table_name: str) -> str:
+    """Return a SQL WHERE clause fragment scoping *table_name* to the current org.
+
+    Returns '' when there is no tenant context.
+    """
+    org_id = current_org_id()
+    if org_id is None:
+        return ""
+    if table_name in _TENANT_EMBEDDING_TABLES_SQL:
+        return f" AND {table_name}.organization_id = {org_id} "
+    if table_name in _SHARED_EMBEDDING_TABLES_SQL:
+        return (
+            f" AND ({table_name}.organization_id = {org_id} "
+            f"OR {table_name}.organization_id IS NULL) "
+        )
+    return ""
+
 
 Base = declarative_base()
 
@@ -374,12 +408,13 @@ class RAGEngine:
 
         for entity_type, (table, id_col, text_col) in EMBEDDING_TABLES.items():
             try:
+                org_clause = _org_predicate(table)
                 sql = text(
                     f"SELECT {id_col} AS entity_id, "  # noqa: S608
                     f"       {text_col} AS text_content, "
                     f"       1 - (embedding <=> :qvec::vector) AS similarity "
                     f"FROM {table} "
-                    f"WHERE embedding IS NOT NULL "
+                    f"WHERE embedding IS NOT NULL {org_clause}"
                     f"ORDER BY embedding <=> :qvec::vector "
                     f"LIMIT :lim"
                 )
