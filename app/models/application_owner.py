@@ -61,13 +61,7 @@ class ApplicationOwner(db.Model):
         index=True,
     )
 
-    # Provenance fields for backfill (H5 consolidation)
-    retired_into_id = db.Column(
-        db.Integer,
-        db.ForeignKey("application_owners.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+    # Provenance fields for backfill
     source_table = db.Column(db.String(50), nullable=True)
     source_id = db.Column(db.Integer, nullable=True)
 

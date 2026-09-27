@@ -18,6 +18,7 @@
     if (!window.Platform || !window.Platform.fetch) return;
 
     var OWNERSHIP_TYPES = ['primary', 'backup', 'technical', 'business'];
+    var OWNERSHIP_LABELS = {'primary': 'Primary', 'backup': 'Backup', 'technical': 'Technical', 'business': 'Business'};
 
     // ── State ─────────────────────────────────────────────────────────────────
     var state = {
@@ -61,7 +62,7 @@
                 renderResults(data.results || []);
             })
             .catch(function () {
-                // Platform.toast already handled by fetch core
+                // Type-ahead errors are transient and not shown to the user
             });
     }
 
@@ -140,7 +141,7 @@
         Platform.fetch.post('/applications/' + appId + '/owners', {
             user_id: state.selectedUserId,
             ownership_type: otype,
-        }, { silent: true })
+        })
             .then(function () {
                 state.selectedUserId = null;
                 state.selectedLabel = null;
@@ -152,39 +153,57 @@
             .catch(function () {
                 addBtn.disabled = false;
                 addBtn.innerHTML = '<i data-lucide="plus" class="h-4 w-4"></i> Add owner';
-                // Toast already shown by Platform.fetch
             })
             .finally(function () {
                 lucide.createIcons();
             });
     });
 
-    // ── Remove owner ──────────────────────────────────────────────────────────
+    // ── Remove owner & change type ─────────────────────────────────────────
     ownerListContainer.addEventListener('click', function (e) {
         var btn = e.target.closest('.remove-owner-btn');
-        if (!btn) return;
-        var ownerId = btn.getAttribute('data-owner-id');
-        if (!ownerId) return;
+        if (btn) {
+            var ownerId = btn.getAttribute('data-owner-id');
+            if (!ownerId) return;
 
-        if (!confirm('Remove this owner?')) return;
+            Platform.confirm('Remove this owner?').then(function (ok) {
+                if (!ok) return;
 
-        Platform.fetch.delete('/applications/' + appId + '/owners/' + ownerId, { silent: true })
-            .then(function () {
-                return reloadOwnerList();
-            })
-            .catch(function () {
-                // Toast already shown
+                Platform.fetch.delete('/applications/' + appId + '/owners/' + ownerId)
+                    .then(function () {
+                        return reloadOwnerList();
+                    })
+                    .catch(function () {
+                        // Error toast shown by Platform.fetch
+                    });
             });
+            return;
+        }
+
+        var typeSelectEl = e.target.closest('.change-owner-type');
+        if (typeSelectEl) {
+            var ownerId = typeSelectEl.getAttribute('data-owner-id');
+            var newType = typeSelectEl.value;
+            Platform.fetch.put('/applications/' + appId + '/owners/' + ownerId, {
+                ownership_type: newType,
+            })
+                .then(function () {
+                    return reloadOwnerList();
+                })
+                .catch(function () {
+                    // Error toast shown by Platform.fetch
+                });
+        }
     });
 
     // ── Reload owner list ─────────────────────────────────────────────────────
     function reloadOwnerList() {
-        return Platform.fetch.get('/applications/' + appId + '/owners', null, { silent: true })
+        return Platform.fetch.get('/applications/' + appId + '/owners')
             .then(function (data) {
                 renderOwnerList(data.owners || []);
             })
             .catch(function () {
-                // Toast already shown
+                // Error toast shown by Platform.fetch
             });
     }
 
@@ -197,13 +216,18 @@
 
         var html = '<p class="text-sm font-medium">Current owners</p>';
         owners.forEach(function (o) {
-            var typeLabel = o.ownership_type.charAt(0).toUpperCase() + o.ownership_type.slice(1);
+            var typeOptions = '';
+            OWNERSHIP_TYPES.forEach(function (t) {
+                var sel = (t === o.ownership_type) ? ' selected' : '';
+                typeOptions += '<option value="' + t + '"' + sel + '>' + OWNERSHIP_LABELS[t] + '</option>';
+            });
             html +=
                 '<div class="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" data-owner-id="' +
                 o.id + '">' +
-                '<div>' +
+                '<div class="flex items-center gap-2">' +
                 '<span class="font-medium">' + escapeHtml(o.user_name) + '</span>' +
-                '<span class="text-muted-foreground ml-2">(' + typeLabel + ')</span>' +
+                '<select class="change-owner-type text-xs rounded border border-input bg-background px-1 py-0.5" data-owner-id="' +
+                o.id + '">' + typeOptions + '</select>' +
                 '</div>' +
                 '<button type="button" class="text-destructive hover:text-destructive-emphasis text-xs remove-owner-btn" data-owner-id="' +
                 o.id + '" data-app-id="' + appId + '">Remove</button>' +

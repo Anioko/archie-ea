@@ -25,7 +25,7 @@ def _make_user(db_session, org, role, label):
     role_obj = Role.query.filter_by(name="User").first()
 
     user = User(
-        email=f"r1b03-{label}-{uuid.uuid4().hex[:8]}@example.com",
+        email=f"ownertest-{label}-{uuid.uuid4().hex[:8]}@example.com",
         first_name=label.capitalize(),
         last_name="Test",
         organization_id=org.id,
@@ -77,8 +77,8 @@ def _delete(client, path):
 @pytest.fixture
 def two_orgs(db_session, make_org):
     """Two organisations, each with one app manager and one application."""
-    org_a = make_org("r1b03-a")
-    org_b = make_org("r1b03-b")
+    org_a = make_org("own-a")
+    org_b = make_org("own-b")
     manager_a = _make_user(db_session, org_a, "application_manager", "managera")
     manager_b = _make_user(db_session, org_b, "application_manager", "managerb")
     app_a = _make_app(db_session, org_a, "App A")
@@ -99,7 +99,7 @@ def two_orgs(db_session, make_org):
 
 def test_add_owner_success(db_session, make_org, client, login_as):
     """An application manager can add an owner to their own application."""
-    org = make_org("r1b03-add")
+    org = make_org("own-add")
     manager = _make_user(db_session, org, "application_manager", "addmanager")
     app = _make_app(db_session, org, "Add Test")
     login_as(client, manager)
@@ -117,7 +117,7 @@ def test_add_owner_success(db_session, make_org, client, login_as):
 
 def test_add_owner_duplicate_refused(db_session, make_org, client, login_as):
     """Adding the same user with the same type returns 409."""
-    org = make_org("r1b03-dup")
+    org = make_org("own-dup")
     manager = _make_user(db_session, org, "application_manager", "dupmanager")
     app = _make_app(db_session, org, "Dup Test")
     login_as(client, manager)
@@ -135,7 +135,7 @@ def test_add_owner_duplicate_refused(db_session, make_org, client, login_as):
 
 def test_add_owner_invalid_type_refused(db_session, make_org, client, login_as):
     """An invalid ownership type returns 400."""
-    org = make_org("r1b03-type")
+    org = make_org("own-type")
     manager = _make_user(db_session, org, "application_manager", "typemanager")
     app = _make_app(db_session, org, "Type Test")
     login_as(client, manager)
@@ -194,7 +194,7 @@ def test_owner_list_scoped_to_caller_org(two_orgs, client, login_as):
 
 
 def test_cross_org_application_write_refused(two_orgs, client, login_as):
-    """H2: a user cannot write an owner onto another organisation's application."""
+    """A user cannot write an owner onto another organisation's application."""
     login_as(client, two_orgs["manager_a"])
 
     # Try to add manager A's user to org B's application
@@ -221,7 +221,7 @@ def test_change_owner_type(db_session, make_org, client, login_as):
     """An owner's type can be changed."""
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-change")
+    org = make_org("own-change")
     manager = _make_user(db_session, org, "application_manager", "changemanager")
     app = _make_app(db_session, org, "Change Test")
 
@@ -246,7 +246,7 @@ def test_remove_owner(db_session, make_org, client, login_as):
     """An owner can be removed."""
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-remove")
+    org = make_org("own-remove")
     manager = _make_user(db_session, org, "application_manager", "removemanager")
     app = _make_app(db_session, org, "Remove Test")
 
@@ -267,7 +267,7 @@ def test_remove_owner(db_session, make_org, client, login_as):
 
 def test_change_owner_type_not_found(db_session, make_org, client, login_as):
     """Changing a non-existent owner returns 404."""
-    org = make_org("r1b03-notfound")
+    org = make_org("own-notfound")
     manager = _make_user(db_session, org, "application_manager", "notfoundmanager")
     app = _make_app(db_session, org, "Not Found")
     login_as(client, manager)
@@ -283,7 +283,7 @@ def test_change_owner_type_not_found(db_session, make_org, client, login_as):
 
 def test_owner_picker_finds_users(db_session, make_org, client, login_as):
     """The person picker returns users matching the search query."""
-    org = make_org("r1b03-picker")
+    org = make_org("own-picker")
     alice = _make_user(db_session, org, "application_manager", "alice")
     bob = _make_user(db_session, org, "application_manager", "bob")
     app = _make_app(db_session, org, "Picker Test")
@@ -304,7 +304,7 @@ def test_owner_picker_finds_users(db_session, make_org, client, login_as):
 
 def test_owner_picker_short_query_returns_empty(db_session, make_org, client, login_as):
     """The person picker requires at least 2 characters."""
-    org = make_org("r1b03-short")
+    org = make_org("own-short")
     manager = _make_user(db_session, org, "application_manager", "shortmgr")
     app = _make_app(db_session, org, "Short Query")
     login_as(client, manager)
@@ -345,7 +345,7 @@ def test_backfill_migrates_text_owners(db_session, make_org):
     from app.commands.backfill_application_owners import backfill_owner_data
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-bftext")
+    org = make_org("own-bftext")
     user = _make_user(db_session, org, "application_manager", "bftextuser")
     app = _make_app(db_session, org, "Backfill Text", business_owner=f"{user.first_name} {user.last_name}")
 
@@ -367,8 +367,8 @@ def test_backfill_keeps_organisations_apart(db_session, make_org):
     from app.models.application_owner import ApplicationOwner
     from app.models.application_portfolio import ApplicationComponent
 
-    org_a = make_org("r1b03-bfa")
-    org_b = make_org("r1b03-bfb")
+    org_a = make_org("own-bfa")
+    org_b = make_org("own-bfb")
     user_a = _make_user(db_session, org_a, "application_manager", "bfusera")
     user_b = _make_user(db_session, org_b, "application_manager", "bfuserb")
     _make_app(db_session, org_a, "OrgA App", business_owner=f"{user_a.first_name} {user_a.last_name}")
@@ -398,7 +398,7 @@ def test_backfill_keeps_organisations_apart(db_session, make_org):
 
 
 def test_backfill_does_not_crash_on_unresolved_name(db_session, make_org):
-    """H3: an unresolved text owner does NOT cause a NotNullViolation crash.
+    """An unresolved text owner does NOT cause a NotNullViolation crash.
 
     Instead the name is only appended to the unresolved list, and no
     ApplicationOwner row is created.
@@ -406,7 +406,7 @@ def test_backfill_does_not_crash_on_unresolved_name(db_session, make_org):
     from app.commands.backfill_application_owners import backfill_owner_data
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-unresolved")
+    org = make_org("own-unresolved")
     user = _make_user(db_session, org, "application_manager", "unresmgr")
     _make_app(db_session, org, "Unresolved Test",
               business_owner=f"{user.first_name} {user.last_name}",
@@ -428,11 +428,11 @@ def test_backfill_does_not_crash_on_unresolved_name(db_session, make_org):
 
 
 def test_backfill_unresolved_name_goes_to_list_only(db_session, make_org):
-    """H3: an unresolved name creates no row, only an unresolved entry."""
+    """An unresolved name creates no row, only an unresolved entry."""
     from app.commands.backfill_application_owners import backfill_owner_data, _record_unresolved
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-unres2")
+    org = make_org("own-unres2")
     _make_app(db_session, org, "No Match App", business_owner="Completely Unknown Person")
 
     stats = backfill_owner_data(dry_run=False, organization_ids=[org.id])
@@ -445,12 +445,12 @@ def test_backfill_unresolved_name_goes_to_list_only(db_session, make_org):
 
 
 def test_backfill_legacy_unknown_type_goes_to_unresolved(db_session, make_org):
-    """M6: unknown legacy ownership_type goes to the unresolved list, not to 'primary'."""
+    """Unknown legacy ownership_type goes to the unresolved list, not guessed."""
     from app.commands.backfill_application_owners import backfill_owner_data
     from app.models.application_owner import ApplicationOwner
     from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
 
-    org = make_org("r1b03-unktype")
+    org = make_org("own-unktype")
     user = _make_user(db_session, org, "application_manager", "unktypemanager")
     app = _make_app(db_session, org, "Unknown Type App")
     unit = OrganizationUnit(name="Test Unit", organization_id=org.id)
@@ -475,11 +475,11 @@ def test_backfill_legacy_unknown_type_goes_to_unresolved(db_session, make_org):
 
 
 def test_backfill_is_idempotent(db_session, make_org):
-    """M7: running backfill twice creates the same number of rows."""
+    """Running backfill twice creates the same number of rows."""
     from app.commands.backfill_application_owners import backfill_owner_data
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-idem")
+    org = make_org("own-idem")
     user = _make_user(db_session, org, "application_manager", "idemmanager")
     _make_app(db_session, org, "Idempotent App", business_owner=f"{user.first_name} {user.last_name}")
 
@@ -503,7 +503,7 @@ def test_backfill_is_idempotent(db_session, make_org):
 
 def test_coverage_view_loads(db_session, make_org, client, login_as):
     """The coverage view renders for a CTO user."""
-    org = make_org("r1b03-cov")
+    org = make_org("own-cov")
     cto = _make_user(db_session, org, "cto", "ctocoverage")
     _make_app(db_session, org, "Covered App")
     login_as(client, cto)
@@ -513,8 +513,8 @@ def test_coverage_view_loads(db_session, make_org, client, login_as):
 
 
 def test_coverage_view_forbidden_for_procurement(db_session, make_org, client, login_as):
-    """M13: procurement role gets 403 on coverage view."""
-    org = make_org("r1b03-cov403")
+    """Procurement role gets 403 on coverage view."""
+    org = make_org("own-cov403")
     proc = _make_user(db_session, org, "procurement", "procurementcov")
     login_as(client, proc)
 
@@ -523,8 +523,8 @@ def test_coverage_view_forbidden_for_procurement(db_session, make_org, client, l
 
 
 def test_coverage_view_overall_dash_when_no_apps(db_session, make_org, client, login_as):
-    """M13: an org with no applications shows em-dash for overall coverage."""
-    org = make_org("r1b03-covdash")
+    """An org with no applications shows em-dash for overall coverage."""
+    org = make_org("own-covdash")
     cto = _make_user(db_session, org, "cto", "ctodash")
     login_as(client, cto)
 
@@ -564,7 +564,7 @@ def test_fact_sheet_shows_owners(db_session, make_org, client, login_as):
     """The fact sheet includes application owners from ApplicationOwner rows."""
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-fs")
+    org = make_org("own-fs")
     manager = _make_user(db_session, org, "application_manager", "fsmanager")
     app = _make_app(db_session, org, "FS Test")
     db_session.add(ApplicationOwner(
@@ -586,7 +586,7 @@ def test_fact_sheet_shows_owners(db_session, make_org, client, login_as):
 
 def test_edit_form_has_readonly_text_owners(db_session, make_org, client, login_as):
     """The edit form renders business_owner and technical_owner as read-only."""
-    org = make_org("r1b03-ro")
+    org = make_org("own-ro")
     manager = _make_user(db_session, org, "application_manager", "romanager")
     app = _make_app(db_session, org, "RO Test", business_owner="Jane Legacy", technical_owner="John Legacy")
     login_as(client, manager)
@@ -602,8 +602,8 @@ def test_edit_form_has_readonly_text_owners(db_session, make_org, client, login_
 
 
 def test_edit_form_has_business_purpose(db_session, make_org, client, login_as):
-    """M14: business purpose input is present in the edit form."""
-    org = make_org("r1b03-bp")
+    """Business purpose input is present in the edit form."""
+    org = make_org("own-bp")
     manager = _make_user(db_session, org, "application_manager", "bpmanager")
     app = _make_app(db_session, org, "BP Test")
     login_as(client, manager)
@@ -622,7 +622,7 @@ def test_can_assign_and_read_back_all_owner_types(db_session, make_org, client, 
     """All four owner types can be assigned and read back."""
     from app.models.application_owner import ApplicationOwner
 
-    org = make_org("r1b03-types")
+    org = make_org("own-types")
     manager = _make_user(db_session, org, "application_manager", "typesmgr")
     app = _make_app(db_session, org, "Types Test")
     login_as(client, manager)
@@ -694,7 +694,7 @@ def test_app_owner_writer_assigns_back_to_user(two_orgs, client, login_as):
 
 
 def test_list_owners_cross_org_app_refused(two_orgs, client, login_as):
-    """H2: listing owners for another org's application returns 404."""
+    """Listing owners for another org's application returns 404."""
     login_as(client, two_orgs["manager_a"])
 
     resp = client.get(f"/applications/{two_orgs['app_b'].id}/owners")
@@ -702,7 +702,7 @@ def test_list_owners_cross_org_app_refused(two_orgs, client, login_as):
 
 
 def test_remove_owner_cross_org_app_refused(two_orgs, client, login_as):
-    """H2: removing an owner from another org's application returns 404."""
+    """Removing an owner from another org's application returns 404."""
     login_as(client, two_orgs["manager_a"])
 
     resp = client.delete(f"/applications/{two_orgs['app_b'].id}/owners/1")
@@ -710,7 +710,7 @@ def test_remove_owner_cross_org_app_refused(two_orgs, client, login_as):
 
 
 def test_change_owner_type_cross_org_app_refused(two_orgs, client, login_as):
-    """H2: changing owner type on another org's application returns 404."""
+    """Changing owner type on another org's application returns 404."""
     login_as(client, two_orgs["manager_a"])
 
     resp = _put_json(client, f"/applications/{two_orgs['app_b'].id}/owners/1", {
@@ -723,8 +723,8 @@ def test_change_owner_type_cross_org_app_refused(two_orgs, client, login_as):
 
 
 def test_owner_picker_escapes_special_chars(db_session, make_org, client, login_as):
-    """L18: picker search handles % and _ in the query literally."""
-    org = make_org("r1b03-esc")
+    """Picker search handles % and _ in the query literally."""
+    org = make_org("own-esc")
     manager = _make_user(db_session, org, "application_manager", "escmgr")
     unique = "te_st_user_100"
     manager.first_name = unique

@@ -102,7 +102,7 @@ def add_owner(app_id: int):
     """
     org_id = g.current_org_id
 
-    # H2: verify the application belongs to the caller's organisation
+    # Verify the application belongs to the caller's organisation
     app = _verify_app_in_org(app_id, org_id)
     if app is None:
         return jsonify({"success": False, "error": "Application not found"}), 404
@@ -163,7 +163,7 @@ def change_owner_type(app_id: int, owner_id: int):
     """Change an owner's type (JSON only)."""
     org_id = g.current_org_id
 
-    # H2: verify the application belongs to the caller's organisation
+    # Verify the application belongs to the caller's organisation
     app = _verify_app_in_org(app_id, org_id)
     if app is None:
         return jsonify({"success": False, "error": "Application not found"}), 404
@@ -203,7 +203,7 @@ def remove_owner(app_id: int, owner_id: int):
     """Remove an owner from an application."""
     org_id = g.current_org_id
 
-    # H2: verify the application belongs to the caller's organisation
+    # Verify the application belongs to the caller's organisation
     app = _verify_app_in_org(app_id, org_id)
     if app is None:
         return jsonify({"success": False, "error": "Application not found"}), 404

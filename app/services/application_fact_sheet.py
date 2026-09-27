@@ -51,11 +51,12 @@ def _has_value(v: Any) -> bool:
     return True
 
 
-def _owner_count(app_id: int) -> int:
-    """Read ApplicationOwner rows for *app_id* so every caller sees the same count."""
+def _owner_count(app_id: int, org_id: int) -> int:
+    """Read ApplicationOwner rows for *app_id* in the given organisation."""
     from app.models.application_owner import ApplicationOwner
     return ApplicationOwner.query.filter(
-        ApplicationOwner.application_id == app_id
+        ApplicationOwner.application_id == app_id,
+        ApplicationOwner.organization_id == org_id,
     ).count()
 
 
@@ -66,10 +67,11 @@ def compute_completeness(app: Any) -> Dict[str, Any]:
     ApplicationOwner row for this application, regardless of the legacy
     text column.
     """
+    org_id = getattr(app, "organization_id", None)
     got = 0
     total = 0
     missing: List[str] = []
-    owner_count = _owner_count(app.id)
+    owner_count = _owner_count(app.id, org_id) if org_id else 0
     for attr, label, weight in _COMPLETENESS_FIELDS:
         total += weight
         if attr == "application_owner":
@@ -94,6 +96,7 @@ def _lifecycle_signal(app: Any) -> Dict[str, Any]:
              or getattr(app, "current_lifecycle_state", None) or "").strip()
     retire: Optional[date] = getattr(app, "planned_retirement_date", None)
     days_left = None
+    # date.today() is unavailable-free here (real request context); guard anyway.
     if retire is not None:
         try:
             days_left = (retire - date.today()).days
@@ -118,6 +121,10 @@ def _capabilities(app_id: int, org_id: Optional[int]) -> List[Dict[str, Any]]:
         ApplicationCapabilityMapping,
     )
     from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
+
+    # ApplicationCapabilityMapping carries organization_id but does NOT inherit
+    # TenantMixin, so do_orm_execute injects no tenant predicate — it must be
+    # scoped by hand or the join reads every organisation's mappings.
 
     if org_id is None:
         raise ValueError(
@@ -177,6 +184,8 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
     from app.models.archimate_core import (  # noqa: PLC0415
         SavedDiagram, SavedDiagramElement,
     )
+    # Unguarded for the same reason as _capabilities: an import failure here is a
+    # defect, and returning [] would read on the page as "appears in no diagrams".
     q = (db.session.query(SavedDiagram)
          .join(SavedDiagramElement, SavedDiagramElement.diagram_id == SavedDiagram.id)
          .filter(SavedDiagramElement.element_id == el_id).distinct())
@@ -185,6 +194,9 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
 
 
 def _linked_risks(app_id: int) -> List[Dict[str, Any]]:
+    """Risks mapped to this application via the Risk Register's
+    "Map to…" picker (RiskEntityLink). Import deferred to avoid a module-load
+    cycle (risk_service imports app.services.archimate_backbone)."""
     from app.services.risk_service import links_for_entity
     return links_for_entity("application", app_id)
 

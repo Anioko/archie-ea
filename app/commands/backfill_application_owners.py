@@ -14,6 +14,10 @@ Safe and idempotent:
   - Only creates rows that do not already exist.
   - Re-running is a no-op once everything is migrated.
   - Provenance (source_table, source_id) is recorded on each created row.
+  - If the same (application_id, user_id, ownership_type) would be created
+    by two sources (e.g. a legacy row and a text column), the second is
+    recorded as a merge (retired_into_id on the legacy table) but no row
+    is inserted.
 
 Usage:
     flask --app manage backfill-application-owners
@@ -80,12 +84,23 @@ def _record_unresolved(org_id: int, app_name: str, field: str, name: str, unreso
     })
 
 
+def _owner_key_in_run(seen: set, app_id: int, user_id: int, ownership_type: str) -> bool:
+    """Check whether (*app_id*, *user_id*, *ownership_type*) is already in *seen*."""
+    key = (app_id, user_id, ownership_type)
+    if key in seen:
+        return True
+    seen.add(key)
+    return False
+
+
 def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[int]] = None) -> Dict:
     """Run the full backfill, returning stats per organisation.
 
     When *organization_ids* is given, only those organisations are processed.
-    Each organisation is processed in its own tenant context: set, commit,
-    ``db.session.remove()``.
+    Each organisation is committed separately and then the session is expired
+    so the next organisation starts from a clean read -- the call stack does
+    not set a tenant context because every query carries an explicit
+    ``organization_id`` predicate.
     """
     from app.models.application_owner import ApplicationOwner
     from app.models.application_portfolio import ApplicationComponent
@@ -103,12 +118,14 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
     total_legacy_ownership = 0
     total_text_owners = 0
     total_skipped = 0
-    all_unresolved = {}
     total_merged = 0
+    all_unresolved = {}
 
     for org_id in sorted(org_ids):
         click.echo(f"\n  Organisation {org_id}:")
         unresolved: List[Dict] = []
+        # Track (application_id, user_id, ownership_type) keys added in THIS run
+        seen_keys: set = set()
 
         # ── 1. Migrate application_ownership rows ───────────────────
         legacy_rows = (
@@ -136,27 +153,57 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                 continue
 
             # Check for existing row by provenance (source_table, source_id)
-            existing = ApplicationOwner.query.filter(
+            existing_by_provenance = ApplicationOwner.query.filter(
                 ApplicationOwner.application_id == lo.application_id,
                 ApplicationOwner.source_table == "application_ownership",
                 ApplicationOwner.source_id == lo.id,
                 ApplicationOwner.organization_id == org_id,
             ).first()
-            if existing:
+            if existing_by_provenance:
                 total_skipped += 1
                 continue
 
             # Try to find a user from the contact info
             contact_name = lo.primary_contact or ""
-            user = _resolve_user_by_name(contact_name, org_id) if contact_name else None
+            contact_email = getattr(lo, "contact_email", None) or ""
+            user = None
 
-            if user is None and contact_name:
+            if contact_name:
+                user = _resolve_user_by_name(contact_name, org_id)
+            if user is None and contact_email:
+                # Try e-mail match when there is no contact name
+                user = _resolve_user_by_name(contact_email, org_id)
+
+            if user is None:
+                # No contact name either: record as "(no contact)"
+                display_name = contact_name if contact_name else "(no contact)"
                 app_obj = db.session.get(ApplicationComponent, lo.application_id)
                 app_name = app_obj.name if app_obj else f"App #{lo.application_id}"
-                _record_unresolved(org_id, app_name, "application_ownership", contact_name, unresolved)
+                _record_unresolved(org_id, app_name, "application_ownership", display_name, unresolved)
                 org_unresolved = True
+                continue
 
-            if not dry_run and user is not None:
+            # Check for duplicate (application_id, user_id, ownership_type) from any source
+            if existing_by_provenance is None:
+                existing_by_type = ApplicationOwner.query.filter(
+                    ApplicationOwner.application_id == lo.application_id,
+                    ApplicationOwner.user_id == user.id,
+                    ApplicationOwner.ownership_type == new_type,
+                    ApplicationOwner.organization_id == org_id,
+                ).first()
+                # Also check keys added earlier in this run
+                if existing_by_type is None and _owner_key_in_run(seen_keys, lo.application_id, user.id, new_type):
+                    existing_by_type = True  # treat as existing-to-be-merged
+
+            if existing_by_provenance is not None or existing_by_type is not None:
+                # Merge: mark the legacy row as retired but don't insert
+                if not dry_run and not lo.retired_into_id:
+                    lo.retired_into_id = existing_by_provenance.id if existing_by_provenance else None
+                    total_merged += 1
+                total_skipped += 1
+                continue
+
+            if not dry_run:
                 owner = ApplicationOwner(
                     application_id=lo.application_id,
                     user_id=user.id,
@@ -166,19 +213,23 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                     source_id=lo.id,
                 )
                 db.session.add(owner)
+                db.session.flush()  # get id for seen_keys
+                _owner_key_in_run(seen_keys, lo.application_id, user.id, new_type)
                 total_legacy_ownership += 1
 
         # ── 2. Mark migrated application_ownership rows as retired ──
         if not dry_run and legacy_rows:
-            migrated = ApplicationOwner.query.filter(
-                ApplicationOwner.organization_id == org_id,
-                ApplicationOwner.source_table == "application_ownership",
-            ).all()
-            for mo in migrated:
-                legacy_row = db.session.get(ApplicationOwnership, mo.source_id)
-                if legacy_row and not legacy_row.retired_into_id:
-                    legacy_row.retired_into_id = mo.id
-            total_merged += len(migrated)
+            for lo in legacy_rows:
+                if lo.retired_into_id:
+                    continue
+                migrated = ApplicationOwner.query.filter(
+                    ApplicationOwner.organization_id == org_id,
+                    ApplicationOwner.source_table == "application_ownership",
+                    ApplicationOwner.source_id == lo.id,
+                ).first()
+                if migrated:
+                    lo.retired_into_id = migrated.id
+                    total_merged += 1
 
         # ── 3. Migrate text owner columns ───────────────────────────
         apps = (
@@ -211,8 +262,21 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                 if user is None:
                     _record_unresolved(org_id, app_obj.name, field_name, name.strip(), unresolved)
                     org_unresolved = True
+                    continue
 
-                if not dry_run and user is not None:
+                # Check for existing (application_id, user_id, ownership_type) -
+                # may have been created earlier in this run
+                existing_by_type = ApplicationOwner.query.filter(
+                    ApplicationOwner.application_id == app_obj.id,
+                    ApplicationOwner.user_id == user.id,
+                    ApplicationOwner.ownership_type == new_type,
+                    ApplicationOwner.organization_id == org_id,
+                ).first()
+                if existing_by_type is not None or _owner_key_in_run(seen_keys, app_obj.id, user.id, new_type):
+                    total_skipped += 1
+                    continue
+
+                if not dry_run:
                     owner = ApplicationOwner(
                         application_id=app_obj.id,
                         user_id=user.id,
@@ -222,6 +286,8 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                         source_id=app_obj.id,
                     )
                     db.session.add(owner)
+                    db.session.flush()
+                    _owner_key_in_run(seen_keys, app_obj.id, user.id, new_type)
                     total_text_owners += 1
 
         if unresolved:

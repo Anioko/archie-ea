@@ -11,7 +11,7 @@ import logging
 from flask import g, render_template
 from flask_login import login_required
 
-from app.decorators import audit_log
+from app.decorators import audit_log, role_required
 from app.modules.my_applications.services import has_assigned_owner
 from app.models.application_portfolio import ApplicationComponent
 from app.models.user import ROLE_CTO, ROLE_PORTFOLIO_MANAGER
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 @unified_applications_bp.route("/ownership-coverage")
 @login_required
+@role_required(ROLE_CTO, ROLE_PORTFOLIO_MANAGER)
 @audit_log("ownership_coverage_view")
 def ownership_coverage():
     """Ownership coverage by business unit.
@@ -31,20 +32,6 @@ def ownership_coverage():
     Shows every business unit with applications in the caller's organisation.
     A unit with no applications shows ``—`` as its coverage figures.
     """
-    from flask_login import current_user
-
-    # Persona gate: only CTO and portfolio manager may view
-    role = getattr(current_user, "enterprise_role", None)
-    if role not in (ROLE_CTO, ROLE_PORTFOLIO_MANAGER):
-        return render_template(
-            "applications/ownership_coverage.html",
-            rows=[],
-            total_apps=0,
-            total_owned=0,
-            overall_pct=None,
-            organisation_unit_count=0,
-            forbidden=True,
-        ), 403
 
     org_id = g.current_org_id
 
