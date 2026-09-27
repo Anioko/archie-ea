@@ -1,4 +1,4 @@
-"""Owner writer routes for the Applications module (TB-0042, PB-0009).
+"""Owner writer routes for the Applications module.
 
 Provides:
 - Person picker: debounced live-search for users in the caller's organisation
@@ -30,29 +30,48 @@ from . import unified_applications_bp
 logger = logging.getLogger(__name__)
 
 
+# Shared ILIKE escape — backslash, percent and underscore stand for themselves.
+def _search_clause(search: str):
+    """Return a SQL expression that matches user name/email literally.
+    
+    The search text is escaped so that ``%`` and ``_`` stand for themselves
+    rather than acting as pattern characters.  Compare
+    ``my_applications/services.py``'s ``_search_clause``.
+    """
+    escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    term = f"%{escaped}%"
+    return db.or_(
+        User.first_name.ilike(term, escape="\\"),
+        User.last_name.ilike(term, escape="\\"),
+        User.email.ilike(term, escape="\\"),
+    )
+
+
+def _verify_app_in_org(app_id: int, org_id: int) -> ApplicationComponent | None:
+    """Return the application iff it exists and belongs to *org_id*."""
+    return ApplicationComponent.query.filter_by(
+        id=app_id, organization_id=org_id
+    ).first()
+
+
 @unified_applications_bp.route("/<int:app_id>/owners/search")
 @login_required
 def owner_picker_search(app_id: int):
-    """Debounced live-search (DESIGN.md §5.4.1) for users in the caller's org.
+    """Debounced live-search for users in the caller's organisation.
 
     Called by the person-picker widget with a 300 ms debounce. Returns up to
     20 matching users by name or email, scoped to the caller's organisation.
-    The application itself is not checked — the picker is shown for any
-    application the caller can see.
+    The search text is matched literally (``%`` and ``_`` are escaped).
     """
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return jsonify({"results": []})
 
-    search = f"%{q}%"
+    org_id = g.current_org_id
     users = (
         User.query.filter(
-            User.organization_id == g.current_org_id,
-            db.or_(
-                User.first_name.ilike(search),
-                User.last_name.ilike(search),
-                User.email.ilike(search),
-            ),
+            User.organization_id == org_id,
+            _search_clause(q),
         )
         .order_by(User.first_name, User.last_name)
         .limit(20)
@@ -78,9 +97,15 @@ def add_owner(app_id: int):
     """Add an owner to an application (JSON only).
 
     Body: {"user_id": int, "ownership_type": "primary"|"backup"|"technical"|"business"}
-    Refuses assignment of a user from another organisation.
+    Refuses assignment of a user from another organisation.  Also refuses
+    writing to an application that does not belong to the caller.
     """
     org_id = g.current_org_id
+
+    # H2: verify the application belongs to the caller's organisation
+    app = _verify_app_in_org(app_id, org_id)
+    if app is None:
+        return jsonify({"success": False, "error": "Application not found"}), 404
 
     data = request.get_json(silent=True)
     if not data:
@@ -138,6 +163,11 @@ def change_owner_type(app_id: int, owner_id: int):
     """Change an owner's type (JSON only)."""
     org_id = g.current_org_id
 
+    # H2: verify the application belongs to the caller's organisation
+    app = _verify_app_in_org(app_id, org_id)
+    if app is None:
+        return jsonify({"success": False, "error": "Application not found"}), 404
+
     owner = ApplicationOwner.query.filter(
         ApplicationOwner.id == owner_id,
         ApplicationOwner.application_id == app_id,
@@ -173,6 +203,11 @@ def remove_owner(app_id: int, owner_id: int):
     """Remove an owner from an application."""
     org_id = g.current_org_id
 
+    # H2: verify the application belongs to the caller's organisation
+    app = _verify_app_in_org(app_id, org_id)
+    if app is None:
+        return jsonify({"success": False, "error": "Application not found"}), 404
+
     owner = ApplicationOwner.query.filter(
         ApplicationOwner.id == owner_id,
         ApplicationOwner.application_id == app_id,
@@ -192,7 +227,9 @@ def remove_owner(app_id: int, owner_id: int):
 def list_owners(app_id: int):
     """List all owners for an application, with user details."""
     # Verify the application exists and is in the caller's organisation
-    ApplicationComponent.query.get_or_404(app_id)
+    app = _verify_app_in_org(app_id, g.current_org_id)
+    if app is None:
+        return jsonify({"success": False, "error": "Application not found"}), 404
 
     org_id = g.current_org_id
     owners = ApplicationOwner.get_owners_for_application(app_id, org_id)
