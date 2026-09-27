@@ -221,7 +221,7 @@ TOOL_SCHEMAS = [
         "surfaces": ["chat", "blueprint"],
         "route": "submit_for_arb_review",
         "fenced": False,
-        "risk_class": "external_action",
+        "risk_class": "write",
         "mutates": True,
         "description": (
             "Submit a solution for Architecture Review Board (ARB) governance review. "
@@ -1003,15 +1003,15 @@ TOOL_SCHEMAS = [
         "surfaces": ["chat"],
         "route": "poll_infrastructure",
         "fenced": False,
-        "risk_class": "read",
-        "mutates": False,
+        "risk_class": "external_action",
+        "mutates": True,
         "description": (
             "Check configured infrastructure endpoints for reachability. "
             "Probes: Abacus API connector, LLM API endpoints, integration pattern URLs. "
             "Returns up/down status per endpoint, latency, and a delta summary of what's "
             "modelled in Entelim vs what's actually reachable. "
-            "USE when the user asks about connectivity, 'is X reachable?', infrastructure health, "
-            "or wants to know if configured integrations are live. Read-only."
+            "REQUIRES USER CONFIRMATION — outbound network connections, including "
+            "model-supplied URLs."
         ),
         "parameters": {
             "type": "object",
@@ -1025,7 +1025,7 @@ TOOL_SCHEMAS = [
                 },
             },
         },
-        "tier": "auto",
+        "tier": "approve",
     },
     {
         "name": "infer_schema",
@@ -1456,19 +1456,16 @@ TOOL_SCHEMAS = [
         "surfaces": ["chat"],
         "route": "extract_contract_from_document",
         "fenced": True,
-        "risk_class": "read",
-        "mutates": False,
+        "risk_class": "external_action",
+        "mutates": True,
         "description": (
             "Extract structured contract terms from pasted contract / MSA text — the "
-            "Procurement 'paste this contract' capability. Reads the text and returns a "
-            "structured first pass (contract name/number, vendor name, start/end/renewal "
-            "dates, notice period, auto-renewal, value, currency, payment terms, "
-            "termination summary, liability cap, risk flags). Any field the text does not "
-            "state comes back as null — never a guess. This does NOT save anything: it "
-            "extracts, and a human (or create_vendor / a contract form) applies the "
-            "result. If the LLM backend is unavailable or returns something unparseable, "
-            "it fails honestly with an error rather than fabricating fields. Read-only — "
-            "safe to run without confirmation."
+            "Procurement 'paste this contract' capability. Reads the text and sends it "
+            "to an external language model for extraction, returning the structured "
+            "result. This does NOT save anything: it extracts, and a human (or "
+            "create_vendor / a contract form) applies the result. "
+            "If the LLM backend is unavailable or returns something unparseable, "
+            "it fails honestly with an error rather than fabricating fields."
         ),
         "parameters": {
             "type": "object",
@@ -1480,7 +1477,7 @@ TOOL_SCHEMAS = [
             },
             "required": ["contract_text"],
         },
-        "tier": "auto",
+        "tier": "approve",
     },
     # ------------------------------------------------------------------ #
     # Governed WRITE tools (Capability-Gap Register G4, G8)               #
