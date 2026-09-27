@@ -53,6 +53,7 @@ from ..forms.admin_forms import (
 )
 from app.modules.account.forms.account_forms import CreatePasswordForm
 from app.decorators import admin_required, audit_log, governance_gate_reader_required
+from app.middleware.tenant_decorators import platform_admin_required
 from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
@@ -842,7 +843,7 @@ def consolidation_status():
 
 @admin_bp.route("/feature-flags")
 @login_required
-@admin_required
+@platform_admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
     page = safe_int_arg('page', 1, minimum=1)
@@ -917,7 +918,7 @@ def feature_flags():
 
 @admin_bp.route("/feature-flags/new", methods=["GET", "POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_feature_flag_create")
 def feature_flag_new():
     """Create new feature flag."""
@@ -968,7 +969,7 @@ def feature_flag_new():
 
 @admin_bp.route("/feature-flags/<int:id>/edit", methods=["GET", "POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_feature_flag_edit")
 def feature_flag_edit(id):
     """Edit feature flag."""
@@ -1027,7 +1028,7 @@ def feature_flag_edit(id):
 
 @admin_bp.route("/feature-flags/<int:id>/toggle", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_feature_flag_toggle")
 def feature_flag_toggle(id):
     """Quick toggle feature enabled/disabled."""
@@ -1056,7 +1057,7 @@ def feature_flag_toggle(id):
 
 @admin_bp.route("/feature-flags/<int:id>/delete", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_feature_flag_delete")
 def feature_flag_delete(id):
     """Delete feature flag."""
@@ -1080,7 +1081,7 @@ def feature_flag_delete(id):
 
 @admin_bp.route("/feature-flags/discover-sidebar")
 @login_required
-@admin_required
+@platform_admin_required
 def feature_flags_discover_sidebar():
     """Discover sidebar menu items for feature flagging."""
     try:
@@ -1123,7 +1124,7 @@ def feature_flags_discover_sidebar():
 
 @admin_bp.route("/feature-flags/discover-sidebar/create", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_feature_flags_bulk_create")
 def feature_flags_create_from_sidebar():
     """Create feature flags from selected sidebar items."""
