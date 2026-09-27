@@ -11,7 +11,7 @@ unwrap each organisation's Fernet key stored in ``OrganizationEncryptionKey``.
 """
 import logging
 
-from cryptography.fernet import Fernet, InvalidToken, MultiFernet
+from cryptography.fernet import Fernet, InvalidToken
 from flask import current_app
 
 logger = logging.getLogger(__name__)

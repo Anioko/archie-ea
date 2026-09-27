@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import datetime
 
-from cryptography.fernet import InvalidToken, MultiFernet
+from cryptography.fernet import InvalidToken
 from app.extensions import db
 from app.modules.codegen.services.credential_encryption import (
     CredentialUnreadable,
@@ -144,7 +144,6 @@ class OrgCredentialVault:
 
     def _get_or_create_key(self, org_id: int) -> tuple:
         """Ensure an encryption key exists for this org, return (fernet, version)."""
-        from app.models.connector_config import OrganizationEncryptionKey
         from app.modules.codegen.services.credential_encryption import (
             _get_org_fernet, _create_org_fernet,
         )
@@ -312,12 +311,6 @@ class OrgCredentialVault:
 
         # Rotate — returns (new_fernet, old_fernet_from_db, new_version)
         new_fernet, previous_fernet, new_version = rotate_org_encryption_key(resolved)
-
-        # Build MultiFernet that tries new, then old
-        if previous_fernet is not None:
-            multi = MultiFernet([new_fernet, previous_fernet])
-        else:
-            multi = MultiFernet([new_fernet])
 
         # Re-encrypt every row
         rows = OrgConnectorCredential.query.filter_by(

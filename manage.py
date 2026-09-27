@@ -2,6 +2,7 @@
 import os
 import subprocess
 import sys
+import logging
 
 # Force UTF-8 on stdout/stderr before anything prints.
 #
@@ -378,7 +379,7 @@ def register_cli_commands(app):
                 db.session.rollback()
         print("  \u2713 PLT-017: users.notification_preferences column ensured")
 
-        # R1-B25: Add encryption key versioning columns for org credential store
+        # Add encryption key versioning columns for org credential store
         if db.engine.dialect.name == "postgresql":
             db.session.execute(text(
                 "ALTER TABLE organization_encryption_keys "
@@ -477,7 +478,6 @@ def register_cli_commands(app):
             LucidchartConnectorConfig, OrgConnectorCredential,
         )
         from app.modules.codegen.services.credential_vault import OrgCredentialVault
-        from app.modules.codegen.services.credential_encryption import get_org_key_version
         import json
 
         vault = OrgCredentialVault()
