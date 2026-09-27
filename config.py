@@ -384,6 +384,10 @@ class Config:
     # flag is explicitly enabled.
     ARCHITECTURE_MONITORING_API_ENABLED = _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
 
+    # Data processing agreement, cookie, refund and commercial licence pages
+    # stay unpublished (404, unlinked) until their text is approved.
+    LEGAL_PAGES_ENABLED = _env_bool("LEGAL_PAGES_ENABLED", False)
+
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     ALLOWED_EXTENSIONS = {

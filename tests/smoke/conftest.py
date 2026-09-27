@@ -171,26 +171,25 @@ def live_server(request, ai_protocol_stub, app):
     Integrity - which is precisely the class of defect these journeys exist to
     catch.
     """
-    server = boot_live_server(request, app, ai_protocol_stub=ai_protocol_stub)
+    server = boot_live_server(request, ai_protocol_stub, app)
     yield server
 
     if request.session.testsfailed:
         print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
 
 
-def boot_live_server(request, app, ai_protocol_stub=None, extra_env=None):
-    """Start one app subprocess and return its SmokeServer; stopped by a finalizer.
+def boot_live_server(request, ai_protocol_stub, app, extra_env=None):
+    """Start one app subprocess and return its SmokeServer; stopped by `request`'s finalizer.
 
-    ``extra_env`` overrides the child's environment, for a journey that needs
-    the server configured differently from the shared one (for example, with
-    a mail server) without changing it for every other test.
+    `extra_env` overrides configuration for this server only, so a module can
+    exercise a feature flag without switching it on for every other journey.
     """
     port = _free_port()
     env = dict(os.environ)
+    env.update(extra_env or {})
     _require_explicit_test_database(env)
     if ai_protocol_stub is not None:
         env = ai_protocol_stub.child_environment(env)
-    env.update(extra_env or {})
     env.setdefault("SECRET_KEY", "smoke-only-not-secret-" + "x" * 16)
     env.setdefault("FLASK_CONFIG", "testing")
     env["FLASK_DEBUG"] = "0"

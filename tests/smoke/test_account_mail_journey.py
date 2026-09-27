@@ -95,7 +95,7 @@ def smtp_sink():
 
 @pytest.fixture(scope="module")
 def mail_server(request, app, smtp_sink):
-    return boot_live_server(request, app, extra_env={
+    return boot_live_server(request, None, app, extra_env={
         "MAIL_SERVER": "127.0.0.1",
         "MAIL_PORT": str(smtp_sink.server_address[1]),
         "MAIL_USE_TLS": "false",

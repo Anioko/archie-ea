@@ -559,14 +559,18 @@ def register_cli_commands(app):
     @app.cli.command()
     def format():
         """Runs the yapf and isort formatters over the project."""
-        isort = "isort -rc *.py app/"
-        yapf = "yapf -r -i *.py app/"
+        import glob
 
-        print("Running {}".format(isort))
-        subprocess.call(isort, shell=True)
+        # The shell used to expand *.py; glob does it without one.
+        top_level = sorted(glob.glob("*.py"))
+        isort = ["isort", "-rc", *top_level, "app/"]
+        yapf = ["yapf", "-r", "-i", *top_level, "app/"]
 
-        print("Running {}".format(yapf))
-        subprocess.call(yapf, shell=True)
+        print("Running {}".format(" ".join(isort)))
+        subprocess.call(isort)
+
+        print("Running {}".format(" ".join(yapf)))
+        subprocess.call(yapf)
 
     # ===== FEATURE FLAGS COMMANDS =====
 
@@ -1902,17 +1906,16 @@ if __name__ == "__main__":
         if platform.system() == "Windows":
             import subprocess as _sp
             try:
-                out = _sp.check_output(
-                    f"netstat -ano | findstr :{_port}",
-                    shell=True, text=True, stderr=_sp.DEVNULL
-                )
+                # Filtered here rather than piped through findstr, so no shell
+                # is involved; findstr's match was this same substring test.
+                out = _sp.check_output(["netstat", "-ano"], text=True, stderr=_sp.DEVNULL)
                 for line in out.splitlines():
                     parts = line.split()
-                    if parts and "LISTENING" in line:
+                    if parts and "LISTENING" in line and f":{_port}" in line:
                         pid = int(parts[-1])
                         if pid and pid != os.getpid():
                             try:
-                                _sp.call(f"taskkill /F /PID {pid}", shell=True,
+                                _sp.call(["taskkill", "/F", "/PID", str(pid)],
                                          stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
                                 killed.append(pid)
                             except Exception:
