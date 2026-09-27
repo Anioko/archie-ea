@@ -155,8 +155,13 @@ def test_cost_preview_journey(browser, live_server, seeded):
     page.wait_for_timeout(2000)
 
     # Assert the cost is visible on the application detail page
-    # The fact_sheet.html formats as {:,.0f} producing "75,000"
-    cost_display = page.locator("text=75,000").first
-    expect(cost_display).to_be_visible(timeout=PAGE_TIMEOUT)
+    # The fact_sheet.html renders cost in a metrics_card with "Total cost of ownership"
+    # as the title and the formatted value "75,000" alongside.
+    page.wait_for_timeout(2000)
+    tco_section = page.locator("text=Total cost of ownership").first
+    expect(tco_section).to_be_visible(timeout=PAGE_TIMEOUT)
+    # The value is rendered in the card next to the title label
+    tco_card = page.locator('[data-slot="card"]:has-text("Total cost of ownership")')
+    expect(tco_card.first).to_be_visible(timeout=PAGE_TIMEOUT)
 
     context.close()
