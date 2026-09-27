@@ -1613,6 +1613,57 @@ def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed
             )
 
 
+def _ensure_embedding_composite_unique_constraints(*, dry_run, existing_tables, added, failed):
+    """Replace single-column unique constraints on embedding tables with
+    composite (FK, organization_id) so two organisations can each have an
+    embedding for the same entity.
+
+    The model already declares the composite constraint since the org-scoping
+    migration, but ``create_all()`` only creates tables that do not exist, so
+    a table created on an older schema keeps its single-column constraint.
+    """
+    from sqlalchemy import inspect, text
+
+    _COMPOSITE_UQ_MIGRATIONS = {
+        "business_capability_embeddings": (
+            "uq_capability_embedding",
+            ["business_capability_id", "organization_id"],
+        ),
+    }
+    for tbl, (uq_name, columns) in _COMPOSITE_UQ_MIGRATIONS.items():
+        if tbl not in existing_tables:
+            continue
+
+        existing = {
+            c["name"]: c["column_names"]
+            for c in inspect(db.engine).get_unique_constraints(tbl)
+        }
+        if uq_name in existing and set(existing[uq_name]) == set(columns):
+            continue  # already the composite constraint
+
+        label = f"constraint.{tbl}.{uq_name}"
+        if dry_run:
+            added.append(
+                f"{label} :: would replace with composite {columns}"
+            )
+            continue
+
+        db.session.execute(
+            text(f'ALTER TABLE "{tbl}" DROP CONSTRAINT IF EXISTS "{uq_name}"')
+        )
+        col_list = ", ".join(f'"{c}"' for c in columns)
+        db.session.execute(
+            text(
+                f'ALTER TABLE "{tbl}" ADD CONSTRAINT "{uq_name}" '
+                f"UNIQUE ({col_list})"
+            )
+        )
+        db.session.commit()
+        added.append(
+            f"{label} :: replaced with composite {columns}"
+        )
+
+
 def _ensure_condition_evidence_canonical_document(
     *, dry_run, existing_tables, added, failed
 ):
@@ -1855,6 +1906,12 @@ def _reconcile(dry_run=False):
         failed=failed,
     )
     _backfill_embedding_organizations(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
+    _ensure_embedding_composite_unique_constraints(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,
