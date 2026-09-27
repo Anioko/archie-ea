@@ -51,6 +51,30 @@ def _ensure_embedding_org_columns(app):
                         f"INTEGER REFERENCES organizations(id) ON DELETE CASCADE"
                     )
                 )
+
+        # Migrate unique constraints from single-FK to composite (FK, org) so
+        # two organisations can each have an embedding for the same entity.
+        _COMPOSITE_UQ_MIGRATIONS = {
+            "business_capability_embeddings": (
+                "uq_capability_embedding",
+                ["business_capability_id", "organization_id"],
+            ),
+        }
+        for tbl, (uq_name, columns) in _COMPOSITE_UQ_MIGRATIONS.items():
+            # Drop old single-column constraint
+            db.session.execute(
+                text(
+                    f'ALTER TABLE "{tbl}" DROP CONSTRAINT IF EXISTS "{uq_name}"'
+                )
+            )
+            # Create composite constraint
+            col_list = ", ".join(f'"{c}"' for c in columns)
+            db.session.execute(
+                text(
+                    f'ALTER TABLE "{tbl}" ADD CONSTRAINT "{uq_name}" '
+                    f"UNIQUE ({col_list})"
+                )
+            )
         db.session.commit()
 
 
@@ -752,7 +776,7 @@ def test_embedding_stats_scoped_to_org(db_session, make_org, tenant_ctx):
     # Create embedding rows for each org using inline models
     from app.models.business_capabilities import BusinessCapability
     bcap_a = BusinessCapability(
-        organization_id=org_a.id, name=f"StatsCapA", code="SCA", level=1,
+        organization_id=org_a.id, name="StatsCapA", code="SCA", level=1,
     )
     db_session.add(bcap_a)
     db_session.flush()
@@ -764,7 +788,7 @@ def test_embedding_stats_scoped_to_org(db_session, make_org, tenant_ctx):
     db_session.flush()
 
     bcap_b = BusinessCapability(
-        organization_id=org_b.id, name=f"StatsCapB", code="SCB", level=1,
+        organization_id=org_b.id, name="StatsCapB", code="SCB", level=1,
     )
     db_session.add(bcap_b)
     db_session.flush()
