@@ -469,11 +469,20 @@ def test_no_script_or_template_writes_the_plain_terms_sentence_or_formats_confid
         r"worked\s+this\s+out\s+because", r"hops\s+away", r"(very|fairly)\s+confident",
         r"less\s+confident", r"second\s+look",
     ]
+    # Scoped to confidence: L2/L5's cost and budget variance rows legitimately
+    # format a percentage client-side (``wp.costVariancePct.toFixed(1)``), which
+    # has nothing to do with confidence. Only a percentage computed from
+    # something named "confidence" is the client-side math this test forbids.
+    confidence_math = re.compile(
+        r"confidence[^\n]{0,40}(toFixed|Math\.round|\*\s*100\b)"
+        r"|(toFixed|Math\.round|\*\s*100\b)[^\n]{0,40}confidence",
+        re.I,
+    )
     for name, source in _everything().items():
         for pattern in signatures:
             assert not re.search(pattern, source, re.I), (name, pattern)
         assert not re.search(r"confidence\s*(>=|<=|>|<)", source), name
-        assert not re.search(r"toFixed|Math\.round|\*\s*100\b", source), name
+        assert not confidence_math.search(source), name
 
 
 def test_the_drawer_renders_the_supplied_sentence_in_one_paragraph_and_nothing_else():
