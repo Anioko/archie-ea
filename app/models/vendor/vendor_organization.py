@@ -278,6 +278,14 @@ class VendorOrganization(db.Model):
     headquarters_location = db.Column(db.String(100))
     website = db.Column(db.String(500))
 
+    # Legal entity information (PB-0276)
+    legal_name = db.Column(db.String(300))  # Registered legal name
+    legal_registration_number = db.Column(db.String(100), unique=True, nullable=True)  # Company registration / VAT / tax ID
+    legal_address = db.Column(db.Text)  # Registered office address
+    parent_vendor_id = db.Column(
+        db.Integer, db.ForeignKey("vendor_organizations.id"), nullable=True
+    )  # Parent group vendor (self-referential)
+
     # Market intelligence
     gartner_magic_quadrant_position = db.Column(
         db.String(50)
@@ -409,6 +417,13 @@ class VendorOrganization(db.Model):
         "EnterpriseInitiative",
         secondary=initiative_vendors,
         back_populates="evaluated_vendors",
+    )
+
+    # Parent group relationship (PB-0276)
+    parent_vendor = db.relationship(
+        "VendorOrganization",
+        remote_side="VendorOrganization.id",
+        backref=db.backref("subsidiary_vendors", lazy="dynamic"),
     )
     # NOTE: Commented out due to SQLAlchemy mapper initialization issues
     # The vendor_capability_risks table exists but causes circular import issues
