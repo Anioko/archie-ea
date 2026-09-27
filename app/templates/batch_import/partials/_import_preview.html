@@ -182,15 +182,23 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <template x-for="row in (previewData?.cost_mapping?.row_previews || [])" :key="row.import_row">
+                            <template x-for="(row, idx) in (previewData?.cost_mapping?.row_previews || [])" :key="'cost-row-' + idx">
                                 <tr class="border-b" :class="{ 'bg-destructive/5': Object.keys(row.cost_errors || {}).length > 0 }">
                                     <td class="px-4 py-2 text-muted-foreground" x-text="row.import_row"></td>
                                     <td class="px-4 py-2" x-text="row.application_name"></td>
                                     <td class="px-4 py-2">
                                         <template x-for="[field, val] in Object.entries(row.cost_fields || {})" :key="field">
                                             <span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs mr-1 mb-1">
-                                                <span class="font-medium" x-text="field.split('_').pop()"></span>:
-                                                <span class="ml-1 text-muted-foreground" x-text="val !== null ? val.toLocaleString() : '-'"></span>
+                                                <span class="font-medium" x-text="{
+                                                    'total_cost_of_ownership': 'Total cost',
+                                                    'license_cost_annual': 'Licence',
+                                                    'maintenance_cost': 'Maintenance',
+                                                    'infrastructure_cost': 'Infrastructure',
+                                                    'support_cost': 'Support',
+                                                    'implementation_cost': 'Implementation',
+                                                    'development_cost_annual': 'Development',
+                                                }[field] || field.split('_').pop()"></span>:
+                                                <span class="ml-1 text-muted-foreground" x-text="val !== null ? (window.currencyManager?.format ? window.currencyManager.format(val) : val.toLocaleString()) : '—'"></span>
                                             </span>
                                         </template>
                                         <span x-show="Object.keys(row.cost_fields || {}).length === 0" class="text-xs text-muted-foreground">No costs</span>
@@ -198,7 +206,15 @@
                                     <td class="px-4 py-2">
                                         <template x-for="[field, err] in Object.entries(row.cost_errors || {})" :key="field">
                                             <div class="text-xs text-destructive">
-                                                <span class="font-medium" x-text="field"></span>: <span x-text="err"></span>
+                                                <span class="font-medium" x-text="{
+                                                    'total_cost_of_ownership': 'Total cost',
+                                                    'license_cost_annual': 'Licence',
+                                                    'maintenance_cost': 'Maintenance',
+                                                    'infrastructure_cost': 'Infrastructure',
+                                                    'support_cost': 'Support',
+                                                    'implementation_cost': 'Implementation',
+                                                    'development_cost_annual': 'Development',
+                                                }[field] || field"></span>: <span x-text="err"></span>
                                             </div>
                                         </template>
                                         <div x-show="Object.keys(row.cost_errors || {}).length === 0" class="text-xs text-muted-foreground">
