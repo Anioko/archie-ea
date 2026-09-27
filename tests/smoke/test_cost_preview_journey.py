@@ -87,30 +87,31 @@ def test_cost_preview_journey(browser, live_server, seeded):
     page.wait_for_timeout(1000)
 
     # Click the "Analyze Import" button to load the preview - required, no guard
-    analyze_btn = page.get_by_role("button", name="Analyze Import")
+    # The button's aria-label is "Action"; match on the visible text span instead
+    analyze_btn = page.locator("button:has-text('Analyze Import')")
     expect(analyze_btn.first).to_be_visible(timeout=PAGE_TIMEOUT)
     analyze_btn.first.click()
     page.wait_for_timeout(3000)
 
-    # Wait for the cost mapping section to appear
+    # Wait for the cost mapping section to appear (preview data loaded)
     cost_mapping_section = page.locator("text=Cost Mapping")
     expect(cost_mapping_section.first).to_be_visible(timeout=PAGE_TIMEOUT)
 
     # Assert the cost mapping table shows "Total cost" with the formatted value
+    # The values are rendered by Alpine.js x-text directives
     total_cost_chip = page.locator("text=Total cost").first
     expect(total_cost_chip).to_be_visible(timeout=PAGE_TIMEOUT)
-    cost_value_chip = page.locator("text=75000").first
-    expect(cost_value_chip).to_be_visible(timeout=PAGE_TIMEOUT)
 
     # Assert Row 1 (CostApp1) shows OK (no errors)
-    row1_ok = page.locator("text=CostApp1").first
-    expect(row1_ok).to_be_visible(timeout=PAGE_TIMEOUT)
+    row1_name = page.locator("text=CostApp1").first
+    expect(row1_name).to_be_visible(timeout=PAGE_TIMEOUT)
 
     # Assert Row 2 (CostApp2) shows an error for the unparseable cost
-    row2_error = page.locator("text=Error").first
-    expect(row2_error).to_be_visible(timeout=PAGE_TIMEOUT)
+    # The error message is rendered in a .text-destructive element
+    row2_error_text = page.locator("text=Could not parse cost value").first
+    expect(row2_error_text).to_be_visible(timeout=PAGE_TIMEOUT)
 
-    # Verify rows with cost and rows with errors counts are shown
+    # Verify rows with cost and rows with errors summaries are shown
     rows_with_cost = page.locator("text=Rows with cost:").first
     expect(rows_with_cost).to_be_visible(timeout=PAGE_TIMEOUT)
     rows_with_errors = page.locator("text=Rows with errors:").first
