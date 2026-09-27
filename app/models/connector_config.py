@@ -413,7 +413,7 @@ class LucidchartConnectorConfig(db.Model):  # migration-exempt — LUC-001
 # Per-organisation encryption key store
 # ============================================================================
 
-class OrganizationEncryptionKey(db.Model):  # migration-exempt — per-org key store
+class OrganizationEncryptionKey(TenantMixin, db.Model):  # migration-exempt — per-org key store
     """One Fernet encryption key per organisation, itself encrypted with a
     master key from ``ORG_ENCRYPTION_MASTER_KEY``.
 
@@ -430,13 +430,16 @@ class OrganizationEncryptionKey(db.Model):  # migration-exempt — per-org key s
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    organization_id = db.Column(
-        db.Integer,
-        db.ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-        index=True,
-    )
+
+    @declared_attr
+    def organization_id(cls):
+        return db.Column(
+            db.Integer,
+            db.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+            index=True,
+        )
     # The org's Fernet key, encrypted with the master key
     encrypted_key = db.Column(db.LargeBinary, nullable=False)
     key_version = db.Column(db.Integer, nullable=False, default=1)
@@ -460,7 +463,7 @@ class OrganizationEncryptionKey(db.Model):  # migration-exempt — per-org key s
         )
 
 
-class OrgConnectorCredential(db.Model):  # migration-exempt — per-org credential store
+class OrgConnectorCredential(TenantMixin, db.Model):  # migration-exempt — per-org credential store
     """Single credential store for all connector types, encrypted with the
     organisation's own Fernet key (see ``OrganizationEncryptionKey``).
 
@@ -479,12 +482,15 @@ class OrgConnectorCredential(db.Model):  # migration-exempt — per-org credenti
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    organization_id = db.Column(
-        db.Integer,
-        db.ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+
+    @declared_attr
+    def organization_id(cls):
+        return db.Column(
+            db.Integer,
+            db.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
     connector_type = db.Column(db.String(50), nullable=False)
     # Distinguishes credential kinds: "api_key", "client_secret", "access_token",
     # "refresh_token", "credentials" (full JSON blob)
