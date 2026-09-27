@@ -77,36 +77,11 @@ def _schema(app):
     ``create_all()`` only creates *missing* tables, so this is safe against a
     shared database that already has a schema.  It does not add missing columns —
     see the schema-drift gate in scripts/verify.py for that.
-
-    Applies gateway schema changes (new columns on llm_interactions,
-    model_providers table) via SQL ALTER TABLE / CREATE TABLE so tests
-    of the gateway fields work without a full Alembic migration run.
     """
     from app import db
 
     with app.app_context():
         db.create_all()
-
-        # Gateway fields on llm_interactions
-        _add_column_if_not_exists(db.engine, "llm_interactions", "organization_id",
-                                  "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
-        _add_column_if_not_exists(db.engine, "llm_interactions", "prompt_version", "VARCHAR(32)")
-        _add_column_if_not_exists(db.engine, "llm_interactions", "retention_setting", "VARCHAR(50)")
-
-        # model_providers table (create_all should already do this,
-        # but guard against a prior partial state)
-        _create_table_if_not_exists(db.engine, "model_providers",
-            """CREATE TABLE IF NOT EXISTS model_providers (
-                id SERIAL PRIMARY KEY,
-                provider VARCHAR(100) NOT NULL,
-                model_version VARCHAR(255) NOT NULL,
-                organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
-                is_platform_default BOOLEAN NOT NULL DEFAULT FALSE,
-                is_allowed BOOLEAN NOT NULL DEFAULT TRUE,
-                created_at TIMESTAMP,
-                updated_at TIMESTAMP,
-                UNIQUE(provider, model_version, organization_id)
-            )""")
     return True
 
 
