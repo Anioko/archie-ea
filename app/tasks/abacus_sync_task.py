@@ -130,12 +130,10 @@ def init_abacus_scheduler(app, scheduler=None):
             replace_existing=True,
         )
 
-        # Start scheduler only when this call owns it
-        if own_scheduler:
-            scheduler.start()
-
-        # Remove any undeclared job ids — this job itself must be declared
-        # in PLATFORM_JOBS or TENANT_JOBS in app/jobs/tenant_safe_job.py.
+        # Remove any undeclared job ids BEFORE starting the scheduler —
+        # this job itself must be declared in PLATFORM_JOBS or TENANT_JOBS
+        # in app/jobs/tenant_safe_job.py.  If enforcement raises, the
+        # scheduler is not started (fail closed).
         try:
             from app.jobs.tenant_safe_job import _remove_undeclared_jobs
 
@@ -143,9 +141,14 @@ def init_abacus_scheduler(app, scheduler=None):
         except Exception as exc:
             logger.exception(
                 "init_abacus_scheduler: _remove_undeclared_jobs failed — "
-                "enforcement skipped: %s",
+                "scheduler not started: %s",
                 exc,
             )
+            raise
+
+        # Start scheduler only when this call owns it
+        if own_scheduler:
+            scheduler.start()
 
         logger.info(f"Abacus sync scheduler: Daily at {sync_hour:02d}:{sync_minute:02d}")
 

@@ -583,19 +583,22 @@ def init_scheduler(app):
                 "Derived-facts recompute scheduler job was not registered: %s", exc
             )
 
-        scheduler.start()
-
-        # Remove any undeclared job ids — every job must be in PLATFORM_JOBS
-        # or TENANT_JOBS in app/jobs/tenant_safe_job.py, or it runs unfiltered.
+        # Remove any undeclared job ids BEFORE starting the scheduler —
+        # every job must be in PLATFORM_JOBS or TENANT_JOBS in
+        # app/jobs/tenant_safe_job.py, or it runs unfiltered.  If enforcement
+        # raises, the scheduler is not started (fail closed).
         try:
             from app.jobs.tenant_safe_job import _remove_undeclared_jobs
 
             _remove_undeclared_jobs(scheduler)
         except Exception as exc:
             logger.exception(
-                "init_scheduler: _remove_undeclared_jobs failed — enforcement skipped: %s",
+                "init_scheduler: _remove_undeclared_jobs failed — scheduler not started: %s",
                 exc,
             )
+            raise
+
+        scheduler.start()
 
         def _shutdown_scheduler():
             try:
