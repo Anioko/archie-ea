@@ -142,23 +142,23 @@ jobs:
 
   tests:
     name: Tests (pytest + coverage)
-    runs-on: ubuntu-latest
+    # Self-hosted ibm-vsi runners only serve push/dispatch on this repository and PRs
+    # whose head repository is this one — a PR from a fork never runs job code on
+    # our runners. Everything else (forked PRs) falls back to GitHub-hosted
+    # ubuntu-latest. Several jobs run at once on the same ibm-vsi machine, so the
+    # postgres service below must not bind a fixed host port either way.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: archie_test
-        ports: ["5432:5432"]
+        ports: ["5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
-      # workflow set only DATABASE_URL and passed by coincidence, because the
-      # TestingConfig fallback happened to match this service's host/port/dbname.
-      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
       # create_app() selects config from FLASK_CONFIG. FLASK_ENV (set here before)
       # has no effect on config selection.
       FLASK_CONFIG: testing
@@ -169,6 +169,29 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # A self-hosted runner keeps its home directory between jobs. Installing
+        # straight into setup-python's interpreter can silently resolve against
+        # whatever an earlier job already left in ~/.local (pip's per-user
+        # site-packages, which sits outside both the venv and setup-python's own
+        # install and is picked up ahead of it) — observed in practice as Flask
+        # reported "already satisfied" from ~/.local while its console script was
+        # never on PATH, failing every later `flask` invocation. A venv scoped to
+        # this checkout disables the user-site fallback entirely and is removed by
+        # the next job's checkout, so nothing here depends on machine state.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Resolve the postgres service's mapped port
+        # The service no longer binds host port 5432 (several of these jobs can run
+        # at once on one self-hosted machine), so the docker-assigned host port has
+        # to be read from the job context and exported for every later step.
+        # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
+        # workflow set only DATABASE_URL and passed by coincidence, because the
+        # TestingConfig fallback happened to match this service's host/port/dbname.
+        run: |
+          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
       - name: Install deps
         run: |
           python -m pip install --upgrade pip

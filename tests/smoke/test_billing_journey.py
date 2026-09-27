@@ -170,13 +170,11 @@ def test_administrator_at_the_plan_limit_is_refused_and_nobody_is_added(browser,
 @pytest.fixture(scope="module")
 def billing_server(request, app):
     """A second server whose payment provider is a loopback stub."""
-    import os
-
-    from .conftest import start_app_server
+    from .conftest import boot_live_server
     from .payment_provider_stub import PaymentProviderStub
 
     with PaymentProviderStub() as stub:
-        server = start_app_server(request, stub.child_environment(os.environ), app)
+        server = boot_live_server(request, None, app, extra_env=stub.child_environment({}))
         yield server, stub
 
 

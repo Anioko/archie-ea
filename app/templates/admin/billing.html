@@ -217,11 +217,16 @@
                            class="{{ input_cls }}">
                 </div>
                 {% endif %}
-                <p class="text-xs text-muted-foreground">By continuing you agree to the <a href="/terms" class="underline">terms</a> and <a href="/privacy" class="underline">privacy notice</a>.</p>
                 <button type="submit" class="{{ btn_primary }}" data-testid="checkout-submit">
                     {% if has_live_subscription %}Switch to {{ selected_plan.name }}{% else %}Continue to payment{% endif %}
                 </button>
             </form>
+        {% endif %}
+        {% if selected_plan.purchasable %}
+        <p class="mt-4 text-xs text-muted-foreground" data-checkout-legal>
+            Upgrading means you accept the terms that apply to your plan. Read them before you pay:
+            {% for link in legal_links %}<a href="{{ link.href }}" target="_blank" rel="noopener" class="text-primary hover:underline" data-legal-link="{{ link.slug }}">{{ link.label }}</a>{% if not loop.last %}, {% endif %}{% endfor %}.
+        </p>
         {% endif %}
     {% endcall %}
     </div>

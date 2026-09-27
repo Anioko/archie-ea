@@ -110,5 +110,5 @@ class PaymentProviderStub:
             "STRIPE_PRICE_TEAM_ANNUAL": "price_smoke_team_year",
             "STRIPE_PRICE_TEAM_MONTHLY": "price_smoke_team_month",
         })
-        env.pop("STRIPE_AUTOMATIC_TAX", None)
+        env["STRIPE_AUTOMATIC_TAX"] = ""
         return env
