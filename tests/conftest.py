@@ -78,7 +78,7 @@ def _schema(app):
     shared database that already has a schema.  It does not add missing columns —
     see the schema-drift gate in scripts/verify.py for that.
 
-    Applies R1-B23 schema changes (new columns on llm_interactions,
+    Applies gateway schema changes (new columns on llm_interactions,
     model_providers table) via SQL ALTER TABLE / CREATE TABLE so tests
     of the gateway fields work without a full Alembic migration run.
     """
@@ -87,13 +87,13 @@ def _schema(app):
     with app.app_context():
         db.create_all()
 
-        # R1-B23: gateway fields on llm_interactions
+        # Gateway fields on llm_interactions
         _add_column_if_not_exists(db.engine, "llm_interactions", "organization_id",
                                   "INTEGER REFERENCES organizations(id) ON DELETE SET NULL")
         _add_column_if_not_exists(db.engine, "llm_interactions", "prompt_version", "VARCHAR(32)")
         _add_column_if_not_exists(db.engine, "llm_interactions", "retention_setting", "VARCHAR(50)")
 
-        # R1-B23: model_providers table (create_all should already do this,
+        # model_providers table (create_all should already do this,
         # but guard against a prior partial state)
         _create_table_if_not_exists(db.engine, "model_providers",
             """CREATE TABLE IF NOT EXISTS model_providers (

@@ -1,4 +1,4 @@
-"""R1-B23: Gateway fields on LLMInteraction and two-org isolation.
+"""Gateway fields on LLMInteraction and two-org isolation.
 
 Tests:
 - LLMInteraction model accepts the new gateway fields

@@ -1,4 +1,4 @@
-"""R1-B23: Provider restriction enforcement in the gateway.
+"""Provider restriction enforcement in the gateway.
 
 Tests:
 - ModelProvider.is_allowed_for_org resolution (platform default, org override)

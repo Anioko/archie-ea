@@ -1844,7 +1844,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Resolve organisation from request context
         organization_id = LLMService._resolve_org_id()
 
-        # R1-B23 gateway: check provider register restriction
+        # Gateway: check provider register restriction before calling LLM
         if organization_id is not None:
             from app.models.model_provider import ModelProvider
             if not ModelProvider.is_allowed_for_org(provider, model, organization_id):

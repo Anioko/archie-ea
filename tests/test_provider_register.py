@@ -1,4 +1,4 @@
-"""R1-B23: Provider register (ModelProvider) tests.
+"""Provider register (ModelProvider) tests.
 
 Tests:
 - Platform-default rows are available to all organisations

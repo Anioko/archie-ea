@@ -1,6 +1,6 @@
-"""Add R1-B23 gateway fields to llm_interactions, create model_providers
+"""Add gateway fields to llm_interactions, create model_providers
 
-Revision ID: r1_b23_001
+Revision ID: add_gateway_fields_and_model_providers
 Revises: wft069_workflow_instance_archimate_elements
 Create Date: 2026-09-27
 """
@@ -8,14 +8,14 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers
-revision = "r1_b23_001"
+revision = "add_gateway_fields_and_model_providers"
 down_revision = "wft069_workflow_instance_archimate_elements"
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    # Add R1-B23 gateway columns to llm_interactions
+    # Add gateway columns to llm_interactions
     try:
         op.add_column("llm_interactions", sa.Column("organization_id", sa.Integer(), nullable=True))
         op.create_foreign_key(

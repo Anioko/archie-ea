@@ -1126,7 +1126,7 @@ class LLMInteraction(db.Model):
     latency_ms = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=db.func.now())
 
-    # R1-B23 gateway fields
+    # Gateway fields on llm_interactions for provider register
     organization_id = db.Column(
         db.Integer, db.ForeignKey("organizations.id", ondelete="SET NULL"),
         nullable=True, index=True,

@@ -1,4 +1,4 @@
-"""R1-B23: Gateway bypass enumeration.
+"""Gateway bypass enumeration.
 
 Every LLMInteraction creation must go through ``LLMService._call_llm``
 (the gateway). Files that create LLMInteraction outside this method are
@@ -8,9 +8,6 @@ The `llm-boundary` gate (scripts/check_llm_boundary.py) enforces that the
 deterministic emitter tree has zero LLM references. This test extends that
 principle: it enumerates all files that bypass the gateway so the list is
 visible and reviewable.
-
-Per the brief: call sites in files owned by R1-B11 or R1-B22 get a failing
-test for TB-0112.
 """
 
 from __future__ import annotations
