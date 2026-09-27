@@ -16,6 +16,7 @@ deploy sequence itself: ``init-db``, then ``schema-upgrade``, then
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -65,18 +66,53 @@ def scratch_databases():
     admin.dispose()
 
 
-def _flask(url, *args, check=True):
+# Runs several CLI commands against one app instance, so a sequence of deploy
+# steps pays for one application boot instead of one per command. Stops at
+# the first command that fails. An exception a command raises (a refused down
+# step, for instance) is part of that command's output.
+_DRIVER = r"""
+import json, sys
+from flask.cli import FlaskGroup
+from manage import app
+cli = FlaskGroup(create_app=lambda: app)  # what `flask --app manage` builds
+runner = app.test_cli_runner()
+results = []
+for args in json.loads(sys.argv[1]):
+    r = runner.invoke(cli=cli, args=args)
+    text = r.output
+    if r.exception is not None and not isinstance(r.exception, SystemExit):
+        text += "\n" + type(r.exception).__name__ + ": " + str(r.exception)
+    results.append([r.exit_code, text])
+    if r.exit_code:
+        break
+print("@@RESULTS@@" + json.dumps(results))
+"""
+
+
+def _flask(url, *commands, check=True):
+    """Run each command (a list of CLI arguments) in order; return (exit code, output).
+
+    The exit code is the first non-zero one, else 0; output joins every
+    command's output.
+    """
     env = dict(os.environ)
     env.update(DATABASE_URL=url, TEST_DATABASE_URL=url, DEV_DATABASE_URL=url)
     env.setdefault("FLASK_CONFIG", "testing")
     proc = subprocess.run(
-        [sys.executable, "-m", "flask", "--app", "manage", *args],
-        cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1200,
+        [sys.executable, "-c", _DRIVER, json.dumps([list(c) for c in commands])],
+        cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1800,
     )
-    output = proc.stdout + proc.stderr
+    raw = proc.stdout + proc.stderr
+    assert "@@RESULTS@@" in proc.stdout, f"command driver did not finish:\n{raw[-4000:]}"
+    results = json.loads(proc.stdout.rsplit("@@RESULTS@@", 1)[1].splitlines()[0])
+    code = next((c for c, _ in results if c), 0)
+    output = "\n".join(o for _, o in results)
     if check:
-        assert proc.returncode == 0, f"flask {' '.join(args)} failed:\n{output[-4000:]}"
-    return proc.returncode, output
+        ran = [" ".join(c) for c in commands[:len(results)]]
+        assert code == 0 and len(results) == len(commands), (
+            f"flask {ran[-1]} failed:\n{output[-4000:]}"
+        )
+    return code, output
 
 
 def _snapshot(url):
@@ -134,9 +170,12 @@ def _column(url, table, column):
 
 def _deploy_schema(url):
     """The table and column steps of scripts/database/deploy-schema.sh before this change."""
-    _flask(url, "init-db")
-    _flask(url, "reconcile-schema")
-    _flask(url, "apply-unified-capability-provenance-migration")
+    _flask(
+        url,
+        ["init-db"],
+        ["reconcile-schema"],
+        ["apply-unified-capability-provenance-migration"],
+    )
 
 
 @pytest.fixture(scope="module")
@@ -159,25 +198,25 @@ def test_baseline_changes_nothing_on_a_database_built_by_init_db_and_reconcile(d
     before = _snapshot(deployed_db)
     assert _recorded(deployed_db) == []
 
-    _, output = _flask(deployed_db, "schema-upgrade", "--to", BASELINE)
+    # The upgrade, then reconcile-schema, the drift detector that runs next.
+    _, output = _flask(
+        deployed_db, ["schema-upgrade", "--to", BASELINE], ["reconcile-schema", "--dry-run"]
+    )
 
     assert _recorded(deployed_db) == [BASELINE], output
     after = _snapshot(deployed_db)
     assert after["columns"] == before["columns"]
     assert after["indexes"] == before["indexes"]
     assert after["constraints"] == before["constraints"]
-
-    # And reconcile-schema, the drift detector that runs next, finds nothing.
-    _, drift = _flask(deployed_db, "reconcile-schema", "--dry-run")
-    assert "reconcile-schema: 0 column(s) would add." in drift, drift
-    assert "table(s) absent" not in drift, drift
+    assert "reconcile-schema: 0 column(s) would add." in output, output
+    assert "table(s) absent" not in output, output
 
 
 def test_upgrade_on_an_empty_database_builds_the_full_schema(scratch_databases, deployed_db):
     empty = scratch_databases("empty")
     assert _tables(_snapshot(empty)) == set()
 
-    _flask(empty, "schema-upgrade", "--to", BASELINE)
+    _flask(empty, ["schema-upgrade", "--to", BASELINE])
 
     # Every table, as init-db would have created it.
     assert _recorded(empty) == [BASELINE]
@@ -186,29 +225,11 @@ def test_upgrade_on_an_empty_database_builds_the_full_schema(scratch_databases, 
 
     # The rest of the deploy sequence then finishes exactly the schema an
     # init-db-built database has: the same columns, indexes and constraints.
-    _flask(empty, "reconcile-schema")
-    _flask(empty, "apply-unified-capability-provenance-migration")
+    _flask(empty, ["reconcile-schema"], ["apply-unified-capability-provenance-migration"])
     built = _snapshot(empty)
     assert built["columns"] == deployed["columns"]
     assert built["indexes"] == deployed["indexes"]
     assert built["constraints"] == deployed["constraints"]
-
-
-def test_a_pre_baseline_stamp_is_replaced_instead_of_stopping_the_deploy(deployed_db):
-    url = deployed_db
-    engine = create_engine(url)
-    with engine.begin() as conn:
-        conn.execute(text(
-            "CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
-        ))
-        # A real id from the archived pre-baseline history.
-        conn.execute(text("INSERT INTO alembic_version VALUES ('fac924608f6e')"))
-    engine.dispose()
-
-    _, output = _flask(url, "schema-upgrade")
-
-    assert "fac924608f6e" in output, output
-    assert _recorded(url) == [HEAD]
 
 
 # ------------------------------------------------ expand / contract examples
@@ -287,24 +308,44 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     assert tuple(_column(url, "archimate_elements", "name")) == (100, "NO")
     seeded = _rows(url)
 
-    # Expand, twice: the second run is a no-op.
-    _flask(url, "schema-upgrade")
-    _flask(url, "schema-upgrade")
+    # The database carries a stamp from the archived pre-baseline history, as a
+    # long-lived one may. The upgrade replaces it instead of stopping the deploy.
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL PRIMARY KEY)"
+        ))
+        conn.execute(text("INSERT INTO alembic_version VALUES ('fac924608f6e')"))
+    engine.dispose()
+
+    _, output = _flask(url, ["schema-upgrade"])
+    assert "fac924608f6e" in output, output
     assert _recorded(url) == [HEAD]
     assert tuple(_column(url, "application_owners", "application_id")) == (None, "YES")
     assert _column(url, "archimate_elements", "name")[0] == 500
     assert _rows(url) == seeded
 
+    # Each revision's upgrade step, run again on the expanded schema, changes nothing.
+    from app.commands.schema_migrations import relax_not_null, widen_varchar
+
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        assert relax_not_null(conn, "application_owners", "application_id") is False
+        assert widen_varchar(conn, "archimate_elements", "name", 500) is False
+    engine.dispose()
+    assert tuple(_column(url, "application_owners", "application_id")) == (None, "YES")
+    assert _column(url, "archimate_elements", "name")[0] == 500
+
     # Down while every row still fits the old shape: type and NOT NULL come back,
     # every organisation keeps every row.
-    _flask(url, "db", "downgrade", BASELINE)
+    _flask(url, ["db", "downgrade", BASELINE])
     assert _recorded(url) == [BASELINE]
     assert tuple(_column(url, "application_owners", "application_id")) == (None, "NO")
     assert _column(url, "archimate_elements", "name")[0] == 100
     assert _rows(url) == seeded
 
     # Use the expanded shape as organisation B, then try to go down again.
-    _flask(url, "schema-upgrade")
+    _flask(url, ["schema-upgrade"])
     long_name = "L" * 400
     _seed(url, [
         ("archimate_elements", {"organization_id": org_b, "name": long_name}),
@@ -312,7 +353,7 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     ])
     expanded = _rows(url)
 
-    code, output = _flask(url, "db", "downgrade", BASELINE, check=False)
+    code, output = _flask(url, ["db", "downgrade", BASELINE], check=False)
     assert code != 0
     assert "cannot be narrowed without truncating" in output, output[-3000:]
     # Refused: nothing changed, nothing lost, still recorded at head.
@@ -330,7 +371,7 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
             "UPDATE archimate_elements SET name = 'short' WHERE name = :n"
         ), {"n": long_name})
     engine.dispose()
-    code, output = _flask(url, "db", "downgrade", BASELINE, check=False)
+    code, output = _flask(url, ["db", "downgrade", BASELINE], check=False)
     assert code != 0
     assert "NOT NULL cannot be restored" in output, output[-3000:]
     assert _recorded(url) == [RELAX]
