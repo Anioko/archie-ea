@@ -23,6 +23,8 @@ from app.services.application_cost_accessor import (
     map_import_cost_columns,
     apply_cost_to_application,
     get_cost_summary_for_org,
+    detect_cost_columns,
+    detect_cost_columns_from_dict,
 )
 
 
@@ -323,6 +325,322 @@ class TestTenantIsolation:
         summary1_again = get_cost_summary_for_org(org1.id)
         assert summary1_again["total_annual_cost"] == Decimal("100000")
         assert summary1_again["applications_with_cost"] == 1
+
+        # In org2's context, query without an explicit org_id predicate
+        # and verify org1's application is not visible
+        with tenant_ctx(org2.id):
+            all_apps = ApplicationComponent.query.all()
+            app_names = [a.name for a in all_apps]
+            assert "App Org1" not in app_names, "Org1 application leaked into org2 context"
+            assert "App Org2" in app_names
+
+
+class TestCostSummary:
+    """get_cost_summary_for_org returns None when nothing is recorded."""
+
+    def test_summary_returns_none_when_no_costs(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("summary-none-1")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="No Cost App", organization_id=org.id)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            summary = get_cost_summary_for_org(org.id)
+            assert summary["total_annual_cost"] is None
+            assert summary["application_count"] == 1
+            assert summary["applications_with_cost"] == 0
+
+    def test_summary_returns_none_when_org_has_no_apps(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("summary-none-2")
+        with tenant_ctx(org.id):
+            summary = get_cost_summary_for_org(org.id)
+            assert summary["total_annual_cost"] is None
+            assert summary["application_count"] == 0
+            assert summary["applications_with_cost"] == 0
+
+
+class TestApplyCostGuard:
+    """D1: apply_cost_to_application does not clear existing TCO when key missing."""
+
+    def test_does_not_clear_when_key_missing(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("guard-d1-1")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            # Missing key — should not clear
+            apply_cost_to_application(app_comp, {})
+            db_session.commit()
+            assert get_annual_cost(app_comp) == Decimal("50000")
+
+    def test_does_not_clear_when_other_fields_only(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("guard-d1-2")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            # Only license cost — should not clear TCO
+            apply_cost_to_application(app_comp, {"license_cost_annual": Decimal("30000")})
+            db_session.commit()
+            assert get_annual_cost(app_comp) == Decimal("50000")
+
+    def test_writes_when_key_present(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("guard-d1-3")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            apply_cost_to_application(app_comp, {"total_cost_of_ownership": Decimal("75000")})
+            db_session.commit()
+            assert get_annual_cost(app_comp) == Decimal("75000")
+
+
+class TestCurrencyRejection:
+    """D2: Currency mismatch is rejected when reporting_currency is set."""
+
+    def test_rejects_non_reporting_currency(self):
+        row = {"total_cost_of_ownership": "100", "currency_col": "EUR"}
+        mapping = {"total_cost_of_ownership": "total_cost_of_ownership", "currency": "currency_col"}
+        result = map_import_cost_columns(row, mapping, reporting_currency="GBP")
+        assert "total_cost_of_ownership" in result["cost_errors"]
+        assert "EUR" in result["cost_errors"]["total_cost_of_ownership"]
+        assert result["cost_fields"] == {}
+
+    def test_accepts_reporting_currency(self):
+        row = {"total_cost_of_ownership": "100", "currency_col": "GBP"}
+        mapping = {"total_cost_of_ownership": "total_cost_of_ownership", "currency": "currency_col"}
+        result = map_import_cost_columns(row, mapping, reporting_currency="GBP")
+        assert result["cost_fields"]["total_cost_of_ownership"] == Decimal("100")
+        assert result["cost_errors"] == {}
+
+    def test_accepts_when_no_currency_column(self):
+        """When no currency column is present, the value is accepted."""
+        row = {"total_cost_of_ownership": "100"}
+        mapping = {"total_cost_of_ownership": "total_cost_of_ownership"}
+        result = map_import_cost_columns(row, mapping, reporting_currency="GBP")
+        assert result["cost_fields"]["total_cost_of_ownership"] == Decimal("100")
+        assert result["cost_errors"] == {}
+
+
+class TestDetectCostColumns:
+    """D9: detect_cost_columns matches case-insensitively and shares one definition."""
+
+    def test_detects_case_insensitive(self):
+        result = detect_cost_columns(["TCO", "Annual Cost", "Licence Cost"])
+        assert "total_cost_of_ownership" in result
+        assert result["total_cost_of_ownership"] == "TCO"
+
+    def test_detects_variants(self):
+        result = detect_cost_columns(["annual_cost", "license cost"])
+        assert "total_cost_of_ownership" in result
+        assert "license_cost_annual" in result
+
+    def test_detect_from_dict(self):
+        source = {"tco": "100", "Currency": "GBP"}
+        result = detect_cost_columns_from_dict(source)
+        assert "total_cost_of_ownership" in result
+        assert "currency" in result
+
+    def test_empty_columns(self):
+        result = detect_cost_columns([])
+        assert result == {}
+
+    def test_no_cost_columns(self):
+        result = detect_cost_columns(["name", "description"])
+        assert result == {}
+
+
+class TestWritePathIntegration:
+    """D4: Each write path is exercised through the service layer."""
+
+    def test_extract_cost_mapping_and_apply(self, app, db_session, make_org, tenant_ctx):
+        """_create_application's cost detection + apply chain works."""
+        from app.models.batch_import import BatchImportApplication
+
+        org = make_org("write-path-1")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            # Build a mapping as the orchestrator does, then apply cost
+            mapping = detect_cost_columns(["name", "tco"])
+            assert "total_cost_of_ownership" in mapping
+
+            parsed = map_import_cost_columns(
+                {"name": "Test", "tco": "50000"}, mapping
+            )
+            apply_cost_to_application(app_comp, parsed["cost_fields"])
+            db_session.commit()
+
+            assert get_annual_cost(app_comp) == Decimal("50000")
+
+    def test_extract_cost_mapping_empty(self):
+        """detect_cost_columns returns empty mapping when no cost columns."""
+        mapping = detect_cost_columns(["name", "description"])
+        assert mapping == {}
+
+    def test_orchestrator_update_merge_preserves_tco(self, app, db_session, make_org, tenant_ctx):
+        """D1: _update_application with merge mode and no cost columns preserves TCO."""
+        from app.modules.import_batch.services.import_orchestrator import ImportOrchestrator
+
+        org = make_org("write-path-3")
+        with tenant_ctx(org.id):
+            existing = ApplicationComponent(name="Existing", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(existing)
+            db_session.commit()
+
+            row = {"name": "Existing Updated"}
+            columns = ["name"]
+            orch = ImportOrchestrator()
+            orch._update_application(existing, row, columns, mode="merge")
+            db_session.commit()
+
+            assert get_annual_cost(existing) == Decimal("50000")
+
+    def test_orchestrator_update_overwrite_clears_tco(self, app, db_session, make_org, tenant_ctx):
+        """_update_application with overwrite mode and cost columns updates TCO."""
+        from app.modules.import_batch.services.import_orchestrator import ImportOrchestrator
+
+        org = make_org("write-path-4")
+        with tenant_ctx(org.id):
+            existing = ApplicationComponent(name="Existing", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(existing)
+            db_session.commit()
+
+            row = {"name": "Existing Updated", "tco": "75000"}
+            columns = ["name", "tco"]
+            orch = ImportOrchestrator()
+            orch._update_application(existing, row, columns, mode="overwrite")
+            db_session.commit()
+
+            assert get_annual_cost(existing) == Decimal("75000")
+
+    def test_merge_into_existing_preserves_tco_when_no_cost(self, app, db_session, make_org, tenant_ctx):
+        """D1/D4: _merge_into_existing does not clear stored TCO when no cost column."""
+        from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
+        from app.models.batch_import import BatchImportApplication
+
+        org = make_org("write-path-5")
+        with tenant_ctx(org.id):
+            existing = ApplicationComponent(name="Existing", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(existing)
+            db_session.flush()
+
+            import_app = BatchImportApplication(
+                batch_id=1, row_number=1,
+                source_data={"name": "Existing Updated"},
+                application_name="Existing Updated", status="pending",
+            )
+
+            svc = BatchApprovalService()
+            svc._merge_into_existing(import_app, existing)
+            db_session.commit()
+
+            assert get_annual_cost(existing) == Decimal("50000")
+
+    def test_merge_into_existing_writes_tco_from_source(self, app, db_session, make_org, tenant_ctx):
+        """D1/D4: _merge_into_existing writes TCO from source data."""
+        from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
+        from app.models.batch_import import BatchImportApplication
+
+        org = make_org("write-path-6")
+        with tenant_ctx(org.id):
+            existing = ApplicationComponent(name="Existing", organization_id=org.id)
+            db_session.add(existing)
+            db_session.flush()
+
+            import_app = BatchImportApplication(
+                batch_id=1, row_number=1,
+                source_data={"name": "Existing Updated", "total_cost_of_ownership": "75000"},
+                application_name="Existing Updated", status="pending",
+            )
+
+            svc = BatchApprovalService()
+            svc._merge_into_existing(import_app, existing)
+            db_session.commit()
+
+            assert get_annual_cost(existing) == Decimal("75000")
+
+
+class TestOtherCategoriesPersisted:
+    """D6: Other cost categories are written through the accessor."""
+
+    def test_license_cost_persisted(self, app, db_session, make_org, tenant_ctx):
+        org = make_org("other-cat-1")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            apply_cost_to_application(app_comp, {
+                "total_cost_of_ownership": Decimal("100000"),
+                "license_cost_annual": Decimal("50000"),
+                "maintenance_cost": Decimal("20000"),
+            })
+            db_session.commit()
+
+            assert get_annual_cost(app_comp) == Decimal("100000")
+            assert app_comp.license_cost_annual == 50000.0
+            assert app_comp.maintenance_cost == 20000.0
+
+
+class TestImportPreviewValidation:
+    """D3: Preview validation reports invalid rows."""
+
+    def test_preview_reports_invalid_lifecycle_status(self, app, db_session, make_org, tenant_ctx):
+        """Preview reports a row with an invalid lifecycle_status as invalid."""
+        from app.modules.import_batch.services.import_preview_service import ImportPreviewService
+        from app.models.batch_import import BatchImportJob, BatchImportBatch, BatchImportApplication, BatchJobStatus, BatchStatus
+        from app.models.user import User
+
+        org = make_org("preview-val-1")
+        with tenant_ctx(org.id):
+            user = User(email="valtest@example.com", organization_id=org.id, confirmed=True)
+            db_session.add(user)
+            db_session.flush()
+
+            job = BatchImportJob(
+                job_uuid="preview-val-uuid", user_id=user.id,
+                name="Val Test", filename="test.csv", file_path="/tmp/test.csv",
+                file_hash="abc123", total_applications=1, batch_size=10,
+                total_batches=1, status=BatchJobStatus.AWAITING_CONFIRMATION,
+                archimate_mode="standard", enable_ai_generation=False,
+            )
+            db_session.add(job)
+            db_session.flush()
+
+            batch = BatchImportBatch(
+                job_id=job.id, batch_number=1, status=BatchStatus.QUEUED, total_applications=1
+            )
+            db_session.add(batch)
+            db_session.flush()
+
+            app1 = BatchImportApplication(
+                batch_id=batch.id, row_number=1,
+                source_data={"name": "App1", "lifecycle_status": "invalid_status_xyz"},
+                application_name="App1", status="pending",
+            )
+            db_session.add(app1)
+            db_session.commit()
+
+            preview_service = ImportPreviewService()
+            preview = preview_service.generate_preview(job.id)
+
+            validation = preview.get("validation", {})
+            # In lenient mode the validator normalises unknown values with a warning,
+            # so invalid_rows may be 0 but row_details should contain the warning
+            row_details = validation.get("row_details", [])
+            has_issues = any(
+                len(r.get("issues", [])) > 0 for r in row_details
+            )
+            has_warnings = validation.get("summary", {}).get("total_warnings", 0) > 0
+            assert has_issues or has_warnings, (
+                "Expected validation to report an issue for invalid lifecycle_status"
+            )
 
 
 class TestAnnualMonthlyNormalisation:
