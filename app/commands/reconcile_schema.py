@@ -1519,6 +1519,94 @@ _ALL_EMBEDDING_TABLES = tuple(
 )
 
 
+def _backfill_chat_from_session_id(dry_run: bool) -> int:
+    """Derive organization_id for chat_message_embeddings rows with NULL
+    user_id by extracting the user id from the session_id pattern.
+
+    Session id patterns that encode a user id:
+      - chat_user_<id>
+      - saved_<id>_...
+
+    Returns the number of rows updated.
+    """
+    from sqlalchemy import text
+
+    # Try chat_user_<id> pattern first
+    eligible = db.session.scalar(
+        text(
+            """
+            SELECT count(*)
+            FROM chat_message_embeddings e
+            JOIN users u ON u.id = CAST(
+                regexp_replace(e.chat_session_id, '^chat_user_', '') AS INTEGER
+            )
+            WHERE e.organization_id IS NULL
+              AND e.user_id IS NULL
+              AND e.chat_session_id ~ '^chat_user_[0-9]+$'
+              AND u.organization_id IS NOT NULL
+            """
+        )
+    )
+    updated = eligible
+    if not dry_run and eligible:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE chat_message_embeddings AS e
+                SET organization_id = u.organization_id
+                FROM users AS u
+                WHERE u.id = CAST(
+                    regexp_replace(e.chat_session_id, '^chat_user_', '') AS INTEGER
+                )
+                  AND e.organization_id IS NULL
+                  AND e.user_id IS NULL
+                  AND e.chat_session_id ~ '^chat_user_[0-9]+$'
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+
+    # Try saved_<id>_... pattern
+    saved_eligible = db.session.scalar(
+        text(
+            """
+            SELECT count(*)
+            FROM chat_message_embeddings e
+            JOIN users u ON u.id = CAST(
+                regexp_replace(e.chat_session_id, '^saved_([0-9]+)_.*$', '\\1') AS INTEGER
+            )
+            WHERE e.organization_id IS NULL
+              AND e.user_id IS NULL
+              AND e.chat_session_id ~ '^saved_[0-9]+_'
+              AND u.organization_id IS NOT NULL
+            """
+        )
+    )
+    if not dry_run and saved_eligible:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE chat_message_embeddings AS e
+                SET organization_id = u.organization_id
+                FROM users AS u
+                WHERE u.id = CAST(
+                    regexp_replace(e.chat_session_id, '^saved_([0-9]+)_.*$', '\\1') AS INTEGER
+                )
+                  AND e.organization_id IS NULL
+                  AND e.user_id IS NULL
+                  AND e.chat_session_id ~ '^saved_[0-9]+_'
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated += result.rowcount
+        db.session.commit()
+
+    return updated
+
+
 def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed):
     """Backfill organization_id on embedding tables that have a reachable org
     through their FK chain.
@@ -1590,11 +1678,22 @@ def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed
             f"(provenance: {description})"
         )
         if unresolved:
-            failed.append(
-                f"backfill.{table}.organization_id: {unresolved} row(s) "
-                f"whose {fk_col} names no live {join_table} row with a known "
-                f"organization"
-            )
+            # For chat_message_embeddings, try to derive org from session_id
+            # pattern before reporting as failure.
+            if table == "chat_message_embeddings":
+                _chat_derived = _backfill_chat_from_session_id(dry_run)
+                if _chat_derived:
+                    updated += _chat_derived
+                    unresolved = before - updated
+                    added.append(
+                        f"backfill.{table}.organization_id :: session-derived={_chat_derived}"
+                    )
+            if unresolved:
+                failed.append(
+                    f"backfill.{table}.organization_id: {unresolved} row(s) "
+                    f"whose {fk_col} names no live {join_table} row with a known "
+                    f"organization"
+                )
 
     for table in _EMBEDDING_SHARED_TABLES:
         if table not in present:
@@ -2118,3 +2217,121 @@ def reconcile_schema(dry_run):
 def init_app(app):
     """Register the reconcile-schema CLI command."""
     app.cli.add_command(reconcile_schema)
+    app.cli.add_command(reembed)
+
+
+@click.command("reembed")
+@click.option("--org-id", type=int, default=None, help="Organisation id to re-embed (default: all orgs one at a time)")
+@with_appcontext
+def reembed(org_id):
+    """Regenerate embeddings for every tenant-scoped entity, one organisation at a time.
+
+    Re-runs ``generate_and_store`` for every capability, solution, application
+    component, and vendor product that has an embedding row, scoped to the
+    given organisation (or all organisations sequentially).
+    """
+    from app.jobs.tenant_safe_job import tenant_scope
+    from app.models.vector_embeddings import (
+        ApplicationComponentEmbedding,
+        BusinessCapabilityEmbedding,
+        SolutionEmbedding,
+        VendorProductEmbedding,
+    )
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+
+    svc = PgvectorEmbeddingService()
+
+    if org_id is not None:
+        org_ids = [org_id]
+    else:
+        from sqlalchemy import text
+        org_ids = [
+            row[0]
+            for row in db.session.execute(text("SELECT id FROM organizations")).fetchall()
+        ]
+
+    for oid in org_ids:
+        with tenant_scope(oid):
+            click.echo(f"Re-embedding organisation {oid}...")
+
+            # Capabilities
+            caps = db.session.execute(
+                text(
+                    "SELECT bc.id, bc.name || ' ' || COALESCE(bc.description, '') "
+                    "FROM business_capabilities bc "
+                    "JOIN business_capability_embeddings e ON e.business_capability_id = bc.id "
+                    "WHERE bc.organization_id = :oid",
+                ),
+                {"oid": oid},
+            ).fetchall()
+            for cap_id, cap_text in caps:
+                svc.generate_and_store(
+                    entity_type="capability",
+                    entity_id=cap_id,
+                    text=cap_text,
+                    embedding_model_cls=BusinessCapabilityEmbedding,
+                    fk_field="business_capability_id",
+                )
+            click.echo(f"  {len(caps)} capability embeddings")
+
+            # Solutions
+            sols = db.session.execute(
+                text(
+                    "SELECT s.id, s.name || ' ' || COALESCE(s.description, '') "
+                    "FROM solutions s "
+                    "JOIN solution_embeddings e ON e.solution_id = s.id "
+                    "WHERE s.organization_id = :oid",
+                ),
+                {"oid": oid},
+            ).fetchall()
+            for sol_id, sol_text in sols:
+                svc.generate_and_store(
+                    entity_type="solution",
+                    entity_id=sol_id,
+                    text=sol_text,
+                    embedding_model_cls=SolutionEmbedding,
+                    fk_field="solution_id",
+                )
+            click.echo(f"  {len(sols)} solution embeddings")
+
+            # Application components
+            apps = db.session.execute(
+                text(
+                    "SELECT ac.id, ac.name || ' ' || COALESCE(ac.description, '') "
+                    "FROM application_components ac "
+                    "JOIN application_component_embeddings e ON e.application_component_id = ac.id "
+                    "WHERE ac.organization_id = :oid",
+                ),
+                {"oid": oid},
+            ).fetchall()
+            for app_id, app_text in apps:
+                svc.generate_and_store(
+                    entity_type="application",
+                    entity_id=app_id,
+                    text=app_text,
+                    embedding_model_cls=ApplicationComponentEmbedding,
+                    fk_field="application_component_id",
+                )
+            click.echo(f"  {len(apps)} application component embeddings")
+
+            # Vendor products (shared table, no org scope)
+            vps = db.session.execute(
+                text(
+                    "SELECT vp.id, vp.name || ' ' || COALESCE(vp.description, '') "
+                    "FROM vendor_products vp "
+                    "JOIN vendor_product_embeddings e ON e.vendor_product_id = vp.id"
+                ),
+            ).fetchall()
+            for vp_id, vp_text in vps:
+                svc.generate_and_store(
+                    entity_type="vendor_product",
+                    entity_id=vp_id,
+                    text=vp_text,
+                    embedding_model_cls=VendorProductEmbedding,
+                    fk_field="vendor_product_id",
+                )
+            click.echo(f"  {len(vps)} vendor product embeddings")
+
+            db.session.remove()
+
+    click.echo("Re-embedding complete.")
