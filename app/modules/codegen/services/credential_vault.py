@@ -232,7 +232,6 @@ class OrgCredentialVault:
         from app.models.connector_config import OrgConnectorCredential
         from app.modules.codegen.services.credential_encryption import (
             _get_or_create_org_fernet,
-            _get_master_fernet,
         )
 
         # 1. Get old key to decrypt existing rows
