@@ -1053,7 +1053,6 @@ def consolidation_status():
 @admin_bp_v2.route("/feature-flags")
 @timed_route
 @platform_admin_required
-@admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
     page = safe_int_arg('page', 1, minimum=1)
@@ -1155,7 +1154,7 @@ def feature_flags():
 @admin_bp_v2.route("/feature-flags/new", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("create_feature_flag")
 def feature_flag_new():
     """Create new feature flag."""
@@ -1204,7 +1203,7 @@ def feature_flag_new():
 @admin_bp_v2.route("/feature-flags/<int:id>/edit", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("edit_feature_flag")
 def feature_flag_edit(id):
     """Edit feature flag."""
@@ -1261,7 +1260,7 @@ def feature_flag_edit(id):
 @admin_bp_v2.route("/feature-flags/<int:id>/toggle", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("toggle_feature_flag")
 def feature_flag_toggle(id):
     """Quick toggle feature enabled/disabled."""
@@ -1288,7 +1287,7 @@ def feature_flag_toggle(id):
 @admin_bp_v2.route("/feature-flags/<int:id>/delete", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("delete_feature_flag")
 def feature_flag_delete(id):
     """Delete feature flag."""
@@ -1308,7 +1307,7 @@ def feature_flag_delete(id):
 @admin_bp_v2.route("/feature-flags/discover-sidebar")
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def feature_flags_discover_sidebar():
     """Discover sidebar menu items for feature flagging."""
     try:
@@ -1352,7 +1351,7 @@ def feature_flags_discover_sidebar():
 @admin_bp_v2.route("/feature-flags/discover-sidebar/create", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("create_feature_flags_from_sidebar")
 def feature_flags_create_from_sidebar():
     """Create feature flags from selected sidebar items."""
