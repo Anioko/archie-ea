@@ -112,6 +112,8 @@ def parse_cost_cell(
     period = (period or "annual").strip().lower()
     if period not in PERIOD_VALUES:
         error = f"Unknown period '{period}'; valid values: annual, monthly"
+        # Value is rejected when period is unrecognised
+        value = None
 
     # Normalise category
     category = (category or "total_cost_of_ownership").strip().lower()
@@ -119,8 +121,10 @@ def parse_cost_cell(
         warnings.append(f"Unknown cost category '{category}'; defaulting to total_cost_of_ownership")
         category = "total_cost_of_ownership"
 
-    # Parse the numeric value
-    if raw_value is None or (isinstance(raw_value, str) and raw_value.strip() == ""):
+    # Parse the numeric value — skip if an earlier check (period) already set error
+    if error:
+        pass
+    elif raw_value is None or (isinstance(raw_value, str) and raw_value.strip() == ""):
         # Blank cell means "no value" — not an error
         pass
     else:
@@ -217,7 +221,8 @@ def map_import_cost_columns(
                     f"reporting currency '{effective_reporting}'"
                 )
             else:
-                result[field_name] = parsed["value"]
+                if parsed["value"] is not None:
+                    result[field_name] = parsed["value"]
 
         cost_warnings.extend(parsed["warnings"])
 
