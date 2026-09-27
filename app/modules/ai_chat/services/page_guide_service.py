@@ -188,6 +188,7 @@ class PageGuideService:
                 "page_key": page_key,
                 "scope_key": scope_key,
             },
+            organization_id=current_org_id(),
         )
         db.session.add(record)
         db.session.commit()

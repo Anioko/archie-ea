@@ -2355,6 +2355,7 @@ class MultiDomainChatService:
                 message_role=role,
                 domain=domain,
                 metadata_json=metadata or {},
+                organization_id=current_org_id(),
             )
             db.session.add(msg)
             db.session.commit()
@@ -2503,6 +2504,7 @@ class MultiDomainChatService:
                         "original_timestamp": msg.get("timestamp"),
                         "saved_session": True,
                     },
+                    organization_id=current_org_id(),
                 )
                 db.session.add(record)
 
@@ -2544,10 +2546,10 @@ class MultiDomainChatService:
         try:
             from sqlalchemy import func as sql_func
 
-            # Query distinct saved session IDs for this user
+            # Query distinct saved session IDs for this user, scoped to organisation
             saved_prefix = f"saved_{target_user_id}_"
             _sess_org_id = current_org_id()
-            results = (
+            query = (
                 db.session.query(
                     ChatMessageEmbedding.chat_session_id,
                     sql_func.count(ChatMessageEmbedding.id).label("msg_count"),
@@ -2555,16 +2557,10 @@ class MultiDomainChatService:
                 )
                 .filter(ChatMessageEmbedding.chat_session_id.like(f"{saved_prefix}%"))
                 .group_by(ChatMessageEmbedding.chat_session_id)
-                .all()
             )
-            # Post-filter by organisation
             if _sess_org_id is not None:
-                all_sessions = {}
-                for r in results:
-                    all_sessions.setdefault(r[0], []).append(r)
-                results = [
-                    r for r in results
-                ]
+                query = query.filter(ChatMessageEmbedding.organization_id == _sess_org_id)
+            results = query.all()
 
             sessions = []
             for row in results:
