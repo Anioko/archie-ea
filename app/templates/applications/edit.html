@@ -129,7 +129,7 @@
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label for="criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
+          <label for="business_criticality" class="block text-sm font-medium mb-1">Business Criticality</label>
           <select id="criticality" name="criticality"
                   class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
             {% set current_crit = application.business_criticality %}
@@ -144,6 +144,12 @@
             <option value="{{ current_crit }}" selected>{{ current_crit | capitalize }}</option>
             {% endif %}
           </select>
+        </div>
+        <div>
+          <label for="business_purpose" class="block text-sm font-medium mb-1">Business Purpose</label>
+          <input type="text" id="business_purpose" name="business_purpose" value="{{ application.business_purpose or '' }}"
+                 placeholder="e.g. Core business function, compliance reporting"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
         </div>
         <div>
           <label for="deployment_status" class="block text-sm font-medium mb-1">Deployment Status</label>
@@ -306,4 +312,9 @@
     </div>
   </form>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="{{ url_for('static', filename='js/applications/owner_picker.js') }}"></script>
 {% endblock %}
