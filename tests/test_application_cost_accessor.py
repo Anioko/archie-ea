@@ -124,7 +124,7 @@ class TestParseCostCell:
         result = parse_cost_cell("€99.999,50", currency="EUR", period="annual", category="total_cost_of_ownership")
         # Note: European format with comma as decimal separator not handled - this is a known limitation
         # The parser strips commas, so this becomes 9999950
-        # For now we accept the behaviour; a full locale parser is out of scope for R1
+        # For now we accept the behaviour; a full locale parser is a later enhancement
         assert result["currency"] == "EUR"
 
     def test_parse_monthly_normalises_to_annual(self):
@@ -263,8 +263,8 @@ class TestApplyCostToApplication:
 
             assert get_annual_cost(app_comp) == Decimal("75000")
 
-    def test_other_categories_accepted_but_not_persisted_in_r1(self, app, db_session, make_org, tenant_ctx):
-        """Only persists total_cost_of_ownership; other categories accepted for preview."""
+    def test_other_categories_persisted_beside_total(self, app, db_session, make_org, tenant_ctx):
+        """Persists all provided cost categories beside total_cost_of_ownership."""
         org = make_org("apply-cost-2")
         with tenant_ctx(org.id):
             app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
@@ -278,8 +278,10 @@ class TestApplyCostToApplication:
             })
             db_session.commit()
 
-            # Only TCO is written through the system-of-record column
+            # All provided categories are persisted
             assert get_annual_cost(app_comp) == Decimal("100000")
+            assert app_comp.license_cost_annual == Decimal("50000")
+            assert app_comp.maintenance_cost == Decimal("20000")
 
 
 class TestTenantIsolation:
@@ -711,19 +713,19 @@ class TestImportPreviewValidation:
 
             validation = preview.get("validation", {})
             summary = validation.get("summary", {})
-            # The real validator will detect the retirement-before-go-live date
-            # sequence error, proving the real validation pipeline is used
-            has_errors = summary.get("invalid_rows", 0) > 0 or summary.get("total_errors", 0) > 0
-            has_warnings = summary.get("total_warnings", 0) > 0
-            assert has_errors or has_warnings, (
-                "Expected validation to detect issues (invalid lifecycle_status or date sequence)"
+            # The real validator will detect the retirement-before-go-live and
+            # invalid go_live date sequence errors, proving the real validation
+            # pipeline is used
+            assert summary.get("invalid_rows", 0) == 1, (
+                "Expected exactly 1 invalid row (retirement before go-live, "
+                "invalid go_live_date)"
             )
             row_details = validation.get("row_details", [])
             all_messages = " ".join(
                 issue.get("message", "") for r in row_details for issue in r.get("issues", [])
             )
-            assert "retirement" in all_messages or "go_live" in all_messages or "invalid_status" in all_messages or "date" in all_messages.lower(), (
-                "Expected a date-sequence or lifecycle error message"
+            assert "retirement" in all_messages.lower() or "go_live" in all_messages.lower(), (
+                "Expected a retirement or go-live sequence error message"
             )
 
 
