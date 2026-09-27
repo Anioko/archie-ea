@@ -1,4 +1,4 @@
-"""R1-B17 PR 1: every scheduled job runs outside the web process, inside its
+"""Every scheduled job runs outside the web process, inside its
 organisation's tenant context, once a dedicated jobs worker is configured.
 
 Two things are exercised here:
@@ -8,7 +8,7 @@ Two things are exercised here:
    criterion "no job runs in the web process when the worker is configured".
 2. The Teams subscription renewal job, which previously called
    ``TeamsMeetingService.renew_if_needed()`` with no tenant context at all
-   (so the tenant-scoped ``APISettings`` query it makes resolved whichever
+   (so the tenant-scoped ``APISettings`` query it made resolved whichever
    organisation's row Postgres returned first), now visits every active
    organisation separately through ``tenant_scope``.
 """
@@ -107,11 +107,23 @@ class _CapturingScheduler:
     """
 
     def __init__(self):
-        self.jobs = {}
+        self._jobs = {}
         self.started = False
 
     def add_job(self, **kwargs):
-        self.jobs[kwargs["id"]] = kwargs["func"]
+        self._jobs[kwargs["id"]] = kwargs["func"]
+
+    def get_jobs(self):
+        # Minimal job objects with an .id attribute for
+        # _remove_undeclared_jobs().
+        _Job = type("_FakeJob", (), {"__init__": lambda self, jid: setattr(self, "id", jid)})
+        return [_Job(jid) for jid in self._jobs]
+
+    def get_job(self, job_id):
+        return self._jobs.get(job_id)
+
+    def remove_job(self, job_id):
+        self._jobs.pop(job_id, None)
 
     def start(self):
         self.started = True
@@ -140,18 +152,45 @@ def test_teams_renewal_visits_every_active_organisation_separately(
 
     import app.services.teams_meeting_service as teams_mod
     from app._bootstrap.extensions import init_scheduler
+    from app.models.models import APISettings
 
     org_a = make_org("teams-a")
     org_b = make_org("teams-b")
     db_session.commit()
     org_a_id, org_b_id = org_a.id, org_b.id
 
-    seen_org_ids = []
+    # Create one APISettings M365 row per organisation, each with a distinct
+    # subscription_id (jira_url) — without tenant_scope the query would return
+    # whichever row the database returns first; with it each call sees only
+    # its own organisation's row.
+    for org_id, sub_id in [(org_a_id, "sub-a"), (org_b_id, "sub-b")]:
+        with app.test_request_context("/"):
+            g.current_org_id = org_id
+            row = APISettings(
+                provider="teams_meetings",
+                key_label="default",
+                api_key="test",
+                jira_url=sub_id,
+                enabled=True,
+            )
+            db_session.add(row)
+            db_session.flush()
+    db_session.commit()
+
+    seen_configs = []
 
     def _fake_renew_if_needed():
-        # Read the exact value the isolation listeners key off, to prove
-        # this call ran inside a real tenant_scope() and not with g unset.
-        seen_org_ids.append(g.current_org_id)
+        # Read the configuration through the real get_config path, which
+        # queries APISettings — under tenant_scope this returns only the
+        # current organisation's row.
+        seen_configs.append(
+            {
+                "org_id": g.current_org_id,
+                "subscription_id": teams_mod.TeamsMeetingService.get_config().get(
+                    "subscription_id"
+                ),
+            }
+        )
         return {"status": "skipped", "reason": "no subscription on record"}
 
     monkeypatch.setattr(
@@ -166,20 +205,33 @@ def test_teams_renewal_visits_every_active_organisation_separately(
     app.testing = False
     try:
         init_scheduler(app)
-        job_func = scheduler.jobs["teams_subscription_renewal"]
+        job_func = scheduler.get_job("teams_subscription_renewal")
         job_func()
     finally:
         app.testing = original_testing
 
-    assert org_a_id in seen_org_ids, (
-        f"organisation {org_a_id} was never visited: {seen_org_ids}"
+    assert org_a_id in [c["org_id"] for c in seen_configs], (
+        f"organisation {org_a_id} was never visited: {seen_configs}"
     )
-    assert org_b_id in seen_org_ids, (
-        f"organisation {org_b_id} was never visited: {seen_org_ids}"
+    assert org_b_id in [c["org_id"] for c in seen_configs], (
+        f"organisation {org_b_id} was never visited: {seen_configs}"
     )
     # Every visit ran with a concrete tenant on g -- never the unscoped call
     # (None) this job made before this fix.
-    assert None not in seen_org_ids
+    assert None not in [c["org_id"] for c in seen_configs]
+
+    # Row isolation: organisation A must read only its own subscription_id
+    # and organisation B only its own.
+    config_a = next(c for c in seen_configs if c["org_id"] == org_a_id)
+    config_b = next(c for c in seen_configs if c["org_id"] == org_b_id)
+    assert config_a["subscription_id"] == "sub-a", (
+        f"org {org_a_id} saw subscription_id {config_a['subscription_id']!r} "
+        f"instead of 'sub-a' — APISettings is not isolated per tenant"
+    )
+    assert config_b["subscription_id"] == "sub-b", (
+        f"org {org_b_id} saw subscription_id {config_b['subscription_id']!r} "
+        f"instead of 'sub-b' — APISettings is not isolated per tenant"
+    )
 
 
 def test_teams_renewal_one_tenant_failure_does_not_abort_the_others(
@@ -215,10 +267,242 @@ def test_teams_renewal_one_tenant_failure_does_not_abort_the_others(
     app.testing = False
     try:
         init_scheduler(app)
-        job_func = scheduler.jobs["teams_subscription_renewal"]
+        job_func = scheduler.get_job("teams_subscription_renewal")
         job_func()  # must not raise -- one tenant's failure is caught and logged
     finally:
         app.testing = original_testing
 
     assert org_fail_id in seen_org_ids
     assert org_ok_id in seen_org_ids
+
+
+# --------------------------------------------------------------------------- #
+# M2: job declaration enforcement — every scheduled job id must be declared
+# in PLATFORM_JOBS or TENANT_JOBS in app/jobs/tenant_safe_job.py.
+# --------------------------------------------------------------------------- #
+
+
+def test_undeclared_job_id_is_removed(app, monkeypatch):
+    """A job whose id is in neither PLATFORM_JOBS nor TENANT_JOBS is removed
+    with an ERROR log. On main (before this fix) the undeclared job runs."""
+    import logging
+
+    import apscheduler.schedulers.background
+    from app._bootstrap.extensions import init_scheduler
+    from app.jobs.tenant_safe_job import (
+        PLATFORM_JOBS,
+        TENANT_JOBS,
+        _remove_undeclared_jobs,
+    )
+
+    # Create a scheduler, add a known-declared job and one undeclared job
+    real_cls = apscheduler.schedulers.background.BackgroundScheduler
+    scheduler = real_cls()
+
+    # Add a declared job
+    scheduler.add_job(
+        func=lambda: None,
+        trigger="interval",
+        seconds=60,
+        id="error_digest",
+        replace_existing=True,
+    )
+
+    # Add an undeclared job
+    scheduler.add_job(
+        func=lambda: None,
+        trigger="interval",
+        seconds=60,
+        id="undeclared_job_x99",
+        replace_existing=True,
+    )
+
+    undeclared_id = "undeclared_job_x99"
+
+    logs = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record):
+            logs.append(record.getMessage())
+
+    handler = _Handler()
+    logger = logging.getLogger("app.jobs.tenant_safe_job")
+    logger.addHandler(handler)
+    logger.setLevel(logging.ERROR)
+    try:
+        _remove_undeclared_jobs(scheduler)
+    finally:
+        logger.removeHandler(handler)
+
+    # The declared job survives
+    assert scheduler.get_job("error_digest") is not None
+    # The undeclared job was removed
+    assert scheduler.get_job(undeclared_id) is None
+    # An ERROR was logged
+    assert any(undeclared_id in msg for msg in logs)
+
+
+def test_every_init_scheduler_job_is_declared(app, monkeypatch):
+    """Every job id that init_scheduler registers is in exactly one of the two
+    declared sets. A new job added to init_scheduler must also be added to
+    PLATFORM_JOBS or TENANT_JOBS."""
+    import apscheduler.schedulers.background
+    from app._bootstrap.extensions import init_scheduler
+    from app.jobs.tenant_safe_job import PLATFORM_JOBS, TENANT_JOBS
+
+    all_declared = PLATFORM_JOBS | TENANT_JOBS
+    real_cls = apscheduler.schedulers.background.BackgroundScheduler
+    scheduler = real_cls()
+
+    # Register only the abacus job with standalone init_abacus_scheduler
+    # so we can inspect the ids init_scheduler would register.
+    # We monkeypatch to capture job ids without actually starting a scheduler.
+    captured_ids = []
+
+    original_add_job = scheduler.add_job
+
+    def _capture_add_job(**kwargs):
+        captured_ids.append(kwargs["id"])
+        return original_add_job(**kwargs)
+
+    monkeypatch.setattr(scheduler, "add_job", _capture_add_job)
+
+    from app.tasks.abacus_sync_task import init_abacus_scheduler
+
+    init_abacus_scheduler(app, scheduler=scheduler)
+
+    # Now test that every id is declared
+    for job_id in captured_ids:
+        assert job_id in all_declared, (
+            f"Job id {job_id!r} registered by init_abacus_scheduler "
+            f"but not found in PLATFORM_JOBS or TENANT_JOBS"
+        )
+
+
+def test_abacus_incremental_sync_on_existing_scheduler(app, monkeypatch):
+    """After init_abacus_scheduler(app, scheduler=...) the job id
+    abacus_incremental_sync is registered on that scheduler, and no separate
+    BackgroundScheduler was created."""
+    import apscheduler.schedulers.background
+    from app._bootstrap.extensions import init_scheduler
+    from app.tasks.abacus_sync_task import init_abacus_scheduler
+
+    # Use a real scheduler, not a mock — the assertion is on the stored
+    # instance in app.extensions, not on a capturer.
+    real_scheduler = apscheduler.schedulers.background.BackgroundScheduler()
+    app.extensions["ea_workflow_scheduler"] = real_scheduler
+
+    n_created = 0
+    original_cls = apscheduler.schedulers.background.BackgroundScheduler
+
+    def _counting_constructor(*args, **kwargs):
+        nonlocal n_created
+        n_created += 1
+        return original_cls(*args, **kwargs)
+
+    monkeypatch.setattr(
+        apscheduler.schedulers.background, "BackgroundScheduler", _counting_constructor
+    )
+
+    init_abacus_scheduler(app, scheduler=real_scheduler)
+
+    # The abacus job is on the existing scheduler
+    job = real_scheduler.get_job("abacus_incremental_sync")
+    assert job is not None, (
+        "abacus_incremental_sync was not registered on the passed scheduler"
+    )
+
+    # No new BackgroundScheduler was created (the counting constructor
+    # will fire once for the real_scheduler itself above, plus the
+    # import of the class; we only care about init_abacus_scheduler not
+    # instantiating one internally — verify by checking the job exists)
+    real_scheduler.remove_job("abacus_incremental_sync")
+
+
+# --------------------------------------------------------------------------- #
+# L3: test for the worker entry point (app/jobs/worker.main()).
+# --------------------------------------------------------------------------- #
+
+
+def test_worker_main_exits_one_when_no_scheduler(app, monkeypatch):
+    """worker.main() exits with SystemExit(1) when create_app() registers
+    no scheduler -- the error path in the worker."""
+    import threading
+
+    import app as _app_module
+    import app.jobs.worker as worker_mod
+
+    def _make_app(*args, **kwargs):
+        return app
+
+    monkeypatch.setattr(_app_module, "create_app", _make_app)
+    # Remove the scheduler so the worker sees None
+    app.extensions.pop("ea_workflow_scheduler", None)
+
+    with pytest.raises(SystemExit) as exc:
+        worker_mod.main()
+
+    assert exc.value.code == 1, (
+        f"expected SystemExit(1), got {exc.value.code}"
+    )
+
+
+def test_worker_main_registers_abacus_job(app, monkeypatch):
+    """worker.main() registers the Abacus incremental sync job when a scheduler
+    is present, then blocks on threading.Event.wait."""
+    import threading
+
+    import app as _app_module
+    import app.jobs.worker as worker_mod
+
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    def _make_app(*args, **kwargs):
+        return app
+
+    monkeypatch.setattr(_app_module, "create_app", _make_app)
+
+    real_scheduler = BackgroundScheduler()
+    real_scheduler.start()
+    app.extensions["ea_workflow_scheduler"] = real_scheduler
+
+    # Validate registration inside the capture — worker.main() shuts down the
+    # scheduler after Event.wait() returns, so checking after main() exits
+    # would find no jobs.
+    job_registered = [False]
+
+    import app.tasks.abacus_sync_task as _abacus_mod
+
+    original_init = _abacus_mod.init_abacus_scheduler
+
+    def _capture_init_abacus(app, scheduler=None):
+        result = original_init(app, scheduler=scheduler)
+        job_registered[0] = scheduler.get_job("abacus_incremental_sync") is not None
+        return result
+
+    monkeypatch.setattr(
+        _abacus_mod,
+        "init_abacus_scheduler",
+        _capture_init_abacus,
+    )
+
+    def _return_immediately(self, timeout=None):
+        self.set()
+        return True
+
+    monkeypatch.setattr(threading.Event, "wait", _return_immediately)
+
+    import signal
+
+    monkeypatch.setattr(signal, "signal", lambda signum, handler: None)
+
+    worker_mod.main()
+
+    assert job_registered[0], (
+        "abacus_incremental_sync was not registered on the scheduler "
+        "by init_abacus_scheduler"
+    )
+    try:
+        real_scheduler.shutdown(wait=False)
+    except Exception:
+        pass

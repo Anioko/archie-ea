@@ -1,7 +1,7 @@
-"""R1-B17 PR 1: the Abacus sync schedule is a named platform job (there is one
+"""The Abacus sync schedule is a named platform job (there is one
 ExternalSystem row for the whole platform, not one per tenant -- see the
 module docstring on app/tasks/abacus_sync_task.py), so it is guarded by a
-cross-process advisory lock instead of tenant_scope. Before this brief it was
+cross-process advisory lock instead of tenant_scope. Before this change it was
 built but never actually started by anything and carried no lock at all.
 """
 

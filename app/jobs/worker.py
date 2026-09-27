@@ -1,4 +1,4 @@
-"""Worker-process entry point for the platform's scheduled jobs (R1-B17 PR 1).
+"""Worker-process entry point for the platform's scheduled jobs.
 
 WHY THIS FILE EXISTS
 =====================
@@ -28,9 +28,8 @@ Run as::
 ``Dockerfile.worker``'s default command still runs the existing RQ task
 queue (``flask --app manage run-worker``) for backward compatibility; a
 deployment that wants this process instead overrides that image's command to
-``python -m app.jobs.worker``. Wiring an actual second service into
-docker-compose is R1-B15's, not this brief's -- see CLAUDE.md's Schema
-management section and this brief's "Does not own" line.
+``python -m app.jobs.worker``. The compose service that runs this command is
+added separately.
 """
 
 from __future__ import annotations
@@ -74,7 +73,7 @@ def main() -> None:
     with app.app_context():
         from app.tasks.abacus_sync_task import init_abacus_scheduler
 
-        init_abacus_scheduler(app)
+        init_abacus_scheduler(app, scheduler=scheduler)
 
     stop = threading.Event()
 

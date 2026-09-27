@@ -18,9 +18,10 @@ is therefore guarded by ``job_lock`` (a cross-process advisory lock, the same
 mechanism ``app/jobs/capability_projection_job.py`` uses for the same reason),
 not by ``tenant_scope`` -- there is no organisation to scope it by.
 
-``init_abacus_scheduler`` is called only from ``app/jobs/worker.py``, never
-from the web process: previously nothing called it at all, so this schedule
-never ran anywhere.
+``init_abacus_scheduler`` is called from ``app/jobs/worker.py``, which passes
+the ``ea_workflow_scheduler`` instance so there is never a second APScheduler
+process. Previously nothing called it at all, so this schedule never ran
+anywhere.
 """
 
 import asyncio
@@ -87,25 +88,32 @@ def run_abacus_sync_job(app=None):
         _run_locked()
 
 
-def init_abacus_scheduler(app):
+def init_abacus_scheduler(app, scheduler=None):
     """
-    Initialize APScheduler for Abacus sync.
+    Initialize the Abacus sync job on an APScheduler instance.
 
     Args:
         app: Flask application instance
+        scheduler: Existing APScheduler instance to register the job on.
+                   When None (backward-compatible path for direct tests), a
+                   BackgroundScheduler is created, started and stored.
 
-    Note: called by the dedicated jobs worker (app/jobs/worker.py), not by the
-    web process -- see the module docstring.
+    Note: called by the dedicated jobs worker (app/jobs/worker.py), which
+    passes the ``ea_workflow_scheduler`` from ``app.extensions`` so there is
+    never a second scheduler instance. Previously each call created its own.
     """
     try:
-        from apscheduler.schedulers.background import BackgroundScheduler
         from apscheduler.triggers.cron import CronTrigger
 
         # Check if APScheduler is available
         logger.info("Initializing Abacus sync scheduler...")
 
-        # Create scheduler
-        scheduler = BackgroundScheduler()
+        own_scheduler = False
+        if scheduler is None:
+            from apscheduler.schedulers.background import BackgroundScheduler
+
+            scheduler = BackgroundScheduler()
+            own_scheduler = True
 
         # Get sync schedule from configuration
         # Default: Daily at 2 AM
@@ -121,12 +129,26 @@ def init_abacus_scheduler(app):
             replace_existing=True,
         )
 
-        # Start scheduler
-        scheduler.start()
+        # Start scheduler only when this call owns it
+        if own_scheduler:
+            scheduler.start()
 
-        logger.info(f"Abacus sync scheduler started: Daily at {sync_hour:02d}:{sync_minute:02d}")
+        # Remove any undeclared job ids — this job itself must be declared
+        # in PLATFORM_JOBS or TENANT_JOBS in app/jobs/tenant_safe_job.py.
+        try:
+            from app.jobs.tenant_safe_job import _remove_undeclared_jobs
 
-        # Store scheduler in app context for shutdown
+            _remove_undeclared_jobs(scheduler)
+        except Exception as exc:
+            logger.exception(
+                "init_abacus_scheduler: _remove_undeclared_jobs failed — "
+                "enforcement skipped: %s",
+                exc,
+            )
+
+        logger.info(f"Abacus sync scheduler: Daily at {sync_hour:02d}:{sync_minute:02d}")
+
+        # Store scheduler in app context for shutdown (backward compat)
         app.abacus_scheduler = scheduler
 
         return scheduler

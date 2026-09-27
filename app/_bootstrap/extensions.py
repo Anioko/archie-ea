@@ -270,10 +270,8 @@ def init_scheduler(app):
             the due-schedule read has to span every organisation (there is no
             single tenant to scope the enumeration by), so EAWorkflowEngine
             reads schedule.organization_id off each due row and passes it
-            explicitly into start_workflow(organization_id=...) (see the
-            WAVE4-P0 note in app/services/ea_workflow_engine.py). That is not
-            this brief's file to change; this comment only records that the
-            job already satisfies "declares its organisation" this way.
+            explicitly into start_workflow(organization_id=...) (see
+            app/services/ea_workflow_engine.py).
             """
             with app.app_context():
                 try:
@@ -577,6 +575,18 @@ def init_scheduler(app):
             )
 
         scheduler.start()
+
+        # Remove any undeclared job ids — every job must be in PLATFORM_JOBS
+        # or TENANT_JOBS in app/jobs/tenant_safe_job.py, or it runs unfiltered.
+        try:
+            from app.jobs.tenant_safe_job import _remove_undeclared_jobs
+
+            _remove_undeclared_jobs(scheduler)
+        except Exception as exc:
+            logger.exception(
+                "init_scheduler: _remove_undeclared_jobs failed — enforcement skipped: %s",
+                exc,
+            )
 
         def _shutdown_scheduler():
             try:
