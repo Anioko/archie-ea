@@ -631,7 +631,7 @@ def delete_user(user_id):
 @admin_bp_v2.route("/_update_editor_contents", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_editor_contents")
 def update_editor_contents():
     """Update the contents of an editor."""
@@ -5115,7 +5115,7 @@ def vendor_pricing_import():
 @admin_bp_v2.route("/vendor-pricing/confirm", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def vendor_pricing_confirm():
     """Confirm staged pricing items — write to VendorProductPricing as contract_verified."""
     from difflib import SequenceMatcher
