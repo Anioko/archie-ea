@@ -1111,7 +1111,7 @@ TOOL_SCHEMAS = [
         # the un-registered `apply_genome_patch` handler once a human approves.
         "name": "propose_genome_patch",
         "surfaces": ["chat"],
-        "route": "propose_genome_patch",
+        "route": "genome.patch.proposer.propose_genome_patch",
         "fenced_fields": [],
         "risk_class": "propose",
         "mutates": False,

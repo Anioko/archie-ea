@@ -215,6 +215,19 @@ class TestShouldQueue:
 
         def _mock_call_llm(self, provider, model, api_key, system_prompt, messages,
                            tool_schemas, stream=False, base_url=None):
+            # Must match the shape of a real LLM response so _append_tool_results
+            # can read llm_resp["raw"].content for anthropic provider.
+            raw_mock = MagicMock()
+            raw_mock.content = [
+                {"type": "tool_use", "id": "call_abc123",
+                 "name": "create_solution",
+                 "input": {
+                     "name": "Test Solution",
+                     "description": "A test solution",
+                     "business_domain": "technology",
+                     "solution_type": "Platform",
+                 }}
+            ]
             return {
                 "text": "",
                 "tool_calls": [
@@ -229,6 +242,7 @@ class TestShouldQueue:
                         },
                     }
                 ],
+                "raw": raw_mock,
             }
 
         def _mock_queue_approval(self, tc):
