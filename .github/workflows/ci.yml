@@ -257,16 +257,17 @@ jobs:
         # Several runners share one ibm-vsi host, so two shards can reach this
         # step at once; --with-deps runs apt-get, and the second one failed on
         # the host's dpkg lock before any test ran. The host-wide flock makes
-        # this job's shards take turns, and the retry covers any other apt
-        # process (such as unattended upgrades) holding the lock.
+        # this job's shards take turns, and the retries (about ten minutes in
+        # all) wait out any other apt process holding the lock: on 3afb5625 one
+        # apt-get held it across two shards' installs a minute apart.
         run: |
-          for attempt in 1 2 3; do
+          for attempt in $(seq 1 10); do
             if flock /tmp/archie-ci-browser-install.lock \
                 python -m playwright install --with-deps chromium firefox webkit; then
               exit 0
             fi
-            echo "Browser install attempt $attempt failed; retrying in 30 seconds."
-            sleep 30
+            echo "Browser install attempt $attempt failed; retrying in 60 seconds."
+            sleep 60
           done
           exit 1
       - name: Create schema
