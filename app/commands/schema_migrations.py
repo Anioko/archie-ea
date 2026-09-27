@@ -41,7 +41,9 @@ import os
 import click
 from flask import current_app
 from flask.cli import with_appcontext
-from sqlalchemy import text
+from sqlalchemy import column as sa_column
+from sqlalchemy import func, select, text
+from sqlalchemy import table as sa_table
 
 from app import db
 
@@ -135,6 +137,11 @@ def _quote(bind, name: str) -> str:
     return bind.dialect.identifier_preparer.quote(name)
 
 
+def _column_ref(table: str, column: str):
+    """A quoted ``table.column`` expression for counting rows by value."""
+    return sa_table(table, sa_column(column)).c[column]
+
+
 def column_state(bind, table: str, column: str) -> dict | None:
     """Return the live ``data_type``, ``max_length`` and ``nullable`` of a column.
 
@@ -185,7 +192,9 @@ def tighten_not_null(bind, table: str, column: str) -> bool:
     if not _require(bind, table, column)["nullable"]:
         return False
     qt, qc = _quote(bind, table), _quote(bind, column)
-    nulls = bind.execute(text(f"SELECT count(*) FROM {qt} WHERE {qc} IS NULL")).scalar()
+    nulls = bind.execute(
+        select(func.count()).where(_column_ref(table, column).is_(None))
+    ).scalar()
     if nulls:
         raise ContractBlocked(
             f"{table}.{column}: {nulls} row(s) hold NULL, so NOT NULL cannot be "
@@ -232,8 +241,7 @@ def narrow_varchar(bind, table: str, column: str, length: int) -> bool:
         return False
     qt, qc = _quote(bind, table), _quote(bind, column)
     too_long = bind.execute(
-        text(f"SELECT count(*) FROM {qt} WHERE char_length({qc}) > :length"),
-        {"length": int(length)},
+        select(func.count()).where(func.char_length(_column_ref(table, column)) > int(length))
     ).scalar()
     if too_long:
         raise ContractBlocked(
@@ -308,9 +316,8 @@ def schema_upgrade(target):
                 click.echo(
                     "schema-upgrade: database recorded at pre-baseline revision(s) "
                     f"{', '.join(unknown)}; stamping {BASELINE_REVISION} (record only, "
-                    "no DDL). To put the old stamp back: DELETE FROM alembic_version; "
-                    "INSERT INTO alembic_version VALUES "
-                    + ", ".join(f"('{r}')" for r in unknown)
+                    "no DDL). Previous alembic_version value(s): "
+                    + ", ".join(unknown)
                 )
                 command.stamp(config, BASELINE_REVISION, purge=True)
             command.upgrade(config, target)
