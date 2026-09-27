@@ -508,6 +508,10 @@ def committed_scope(app, _schema):
                         {"organization_id": scope.organization_id},
                     )
                 connection.execute(
+                    text("DELETE FROM subscriptions WHERE organization_id = :organization_id"),
+                    {"organization_id": scope.organization_id},
+                )
+                connection.execute(
                     text("DELETE FROM organizations WHERE id = :organization_id"),
                     {"organization_id": scope.organization_id},
                 )
