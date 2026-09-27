@@ -54,6 +54,10 @@ env:
   # change under review. Bump this and re-run `scripts/verify.py --update-baseline`
   # in the same commit. Keep in step with .pre-commit-config.yaml.
   RUFF_VERSION: "0.16.0"
+  # Pinned for the same reason: a new bandit release can add checks, and the
+  # high-findings gate would then fail for a reason unrelated to the change.
+  # Keep in step with requirements-test.txt.
+  BANDIT_VERSION: "1.9.4"
 
 jobs:
   secret-scan:
@@ -96,7 +100,7 @@ jobs:
       - name: Install gate tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit
+          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit "bandit==${BANDIT_VERSION}"
           mkdir -p scripts/bin
           curl --fail --location --retry 3 \
             --output scripts/bin/tailwindcss \
@@ -172,10 +176,20 @@ jobs:
   # database sessions; it does not protect against state shared ACROSS files.
   tests-shard:
     name: Tests (pytest + coverage) — shard ${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    # Self-hosted ibm-vsi runners only serve push/dispatch on this repository and PRs
+    # whose head repository is this one — a PR from a fork never runs job code on
+    # our runners. Everything else (forked PRs) falls back to GitHub-hosted
+    # ubuntu-latest. Several jobs run at once on the same ibm-vsi machine, so the
+    # postgres service below must not bind a fixed host port either way.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
     strategy:
       # A failing shard should not hide failures in the others.
       fail-fast: false
+      # Only three ibm-vsi runners exist. On them, run at most three shards at
+      # once so one CI run's eight shards cannot take every dedicated runner
+      # for its whole duration; GitHub-hosted runners (forked PRs) have no
+      # such limit, so all eight shards start together there.
+      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 3 || 8 }}
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
@@ -184,16 +198,11 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: archie_test
-        ports: ["5432:5432"]
+        ports: ["5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
-      # workflow set only DATABASE_URL and passed by coincidence, because the
-      # TestingConfig fallback happened to match this service's host/port/dbname.
-      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
       # create_app() selects config from FLASK_CONFIG. FLASK_ENV (set here before)
       # has no effect on config selection.
       FLASK_CONFIG: testing
@@ -210,6 +219,29 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # A self-hosted runner keeps its home directory between jobs. Installing
+        # straight into setup-python's interpreter can silently resolve against
+        # whatever an earlier job already left in ~/.local (pip's per-user
+        # site-packages, which sits outside both the venv and setup-python's own
+        # install and is picked up ahead of it) — observed in practice as Flask
+        # reported "already satisfied" from ~/.local while its console script was
+        # never on PATH, failing every later `flask` invocation. A venv scoped to
+        # this checkout disables the user-site fallback entirely and is removed by
+        # the next job's checkout, so nothing here depends on machine state.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Resolve the postgres service's mapped port
+        # The service no longer binds host port 5432 (several of these jobs can run
+        # at once on one self-hosted machine), so the docker-assigned host port has
+        # to be read from the job context and exported for every later step.
+        # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
+        # workflow set only DATABASE_URL and passed by coincidence, because the
+        # TestingConfig fallback happened to match this service's host/port/dbname.
+        run: |
+          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
@@ -268,7 +300,11 @@ jobs:
     name: Tests (pytest + coverage)
     needs: tests-shard
     if: always()
-    runs-on: ubuntu-latest
+    # Same runner selection as tests-shard above: the dedicated ibm-vsi runners
+    # for push/dispatch and this repository's own PR branches, GitHub-hosted
+    # ubuntu-latest for forked PRs. It runs after every shard has finished, so
+    # it never competes with them for a runner.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
     # No PostgreSQL service here: this job only imports the app to build its
     # route/nav sets (for nav-verified) and combines files (coverage, junit).
     # Confirmed by running route_verification_audit.py against an unreachable
@@ -283,6 +319,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # Same reason as in tests-shard: a self-hosted runner's leftover
+        # ~/.local site-packages must not shadow this job's dependencies.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
       - name: Install deps
         # Needed to re-run the nav-verified gate (imports the app to build its
         # route/nav sets) and to combine coverage data in the same format the
@@ -441,7 +483,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install bandit
-        run: python -m pip install --upgrade pip bandit
+        run: python -m pip install --upgrade pip "bandit==${BANDIT_VERSION}"
       # Ratchet, not a big bang. .bandit-baseline.json records the MEDIUM+HIGH
       # findings that existed on 2026-07-30, so this job fails only on NEW ones.
       # That stops the bleeding immediately without blocking every change behind
@@ -454,6 +496,10 @@ jobs:
       # (test_id, normalised path, source line) instead.
       - name: bandit (fail on new findings only)
         run: python scripts/ci/bandit_gate.py
+      # The baseline above may accept a medium finding; it may not accept a high
+      # one. This fails while any HIGH-severity finding is open, baselined or not.
+      - name: bandit (fail on any open high-severity finding)
+        run: python scripts/ci/bandit_gate.py --high
 
   smoke:
     name: Browser journeys (one per archetype)
