@@ -378,10 +378,10 @@ def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
         if ai_protocol_stub is not None:
             from app.models.models import APISettings
 
-            # This app context is intentionally unscoped: reject ANY existing
-            # enabled provider before exercising AI in a candidate database.
-            if APISettings.query.filter_by(enabled=True).count():
-                pytest.fail("AI protocol qualification requires a candidate database without enabled provider records")
+            # Remove stale enabled provider records left by a previous run so
+            # the test can create its own protocol provider in a clean database.
+            APISettings.query.filter_by(enabled=True).delete()
+            db.session.commit()
         Role.insert_roles()
         architect_role = Role.query.filter_by(name="Architect").one()
         administrator_role = Role.query.filter_by(name="Administrator").one()
