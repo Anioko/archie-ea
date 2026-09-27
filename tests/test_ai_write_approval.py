@@ -135,7 +135,7 @@ class TestShouldQueue:
 
     def test_mutates_and_auto_execute_on_still_queues(self):
         schema = {"tier": "auto", "mutates": True}
-        # The TB-0091 guard: with auto-execute on, writes still queue.
+        # The confirmation guard: with auto-execute on, writes still queue.
         # auto_execute only controls whether reads run unconfirmed,
         # not whether writes do.
         assert AgentRunner._should_queue(schema, auto_execute=True) is True
@@ -200,7 +200,7 @@ class TestShouldQueue:
     ):
         """With auto_execute=True, a write tool call from the LLM is queued,
         not executed. This is the run-loop integration test for the
-        TB-0091 guard: _should_queue must be checked inside the run loop
+        Confirmation guard: _should_queue must be checked inside the run loop
         and the tool must NOT reach ToolExecutor.execute."""
         from unittest.mock import MagicMock
 
@@ -296,7 +296,7 @@ class TestShouldQueue:
 
 
 class TestHandlerDispatch:
-    """MEDIUM-2: every hand-written tool's handler method exists on
+    """every hand-written tool's handler method exists on
     ToolExecutor and is reachable via execute()."""
 
     def test_every_tool_handler_exists_on_executor(self):

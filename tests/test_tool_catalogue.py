@@ -1,10 +1,10 @@
-"""Tool catalogue contract tests (TB-0088) and fail-closed confirmation (TB-0091).
+"""Tool catalogue contract tests and fail-closed confirmation.
 
-TB-0088:
+Catalogue fields:
   Every registry schema carries surfaces, route, fenced and risk_class fields.
   Each field is validated for type and internal consistency.
 
-TB-0091:
+Confirmation:
   With the approval switch OFF (auto_execute=False), every mutating tool still
   requires confirmation, closing the 17 tier="auto" mutating tools that would
   otherwise run unconfirmed.
@@ -16,7 +16,7 @@ from app.modules.ai_chat.tools.registry import TOOL_SCHEMAS, TOOL_SCHEMA_BY_NAME
 
 
 # --------------------------------------------------------------------------- #
-# TB-0088 — every tool carries surfaces, route, fenced, risk_class           #
+# Every tool carries surfaces, route, fenced, risk_class           #
 # --------------------------------------------------------------------------- #
 
 
@@ -147,7 +147,7 @@ class TestFencedFieldsConsistency:
 
 
 # --------------------------------------------------------------------------- #
-# TB-0091 — fail-closed confirmation                                          #
+# Fail-closed confirmation                                          #
 # --------------------------------------------------------------------------- #
 
 
@@ -192,7 +192,7 @@ class TestFailClosedConfirmation:
         because _should_queue returns True for any tool with mutates=True or
         risk_class in {'write', 'external_action'} regardless of auto_execute.
 
-        This is the TB-0091 guard: with the approval switch off, every mutating
+        This is the confirmation guard: with the approval switch off, every mutating
         tool still requires confirmation, closing the 17 tier='auto' mutating
         tools that would otherwise run unconfirmed.
         """
