@@ -15,6 +15,11 @@ flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy ba
 flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram tenancy backfill skipped - composer diagrams keep nullable organization_id until it runs; rows left NULL are invisible to every org (CMP-01)'
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
 flask --app manage backfill-architect-role
+# Must run before backfill-proposal-tenancy: that command's review_decisions
+# half attributes each row from its review_queue_items.organization_id, so a
+# review queue item still holding a legacy NULL organization_id leaves the
+# decision row it produced unattributable too.
+flask --app manage backfill-review-queue-org || echo 'WARN review queue tenancy backfill skipped - review_decisions attribution below will resolve little until it runs'
 flask --app manage backfill-proposal-tenancy || echo 'WARN proposal path tenancy backfill skipped - review_decisions/architecture_inference_relationship keep nullable organization_id until it runs; rows left NULL are invisible to every org'
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
