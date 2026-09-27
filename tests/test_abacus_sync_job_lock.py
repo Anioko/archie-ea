@@ -1,8 +1,9 @@
 """The Abacus sync schedule is a named platform job (there is one
 ExternalSystem row for the whole platform, not one per tenant -- see the
 module docstring on app/tasks/abacus_sync_task.py), so it is guarded by a
-cross-process advisory lock instead of tenant_scope. Before this change it was
-built but never actually started by anything and carried no lock at all.
+cross-process advisory lock instead of tenant_scope.  The job is not
+currently registered by the worker (see M2 in the review); these tests
+verify the lock behaviour for when it is re-registered.
 """
 
 from __future__ import annotations

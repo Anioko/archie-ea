@@ -54,14 +54,13 @@ def main() -> None:
 
     app = create_app()
 
-    # create_app() already called init_scheduler(app) once (app/__init__.py
+# create_app() already called init_scheduler(app) once (app/__init__.py
     # step 1a) -- with RUNNING_AS_JOBS_WORKER set above, that call does not
     # skip itself, so the APScheduler jobs from extensions.py are already
-    # registered and running by the time create_app() returns. Calling
+    # registered and running by the time create_app() returns.  Calling
     # init_scheduler() again here would just re-add the same job ids
     # (APScheduler's replace_existing=True makes that a harmless no-op, but
-    # there is no reason to). init_abacus_scheduler() is NOT called by
-    # create_app() at all, so it is registered explicitly here.
+    # there is no reason to).
     scheduler = app.extensions.get("ea_workflow_scheduler")
     if scheduler is None:
         logger.error(
@@ -69,11 +68,6 @@ def main() -> None:
             "check RUNNING_AS_JOBS_WORKER and app.testing"
         )
         raise SystemExit(1)
-
-    with app.app_context():
-        from app.tasks.abacus_sync_task import init_abacus_scheduler
-
-        init_abacus_scheduler(app, scheduler=scheduler)
 
     stop = threading.Event()
 

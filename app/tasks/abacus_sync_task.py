@@ -18,10 +18,11 @@ is therefore guarded by ``job_lock`` (a cross-process advisory lock, the same
 mechanism ``app/jobs/capability_projection_job.py`` uses for the same reason),
 not by ``tenant_scope`` -- there is no organisation to scope it by.
 
-``init_abacus_scheduler`` is called from ``app/jobs/worker.py``, which passes
-the ``ea_workflow_scheduler`` instance so there is never a second APScheduler
-process. Previously nothing called it at all, so this schedule never ran
-anywhere.
+The job is NOT registered by the worker process (``app/jobs/worker.py``) because
+the sync writes tenant-owned rows (ApplicationComponent, BusinessCapability,
+ArchiMateElement, ArchiMateRelationship) and the method it calls
+(``async_run_incremental_sync``) is not ``run_incremental_sync``.  The job will
+be re-registered once it has a tenant context and the correct method name.
 """
 
 import asyncio
