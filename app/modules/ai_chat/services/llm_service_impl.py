@@ -69,6 +69,11 @@ from flask import current_app
 from app import db
 from app.models import LLMInteraction
 
+# Provider register exceptions
+class ProviderNotAllowed(Exception):
+    """Raised when a provider or model is blocked by the provider register."""
+    pass
+
 # from .llm_validator import LLMValidator  # Temporarily disabled
 from app.services.core.retry_handler import retry_on_transient_error
 from app.services.llm_cost_tracker import LLMCostTracker
@@ -232,7 +237,9 @@ class LLMService:
                     from flask_login import current_user
                     if current_user and hasattr(current_user, 'id') and not current_user.is_anonymous:
                         user_id = current_user.id
-                except Exception as e:
+except ProviderNotAllowed:
+                raise
+            except Exception as e:
                     logger.debug("Failed to get current_user for LLM preference: %s", e)
 
             if user_id:
@@ -1583,14 +1590,26 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     
     @staticmethod
     def _resolve_org_id() -> Optional[int]:
-        """Resolve current organisation ID from the request context, if any."""
+        """Resolve current organisation ID from the request or app context, if any."""
         try:
-            from flask import g, has_request_context
-            if has_request_context():
+            from flask import g, has_app_context, has_request_context
+            if has_request_context() or has_app_context():
                 return getattr(g, "current_org_id", None)
         except Exception:
             pass
         return None
+
+    @staticmethod
+    def _check_register(provider: str, model: str, organization_id: int | None) -> None:
+        """Raise ProviderNotAllowed if the (provider, model) is blocked for the org."""
+        if organization_id is None:
+            return
+        from app.models.model_provider import ModelProvider
+        if not ModelProvider.is_allowed_for_org(provider, model, organization_id):
+            raise ProviderNotAllowed(
+                f"Provider '{provider}/{model}' is not allowed for "
+                f"organisation {organization_id}."
+            )
 
     @staticmethod
     def _call_llm_with_failover(
@@ -1649,6 +1668,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Try each API key in sequence
         for idx, api_key in enumerate(api_keys):
             try:
+                # Provider register check before making any call
+                if organization_id is not None:
+                    LLMService._check_register(provider, model, organization_id)
+
                 logger.info(f"Trying API key #{idx + 1} for {provider}...")
                 
                 # Call the appropriate provider method
@@ -1680,6 +1703,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     or_last_error = None
                     for or_model in or_models:
                         try:
+                            # Check each OpenRouter model against the register
+                            if organization_id is not None:
+                                LLMService._check_register(provider, or_model, organization_id)
                             response_text, token_input, token_output, cost = LLMService._call_openrouter(
                                 prompt, or_model, api_key, max_tokens=max_tokens, timeout=timeout
                             )
@@ -1776,6 +1802,14 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
 
             if not fb_model:
                 continue
+
+            # Provider register check: skip blocked fallback providers
+            if organization_id is not None:
+                try:
+                    LLMService._check_register(fallback_provider, fb_model, organization_id)
+                except ProviderNotAllowed:
+                    logger.info(f"Fallback provider {fallback_provider}/{fb_model} is blocked by register — skipping")
+                    continue
 
             logger.info(f"🔄 Cross-provider fallback: trying {fallback_provider} ({fb_model})")
             try:

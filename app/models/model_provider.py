@@ -6,16 +6,24 @@ versions are available globally. Organisations can override via their
 own rows to restrict (is_allowed=False) or explicitly allow a provider
 that is not in the platform set.
 
+Resolution order:
+1. Organisation-specific row for exact (provider, model_version, org) match.
+2. Organisation-specific row for (provider, '*', org) — provider-wide.
+3. Platform row for exact (provider, model_version, org NULL).
+4. Platform row for (provider, '*', org NULL) — provider-wide.
+5. If organisation has allow_list_only=True, any miss is refused.
+6. No row at all -> True (unknown providers permitted by default).
+
 Usage:
     # Platform-declared providers
-    ModelProvider(name="openai", model_version="gpt-4o", is_platform_default=True)
+    ModelProvider(provider="openai", model_version="gpt-4o", is_platform_default=True)
 
     # Organisation blocks a platform provider
-    ModelProvider(organization_id=2, name="openai", model_version="gpt-4o",
+    ModelProvider(organization_id=2, provider="openai", model_version="gpt-4o",
                   is_platform_default=False, is_allowed=False)
 
     # Organisation adds its own allowed provider
-    ModelProvider(organization_id=2, name="openai", model_version="gpt-4o-mini",
+    ModelProvider(organization_id=2, provider="openai", model_version="gpt-4o-mini",
                   is_platform_default=False, is_allowed=True)
 """
 
@@ -24,8 +32,23 @@ from __future__ import annotations
 from app import db
 from app.models.mixins import TimestampMixin
 
+# Reuse the hybrid nullable-tenant mixin pattern from unified_capability.
+# This is deliberately a local mixin to keep the import path short.
+_HYBRID_TENANT = type(
+    "HybridProviderTenantMixin",
+    (),
+    {
+        "organization_id": db.Column(
+            db.Integer,
+            db.ForeignKey("organizations.id", ondelete="CASCADE"),
+            nullable=True,
+            index=True,
+        ),
+    },
+)
 
-class ModelProvider(TimestampMixin, db.Model):
+
+class ModelProvider(_HYBRID_TENANT, TimestampMixin, db.Model):  # type: ignore[valid-type]
     """Provider register — platform defaults + per-org allow/restrict rows."""
 
     __tablename__ = "model_providers"
@@ -34,16 +57,11 @@ class ModelProvider(TimestampMixin, db.Model):
     provider = db.Column(db.String(100), nullable=False, index=True,
                          comment="Provider name, e.g. openai, anthropic, huggingface")
     model_version = db.Column(db.String(255), nullable=False,
-                              comment="Model identifier, e.g. gpt-4o, claude-opus-5")
+                              comment="Model identifier, e.g. gpt-4o, claude-opus-5, or * for provider-wide")
 
     # Platform-default row: NULL organisation_id.
     # Per-org row: scoped to that organisation.
-    organization_id = db.Column(
-        db.Integer,
-        db.ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
+    # organization_id from hybrid mixin (nullable)
 
     is_platform_default = db.Column(
         db.Boolean, default=False, nullable=False,
@@ -57,6 +75,16 @@ class ModelProvider(TimestampMixin, db.Model):
     organization = db.relationship("Organization", lazy="select")
 
     __table_args__ = (
+        # Partial unique index: platform rows (org NULL) are enforced server-side.
+        # PostgreSQL treats NULLs as distinct in a plain UNIQUE constraint, so we
+        # need a partial index for platform rows.
+        db.Index(
+            "uq_model_provider_platform",
+            "provider", "model_version",
+            unique=True,
+            postgresql_where=db.text("organization_id IS NULL"),
+        ),
+        # Unique constraint for organisation-specific rows (org NOT NULL).
         db.UniqueConstraint("provider", "model_version", "organization_id",
                             name="uq_model_provider_org"),
     )
@@ -67,18 +95,24 @@ class ModelProvider(TimestampMixin, db.Model):
         return f"<ModelProvider {self.provider}/{self.model_version} {scope} {status}>"
 
     @classmethod
-    def is_allowed_for_org(cls, provider: str, model_version: str, organization_id: int | None = None) -> bool:
+    def is_allowed_for_org(cls, provider: str, model_version: str | None,
+                           organization_id: int | None = None,
+                           allow_list_only: bool = False) -> bool:
         """Check whether *provider/model_version* is allowed for *organization_id*.
-        
-        Resolution order:
-        1. If an organisation-specific row exists for this (provider, model_version, org),
-           return its ``is_allowed`` value.
-        2. If a platform-default row exists (org NULL, is_platform_default=True),
-           return its ``is_allowed`` value.
-        3. No row at all → True (unknown providers are permitted by default).
+
+        Each step falls through to the next if no match is found:
+
+        1. Organisation-specific row for exact ``(provider, model_version, org)``.
+        2. Organisation-specific wildcard row ``(provider, '*', org)``.
+        3. Platform row for exact ``(provider, model_version, org NULL)``.
+        4. Platform wildcard row ``(provider, '*', org NULL)``.
+        5. If ``allow_list_only`` is True, the provider is refused.
+        6. No row at all -> True (unknown providers permitted by default).
+
+        When ``model_version`` is None only wildcard rows are consulted (steps 2, 4).
         """
-        # Per-org override
-        if organization_id is not None:
+        # 1. Per-org exact match
+        if organization_id is not None and model_version is not None:
             row = cls.query.filter_by(
                 provider=provider,
                 model_version=model_version,
@@ -87,17 +121,42 @@ class ModelProvider(TimestampMixin, db.Model):
             if row is not None:
                 return row.is_allowed
 
-        # Platform default
+        # 2. Per-org provider-wide wildcard
+        if organization_id is not None:
+            row = cls.query.filter_by(
+                provider=provider,
+                model_version="*",
+                organization_id=organization_id,
+            ).first()
+            if row is not None:
+                return row.is_allowed
+
+        # 3. Platform exact match
+        if model_version is not None:
+            row = cls.query.filter_by(
+                provider=provider,
+                model_version=model_version,
+                organization_id=None,
+                is_platform_default=True,
+            ).first()
+            if row is not None:
+                return row.is_allowed
+
+        # 4. Platform provider-wide wildcard
         row = cls.query.filter_by(
             provider=provider,
-            model_version=model_version,
+            model_version="*",
             organization_id=None,
             is_platform_default=True,
         ).first()
         if row is not None:
             return row.is_allowed
 
-        # No row → allowed by default
+        # 5. Allow-list-only mode: a miss is refused
+        if allow_list_only:
+            return False
+
+        # 6. No row at all -> allowed by default
         return True
 
     @classmethod
@@ -109,3 +168,32 @@ class ModelProvider(TimestampMixin, db.Model):
     def org_overrides(cls, organization_id: int) -> list[ModelProvider]:
         """Return all organisation-specific rows for *organization_id*."""
         return cls.query.filter_by(organization_id=organization_id).all()
+
+
+def set_provider_restriction(org_id: int, provider: str,
+                             model_version: str, allowed: bool) -> ModelProvider:
+    """Add or update an organisation's restriction for *(provider, model_version)*.
+
+    This is the write interface for the gateway module, intended to be called
+    by the admin UI screen (PR 2). It creates a per-org row if none exists,
+    or updates the ``is_allowed`` flag of an existing one.
+
+    Returns the created/updated row.
+    """
+    existing = ModelProvider.query.filter_by(
+        provider=provider,
+        model_version=model_version,
+        organization_id=org_id,
+    ).first()
+    if existing is not None:
+        existing.is_allowed = allowed
+        return existing
+    row = ModelProvider(
+        provider=provider,
+        model_version=model_version,
+        organization_id=org_id,
+        is_platform_default=False,
+        is_allowed=allowed,
+    )
+    db.session.add(row)
+    return row
