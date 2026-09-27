@@ -275,6 +275,7 @@ mapping_metrics
 meanings
 migration_plan_documents
 milestones
+model_providers
 monitoring_alerts
 monitoring_baselines
 motivation_assessments

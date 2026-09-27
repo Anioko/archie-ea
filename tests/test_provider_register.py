@@ -140,7 +140,6 @@ class TestTwoOrgProviderRegister:
         """Org A restricting a provider does not affect Org B."""
         from app.models.model_provider import ModelProvider
 
-        platform = make_org("platform-holder")
         org_a = make_org("restrict-a")
         org_b = make_org("restrict-b")
 

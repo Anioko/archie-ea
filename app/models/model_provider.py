@@ -31,24 +31,10 @@ from __future__ import annotations
 
 from app import db
 from app.models.mixins import TimestampMixin
-
-# Reuse the hybrid nullable-tenant mixin pattern from unified_capability.
-# This is deliberately a local mixin to keep the import path short.
-_HYBRID_TENANT = type(
-    "HybridProviderTenantMixin",
-    (),
-    {
-        "organization_id": db.Column(
-            db.Integer,
-            db.ForeignKey("organizations.id", ondelete="CASCADE"),
-            nullable=True,
-            index=True,
-        ),
-    },
-)
+from app.models.unified_capability import HybridCapabilityTenantMixin
 
 
-class ModelProvider(_HYBRID_TENANT, TimestampMixin, db.Model):  # type: ignore[valid-type]
+class ModelProvider(HybridCapabilityTenantMixin, TimestampMixin, db.Model):  # type: ignore[valid-type]
     """Provider register — platform defaults + per-org allow/restrict rows."""
 
     __tablename__ = "model_providers"
