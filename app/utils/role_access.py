@@ -435,7 +435,7 @@ _LIBRARY_LINKS = [
     # elsewhere in this file and reads directly as "a library of frameworks".
     _link("Frameworks", "maturity_management.frameworks_overview", "library"),
     _link("Vendors", "unified_applications.vendors", "building"),
-    _link("ArchiMate Elements", "archimate_crud.dashboard", "table"),
+    _link("Architecture", "archimate_crud.dashboard", "table"),
     _link("Diagrams", "archimate.diagrams_library", "layout-panel-top"),
 ]
 
@@ -481,7 +481,11 @@ _ADMIN_LINKS = [
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
     _link("Governance Gates", "admin.governance_gates", "badge-check", requires="admin"),
-    _link("Seed Management", "admin.seed_management", "database"),
+    # The organisation's audit trail (query, export in full, verify). It takes
+    # Seed Management's place in this zone to hold the link budget; Seed
+    # Management stays one click away as a tile on Command Center
+    # (app/templates/admin/index.html).
+    _link("Audit Log", "admin.audit_log_viewer", "scroll-text", requires="admin"),
     _link("Settings", "main.settings", "settings"),
     # Added in the Task 3 fix round (review finding: orphaned real routes —
     # both existed, worked, and had no sidebar link of any kind).
@@ -787,6 +791,8 @@ _MY_WORK_LINKS = {
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # Read access to the organisation's audit trail: export and verify.
+        _link("Audit Log", "admin.audit_log_viewer", "scroll-text"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
@@ -795,7 +801,7 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
-        _link("ArchiMate Model", "archimate_crud.dashboard", "boxes"),
+        _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
