@@ -286,6 +286,37 @@ assign each row a real `organization_id`/`scope="reference"` or retire it;
 running that command remains out of scope for this bucket and is recorded here
 as an open follow-up.
 
+**Updated 26 Sep 2026 — ratchet 1 → 4.** The gate now asks every store and
+screen for work packages, gaps, risks, application owners, architecture
+decisions, three pending-proposal queues, applications with a recorded annual
+cost, contracts and vendors, and its screens are asked as a real signed-in
+session (before, every screen answered 401 and only stores were compared). A
+surface is compared only with surfaces answering the SAME question: the gaps
+register is split by `gap_kind` (every row / capability shortfall / plateau
+transition), and each pending-proposal record type is its own concept until
+one approval queue lands. Deliberately not registered, each because it answers
+a different question: the live-computed `/capability-map/api/roadmap/gaps` and
+the `RoadmapGap` rows converted out of it (what a gap is there is a product
+decision), `ComplianceGap`, `TechnologyRoadmapInitiative` and `DecisionLedger`.
+Measured on the demonstration organisation (`flask seed-demo-company`), four
+concepts genuinely disagree, each closed by writing the ADR 0008 projection
+for that concept on its own branch:
+
+- `capabilities` — `UnifiedCapability` vs `BusinessCapability` (the existing
+  finding above); closed by `feat/r1-one-capability-store`.
+- `work packages` — `UnifiedWorkPackage` holds the seeded packages while every
+  list screen reads the other stores and shows 0; closed by
+  `feat/r1-one-work-package-store`.
+- `application owners` — `ApplicationOwner` holds owners while
+  `ApplicationOwnership` and the owner text columns on the application are
+  empty; closed by `feat/r1-one-owner-record`.
+- `applications with a recorded annual cost` — cost columns on the application
+  hold costs while `ApplicationCost` is empty; closed by
+  `feat/r1-one-application-cost`.
+
+Each consolidation lowers the ratchet again. A fresh CI database with no
+organisation measures 0.
+
 ## Done means DEMONSTRATED — standing instruction from the owner (1 Sep 2026)
 
 **A feature is not done because a test passed, a gate went green, or it deployed.
@@ -490,7 +521,7 @@ to reconfirm the count before trusting it:**
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
 | `broken-surfaces` | a front-end target that resolves to no real route | ratchet, boot-only |
 | `dynamic-link-prefixes` | a concatenated href/fetch whose literal prefix is a dead route | ratchet @ 0, boot-only |
-| `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 1, boot-only |
+| `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 4, boot-only |
 | `canonical-store` | a table gaining a second mapped SQLAlchemy model class | ratchet @ 0 |
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
