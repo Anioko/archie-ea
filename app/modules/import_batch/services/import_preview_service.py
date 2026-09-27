@@ -31,12 +31,12 @@ _ImportValidator = None
 
 
 def _get_import_validator():
-    """Lazy-load ImportValidator, returning None if unavailable."""
+    """Lazy-load ImportValidator from the real validation service, returning None if unavailable."""
     global _ImportValidator
     if _ImportValidator is not None:
         return _ImportValidator
     try:
-        from app.modules.import_batch.services.import_validator import ImportValidator
+        from app.services.import_validation.import_validator import ImportValidator
         _ImportValidator = ImportValidator
     except ImportError as e:
         logger.warning(f"ImportValidator unavailable: {e}")

@@ -624,7 +624,8 @@ class TestImportPreviewValidation:
 
             app1 = BatchImportApplication(
                 batch_id=batch.id, row_number=1,
-                source_data={"name": "App1", "lifecycle_status": "invalid_status_xyz"},
+                source_data={"name": "App1", "lifecycle_status": "invalid_status_xyz",
+                             "retirement_date": "2026-01-01", "go_live_date": "31/31/2020"},
                 application_name="App1", status="pending",
             )
             db_session.add(app1)
@@ -634,15 +635,18 @@ class TestImportPreviewValidation:
             preview = preview_service.generate_preview(job.id)
 
             validation = preview.get("validation", {})
-            # In lenient mode the validator normalises unknown values with a warning,
-            # so invalid_rows may be 0 but row_details should contain the warning
-            row_details = validation.get("row_details", [])
-            has_issues = any(
-                len(r.get("issues", [])) > 0 for r in row_details
+            summary = validation.get("summary", {})
+            # The real validator will detect the retirement-before-go-live date
+            # sequence error, proving the real validation pipeline is used
+            assert summary.get("invalid_rows", 0) > 0 or summary.get("total_errors", 0) > 0, (
+                "Expected validation to detect errors (invalid lifecycle_status or date sequence)"
             )
-            has_warnings = validation.get("summary", {}).get("total_warnings", 0) > 0
-            assert has_issues or has_warnings, (
-                "Expected validation to report an issue for invalid lifecycle_status"
+            row_details = validation.get("row_details", [])
+            all_messages = " ".join(
+                issue.get("message", "") for r in row_details for issue in r.get("issues", [])
+            )
+            assert "retirement" in all_messages or "go_live" in all_messages or "invalid_status" in all_messages, (
+                "Expected a date-sequence or lifecycle error message"
             )
 
 
