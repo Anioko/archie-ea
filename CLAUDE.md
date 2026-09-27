@@ -455,7 +455,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 64 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 65 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -516,6 +516,7 @@ to reconfirm the count before trusting it:**
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `vendor-integrity` | a vendored asset not matching `VENDOR_MANIFEST.txt` | must pass |
+| `high-findings` | a HIGH-severity bandit finding left open, baselined or not; a bare `# nosec` does not close one | must be 0 |
 | `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | ratchet |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
 | `csrf-coverage` | a write route with no CSRF protection or justified opt-out | must pass |

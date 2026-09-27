@@ -42,6 +42,10 @@ env:
   # change under review. Bump this and re-run `scripts/verify.py --update-baseline`
   # in the same commit. Keep in step with .pre-commit-config.yaml.
   RUFF_VERSION: "0.16.0"
+  # Pinned for the same reason: a new bandit release can add checks, and the
+  # high-findings gate would then fail for a reason unrelated to the change.
+  # Keep in step with requirements-test.txt.
+  BANDIT_VERSION: "1.9.4"
 
 jobs:
   secret-scan:
@@ -84,7 +88,7 @@ jobs:
       - name: Install gate tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit
+          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit "bandit==${BANDIT_VERSION}"
           mkdir -p scripts/bin
           curl --fail --location --retry 3 \
             --output scripts/bin/tailwindcss \
@@ -311,7 +315,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install bandit
-        run: python -m pip install --upgrade pip bandit
+        run: python -m pip install --upgrade pip "bandit==${BANDIT_VERSION}"
       # Ratchet, not a big bang. .bandit-baseline.json records the MEDIUM+HIGH
       # findings that existed on 2026-07-30, so this job fails only on NEW ones.
       # That stops the bleeding immediately without blocking every change behind
@@ -324,6 +328,10 @@ jobs:
       # (test_id, normalised path, source line) instead.
       - name: bandit (fail on new findings only)
         run: python scripts/ci/bandit_gate.py
+      # The baseline above may accept a medium finding; it may not accept a high
+      # one. This fails while any HIGH-severity finding is open, baselined or not.
+      - name: bandit (fail on any open high-severity finding)
+        run: python scripts/ci/bandit_gate.py --high
 
   smoke:
     name: Browser journeys (one per archetype)
