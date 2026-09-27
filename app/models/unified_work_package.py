@@ -23,6 +23,7 @@ from sqlalchemy.orm import relationship
 
 from .. import db
 from .mixins import TenantMixin
+from .mixins.core import _default_org_id
 
 
 class UnifiedWorkPackage(TenantMixin, db.Model):
@@ -42,7 +43,7 @@ class UnifiedWorkPackage(TenantMixin, db.Model):
     # === Primary Key ===
     id = Column(BigInteger, primary_key=True)
 
-    # === Tenancy (R1-B04) ===
+    # === Tenancy ===
     # This table predates TenantMixin: `flask reconcile-schema` can only ADD a
     # nullable column to a live table (ADR 0002), so organization_id has to stay
     # nullable at the ORM level too, or the model would disagree with the
@@ -57,6 +58,7 @@ class UnifiedWorkPackage(TenantMixin, db.Model):
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
+        default=_default_org_id,
     )
 
     # === Core Attributes ===
@@ -91,7 +93,7 @@ class UnifiedWorkPackage(TenantMixin, db.Model):
     context_id = Column(Integer, nullable=True)
 
     # === Capability Context (from RoadmapWorkPackage) ===
-    # Nullable (R1-B04): a row merged in from technology_roadmap_initiatives,
+    # Nullable: a row merged in from technology_roadmap_initiatives,
     # implementation_work_packages or work_packages may carry no capability
     # link at all. Forcing a value here would be inventing one; the merge
     # command drops the historical NOT NULL rather than fabricate a name.
@@ -156,7 +158,7 @@ class UnifiedWorkPackage(TenantMixin, db.Model):
     source_data = Column(Text)  # JSON string with source information
     source_type = Column(String(50))  # capability, gap, application, manual, ai
     source_id = Column(BigInteger)  # ID of source entity; see source_table below
-    # === Consolidation provenance (R1-B04, ADR 0008 rule 2) ===
+    # === Consolidation provenance (ADR 0008 rule 2) ===
     # `source_table` names the pre-consolidation store a merged row came from
     # (work_packages, roadmap_work_packages, technology_roadmap_initiatives,
     # implementation_work_packages). A row merged this way carries both

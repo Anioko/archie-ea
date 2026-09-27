@@ -1391,6 +1391,7 @@ def seed_demo_company() -> dict:
                 business_capability=cap.name if cap else "",
                 assigned_to="Ivo Reed",
                 scope="enterprise",
+                organization_id=org_id,
             )
             db.session.add(wp)
             wps_created += 1
