@@ -133,7 +133,6 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
             .filter(ApplicationOwnership.organization_id == org_id)
             .all()
         )
-        org_unresolved = False
         for lo in legacy_rows:
             # Map legacy ownership_type to the new vocabulary
             legacy_type = (lo.ownership_type or "").lower()
@@ -149,7 +148,6 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                 app_obj_lo = db.session.get(ApplicationComponent, lo.application_id)
                 app_name_lo = app_obj_lo.name if app_obj_lo else f"App #{lo.application_id}"
                 _record_unresolved(org_id, app_name_lo, "application_ownership (unknown type)", lo.primary_contact or "(no name)", unresolved)
-                org_unresolved = True
                 continue
 
             # Check for existing row by provenance (source_table, source_id)
@@ -180,7 +178,6 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                 app_obj = db.session.get(ApplicationComponent, lo.application_id)
                 app_name = app_obj.name if app_obj else f"App #{lo.application_id}"
                 _record_unresolved(org_id, app_name, "application_ownership", display_name, unresolved)
-                org_unresolved = True
                 continue
 
             # Check for duplicate (application_id, user_id, ownership_type) from any source
@@ -261,7 +258,6 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
                 user = _resolve_user_by_name(name, org_id)
                 if user is None:
                     _record_unresolved(org_id, app_obj.name, field_name, name.strip(), unresolved)
-                    org_unresolved = True
                     continue
 
                 # Check for existing (application_id, user_id, ownership_type) -

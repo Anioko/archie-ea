@@ -483,7 +483,7 @@ def test_backfill_is_idempotent(db_session, make_org):
     user = _make_user(db_session, org, "application_manager", "idemmanager")
     _make_app(db_session, org, "Idempotent App", business_owner=f"{user.first_name} {user.last_name}")
 
-    stats1 = backfill_owner_data(dry_run=False, organization_ids=[org.id])
+    _ = backfill_owner_data(dry_run=False, organization_ids=[org.id])
     rows1 = ApplicationOwner.query.filter(
         ApplicationOwner.organization_id == org.id,
     ).all()
