@@ -79,7 +79,7 @@ class BusinessCapabilityEmbedding(db.Model):
 
     __tablename__ = "business_capability_embeddings"
     __table_args__ = (
-        UniqueConstraint("business_capability_id", name="uq_capability_embedding"),
+        UniqueConstraint("business_capability_id", "organization_id", name="uq_capability_embedding"),
         Index("ix_capability_embedding_created", "created_at"),
     )
 
