@@ -204,6 +204,14 @@ CONCEPTS = {
                 filter_eq={"source_table": "business_capability"},
                 filter_not_null="current_maturity_level"),
     ],
+    "application cost": [
+        Surface("orm:ApplicationCost", "orm",
+                "app.models.enterprise_intelligence.ApplicationCost",
+                waived="store-agreement-ok: retired in R1; annual cost migrated to ApplicationComponent.total_cost_of_ownership"),
+        Surface("orm:ApplicationComponent(total_cost_of_ownership)", "orm",
+                "app.models.application_portfolio.ApplicationComponent",
+                filter_not_null="total_cost_of_ownership"),
+    ],
 }
 
 # Concepts deliberately NOT registered, and why -- naming the exclusion is the
