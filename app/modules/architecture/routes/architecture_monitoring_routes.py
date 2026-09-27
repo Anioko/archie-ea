@@ -1,7 +1,6 @@
 """
-DEPRECATED: This file is migrated to app/modules/architecture/.
-Registration is now centralized via app.modules.architecture.register().
-Do NOT modify -- kept as fallback until Phase 6 cleanup.
+This blueprint is mounted only when ARCHITECTURE_MONITORING_API_ENABLED is on.
+Off by default; mounted when configured.
 
 Architecture Monitoring API Routes
 
@@ -40,11 +39,20 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log, require_roles
-from app.services.architecture_monitoring_service import ArchitectureMonitoringService
+from app.modules.architecture.services.architecture_monitoring_service import ArchitectureMonitoringService
+from app.utils.pagination import safe_int_arg
+from config import _env_bool
 
 architecture_monitoring_bp = Blueprint(
     "architecture_monitoring", __name__, url_prefix="/api/architecture-monitoring"
 )
+
+
+def monitoring_api_enabled(app) -> bool:
+    """True when the monitoring API should be mounted: app config or the environment says so."""
+    if app.config.get("ARCHITECTURE_MONITORING_API_ENABLED"):
+        return True
+    return _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
 
 
 def _get_service() -> ArchitectureMonitoringService:
@@ -366,8 +374,8 @@ def get_alerts():
     severity = request.args.get("severity")
     alert_type = request.args.get("alert_type")
     acknowledged = request.args.get("acknowledged")
-    limit = request.args.get("limit", 100, type=int)
-    offset = request.args.get("offset", 0, type=int)
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+    offset = safe_int_arg('offset', 0, minimum=0)
 
     # Convert acknowledged string to boolean
     acknowledged_bool = None

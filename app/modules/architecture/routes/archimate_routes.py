@@ -14,11 +14,12 @@ SA-007:
     GET /api/archimate/viewpoints/<id>/data         — filtered elements + layout hints
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import concurrent.futures
 import json
 import re as _re
 
-from flask import Blueprint, Response, abort, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Response, abort, current_app, g, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 
@@ -28,14 +29,42 @@ from app.modules.architecture.routes.lucidchart_import_routes import (
 )
 from app.modules.architecture.services.archimate_xml_export_service import export_to_xml
 from app.utils.response_helpers import api_error, api_success
+from app.utils.pagination import MAX_PAGE_SIZE, safe_int_arg
 
 archimate_bp = Blueprint("archimate", __name__, url_prefix="/archimate")
 register_lucidchart_import_routes(archimate_bp)
 
-_LLM_TIMEOUT_SECONDS = 45
+# Must exceed the OpenRouter client's own read timeout (80s, see
+# LLMService._call_openrouter's default) or this outer guard always loses the
+# race on a real, working generation: reproduced directly on 10 Sep 2026 —
+# a genuine deepseek/deepseek-v3.2 call for a 37-element ArchiMate model hit
+# this 45s guard, got reported as "timed out" and silently replaced with the
+# noun-extraction mock fallback, while the real call kept running in the
+# background (ThreadPoolExecutor.cancel() cannot stop an already-running
+# thread) and finished successfully into the cache a request that already
+# received the fake result never re-read. The user saw 3 fabricated elements;
+# the real 37-element/10-relationship result was generated, paid for, and
+# discarded. 100s gives the 80s HTTP call room to finish plus JSON
+# parse/validation overhead.
+_LLM_TIMEOUT_SECONDS = 100
 
 
 # ── CMP-025: RBAC ownership check ─────────────────────────────────────────
+def _get_saved_diagram_scoped(vp_id):
+    """Fetch a SavedDiagram by id through a SELECT so tenant scoping applies.
+
+    CMP-01/CMP-02: SavedDiagram is tenant-scoped (TenantMixin). `db.session.get()`
+    resolves a primary key from the identity map when the row is already loaded,
+    which SKIPS the do_orm_execute tenant loader-criteria — so a cross-org caller
+    could reach another org's diagram if it happened to be cached in the session.
+    A filtered query always emits a statement, so the tenant predicate is applied
+    every time. Returns the diagram or None.
+    """
+    from app.models.archimate_core import SavedDiagram
+
+    return SavedDiagram.query.filter(SavedDiagram.id == vp_id).first()
+
+
 def _check_solution_access(solution_id):
     """Abort 403 if the current user may not edit the given solution."""
     if not solution_id:
@@ -162,11 +191,19 @@ def traceability_chain():
             if ids:
                 element_ids_by_layer[layer_key] = ids
     element_solutions_by_layer = get_element_solution_map_by_layer(element_ids_by_layer)
-    # JSON: { "layer": { "element_id": [solutions] } } for template lookup by selected.layer + selected.id
-    element_solutions_json = json.dumps({
+    # { "layer": { "element_id": [solutions] } } for template lookup by
+    # selected.layer + selected.id.
+    #
+    # Passed as a dict and serialised in the template with |tojson, NOT with
+    # json.dumps + |safe. json.dumps does not escape "<" or "/", and this payload
+    # carries user-controlled solution names, so a solution named
+    # "</script><script>..." closed the surrounding <script> block and executed -
+    # stored XSS against every viewer of the traceability chain. Flask's |tojson
+    # escapes <, > and & for exactly this context.
+    element_solutions_json = {
         layer: {str(eid): sols for eid, sols in by_id.items()}
         for layer, by_id in element_solutions_by_layer.items()
-    })
+    }
 
     # GLB-057: Solutions list for filter dropdown
     from app.models.solution_models import Solution
@@ -244,10 +281,8 @@ def patch_element(element_id):
             action="element_updated",
             entity_type="ArchiMateElement",
             entity_id=element_id,
-            details=json.dumps({
-                "old_name": old_name, "new_name": name,
-                "old_description": old_desc, "new_description": description,
-            }),
+            old_value={"name": old_name, "description": old_desc},
+            new_value={"name": name, "description": description},
             user_id=current_user.id if hasattr(current_user, "id") else None,
         )
         db.session.add(audit)
@@ -273,9 +308,14 @@ def link_driver_to_goal():
     goal_id = data.get("goal_id")
     if driver_id is None or goal_id is None:
         return jsonify({"error": "driver_id and goal_id required"}), 400
+    try:
+        driver_id = int(driver_id)
+        goal_id = int(goal_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "driver_id and goal_id must be integers"}), 400
     from app.models.motivation import Driver, Goal
-    driver = db.session.get(Driver, int(driver_id))
-    goal = db.session.get(Goal, int(goal_id))
+    driver = db.session.get(Driver, driver_id)
+    goal = db.session.get(Goal, goal_id)
     if not driver or not goal:
         return jsonify({"error": "Driver or Goal not found"}), 404
     goal.driver_id = driver.id
@@ -296,13 +336,35 @@ def link_capability_to_application():
     application_id = data.get("application_id")
     if capability_id is None or application_id is None:
         return jsonify({"error": "capability_id and application_id required"}), 400
+    try:
+        capability_id = int(capability_id)
+        application_id = int(application_id)
+    except (ValueError, TypeError):
+        return jsonify({"error": "capability_id and application_id must be integers"}), 400
     from app.models.business_capabilities import BusinessCapability
     from app.models.application_portfolio import ApplicationComponent
     from app.models.application_capability import ApplicationCapabilityMapping
-    cap = db.session.get(BusinessCapability, int(capability_id))
-    app = db.session.get(ApplicationComponent, int(application_id))
+    cap = db.session.get(BusinessCapability, capability_id)
+    app = db.session.get(ApplicationComponent, application_id)
     if not cap or not app:
         return jsonify({"error": "Capability or Application not found"}), 404
+
+    # Both ends must belong to the caller's organisation, checked explicitly.
+    #
+    # Two reasons not to rely on the ambient tenant filter here. It is applied to
+    # ORM SELECTs, and Session.get() can satisfy a primary-key lookup straight from
+    # the identity map without emitting one - so the guarantee is not one to lean on
+    # for a write. And even with both ends scoped, nothing here required them to be
+    # scoped to the SAME organisation: this creates an ApplicationCapabilityMapping,
+    # a model with no TenantMixin of its own, so a mismatched pair would produce a
+    # row that belongs to neither tenant cleanly and is invisible to both.
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is not None:
+        for obj, label in ((cap, "Capability"), (app, "Application")):
+            obj_org = getattr(obj, "organization_id", None)
+            if obj_org is not None and obj_org != org_id:
+                # Same body as "not found" - do not confirm the row exists.
+                return jsonify({"error": "Capability or Application not found"}), 404
     existing = ApplicationCapabilityMapping.query.filter_by(
         business_capability_id=cap.id,
         application_component_id=app.id,
@@ -338,6 +400,735 @@ def viewpoints_page():
     return redirect(url_for("archimate.composer_page", **params), code=302)
 
 
+# ---------------------------------------------------------------------------
+# Import review queue
+# ---------------------------------------------------------------------------
+# An import fills a repository with assertions nobody has checked. This one
+# guessed the type of 55 elements and inferred 69 relationships from how lines
+# were drawn - all correctly recorded, and until now surfaced nowhere, which
+# meant trusting 124 guesses sight unseen or trusting none of them.
+#
+# Confidence is ordered so the least defensible work comes first: a type applied
+# because the shape had none at all is a worse guess than a relationship read
+# from an arrowhead.
+_REVIEW_CONFIDENCE = {
+    "fallback": ("element type was guessed",
+                 "The shape carried no ArchiMate type; a default was applied."),
+    "stroke-stripped-label": ("relationship inferred from a label",
+                              "The export dropped the line's stroke, so a labelled "
+                              "arrow was read as a data flow."),
+    "nesting": ("containment derived from layout",
+                "One shape was drawn inside another; ArchiMate allows several "
+                "readings of that."),
+    "notation": ("relationship read from notation",
+                 "Taken from the arrowhead and stroke, which is how ArchiMate "
+                 "states a relationship."),
+    "diagram-image": ("read from an image by a model",
+                      "Extracted from a picture rather than structured data."),
+}
+_REVIEW_ORDER = ["fallback", "stroke-stripped-label", "nesting", "notation", "diagram-image"]
+
+
+def _review_org_id():
+    from flask import g as _g  # noqa: PLC0415
+
+    return getattr(_g, "current_org_id", None)
+
+
+@archimate_bp.route("/import-review", methods=["GET"])
+@login_required
+def import_review_page():
+    """Triage what an import guessed, rather than trusting it silently."""
+    return render_template("archimate/import_review.html")
+
+
+@archimate_bp.route("/api/import-review/items", methods=["GET"])
+@login_required
+def api_import_review_items():
+    """Everything an import inferred and nobody has confirmed yet."""
+    from app.models.models import ArchiMateElement, ArchiMateRelationship  # noqa: PLC0415
+
+    org_id = _review_org_id()
+    include_reviewed = request.args.get("include_reviewed") == "1"
+
+    # custom_properties is db.JSON, not JSONB, so `.astext` does not exist on it.
+    # Cast in the predicate rather than pulling every element back to filter in
+    # Python - a real repository has tens of thousands of these. PostgreSQL is
+    # required by this application, so the cast is safe.
+    element_q = ArchiMateElement.query.filter(
+        db.text("custom_properties::jsonb->>'lucid_type_source' = 'fallback'")
+    )
+    if org_id is not None:
+        element_q = element_q.filter(ArchiMateElement.organization_id == org_id)
+
+    elements = []
+    for row in element_q.order_by(ArchiMateElement.name).limit(500).all():
+        props = row.custom_properties or {}
+        if props.get("reviewed_at") and not include_reviewed:
+            continue
+        elements.append({
+            "kind": "element",
+            "id": row.id,
+            "name": row.name,
+            "type": row.type,
+            "layer": row.layer,
+            "reason": "fallback",
+            "reviewed_at": props.get("reviewed_at"),
+            "detail": props.get("lucid_class") or "",
+        })
+
+    rel_q = ArchiMateRelationship.query.filter(
+        ArchiMateRelationship.derived_from.isnot(None)
+    )
+    if org_id is not None:
+        rel_q = rel_q.filter(ArchiMateRelationship.organization_id == org_id)
+    if not include_reviewed:
+        rel_q = rel_q.filter(ArchiMateRelationship.reviewed_at.is_(None))
+
+    relationships = []
+    rows = rel_q.limit(500).all()
+    endpoint_ids = {r.source_id for r in rows} | {r.target_id for r in rows}
+    names = {}
+    if endpoint_ids:
+        for element in ArchiMateElement.query.filter(
+                ArchiMateElement.id.in_(endpoint_ids)).all():
+            names[element.id] = element.name
+    for row in rows:
+        relationships.append({
+            "kind": "relationship",
+            "id": row.id,
+            "name": f"{names.get(row.source_id, '?')} → {names.get(row.target_id, '?')}",
+            "type": row.type,
+            "layer": "",
+            "reason": row.derived_from,
+            "reviewed_at": row.reviewed_at.isoformat() if row.reviewed_at else None,
+            "detail": row.flow_label or row.custom_label or "",
+        })
+
+    items = elements + relationships
+    items.sort(key=lambda i: (_REVIEW_ORDER.index(i["reason"])
+                              if i["reason"] in _REVIEW_ORDER else 99, i["name"]))
+
+    groups = []
+    for reason in _REVIEW_ORDER:
+        matching = [i for i in items if i["reason"] == reason]
+        if not matching:
+            continue
+        label, explanation = _REVIEW_CONFIDENCE[reason]
+        groups.append({"reason": reason, "label": label,
+                       "explanation": explanation, "count": len(matching)})
+
+    return jsonify({
+        "success": True,
+        "items": items,
+        "groups": groups,
+        "total": len(items),
+        "element_types": _review_element_types(),
+    }), 200
+
+
+def _review_element_types():
+    try:
+        from app.config.archimate_relationship_matrix import (  # noqa: PLC0415
+            ALL_ELEMENTS,
+        )
+        return sorted(ALL_ELEMENTS)
+    except Exception:  # noqa: BLE001
+        # This is the static ArchiMate vocabulary behind the review filter
+        # drop-down, not portfolio data — an empty list disables the filter and
+        # no count is derived from it. Log so the outage is diagnosable rather
+        # than presenting as a mysteriously empty filter.
+        current_app.logger.exception("import-review element type vocabulary unavailable")
+        return []
+
+
+@archimate_bp.route("/api/import-review/accept", methods=["POST"])
+@login_required
+def api_import_review_accept():
+    """Confirm inferred items. Marks them reviewed; it does not change them."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from app.models.models import ArchiMateElement, ArchiMateRelationship  # noqa: PLC0415
+
+    data = request.get_json(silent=True) or {}
+    org_id = _review_org_id()
+    now = datetime.utcnow()
+    accepted = 0
+
+    for element_id in data.get("element_ids") or []:
+        row = db.session.get(ArchiMateElement, element_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        props = dict(row.custom_properties or {})
+        props["reviewed_at"] = now.isoformat()
+        row.custom_properties = props
+        accepted += 1
+
+    for rel_id in data.get("relationship_ids") or []:
+        row = db.session.get(ArchiMateRelationship, rel_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        row.reviewed_at = now
+        accepted += 1
+
+    db.session.commit()
+    return jsonify({"success": True, "accepted": accepted}), 200
+
+
+@archimate_bp.route("/api/import-review/retype", methods=["POST"])
+@login_required
+def api_import_review_retype():
+    """Correct a guessed element type, which is the point of reviewing it."""
+    from datetime import datetime  # noqa: PLC0415
+
+    from app.models.models import ArchiMateElement  # noqa: PLC0415
+
+    data = request.get_json(silent=True) or {}
+    new_type = (data.get("type") or "").strip()
+    if new_type not in _review_element_types():
+        return jsonify({"success": False,
+                        "error": f"'{new_type}' is not an ArchiMate 3.2 element type."}), 400
+
+    org_id = _review_org_id()
+    changed = 0
+    for element_id in data.get("element_ids") or []:
+        row = db.session.get(ArchiMateElement, element_id)
+        if row is None or (org_id is not None and row.organization_id != org_id):
+            continue
+        props = dict(row.custom_properties or {})
+        # Keep what it was guessed as: a correction is evidence about the
+        # importer, and knowing which guesses get overridden is how the
+        # fallback gets better.
+        props.setdefault("type_before_review", row.type)
+        props["reviewed_at"] = datetime.utcnow().isoformat()
+        row.type = new_type
+        row.custom_properties = props
+        changed += 1
+
+    db.session.commit()
+    return jsonify({"success": True, "changed": changed}), 200
+
+
+# ---------------------------------------------------------------------------
+# Diagram import screen
+# ---------------------------------------------------------------------------
+# The Lucidchart importer was reachable only from `flask import-lucid`, which
+# means it did not exist for the person it was built for. This is the same
+# import, with a preview step: an architect uploads the export, sees exactly
+# what would be created, linked or changed, and only then commits.
+#
+# Preview is not a courtesy. Re-importing a diagram into a live repository is
+# the moment an architect most needs to know what is about to happen, and
+# "88 elements, 103 relationships" does not answer that question.
+
+_IMPORT_MAX_BYTES = 50 * 1024 * 1024  # Lucid caps a .lucid archive at 50MB
+
+
+def _read_diagram_upload():
+    """Return (payload_or_bytes, kind, error_response).
+
+    kind is "lucid" or "visio". A .vsdx is returned as raw bytes because its
+    transformer parses the package itself; Lucid's is returned as parsed JSON.
+    """
+    import io  # noqa: PLC0415
+    import json as _json  # noqa: PLC0415
+    import zipfile  # noqa: PLC0415
+
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return None, None, (jsonify({"success": False,
+                                     "error": "No file uploaded. Choose a .lucid, .json "
+                                              "or .vsdx export."}), 400)
+    name = upload.filename.lower()
+    if not name.endswith((".json", ".lucid", ".vsdx")):
+        return None, None, (jsonify({"success": False,
+                                     "error": "Upload a Lucidchart .lucid or .json export, "
+                                              "or a Visio .vsdx drawing."}), 400)
+
+    raw = upload.read()
+    if len(raw) > _IMPORT_MAX_BYTES:
+        return None, None, (jsonify({"success": False, "error": "File exceeds 50MB."}), 400)
+
+    if name.endswith(".vsdx"):
+        # Visio keeps geometry, which is what makes containment recoverable.
+        # Lucid's JSON export discards it.
+        return raw, "visio", None
+
+    if raw[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                names = archive.namelist()
+                member = next((n for n in names
+                               if n.lower().rstrip("/").endswith("document.json")), None) \
+                    or next((n for n in names if n.lower().endswith(".json")), None)
+                if not member:
+                    return None, None, (jsonify({"success": False,
+                                                 "error": "The .lucid archive has no "
+                                                          "document.json."}), 400)
+                raw = archive.read(member)
+        except zipfile.BadZipFile:
+            return None, None, (jsonify({"success": False,
+                                         "error": "The .lucid file is not a readable "
+                                                  "archive."}), 400)
+
+    try:
+        return _json.loads(raw.decode("utf-8")), "lucid", None
+    except (UnicodeDecodeError, ValueError) as exc:
+        return None, None, (jsonify({"success": False,
+                                     "error": "Not valid Lucidchart JSON: %s"
+                                              % str(exc)[:120]}), 400)
+
+
+def _run_diagram_import(preview):
+    from flask import g as _g  # noqa: PLC0415
+
+    from app.services.lucid_archimate_transformer import (  # noqa: PLC0415
+        LucidArchiMateTransformer,
+    )
+    from app.services.lucid_import_service import import_payload  # noqa: PLC0415
+
+    org_id = getattr(_g, "current_org_id", None)
+    if org_id is None:
+        return jsonify({"success": False,
+                        "error": "No organisation on this session, so there is nowhere "
+                                 "to import into."}), 400
+
+    payload, kind, error = _read_diagram_upload()
+    if error is not None:
+        return error
+
+    fallback = (request.form.get("fallback_element_type") or "").strip() or None
+    dedupe = (request.form.get("dedupe") or "name-type").strip()
+    if dedupe not in ("name-type", "name-type-container", "none"):
+        return jsonify({"success": False, "error": "Unknown de-duplication strategy."}), 400
+
+    try:
+        if kind == "visio":
+            from app.services.visio_archimate_transformer import (  # noqa: PLC0415
+                VisioArchiMateTransformer,
+            )
+            transformer = VisioArchiMateTransformer(fallback_element_type=fallback)
+        else:
+            transformer = LucidArchiMateTransformer(fallback_element_type=fallback)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+    try:
+        transformed = transformer.transform_document(payload)
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+
+    # On commit, fold in the AI suggestions the architect explicitly accepted in
+    # the review screen (and ONLY those) before anything is written. Nothing the
+    # model proposed reaches the repository without a human tick.
+    ai_added = None
+    if not preview:
+        ai_added = _apply_accepted_suggestions(
+            transformed, request.form.get("accepted_suggestions"))
+
+    report = import_payload(
+        transformed, org_id=org_id, dedupe=dedupe,
+        link_applications=request.form.get("link_applications") != "0",
+        create_applications=request.form.get("create_applications") == "1",
+        preview=preview,
+    )
+    report["success"] = True
+    if ai_added:
+        report["ai_accepted"] = ai_added
+
+    # On commit, materialise a viewable diagram: an auto-laid-out SavedDiagram
+    # over the imported elements, so the import lands ON the canvas, not only in
+    # the catalog. Best-effort — a layout failure never fails the import itself.
+    if not preview and report.get("diagram_element_ids"):
+        try:
+            diagram = _saved_diagram_from_import(
+                report.get("model_name") or "Imported diagram",
+                report["diagram_element_ids"])
+            if diagram is not None:
+                report["saved_diagram_id"] = diagram.id
+                report["composer_url"] = (
+                    f"/archimate/composer?viewpoint_id={diagram.id}")
+        except Exception:  # noqa: BLE001 - the elements are already saved
+            current_app.logger.exception(
+                "import committed but building its SavedDiagram failed")
+
+    # On preview, offer AI suggestions for the gaps the deterministic pass left,
+    # when the user opted in. Advisory only; the import above stands on its own,
+    # so a missing/failed provider never fails the request.
+    if preview and request.form.get("ai_assist") == "1":
+        from app.services.import_ai_assist import (  # noqa: PLC0415
+            suggest_import_completions,
+        )
+        try:
+            report["suggestions"] = suggest_import_completions(transformed)
+        except Exception as exc:  # noqa: BLE001 - advisory extra, never fatal
+            current_app.logger.exception("import AI-assist pass failed")
+            report["suggestions"] = {"available": False,
+                                     "reason": "AI assist hit an unexpected error "
+                                               "and was skipped: " + str(exc)[:120]}
+
+    return jsonify(report), 200
+
+
+def _saved_diagram_from_import(name, element_ids):
+    """Create an auto-laid-out SavedDiagram over the just-imported elements.
+
+    Groups elements into layer bands and grids them (same layout the
+    create-diagram-from-elements endpoint uses), then adds every ArchiMate
+    relationship whose endpoints are both on the diagram, so flows render too.
+    Returns the SavedDiagram, or None when nothing resolvable was passed.
+    """
+    from app.models.archimate_core import (  # noqa: PLC0415
+        ArchiMateElement, ArchiMateRelationship, SavedDiagram,
+        SavedDiagramElement, SavedDiagramRelationship,
+    )
+
+    ids = [i for i in (element_ids or []) if i is not None]
+    if not ids:
+        return None
+    els = ArchiMateElement.query.filter(ArchiMateElement.id.in_(ids)).all()
+    if not els:
+        return None
+
+    diagram = SavedDiagram(
+        name=name,
+        description=f"Auto-generated from {len(els)} imported elements",
+        created_by=current_user.id if current_user.is_authenticated else None,
+    )
+    db.session.add(diagram)
+    db.session.flush()
+
+    layer_order = ["motivation", "strategy", "business", "application",
+                   "technology", "physical", "implementation", "other"]
+    by_layer = {}
+    for el in els:
+        by_layer.setdefault((el.layer or "other").lower(), []).append(el)
+
+    # Match the composer's rendered node size (200x130) with generous gaps, or
+    # rows overlap: the renderer draws 130px-tall boxes, so a 64px row pitch
+    # stacked every element on the next. Column/row pitch here are 260x200.
+    elem_w, elem_h, gap_x, gap_y, layer_gap, cols = 200, 130, 60, 70, 90, 4
+    y_offset = 40
+    for layer_name in layer_order + [k for k in by_layer if k not in layer_order]:
+        layer_elements = by_layer.pop(layer_name, [])
+        if not layer_elements:
+            continue
+        for idx, el in enumerate(layer_elements):
+            db.session.add(SavedDiagramElement(
+                diagram_id=diagram.id, element_id=el.id,
+                position_x=40 + (idx % cols) * (elem_w + gap_x),
+                position_y=y_offset + (idx // cols) * (elem_h + gap_y),
+                width=elem_w, height=elem_h, rendering_mode="black_box",
+            ))
+        rows = (len(layer_elements) + cols - 1) // cols
+        y_offset += rows * (elem_h + gap_y) + layer_gap
+
+    # Every relationship both of whose endpoints are on this diagram.
+    id_set = {el.id for el in els}
+    rels = ArchiMateRelationship.query.filter(
+        ArchiMateRelationship.source_id.in_(id_set),
+        ArchiMateRelationship.target_id.in_(id_set),
+    ).all()
+    for r in rels:
+        db.session.add(SavedDiagramRelationship(
+            diagram_id=diagram.id, relationship_id=r.id))
+
+    db.session.commit()
+    return diagram
+
+
+def _apply_accepted_suggestions(transformed, accepted_json):
+    """Merge human-accepted AI suggestions into the transformer output in place.
+
+    Returns a small tally for the report, or None when nothing was accepted.
+    Accepted retypes become new elements; accepted relationships become new
+    edges. Everything is validated again server-side — the client cannot post
+    an element id or relationship the transformer did not surface as a gap.
+    """
+    if not accepted_json:
+        return None
+    try:
+        accepted = json.loads(accepted_json)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(accepted, dict):
+        return None
+
+    skipped = transformed.get("skipped") or {}
+    skipped_shape_ids = {s.get("id") for s in (skipped.get("shapes") or [])}
+    skipped_by_id = {s.get("id"): s for s in (skipped.get("shapes") or [])}
+    elements = transformed.setdefault("elements", [])
+    known_ids = {e.get("id") for e in elements if e.get("id")}
+    relationships = transformed.setdefault("relationships", [])
+
+    added_elements = 0
+    for item in accepted.get("retype") or []:
+        if not isinstance(item, dict):
+            continue
+        sid = item.get("id")
+        ptype = item.get("proposed_type")
+        # Server-side gate: only a shape the transformer actually skipped, and
+        # not one already present, can be added this way.
+        if sid not in skipped_shape_ids or sid in known_ids or not ptype:
+            continue
+        src = skipped_by_id.get(sid) or {}
+        elements.append({
+            "id": sid,
+            "identifier": sid,
+            "name": item.get("name") or src.get("name") or "(unnamed)",
+            "type": ptype,
+            "layer": item.get("layer") or "other",
+            "description": None,
+            "custom_properties": {"lucid_type_source": "ai-assist",
+                                  "ai_rationale": (item.get("rationale") or "")[:240]},
+        })
+        known_ids.add(sid)
+        added_elements += 1
+
+    added_relationships = 0
+    existing_pairs = {(r.get("source_id"), r.get("target_id"), r.get("type"))
+                      for r in relationships}
+    for item in accepted.get("relationships") or []:
+        if not isinstance(item, dict):
+            continue
+        s, t = item.get("source_id"), item.get("target_id")
+        rtype = (item.get("rel_type") or "").strip().lower()
+        if s not in known_ids or t not in known_ids or s == t or not rtype:
+            continue
+        if (s, t, rtype) in existing_pairs:
+            continue
+        relationships.append({
+            "id": None, "identifier": None, "type": rtype,
+            "source_id": s, "target_id": t,
+            "description": "AI-assisted: " + (item.get("rationale") or "")[:200],
+        })
+        existing_pairs.add((s, t, rtype))
+        added_relationships += 1
+
+    if not added_elements and not added_relationships:
+        return None
+    return {"elements": added_elements, "relationships": added_relationships}
+
+
+@archimate_bp.route("/import/diagram", methods=["GET"])
+@login_required
+def import_diagram_page():
+    """Upload a Lucidchart export, preview what it would do, then commit."""
+    return render_template("archimate/import_diagram.html",
+                           element_types=_review_element_types())
+
+
+@archimate_bp.route("/api/import/diagram/preview", methods=["POST"])
+@login_required
+def api_import_diagram_preview():
+    """Everything the import would do, having written nothing."""
+    return _run_diagram_import(preview=True)
+
+
+@archimate_bp.route("/api/import/diagram/commit", methods=["POST"])
+@login_required
+def api_import_diagram_commit():
+    """Do it."""
+    return _run_diagram_import(preview=False)
+
+
+_VISION_PROVIDERS = ("anthropic", "openai", "gemini")
+_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+_IMAGE_MAX_BYTES = 12 * 1024 * 1024
+
+
+def _first_vision_provider():
+    """The first configured provider that can actually see an image, or None.
+
+    DeepSeek is text-only, so "an LLM is configured" is not the same question as
+    "a diagram can be read". Answering the wrong one produces a feature that
+    appears to work and returns nothing.
+    """
+    from app.modules.architecture.services.multi_modal_llm_service import (  # noqa: PLC0415
+        MultiModalLLMService,
+    )
+
+    service = MultiModalLLMService()
+    for provider in _VISION_PROVIDERS:
+        try:
+            if service._resolve_api_key(provider):
+                return provider, service
+        except Exception:  # noqa: BLE001 - a broken provider is not a configured one
+            continue
+    return None, service
+
+
+@archimate_bp.route("/api/composer/extract-from-image", methods=["POST"])
+@login_required
+def api_composer_extract_from_image():
+    """Turn a diagram image into canonical ArchiMate elements and relationships.
+
+    The extraction itself already existed but was reachable only by uploading a
+    file into AI chat, which is not where anyone models. This puts it where the
+    Lucid import already is - the composer - and returns the SAME payload shape,
+    so the canvas has one way to receive a diagram regardless of whether it
+    arrived as a .lucid file or a screenshot of one.
+
+    Returns 503 with a plain explanation when no vision-capable provider is
+    configured, rather than an empty result that looks like "nothing found".
+
+    Form field:
+        file: the diagram image.
+    """
+    import os as _os  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({"success": False, "error": "No image uploaded. POST form-data 'file'."}), 400
+    if not upload.filename.lower().endswith(_IMAGE_EXTENSIONS):
+        return jsonify({
+            "success": False,
+            "error": "Unsupported image type. Use PNG, JPEG, GIF, WEBP or BMP.",
+        }), 400
+
+    raw = upload.read()
+    if len(raw) > _IMAGE_MAX_BYTES:
+        return jsonify({"success": False, "error": "Image exceeds 12MB."}), 400
+
+    provider, service = _first_vision_provider()
+    if provider is None:
+        return jsonify({
+            "success": False,
+            "error": "No vision-capable AI provider is configured, so a diagram "
+                     "image cannot be read. Add an Anthropic, OpenAI or Gemini "
+                     "key in Admin → API Settings. A text-only provider such as "
+                     "DeepSeek cannot do this.",
+            "error_type": "no_vision_provider",
+        }), 503
+
+    suffix = _os.path.splitext(upload.filename)[1] or ".png"
+    handle, temp_path = tempfile.mkstemp(suffix=suffix)
+    try:
+        with _os.fdopen(handle, "wb") as fh:
+            fh.write(raw)
+        import asyncio  # noqa: PLC0415
+
+        extracted, _interaction = asyncio.run(
+            service.extract_archimate_from_diagram(temp_path, provider)
+        )
+    except Exception as exc:  # noqa: BLE001
+        current_app.logger.exception("diagram image extraction failed")
+        return jsonify({
+            "success": False,
+            "error": f"Could not read the diagram: {str(exc)[:200]}",
+        }), 502
+    finally:
+        try:
+            _os.unlink(temp_path)
+        except OSError:
+            pass
+
+    return jsonify(_canonicalise_extracted(extracted, provider)), 200
+
+
+def _canonicalise_extracted(extracted, provider):
+    """Reshape the model's answer into the composer's import payload.
+
+    The model returns relationships that reference elements by NAME; the
+    composer works in ids, exactly as the Lucidchart importer produces them.
+    Converting here means the canvas has one contract, not two.
+    """
+    raw_elements = (extracted or {}).get("elements") or []
+    raw_relationships = (extracted or {}).get("relationships") or []
+
+    elements, by_name = [], {}
+    for index, item in enumerate(raw_elements):
+        name = (item.get("name") or "").strip()
+        if not name:
+            continue
+        identifier = f"img-{index}"
+        by_name[name.lower()] = identifier
+        elements.append({
+            "id": identifier,
+            "identifier": identifier,
+            "name": name,
+            "type": item.get("type") or "Grouping",
+            "layer": (item.get("layer") or "other").lower(),
+            "description": item.get("description"),
+            "rendering_mode": None,
+            "custom_properties": {
+                "source": "diagram-image",
+                "extracted_by": provider,
+                **(item.get("properties") or {}),
+            },
+        })
+
+    relationships, unresolved = [], 0
+    for index, item in enumerate(raw_relationships):
+        source = by_name.get((item.get("source") or "").strip().lower())
+        target = by_name.get((item.get("target") or "").strip().lower())
+        if not source or not target:
+            unresolved += 1
+            continue
+        relationships.append({
+            "id": f"img-rel-{index}",
+            "identifier": f"img-rel-{index}",
+            "type": (item.get("type") or "association").lower(),
+            "source_id": source,
+            "target_id": target,
+            "source": source,
+            "target": target,
+            "access_mode": None,
+            "flow_label": None,
+            "custom_label": None,
+            "description": item.get("description"),
+            "connection_spec": None,
+            "derived_from": "diagram-image",
+        })
+
+    warnings = [
+        "Read from an image by a language model. Every element and relationship "
+        "here is a reading of a picture, not extracted data - review before "
+        "publishing.",
+    ]
+    if unresolved:
+        warnings.append(
+            f"{unresolved} relationship(s) referenced an element the model did "
+            f"not also return, and were dropped."
+        )
+    metadata = (extracted or {}).get("metadata") or {}
+    if metadata.get("confidence"):
+        warnings.append(f"Model-reported confidence: {metadata['confidence']}.")
+
+    return {
+        "success": True,
+        "model_name": metadata.get("diagram_type") or "Diagram image import",
+        "elements": elements,
+        "relationships": relationships,
+        "layout_hints": {},
+        "warnings": warnings,
+        "errors": [],
+        "stats": {
+            "elements": len(elements),
+            "relationships": len(relationships),
+            "elements_created": len(elements),
+            "elements_linked": 0,
+            "relationships_created": len(relationships),
+        },
+    }
+
+
+@archimate_bp.route("/elements", methods=["GET"])
+@login_required
+def elements_redirect():
+    """/archimate/elements → the element catalogue.
+
+    Everything else ArchiMate lives under /archimate (composer, import,
+    viewpoints, traceability), so this is where people look for the element
+    list - it is the first URL I tried myself. The catalogue is served by the
+    architecture_crud blueprint at /architecture/elements, and the gap between
+    those two prefixes is invisible from the UI. Redirect rather than move the
+    page, so existing links and bookmarks keep working.
+    """
+    return redirect(url_for("architecture_crud.list_elements", **request.args), code=302)
+
+
 @archimate_bp.route("/composer", methods=["GET"])
 @login_required
 def composer_page():
@@ -346,17 +1137,29 @@ def composer_page():
     Query Parameters:
         solution_id (int): Scope to a specific solution (required for save).
         viewpoint (str): Pre-select a viewpoint (opens in View mode).
+        layer (str): Optional. Pre-select a dashboard layer within the
+            'layered' viewpoint. Passed through unvalidated as `initial_layer`
+            -- validation happens where it matters, at the data-fetch API
+            (api_viewpoint_data), which 400s on an unknown value; a bad value
+            reaching this page-render route just means selectViewpoint's
+            fetch will come back with that 400 and the composer will show the
+            resulting error state rather than a silently unfiltered canvas.
     """
     from app.services.archimate_viewpoint_service import get_available_viewpoints, get_viewpoint_counts
 
     solution_id = request.args.get("solution_id", type=int)
     viewpoint = request.args.get("viewpoint", "")
+    initial_layer = request.args.get("layer", "")
     solution_name = None
     if solution_id:
-        # tenant-filtered: scoped via parent FK (solution_id from request)
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id from request)
-            db.text("SELECT name FROM solutions WHERE id = :sid"),  # tenant-filtered
-            {"sid": solution_id},
+        # solution_id is an unvalidated query parameter, so the raw lookup must
+        # carry the org predicate itself — nothing upstream constrains it.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(f"SELECT name FROM solutions WHERE id = :sid{_org_and}"),
+            {"sid": solution_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         solution_name = row.name if row else f"Solution #{solution_id}"
 
@@ -376,7 +1179,39 @@ def composer_page():
         viewpoint_categories=categories,
         viewpoint_counts=vp_counts,
         initial_viewpoint=viewpoint,
+        initial_layer=initial_layer,
     )
+
+
+@archimate_bp.route("/api/elements/materialize", methods=["POST"])
+@login_required
+def api_materialize_elements():
+    """Turn Composer template placeholder ids (e.g. "__builtin__sh1") into
+    real ArchiMateElement rows, on demand.
+
+    F-05(c), Capgemini dry-run: connecting two template elements (dropped
+    from "Load template") sent their client-only ids straight to
+    valid-relationship-types (400 — correctly refusing a non-integer id) and
+    then to POST /api/relationships (500 — an uncaught DB error feeding a
+    string into an Integer FK column). `_materialize_canvas_items()` already
+    solves exactly this for a full diagram save; this exposes the same logic
+    for a single connect-mode gesture, called before the two lookups above so
+    they see real ids like everything else already does.
+
+    JSON body: {"elements": [{"element_id": "__builtin__sh1", "name": ...,
+    "el_type": ..., "layer": ...}, ...]} — same shape _materialize_canvas_items
+    already accepts; only elements whose id is not an existing integer are
+    written. Returns {"element_id_map": {<source id string>: <new int id>}}.
+    """
+    data = request.get_json(silent=True) or {}
+    elements = data.get("elements")
+    if not isinstance(elements, list) or not elements:
+        return api_error("elements (non-empty list) is required", 400)
+
+    payload = {"elements": elements}
+    element_id_map, _ = _materialize_canvas_items(payload)
+    db.session.commit()
+    return jsonify({"element_id_map": element_id_map})
 
 
 @archimate_bp.route("/api/valid-relationship-types", methods=["GET"])
@@ -426,14 +1261,39 @@ def api_list_viewpoints():
 @archimate_bp.route("/viewpoints-api/<viewpoint_id>/data", methods=["GET"])
 @login_required
 def api_viewpoint_data(viewpoint_id: str):
-    """Return filtered elements and layout hints for a viewpoint."""
-    from app.services.archimate_viewpoint_service import get_viewpoint_data
+    """Return filtered elements and layout hints for a viewpoint.
+
+    Query Parameters:
+        solution_id (int): Scope to a specific solution.
+        layer (str): Optional. Narrows the response to one dashboard layer
+            (motivation/strategy/business/application/technology/
+            implementation), matched by ArchiMate element type via the
+            shared LAYER_TYPES map -- see archimate_viewpoint_service.
+            Untrusted input: allowlisted below, 400 on anything else. Never
+            silently falls back to "no filter" on a bad value.
+    """
+    from app.services.archimate_viewpoint_service import VALID_LAYER_KEYS, get_viewpoint_data
     solution_id = request.args.get("solution_id", type=int)
-    data = get_viewpoint_data(viewpoint_id=viewpoint_id, solution_id=solution_id)
+    layer = request.args.get("layer", "").strip().lower() or None
+    if layer is not None and layer not in VALID_LAYER_KEYS:
+        return api_error(
+            "Invalid layer. Must be one of: " + ", ".join(sorted(VALID_LAYER_KEYS)),
+            400,
+        )
+    data = get_viewpoint_data(viewpoint_id=viewpoint_id, solution_id=solution_id, layer=layer)
     return jsonify(data)
 
 
 # ── Relationship CRUD API ────────────────────────────────────────────────────
+#
+# DOGFOOD-003 relationship-validity-authority audit: ARCHIMATE_RELATIONSHIP_TYPES
+# below is a flat syntactic list (11 canonical spellings) used by POST/PATCH
+# /archimate/api/relationships to reject an unrecognised type string outright
+# — it is a spelling check, not a metamodel check, and is not a second
+# opinion on element-type compatibility. Kept as-is. `_normalize_rel_type` is
+# reused (not duplicated) by app/services/archimate_import_service.py's
+# relationship classifier so OEF xsi:type spellings ("CompositionRelationship")
+# normalise the same way here and on import.
 
 ARCHIMATE_RELATIONSHIP_TYPES = [
     "composition", "aggregation", "assignment", "realization",
@@ -499,8 +1359,8 @@ def api_list_relationships():
     target_element_id = request.args.get("target_element_id", type=int)
     relationship_type = request.args.get("relationship_type")
     include_enterprise = request.args.get("include_enterprise", "true").lower() != "false"
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
 
     query = ArchiMateRelationship.query
 
@@ -557,6 +1417,7 @@ def api_list_relationships():
             "description": getattr(r, "description", None),
             "solution_id": r.architecture_id,
             "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+            "sequence_order": getattr(r, "sequence_order", None),
         }
         for r in pagination.items
     ]
@@ -610,6 +1471,21 @@ def api_create_relationship():
     if not target_el:
         return api_error(f"Target element {target_id} not found", 404)
 
+    # The relationship-type list above is a spelling check only. Confirm the
+    # metamodel actually allows this type between these two element types —
+    # the same authority the picker (GET /api/valid-relationship-types) and
+    # the composer validator (api_composer_validate) already use — so a
+    # client that never called the picker cannot write a relationship no
+    # picker would ever have offered.
+    from app.services.archimate_validity_service import ArchimateValidityService
+
+    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
+        return api_error(
+            "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
+            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
+            400,
+        )
+
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
 
@@ -635,6 +1511,7 @@ def api_create_relationship():
         custom_label=data.get("custom_label") or None,
         created_by_id=getattr(current_user, "id", None) if hasattr(current_user, "id") else None,
         connection_spec=data.get("connection_spec") or None,
+        sequence_order=data.get("sequence_order"),
     )
 
     db.session.add(rel)
@@ -652,6 +1529,8 @@ def api_create_relationship():
         "flow_label": rel.flow_label,
         "custom_label": rel.custom_label,
         "connection_spec": rel.connection_spec,
+        "sequence_order": rel.sequence_order,
+        "created_at": rel.created_at.isoformat() if rel.created_at else None,
     }), 201
 
 
@@ -696,6 +1575,9 @@ def api_update_relationship(rel_id):
     # GAP-INT-001: Connection specification (structured integration metadata)
     if "connection_spec" in data:
         rel.connection_spec = data["connection_spec"] or None
+    # Composer Sequence View: step number on the message arrow (see model comment).
+    if "sequence_order" in data:
+        rel.sequence_order = data["sequence_order"]
 
     db.session.commit()
 
@@ -710,6 +1592,7 @@ def api_update_relationship(rel_id):
         "flow_label": rel.flow_label,
         "custom_label": rel.custom_label,
         "connection_spec": rel.connection_spec,
+        "sequence_order": rel.sequence_order,
     })
 
 
@@ -732,6 +1615,63 @@ def api_delete_relationship(rel_id):
 
 # ── Saved Viewpoint CRUD API ──────────────────────────────────────────────────
 
+@archimate_bp.route("/diagrams", methods=["GET"])
+@login_required
+def diagrams_library():
+    """List every saved diagram the architect's org has, across all solutions.
+
+    Before this the only way to find a diagram was already knowing which
+    solution it belonged to and opening that solution's Composer -- there was
+    no cross-cutting library page the way Applications/Capabilities/Vendors
+    have one, so "what diagrams already exist for this vendor/application"
+    had no answer short of opening every solution one by one.
+    """
+    from app.models.archimate_core import SavedDiagram
+    from app.models.solution_models import Solution
+
+    q = (request.args.get("q") or "").strip()
+    solution_id = request.args.get("solution_id", type=int)
+
+    query = SavedDiagram.query.filter(
+        db.or_(
+            ~SavedDiagram.name.like("Unsaved diagram%"),
+            SavedDiagram.created_by_id.is_(None),
+            SavedDiagram.created_by_id == current_user.id,
+        )
+    )
+    if q:
+        query = query.filter(SavedDiagram.name.ilike(f"%{q}%"))
+    if solution_id:
+        query = query.filter(SavedDiagram.solution_id == solution_id)
+    query = query.order_by(SavedDiagram.updated_at.desc())
+    diagrams = query.limit(200).all()
+
+    solution_ids = {d.solution_id for d in diagrams if d.solution_id}
+    solutions_by_id = {}
+    if solution_ids:
+        for sol in Solution.query.filter(Solution.id.in_(solution_ids)).all():
+            solutions_by_id[sol.id] = sol.name
+
+    rows = []
+    for d in diagrams:
+        row = d.to_dict()
+        row["solution_name"] = solutions_by_id.get(d.solution_id)
+        rows.append(row)
+
+    all_solutions = (
+        Solution.query.filter(Solution.id.in_(solution_ids)).order_by(Solution.name).all()
+        if solution_ids else []
+    )
+
+    return render_template(
+        "archimate/diagrams_library.html",
+        diagrams=rows,
+        solutions=all_solutions,
+        q=q,
+        selected_solution_id=solution_id,
+    )
+
+
 @archimate_bp.route("/api/saved-viewpoints", methods=["GET"])
 @login_required
 def api_list_saved_viewpoints():
@@ -747,6 +1687,17 @@ def api_list_saved_viewpoints():
                 SavedDiagram.solution_id.is_(None),
             )
         )
+    # DEF-007: an un-named autosave draft ("Unsaved diagram — ...") is a
+    # personal in-progress artifact, not a shared one — listing every user's
+    # drafts made them appear (and be editable) as each other's composer tabs.
+    # A named, deliberately-saved viewpoint stays visible org-wide.
+    query = query.filter(
+        db.or_(
+            ~SavedDiagram.name.like("Unsaved diagram%"),
+            SavedDiagram.created_by_id.is_(None),
+            SavedDiagram.created_by_id == current_user.id,
+        )
+    )
     query = query.order_by(SavedDiagram.updated_at.desc())
     viewpoints = query.all()
 
@@ -821,6 +1772,133 @@ def _materialize_canvas_items(data):
     return element_id_map, relationship_id_map
 
 
+# ── BA-01: canvas payload normalisation ───────────────────────────────────
+def _coerce_entity_id(value):
+    """Return ``value`` as an int primary key, or None if it is not one."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _collect_canvas_items(raw_items, id_key):
+    """Deduplicate a canvas payload by entity id — last occurrence wins.
+
+    BA-01: the composer emits one entry per canvas *cell*, and two cells may
+    reference the same element (routine on an AI-generated diagram). Both
+    ``saved_diagram_elements`` and ``saved_diagram_relationships`` carry a
+    UNIQUE(diagram_id, <entity>_id), so sending both rows raised a
+    UniqueViolation that 500'd the autosave PUT. The client then retried the
+    identical payload, so autosave failed *forever* and the user's work was
+    never persisted.
+
+    Last occurrence wins: the client builds this list by walking the graph in
+    z-order, so the last entry for an element is the most recently added /
+    dragged cell — the position the user just put it in. Keeping the first
+    would silently snap the element back to a stale coordinate.
+
+    Returns ``(ordered_by_id, unusable_ids)``; ``unusable_ids`` are values that
+    are not integer primary keys at all, which the caller must reject rather
+    than drop (dropping one is a fabricated success).
+    """
+    ordered = {}
+    unusable = []
+    for item in raw_items or []:
+        raw_id = item.get(id_key)
+        if raw_id in (None, "", 0):
+            continue
+        entity_id = _coerce_entity_id(raw_id)
+        if entity_id is None:
+            unusable.append(raw_id)
+            continue
+        ordered[entity_id] = item
+    return ordered, unusable
+
+
+def _unknown_entity_ids(model, ids):
+    """Ids in ``ids`` with no row the current tenant can see.
+
+    ``ArchiMateElement`` / ``ArchiMateRelationship`` are ``TenantMixin`` models,
+    so this SELECT carries ``WHERE organization_id = g.current_org_id``. That
+    makes one query cover both failure modes at once: an id that does not exist
+    (FK violation → 500) and an id belonging to *another* organisation (a
+    cross-tenant pin). Both come back as unknown and are refused with a 400.
+    """
+    if not ids:
+        return []
+    rows = db.session.query(model.id).filter(model.id.in_(list(ids))).all()
+    known = {row[0] for row in rows}
+    return sorted(i for i in ids if i not in known)
+
+
+def _canvas_payload_error(data):
+    """Validate the elements/relationships of a diagram payload.
+
+    Returns an error message, or None when the payload is safe to insert.
+    Only keys actually present in the request are checked, so a partial update
+    (name only) is unaffected.
+    """
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    if "elements" in data:
+        _, unusable = _collect_canvas_items(data.get("elements"), "element_id")
+        if unusable:
+            return f"element_id is not a valid element reference: {unusable[:10]}"
+    if "relationships" in data:
+        _, unusable = _collect_canvas_items(data.get("relationships"), "relationship_id")
+        if unusable:
+            return (
+                "relationship_id is not a valid relationship reference: "
+                f"{unusable[:10]}"
+            )
+
+    if "elements" in data:
+        el_items, _ = _collect_canvas_items(data.get("elements"), "element_id")
+        unknown = _unknown_entity_ids(ArchiMateElement, el_items.keys())
+        if unknown:
+            return (
+                "Unknown element_id(s) — no such element in this organization: "
+                f"{unknown[:10]}"
+            )
+    if "relationships" in data:
+        rel_items, _ = _collect_canvas_items(data.get("relationships"), "relationship_id")
+        unknown = _unknown_entity_ids(ArchiMateRelationship, rel_items.keys())
+        if unknown:
+            return (
+                "Unknown relationship_id(s) — no such relationship in this "
+                f"organization: {unknown[:10]}"
+            )
+    return None
+
+
+def _commit_diagram_save():
+    """Commit a diagram save, turning an IntegrityError into a clean response.
+
+    Returns None on success, or a ``(response, status)`` tuple. The rollback is
+    the important half: without it the failed transaction stays poisoned and
+    every later query in the same request raises InFailedSqlTransaction, which
+    turns one bad row into a 500 for the whole page.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    try:
+        db.session.commit()
+    except IntegrityError as exc:
+        db.session.rollback()
+        current_app.logger.warning(
+            "Saved-viewpoint write rejected by the database: %s",
+            getattr(exc, "orig", exc),
+        )
+        return jsonify({
+            "error": "Diagram not saved — the layout conflicts with stored data.",
+            "detail": str(getattr(exc, "orig", exc))[:300],
+        }), 409
+    return None
+
+
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
 @login_required
 @archimate_bp.route("/api/saved-viewpoints", methods=["POST"])
@@ -851,23 +1929,32 @@ def api_create_saved_viewpoint():
         return jsonify({"error": err}), 400
     desc, _ = _validate_string(data.get("description"), "description", max_length=5000)
 
+    # Materialize imported canvas items (string source ids) into real model rows
+    # so the FK inserts below cannot fail and the data joins the model. Done
+    # before the diagram row is created so a rejected payload leaves nothing
+    # behind.
+    element_id_map, relationship_id_map = _materialize_canvas_items(data)
+
+    # BA-01: refuse ids we cannot honour with a named 400 rather than letting
+    # the insert raise an unhandled IntegrityError.
+    payload_error = _canvas_payload_error(data)
+    if payload_error:
+        db.session.rollback()
+        return jsonify({"error": payload_error}), 400
+
     vp = SavedDiagram(
         name=name,
         viewpoint_type=data.get("viewpoint_type"),
         solution_id=data.get("solution_id"),
         description=desc,
+        created_by_id=current_user.id if current_user.is_authenticated else None,
     )
     db.session.add(vp)
     db.session.flush()
 
-    # Materialize imported canvas items (string source ids) into real model rows
-    # so the FK inserts below cannot fail and the data joins the model.
-    element_id_map, relationship_id_map = _materialize_canvas_items(data)
-
-    for el_data in (data.get("elements") or []):
-        el_id = el_data.get("element_id")
-        if not el_id:
-            continue
+    # BA-01: one row per element, not per canvas cell — last position wins.
+    el_items, _ = _collect_canvas_items(data.get("elements"), "element_id")
+    for el_id, el_data in el_items.items():
         ve = SavedDiagramElement(
             diagram_id=vp.id,
             element_id=el_id,
@@ -879,11 +1966,9 @@ def api_create_saved_viewpoint():
         )
         db.session.add(ve)
 
-    for rel_data in (data.get("relationships") or []):
-        rel_id = rel_data.get("relationship_id")
-        if not rel_id:
-            continue
-        import json as _json
+    import json as _json
+    rel_items, _ = _collect_canvas_items(data.get("relationships"), "relationship_id")
+    for rel_id, rel_data in rel_items.items():
         waypoints = rel_data.get("waypoints")
         vr = SavedDiagramRelationship(
             diagram_id=vp.id,
@@ -893,7 +1978,9 @@ def api_create_saved_viewpoint():
         )
         db.session.add(vr)
 
-    db.session.commit()
+    failure = _commit_diagram_save()
+    if failure:
+        return failure
 
     body = vp.to_dict()
     if element_id_map or relationship_id_map:
@@ -913,10 +2000,10 @@ def api_get_saved_viewpoint(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        ArchiMateElement, ArchiMateRelationship, SavedDiagram,
+        ArchiMateElement, ArchiMateRelationship,
     )
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -967,6 +2054,8 @@ def api_get_saved_viewpoint(vp_id):
             "name": getattr(r, "name", None),
             "waypoints": _json.loads(waypoints_raw) if waypoints_raw else None,
             "routing_style": rp.routing_style if rp else "manhattan",
+            "sequence_order": r.sequence_order,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
         })
 
     return jsonify({
@@ -995,11 +2084,11 @@ def api_viewpoint_relationship_health(vp_id):
     """
     from datetime import datetime, timezone
 
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, SavedDiagram, SavedDiagramRelationship
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, SavedDiagramRelationship
     from app.models.application_portfolio import ApplicationComponent
     from app.models.models import ExternalSystem
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1055,19 +2144,25 @@ def api_viewpoint_relationship_health(vp_id):
         ArchiMateElement.id.in_(element_ids),
     ).all()}
 
-    # Find relationships where source or target is stale
-    rels = ArchiMateRelationship.query.filter(
-        ArchiMateRelationship.source_id.in_(element_ids),
-        ArchiMateRelationship.target_id.in_(element_ids),
-    ).all()
-
-    # Build set of relationship IDs already marked as architectural intent (suppress from review)
+    # CMP-13: only consider relationships actually DRAWN in this diagram, not
+    # every repository relationship that happens to exist between the canvas
+    # elements. The old query used the repository graph, so a diagram with zero
+    # drawn relationships still raised "Stale Relationships Detected" for links
+    # that live only on other diagrams. Scope to this diagram's junction rows.
+    diagram_rels = SavedDiagramRelationship.query.filter_by(diagram_id=vp_id).all()
+    diagram_rel_ids = {sdr.relationship_id for sdr in diagram_rels}
     intent_rel_ids = {
-        sdr.relationship_id
-        for sdr in SavedDiagramRelationship.query.filter_by(
-            diagram_id=vp_id, is_architectural_intent=True,
-        ).all()
+        sdr.relationship_id for sdr in diagram_rels if sdr.is_architectural_intent
     }
+
+    if diagram_rel_ids:
+        rels = ArchiMateRelationship.query.filter(
+            ArchiMateRelationship.id.in_(diagram_rel_ids),
+            ArchiMateRelationship.source_id.in_(element_ids),
+            ArchiMateRelationship.target_id.in_(element_ids),
+        ).all()
+    else:
+        rels = []
 
     stale_relationships = []
     for r in rels:
@@ -1108,9 +2203,9 @@ def api_patch_saved_viewpoint(vp_id):
             Marks a stale relationship as kept-by-intent so it is excluded from
             future staleness review prompts.
     """
-    from app.models.archimate_core import SavedDiagram, SavedDiagramRelationship
+    from app.models.archimate_core import SavedDiagramRelationship
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1124,9 +2219,13 @@ def api_patch_saved_viewpoint(vp_id):
         is_intent = bool(intent.get("is_architectural_intent", True))
         if not rel_id:
             return jsonify({"error": "relationship_intent.rel_id is required"}), 400
+        try:
+            rel_id = int(rel_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "relationship_intent.rel_id must be an integer"}), 400
 
         sdr = SavedDiagramRelationship.query.filter_by(
-            diagram_id=vp_id, relationship_id=int(rel_id),
+            diagram_id=vp_id, relationship_id=rel_id,
         ).first()
         if sdr:
             sdr.is_architectural_intent = is_intent
@@ -1134,7 +2233,7 @@ def api_patch_saved_viewpoint(vp_id):
             # Relationship not yet persisted in saved_diagram_relationships; create it
             sdr = SavedDiagramRelationship(
                 diagram_id=vp_id,
-                relationship_id=int(rel_id),
+                relationship_id=rel_id,
                 is_architectural_intent=is_intent,
             )
             db.session.add(sdr)
@@ -1161,12 +2260,25 @@ def api_update_saved_viewpoint(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        SavedDiagram, SavedDiagramElement, SavedDiagramRelationship,
+        SavedDiagramElement, SavedDiagramRelationship,
     )
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
+
+    # DEF-007: a draft belongs to the user who created it — this is the exact
+    # path that let one user's autosave PUT overwrite another user's unsaved
+    # diagram once their client held a stale currentSavedVpId for it. A
+    # deliberately-named save stays collaboratively editable, matching the
+    # list endpoint's "named viewpoints are shared" rule above.
+    if (
+        vp.name
+        and vp.name.startswith("Unsaved diagram")
+        and vp.created_by_id is not None
+        and vp.created_by_id != current_user.id
+    ):
+        return jsonify({"error": "This draft belongs to another user"}), 403
 
     # CMP-025: RBAC check
     _check_solution_access(vp.solution_id)
@@ -1184,12 +2296,19 @@ def api_update_saved_viewpoint(vp_id):
     # before the FK inserts below (same as the create route).
     element_id_map, relationship_id_map = _materialize_canvas_items(data)
 
+    # BA-01: refuse ids we cannot honour with a named 400 rather than letting
+    # the insert raise an unhandled IntegrityError. Checked before the DELETEs
+    # below so a rejected autosave leaves the stored layout intact.
+    payload_error = _canvas_payload_error(data)
+    if payload_error:
+        db.session.rollback()
+        return jsonify({"error": payload_error}), 400
+
     if "elements" in data:
         SavedDiagramElement.query.filter_by(diagram_id=vp.id).delete()
-        for el_data in (data["elements"] or []):
-            el_id = el_data.get("element_id")
-            if not el_id:
-                continue
+        # One row per element, not per canvas cell — last position wins.
+        el_items, _ = _collect_canvas_items(data["elements"], "element_id")
+        for el_id, el_data in el_items.items():
             ve = SavedDiagramElement(
                 diagram_id=vp.id,
                 element_id=el_id,
@@ -1203,10 +2322,8 @@ def api_update_saved_viewpoint(vp_id):
 
     if "relationships" in data:
         SavedDiagramRelationship.query.filter_by(diagram_id=vp.id).delete()
-        for rel_data in (data["relationships"] or []):
-            rel_id = rel_data.get("relationship_id")
-            if not rel_id:
-                continue
+        rel_items, _ = _collect_canvas_items(data["relationships"], "relationship_id")
+        for rel_id, rel_data in rel_items.items():
             waypoints = rel_data.get("waypoints")
             vr = SavedDiagramRelationship(
                 diagram_id=vp.id,
@@ -1216,7 +2333,9 @@ def api_update_saved_viewpoint(vp_id):
             )
             db.session.add(vr)
 
-    db.session.commit()
+    failure = _commit_diagram_save()
+    if failure:
+        return failure
 
     body = {
         "id": vp.id,
@@ -1237,9 +2356,8 @@ def api_update_saved_viewpoint(vp_id):
 @login_required
 def api_delete_saved_viewpoint(vp_id):
     """Delete a saved diagram and its junction records (elements remain in catalog)."""
-    from app.models.archimate_core import SavedDiagram
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1258,9 +2376,8 @@ def api_delete_saved_viewpoint(vp_id):
 def api_submit_viewpoint_review(vp_id):
     """Submit a viewpoint/diagram for ARB review."""
     from datetime import datetime as _dt
-    from app.models.archimate_core import SavedDiagram
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return api_error("Viewpoint not found", 404)
 
@@ -1327,10 +2444,48 @@ def api_elements_search():
         ).subquery()
         query = query.filter(ArchiMateElement.id.in_(linked_ids))
 
+    # ARCH-012: make the repository's data-quality metrics ("67 elements with
+    # no description", "88 orphaned", "69 unlinked to solutions") into
+    # actionable, filtered worklists instead of just a static count. The
+    # elements.html "Advanced" panel already sent has_rels/has_solutions to
+    # this endpoint, but nothing here read them - the dropdowns silently did
+    # nothing. has_desc is new, for the description metric.
+    from app.models.archimate_core import ArchiMateRelationship
+
+    has_desc = request.args.get("has_desc", "").strip().lower()
+    if has_desc == "no":
+        query = query.filter(
+            db.or_(ArchiMateElement.description.is_(None), ArchiMateElement.description == "")
+        )
+    elif has_desc == "yes":
+        query = query.filter(
+            ArchiMateElement.description.isnot(None), ArchiMateElement.description != ""
+        )
+
+    has_rels = request.args.get("has_rels", "").strip().lower()
+    if has_rels in ("yes", "no"):
+        related_ids = db.session.query(ArchiMateRelationship.source_id).union(
+            db.session.query(ArchiMateRelationship.target_id)
+        ).subquery()
+        if has_rels == "no":
+            query = query.filter(ArchiMateElement.id.notin_(db.session.query(related_ids)))
+        else:
+            query = query.filter(ArchiMateElement.id.in_(db.session.query(related_ids)))
+
+    has_solutions = request.args.get("has_solutions", "").strip().lower()
+    if has_solutions in ("yes", "no"):
+        from app.models.solution_archimate_element import SolutionArchiMateElement
+        linked_sol_ids = db.session.query(SolutionArchiMateElement.element_id).subquery()
+        if has_solutions == "no":
+            query = query.filter(ArchiMateElement.id.notin_(db.session.query(linked_sol_ids)))
+        else:
+            query = query.filter(ArchiMateElement.id.in_(db.session.query(linked_sol_ids)))
+
+    _default_limit = 200 if (has_desc or has_rels in ("yes", "no") or has_solutions in ("yes", "no")) else 30
     try:
-        limit = min(int(request.args.get("limit", 30)), 200)
+        limit = min(safe_int_arg("limit", _default_limit, minimum=1, maximum=MAX_PAGE_SIZE), 200)
     except (ValueError, TypeError):
-        limit = 30
+        limit = _default_limit
 
     elements = query.order_by(ArchiMateElement.name).limit(limit).all()
 
@@ -1399,6 +2554,22 @@ def api_element_detail(element_id):
     if not el:
         return jsonify({"error": "Element not found"}), 404
 
+    # Tenant guard: this handler uses the non-TenantMixin archimate_core model
+    # and raw SQL keyed by element_id, so a cross-org id would leak its linked
+    # solutions. Validate ownership before any downstream query. No-op for
+    # system contexts / legacy rows with no organization_id.
+    from flask import g as _g
+    _org = getattr(_g, "current_org_id", None)
+    if _org is not None:
+        _owner = getattr(el, "organization_id", None)
+        if _owner is None:
+            _owner = db.session.execute(
+                db.text("SELECT organization_id FROM archimate_elements WHERE id = :id"),
+                {"id": element_id},
+            ).scalar()
+        if _owner is not None and _owner != _org:
+            return jsonify({"error": "Element not found"}), 404
+
     rel_count = ArchiMateRelationship.query.filter(
         db.or_(
             ArchiMateRelationship.source_id == element_id,
@@ -1415,16 +2586,21 @@ def api_element_detail(element_id):
     # REQ-CMP-001: Enrich with linked solutions, governance, capabilities
     linked_solutions = []
     try:
-        sol_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text(  # tenant-filtered
+        # solution_archimate_elements carries no organization_id, so the org
+        # predicate goes on the joined solutions row. element_id is already
+        # ownership-checked above; this stops a shared element from listing
+        # another org's solutions.
+        _org_and_sol = " AND s.organization_id = :org" if _org is not None else ""
+        sol_rows = db.session.execute(
+            db.text(
                 "SELECT sae.solution_id, s.name, s.adm_phase, sae.element_role "
                 "FROM solution_archimate_elements sae "
                 "JOIN solutions s ON s.id = sae.solution_id "
-                "WHERE sae.element_id = :eid "
+                f"WHERE sae.element_id = :eid{_org_and_sol} "
                 "ORDER BY s.name "
                 "LIMIT 20"
             ),
-            {"eid": element_id},
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchall()
         for row in sol_rows:
             linked_solutions.append({
@@ -1433,25 +2609,42 @@ def api_element_detail(element_id):
             })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Solution link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
-    # Linked capabilities
+    # Linked capabilities. Found broken (25 Sep 2026): this referenced
+    # "business_capabilities"/"capability_archimate_elements", which do not
+    # exist under those names anywhere in the schema (the real tables are
+    # business_capability, singular, and capability_archimate_classifications
+    # -- see ADR 0008 on the six competing capability stores). The resulting
+    # UndefinedTable aborted the whole request's transaction
+    # (psycopg2.errors.InFailedSqlTransaction), silently blanking every
+    # LATER block in this handler including GAP-INT-007's interface_metadata
+    # -- caught by a browser cross-check of a just-created interface, not by
+    # reading source. Pointed at the real mapping table; every except in this
+    # handler also now rolls back so one broken legacy block can never again
+    # poison its siblings.
     linked_capabilities = []
     try:
-        cap_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id join)
-            db.text(  # tenant-filtered
+        # _org_and_cap is one of two hardcoded literal clauses selected by
+        # `_org is not None`; the actual org value is always bound as :org,
+        # never interpolated -- no request input reaches the query text.
+        _org_and_cap = " AND bc.organization_id = :org" if _org is not None else ""
+        cap_rows = db.session.execute(
+            db.text(
                 "SELECT DISTINCT bc.id, bc.name, bc.level "
-                "FROM business_capabilities bc "
-                "JOIN capability_archimate_elements cae ON cae.capability_id = bc.id "
-                "WHERE cae.archimate_element_id = :eid "
+                "FROM business_capability bc "
+                "JOIN capability_archimate_classifications cae ON cae.capability_id = bc.id "
+                f"WHERE cae.archimate_element_id = :eid{_org_and_cap} "  # nosec B608
                 "ORDER BY bc.name "
                 "LIMIT 20"
             ),
-            {"eid": element_id},
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchall()
         for row in cap_rows:
             linked_capabilities.append({"id": row[0], "name": row[1], "level": row[2]})
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Capability link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # Connected elements (relationships with names)
     connected = []
@@ -1471,6 +2664,7 @@ def api_element_detail(element_id):
                 })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Connected elements query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # GAP-CMP-008: Requirements linked via realization
     linked_requirements = []
@@ -1488,6 +2682,7 @@ def api_element_detail(element_id):
                 })
     except Exception as exc:  # noqa: BLE001
         current_app.logger.debug("Requirements link query failed for element %s: %s", element_id, exc)
+        db.session.rollback()
 
     # GAP-CMP-009: Custom properties (data classification, PII, etc.)
     cp = {}
@@ -1506,6 +2701,7 @@ def api_element_detail(element_id):
                 interface_metadata = meta.to_dict()
         except Exception:  # noqa: BLE001
             current_app.logger.debug("CMP-detail: interface metadata lookup failed for element %s", element_id)
+            db.session.rollback()
 
     return jsonify({
         "id": el.id,
@@ -1676,12 +2872,12 @@ def api_create_snapshot(vp_id):
     import json as _json
 
     from app.models.archimate_core import (
-        ArchiMateRelationship, SavedDiagram,
+        ArchiMateRelationship,
     )
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
     db.create_all()  # migration-exempt: creates archimate_viewpoint_snapshots if not yet present
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -1762,7 +2958,13 @@ def api_create_snapshot(vp_id):
 @login_required
 def api_list_snapshots(vp_id):
     """List all snapshots for a saved viewpoint, newest first."""
+    from app.models.archimate_core import SavedDiagram
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
+    from app.utils.route_guards import require_entity
+
+    # An empty snapshot list for a viewpoint that does not exist is
+    # indistinguishable from a real viewpoint with no snapshots.
+    require_entity(SavedDiagram, vp_id, description="Saved viewpoint not found")
 
     snapshots = (
         ArchimateViewpointSnapshot.query
@@ -1816,7 +3018,7 @@ def api_restore_snapshot(vp_id, sid):
     import json as _json
 
     from app.models.archimate_core import (
-        SavedDiagram, SavedDiagramElement, SavedDiagramRelationship,
+        SavedDiagramElement, SavedDiagramRelationship,
     )
     from app.models.archimate_viewpoint import ArchimateViewpointSnapshot
 
@@ -1824,7 +3026,7 @@ def api_restore_snapshot(vp_id, sid):
     if not snapshot or snapshot.viewpoint_id != vp_id:
         return jsonify({"error": "Snapshot not found"}), 404
 
-    vp = db.session.get(SavedDiagram, vp_id)
+    vp = _get_saved_diagram_scoped(vp_id)
     if not vp:
         return jsonify({"error": "Diagram not found"}), 404
 
@@ -2062,13 +3264,19 @@ def api_composer_generate():
     existing_names: set = set()
     if solution_id:
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
-                db.text(  # tenant-filtered
+            # solution_id arrives in the request body unvalidated, and
+            # solution_archimate_elements has no organization_id — put the
+            # predicate on archimate_elements, which does.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and = " AND ae.organization_id = :org" if _org is not None else ""
+            rows = db.session.execute(
+                db.text(
                     "SELECT ae.name FROM archimate_elements ae "
                     "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                    "WHERE sae.solution_id = :sid"
+                    f"WHERE sae.solution_id = :sid{_org_and}"
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **({"org": _org} if _org is not None else {})},
             ).fetchall()
             existing_names = {(r.name or "").lower() for r in rows}
         except Exception:  # noqa: BLE001
@@ -2164,7 +3372,7 @@ def api_composer_generate_contextual():
     viewpoint_type = (data.get("viewpoint_type") or "").strip()
     business_domain = (data.get("business_domain") or "").strip() or None
     solution_id = data.get("solution_id")
-    options = data.get("options") or {}
+    data.get("options") or {}
 
     if phase not in _PHASE_ELEMENT_MAP:
         return jsonify({"error": "phase must be one of: A, B, C, D"}), 400
@@ -2208,13 +3416,19 @@ def api_composer_generate_contextual():
         existing_names: set = set()
         if solution_id:
             try:
-                rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
-                    db.text(  # tenant-filtered
+                # Same reasoning as the dedup query in generate_from_description:
+                # solution_id is unvalidated request input and
+                # solution_archimate_elements has no organization_id.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                _org_and = " AND ae.organization_id = :org" if _org is not None else ""
+                rows = db.session.execute(
+                    db.text(
                         "SELECT ae.name FROM archimate_elements ae "
                         "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                        "WHERE sae.solution_id = :sid"
+                        f"WHERE sae.solution_id = :sid{_org_and}"
                     ),
-                    {"sid": solution_id},
+                    {"sid": solution_id, **({"org": _org} if _org is not None else {})},
                 ).fetchall()
                 existing_names = {(r.name or "").lower() for r in rows}
             except Exception as exc:
@@ -3204,7 +4418,7 @@ def api_composer_explain():
             "across {} layer{}: {}.".format(
                 el_count, rel_count,
                 len(layers_present), "s" if len(layers_present) != 1 else "",
-                ", ".join(_LAYER_DISPLAY.get(l, l) for l in layers_present),
+                ", ".join(_LAYER_DISPLAY.get(item, item) for item in layers_present),
             )
         )
 
@@ -3467,7 +4681,6 @@ def api_composer_delta():
     from app.models.archimate_core import (
         ArchiMateElement,
         ArchiMateRelationship,
-        SavedDiagram,
     )
 
     data = request.get_json(silent=True) or {}
@@ -3477,8 +4690,8 @@ def api_composer_delta():
     if not baseline_id or not target_id:
         return jsonify({"error": "baseline_viewpoint_id and target_viewpoint_id are required"}), 400
 
-    baseline_vp = db.session.get(SavedDiagram, baseline_id)
-    target_vp = db.session.get(SavedDiagram, target_id)
+    baseline_vp = _get_saved_diagram_scoped(baseline_id)
+    target_vp = _get_saved_diagram_scoped(target_id)
 
     if not baseline_vp:
         return jsonify({"error": f"Baseline diagram {baseline_id} not found"}), 404
@@ -3955,7 +5168,7 @@ def api_list_patterns():
         for cp in customs:
             try:
                 pdata = _json.loads(cp.pattern_json)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError):  # fabricated-ok: unparseable pattern JSON yields empty lists, not fabricated content
                 pdata = {"elements": [], "relationships": []}
             results.append({
                 "id": cp.id,
@@ -4005,7 +5218,6 @@ def api_create_pattern():
             name=name,
             description=(data.get("description") or "").strip() or None,
             pattern_json=_json.dumps(pattern_data),
-            is_builtin=False,
             created_by=current_user.id if current_user and hasattr(current_user, "id") else None,
         )
         db.session.add(pat)
@@ -4354,12 +5566,22 @@ def _infer_relationships(elements, sentences):
 @login_required
 def api_list_element_comments(element_id):
     """List comments for an ArchiMate element, ordered by created_at."""
+    from app.models.archimate_core import ArchiMateElement
+    from app.utils.route_guards import require_entity
+
+    # No comments for a nonexistent element must not read as "no comments yet".
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
+
     try:
         from app.models.archimate_viewpoint import ArchimateElementComment
     except ImportError:
         # Comment storage isn't provisioned (no ArchimateElementComment model).
-        # Degrade to "no comments" instead of 500ing the element view.
-        return jsonify({"comments": []})
+        # An empty list here was indistinguishable from "this element has no
+        # comments", so the panel silently claimed there were none.
+        current_app.logger.exception(
+            "ArchimateElementComment model unavailable; comments cannot be listed"
+        )
+        return jsonify({"error": "Comments are unavailable"}), 500
 
     viewpoint_id = request.args.get("viewpoint_id", type=int)
     query = ArchimateElementComment.query.options(
@@ -4481,18 +5703,35 @@ def api_create_audit_entry():
     if not action:
         return jsonify({"error": "action is required"}), 400
 
+    def _as_int(value):
+        # entity_id is an Integer column, but the composer sometimes passes a
+        # JointJS cell id (a string) for elements not yet persisted. Coerce, and
+        # store NULL rather than 500 when it isn't an int (CMP-03).
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     entry = ArchimateAuditLog(
-        viewpoint_id=data.get("viewpoint_id"),
+        viewpoint_id=_as_int(data.get("viewpoint_id")),
         user_id=current_user.id,
         action=action,
         entity_type=data.get("entity_type"),
-        entity_id=data.get("entity_id"),
+        entity_id=_as_int(data.get("entity_id")),
         entity_name=data.get("entity_name"),
         old_value=data.get("old_value"),
         new_value=data.get("new_value"),
     )
-    db.session.add(entry)
-    db.session.commit()
+    try:
+        db.session.add(entry)
+        db.session.commit()
+    except Exception as exc:  # noqa: BLE001
+        # An audit write must never break the user action it records. Roll back,
+        # log server-side for governance follow-up, and report a soft failure the
+        # fire-and-forget client ignores.
+        db.session.rollback()
+        current_app.logger.error("composer audit-log write failed: %s", exc)
+        return jsonify({"error": "audit write failed", "logged": False}), 202
 
     return jsonify({"id": entry.id, "action": entry.action}), 201
 
@@ -4636,22 +5875,37 @@ def update_element_alignment_score(element_id):
 
 
 # ── CMP-043: Custom element properties (tagged values) ──────────────────────
+# ArchiMate 3.2 Properties mechanism - arbitrary key/value metadata on any
+# element (interface protocol, WRICEF status, T-code, module owner, etc.),
+# surfaced generically rather than requiring a new element type or field per
+# tag. Reads/writes archimate_core.ArchiMateElement.custom_properties - the
+# canonical model's own JSON column - not models.ArchiMateElement.properties,
+# a same-table (extend_existing), different-column duplicate these two routes
+# previously wrote to. That column is real but was never read by anything
+# (not the composer detail panel, not any other route), so every PUT here
+# was silently invisible - the exact defect this fix closes.
+#
+# custom_properties already carries system-managed keys written by other
+# features via PATCH /api/elements/<id> (data_classification, contains_pii,
+# lifecycle_history - see patch_element, GAP-CMP-009/004). A user-facing
+# generic Properties editor must not be able to overwrite those by replacing
+# the whole dict, so user tagged values live under a reserved "tags"
+# sub-object instead of at the top level.
+
+_RESERVED_CUSTOM_PROPERTY_KEYS = {"data_classification", "contains_pii", "lifecycle_history"}
+
 
 @archimate_bp.route("/api/elements/<int:element_id>/properties", methods=["GET"])
 @login_required
 def get_element_properties(element_id):
-    """CMP-043: Get custom properties for an element."""
-    import json
-    from app.models.models import ArchiMateElement as AE
+    """CMP-043: Get user-defined ArchiMate Properties (tagged values) for an element."""
+    from app.models.archimate_core import ArchiMateElement
 
-    el = AE.query.get(element_id)
+    el = db.session.get(ArchiMateElement, element_id)
     if not el:
         return jsonify({"error": "Element not found"}), 404
-    try:
-        props = json.loads(el.properties) if el.properties else {}
-    except (json.JSONDecodeError, TypeError):
-        props = {}
-    return jsonify(props)
+    cp = el.custom_properties or {}
+    return jsonify(cp.get("tags") or {})
 
 
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
@@ -4659,10 +5913,15 @@ def get_element_properties(element_id):
 @archimate_bp.route("/api/elements/<int:element_id>/properties", methods=["PUT"])
 @login_required
 def put_element_properties(element_id):
-    """CMP-043: Replace custom properties for an element."""
-    from app.models.models import ArchiMateElement as AE
+    """CMP-043: Replace user-defined ArchiMate Properties (tagged values) for an element.
 
-    el = AE.query.get(element_id)
+    Only the "tags" sub-object is replaced - other custom_properties keys
+    managed by different features (data_classification, contains_pii,
+    lifecycle_history) are left untouched.
+    """
+    from app.models.archimate_core import ArchiMateElement
+
+    el = db.session.get(ArchiMateElement, element_id)
     if not el:
         return jsonify({"error": "Element not found"}), 404
     data = request.get_json(silent=True)
@@ -4670,8 +5929,14 @@ def put_element_properties(element_id):
         return jsonify({"error": "Invalid JSON"}), 400
     if not isinstance(data, dict):
         return jsonify({"error": "Properties must be a JSON object"}), 400
-    import json
-    el.properties = json.dumps(data)
+    if any(k in _RESERVED_CUSTOM_PROPERTY_KEYS for k in data):
+        return jsonify({"error": "Property keys clash with reserved system keys"}), 400
+    if not all(isinstance(k, str) and isinstance(v, str) for k, v in data.items()):
+        return jsonify({"error": "Properties must be string key/value pairs"}), 400
+
+    existing_cp = dict(el.custom_properties or {})
+    existing_cp["tags"] = data
+    el.custom_properties = existing_cp
     db.session.commit()
     return jsonify(data)
 
@@ -4812,6 +6077,12 @@ _EDITOR_TIMEOUT_SECS = 30    # user considered gone after 30s without ping
 @login_required
 def api_diagram_active_editors(diagram_id):
     """Return list of users currently editing this diagram (heartbeat within 30s)."""
+    from app.models.archimate_core import SavedDiagram
+    from app.utils.route_guards import require_entity
+
+    # An empty editor list for a diagram that does not exist is fabricated data.
+    require_entity(SavedDiagram, diagram_id, description="Diagram not found")
+
     now = _time.time()
     key = str(diagram_id)
     with _active_editors_lock:
@@ -4824,7 +6095,9 @@ def api_diagram_active_editors(diagram_id):
     if user_ids:
         try:
             from app.models.user import User
-            users = User.query.filter(User.id.in_(user_ids)).all()
+            users = User.query.filter(
+                User.id.in_(user_ids), User.organization_id == g.current_org_id
+            ).all()
             editors = [{"id": u.id, "name": u.full_name() or u.email, "email": u.email} for u in users]
         except Exception:  # noqa: BLE001
             editors = [{"id": uid, "name": f"User {uid}", "email": ""} for uid in user_ids]
@@ -5059,7 +6332,7 @@ def api_import_csv():
                         archimate_element_id=el.id,
                     )
                     db.session.add(sae)
-                except Exception:  # noqa: BLE001  # fabricated-values-ok
+                except Exception:  # noqa: BLE001  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass  # solution link is best-effort
 
             created.append({"id": el.id, "name": el.name, "type": el.type, "layer": el.layer})
@@ -5120,6 +6393,26 @@ def _resolve_layer(element_type: str, explicit_layer: str = "") -> str:
         return explicit_layer.strip().capitalize()
     normalised = (element_type or "").replace(" ", "").replace("_", "").lower()
     return _TYPE_TO_LAYER.get(normalised, "Application")
+
+
+def _composer_url_for_elements(element_ids, name: str):
+    """Build a real, openable composer URL for a set of element ids.
+
+    The composer only reads `viewpoint_id` (plus `solution_id`/`layer`), so a
+    literal `?elements=1,2,3` string is silently ignored — this creates a
+    real `SavedDiagram` via the shared service (same helper D4 already uses)
+    and returns its `?viewpoint_id=` URL, or None if there is nothing to
+    open.
+    """
+    if not element_ids:
+        return None
+    from app.services.archimate_composer_service import create_diagram
+
+    return create_diagram(
+        element_ids,
+        name,
+        created_by=current_user.id if current_user.is_authenticated else None,
+    )
 
 
 @archimate_bp.route("/import", methods=["GET"])
@@ -5243,7 +6536,9 @@ def api_import_elements_csv():
         "error_count": len(errors),
         "total_rows": len(rows),
         "element_ids": [e["id"] for e in created_ids],
-        "composer_url": f"/archimate/composer?elements={','.join(str(e['id']) for e in created_ids)}" if created_ids else None,
+        "composer_url": _composer_url_for_elements(
+            [e["id"] for e in created_ids], "Imported Elements"
+        ),
     })
 
 
@@ -5302,13 +6597,12 @@ def api_import_document():
             extracted_data, interaction = loop.run_until_complete(
                 analysis_service._analyze_text_file(file_path, None, "architecture")
             )
-            interactions = [interaction] if interaction else []
 
         # Normalize element types
         from app.services.archimate.element_type_normalizer import ElementTypeNormalizer
         normalizer = ElementTypeNormalizer()
         elements = normalizer.normalize_elements(extracted_data.get("elements", []))
-        relationships = extracted_data.get("relationships", [])
+        extracted_data.get("relationships", [])
 
         if not elements:
             metadata = extracted_data.get("metadata", {})
@@ -5373,7 +6667,7 @@ def api_import_document():
             "error_count": len(errors),
             "total_elements": len(elements),
             "element_ids": all_ids,
-            "composer_url": f"/archimate/composer?elements={','.join(str(eid) for eid in all_ids)}" if all_ids else None,
+            "composer_url": _composer_url_for_elements(all_ids, "Imported Document Elements"),
         })
 
     except Exception as e:
@@ -5428,12 +6722,14 @@ def api_create_diagram_from_elements():
     db.session.add(diagram)
     db.session.flush()
 
-    # Position elements in a grid, grouped by layer
+    # Position elements in a grid, grouped by layer. Dimensions match the
+    # composer's rendered node (200x130) so rows do not overlap; see
+    # _saved_diagram_from_import for the same fix.
     y_offset = 40
     cols_per_row = 4
-    elem_w, elem_h = 180, 64
-    gap_x, gap_y = 30, 20
-    layer_gap = 40
+    elem_w, elem_h = 200, 130
+    gap_x, gap_y = 60, 70
+    layer_gap = 90
 
     for layer_name in layer_order:
         layer_elements = by_layer.pop(layer_name, [])
@@ -5484,7 +6780,7 @@ def api_create_diagram_from_elements():
         "diagram_id": diagram.id,
         "diagram_name": diagram.name,
         "element_count": len(elements),
-        "composer_url": f"/archimate/composer?viewpoint={diagram.id}",
+        "composer_url": f"/archimate/composer?viewpoint_id={diagram.id}",
     }), 201
 
 
@@ -5506,7 +6802,6 @@ def api_composer_element_metrics():
     from app.models.archimate_core import ArchiMateElement
     from app.models.application_portfolio import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability
-    from app.models.solution_archimate_element import SolutionArchiMateElement
 
     raw_ids = request.args.get("element_ids", "")
     if not raw_ids:
@@ -5687,7 +6982,7 @@ def api_import_oef():
         raw = file.read()
         if len(raw) > 10 * 1024 * 1024:
             return jsonify({"error": "File exceeds 10MB limit"}), 400
-        root = ET.fromstring(raw)  # noqa: S314
+        root = safe_xml.fromstring(raw)
     except ET.ParseError as exc:
         return jsonify({"error": f"XML parse error: {exc}"}), 400
     except Exception as exc:  # noqa: BLE001
@@ -5969,7 +7264,7 @@ def api_shared_elements():
     min_solutions = request.args.get("min_solutions", 2, type=int)
     if min_solutions < 2:
         min_solutions = 2
-    limit = min(request.args.get("limit", 20, type=int), 100)
+    limit = min(safe_int_arg('limit', 20, minimum=1, maximum=500), 100)
 
     # Subquery: element_id → distinct solution count
     shared_q = (
@@ -6007,7 +7302,37 @@ def api_shared_elements():
     })
 
 
-# ── GOV-01: Cross-Solution Dependency Graph ──────────────────────────────────
+# ── Impact / dependency graph — the interactive blast-radius lens ────────────
+
+
+@archimate_bp.route("/elements/<int:element_id>/impact", methods=["GET"])
+@login_required
+def element_impact_graph_page(element_id):
+    """Interactive dependency graph centred on one element — its blast radius.
+
+    Renders the node-link view; the graph data is fetched from
+    api_element_impact_graph so a click on any node can re-centre without a
+    full page load.
+    """
+    from app.models.archimate_core import ArchiMateElement  # noqa: PLC0415
+
+    element = db.session.get(ArchiMateElement, element_id)
+    if element is None:
+        abort(404)
+    return render_template("architecture/impact_graph.html", element=element)
+
+
+@archimate_bp.route("/api/element/<int:element_id>/impact-graph", methods=["GET"])
+@login_required
+def api_element_impact_graph(element_id):
+    """Nodes + edges of the blast radius around an element, to a bounded depth."""
+    from app.services.impact_graph import build_impact_graph  # noqa: PLC0415
+
+    depth = request.args.get("depth", default=2, type=int)
+    graph = build_impact_graph(element_id, depth=depth)
+    if graph is None:
+        return jsonify({"error": "Element not found"}), 404
+    return jsonify(graph)
 
 
 @archimate_bp.route("/api/impact-analysis/<int:element_id>", methods=["GET"])

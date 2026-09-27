@@ -1,0 +1,41 @@
+{#
+  Programme wizard step navigation.
+
+  Rendered inside the transformationProgrammeIntake() x-data root, so it reads
+  currentStep/steps directly rather than declaring its own x-data -- a nested
+  x-data here would put currentStep out of scope for the buttons.
+#}
+<nav aria-label="Programme setup progress" class="mt-6">
+  <ol class="grid gap-2 sm:grid-cols-6" role="list">
+    <template x-for="(step, index) in steps" :key="step.id">
+      <li class="contents">
+        <button type="button"
+                class="group flex w-full flex-col gap-2 rounded-md border border-border bg-card p-3 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                :class="index === currentStep ? 'border-primary bg-accent' : ''"
+                :disabled="!canVisit(index)"
+                :aria-current="index === currentStep ? 'step' : false"
+                @click="goTo(index)"
+                :data-testid="'wizard-step-' + step.id">
+          <span class="flex items-center gap-2">
+            <span class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs font-semibold"
+                  :class="index === currentStep
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : (isComplete(index) ? 'border-primary text-primary' : 'text-muted-foreground')"
+                  aria-hidden="true"
+                  x-text="isComplete(index) && index !== currentStep ? '✓' : (index + 1)"></span>
+            <span class="text-xs font-medium text-foreground" x-text="step.label"></span>
+          </span>
+          <span class="h-1 w-full rounded-full bg-muted" aria-hidden="true">
+            <span class="block h-1 rounded-full"
+                  :class="isComplete(index) || index === currentStep ? 'bg-primary' : ''"
+                  :style="'width: ' + (isComplete(index) ? 100 : (index === currentStep ? 50 : 0)) + '%'"></span>
+          </span>
+        </button>
+      </li>
+    </template>
+  </ol>
+  <p class="mt-2 text-xs text-muted-foreground">
+    Step <span x-text="currentStep + 1"></span> of <span x-text="steps.length"></span> —
+    <span x-text="steps[currentStep].label"></span>
+  </p>
+</nav>

@@ -8,8 +8,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Work Packages', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -28,7 +28,7 @@
       <p class="text-muted-foreground">Manage implementation work packages and track progress.</p>
     </div>
     <button type="button" class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2"
-            @click="Platform.modal.open('create-work-package-modal')">
+            @click="openCreateModal()">
       <i data-lucide="plus" class="h-4 w-4 mr-2"></i>
       New Work Package
     </button>
@@ -42,10 +42,10 @@
       <div class="relative flex-1 max-w-sm">
         <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
         <input type="search" placeholder="Search work packages..." class="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            @input.debounce.300ms="setSearch($event.target.value)">
+            @input.debounce.300ms="setSearch($event.target.value)" aria-label="Search work packages...">
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <select class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        <select aria-label="Work packages per page" class="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 @change="setPerPage($event.target.value)">
           <option value="10">10 / page</option>
           <option value="25" selected>25 / page</option>
@@ -65,7 +65,7 @@
       <span class="font-medium" x-text="selectionCount() + ' selected'"></span>
       <div class="h-4 w-px bg-border"></div>
       <button type="button" @click="confirmBulkDelete()"
-              class="inline-flex items-center gap-1.5 text-destructive hover:text-destructive/80 font-medium transition-colors">
+              class="inline-flex items-center gap-1.5 text-destructive-emphasis hover:text-destructive-emphasis/80 font-medium transition-colors">
         <i data-lucide="trash-2" class="h-4 w-4"></i>
         Delete selected
       </button>
@@ -92,7 +92,7 @@
         <thead class="border-b bg-muted/40">
           <tr>
             <th class="w-10 h-12 px-3 align-middle" scope="col">
-              <input type="checkbox"
+              <input aria-label="Select all work packages" type="checkbox"
                      class="h-4 w-4 rounded border-input text-primary focus:ring-ring cursor-pointer"
                      :checked="items.length > 0 && items.every(function(r){ return _selectedIds.indexOf(r.id) !== -1; })"
                      @change="toggleSelectAll()"
@@ -100,7 +100,7 @@
             </th>
             <th class="w-12 h-12 px-3 text-left align-middle font-medium text-muted-foreground tabular-nums" scope="col">#</th>
             <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-              <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
+              <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
                 Name
                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5"></i>
               </button>
@@ -124,7 +124,7 @@
           </tr>
           {# Error state #}
           <tr x-show="!loading && errorMsg" x-cloak>
-            <td colspan="8" class="px-4 py-12 text-center text-destructive text-sm" x-text="errorMsg"></td>
+            <td colspan="8" class="px-4 py-12 text-center text-destructive-emphasis text-sm" x-text="errorMsg"></td>
           </tr>
           {# Empty state #}
           <tr x-show="!loading && !errorMsg && items.length === 0" x-cloak>
@@ -172,6 +172,12 @@
                   <i data-lucide="pencil" class="h-3 w-3"></i>
                   Edit
                 </button>
+                <button type="button" @click.stop="deleteRow(row)"
+                        class="ml-1 inline-flex items-center gap-1.5 rounded-md border border-destructive/30 px-3 py-1.5 text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 transition-colors"
+                        :aria-label="'Delete ' + row.name">
+                  <i data-lucide="trash-2" class="h-3 w-3"></i>
+                  Delete
+                </button>
               </td>
             </tr>
           </template>
@@ -185,21 +191,22 @@
         Showing <span class="font-medium text-foreground" x-text="pageStart"></span>-<span class="font-medium text-foreground" x-text="pageEnd"></span>
         of <span class="font-medium text-foreground" x-text="totalItems"></span> items
       </p>
+      {# duplicate-breadcrumb-ok: table-pagination nav, not a breadcrumb -- flagged only because its Prev/Next buttons use chevron icons, the same shape heuristic keys on; real breadcrumb is the block above. #}
       <nav class="flex items-center gap-1" aria-label="Pagination">
-        <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
           <i data-lucide="chevron-left" class="h-4 w-4"></i>
         </button>
         <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
           <span>
-            <button x-show="pg !== '...'" x-cloak
+            <button type="button" x-show="pg !== '...'" x-cloak
                     class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
                     :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
                     @click="goToPage(pg)" x-text="pg"></button>
             <span x-show="pg === '...'" x-cloak class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
           </span>
         </template>
-        <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
           <i data-lucide="chevron-right" class="h-4 w-4"></i>
         </button>
@@ -212,22 +219,22 @@
   {% call modal(id='edit-work-package-modal', title='Edit Work Package', size='lg') %}
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" x-model="editForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="Work package name">
+               placeholder="Work package name" aria-label="Name">
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Summary</label>
         <textarea x-model="editForm.summary" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Brief summary"></textarea>
+                  placeholder="Brief summary" aria-label="Summary"></textarea>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium mb-1">Status</label>
           <select x-model="editForm.status"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Status">
             <option value="Planned">Planned</option>
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
@@ -238,7 +245,7 @@
         <div>
           <label class="block text-sm font-medium mb-1">Priority</label>
           <select x-model="editForm.priority"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Priority">
             <option value="Critical">Critical</option>
             <option value="High">High</option>
             <option value="Normal">Normal</option>
@@ -251,20 +258,20 @@
           <label class="block text-sm font-medium mb-1">Progress %</label>
           <input type="number" x-model="editForm.percent_complete" min="0" max="100"
                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                 placeholder="0">
+                 placeholder="0" aria-label="Progress %">
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Due Date</label>
           <input type="date" x-model="editForm.target_date"
-                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Due Date">
         </div>
       </div>
-      <div x-show="editError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="editError"></div>
+      <div x-show="editError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive-emphasis" x-text="editError"></div>
     </div>
     <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
       <button type="button" data-modal-close="edit-work-package-modal"
               class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>
-      <button type="button" @click="saveEdit()" :disabled="editSaving"
+      <button type="button" @click="saveWorkPackage()" :disabled="editSaving"
               class="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
         <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="editSaving" x-cloak></i>
         <span x-text="editSaving ? 'Saving...' : 'Save Changes'"></span>
@@ -276,22 +283,22 @@
   {% call modal(id='create-work-package-modal', title='New Work Package', size='lg') %}
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+        <label class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" x-model="createForm.name" required
                class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-               placeholder="Work package name">
+               placeholder="Work package name" aria-label="Name">
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">Summary</label>
         <textarea x-model="createForm.summary" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Brief summary"></textarea>
+                  placeholder="Brief summary" aria-label="Summary"></textarea>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="block text-sm font-medium mb-1">Status</label>
           <select x-model="createForm.status"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Status">
             <option value="Planned">Planned</option>
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
@@ -302,7 +309,7 @@
         <div>
           <label class="block text-sm font-medium mb-1">Priority</label>
           <select x-model="createForm.priority"
-                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Priority">
             <option value="Critical">Critical</option>
             <option value="High">High</option>
             <option value="Normal" selected>Normal</option>
@@ -315,15 +322,15 @@
           <label class="block text-sm font-medium mb-1">Progress %</label>
           <input type="number" x-model="createForm.percent_complete" min="0" max="100"
                  class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                 placeholder="0">
+                 placeholder="0" aria-label="Progress %">
         </div>
         <div>
           <label class="block text-sm font-medium mb-1">Due Date</label>
           <input type="date" x-model="createForm.target_date"
-                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Due Date">
         </div>
       </div>
-      <div x-show="createError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive" x-text="createError"></div>
+      <div x-show="createError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive-emphasis" x-text="createError"></div>
     </div>
     <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
       <button type="button" data-modal-close="create-work-package-modal"
@@ -342,14 +349,14 @@
       This will permanently delete the selected work packages and cannot be undone.
       Type <strong class="text-foreground font-mono">DELETE</strong> to confirm.
     </p>
-    <input type="text" x-model="deleteConfirmText"
+    <input type="text" x-model="bulkConfirmText"
            class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring mb-4"
-           placeholder="DELETE" @keydown.enter="executeBulkDelete()">
+           placeholder="DELETE" @keydown.enter="executeBulkDelete()" aria-label="DELETE">
     <div class="flex justify-end gap-3">
       <button type="button" data-modal-close="bulk-delete-confirm-modal"
               class="inline-flex h-9 items-center justify-center rounded-md border border-input bg-background px-4 text-sm font-medium hover:bg-accent transition-colors">Cancel</button>
       <button type="button" @click="executeBulkDelete()"
-              :disabled="deleteConfirmText !== 'DELETE' || deleteInProgress"
+              :disabled="bulkConfirmText !== 'DELETE' || deleteInProgress"
               class="inline-flex h-9 items-center justify-center rounded-md bg-destructive px-4 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 transition-colors disabled:opacity-50 disabled:pointer-events-none">
         <i data-lucide="loader-2" class="mr-2 h-4 w-4 animate-spin" x-show="deleteInProgress" x-cloak></i>
         <span x-text="deleteInProgress ? 'Deleting...' : 'Delete'"></span>

@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timedelta
 from sqlalchemy import func
 from app.extensions import db

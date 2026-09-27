@@ -105,8 +105,6 @@ def record_quality_skip(solution_id):
         from app.modules.architecture_assistant.services.wizard_quality_gate_service import (
             WizardQualityGateService,
             QualityAssessment,
-            QualityDimension,
-            QualityIssue,
         )
 
         data = request.get_json() or {}

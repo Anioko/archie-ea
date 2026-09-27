@@ -85,7 +85,6 @@ class UsageMeteringService:
     @staticmethod
     def get_monthly_summary(org_id: int, year: int, month: int) -> Dict[str, int]:
         """Return {event_type: count} for every event type recorded in the given month."""
-        from datetime import date
         import calendar
         from sqlalchemy import func
         from app.extensions import db

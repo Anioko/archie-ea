@@ -6,10 +6,20 @@
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_header(title='Capability Applications', description='Applications mapped to business capabilities') }}
+    {{ page_header(title='Capability Applications', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Capability Applications'}], description='Applications mapped to business capabilities') }}
+    {% with active_view = 'applications' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     {% set total = applications|length %}
-    {% set active_count = applications|selectattr('status', 'equalto', 'active')|list|length %}
+    {# Count "Active" using the SAME rule the status column renders with below —
+       (app.status or 'active')|lower == 'active'. The old selectattr('status',
+       'equalto', 'active') missed rows whose status is NULL (shown as Active via
+       the fallback) or differently-cased, so the KPI read 0 while every row said
+       Active. #}
+    {% set ns = namespace(active=0) %}
+    {% for app in applications %}
+        {% if (app.status or 'active')|lower == 'active' %}{% set ns.active = ns.active + 1 %}{% endif %}
+    {% endfor %}
+    {% set active_count = ns.active %}
     {% set mapped_count = applications|selectattr('capability_mappings')|list|length %}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         {{ metrics_card(title='Total', value=total, icon='monitor') }}
@@ -25,7 +35,7 @@
             placeholder="Filter applications..."
             class="w-full sm:w-72 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             @input="filterApps(this.value)"
-        />
+         aria-label="Filter applications..."/>
     </div>
 
     <div data-slot="card" class="rounded-xl border bg-card shadow-sm">
@@ -42,14 +52,14 @@
                 <tr class="hover:bg-muted/30 app-row" data-name="{{ app.name|lower }}">
                     <td class="px-6 py-3 font-medium text-foreground">
                         <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
-                           class="hover:underline text-primary dark:text-primary/80">{{ app.name }}</a>
+                           class="hover:underline text-primary">{{ app.name }}</a>
                     </td>
                     <td class="px-6 py-3">
                         {% set s = (app.status or 'active')|lower %}
                         {% if s == 'active' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">Active</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Active</span>
                         {% elif s == 'retired' or s == 'decommissioned' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">{{ s|title }}</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">{{ s|title }}</span>
                         {% elif s == 'planned' %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">Planned</span>
                         {% else %}
@@ -59,7 +69,7 @@
                     <td class="px-6 py-3 text-muted-foreground">
                         {% set cap_count = app.capability_mappings|length if app.capability_mappings else 0 %}
                         {% if cap_count == 0 %}
-                        <span class="text-xs text-warning">Unmapped</span>
+                        <span class="text-xs text-warning-emphasis">Unmapped</span>
                         {% else %}
                         {{ cap_count }}
                         {% endif %}

@@ -15,10 +15,10 @@ from flask import (
     request,
     current_app,
     send_file,
-    after_this_request,
 )
 from flask_login import login_required
 from sqlalchemy import func, or_
+from werkzeug.wsgi import ClosingIterator
 
 from app.decorators import audit_log, require_roles
 from app.extensions import db
@@ -31,6 +31,7 @@ from app.services.architecture_search_service import ArchitectureSearchService
 from app.services.architecture_import_export_service import (
     ArchitectureImportExportService,
 )
+from app.utils.pagination import safe_int_arg
 
 architecture_crud_bp = Blueprint(
     "architecture_crud",
@@ -56,9 +57,17 @@ def list_elements():
       ?layer=<layer>    — pre-selects the layer filter
       ?q=<term>         — initial search term
     """
+    # ArchiMate 3.2 has six layers plus concepts that belong to none of them:
+    # Location and Grouping (§4.5). Listing only the six meant those elements
+    # existed in the table, appeared in the list below, and were absent from
+    # every count above it - a repository holding 74 elements summarised 59 of
+    # them, and the 15 Locations from an imported landscape diagram were
+    # invisible. Physical is where Location, Equipment, Facility and Material
+    # live; Other is Grouping and anything unclassified.
     _LAYER_ORDER = [
         "Motivation", "Strategy", "Business",
         "Application", "Technology", "Implementation",
+        "Physical", "Other",
     ]
 
     # Count per layer
@@ -100,19 +109,28 @@ def list_elements():
     )
 
     # Elements with no relationships (neither source nor target) — use raw scalar subquery
+    from flask import g as _g
     from sqlalchemy import text as _text
+    # Scope raw counts to the caller's org so they match the (org-scoped) total.
+    _org = getattr(_g, "current_org_id", None)
+    _oc = " AND organization_id = :org" if _org is not None else ""
+    _pp = {"org": _org} if _org is not None else {}
     total_count = ArchitectureElement.query.count()
     with_rels_count = db.session.execute(_text(
         "SELECT COUNT(DISTINCT id) FROM archimate_elements WHERE id IN "
-        "(SELECT source_id FROM archimate_relationships WHERE source_id IS NOT NULL "
-        "UNION SELECT target_id FROM archimate_relationships WHERE target_id IS NOT NULL)"
-    )).scalar() or 0
+        "(SELECT source_id FROM archimate_relationships WHERE source_id IS NOT NULL" + _oc + " "
+        "UNION SELECT target_id FROM archimate_relationships WHERE target_id IS NOT NULL" + _oc + ")"
+        + _oc
+    ), _pp).scalar() or 0
     no_rels_count = max(0, total_count - with_rels_count)
 
-    # Elements not linked to any solution
+    # Elements not linked to any solution (scope via the element's org)
     with_solutions_count = db.session.execute(_text(
-        "SELECT COUNT(DISTINCT element_id) FROM solution_archimate_elements WHERE element_id IS NOT NULL"
-    )).scalar() or 0
+        "SELECT COUNT(DISTINCT sae.element_id) FROM solution_archimate_elements sae "
+        "JOIN archimate_elements e ON e.id = sae.element_id "
+        "WHERE sae.element_id IS NOT NULL"
+        + (" AND e.organization_id = :org" if _org is not None else "")
+    ), _pp).scalar() or 0
     no_solutions_count = max(0, total_count - with_solutions_count)
 
     return render_template("architecture/elements.html",
@@ -146,7 +164,7 @@ def create_element():
     # Create
     element = ArchitectureElement(
         name=data["name"],
-        element_type=data["element_type"],
+        type=data["element_type"],  # model column is 'type', not 'element_type'
         layer=data.get("layer"),
         description=data.get("description"),
     )
@@ -208,7 +226,7 @@ def update_element(element_id):
 
     # Update
     element.name = data.get("name", element.name)
-    element.element_type = data.get("element_type", element.element_type)
+    element.type = data.get("element_type", element.type)  # column is 'type'
     element.layer = data.get("layer", element.layer)
     element.description = data.get("description", element.description)
 
@@ -257,16 +275,59 @@ def delete_element(element_id):
 @architecture_crud_bp.route("/relationships", methods=["GET"])
 @login_required
 def list_relationships():
-    """List all relationships."""
-    page = request.args.get("page", 1, type=int)
+    """List all relationships.
+
+    F-05(b), Capgemini dry-run: this used to query `Relationship` /
+    `architecture_elements` — a legacy pair abandoned in favour of
+    ArchiMateRelationship/ArchiMateElement (the tables the Composer and
+    everything else actually write to), empty in every environment checked.
+    The page rendered "20 rows of bare numeric IDs with a — type" because the
+    only other route sharing this template (unified_low_priority.
+    architecture_relationships, a different URL) queried the right table but
+    still fed the template `rel.source_element`/`rel.relationship_type` —
+    attributes ArchiMateRelationship does not have (it has `source_id`/
+    `target_id` FKs and a `type` column, no ORM relationship() to the element).
+    Jinja silently treats a missing attribute as falsy and falls back to the
+    bare id, which is how BOTH routes produced the same "IDs, no names" bug
+    from two different causes. Resolve real names/types here explicitly
+    instead of relying on attributes that were never declared.
+    """
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    page = safe_int_arg('page', 1, minimum=1)
     per_page = 20
 
-    relationships = Relationship.query.paginate(page=page, per_page=per_page)
+    pagination = ArchiMateRelationship.query.order_by(
+        ArchiMateRelationship.type
+    ).paginate(page=page, per_page=per_page)
+
+    element_ids = {
+        eid for rel in pagination.items
+        for eid in (rel.source_id, rel.target_id) if eid is not None
+    }
+    names_by_id = {}
+    if element_ids:
+        names_by_id = dict(
+            db.session.query(ArchiMateElement.id, ArchiMateElement.name)
+            .filter(ArchiMateElement.id.in_(element_ids))
+        )
+
+    relationships = [
+        {
+            "id": rel.id,
+            "type": rel.type,
+            "source_id": rel.source_id,
+            "target_id": rel.target_id,
+            "source_name": names_by_id.get(rel.source_id),
+            "target_name": names_by_id.get(rel.target_id),
+        }
+        for rel in pagination.items
+    ]
 
     return render_template(
         "architecture/relationships.html",
-        relationships=relationships.items,
-        total=relationships.total,
+        relationships=relationships,
+        total=pagination.total,
     )
 
 
@@ -290,7 +351,7 @@ def create_relationship():
     relationship = Relationship(
         source_id=data["source_id"],
         target_id=data["target_id"],
-        relationship_type=data["relationship_type"],
+        type=data["relationship_type"],  # model column is 'type'
         description=data.get("description"),
     )
 
@@ -320,8 +381,8 @@ def update_relationship(rel_id):
     if not is_valid:
         return jsonify({"error": "Validation failed", "details": errors}), 400
 
-    relationship.relationship_type = data.get(
-        "relationship_type", relationship.relationship_type
+    relationship.type = data.get(  # model column is 'type'
+        "relationship_type", relationship.type
     )
     relationship.description = data.get("description", relationship.description)
 
@@ -359,7 +420,7 @@ def search_elements():
     query = request.args.get("q", "")
     element_type = request.args.get("type")
     layer = request.args.get("layer")
-    page = request.args.get("page", 1, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
 
     results, total = search_service.search(
         query=query,
@@ -435,33 +496,54 @@ def import_architecture():
 def export_architecture():
     """Export architecture to file."""
     format_type = request.args.get("format", "csv")
+    if format_type not in {"csv", "json"}:
+        return jsonify({"error": "Supported export formats are csv and json"}), 400
 
     try:
         file_path, filename = import_export_service.export_data(format_type)
 
-        # Schedule temp file cleanup after response is sent
-        @after_this_request
-        def _cleanup_export_file(response):
+        # Close the streamed file before unlinking it (required on Windows).
+        logger = current_app.logger
+        def _cleanup_export_file():
             try:
                 if os.path.exists(file_path):
                     os.unlink(file_path)
             except Exception as cleanup_err:
-                current_app.logger.warning(
+                logger.warning(
                     "Failed to clean up export temp file %s: %s",
                     file_path,
                     cleanup_err,
                 )
-            return response
 
-        return send_file(
+        response = send_file(
             file_path,
             as_attachment=True,
             download_name=filename,
-            mimetype="text/csv" if format_type == "csv" else "application/xml",
+            mimetype="text/csv" if format_type == "csv" else "application/json",
         )
+        response.response = ClosingIterator(response.response, _cleanup_export_file)
+        return response
     except Exception as e:
-        current_app.logger.error(f"Architecture export failed: {str(e)}")
-        return jsonify({"error": "Export failed. Please try again."}), 400
+        # O-04: "Export failed. Please try again." told the caller nothing —
+        # not the reason, not whether retrying could possibly help, and
+        # nothing to give support. Log the real exception under a
+        # correlation ID and hand the ID (not the raw exception text, which
+        # can leak internals) back to the caller so a support request can be
+        # matched to the server-side log line that explains it.
+        import uuid
+
+        correlation_id = uuid.uuid4().hex[:12]
+        current_app.logger.error(
+            "Architecture export failed [correlation_id=%s] format=%s: %s",
+            correlation_id, format_type, str(e), exc_info=True,
+        )
+        return jsonify(
+            {
+                "error": f"Export failed: {type(e).__name__}. This has been logged "
+                         f"(reference {correlation_id}) — include it if you contact support.",
+                "correlation_id": correlation_id,
+            }
+        ), 400
 
 
 # ==================== API ENDPOINTS ====================
@@ -502,11 +584,36 @@ def _relationship_to_dict(r):
 def api_list_elements():
     """API: List elements (JSON) with relationship + solution counts (ARCH-002).
 
-    Optional query params ``q`` (case-insensitive name search), ``type`` and
-    ``layer`` narrow the result; omitting all three preserves the original
-    behaviour (first 500 elements, unfiltered).
+    ARCH-052: paginated to match /applications/api/list's envelope
+    (page/pages/per_page/total, total == collection total). The legacy
+    `elements` + `status` keys are kept for backward compatibility with
+    existing callers that do not paginate.
     """
-    from sqlalchemy import func, or_
+    from sqlalchemy import func
+
+    raw_page = request.args.get("page", "1")
+    raw_per_page = request.args.get("per_page", "500")
+    try:
+        page = int(raw_page)
+        if page < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return (
+            jsonify({"status": "error", "errors": {"page": ["must be a positive integer"]}}),
+            400,
+        )
+    try:
+        per_page = int(raw_per_page)
+        if per_page < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return (
+            jsonify(
+                {"status": "error", "errors": {"per_page": ["must be a positive integer"]}}
+            ),
+            400,
+        )
+    per_page = min(per_page, 500)
 
     # Subquery: count relationships where element is source or target
     rel_sub = (
@@ -540,18 +647,11 @@ def api_list_elements():
     except Exception:
         sol_sub = None
 
-    query = ArchitectureElement.query
-    search_q = request.args.get("q")
-    if search_q:
-        query = query.filter(ArchitectureElement.name.ilike(f"%{search_q}%"))
-    element_type = request.args.get("type")
-    if element_type:
-        query = query.filter(ArchitectureElement.type == element_type)
-    layer = request.args.get("layer")
-    if layer:
-        query = query.filter(ArchitectureElement.layer == layer)
-
-    elements = query.limit(500).all()
+    total = ArchitectureElement.query.count()
+    pagination = ArchitectureElement.query.order_by(ArchitectureElement.id).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+    elements = pagination.items
 
     # Build count lookup dicts for efficiency
     rel_src = {r.eid: r.cnt for r in db.session.query(rel_sub).all()}
@@ -566,22 +666,16 @@ def api_list_elements():
         sc = sol_map.get(e.id) or 0
         result.append(_element_to_dict(e, rel_count=rc, sol_count=sc))
 
-    return jsonify({"status": "success", "elements": result})
-
-
-@architecture_crud_bp.route("/api/elements/<int:element_id>", methods=["GET"])
-@login_required
-def api_get_element(element_id):
-    """API: Get a single element (JSON). 404 body is JSON, not the default error page."""
-    element = db.session.get(ArchitectureElement, element_id)
-    if element is None:
-        return jsonify({
-            "status": "error",
-            "error": "not_found",
-            "message": f"Element {element_id} not found",
-        }), 404
-
-    return jsonify({"status": "success", "element": _element_to_dict(element)})
+    return jsonify(
+        {
+            "status": "success",
+            "elements": result,
+            "total": total,
+            "page": pagination.page,
+            "pages": pagination.pages,
+            "per_page": per_page,
+        }
+    )
 
 
 @architecture_crud_bp.route("/api/relationships", methods=["GET"])

@@ -1,0 +1,5 @@
+{
+  "_comment": "Accepted dependency vulnerabilities. Each entry is real, unremediated risk that a security review will ask about. Regenerate with: python scripts/ci/dependency_audit.py --update-baseline",
+  "accepted": {},
+  "context": {}
+}

@@ -15,16 +15,14 @@ Designed for Enterprise, Systems, Solutions, Applications, Business and Integrat
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.archimate_element_types import (
-    APQC_RELATIONSHIP_TEMPLATES,
     ArchiMateElementTypes,
-    RelationshipPattern,
 )
 
 logger = logging.getLogger(__name__)

@@ -9,7 +9,7 @@ Implements real governance processes for capability management.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict
 
 from app.models.unified_capability import UnifiedCapability
 

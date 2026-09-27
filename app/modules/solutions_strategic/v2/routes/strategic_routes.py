@@ -1,14 +1,21 @@
 """
-DEPRECATED: This file is migrated to app/modules/solutions_strategic/.
-Registration is now centralized via app.modules.solutions_strategic.register().
-Do NOT modify -- kept as fallback until Phase 6 cleanup.
+NOT deprecated, despite what this header said until 2026-08-09. It claimed the
+file was a fallback kept until "Phase 6 cleanup" and instructed readers not to
+modify it. It is registered and serving traffic: app/_bootstrap/blueprints.py
+line 742 imports strategic_bp from this module and registers it.
+
+The header was actively harmful - a defect audit found the compliance dashboard
+here rendering a fully compliant portfolio from a database error, and the
+instruction not to modify is exactly the kind of thing that leaves such a bug
+in place. If this file is ever genuinely retired, delete it rather than leaving
+a note that contradicts the blueprint registration.
 
 Strategic Planning Routes
 
 Provides routes for investment prioritization, risk assessment, and strategic decision support.
 """
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app.models.application_capability import ApplicationCapabilityMapping
@@ -58,13 +65,13 @@ from app.models.strategic import CapabilityHealthOverride
 from app import db
 from app.decorators import audit_log
 from datetime import datetime
+from app.utils.pagination import safe_int_arg
 
 strategic_bp = Blueprint("strategic", __name__, url_prefix="/strategic")
 
 
 def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"):
     """Build a useful impact payload from application/solution relationships."""
-    from app.models.apqc_process import APQCProcess
     from app.models.solution_models import Solution
     from app.models.solution_sad_models import SolutionAPQCProcess
     from app.models.vendor.vendor_organization import VendorProduct
@@ -96,6 +103,7 @@ def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"
 
     if app is not None:
         cap_rows = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             db.session.query(BusinessCapability, ApplicationCapabilityMapping)
             .join(
                 ApplicationCapabilityMapping,
@@ -255,8 +263,12 @@ def _build_solution_impact_fallback(element_id: int, change_type: str = "MODIFY"
     else:
         risk_level = "LOW"
 
+    # F-12, Capgemini dry-run: `total_affected * 25000` invented a financial-risk
+    # figure out of a literal per-dependency dollar amount with no source —
+    # exactly the "0 that means not computed" problem CLAUDE.md's
+    # never-invent-data rule calls out. Report the real TCO or nothing.
     app_tco = float(getattr(app, "total_cost_of_ownership", 0) or 0) if app else 0.0
-    estimated_financial_risk = app_tco if app_tco > 0 else total_affected * 25000
+    estimated_financial_risk = app_tco if app_tco > 0 else None
 
     return {
         "element_id": element_id,
@@ -280,7 +292,7 @@ def capability_health():
         service = CapabilityHealthService()
         metrics = service.get_capability_health_metrics()
         return render_template("strategic/capability_health.html", metrics=metrics)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -292,7 +304,7 @@ def api_capability_health():
         service = CapabilityHealthService()
         metrics = service.get_capability_health_metrics()
         return jsonify(metrics)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -314,7 +326,7 @@ def investment_matrix():
             portfolio_metrics=analysis["portfolio_metrics"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -326,7 +338,7 @@ def api_investment_analysis():
         service = InvestmentPrioritizationService()
         analysis = service.analyze_investment_priorities(include_risk_analysis=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -349,7 +361,7 @@ def assign_risk_owner(capability_id):
             return jsonify({"error": "Owner name required"}), 400
         result = RiskMitigationService.assign_risk_owner(capability_id, owner)
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -363,9 +375,9 @@ def update_risk_status(capability_id):
         status = data.get("status")
         result = RiskMitigationService.update_mitigation_status(capability_id, status)
         return jsonify(result)
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Invalid request parameters"}), 400
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -391,7 +403,7 @@ def risk_assessment():
             portfolio_metrics=analysis["portfolio_metrics"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -403,7 +415,7 @@ def api_risk_analysis():
         service = RiskAssessmentService()
         analysis = service.analyze_portfolio_risks(include_technology_debt=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -440,25 +452,28 @@ def api_impact_analysis():
                 "analysis_id": analysis.get("analysis_id"),
             }
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
 @strategic_bp.route("/api/impact-analysis/history", methods=["GET"])
 @login_required
 def api_impact_analysis_history():
-    """Return the last 10 impact analyses stored in impact_analysis_results."""
+    """Return the last 10 impact analyses run by the caller's organisation."""
     try:
         from app.models.traceability import ImpactAnalysisResult
         records = (
-            ImpactAnalysisResult.query
+            ImpactAnalysisResult.for_organization(current_user.organization_id)
             .order_by(ImpactAnalysisResult.created_at.desc())
             .limit(10)
             .all()
         )
         return jsonify([r.to_dict() for r in records])
     except Exception:
-        return jsonify([])
+        current_app.logger.exception("Impact analysis history query failed")
+        return jsonify(
+            {"error": "Could not load the impact analysis history"}
+        ), 500
 
 
 @strategic_bp.route("/api/portfolio-impact", methods=["POST"])
@@ -476,7 +491,7 @@ def api_portfolio_impact():
         service = ImpactAnalysisService()
         analysis = service.analyze_portfolio_impact(change_scenarios)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -498,7 +513,7 @@ def process_optimization():
             portfolio_metrics=analysis["portfolio_metrics"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -510,7 +525,7 @@ def api_process_analysis():
         service = ProcessOptimizationService()
         analysis = service.analyze_process_portfolio(include_benchmarking=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -532,18 +547,14 @@ def compliance_tracking():
             portfolio_metrics=analysis["portfolio_metrics"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
-        # Return template with empty data on error to prevent 500
-        return render_template(
-            "strategic/compliance_tracking.html",
-            capability_compliance=[],
-            critical_compliance=[],
-            high_compliance=[],
-            medium_compliance=[],
-            low_compliance=[],
-            portfolio_metrics={"total_capabilities": 0},
-            recommendations=[],
-        )
+    except Exception:
+        # Do NOT render the template with empty lists here. Doing so showed a
+        # compliance dashboard reporting zero capabilities and zero findings,
+        # which the user cannot distinguish from a fully compliant portfolio.
+        # Matches the sibling dashboards (dependency_visualization,
+        # technology_roadmap) which surface the failure instead.
+        current_app.logger.exception("Compliance tracking dashboard failed")
+        return jsonify({"error": "An internal error occurred"}), 500
 
 
 @strategic_bp.route("/api/compliance-analysis")
@@ -554,7 +565,7 @@ def api_compliance_analysis():
         service = ComplianceTrackingService()
         analysis = service.analyze_compliance_portfolio(include_risk_assessment=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -575,7 +586,7 @@ def dependency_visualization():
             visualization_data=analysis["visualization_data"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -587,7 +598,7 @@ def api_dependency_analysis():
         service = DependencyVisualizationService()
         analysis = service.analyze_dependency_portfolio(include_visualization=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -610,7 +621,7 @@ def technology_roadmap():
             roadmap_phases=analysis["roadmap_phases"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -622,7 +633,7 @@ def api_technology_analysis():
         service = TechnologyRoadmapService()
         analysis = service.analyze_technology_portfolio(include_innovation=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -644,7 +655,7 @@ def architecture_governance():
             portfolio_metrics=analysis["portfolio_metrics"],
             recommendations=analysis["recommendations"],
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -656,7 +667,7 @@ def api_governance_analysis():
         service = ArchitectureGovernanceService()
         analysis = service.analyze_governance_portfolio(include_compliance=True)
         return jsonify(analysis)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -677,7 +688,7 @@ def api_submit_review():
         service = ArchitectureGovernanceService()
         result = service.submit_for_review(element_id, reviewer_id, review_type)
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -696,7 +707,7 @@ def api_check_compliance():
         service = ArchitectureGovernanceService()
         result = service.check_compliance(element_id)
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -728,7 +739,7 @@ def api_create_initiative_from_health():
                 "error": result.get("error", "Failed to create initiative")
             }), 400
             
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -755,7 +766,7 @@ def api_create_initiative_from_investment():
                 "error": result.get("error", "Failed to create initiative")
             }), 400
             
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -782,7 +793,7 @@ def api_create_initiative_from_risk():
                 "error": result.get("error", "Failed to create initiative")
             }), 400
             
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -809,7 +820,7 @@ def api_create_initiative_from_impact():
                 "error": result.get("error", "Failed to create initiative")
             }), 400
             
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -880,7 +891,7 @@ def api_create_health_override():
             "override": new_override.to_dict(),
         })
         
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -910,7 +921,7 @@ def api_list_health_overrides():
             "count": len(overrides),
         })
         
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -926,7 +937,7 @@ def api_get_health_override(override_id):
         
         return jsonify({"success": True, "override": override.to_dict()})
         
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -936,7 +947,6 @@ def api_get_health_override(override_id):
 def api_update_health_override(override_id):
     """Update an existing capability health override."""
     try:
-        from flask_login import current_user
         
         override = CapabilityHealthOverride.query.get(override_id)
         
@@ -975,7 +985,7 @@ def api_update_health_override(override_id):
             "override": override.to_dict(),
         })
         
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1001,7 +1011,7 @@ def api_delete_health_override(override_id):
             "message": "Override deactivated successfully",
         })
         
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1077,9 +1087,9 @@ def api_generate_recommendations(dashboard):
             "metadata": metadata
         })
         
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1144,9 +1154,9 @@ def api_rate_recommendation(rec_id):
                 "error": "Recommendation not found"
             }), 404
         
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1174,7 +1184,7 @@ def api_get_recommendations(dashboard):
     try:
         # Parse query params
         capability_id = request.args.get("capability_id", type=int)
-        limit = request.args.get("limit", default=10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         include_rated = request.args.get("include_rated", default="true").lower() == "true"
         
         # Fetch recommendations
@@ -1197,7 +1207,7 @@ def api_get_recommendations(dashboard):
             }
         })
         
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1261,9 +1271,9 @@ def api_submit_capability_to_arb(capability_id):
             "review_url": f"/arb/review/{review_item.id}"
         })
         
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1294,9 +1304,9 @@ def api_get_capability_arb_status(capability_id):
             **status
         })
         
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1334,7 +1344,7 @@ def api_sync_arb_decision(review_id):
                 "message": "Review is not a capability review or no linked capability found"
             })
         
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -1364,5 +1374,5 @@ def api_get_arb_portfolio_summary():
             **summary
         })
         
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

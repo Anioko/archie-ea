@@ -62,7 +62,7 @@
     }
 
     let log   = global.Platform.log   ? global.Platform.log.child('table')   : { debug: function(){}, warn: function(){}, error: function(){} };
-    let error = global.Platform.error || { handle: function(e){ console.error(e); }, boundary: function(fn){ return fn; } };
+    let error = global.Platform.error || { handle: function(e){ if (global.Platform.toast) { global.Platform.toast.error((e && e.message) || 'An unexpected table error occurred.'); } }, boundary: function(fn){ return fn; } };
 
     // ── Registry ──────────────────────────────────────────────────────────────
     let _instances = Object.create(null);
@@ -341,11 +341,12 @@
             async _loadItems() {
                 this.loading  = true;
                 this.errorMsg = '';
+                // Best-effort UI affordance: a missing/broken loading store must not block the load.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not stop the table from loading its rows */ }
                 try {
                     let qs   = this._buildQueryString();
                     let url  = (_apiUrl || this.apiUrl || '') + ((_apiUrl || this.apiUrl || '').indexOf('?') === -1 ? '?' : '&') + qs;
@@ -361,11 +362,12 @@
                     if (t) t.error(this.errorMsg);
                 } finally {
                     this.loading = false;
+                    // Best-effort UI affordance: a missing/broken loading store must not block the load.
                     try {
                         if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                             Alpine.store('loading').stop();
                         }
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cleanup in finally; a store failure here must not mask the load error already toasted above */ }
                 }
             },
 

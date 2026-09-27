@@ -9,16 +9,18 @@ Provides full CRUD operations with RBAC enforcement and audit logging.
 """
 
 import logging
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, abort, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log, require_roles
 from app.models.business_capabilities import BusinessCapability
+from app.datetime_helpers import utcnow
 from app.models.compliance_models import CompliancePolicy, ComplianceViolation
 from app.services.enterprise_validation_service import EnterpriseValidationService
 from app.services.enterprise_audit_log import EnterpriseAuditLog
 from app.services.enterprise_search_service import EnterpriseSearchService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +37,11 @@ enterprise_crud_bp = Blueprint("enterprise_crud", __name__, url_prefix="/enterpr
 def list_capabilities():
     """List all capabilities with pagination and filtering."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         search = request.args.get("search", "", type=str)
         filter_type = request.args.get("type", "", type=str)
-        filter_health = request.args.get("health", "", type=str)
+        request.args.get("health", "", type=str)
 
         query = BusinessCapability.query
 
@@ -94,8 +96,58 @@ def capability_app_counts():
         counts = {str(cid): cnt for cid, cnt in rows}
         return jsonify({"success": True, "counts": counts})
     except Exception as e:
-        logger.error(f"Error getting app counts: {e}")
-        return jsonify({"success": True, "counts": {}})
+        logger.exception(f"Error getting app counts: {e}")
+        return jsonify({"success": False, "error": "Could not load capability app counts"}), 500
+
+
+@enterprise_crud_bp.route("/reference-catalog", methods=["GET"])
+@login_required
+def reference_catalog():
+    """Reference catalogue — browse ARB-approved / governed solutions as a reuse
+    library, so a solution architect can find what's already been solved and
+    approved instead of starting from scratch. Filterable by domain and type.
+    """
+    from app.services.reference_catalog import build_reference_catalog  # noqa: PLC0415
+
+    data = build_reference_catalog(
+        domain=(request.args.get("domain") or None),
+        solution_type=(request.args.get("type") or None),
+        q=(request.args.get("q") or None),
+    )
+    return render_template("capabilities/reference_catalog.html", **data)
+
+
+@enterprise_crud_bp.route("/data-freshness", methods=["GET"])
+@login_required
+def data_freshness_cockpit():
+    """Portfolio-wide data-freshness / completeness cockpit — is the repository
+    trustworthy? Rolls the per-object Fact Sheet completeness scores up across
+    applications and capabilities and surfaces the worst offenders to fix.
+    """
+    from app.services.data_freshness import build_data_freshness  # noqa: PLC0415
+
+    return render_template("capabilities/data_freshness.html",
+                           **build_data_freshness())
+
+
+@enterprise_crud_bp.route("/capabilities/<int:capability_id>/fact-sheet", methods=["GET"])
+@login_required
+def capability_fact_sheet(capability_id):
+    """Fact Sheet — one consolidated single-source-of-truth page per capability.
+
+    Identity, ownership, maturity (current vs target), strategic weight, the
+    applications that realise it, its sub-capabilities, and a link to the impact
+    graph — with a completeness score over the key fields.
+    """
+    from app.services.capability_fact_sheet import (  # noqa: PLC0415
+        build_capability_fact_sheet,
+    )
+
+    cap = BusinessCapability.query.get(capability_id)
+    if not cap:
+        abort(404)
+    return render_template("capabilities/capability_fact_sheet.html",
+                           **build_capability_fact_sheet(cap))
 
 
 @enterprise_crud_bp.route("/capabilities/<int:capability_id>", methods=["GET"])
@@ -138,6 +190,105 @@ def get_capability(capability_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+# --------------------------------------------------------------------------- optional fields
+
+def _apply_optional_capability_fields(capability, data):
+    """Apply hierarchy / maturity / ownership from a request body.
+
+    Returns a list of validation errors. These fields are what makes a
+    capability usable to a business architect -- a capability with no parent
+    cannot be placed in the hierarchy, and one with no owner cannot be
+    governed -- but the create endpoint silently dropped every one of them, so
+    anything the user typed into those boxes was lost without a word.
+
+    A maturity level is only ever written together with an assessment date:
+    a level with no date is indistinguishable from an inferred one, and the
+    heatmap deliberately renders unassessed capabilities as an em dash.
+    """
+    errors = []
+
+    if "parent_capability_id" in data:
+        raw = data.get("parent_capability_id")
+        if raw in (None, "", 0, "0"):
+            capability.parent_capability_id = None
+        else:
+            try:
+                parent_id = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Parent capability id must be a number")
+                parent_id = None
+            if parent_id is not None:
+                parent = BusinessCapability.query.filter_by(id=parent_id).first()
+                if parent is None:
+                    errors.append("Parent capability not found")
+                elif capability.id is not None and parent.id == capability.id:
+                    errors.append("A capability cannot be its own parent")
+                else:
+                    capability.parent_capability_id = parent.id
+
+    for field in ("current_maturity_level", "target_maturity_level"):
+        if field not in data:
+            continue
+        raw = data.get(field)
+        if raw in (None, "", "0"):
+            setattr(capability, field, None)
+            continue
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            errors.append(f"{field.replace('_', ' ').capitalize()} must be a number")
+            continue
+        if not 1 <= value <= 5:
+            errors.append(f"{field.replace('_', ' ').capitalize()} must be between 1 and 5")
+            continue
+        setattr(capability, field, value)
+
+    if capability.current_maturity_level is not None:
+        capability.maturity_assessment_date = capability.maturity_assessment_date or utcnow()
+        if capability.target_maturity_level is not None:
+            capability.maturity_gap = (
+                capability.target_maturity_level - capability.current_maturity_level
+            )
+    else:
+        capability.maturity_gap = None
+
+    for field in ("business_owner", "it_owner", "business_domain"):
+        if field in data:
+            value = (data.get(field) or "").strip()
+            setattr(capability, field, value or None)
+
+    # Strategic importance and business value answer "why does this capability
+    # matter?" — the columns existed (business_capabilities.py:73-74) but no
+    # endpoint wrote them and no form exposed them, so an architect could model a
+    # capability yet never record its criticality. Without these, rationalization
+    # and investment-priority screens have nothing real to sort on.
+    if "strategic_importance" in data:
+        raw = (data.get("strategic_importance") or "").strip().lower()
+        if raw in ("", "none"):
+            capability.strategic_importance = None
+        elif raw in ("critical", "high", "medium", "low"):
+            capability.strategic_importance = raw
+        else:
+            errors.append("Strategic importance must be critical, high, medium or low")
+
+    if "business_value" in data:
+        raw = data.get("business_value")
+        if raw in (None, "", "0"):
+            capability.business_value = None
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                errors.append("Business value must be a number")
+            else:
+                if 1 <= value <= 10:
+                    capability.business_value = value
+                else:
+                    errors.append("Business value must be between 1 and 10")
+
+    return errors
+
+
 @enterprise_crud_bp.route("/capabilities", methods=["POST"])
 @login_required
 @require_roles("admin", "architect")
@@ -170,6 +321,14 @@ def create_capability():
             description=data.get("description", ""),
             level=data.get("level", 1),
         )
+
+        extra_errors = _apply_optional_capability_fields(capability, data)
+        if extra_errors:
+            return (
+                jsonify({"success": False, "error": "Validation failed",
+                         "errors": {"capability": extra_errors}}),
+                400,
+            )
 
         db.session.add(capability)
         db.session.commit()
@@ -239,6 +398,15 @@ def update_capability(capability_id):
                 "to": data["level"],
             }
             capability.level = data["level"]
+
+        extra_errors = _apply_optional_capability_fields(capability, data)
+        if extra_errors:
+            db.session.rollback()
+            return (
+                jsonify({"success": False, "error": "Validation failed",
+                         "errors": {"capability": extra_errors}}),
+                400,
+            )
 
         db.session.commit()
 
@@ -318,8 +486,8 @@ def compliance_dashboard():
 def list_compliance_policies():
     """List all compliance policies."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         filter_type = request.args.get("type", "", type=str)
 
         query = CompliancePolicy.query
@@ -401,8 +569,8 @@ def create_compliance_policy():
 def list_compliance_violations():
     """List all compliance violations."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
         filter_severity = request.args.get("severity", "", type=str)
         filter_status = request.args.get("status", "", type=str)
 
@@ -574,8 +742,8 @@ def enterprise_search():
     try:
         query = request.args.get("q", "", type=str)
         entity_type = request.args.get("type", "all", type=str)  # all, capability, compliance
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
         if not query or len(query) < 2:
             return (

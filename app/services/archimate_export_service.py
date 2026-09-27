@@ -7,15 +7,22 @@ into a standards-compliant ArchiMate Open Exchange XML document.
 Spec ref: The Open Group ArchiMate 3.2 Exchange File Format (October 2022)
 """
 import xml.etree.ElementTree as ET
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from xml.dom import minidom
 
 
+# QA 3.5: The Open Group ArchiMate Model Exchange File Format keeps the
+# `.../archimate/3.0/` namespace URI across ArchiMate 3.0/3.1/3.2 — there is no
+# `3.2/` namespace or XSD at that host. Archi (the reference tool) and the
+# official validator both use the 3.0 namespace with `archimate3_Model.xsd`.
+# The bug was a 3.0 namespace declaration paired with a 3.1 *diagram-only* XSD
+# in schemaLocation; fix by pointing schemaLocation at the model XSD under the
+# same 3.0 namespace so strict validators accept the document.
 _OEF_NS = "http://www.opengroup.org/xsd/archimate/3.0/"
 _XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 _XSI_SCHEMA_LOC = (
     "http://www.opengroup.org/xsd/archimate/3.0/ "
-    "http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd"
+    "http://www.opengroup.org/xsd/archimate/3.0/archimate3_Model.xsd"
 )
 
 
@@ -58,7 +65,7 @@ def to_open_exchange_xml(viewpoint_dict: Dict[str, Any]) -> str:
     doc_el = ET.SubElement(root, f"{{{_OEF_NS}}}documentation")
     doc_el.text = (
         f"Generated from TOGAF ADM phase: {viewpoint_dict.get('phase_name', 'unknown')}. "
-        "Exported by A.R.C.H.I.E. platform."
+        "Exported by Entelim platform."
     )
 
     # <elements>
@@ -218,7 +225,7 @@ def _export_with_layout(viewpoint_dict: Dict[str, Any]) -> str:
     doc_el = ET.SubElement(root, f"{{{_OEF_NS}}}documentation")
     doc_el.text = (
         f"Viewpoint type: {viewpoint_dict.get('phase_name', 'unknown')}. "
-        "Exported by A.R.C.H.I.E. platform."
+        "Exported by Entelim platform."
     )
 
     # <elements>

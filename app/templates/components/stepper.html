@@ -37,7 +37,7 @@
                     'cursor-pointer': !{{ locked_steps_expr }}.includes({{ step.num }}),
                     'cursor-not-allowed opacity-40': {{ locked_steps_expr }}.includes({{ step.num }}),
                     'bg-primary text-primary-foreground shadow-sm shadow-primary/25 ring-4 ring-primary/20': {{ current_step_expr }} === {{ step.num }} && !{{ completed_expr }}.includes({{ step.num }}) && !{{ locked_steps_expr }}.includes({{ step.num }}),
-                    'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30': {{ completed_expr }}.includes({{ step.num }}),
+                    'bg-success/15 text-success-emphasis border border-success/30': {{ completed_expr }}.includes({{ step.num }}),
                     'bg-muted text-muted-foreground': ({{ current_step_expr }} !== {{ step.num }} && !{{ completed_expr }}.includes({{ step.num }})) || {{ locked_steps_expr }}.includes({{ step.num }})
                 }"
                 :aria-current="{{ current_step_expr }} === {{ step.num }} ? 'step' : false"
@@ -66,19 +66,19 @@
             <div class="text-xs font-medium whitespace-nowrap sm:text-sm"
                  :class="{
                      'text-primary': {{ current_step_expr }} === {{ step.num }} && !{{ locked_steps_expr }}.includes({{ step.num }}),
-                     'text-emerald-600': {{ completed_expr }}.includes({{ step.num }}),
+                     'text-success-emphasis': {{ completed_expr }}.includes({{ step.num }}),
                      'text-muted-foreground': ({{ current_step_expr }} !== {{ step.num }} && !{{ completed_expr }}.includes({{ step.num }})) || {{ locked_steps_expr }}.includes({{ step.num }})
                  }">
                 {{ step.label }}
             </div>
             {% if step.desc is defined and step.desc %}
-            <div class="text-[10px] text-muted-foreground/70 whitespace-nowrap mt-0.5 hidden sm:block">{{ step.desc }}</div>
+            <div class="text-xs text-muted-foreground/70 whitespace-nowrap mt-0.5 hidden sm:block">{{ step.desc }}</div>
             {% endif %}
         </div>
         {# Connecting line to next step #}
         {% if not loop.last %}
         <div class="absolute top-5 left-[calc(50%+24px)] h-0.5 w-[calc(100%-48px)] -translate-y-1/2 transition-colors duration-300"
-             :class="{{ completed_expr }}.includes({{ step.num }}) ? 'bg-emerald-500/40' : 'bg-border'"></div>
+             :class="{{ completed_expr }}.includes({{ step.num }}) ? 'bg-success/40' : 'bg-border'"></div>
         {% endif %}
     </div>
     {% endfor %}

@@ -2,12 +2,17 @@
 ArchiMate Gantt Widget - ArchiMate 3.2 Implementation & Migration Layer Visualization
 
 Usage:
-  {% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget %}
+  {% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget with context %}
   {{ archimate_gantt_widget(
-      data_endpoint=url_for('implementation_planning.api_roadmap_data'),
+      data_endpoint=url_for('capability_map.api_roadmap_gaps'),
       title='Implementation Roadmap',
       subtitle='Work Packages & Plateaus'
   ) }}
+
+NOTE: do not point data_endpoint at implementation_planning.api_roadmap_data.
+That blueprint is deprecated and its before_request aborts 404 unless a feature-flag
+row exists, which it never does on a fresh database, so the widget renders a lens
+that can only ever fail.
 #}
 
 {% macro archimate_gantt_widget(data_endpoint, title='Implementation Roadmap', subtitle='', container_id='archimate-gantt') %}
@@ -25,22 +30,48 @@ Usage:
         filteredWorkPackages: [], displayMode: 'month', viewMode: 'timeline'
     };
 
-    window['initArchimateGantt' + containerId] = function() {
-        fetch(endpoint)
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    const d = window['archimateData_' + containerId];
-                    d.work_packages = data.work_packages || data.items?.filter(i => i.type === 'work_package') || [];
-                    d.plateaus = data.plateaus || [];
-                    d.events = data.events || [];
-                    d.dependencies = data.dependencies || [];
-                    d.filteredWorkPackages = d.work_packages;
-                    window['renderArchimateGantt' + containerId]();
-                    window['updateArchimateStats' + containerId]();
-                }
-            })
-            .catch(err => console.error('Failed to load Archimate Gantt:', err));
+    window['initArchimateGantt' + containerId] = async function() {
+        try {
+            const data = await Platform.fetch(endpoint, { silent: true });
+            // data is already parsed; success field is present per original API contract
+            if (data.success) {
+                const d = window['archimateData_' + containerId];
+                d.work_packages = data.work_packages || (data.items ? data.items.filter(i => i.type === 'work_package') : []) || [];
+                d.plateaus = data.plateaus || [];
+                d.events = data.events || [];
+                d.dependencies = data.dependencies || [];
+                d.filteredWorkPackages = d.work_packages;
+                window['renderArchimateGantt' + containerId]();
+                window['updateArchimateStats' + containerId]();
+            } else {
+                // The API returned a non‑successful response (e.g., {success: false, error: ...}).
+                // This is not an HTTP error (status 2xx), so Platform.fetch did NOT throw.
+                // We must still paint the inline error state, and we should NOT show a global toast
+                // because we passed silent:true. However, archimateGanttFailed will show its own toast.
+                window['archimateGanttFailed' + containerId](data.error || 'Unknown error');
+            }
+        } catch (err) {
+            // Platform.fetch throws on network errors or non‑ok responses (HTTP status not 2xx).
+            // We passed silent:true, so no global toast was shown.
+            // Paint the inline error state, which will also show a toast.
+            window['archimateGanttFailed' + containerId](err.message || err);
+        }
+    };
+
+    // A failed load must not leave the "No work packages to display" empty state
+    // standing: that is a failure rendered as data.
+    window['archimateGanttFailed' + containerId] = function(detail) {
+        const container = document.getElementById('archimate-timeline-' + containerId);
+        if (container) {
+            container.innerHTML = '';
+            const msg = document.createElement('div');
+            msg.className = 'p-8 text-center text-sm text-destructive-emphasis';
+            msg.textContent = 'Could not load the roadmap (' + detail + ').';
+            container.appendChild(msg);
+        }
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('Could not load the roadmap: ' + detail);
+        }
     };
 
     window['renderArchimateGantt' + containerId] = function() {
@@ -78,7 +109,7 @@ Usage:
                 <div class="archimate-row border-b border-border hover:bg-muted/50" data-id="${item.id}" data-level="${item.level}">
                     <div class="flex items-center p-3" style="padding-left: ${16 + indent}px">  <!-- inline-style-ok -->
                         ${item.hasChildren ?
-                            `<button data-action="toggleArchimateRow${containerId}" data-id="${item.id}" class="mr-2 p-1 hover:bg-accent rounded" aria-label="Toggle work package details">
+                            `<button type="button" data-action="toggleArchimateRow${containerId}" data-id="${item.id}" class="mr-2 p-1 hover:bg-accent rounded" aria-label="Toggle work package details">
                                 <i data-lucide="chevron-down" class="w-4 h-4 toggle-icon-${item.id}"></i>
                             </button>` :
                             '<span class="w-6 mr-2"></span>'
@@ -185,19 +216,19 @@ Usage:
                 {% if subtitle %}<p class="text-sm text-muted-foreground">{{ subtitle }}</p>{% endif %}
             </div>
             <div class="flex items-center gap-2">
-                <button @click="expandAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Expand all rows">
+                <button type="button" @click="expandAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Expand all rows">
                     <i data-lucide="chevrons-down" class="w-4 h-4 inline mr-1"></i>Expand All
                 </button>
-                <button @click="collapseAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Collapse all rows">
+                <button type="button" @click="collapseAllArchimateRows{{ container_id }}()" class="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-accent rounded-md transition-all" aria-label="Collapse all rows">
                     <i data-lucide="chevrons-up" class="w-4 h-4 inline mr-1"></i>Collapse All
                 </button>
                 <div class="relative">
-                    <button @click="$el.nextElementSibling.classList.toggle('hidden')" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center" aria-label="Export options">
+                    <button type="button" @click="$el.nextElementSibling.classList.toggle('hidden')" class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success text-sm font-medium flex items-center" aria-label="Export options">
                         <i data-lucide="download" class="w-4 h-4 mr-1"></i>Export
                     </button>
                     <div class="hidden absolute right-0 mt-2 w-48 bg-card rounded-md shadow-lg z-50 border border-border">
-                        <button @click="exportArchimateGantt{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as PDF">Export as PDF</button>
-                        <button @click="exportArchimateGantt{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as CSV">Export as CSV</button>
+                        <button type="button" @click="exportArchimateGantt{{ container_id }}('pdf')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as PDF">Export as PDF</button>
+                        <button type="button" @click="exportArchimateGantt{{ container_id }}('csv')" class="w-full text-left px-4 py-2 text-sm hover:bg-accent" aria-label="Export as CSV">Export as CSV</button>
                     </div>
                 </div>
             </div>
@@ -230,10 +261,10 @@ Usage:
             <div class="flex-1 min-w-[200px]">
                 <input type="text" id="archimate-search-{{ container_id }}" placeholder="Search work packages..."
                     class="w-full px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    @input="filterArchimateItems{{ container_id }}()">
+                    @input="filterArchimateItems{{ container_id }}()" aria-label="Search work packages...">
             </div>
             <select id="archimate-status-filter-{{ container_id }}" @change="filterArchimateItems{{ container_id }}()"
-                class="px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                class="px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Status">
                 <option value="">All Statuses</option>
                 <option value="planned">Planned</option>
                 <option value="in_progress">In Progress</option>

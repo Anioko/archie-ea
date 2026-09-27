@@ -88,6 +88,7 @@ def check_completeness(solution_id: int) -> dict:
         }
     """
     from app import db
+    from app.utils.tenant_sql import org_scope
     from sqlalchemy import text
 
     # ── 1. Collect element types linked to this solution ───────────────────
@@ -95,16 +96,20 @@ def check_completeness(solution_id: int) -> dict:
     layers_present: dict[str, set[str]] = {}  # layer → set of element types
 
     try:
-        rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+        # solution_elements carries no organization_id, so the FK join says
+        # nothing about ownership. archimate_elements does — scope on it.
+        _org_clause, _org_params = org_scope(prefix="ae.")
+        rows = db.session.execute(
             text(
-                """
+                f"""
                 SELECT ae.layer, ae.type
                 FROM   solution_elements se
                 JOIN   archimate_elements ae ON ae.id = se.archimate_element_id
                 WHERE  se.solution_id = :sid
+                       {_org_clause}
                 """
             ),
-            {"sid": solution_id},
+            {"sid": solution_id, **_org_params},
         ).fetchall()
         for layer, etype in rows:
             layer = (layer or "").strip()
@@ -215,13 +220,19 @@ def _score_cross_layer(
     for this solution.
     """
     from app import db
+    from app.utils.tenant_sql import org_scope
     from sqlalchemy import text
 
     linked_pairs: set[str] = set()
     try:
-        rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+        # Three tenant tables joined with no key this tenant provably owns —
+        # solution_elements has no organization_id. Scope both element aliases,
+        # so the relationship cannot bridge two organisations either.
+        _org_src_clause, _org_params = org_scope(prefix="src.")
+        _org_tgt_clause, _ = org_scope(prefix="tgt.")
+        rows = db.session.execute(
             text(
-                """
+                f"""
                 SELECT DISTINCT src.layer, tgt.layer
                 FROM   solution_elements se
                 JOIN   archimate_elements src ON src.id = se.archimate_element_id
@@ -236,10 +247,12 @@ def _score_cross_layer(
                   AND  src.layer IS NOT NULL
                   AND  tgt.layer IS NOT NULL
                   AND  src.layer <> tgt.layer
+                       {_org_src_clause}
+                       {_org_tgt_clause}
                 LIMIT  50
                 """
             ),
-            {"sid": solution_id},
+            {"sid": solution_id, **_org_params},
         ).fetchall()
         for r in rows:
             pair = tuple(sorted([r[0] or "", r[1] or ""]))
@@ -259,8 +272,8 @@ def _score_cross_layer(
                         for j in range(i + 1, len(present_layers))}
 
     expected_pairs = {"Business↔Application", "Application↔Technology", "Motivation↔Business"}
-    found = [p for p in linked_pairs if p in expected_pairs or
-             any(p == f"{b}↔{a}" for b, a in [p.split("↔")] for _ in [None])]
+    ([p for p in linked_pairs if p in expected_pairs or
+             any(p == f"{b}↔{a}" for b, a in [p.split("↔")] for _ in [None])])
     # Simpler: just count distinct cross-layer pairs
     found_list = list(linked_pairs)[:3]
     missing_list = [p for p in expected_pairs if p not in linked_pairs]

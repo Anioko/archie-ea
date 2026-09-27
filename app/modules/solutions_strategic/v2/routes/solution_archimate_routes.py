@@ -18,6 +18,9 @@ from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
 
 from app import db
+from app.models.solution_models import Solution
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ def get_solution_archimate_elements(solution_id):
           "total_count": 3
         }
     """
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.services.solution_archimate_service import SolutionArchiMateService
 
     svc = SolutionArchiMateService()
@@ -176,7 +181,6 @@ def _match_capability_to_catalog(solution_id: int, element_name: str) -> list:
     try:
         from app.models.business_capabilities import BusinessCapability
         from app.models.solution_capability import SolutionCapability
-        from app import db as _db
 
         # Exact match first, then partial ILIKE, then word fragments
         name_lower = element_name.strip().lower()
@@ -410,6 +414,8 @@ def save_capability_blueprint(solution_id):
 @login_required
 def load_capability_blueprint(solution_id):
     """Load the persisted TCM + ACM capability blueprint."""
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.models.solution_reasoning import SolutionAIReasoningState
 
     state = SolutionAIReasoningState.query.filter_by(
@@ -449,7 +455,7 @@ def trace_element_chain(solution_id, element_id):
     linked = SolutionArchiMateElement.query.filter_by(
         solution_id=solution_id
     ).all()
-    solution_el_ids = {l.element_id for l in linked}
+    solution_el_ids = {item.element_id for item in linked}
 
     # BFS backward: follow relationships where this element is the TARGET
     # (i.e., something realizes/serves/influences this element)
@@ -548,7 +554,7 @@ def search_archimate_elements():
 
     q = request.args.get("q", "").strip()
     types_param = request.args.get("types", "").strip()
-    limit = min(int(request.args.get("limit", 25)), 100)
+    limit = min(safe_int_arg('limit', 25, minimum=1, maximum=500), 100)
 
     query = ArchiMateElement.query
     if q:
@@ -846,6 +852,8 @@ def create_snapshot(solution_id):
 @login_required
 def list_snapshots(solution_id):
     """List all snapshots for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
+
     from app.models.solution_governance import SolutionVersion
 
     rows = (
@@ -1062,7 +1070,7 @@ def propagate_stale(solution_id, element_id):
     linked = SolutionArchiMateElement.query.filter_by(
         solution_id=solution_id
     ).all()
-    solution_element_ids = {l.element_id for l in linked}
+    solution_element_ids = {item.element_id for item in linked}
 
     if element_id not in solution_element_ids:
         return jsonify({"stale_ids": [], "message": "Element not in solution"}), 200
@@ -1208,7 +1216,7 @@ def capability_reuse_map():
     results = []
     for el in elements:
         links = SolutionArchiMateElement.query.filter_by(element_id=el.id).all()
-        sol_ids = list({l.solution_id for l in links})
+        sol_ids = list({item.solution_id for item in links})
         solutions = Solution.query.filter(Solution.id.in_(sol_ids)).all() if sol_ids else []
 
         results.append({
@@ -1620,7 +1628,7 @@ def get_traceability_view(solution_id):
 
     # Group by layer
     layer_order = ["motivation", "strategy", "business", "application", "technology"]
-    layers = {l: [] for l in layer_order}
+    layers = {item: [] for item in layer_order}
 
     for el in elements:
         layer = (el.layer or "application").lower()
@@ -1660,5 +1668,5 @@ def get_traceability_view(solution_id):
         "solution_id": solution_id,
         "layers": layers,
         "relationships": relationships,
-        "layer_order": [l for l in layer_order if l in layers],
+        "layer_order": [item for item in layer_order if item in layers],
     })

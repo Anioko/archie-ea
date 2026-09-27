@@ -151,6 +151,7 @@ def send_opsgenie_alert(alert_data):
 
 @deprecation_bp.route("/")
 @login_required
+@admin_required
 def dashboard():
     """Render the deprecation status dashboard."""
     return render_template("admin/deprecation_status.html")
@@ -158,6 +159,7 @@ def dashboard():
 
 @deprecation_bp.route("/api/stats")
 @login_required
+@admin_required
 def api_stats():
     """Get deprecation metrics as JSON."""
     metrics = get_deprecation_metrics()
@@ -167,6 +169,7 @@ def api_stats():
 
 @deprecation_bp.route("/api/alerts")
 @login_required
+@admin_required
 def api_alerts():
     """Get deprecation spike alerts as JSON."""
     metrics = get_deprecation_metrics()
@@ -180,6 +183,7 @@ def api_alerts():
 
 @deprecation_bp.route("/api/velocity")
 @login_required
+@admin_required
 def api_velocity():
     """Get endpoint velocity as JSON."""
     metrics = get_deprecation_metrics()
@@ -199,6 +203,7 @@ def api_velocity():
 
 @deprecation_bp.route("/api/export")
 @login_required
+@admin_required
 def api_export():
     """Export metrics in monitoring-compatible format."""
     metrics = get_deprecation_metrics()
@@ -206,6 +211,8 @@ def api_export():
 
 
 @deprecation_bp.route("/api/webhook", methods=["POST"])
+@login_required
+@admin_required
 @audit_log("deprecation_webhook_send")
 def api_webhook():
     """Webhook endpoint to send deprecation alerts to external systems."""

@@ -3,6 +3,12 @@ module.exports = {
   darkMode: ["class"],
   content: [
     './app/templates/**/*.html',
+    // Blueprint-local template folders (app/modules/<domain>/templates/...).
+    // Without this glob Tailwind never sees those files, so a utility used
+    // ONLY in a module template is silently absent from tailwind-output.css
+    // and the class does nothing at runtime. Found via /modules, whose
+    // `focus:ring-2 focus:ring-ring` and `-translate-y-1/2` were unbuilt.
+    './app/modules/**/templates/**/*.html',
     './app/static/js/**/*.js',
   ],
   theme: {
@@ -31,18 +37,22 @@ module.exports = {
         destructive: {
           DEFAULT: "hsl(var(--destructive) / <alpha-value>)",
           foreground: "hsl(var(--destructive-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--destructive-emphasis) / <alpha-value>)",
         },
         success: {
           DEFAULT: "hsl(var(--success) / <alpha-value>)",
           foreground: "hsl(var(--success-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--success-emphasis) / <alpha-value>)",
         },
         warning: {
           DEFAULT: "hsl(var(--warning) / <alpha-value>)",
           foreground: "hsl(var(--warning-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--warning-emphasis) / <alpha-value>)",
         },
         info: {
           DEFAULT: "hsl(var(--info) / <alpha-value>)",
           foreground: "hsl(var(--info-foreground) / <alpha-value>)",
+          emphasis: "hsl(var(--info-emphasis) / <alpha-value>)",
         },
         muted: {
           DEFAULT: "hsl(var(--muted) / <alpha-value>)",
@@ -60,11 +70,97 @@ module.exports = {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        // ArchiMate layer hues. The DEFAULT is the fill/border colour; the
+        // `-emphasis` twin is the only one legible as text on a /10 tint.
+        // See DESIGN.md "ArchiMate Layer Colors".
+        layer: {
+          motivation: {
+            DEFAULT: "hsl(var(--layer-motivation) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-motivation-emphasis) / <alpha-value>)",
+          },
+          strategy: {
+            DEFAULT: "hsl(var(--layer-strategy) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-strategy-emphasis) / <alpha-value>)",
+          },
+          business: {
+            DEFAULT: "hsl(var(--layer-business) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-business-emphasis) / <alpha-value>)",
+          },
+          application: {
+            DEFAULT: "hsl(var(--layer-application) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-application-emphasis) / <alpha-value>)",
+          },
+          technology: {
+            DEFAULT: "hsl(var(--layer-technology) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-technology-emphasis) / <alpha-value>)",
+          },
+          implementation: {
+            DEFAULT: "hsl(var(--layer-implementation) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-implementation-emphasis) / <alpha-value>)",
+          },
+          risk: {
+            DEFAULT: "hsl(var(--layer-risk) / <alpha-value>)",
+            emphasis: "hsl(var(--layer-risk-emphasis) / <alpha-value>)",
+          },
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+      },
+      // Drive @tailwindcss/typography from the design tokens instead of its
+      // stock greys. Every source token is already .dark-aware, so the invert
+      // twins take identical values and dark mode resolves per theme without a
+      // second `prose-invert` ruleset.
+      typography: {
+        DEFAULT: {
+          css: {
+            '--tw-prose-body': 'hsl(var(--foreground))',
+            '--tw-prose-headings': 'hsl(var(--foreground))',
+            '--tw-prose-lead': 'hsl(var(--muted-foreground))',
+            // --info, NOT --primary: --primary is near-white in dark mode
+            // (210 40% 98%), which would make links indistinguishable from
+            // body text. See DESIGN.md "Note on blue".
+            '--tw-prose-links': 'hsl(var(--info))',
+            '--tw-prose-bold': 'hsl(var(--foreground))',
+            '--tw-prose-counters': 'hsl(var(--muted-foreground))',
+            '--tw-prose-bullets': 'hsl(var(--muted-foreground))',
+            '--tw-prose-hr': 'hsl(var(--border))',
+            '--tw-prose-quotes': 'hsl(var(--muted-foreground))',
+            '--tw-prose-quote-borders': 'hsl(var(--border))',
+            '--tw-prose-captions': 'hsl(var(--muted-foreground))',
+            '--tw-prose-code': 'hsl(var(--foreground))',
+            // pre-bg and pre-code must move together, or code blocks render
+            // white-on-white in light mode.
+            '--tw-prose-pre-code': 'hsl(var(--foreground))',
+            '--tw-prose-pre-bg': 'hsl(var(--muted))',
+            '--tw-prose-th-borders': 'hsl(var(--border))',
+            '--tw-prose-td-borders': 'hsl(var(--border))',
+            '--tw-prose-kbd': 'hsl(var(--foreground))',
+            // R G B triplet, not HSL: the plugin injects this into
+            // rgb(var(--tw-prose-kbd-shadows) / <alpha>).
+            '--tw-prose-kbd-shadows': '15 23 42',
+            '--tw-prose-invert-body': 'hsl(var(--foreground))',
+            '--tw-prose-invert-headings': 'hsl(var(--foreground))',
+            '--tw-prose-invert-lead': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-links': 'hsl(var(--info))',
+            '--tw-prose-invert-bold': 'hsl(var(--foreground))',
+            '--tw-prose-invert-counters': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-bullets': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-hr': 'hsl(var(--border))',
+            '--tw-prose-invert-quotes': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-quote-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-captions': 'hsl(var(--muted-foreground))',
+            '--tw-prose-invert-code': 'hsl(var(--foreground))',
+            '--tw-prose-invert-pre-code': 'hsl(var(--foreground))',
+            '--tw-prose-invert-pre-bg': 'hsl(var(--muted))',
+            '--tw-prose-invert-th-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-td-borders': 'hsl(var(--border))',
+            '--tw-prose-invert-kbd': 'hsl(var(--foreground))',
+            '--tw-prose-invert-kbd-shadows': '226 232 240',
+          },
+        },
       },
       keyframes: {
         "accordion-down": {
@@ -82,5 +178,7 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  // Bundled in the standalone CLI at scripts/bin/tailwindcss[.exe] — resolves
+  // with no npm install and no network, so the air-gap posture is unaffected.
+  plugins: [require('@tailwindcss/typography')],
 }

@@ -1,4 +1,4 @@
-        <div class="container mx-auto px-6 py-8">
+        <div class="p-6 space-y-6 mx-auto">
 
         <!-- Header -->
         <div class="flex items-center justify-between mb-6">
@@ -7,7 +7,7 @@
                 <p class="text-sm text-muted-foreground mt-1">{{ solution.name }} · Solution #{{ solution.id }}</p>
             </div>
             <div class="flex items-center gap-3">
-                <button x-show="fileList.length > 0" x-cloak @click="ideShowSetup = false"
+                <button type="button" x-show="fileList.length > 0" x-cloak @click="ideShowSetup = false"
                         class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors">
                     <i data-lucide="code-2" class="h-4 w-4"></i> Back to IDE
                 </button>
@@ -19,26 +19,26 @@
 
         <!-- Success banner -->
         <div x-show="successMsg" x-cloak x-transition
-             class="mb-4 flex items-start gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-emerald-700">
+             class="mb-4 flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span x-text="successMsg"></span>
         </div>
 
         <!-- Blueprint staleness warning -->
         {% if blueprint_stale %}
-        <div class="mb-4 flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/10 px-4 py-3 text-sm text-orange-700">
+        <div class="mb-4 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis">
             <i data-lucide="refresh-cw" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span>
                 <strong>Blueprint updated after last enrichment.</strong>
                 Architectural decisions (security, NFRs, deployment) may not be reflected in the current UML.
-                <button @click="phase = 1" class="underline font-medium ml-1">Re-run Phase 1 (Enrich)</button> to incorporate the latest blueprint.
+                <button type="button" @click="phase = 1" class="underline font-medium ml-1">Re-run Phase 1 (Enrich)</button> to incorporate the latest blueprint.
             </span>
         </div>
         {% endif %}
 
         <!-- Pending spec-data warning -->
         {% if pending_specs_count > 0 %}
-        <div class="mb-4 flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
+        <div class="mb-4 flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-emphasis">
             <i data-lucide="alert-triangle" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <span>
                 <strong>{{ pending_specs_count }} element{{ 's' if pending_specs_count != 1 else '' }}</strong>
@@ -51,15 +51,15 @@
         <!-- Confirmed specs ready to lock into UML -->
         {% if confirmed_specs_count > 0 %}
         <div x-show="phase >= 2 && !applyingSpecs" x-cloak
-             class="mb-4 flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-700">
+             class="mb-4 flex items-start gap-3 rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">
             <i data-lucide="lock" class="h-4 w-4 mt-0.5 shrink-0"></i>
             <div class="flex-1">
                 <strong>{{ confirmed_specs_count }} confirmed spec{{ 's' if confirmed_specs_count != 1 else '' }}</strong>
                 ready to lock into UML.
                 Applying confirmed specs overwrites the LLM's field inference with your architect-verified definitions — making them binding for Phase 4 code generation.
             </div>
-            <button @click="applySpecs()" :disabled="applyingSpecs"
-                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <button type="button" @click="applySpecs()" :disabled="applyingSpecs"
+                    class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                 <i data-lucide="lock" class="h-3 w-3"></i>
                 Apply Specs
             </button>
@@ -68,10 +68,10 @@
 
         <!-- Error banners -->
         <template x-for="err in errors" :key="err.id">
-            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700">
+            <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
                 <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                 <span x-text="err.text" class="flex-1"></span>
-                <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-red-600">
+                <button aria-label="Dismiss error" type="button" @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-destructive-emphasis/70 hover:text-destructive-emphasis">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
                 </button>
             </div>
@@ -83,7 +83,7 @@
                 <div class="flex items-center">
                     <div class="flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-colors"
                          :class="phase >= idx + 1 ? 'bg-primary/10 text-primary border border-primary/30' : 'text-muted-foreground border border-transparent'">
-                        <span x-text="idx + 1" class="inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px]"
+                        <span x-text="idx + 1" class="inline-flex h-4 w-4 items-center justify-center rounded-full text-xs"
                               :class="phase > idx + 1 ? 'bg-primary text-primary-foreground' : 'bg-muted'"></span>
                         <span x-text="label"></span>
                         <i x-show="phase > idx + 1" x-cloak data-lucide="check" class="h-3 w-3"></i>
@@ -110,8 +110,8 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <span x-show="phase > 1" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Complete</span>
-                    <span x-show="phase === 1" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Pending</span>
+                    <span x-show="phase > 1" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Complete</span>
+                    <span x-show="phase === 1" class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Pending</span>
                 </div>
             </div>
             <div x-show="phase === 1" x-collapse class="border-t border-border px-5 pb-5 pt-4">
@@ -161,19 +161,19 @@
                                 <i data-lucide="layers" class="h-3.5 w-3.5 text-primary"></i>
                                 <span class="text-xs font-medium text-foreground"
                                       x-text="docProposals.length + ' element' + (docProposals.length !== 1 ? 's' : '') + ' extracted'"></span>
-                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                                <span x-show="pendingProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                                       x-text="pendingProposalCount + ' pending review'"></span>
-                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                                <span x-show="acceptedProposalCount > 0" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"
                                       x-text="acceptedProposalCount + ' accepted'"></span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button x-show="pendingProposalCount > 0" @click="batchAcceptProposals()" :disabled="docAccepting"
-                                        class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-[11px] font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                                <button type="button" x-show="pendingProposalCount > 0" @click="batchAcceptProposals()" :disabled="docAccepting"
+                                        class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-2xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                                     <svg x-show="docAccepting" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                                     <i x-show="!docAccepting" data-lucide="check-check" class="h-3 w-3"></i>
                                     Accept All
                                 </button>
-                                <label class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                                <label class="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                                     <i data-lucide="plus" class="h-3 w-3"></i>
                                     Add More
                                     <input type="file" multiple accept=".pdf,.docx,.doc,.txt,.md,.csv,.rtf" class="hidden"
@@ -188,17 +188,17 @@
                                 <div class="flex items-start gap-2 px-3 py-2 rounded-lg border transition-colors"
                                      :class="proposal.status === 'accepted' ? 'border-success/30 bg-success/5' : proposal.status === 'rejected' ? 'border-destructive/20 bg-destructive/5 opacity-50' : 'border-border bg-background'">
                                     {# Type badge #}
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0 mt-0.5"
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border shrink-0 mt-0.5"
                                           :class="_proposalTypeBadgeClass(proposal.archimate_type)"
                                           x-text="proposal.archimate_type"></span>
                                     {# Content #}
                                     <div class="flex-1 min-w-0">
                                         <p class="text-xs font-medium text-foreground truncate" x-text="proposal.name"></p>
-                                        <p class="text-[11px] text-muted-foreground line-clamp-1" x-text="proposal.description"></p>
+                                        <p class="text-2xs text-muted-foreground line-clamp-1" x-text="proposal.description"></p>
                                     </div>
                                     {# Confidence — labeled chip (dot + %), semantic + theme-aware #}
-                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums shrink-0 mt-0.5"
-                                          :class="proposal.confidence >= 0.8 ? 'bg-success/10 text-success' : proposal.confidence >= 0.5 ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive'"
+                                    <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-semibold tabular-nums shrink-0 mt-0.5"
+                                          :class="proposal.confidence >= 0.8 ? 'bg-success/10 text-success-emphasis' : proposal.confidence >= 0.5 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                           :title="'AI confidence: ' + Math.round(proposal.confidence * 100) + '%'">
                                         <span class="h-1.5 w-1.5 rounded-full"
                                               :class="proposal.confidence >= 0.8 ? 'bg-success' : proposal.confidence >= 0.5 ? 'bg-warning' : 'bg-destructive'"></span>
@@ -206,24 +206,24 @@
                                     </span>
                                     {# Actions — discoverable, semantic #}
                                     <div x-show="proposal.status === 'proposed'" class="flex items-center gap-1 shrink-0">
-                                        <button @click="acceptProposal(proposal.id)" :disabled="proposal._selecting"
-                                                class="inline-flex items-center justify-center h-6 w-6 rounded-md border border-success/30 text-success hover:bg-success/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        <button type="button" @click="acceptProposal(proposal.id)" :disabled="proposal._selecting"
+                                                class="inline-flex items-center justify-center h-6 w-6 rounded-md border border-success/30 text-success-emphasis hover:bg-success/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 title="Accept">
                                             <i data-lucide="check" class="h-3.5 w-3.5"></i>
                                         </button>
-                                        <button @click="rejectProposal(proposal.id)" :disabled="proposal._selecting"
-                                                class="inline-flex items-center justify-center h-6 w-6 rounded-md border border-destructive/30 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        <button type="button" @click="rejectProposal(proposal.id)" :disabled="proposal._selecting"
+                                                class="inline-flex items-center justify-center h-6 w-6 rounded-md border border-destructive/30 text-destructive-emphasis hover:bg-destructive/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 title="Reject">
                                             <i data-lucide="x" class="h-3.5 w-3.5"></i>
                                         </button>
                                     </div>
                                     {# Status badges for accepted/rejected #}
                                     <span x-show="proposal.status === 'accepted'" x-cloak
-                                          class="inline-flex items-center gap-0.5 text-[10px] font-medium text-success shrink-0">
+                                          class="inline-flex items-center gap-0.5 text-xs font-medium text-success-emphasis shrink-0">
                                         <i data-lucide="check-circle-2" class="h-3 w-3"></i> Accepted
                                     </span>
                                     <span x-show="proposal.status === 'rejected'" x-cloak
-                                          class="inline-flex items-center gap-0.5 text-[10px] font-medium text-destructive shrink-0">
+                                          class="inline-flex items-center gap-0.5 text-xs font-medium text-destructive-emphasis shrink-0">
                                         <i data-lucide="x-circle" class="h-3 w-3"></i> Rejected
                                     </span>
                                 </div>
@@ -232,7 +232,7 @@
 
                         {# Summary #}
                         <div x-show="docSummary" x-cloak class="mt-2 px-3 py-2 rounded bg-muted/50 border border-border">
-                            <p class="text-[11px] text-muted-foreground" x-text="docSummary"></p>
+                            <p class="text-2xs text-muted-foreground" x-text="docSummary"></p>
                         </div>
                     </div>
 
@@ -250,7 +250,7 @@
                             <p class="text-sm font-semibold text-foreground">{{ linked_elements_count }} ArchiMate elements ready</p>
                             <p class="text-xs text-muted-foreground mt-0.5">Generate a complete Python/FastAPI project directly from your architecture. No AI enrichment needed.</p>
                         </div>
-                        <button @click="quickGenerate()"
+                        <button type="button" @click="quickGenerate()"
                                 class="inline-flex items-center gap-2 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm">
                             <i data-lucide="zap" class="h-4 w-4"></i>
                             Quick Generate
@@ -275,7 +275,7 @@
                 <div x-show="!enriching && !generating && phase === 1" x-cloak class="mt-3">
                     <p class="text-xs text-muted-foreground mb-2">Or use AI enrichment for deeper UML diagrams (requires LLM API key):</p>
                     <div class="flex items-center gap-3">
-                        <button @click="enrich()"
+                        <button type="button" @click="enrich()"
                                 class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
                             <i data-lucide="sparkles" class="h-3 w-3"></i> AI Enrich
                         </button>
@@ -291,31 +291,31 @@
                         <span class="text-xs text-muted-foreground">(optional)</span>
                     </div>
                     <p class="text-xs text-muted-foreground mb-3">Describe your system in plain English. AI will generate ArchiMate elements and link them to this solution.</p>
-                    <textarea x-model="nlDescription" :disabled="nlGenerating" rows="3"
+                    <textarea aria-label="System description" x-model="nlDescription" :disabled="nlGenerating" rows="3"
                               placeholder="e.g. A claims processing system that validates insurance policies, calculates premiums, detects fraud, and stores claim history in a PostgreSQL database…"
                               class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none mb-2"></textarea>
                     <div class="flex items-center gap-3">
-                        <button @click="generateArchitecture(false)" :disabled="nlGenerating || !nlDescription.trim()"
+                        <button type="button" @click="generateArchitecture(false)" :disabled="nlGenerating || !nlDescription.trim()"
                                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                             <svg x-show="nlGenerating" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             <i x-show="!nlGenerating" data-lucide="wand-2" class="h-3 w-3"></i>
                             <span x-text="nlGenerating ? 'Generating…' : 'Generate Elements'"></span>
                         </button>
-                        <button x-show="nlResult" x-cloak @click="generateArchitecture(true)" :disabled="nlGenerating || !nlDescription.trim()"
+                        <button type="button" x-show="nlResult" x-cloak @click="generateArchitecture(true)" :disabled="nlGenerating || !nlDescription.trim()"
                                 class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-50 transition-colors">
                             <i data-lucide="plus" class="h-3 w-3"></i> Append More
                         </button>
                     </div>
                     <div x-show="nlResult" x-cloak class="mt-3">
                         <div class="flex items-center gap-2 mb-2">
-                            <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-emerald-600"></i>
-                            <span class="text-xs font-medium text-emerald-700" x-text="'Created ' + (nlResult && nlResult.created) + ' elements — ready for Phase 1 enrichment'"></span>
+                            <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-success"></i>
+                            <span class="text-xs font-medium text-success-emphasis" x-text="'Created ' + (nlResult && nlResult.created) + ' elements — ready for Phase 1 enrichment'"></span>
                         </div>
                         <div class="grid grid-cols-2 sm:grid-cols-3 gap-1 max-h-32 overflow-y-auto">
                             <template x-for="(el, i) in (nlResult && nlResult.elements || [])" :key="i">
                                 <div class="flex items-center gap-1.5 px-2 py-1 rounded bg-background border border-border text-xs">
                                     <span class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-                                          :class="{'bg-blue-500':el.layer==='Business','bg-violet-500':el.layer==='Application','bg-orange-500':el.layer==='Technology','bg-gray-400':el.layer==='Implementation'}"></span>
+                                          :class="{'bg-info':el.layer==='Business','bg-info/60':el.layer==='Application','bg-warning':el.layer==='Technology','bg-muted-foreground':el.layer==='Implementation'}"></span>
                                     <span class="truncate font-mono text-foreground" x-text="el.name" :title="el.name + ' (' + el.type + ')'"></span>
                                 </div>
                             </template>
@@ -324,7 +324,7 @@
                 </div>
                 <p class="text-sm text-muted-foreground mb-4">Reads linked ArchiMate elements and uses AI to generate class, sequence, component, and deployment UML diagrams. You need at least one Application Component and one Data Object linked to this solution.</p>
                 <div class="flex items-center gap-3 flex-wrap">
-                    <button @click="enrich()" :disabled="enriching"
+                    <button type="button" @click="enrich()" :disabled="enriching"
                             class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                         <i data-lucide="sparkles" class="h-4 w-4"></i>
                         <span x-text="enriching ? 'Generating UML…' : 'Generate UML from ArchiMate'"></span>
@@ -332,8 +332,8 @@
                     </button>
                     {% if confirmed_specs_count > 0 %}
                     {% set spec_s = 's' if confirmed_specs_count != 1 else '' %}
-                    <button @click="applySpecs()" :disabled="applyingSpecs || !uml"
-                            class="inline-flex items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 text-blue-700 px-4 py-2 text-sm font-medium hover:bg-blue-500/20 disabled:opacity-50 transition-colors"
+                    <button type="button" @click="applySpecs()" :disabled="applyingSpecs || !uml"
+                            class="inline-flex items-center gap-2 rounded-md border border-info/40 bg-info/10 text-info px-4 py-2 text-sm font-medium hover:bg-info/20 disabled:opacity-50 transition-colors"
                             title="Lock {{ confirmed_specs_count }} confirmed field spec{{ spec_s }} into UML classes">
                         <i data-lucide="lock" class="h-4 w-4"></i>
                         <span x-text="applyingSpecs ? 'Applying…' : 'Apply {{ confirmed_specs_count }} Confirmed Spec{{ spec_s }}'"></span>
@@ -342,7 +342,7 @@
                     {% endif %}
                 </div>
                 <div class="mt-3 flex items-center gap-2">
-                    <button @click="skipEnrichment()" :disabled="enriching"
+                    <button type="button" @click="skipEnrichment()" :disabled="enriching"
                             class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
                         <i data-lucide="skip-forward" class="h-3 w-3"></i>
                         Skip enrichment — generate directly from ArchiMate elements
@@ -357,8 +357,8 @@
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="flowCount"></div><div class="text-xs text-muted-foreground mt-0.5">API Flows</div></div>
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="componentCount"></div><div class="text-xs text-muted-foreground mt-0.5">Components</div></div>
                     <div class="rounded-lg border border-border bg-muted/30 p-3 text-center"><div class="text-2xl font-bold text-foreground" x-text="nodeCount"></div><div class="text-xs text-muted-foreground mt-0.5">Deploy Nodes</div></div>
-                    <div class="rounded-lg border p-3 text-center" :class="chainCompleteness === null ? 'border-border bg-muted/30' : chainCompleteness >= 0.7 ? 'border-green-500/30 bg-green-500/10' : 'border-amber-500/30 bg-amber-500/10'">
-                        <div class="text-2xl font-bold" :class="chainCompleteness === null ? 'text-muted-foreground' : chainCompleteness >= 0.7 ? 'text-emerald-600' : 'text-amber-600'" x-text="chainCompleteness !== null ? Math.round(chainCompleteness * 100) + '%' : '—'"></div>
+                    <div class="rounded-lg border p-3 text-center" :class="chainCompleteness === null ? 'border-border bg-muted/30' : chainCompleteness >= 0.7 ? 'border-success/30 bg-success/10' : 'border-warning/30 bg-warning/10'">
+                        <div class="text-2xl font-bold" :class="chainCompleteness === null ? 'text-muted-foreground' : chainCompleteness >= 0.7 ? 'text-success' : 'text-warning'" x-text="chainCompleteness !== null ? Math.round(chainCompleteness * 100) + '%' : '—'"></div>
                         <div class="text-xs text-muted-foreground mt-0.5">Chain Health</div>
                     </div>
                 </div>
@@ -380,7 +380,7 @@
                 </div>
                 <span x-show="umlClasses.length > 0" x-cloak
                       class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
-                      :class="confirmedCount === umlClasses.length ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-amber-500/10 text-amber-600 border-amber-500/30'"
+                      :class="confirmedCount === umlClasses.length ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-warning/10 text-warning-emphasis border-warning/30'"
                       x-text="confirmedCount + '/' + umlClasses.length + ' confirmed'"></span>
             </div>
             <div x-show="phase === 2" x-collapse class="border-t border-border px-5 pb-5 pt-4">
@@ -390,19 +390,19 @@
                             <span><strong x-text="unconfirmedCount"></strong> entities unconfirmed — LLM will invent their field schemas.</span>
                         </template>
                         <template x-if="unconfirmedCount === 0 && umlClasses.length > 0">
-                            <span class="text-emerald-600 font-medium">All entity schemas confirmed. Ready to configure.</span>
+                            <span class="text-success-emphasis font-medium">All entity schemas confirmed. Ready to configure.</span>
                         </template>
                         <template x-if="umlClasses.length === 0">
                             <span>No entities detected yet.
-                                <button @click="enrichFields()" :disabled="enrichingFields"
-                                        class="ml-2 inline-flex items-center gap-1 text-violet-600 hover:text-violet-800 text-xs font-medium underline">
+                                <button type="button" @click="enrichFields()" :disabled="enrichingFields"
+                                        class="ml-2 inline-flex items-center gap-1 text-info-emphasis hover:text-info text-xs font-medium underline">
                                     <i data-lucide="sparkles" class="h-3 w-3"></i>
                                     <span x-text="enrichingFields ? 'Enriching…' : 'Enrich from ArchiMate'"></span>
                                 </button>
                             </span>
                         </template>
                     </span>
-                    <button @click="skipToConfig()" class="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
+                    <button type="button" @click="skipToConfig()" class="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                         Skip field review <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
                     </button>
                 </div>
@@ -410,20 +410,20 @@
                     <div class="flex items-center justify-between mb-2">
                         <h3 class="text-sm font-medium text-foreground">Class Diagram</h3>
                         <div class="flex items-center gap-1 rounded-md border border-border bg-muted/30 p-0.5">
-                            <button @click="showTable()" class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors" :class="!diagramView ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"><i data-lucide="table-2" class="h-3 w-3"></i> Table</button>
-                            <button @click="showDiagram()" class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors" :class="diagramView ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"><i data-lucide="workflow" class="h-3 w-3"></i> Diagram</button>
+                            <button type="button" @click="showTable()" class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors" :class="!diagramView ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"><i data-lucide="table-2" class="h-3 w-3"></i> Table</button>
+                            <button type="button" @click="showDiagram()" class="inline-flex items-center gap-1.5 rounded px-3 py-1 text-xs font-medium transition-colors" :class="diagramView ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"><i data-lucide="workflow" class="h-3 w-3"></i> Diagram</button>
                         </div>
                     </div>
                     <div x-show="!diagramView">
                         <div class="flex items-center justify-end gap-2 mb-2">
-                            <button @click="enrichFields()" :disabled="enrichingFields"
-                                    class="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 text-violet-700 px-3 py-1.5 text-xs font-medium hover:bg-violet-500/20 disabled:opacity-50 transition-colors"
+                            <button type="button" @click="enrichFields()" :disabled="enrichingFields"
+                                    class="inline-flex items-center gap-1.5 rounded-md border border-info/40 bg-info/10 text-info-emphasis px-3 py-1.5 text-xs font-medium hover:bg-info/20 disabled:opacity-50 transition-colors"
                                     title="Use LLM to infer domain-specific fields for all entities (populates spec_data)">
                                 <i data-lucide="sparkles" class="h-3.5 w-3.5"></i>
                                 <span x-text="enrichingFields ? 'Enriching…' : 'Enrich Fields (AI)'"></span>
                                 <svg x-show="enrichingFields" x-cloak class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
                             </button>
-                            <button @click="confirmAllClasses()" :disabled="confirmingClass === '__all__'"
+                            <button type="button" @click="confirmAllClasses()" :disabled="confirmingClass === '__all__'"
                                     class="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                                 <i data-lucide="check-check" class="h-3.5 w-3.5"></i>
                                 <span x-text="confirmingClass === '__all__' ? 'Confirming…' : 'Confirm All Classes'"></span>
@@ -436,12 +436,12 @@
                                         <div class="flex items-center gap-2 min-w-0">
                                             <i data-lucide="box" class="h-3.5 w-3.5 text-primary shrink-0"></i>
                                             <span class="text-sm font-mono font-medium text-foreground truncate" x-text="cls.name"></span>
-                                            <span x-show="cls.source_element_id" x-cloak class="text-[10px] text-muted-foreground">ArchiMate #<span x-text="cls.source_element_id"></span></span>
+                                            <span x-show="cls.source_element_id" x-cloak class="text-xs text-muted-foreground">ArchiMate #<span x-text="cls.source_element_id"></span></span>
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0 ml-4">
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border" x-text="(cls.fields || []).length + ' fields'"></span>
-                                            <span x-show="(cls.relationships||[]).length>0" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="(cls.relationships||[]).length + ' relations'"></span>
-                                            <span x-show="confirmedClasses[cls.name]" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30"><i data-lucide="check" class="h-3 w-3 mr-0.5"></i> Confirmed</span>
+                                            <span x-show="(cls.relationships||[]).length>0" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="(cls.relationships||[]).length + ' relations'"></span>
+                                            <span x-show="confirmedClasses[cls.name]" x-cloak class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"><i data-lucide="check" class="h-3 w-3 mr-0.5"></i> Confirmed</span>
                                             <i :data-lucide="fieldEditorOpen[cls.name] ? 'chevron-up' : 'chevron-down'" class="h-3.5 w-3.5 text-muted-foreground"></i>
                                         </div>
                                     </div>
@@ -453,18 +453,18 @@
                                                 <tbody>
                                                     <template x-for="(field, idx) in (editingFields[cls.name] || cls.fields || [])" :key="idx">
                                                         <tr class="border-b border-border/50 hover:bg-muted/20">
-                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-red-400' : 'border-input'" placeholder="field_name"><span x-show="validateField(field)" x-cloak class="text-[10px] text-red-500 mt-0.5 block" x-text="validateField(field)"></span></td>
-                                                            <td class="py-1 px-2"><select x-model="field.type" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"><option value="int">int</option><option value="str">str</option><option value="float">float</option><option value="Decimal">Decimal</option><option value="datetime">datetime</option><option value="bool">bool</option><option value="UUID">UUID</option></select></td>
-                                                            <td class="py-1 px-2 text-center"><input type="checkbox" x-model="field.nullable" class="h-3.5 w-3.5 accent-primary"></td>
-                                                            <td class="py-1 px-2"><input type="text" x-model="field.description" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Description"></td>
-                                                            <td class="py-1 px-2"><button aria-label="Remove" @click="removeField(cls.name, idx)" class="text-muted-foreground hover:text-red-500 transition-colors"><i data-lucide="x" class="h-3.5 w-3.5"></i></button></td>
+                                                            <td class="py-1 px-2"><input type="text" x-model="field.name" class="w-full rounded border bg-background px-2 py-1 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-ring" :class="validateField(field) ? 'border-destructive' : 'border-input'" placeholder="field_name" aria-label="field_name"><span x-show="validateField(field)" x-cloak class="text-xs text-destructive-emphasis mt-0.5 block" x-text="validateField(field)"></span></td>
+                                                            <td class="py-1 px-2"><select x-model="field.type" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Type"><option value="int">int</option><option value="str">str</option><option value="float">float</option><option value="Decimal">Decimal</option><option value="datetime">datetime</option><option value="bool">bool</option><option value="UUID">UUID</option></select></td>
+                                                            <td class="py-1 px-2 text-center"><input aria-label="Field is nullable" type="checkbox" x-model="field.nullable" class="h-3.5 w-3.5 accent-primary"></td>
+                                                            <td class="py-1 px-2"><input type="text" x-model="field.description" class="w-full rounded border border-input bg-background px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Description" aria-label="Description"></td>
+                                                            <td class="py-1 px-2"><button type="button" aria-label="Remove" @click="removeField(cls.name, idx)" class="text-muted-foreground hover:text-destructive-emphasis transition-colors"><i data-lucide="x" class="h-3.5 w-3.5"></i></button></td>
                                                         </tr>
                                                     </template>
                                                 </tbody>
                                             </table>
                                             <div class="flex items-center justify-between mt-2 pt-2 border-t border-border/50">
-                                                <button @click="addField(cls.name)" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><i data-lucide="plus" class="h-3 w-3"></i> Add Field</button>
-                                                <button @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
+                                                <button type="button" @click="addField(cls.name)" class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"><i data-lucide="plus" class="h-3 w-3"></i> Add Field</button>
+                                                <button type="button" @click="confirmClass(cls)" :disabled="confirmingClass === cls.name" class="inline-flex items-center gap-1.5 rounded-md bg-success text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-success disabled:opacity-50 transition-colors"><i data-lucide="check" class="h-3 w-3"></i><span x-text="confirmingClass === cls.name ? 'Saving…' : 'Confirm Fields'"></span></button>
                                             </div>
                                         </div>
                                     </div>
@@ -478,14 +478,14 @@
                     </div>
                 </div>
                 <div class="mt-4 pt-4 border-t border-border flex items-center gap-3">
-                    <button @click="resetUml()" :disabled="resetting" class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50 transition-colors">
+                    <button type="button" @click="resetUml()" :disabled="resetting" class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-50 transition-colors">
                         <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i><span x-text="resetting ? 'Resetting…' : 'Re-enrich from ArchiMate'"></span>
                     </button>
                     <a :href="'/solutions/' + solutionId + '/codegen/openapi.yaml'" class="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                         <i data-lucide="file-json" class="h-3.5 w-3.5"></i> Export OpenAPI
                     </a>
                 </div>
-                <div class="mt-4"><button @click="skipToConfig()" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">Continue to Configure <i data-lucide="arrow-right" class="h-4 w-4"></i></button></div>
+                <div class="mt-4"><button type="button" @click="skipToConfig()" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition-colors">Continue to Configure <i data-lucide="arrow-right" class="h-4 w-4"></i></button></div>
             </div>
         </div>
 
@@ -502,7 +502,7 @@
                         <p class="text-xs text-muted-foreground">Set language stack, auth strategy, and GitHub settings</p>
                     </div>
                 </div>
-                <span x-show="phase > 3" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Saved</span>
+                <span x-show="phase > 3" x-cloak class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Saved</span>
             </div>
             <div x-show="phase === 3" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -513,7 +513,7 @@
                                  a separate ui_framework overlay makes no sense. Clear it to prevent conflicting generators. -->
                             <select x-model="config.language"
                                     x-effect="if (['react-shadcn', 'flask-nextjs', 'flask-react', 'react-native-expo'].includes(config.language)) { config.ui_framework = 'none'; }"
-                                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                                    class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Language">
                                 <optgroup label="API Only">
                                     <option value="python-fastapi">Python / FastAPI</option>
                                     <option value="python-flask">Python / Flask</option>
@@ -535,21 +535,21 @@
                                 </optgroup>
                             </select>
                             <div class="mt-1.5 flex items-center gap-2">
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600 border border-green-500/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
-                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Full'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Full — <span x-text="currentLanguageMeta.templates"></span> templates</span>
+                                <span x-show="currentLanguageMeta && currentLanguageMeta.tier === 'Basic'" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">Basic — <span x-text="currentLanguageMeta && currentLanguageMeta.templates"></span> templates</span>
                             </div>
                             <p class="text-xs text-muted-foreground mt-1.5">For mobile apps, select your backend stack above and enable <span class="font-medium">Expo + React Native</span> in the Mobile section below.</p>
                         </div>
 
                         <!-- SAP System Import panel — only visible for SAP stacks -->
                         <template x-if="['sap-cap','sap-btp-integration'].includes(config.language)">
-                            <div class="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 space-y-3">
+                            <div class="rounded-lg border border-warning/40 bg-warning/5 p-4 space-y-3">
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
-                                        <i data-lucide="database-zap" class="h-4 w-4 text-amber-600"></i>
+                                        <i data-lucide="database-zap" class="h-4 w-4 text-warning"></i>
                                         <h3 class="text-sm font-semibold text-foreground">SAP System Import <span class="text-xs font-normal text-muted-foreground">(optional)</span></h3>
                                     </div>
-                                    <button type="button" @click="sapImport.open = !sapImport.open" class="text-xs text-amber-600 hover:text-amber-500 underline underline-offset-2">
+                                    <button type="button" @click="sapImport.open = !sapImport.open" class="text-xs text-warning-emphasis hover:text-warning-emphasis underline underline-offset-2">
                                         <span x-text="sapImport.open ? 'Hide' : 'Configure'"></span>
                                     </button>
                                 </div>
@@ -559,66 +559,66 @@
                                         <input type="checkbox" x-model="sapImport.mock" class="h-4 w-4 accent-amber-600 rounded">
                                         <span class="text-sm text-foreground">Use mock SAP data <span class="text-xs text-muted-foreground">(no live system required)</span></span>
                                     </label>
-                                    <div x-show="!sapImport.mock" x-collapse class="space-y-3 pl-1 border-l-2 border-amber-500/30 ml-2">
+                                    <div x-show="!sapImport.mock" x-collapse class="space-y-3 pl-1 border-l-2 border-warning/30 ml-2">
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Application Server Host</label>
-                                                <input type="text" x-model="sapImport.ashost" placeholder="sap-host.example.com" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.ashost" placeholder="sap-host.example.com" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Application Server Host">
                                             </div>
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">System Number</label>
-                                                <input type="text" x-model="sapImport.sysnr" placeholder="00" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.sysnr" placeholder="00" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="System Number">
                                             </div>
                                         </div>
                                         <div class="grid grid-cols-2 gap-2">
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Client</label>
-                                                <input type="text" x-model="sapImport.client" placeholder="100" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.client" placeholder="100" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Client">
                                             </div>
                                             <div>
                                                 <label class="block text-xs font-medium text-muted-foreground mb-1">Username</label>
-                                                <input type="text" x-model="sapImport.user" placeholder="RFCUSER" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                                <input type="text" x-model="sapImport.user" placeholder="RFCUSER" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Username">
                                             </div>
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Password</label>
-                                            <input type="password" x-model="sapImport.passwd" placeholder="••••••••" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="password" x-model="sapImport.passwd" placeholder="••••••••" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Password" autocomplete="new-password">
                                         </div>
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-muted-foreground mb-1">Package Filter <span class="font-normal">(optional — e.g. MM, SD, FI)</span></label>
-                                        <input type="text" x-model="sapImport.packageFilter" placeholder="Leave blank for all packages" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                        <input type="text" x-model="sapImport.packageFilter" placeholder="Leave blank for all packages" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Package Filter (optional — e.g. MM, SD, FI)">
                                     </div>
                                     <div class="grid grid-cols-3 gap-2">
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Table limit</label>
-                                            <input type="number" x-model="sapImport.tableLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.tableLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Table limit">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">T-code limit</label>
-                                            <input type="number" x-model="sapImport.tcodeLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.tcodeLimit" min="10" max="2000" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="T-code limit">
                                         </div>
                                         <div>
                                             <label class="block text-xs font-medium text-muted-foreground mb-1">Role limit</label>
-                                            <input type="number" x-model="sapImport.roleLimit" min="10" max="500" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            <input type="number" x-model="sapImport.roleLimit" min="10" max="500" class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Role limit">
                                         </div>
                                     </div>
                                     <!-- Import button + status -->
                                     <div class="flex items-center gap-3">
                                         <button type="button" @click="runSapImport()"
                                                 :disabled="sapImport.running || (!sapImport.mock && (!sapImport.ashost || !sapImport.user))"
-                                                class="inline-flex items-center gap-1.5 rounded-md bg-amber-600 text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-amber-500 disabled:opacity-50 transition-colors">
+                                                class="inline-flex items-center gap-1.5 rounded-md bg-warning text-primary-foreground px-3 py-1.5 text-xs font-medium hover:bg-warning disabled:opacity-50 transition-colors">
                                             <i data-lucide="download-cloud" class="h-3.5 w-3.5"></i>
                                             <span x-text="sapImport.running ? 'Importing…' : (sapImport.mock ? 'Run Mock Import' : 'Import from SAP')"></span>
                                         </button>
                                         <span x-show="sapImport.running" x-cloak class="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                            <i data-lucide="loader-circle" class="h-3.5 w-3.5 animate-spin"></i> reading SAP metadata…
+                                            <i data-lucide="loader" class="h-3.5 w-3.5 animate-spin"></i> reading SAP metadata…
                                         </span>
                                     </div>
                                     <!-- Results -->
                                     <template x-if="sapImport.result && sapImport.result.ok">
-                                        <div class="rounded-md bg-green-500/10 border border-green-500/30 p-3 text-xs space-y-1">
-                                            <p class="font-semibold text-emerald-600">✓ Import successful</p>
+                                        <div class="rounded-md bg-success/10 border border-success/30 p-3 text-xs space-y-1">
+                                            <p class="font-semibold text-success-emphasis">✓ Import successful</p>
                                             <p class="text-muted-foreground">
                                                 <span class="font-medium text-foreground" x-text="sapImport.result.stats && (sapImport.result.stats.tables + sapImport.result.stats.transactions + sapImport.result.stats.roles + sapImport.result.stats.components)"></span> ArchiMate elements ·
                                                 <span class="font-medium text-foreground" x-text="sapImport.result.stats && sapImport.result.stats.relationships_created"></span> relationships ·
@@ -630,8 +630,8 @@
                                         </div>
                                     </template>
                                     <template x-if="sapImport.error">
-                                        <div class="rounded-md bg-red-500/10 border border-red-500/30 p-3 text-xs">
-                                            <p class="font-semibold text-destructive">Import error</p>
+                                        <div class="rounded-md bg-destructive/10 border border-destructive/30 p-3 text-xs">
+                                            <p class="font-semibold text-destructive-emphasis">Import error</p>
                                             <p class="text-muted-foreground mt-1" x-text="sapImport.error"></p>
                                         </div>
                                     </template>
@@ -649,7 +649,7 @@
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-foreground mb-1.5">Authentication</label>
-                            <select x-model="config.auth" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+                            <select x-model="config.auth" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Authentication">
                                 <option value="none">None</option>
                                 <option value="jwt-local">JWT (local)</option>
                                 <option value="oauth2">OAuth2 / OIDC</option>
@@ -696,8 +696,8 @@
                                 </div>
                             </div>
                         </div>
-                        <div><label class="block text-sm font-medium text-foreground mb-1.5">GitHub Org / User <span class="text-xs text-muted-foreground font-normal">(optional)</span></label><input type="text" x-model="config.github_org" placeholder="your-org" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></div>
-                        <div><label class="block text-sm font-medium text-foreground mb-1.5">Repository Name</label><input type="text" x-model="config.repo_name" placeholder="my-service" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"></div>
+                        <div><label class="block text-sm font-medium text-foreground mb-1.5">GitHub Org / User <span class="text-xs text-muted-foreground font-normal">(optional)</span></label><input type="text" x-model="config.github_org" placeholder="your-org" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="GitHub Org / User (optional)"></div>
+                        <div><label class="block text-sm font-medium text-foreground mb-1.5">Repository Name</label><input type="text" x-model="config.repo_name" placeholder="my-service" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Repository Name"></div>
                         <div>
                             <label class="block text-sm font-medium text-foreground mb-1.5">Visibility</label>
                             <div class="flex gap-4">
@@ -705,7 +705,7 @@
                                 <label class="flex items-center gap-2 cursor-pointer"><input type="radio" x-model="config.visibility" value="public" class="h-4 w-4 accent-primary"><span class="text-sm text-foreground">Public</span></label>
                             </div>
                         </div>
-                        <button @click="saveConfig()" :disabled="savingConfig || !config.repo_name" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        <button type="button" @click="saveConfig()" :disabled="savingConfig || !config.repo_name" class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                             <i data-lucide="save" class="h-4 w-4"></i><span x-text="savingConfig ? 'Saving…' : 'Save &amp; Continue'"></span>
                         </button>
                     </div>
@@ -742,14 +742,14 @@
             <div x-show="phase >= 4" x-collapse class="border-t border-border px-5 pb-5 pt-4">
                 <!-- Error banners -->
                 <template x-for="err in errors" :key="err.id">
-                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-destructive">
+                    <div x-transition class="mb-3 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive-emphasis">
                         <i data-lucide="alert-circle" class="h-4 w-4 mt-0.5 shrink-0"></i>
                         <span x-text="err.text" class="flex-1"></span>
-                        <button @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-red-400 hover:text-destructive"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
+                        <button aria-label="Dismiss error" type="button" @click="errors = errors.filter(e => e.id !== err.id)" class="shrink-0 text-destructive-emphasis/70 hover:text-destructive-emphasis"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
                     </div>
                 </template>
                 <div class="flex flex-wrap items-center gap-3 mb-4">
-                    <button @click="generate()" :disabled="generating || (blueprintStale && config.generation_mode !== 'genome')"
+                    <button type="button" @click="generate()" :disabled="generating || (blueprintStale && config.generation_mode !== 'genome')"
                             class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
                             :title="blueprintStale && config.generation_mode !== 'genome' ? 'Blueprint updated after last enrichment — re-run Phase 1 first' : ''">
                         <svg x-show="generating" x-cloak class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
@@ -757,17 +757,17 @@
                         <span x-text="generating ? 'Generating…' : (config.generation_mode === 'genome' ? 'Generate with Genome' : 'Generate Code')"></span>
                     </button>
                     <template x-if="blueprintStale">
-                        <span class="inline-flex items-center gap-1.5 text-xs text-orange-600">
+                        <span class="inline-flex items-center gap-1.5 text-xs text-warning-emphasis">
                             <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
                             Blueprint changed —
-                            <button @click="phase = 1; $nextTick(() => enrich())" class="underline font-medium">Re-enrich now</button>
+                            <button type="button" @click="phase = 1; $nextTick(() => enrich())" class="underline font-medium">Re-enrich now</button>
                         </span>
                     </template>
                     <template x-if="!blueprintStale && unconfirmedCount > 0">
-                        <span class="inline-flex items-center gap-1.5 text-xs text-amber-600">
+                        <span class="inline-flex items-center gap-1.5 text-xs text-warning-emphasis">
                             <i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>
                             <span x-text="unconfirmedCount + ' unconfirmed schemas'"></span> —
-                            <button @click="phase = 2" class="underline font-medium">review in Phase 2</button>
+                            <button type="button" @click="phase = 2" class="underline font-medium">review in Phase 2</button>
                         </span>
                     </template>
                 </div>
@@ -783,12 +783,12 @@
                             <div class="flex items-center gap-3">
                                 <div class="w-5 h-5 shrink-0 flex items-center justify-center">
                                     <svg x-show="promptGroupStatus[key]==='running'" x-cloak class="h-4 w-4 animate-spin text-primary" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
-                                    <i x-show="promptGroupStatus[key]==='done'" x-cloak data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+                                    <i x-show="promptGroupStatus[key]==='done'" x-cloak data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
                                     <i x-show="promptGroupStatus[key]==='error'" x-cloak data-lucide="x-circle" class="h-4 w-4 text-destructive"></i>
                                     <i x-show="!promptGroupStatus[key] || promptGroupStatus[key]==='pending'" x-cloak data-lucide="circle" class="h-4 w-4 text-muted-foreground/30"></i>
                                 </div>
                                 <span class="text-sm capitalize"
-                                      :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-emerald-700':promptGroupStatus[key]==='error'?'text-destructive':'text-muted-foreground/50'"
+                                      :class="promptGroupStatus[key]==='running'?'text-foreground font-medium':promptGroupStatus[key]==='done'?'text-success-emphasis':promptGroupStatus[key]==='error'?'text-destructive-emphasis':'text-muted-foreground/50'"
                                       x-text="key"></span>
                             </div>
                         </template>

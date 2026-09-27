@@ -1,0 +1,8 @@
+[Unit]
+Description=Archie liveness watchdog (restarts wedged gunicorn container)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/archie-watchdog.sh

@@ -20,8 +20,6 @@ NOTE: This module is kept for backward compatibility but should not be used dire
 The UnifiedAPQCService automatically delegates to this service when appropriate.
 """
 
-import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -321,7 +319,7 @@ class SemanticAPQCService:
                 faiss_service = get_faiss_apqc_service()
 
                 if faiss_service.index is not None:
-                    logger.info(f"SemanticAPQC: Using FAISS service (sync) for classification")
+                    logger.info("SemanticAPQC: Using FAISS service (sync) for classification")
                     results = faiss_service.classify_text(text, max_results=max_results * 2)
 
                     matches = []
@@ -380,7 +378,7 @@ class SemanticAPQCService:
                 chromadb_service = get_chromadb_apqc_service()
 
                 if chromadb_service.collection is not None:
-                    logger.info(f"SemanticAPQC: Using ChromaDB service (sync) for classification")
+                    logger.info("SemanticAPQC: Using ChromaDB service (sync) for classification")
                     results = chromadb_service.classify_text(text, max_results=max_results * 2)
 
                     matches = []

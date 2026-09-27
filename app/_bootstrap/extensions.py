@@ -73,6 +73,94 @@ def init_extensions(app):
         form = LoginForm()
         return render_template("account/login.html", form=form), 400
 
+    from werkzeug.exceptions import HTTPException
+
+    @app.errorhandler(HTTPException)
+    def handle_http_exception_on_api(e):
+        """An /api/ path must answer in JSON even when it is refusing.
+
+        A front end that asks for JSON and receives an HTML error page fails at
+        JSON.parse, so the user sees a generic script error instead of "you do
+        not have access" - the refusal is correct and the explanation is lost.
+        Flask-Login's unauthorized_handler already does this for the routes it
+        guards, but abort(401)/abort(403) raised by a role decorator bypasses it
+        and renders HTML.
+
+        Everything outside /api/ is returned untouched, so ordinary pages keep
+        their existing error templates. Blueprint-level handlers are more
+        specific than this one and still win where they are registered.
+        """
+        from flask import jsonify, request
+
+        if "/api/" not in request.path:
+            return e
+        return jsonify({
+            "success": False,
+            "error": e.description,
+            "error_type": (e.name or "error").lower().replace(" ", "_"),
+        }), e.code
+
+    from sqlalchemy.orm.exc import StaleDataError
+
+    @app.errorhandler(StaleDataError)
+    def handle_stale_data_error(e):
+        """Someone else saved this record first — say so, don't show a crash.
+
+        Optimistic locking turns a silent overwrite into a refused write, which
+        is only an improvement if the person who was refused understands what
+        happened. Without this handler they get a 500 and no idea their work was
+        rejected, which reads as the product being broken rather than as the
+        product protecting a colleague's edit.
+
+        409 Conflict is the accurate status: the request was well-formed and the
+        user is allowed to make it — it lost a race. The record on screen is
+        stale, so reloading is genuinely the fix, and the message says that
+        rather than asking the user to guess.
+        """
+        from flask import flash, jsonify, redirect, render_template, request
+
+        db.session.rollback()
+        logger.warning(
+            "optimistic lock conflict: method=%s path=%s user=%s",
+            request.method, request.path,
+            getattr(getattr(request, "user", None), "id", "anonymous"),
+        )
+        message = (
+            "Someone else saved changes to this record while you were editing it. "
+            "Your changes were not saved. Reload the page to see their version, "
+            "then re-apply your edits."
+        )
+        wants_json = (
+            "/api/" in request.path
+            or request.content_type == "application/json"
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+        if wants_json:
+            return jsonify({
+                "success": False,
+                "error": message,
+                "error_type": "conflict",
+                "conflict": True,
+            }), 409
+        flash(message, "warning")
+        # Back to the record they were editing, which now reloads the saved
+        # version — a redirect rather than a re-render, so a refresh does not
+        # resubmit the losing write.
+        referrer = request.referrer
+        if referrer and request.host_url.rstrip("/") in referrer:
+            return redirect(referrer)
+        return render_template(
+            "errors/generic_error.html",
+            status_code=409,
+            error={
+                "error": "Someone else saved changes to this record while you "
+                         "were editing it, so your changes were not saved.",
+                "recovery_action": "Reload the page to see their version, then "
+                                   "re-apply your edits.",
+            },
+        ), 409
+
     compress.init_app(app)
 
     # Optional: Flask-Migrate
@@ -213,6 +301,33 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # Error digest (10 Sep 2026): read-only notification, not an
+        # autonomous fix -- summarises new unresolved error_events rows and
+        # emails platform admins so a human notices without having to
+        # remember to open /admin/errors. 30 minutes, not weekly like the
+        # other digests here, because catching degradation promptly is the
+        # whole point; _digest_emails.send_error_digest no-ops (and sends
+        # nothing) when there is nothing new since the last run.
+        def run_error_digest():
+            with app.app_context():
+                try:
+                    from app._bootstrap._digest_emails import send_error_digest
+                    send_error_digest(app)
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "APScheduler error-digest error: %s", exc
+                    )
+
+        scheduler.add_job(
+            func=run_error_digest,
+            trigger=IntervalTrigger(minutes=30),
+            id="error_digest",
+            name="Unresolved Error Digest",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # Teams meeting intelligence: Graph callRecords subscriptions expire
         # every 3 days — renew twice daily; renew_if_needed re-creates the
         # subscription if Graph has already dropped it. No-op when the
@@ -243,6 +358,137 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # Typed ARB waiver expiry is opt-in and tenant-explicit. The database
+        # advisory lock in the batch service prevents duplicate Gunicorn
+        # schedulers from processing the same deployment concurrently.
+        arb_expiry_registered = False
+        if app.config.get("ARB_CONDITION_EXPIRY_ORGANIZATION_IDS"):
+            def run_arb_waiver_expiry():
+                with app.app_context():
+                    try:
+                        from app.modules.transformation_room.arb_waiver_expiry_batch_service import (
+                            ARBWaiverExpiryBatchService,
+                        )
+
+                        result = ARBWaiverExpiryBatchService.run_configured()
+                        import logging
+                        log = logging.getLogger(__name__)
+                        if result.failed_count:
+                            log.error(
+                                "APScheduler typed ARB waiver expiry partial failure: %s",
+                                result.as_dict(),
+                            )
+                        elif result.selected_count or not result.lock_acquired:
+                            log.info(
+                                "APScheduler typed ARB waiver expiry: %s",
+                                result.as_dict(),
+                            )
+                    except Exception as exc:
+                        import logging
+                        logging.getLogger(__name__).error(
+                            "APScheduler typed ARB waiver expiry error: %s", exc
+                        )
+
+            try:
+                expiry_interval_minutes = int(
+                    app.config["ARB_CONDITION_EXPIRY_INTERVAL_MINUTES"]
+                )
+                if expiry_interval_minutes <= 0:
+                    raise ValueError("interval must be positive")
+                scheduler.add_job(
+                    func=run_arb_waiver_expiry,
+                    trigger=IntervalTrigger(minutes=expiry_interval_minutes),
+                    id="typed_arb_waiver_expiry",
+                    name="Typed ARB Condition Waiver Expiry",
+                    replace_existing=True,
+                    max_instances=1,
+                )
+                arb_expiry_registered = True
+            except Exception as exc:
+                app.logger.error(
+                    "Typed ARB waiver expiry scheduler job was not registered: %s",
+                    exc,
+                )
+
+        # T-002: recurring capability-maturity projection. Closes the gap PR
+        # #23's write-time ORM sync listeners cannot: the three raw-SQL
+        # maturity writers in maturity_routes.py never fire an ORM event.
+        capability_projection_registered = False
+        try:
+            def run_capability_projection():
+                with app.app_context():
+                    from app.jobs.capability_projection_job import run_capability_projection_job
+
+                    run = run_capability_projection_job()
+                    if run.status == "failed":
+                        app.logger.error(
+                            "APScheduler capability projection failed: %s", run.as_dict()
+                        )
+                    else:
+                        app.logger.info(
+                            "APScheduler capability projection: %s", run.as_dict()
+                        )
+
+            projection_interval_minutes = int(
+                app.config["CAPABILITY_PROJECTION_INTERVAL_MINUTES"]
+            )
+            if projection_interval_minutes <= 0:
+                raise ValueError("interval must be positive")
+            scheduler.add_job(
+                func=run_capability_projection,
+                trigger=IntervalTrigger(minutes=projection_interval_minutes),
+                id="capability_projection",
+                name="Capability Maturity Projection",
+                replace_existing=True,
+                max_instances=1,
+            )
+            capability_projection_registered = True
+        except Exception as exc:
+            app.logger.error(
+                "Capability projection scheduler job was not registered: %s", exc
+            )
+
+        # T-003: recurring recompute of stale derived facts (DE-4, ADR-003).
+        # The on-demand endpoint (POST /api/v1/intelligence/derivation/recompute)
+        # covers the immediate case; this covers everything nobody clicked.
+        derived_recompute_registered = False
+        try:
+            def run_derived_recompute():
+                with app.app_context():
+                    from app.modules.intelligence.services.recompute_job import (
+                        recompute_derived_facts,
+                    )
+
+                    run = recompute_derived_facts(app)
+                    if run.failed:
+                        app.logger.error(
+                            "APScheduler derived-facts recompute partial failure: %s",
+                            run.as_dict(),
+                        )
+                    else:
+                        app.logger.info(
+                            "APScheduler derived-facts recompute: %s", run.as_dict()
+                        )
+
+            derived_recompute_interval_minutes = int(
+                app.config["DERIVED_RECOMPUTE_INTERVAL_MINUTES"]
+            )
+            if derived_recompute_interval_minutes <= 0:
+                raise ValueError("interval must be positive")
+            scheduler.add_job(
+                func=run_derived_recompute,
+                trigger=IntervalTrigger(minutes=derived_recompute_interval_minutes),
+                id="derived_facts_recompute",
+                name="Derived Fact Recompute",
+                replace_existing=True,
+                max_instances=1,
+            )
+            derived_recompute_registered = True
+        except Exception as exc:
+            app.logger.error(
+                "Derived-facts recompute scheduler job was not registered: %s", exc
+            )
+
         scheduler.start()
 
         def _shutdown_scheduler():
@@ -254,11 +500,17 @@ def init_scheduler(app):
 
         atexit.register(_shutdown_scheduler)
         app.extensions["ea_workflow_scheduler"] = scheduler
-        app.logger.info(
-            "APScheduler started: EA workflows (5 min), "
-            "maturity digest (Mon 8am), executive summary (Mon 7am), "
-            "Teams subscription renewal (12h)"
+        scheduled_jobs = (
+            "EA workflows (5 min), maturity digest (Mon 8am), "
+            "executive summary (Mon 7am), Teams subscription renewal (12h)"
         )
+        if arb_expiry_registered:
+            scheduled_jobs += ", typed ARB waiver expiry (configured)"
+        if capability_projection_registered:
+            scheduled_jobs += ", capability maturity projection (interval)"
+        if derived_recompute_registered:
+            scheduled_jobs += ", derived-facts recompute (interval)"
+        app.logger.info("APScheduler started: %s", scheduled_jobs)
     except ImportError:
         app.logger.warning("APScheduler not available — EA workflow schedules disabled")
     except Exception as exc:

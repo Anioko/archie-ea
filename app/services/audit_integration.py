@@ -8,7 +8,6 @@ Uses Flask before/after request hooks and signals.
 import logging
 
 from flask import request, g
-from flask.signals import request_started, request_finished
 
 from app.services.audit_service import AuditService
 
@@ -60,7 +59,6 @@ class AuditIntegration:
             if not self._should_audit_request():
                 return response
 
-            import time
 
             # Determine action type
             action = self._determine_action()
@@ -136,7 +134,6 @@ class AuditIntegration:
     def _determine_action(self):
         """Determine action type from request."""
         method = request.method
-        endpoint = request.endpoint or ""
 
         # Map methods to actions
         if method == "POST":
@@ -150,7 +147,6 @@ class AuditIntegration:
 
     def _get_entity_type(self):
         """Determine entity type from request."""
-        endpoint = request.endpoint or ""
         blueprint = request.blueprint or ""
 
         # Map blueprints/endpoints to entity types

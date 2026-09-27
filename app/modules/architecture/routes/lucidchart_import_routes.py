@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from flask import Blueprint, jsonify, request, session, url_for
+from flask import Blueprint, current_app, jsonify, request, session, url_for
 from flask_login import current_user, login_required
 from werkzeug.routing import BuildError
 
@@ -17,14 +17,30 @@ from app.services.lucidchart_connector_service import (
 from app.utils.response_helpers import api_error, api_success
 
 
-lucidchart_import_bp = Blueprint(
-    "lucidchart_import",
-    __name__,
-    url_prefix="/archimate/lucidchart",
-)
-
 _service = LucidchartConnectorService()
 _transformer = LucidArchiMateTransformer()
+
+
+def _transformer_for_request() -> LucidArchiMateTransformer:
+    """Build a transformer honouring this request's fallback choice.
+
+    A diagram drawn with ordinary rectangles rather than Lucid's ArchiMate
+    stencils has no element type to read. Passing ``fallback_element_type``
+    imports those shapes as a stated default instead of skipping them, keeping
+    their names, colours and nesting so the architect retypes rather than
+    redraws. Absent, the strict behaviour is unchanged.
+    """
+    fallback = None
+    if request.is_json:
+        fallback = (request.get_json(silent=True) or {}).get("fallback_element_type")
+    fallback = fallback or request.form.get("fallback_element_type") \
+        or request.args.get("fallback_element_type")
+    fallback = (fallback or "").strip() or None
+    if fallback is None:
+        return _transformer
+    # Raised as ValueError by the transformer; surfaced as 400 by the caller
+    # rather than a 500, because it is the caller's input that is wrong.
+    return LucidArchiMateTransformer(fallback_element_type=fallback)
 
 
 def _current_org_id() -> int:
@@ -38,21 +54,13 @@ def _callback_url() -> str:
     """External OAuth callback URL.
 
     These handlers are registered as aliases on ``archimate_bp`` (via
-    ``register_lucidchart_import_routes``); the standalone ``lucidchart_import``
-    blueprint is not always registered. Build the URL for whichever endpoint
-    actually exists so the OAuth start does not 500 with a BuildError once a
-    connector config is present. The resolved URL is the redirect URI to
-    register with the Lucid OAuth app.
+    ``register_lucidchart_import_routes``). Resolve through that endpoint; the
+    resolved URL is the redirect URI to register with the Lucid OAuth app.
     """
-    for endpoint in (
-        "archimate.api_lucidchart_auth_callback",
-        "lucidchart_import.lucidchart_oauth_callback",
-    ):
-        try:
-            return url_for(endpoint, _external=True)
-        except BuildError:
-            continue
-    raise BuildError("lucidchart auth callback", {}, "GET")
+    try:
+        return url_for("archimate.api_lucidchart_auth_callback", _external=True)
+    except BuildError:
+        raise BuildError("lucidchart auth callback", {}, "GET")
 
 
 def _needs_auth_response() -> tuple:
@@ -149,7 +157,6 @@ def _load_uploaded_payload() -> dict:
     return payload
 
 
-@lucidchart_import_bp.route("/auth/start", methods=["GET"])
 @login_required
 def lucidchart_oauth_start():
     org_id, org_error = _current_org_id_or_error()
@@ -169,7 +176,6 @@ def lucidchart_oauth_start():
     return api_success({"authorization_url": authorization_url, "state": state})
 
 
-@lucidchart_import_bp.route("/auth/callback", methods=["GET"])
 @login_required
 def lucidchart_oauth_callback():
     org_id, org_error = _current_org_id_or_error()
@@ -209,7 +215,6 @@ def lucidchart_oauth_callback():
     )
 
 
-@lucidchart_import_bp.route("/documents", methods=["GET"])
 @login_required
 def lucidchart_list_documents():
     org_id, org_error = _current_org_id_or_error()
@@ -227,7 +232,6 @@ def lucidchart_list_documents():
     return api_success({"needs_auth": False, "documents": documents})
 
 
-@lucidchart_import_bp.route("/documents/<string:document_id>/contents", methods=["GET"])
 @login_required
 def lucidchart_document_contents(document_id: str):
     org_id, org_error = _current_org_id_or_error()
@@ -284,16 +288,29 @@ def register_lucidchart_import_routes(bp: Blueprint) -> None:
         try:
             document = _service.get_document_contents(config, document_id=document_id)
         except LucidchartConnectorError:
-            return jsonify({"needs_auth": True}), 200
-        transformed = _transformer.transform_document(document)
+            # LucidchartConnectorError covers timeouts and upstream HTTP errors as well
+            # as token problems, so "needs_auth" was telling the user to reconnect for
+            # faults reconnecting cannot fix. The caller checks !resp.ok first and
+            # renders "Workspace import failed".
+            current_app.logger.exception(
+                "Lucidchart document contents fetch failed for document %s", document_id
+            )
+            return jsonify({"error": "Could not fetch the Lucidchart document"}), 502
+        try:
+            transformer = _transformer_for_request()
+        except ValueError as exc:
+            return api_error(str(exc), status_code=400)
+        transformed = transformer.transform_document(document)
         return _import_payload_response(transformed)
 
     @bp.route("/api/lucidchart/import/upload", methods=["POST"])
     @login_required
     def api_lucidchart_import_upload():
         payload = _load_uploaded_payload()
-        transformed = _transformer.transform_document(payload)
+        try:
+            transformer = _transformer_for_request()
+        except ValueError as exc:
+            return api_error(str(exc), status_code=400)
+        transformed = transformer.transform_document(payload)
         return _import_payload_response(transformed)
 
-
-register_lucidchart_import_routes(lucidchart_import_bp)

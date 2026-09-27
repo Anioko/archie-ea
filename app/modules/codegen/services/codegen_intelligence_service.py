@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -94,7 +93,7 @@ def _regeneration_copilot_deterministic(
     """Rank codegen prompt groups using deterministic quality signals + UML shape."""
     qd = quality_details or {}
     recs = list(qd.get("recommendations") or [])
-    per_class = qd.get("per_class") or {}
+    qd.get("per_class") or {}
     order = ["models", "schemas", "routes", "services", "integrations", "tests", "infrastructure"]
     reasons: Dict[str, str] = {}
 

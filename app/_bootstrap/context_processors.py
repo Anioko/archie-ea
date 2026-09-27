@@ -4,12 +4,66 @@ Context processors — global template variables.
 
 import flask
 
+_EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
+
+# Keyed by organisation id. Previously one shared dict with no tenant in the
+# key, so the first organisation to render a page served its numbers to every
+# other organisation for the whole TTL.
+_nav_counts_cache: dict = {}
+_NAV_COUNTS_TTL = 300
+
+EM_DASH = "—"
+
+
+
+def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
+    """Sidebar entity counts for one organisation, cached per tenant.
+
+    Scoping is explicit. ``db.session.query(db.func.count(Model.id))`` is a
+    COLUMN query, and the tenant isolation in this codebase is
+    ``with_loader_criteria``, which only applies to ENTITY queries — so these
+    counts were never filtered for anyone. A browser walk showed a tenant with
+    14 applications being told it had 38, the total across every organisation.
+
+    ``VendorOrganization`` has no organization_id column at all, so its count is
+    global by construction; that matches what the vendor list itself shows and
+    is called out here rather than silently scoped to something it isn't.
+    """
+    import time
+
+    from app import db
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    now = time.time()
+    hit = _nav_counts_cache.get(org_id)
+    if hit is not None and now - hit["timestamp"] < ttl:
+        return dict(hit["data"])
+
+    def _scoped(model):
+        q = db.session.query(db.func.count(model.id))
+        if org_id is not None:
+            q = q.filter(model.organization_id == org_id)
+        return q.scalar() or 0
+
+    counts = {
+        "applications": _scoped(ApplicationComponent),
+        "elements": _scoped(ArchiMateElement),
+        "capabilities": _scoped(BusinessCapability),
+        # Not tenant-scoped anywhere in the product — see docstring.
+        "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
+    }
+    _nav_counts_cache[org_id] = {"data": dict(counts), "timestamp": now}
+    return counts
+
 
 def init_context_processors(app):
     """Register all context processors for Jinja templates."""
 
     _dashboard_categories_cache = {"data": None, "timestamp": 0}
-    _applications_cache = {"data": None, "timestamp": 0}
+    _applications_cache: dict = {}  # keyed by organisation id — see inject_applications
     _cache_ttl = 300  # 5 minutes
 
     @app.context_processor
@@ -128,7 +182,7 @@ def init_context_processors(app):
         except (OperationalError, ProgrammingError):
             db.session.rollback()
             return default_result
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: empty nav categories on error, rendered as no items not a measured value
             app.logger.debug(f"Error loading dashboard categories: {e}")
             return default_result
 
@@ -153,15 +207,21 @@ def init_context_processors(app):
                 for path in ["/admin", "/capability", "/architecture", "/enterprise"]
             ):
                 return {"applications": [], "vendors": []}
-        except Exception:
+        except Exception:  # fabricated-ok: empty nav lists, not measured data; page needs no app/vendor list here
             return {"applications": [], "vendors": []}
 
+        # Keyed by tenant. The query below IS tenant-filtered (entity query, so
+        # with_loader_criteria applies), but the RESULT was cached in a single
+        # module-level dict — so one organisation's application and vendor rows
+        # were served to every other organisation for the TTL. Same defect class
+        # as the nav counts, with real rows rather than numbers.
+        from flask import g, has_request_context
+
+        _org_key = getattr(g, "current_org_id", None) if has_request_context() else None
         current_time = time.time()
-        if (
-            _applications_cache["data"] is not None
-            and current_time - _applications_cache["timestamp"] < _cache_ttl
-        ):
-            return _applications_cache["data"]
+        _hit = _applications_cache.get(_org_key)
+        if _hit is not None and current_time - _hit["timestamp"] < _cache_ttl:
+            return _hit["data"]
 
         try:
             from app.models.application_portfolio import ApplicationComponent
@@ -177,13 +237,12 @@ def init_context_processors(app):
                 vendors = []
 
             result = {"applications": applications, "vendors": vendors}
-            _applications_cache["data"] = result
-            _applications_cache["timestamp"] = current_time
+            _applications_cache[_org_key] = {"data": result, "timestamp": current_time}
             return result
         except (OperationalError, ProgrammingError):
             db.session.rollback()
             return {"applications": [], "vendors": []}
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: empty nav lists on error, rendered as no items not a measured value
             db.session.rollback()
             app.logger.debug(f"Error loading applications/vendors: {e}")
             return {"applications": [], "vendors": []}
@@ -193,51 +252,52 @@ def init_context_processors(app):
         """Make flask object available to all templates to fix flash messaging issues"""
         return {"flask": flask}
 
-    _nav_counts_cache = {"data": None, "timestamp": 0}
+    @app.context_processor
+    def inject_currency_config():
+        """H-04: one currency source of truth for every template.
+
+        `currency_config` (symbol/code/decimal_places) is derived from the
+        current org's `settings['currency_code']` (config.CurrencyConfig).
+        Server-rendered money should read `currency_config.symbol` /
+        `.decimal_places` here rather than hardcoding '$' or '£'; the same
+        org currency code is also handed to the client currencyManager (see
+        partials/_head.html) so JS-rendered figures agree with server ones.
+        """
+        from flask import has_request_context
+        from flask_login import current_user
+        from config import CurrencyConfig
+
+        organization = None
+        try:
+            if has_request_context() and getattr(current_user, "is_authenticated", False):
+                organization = getattr(current_user, "organization", None)
+        except Exception:  # noqa: BLE001 — currency display can't 500 a page
+            organization = None
+
+        try:
+            cfg = CurrencyConfig.get_org_currency_config(organization)
+        except Exception as e:  # noqa: BLE001
+            app.logger.warning(f"currency config unavailable: {e}")
+            cfg = CurrencyConfig.get_currency_config()
+
+        return {"currency_config": cfg, "currency_symbol": cfg["symbol"]}
 
     @app.context_processor
     def inject_nav_counts():
         """Live entity counts for sidebar navigation labels.
 
         Replaces hardcoded counts that go stale (sidebar said 358 vendors
-        while the dashboard card said 17). Cached for 5 minutes — these
-        render on every page.
+        while the dashboard card said 17). Cached for 5 minutes per tenant —
+        these render on every page.
         """
-        import time
+        from flask import g, has_request_context
 
-        now = time.time()
-        if (
-            _nav_counts_cache["data"] is not None
-            and now - _nav_counts_cache["timestamp"] < _cache_ttl
-        ):
-            return {"nav_counts": _nav_counts_cache["data"]}
-
-        counts = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
+        org_id = getattr(g, "current_org_id", None) if has_request_context() else None
         try:
-            from app import db
-            from app.models.application_portfolio import ApplicationComponent
-            from app.models.archimate_core import ArchiMateElement
-            from app.models.business_capabilities import BusinessCapability
-            from app.models.vendor.vendor_organization import VendorOrganization
-
-            counts["applications"] = (
-                db.session.query(db.func.count(ApplicationComponent.id)).scalar() or 0
-            )
-            counts["vendors"] = (
-                db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0
-            )
-            counts["elements"] = (
-                db.session.query(db.func.count(ArchiMateElement.id)).scalar() or 0
-            )
-            counts["capabilities"] = (
-                db.session.query(db.func.count(BusinessCapability.id)).scalar() or 0
-            )
-            _nav_counts_cache["data"] = counts
-            _nav_counts_cache["timestamp"] = now
-        except Exception as e:
+            return {"nav_counts": compute_nav_counts(org_id)}
+        except Exception as e:  # noqa: BLE001 — a sidebar label can't 500 a page
             app.logger.warning(f"nav counts unavailable: {e}")
-
-        return {"nav_counts": counts}
+            return {"nav_counts": dict(_EMPTY_NAV_COUNTS)}
 
     @app.context_processor
     def inject_feature_flags():
@@ -393,47 +453,49 @@ def init_context_processors(app):
 
     # PLT-040: enterprise_role-based sidebar visibility (takes precedence over archetype)
     # NS-006: Updated for North Star Persona MVP with 8 enterprise roles
+    # (+ business_architect added for the Business Architect persona)
+    #
+    # ADR-0008 correction (Task 05, sap-s4-interface-register): this used to be
+    # a second, hand-maintained literal dict that disagreed with
+    # app.utils.role_access.ROLE_SECTION_ACCESS — security_architect and
+    # data_architect had entries there and none here, so those two personas
+    # fell through to the archetype map (or all_sections) for sidebar
+    # visibility while ROLE_SECTION_ACCESS.can_access_section() — the
+    # predicate every route guard in this codebase actually calls, including
+    # interface_register's _guard() — already granted them data_integration.
+    # That gap meant this map's own idea of section access disagreed with
+    # ROLE_SECTION_ACCESS. One system of record: derive this map from
+    # ROLE_SECTION_ACCESS and layer the legacy section aliases
+    # (application/tools/data/utilities/admin) that predate the NS-006
+    # section names on top, per role, exactly where they were inlined before.
+    #
+    # CORRECTED (Task 05 round 2 review): this dedup does NOT, by itself, put
+    # an Interface Register link in front of security_architect or
+    # data_architect. ENTERPRISE_ROLE_SECTION_MAP only feeds
+    # `user_visible_sections` below, and no template/macro/JS reads that
+    # variable — the real sidebar renders from
+    # app.utils.role_access.get_sidebar_zones() /
+    # `_MY_WORK_LINKS`, a completely separate structure. The actual "was
+    # authorised but had no link" defect was fixed by adding real
+    # `_link("Interface Register", ...)` entries to
+    # `_MY_WORK_LINKS[ROLE_SECURITY_ARCHITECT]` and
+    # `_MY_WORK_LINKS[ROLE_DATA_ARCHITECT]` in role_access.py. This map
+    # derivation remains a legitimate, worthwhile ADR-0008 cleanup (one fewer
+    # hand-maintained literal disagreeing with the canonical
+    # ROLE_SECTION_ACCESS), it just is not sufficient on its own and never
+    # was — do not cite it as evidence that a sidebar link exists.
+    from app.utils.role_access import ROLE_SECTION_ACCESS as _ROLE_SECTION_ACCESS
+
+    _LEGACY_SECTION_ALIASES = {
+        "enterprise_architect": {"application", "tools", "data", "utilities"},
+        "portfolio_manager": {"application", "tools"},
+        "procurement": {"application"},
+        "application_manager": {"application"},
+        "platform_admin": {"application", "tools", "data", "utilities", "admin"},
+    }
     ENTERPRISE_ROLE_SECTION_MAP = {
-        "solution_architect": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "data_integration",
-        },
-        "enterprise_architect": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "data_integration",
-            # Legacy aliases
-            "application", "tools", "data", "utilities",
-        },
-        "arb_member": {
-            "home", "solutions", "portfolio", "governance",
-        },
-        "portfolio_manager": {
-            "home", "solutions", "portfolio", "capabilities", "roadmaps",
-            "governance", "procurement",
-            # Legacy aliases
-            "application", "tools",
-        },
-        "cto": {
-            "home", "solutions", "portfolio", "capabilities", "roadmaps",
-            "governance",
-        },
-        "procurement": {
-            "home", "portfolio", "procurement",
-            # Legacy alias for portfolio
-            "application",
-        },
-        "application_manager": {
-            "home", "solutions", "portfolio", "my_applications", "roadmaps",
-            # Legacy alias for portfolio
-            "application",
-        },
-        "platform_admin": {
-            "home", "solutions", "portfolio", "architecture", "capabilities",
-            "roadmaps", "governance", "procurement", "my_applications",
-            "data_integration", "administration",
-            # Legacy aliases for backward compatibility
-            "application", "tools", "data", "utilities", "admin",
-        },
+        role: sections | _LEGACY_SECTION_ALIASES.get(role, set())
+        for role, sections in _ROLE_SECTION_ACCESS.items()
     }
 
     @app.context_processor
@@ -450,6 +512,8 @@ def init_context_processors(app):
             # North Star Persona MVP sections
             "portfolio", "procurement", "my_applications",
             "data_integration", "administration",
+            # Business Architect persona section
+            "business_architecture",
         }
 
         if not current_user.is_authenticated:
@@ -481,10 +545,25 @@ def init_context_processors(app):
     app.jinja_env.globals["flask"] = flask
 
     # NS-006: Register role-based access functions for persona navigation
-    from app.utils.role_access import role_access_context_processor
+    from app.utils.role_access import get_sidebar_zones, role_access_context_processor
     role_funcs = role_access_context_processor()
     for name, func in role_funcs.items():
         app.jinja_env.globals[name] = func
+
+    # Shell-overhaul Wave 1 (Task 3): persona sidebar zones. The sidebar
+    # template (components/admin_sidebar.html) renders from this only — see
+    # app/utils/role_access.py for the single source of truth.
+    app.jinja_env.globals["get_sidebar_zones"] = get_sidebar_zones
+
+    # E2E-7: the header's role badge (components/admin_header.html) read
+    # current_user.role.name -- the legacy Flask-Base Role/Permission table,
+    # which has only a couple of rows -- instead of enterprise_role, the
+    # vocabulary that actually distinguishes the 11 personas (see "Three
+    # authz vocabularies" — CLAUDE.md). Registered globally rather than
+    # per-route so the shared header gets it on every page, not just the
+    # one route that happened to pass it into its own render_template call.
+    from app.utils.role_access import get_role_display_name
+    app.jinja_env.globals["get_role_display_name"] = get_role_display_name
 
     # Register HTML sanitizer filter for safe rendering of user-generated rich text
     from app.utils.html_sanitizer import sanitize_html
@@ -512,23 +591,70 @@ def init_context_processors(app):
     app.jinja_env.filters["format_date"] = _filter_format_date
     app.jinja_env.filters["format_datetime"] = _filter_format_datetime
 
-    # Cache-busting: compute git hash once at startup for static file versioning
-    import subprocess
-    _static_version = None
-    try:
-        _static_version = subprocess.check_output(
-            ["git", "rev-parse", "--short=8", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            timeout=5,
-        ).decode("utf-8").strip()
-    except Exception:
-        import time
-        _static_version = str(int(time.time()))
+    # H-04: one currency formatting path for server-rendered money, matching
+    # whatever inject_currency_config() resolved for this org (organization
+    # settings['currency_code'] -> config.CurrencyConfig). None stays None ->
+    # template renders an em dash, never a fabricated 0.
+    def _filter_format_currency(value, show_code=False, currency=None):
+        # A missing amount renders as an em dash, never a blank cell and
+        # never a fabricated 0 (CLAUDE.md).
+        if value is None:
+            return EM_DASH
+        from flask import has_request_context
+        from flask_login import current_user
+        from config import CurrencyConfig
+
+        organization = None
+        try:
+            if has_request_context() and getattr(current_user, "is_authenticated", False):
+                organization = getattr(current_user, "organization", None)
+        except Exception:
+            organization = None
+        cfg = CurrencyConfig.get_org_currency_config(organization)
+        if currency:
+            cfg = dict(cfg, code=currency)
+        try:
+            amount = float(value)
+        except (TypeError, ValueError):
+            return EM_DASH
+        formatted = "{:,.{dp}f}".format(amount, dp=cfg["decimal_places"])
+        symbolled = f"{cfg['symbol']}{formatted}" if cfg["position"] == "prefix" else f"{formatted}{cfg['symbol']}"
+        return f"{cfg['code']} {symbolled}" if show_code else symbolled
+
+    app.jinja_env.filters["format_currency"] = _filter_format_currency
+
+    # Shell-overhaul Wave 2 (Task 5): templates need a safe way to compare a
+    # stored date against "today" (e.g. contract-expiry urgency banners)
+    # without doing date arithmetic in Jinja directly, which has no
+    # `datetime` module in scope and previously produced a `None`-minus-date
+    # TypeError (applications/dashboard.html 500'd on any app with
+    # contract_expiry_date set). Returns None — never a fabricated number —
+    # when there is nothing to compare.
+    def _days_until(value):
+        import datetime as _dt
+        if value is None:
+            return None
+        try:
+            if isinstance(value, _dt.datetime):
+                value = value.date()
+            return (value - _dt.date.today()).days
+        except TypeError:
+            return None
+
+    app.jinja_env.globals["days_until"] = _days_until
+
+    # Cache-busting: single build identifier shared with app/_bootstrap/assets.py
+    # and the /version endpoint (ARCH-062) — see build_info.get_build_id().
+    from app._bootstrap.build_info import get_build_id
+    _static_version = get_build_id()
 
     @app.context_processor
     def inject_static_version():
-        """Provide static_version for cache-busting JS/CSS includes."""
-        return {"static_version": _static_version}
+        """Provide static_version for cache-busting JS/CSS includes, and build_id
+        for user-facing display (About/footer, ARCH-062) — same value, same source
+        (build_info.get_build_id()), so what a user sees matches what /version and
+        every asset URL report."""
+        return {"static_version": _static_version, "build_id": _static_version}
 
     def _filter_versioned_static(filename):
         """Jinja2 filter: {{ 'js/foo.js' | versioned_static }}

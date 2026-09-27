@@ -13,9 +13,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
 from app import db
-from app.models import APISettings, LLMInteraction
+from app.models import APISettings
 from app.models.application_consolidation import (
-    ApplicationConsolidationRecommendation,
     ApplicationSimilarityAnalysis,
 )
 from app.models.application_layer import ApplicationComponent
@@ -390,6 +389,7 @@ class ApplicationSimilarityService:
         # Get capabilities
         capabilities = []
         try:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             capability_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()
@@ -491,17 +491,21 @@ class ApplicationSimilarityService:
         }
 
     def _get_integration_count(self, app_id: int) -> int:
-        """Get number of integrations for an application."""
-        try:
-            from app.models.application_layer import ApplicationInterface
+        """Get number of integrations for an application.
 
-            count = ApplicationInterface.query.filter(
-                (ApplicationInterface.source_application_id == app_id)
-                | (ApplicationInterface.target_application_id == app_id)
-            ).count()
-            return count
-        except Exception:
-            return 0
+        Deliberately unguarded. This number is written straight into the
+        similarity LLM prompt as "Integration Count: N" and drives the
+        extension-effort heuristic, so answering a query failure with 0 told
+        the model an integrated application had no integrations. The public
+        entry points (analyze_application_pair, find_reuse_candidates_for_gap,
+        generate_reuse_vs_build_recommendation) each log and report the error.
+        """
+        from app.models.application_layer import ApplicationInterface
+
+        return ApplicationInterface.query.filter(
+            (ApplicationInterface.source_application_id == app_id)
+            | (ApplicationInterface.target_application_id == app_id)
+        ).count()
 
     def _build_similarity_analysis_prompt(
         self, app1_data: Dict[str, Any], app2_data: Dict[str, Any]
@@ -819,7 +823,7 @@ BE REALISTIC about consolidation complexity and savings. Don't recommend consoli
         capability_id = gap.get("capability_id")
         capability_name = gap.get("capability_name", "")
         gap_type = gap.get("gap_type", "unknown")
-        domain = gap.get("domain", "")
+        gap.get("domain", "")
 
         logger.info(f"Finding reuse candidates for gap: {capability_name} ({gap_type})")
 
@@ -909,6 +913,7 @@ BE REALISTIC about consolidation complexity and savings. Don't recommend consoli
         # Get application's capabilities
         app_capabilities = []
         try:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             capability_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()

@@ -17,6 +17,18 @@ from flask_login import current_user
 logger = logging.getLogger(__name__)
 
 
+def current_org_id():
+    """The active tenant's organization_id, or None outside a tenant request
+    (CLI / system tasks / unauthenticated).
+
+    Raw-SQL callers use this to scope queries the SAME way the ORM auto-filter
+    does: apply ``organization_id = :org`` only when this is not None. In system
+    contexts it is None, so the query stays global — matching the ORM event
+    listener's no-op behaviour and keeping CLI/migrations/seeders working.
+    """
+    return getattr(g, "current_org_id", None)
+
+
 def install_tenant_context(app):
     """Register before_request handler that sets g.current_org_id."""
 
@@ -25,6 +37,10 @@ def install_tenant_context(app):
         if current_user.is_authenticated and hasattr(current_user, "organization_id"):
             g.current_org_id = current_user.organization_id
             g.current_org = getattr(current_user, "organization", None)
+            from app.extensions import db
+            from app.middleware.tenant_isolation import set_database_tenant_context
+
+            set_database_tenant_context(db.session.connection(), g.current_org_id)
         else:
             g.current_org_id = None
             g.current_org = None

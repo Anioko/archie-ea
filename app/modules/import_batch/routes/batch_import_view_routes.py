@@ -19,6 +19,7 @@ from app.services.batch_approval_service import BatchApprovalService
 from app.services.batch_import_service import BatchImportService
 from app.template_helpers import safe_url_for_with_fallback
 from app.security.import_decorators import with_import_security
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,8 @@ def dashboard():
     try:
         # Get filter parameters
         status_filter = request.args.get("status")
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 20, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
 
         # Ensure reasonable limits
         per_page = min(per_page, 100)
@@ -119,27 +120,32 @@ def _get_status_counts(user_id: int) -> dict:
         return result
 
     except Exception as e:
+        # Do not fabricate zero counts on failure; the dashboard view catches
+        # this and shows an error instead of a fake "0 imports".
         logger.error(f"Error getting status counts: {e}")
-        return {"total": 0, "active": 0, "review_needed": 0}
+        raise
 
 
 def _get_review_needed_count(user_id: int) -> int:
-    """Get count of batches awaiting review for user's jobs."""
-    try:
-        from app import db
+    """Get count of batches awaiting review for user's jobs.
 
-        count = (
-            db.session.query(BatchImportBatch)
-            .join(BatchImportJob)
-            .filter(
-                BatchImportJob.user_id == user_id,
-                BatchImportBatch.status == BatchStatus.READY_FOR_REVIEW,
-            )
-            .count()
+    Deliberately unguarded: the only caller, _get_status_counts, already wraps
+    this in a handler that logs the exception. Catching here returned 0, which
+    told the user no import was waiting for review when the truth was that we
+    could not find out - and an import waiting unnoticed is exactly the thing
+    this number exists to prevent.
+    """
+    from app import db
+
+    return (
+        db.session.query(BatchImportBatch)
+        .join(BatchImportJob)
+        .filter(
+            BatchImportJob.user_id == user_id,
+            BatchImportBatch.status == BatchStatus.READY_FOR_REVIEW,
         )
-        return count
-    except Exception:
-        return 0
+        .count()
+    )
 
 
 # =============================================================================
@@ -307,8 +313,8 @@ def batch_review(batch_id: int):
         summary = approval_service.get_batch_summary(batch_id)
 
         # Get elements with filtering and pagination
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
         status_filter = request.args.get("status")
         layer_filter = request.args.get("layer")
 

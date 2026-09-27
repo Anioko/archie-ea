@@ -67,7 +67,7 @@ import requests
 from flask import current_app
 
 from app import db
-from app.models import LLMInteraction, PipelineStage
+from app.models import LLMInteraction
 
 # from .llm_validator import LLMValidator  # Temporarily disabled
 from app.services.core.retry_handler import retry_on_transient_error
@@ -79,8 +79,8 @@ logger = logging.getLogger(__name__)
 # Use centralized cache service (Redis if available, falls back to in-memory)
 from app.services.core.cache_service import cache_service
 
-CACHE_TTL_SECONDS = 3600  # fabricated-values-ok: named constant for cache TTL in seconds
-DEFAULT_TOKEN_COST_MULTIPLIER = 1000  # fabricated-values-ok: named constant for token cost multiplier
+CACHE_TTL_SECONDS = 3600  # fabricated-ok: named config constant (cache TTL), not displayed data
+DEFAULT_TOKEN_COST_MULTIPLIER = 1000  # fabricated-ok: named config constant (token cost multiplier), not displayed data
 
 # Fallback in-memory cache if Redis is not available
 _llm_cache_fallback = {}
@@ -208,15 +208,13 @@ class LLMService:
         provider_priority = ["openai", "anthropic", "gemini", "deepseek", "openrouter", "azure", "huggingface"]
 
         # Default models for each provider (used when falling back to .env)
-        default_models = {
-            "anthropic": "claude-3-sonnet-20240229",
-            "openai": "gpt-4",
-            "gemini": "gemini-2.0-flash",
-            "deepseek": "deepseek-chat",
-            "azure": "gpt-4",
-            "huggingface": "meta-llama/Llama-2-7b-chat-hf",
-            "openrouter": "google/gemini-2.5-flash-preview:free",
-        }
+        # Single source of truth - these ids were hardcoded in six places and
+        # drifted independently until every Claude id was stale, several to
+        # RETIRED models that now 404 (claude-3-sonnet-20240229 went out in  stale-model-ok
+        # July 2025).
+        from app.modules.ai_chat.services.model_defaults import DEFAULT_MODELS
+
+        default_models = dict(DEFAULT_MODELS)
 
         # Ensure clean transaction state before query
         try:
@@ -355,6 +353,86 @@ class LLMService:
             )
 
     @staticmethod
+    def configuration_status() -> Dict[str, Any]:
+        """One answer to "is an LLM configured?", for every surface that asks.
+
+        Added 31 Aug 2026 because two surfaces in the SAME process disagreed:
+        ``GET /health`` reported ``llm_providers: {enabled_providers: 0, "No LLM
+        providers enabled"}`` while ``GET /ai-chat/token-usage`` reported
+        ``{"configured": true, "provider": "openrouter"}``. token-usage was
+        right. /health counted rows in ``api_settings`` only, and a provider
+        configured by environment variable (the documented bootstrap path,
+        Step 4 of ``_get_configured_provider``) has no such row — so /health
+        told an operator the AI was dead while it was serving. Worse, that
+        count is tenant-filtered inside a request and unfiltered outside one,
+        so it was not even a stable number.
+
+        The verdict here comes from the resolver that actually chooses the
+        provider, so a surface cannot disagree with what the product will do.
+        The row count is kept alongside it as detail, clearly labelled, rather
+        than as the verdict.
+
+        Never raises: this runs inside a health probe.
+        """
+        from app.models.models import APISettings
+
+        # Kept for the five existing callers that read `ready` / `providers`.
+        # It is a *list of candidates*, not the verdict — the verdict below
+        # comes from the resolver, which is the only thing that knows whether a
+        # call will actually be made.
+        try:
+            _, candidate_providers = LLMService._validate_database_configuration()
+        except Exception:  # noqa: BLE001 - a health probe must not 500
+            candidate_providers = []
+
+        db_enabled = None
+        try:
+            db_enabled = APISettings.query.filter_by(enabled=True).count()
+        except Exception as exc:  # noqa: BLE001 - a health probe must not 500
+            logger.debug("configuration_status: API settings count failed: %s", exc)
+
+        try:
+            provider, model = LLMService._get_configured_provider()
+            return {
+                "configured": True,
+                "ready": True,
+                "providers": candidate_providers,
+                "provider": provider,
+                "model": model,
+                "db_enabled_providers": db_enabled,
+                "source": "database" if db_enabled else "environment",
+            }
+        except ValueError as exc:
+            return {
+                "configured": False,
+                "ready": False,
+                "providers": candidate_providers,
+                "provider": None,
+                "model": None,
+                "db_enabled_providers": db_enabled,
+                "source": None,
+                "reason": str(exc),
+            }
+        except Exception as exc:  # noqa: BLE001 - a health probe must not 500
+            logger.warning("configuration_status: resolver failed: %s", exc)
+            # Unknown is not the same as "not configured". Saying "no providers"
+            # here would be the exact fabrication this method exists to remove.
+            return {
+                "configured": None,
+                # `ready` must not become True on an unknown: a caller that
+                # gates a write on it would proceed into a call that cannot be
+                # made. Unknown degrades to not-ready, and `configured: None`
+                # says which of the two it is.
+                "ready": False,
+                "providers": candidate_providers,
+                "provider": None,
+                "model": None,
+                "db_enabled_providers": db_enabled,
+                "source": None,
+                "reason": "Could not determine LLM configuration.",
+            }
+
+    @staticmethod
     def is_available() -> bool:
         """
         Check if LLM service is available (at least one provider configured).
@@ -412,7 +490,7 @@ class LLMService:
 
         if violations:
             raise RuntimeError(
-                f"NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
+                "NO HARDCODED DATA POLICY VIOLATION DETECTED:\n"
                 + "\n".join(violations)
                 + "\n\nAll models MUST be loaded from database APISettings table only."
             )
@@ -480,7 +558,7 @@ class LLMService:
             for settings in enabled_providers:
                 if settings.has_key() and settings.default_model and settings.default_model.strip():
                     valid_providers.append(settings.provider)
-        except Exception as e:
+        except Exception:
             # Database might not be available, continue to env fallback
             logger.debug("Failed to query API settings from database", exc_info=True)
 
@@ -504,15 +582,6 @@ class LLMService:
                     valid_providers.append(provider)
 
         return len(valid_providers) > 0, valid_providers
-
-    @staticmethod
-    def configuration_status() -> Dict[str, object]:
-        """Return a JSON-serialisable status payload for UI surfaces."""
-        ready, providers = LLMService._validate_database_configuration()
-        return {
-            "ready": ready,
-            "providers": providers,
-        }
 
     @staticmethod
     def generate_architecture_from_jira(jira_issue, pipeline_stage_id: Optional[int] = None) -> str:
@@ -688,18 +757,36 @@ Generate the JSON object now:"""
             prompt=prompt, model=model, provider=provider, pipeline_stage_id=pipeline_stage_id
         )
 
-        # Validate and parse JSON response with schema validation
+        # Parse and shape-check the JSON response.
+        #
+        # This previously called LLMValidator.validate_architecture_response(), but
+        # that class is not importable: `from .llm_validator import LLMValidator` is
+        # commented out at the top of this module as "Temporarily disabled", and
+        # llm_validator.py does not exist. The except below catches only ValueError,
+        # so the resulting NameError escaped uncaught — every architecture-generation
+        # call 500'd here rather than degrading.
+        #
+        # Parsing directly keeps the documented contract: a dict with "elements" and
+        # "relationships", falling back to empty lists when the response is not
+        # usable. Restore the richer schema validation when llm_validator lands.
         try:
-            result = LLMValidator.validate_architecture_response(response_text)
+            parsed = json.loads(response_text)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+            result = {
+                "elements": parsed.get("elements") or [],
+                "relationships": parsed.get("relationships") or [],
+            }
             logger.info(
-                f"✓ Architecture response validation passed: {len(result.get('elements', []))} elements"
+                f"✓ Architecture response parsed: {len(result['elements'])} elements"
             )
             return result
 
-        except ValueError as e:
+        except (ValueError, TypeError) as e:  # fabricated-ok: returns honest empty structure below, no invented data
             logger.error(f"✗ Architecture response validation failed: {e}")
             logger.debug(f"Response was: {response_text[:500]}...")
-            # Return empty structure on validation failure
+            # Return empty structure on validation failure -- no data is
+            # invented; downstream renders nothing rather than a fake element.
             return {"elements": [], "relationships": []}
 
     @staticmethod
@@ -1323,6 +1410,7 @@ Output clean, executable test code."""
         cache_ttl: int = CACHE_TTL_SECONDS,
         expected_schema: Optional[str] = None,
         job_id: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> str:
         """
         Generic method to generate content from any prompt with caching.
@@ -1332,6 +1420,14 @@ Output clean, executable test code."""
             pipeline_stage_id: Optional PipelineStage ID for tracking
             use_cache: Whether to use cache (default: True)
             cache_ttl: Cache TTL in seconds (default: 3600)
+            timeout: Optional per-call client-level timeout override, in seconds.
+                Passed through to the underlying provider client for THIS call
+                only — leaves every other caller's (unset) default timeout
+                unchanged. Added for Task 4 (P0 wave):
+                application_pattern_classifier_service.py needs a ≤60s bound
+                on this path without lowering the global OpenAI/Anthropic/
+                OpenRouter defaults used elsewhere (e.g. chat, ArchiMate
+                generation).
 
         Returns:
             Generated response text
@@ -1353,6 +1449,7 @@ Output clean, executable test code."""
             pipeline_stage_id=pipeline_stage_id,
             expected_schema=expected_schema,
             job_id=job_id,
+            timeout=timeout,
         )
 
         # Cache the response
@@ -1492,23 +1589,26 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         max_tokens: Optional[int] = None,
         pipeline_stage_id: Optional[int] = None,
         _already_tried: Optional[List[str]] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Call LLM with automatic API key failover.
-        
+
         Tries multiple API keys in sequence until one succeeds.
         This ensures elements are not lost due to API key issues.
-        
+
         Args:
             prompt: The prompt text
             model: Model name
             provider: Provider name
             max_tokens: Optional max tokens
             pipeline_stage_id: Optional tracking ID
-            
+            timeout: Optional per-call client-level timeout override (seconds),
+                passed through to the provider-specific call for this call only.
+
         Returns:
             Tuple of (response_text, interaction)
-            
+
         Raises:
             RuntimeError: If ALL API keys fail
         """
@@ -1540,19 +1640,19 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 # Call the appropriate provider method
                 if provider == "openai":
                     response_text, token_input, token_output, cost = LLMService._call_openai(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "anthropic":
                     response_text, token_input, token_output, cost = LLMService._call_anthropic(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "gemini":
                     response_text, token_input, token_output, cost = LLMService._call_gemini(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "deepseek":
                     response_text, token_input, token_output, cost = LLMService._call_deepseek(
-                        prompt, model, api_key, max_tokens=max_tokens
+                        prompt, model, api_key, max_tokens=max_tokens, timeout=timeout
                     )
                 elif provider == "huggingface":
                     response_text, token_input, token_output, cost = LLMService._call_huggingface(
@@ -1567,7 +1667,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     for or_model in or_models:
                         try:
                             response_text, token_input, token_output, cost = LLMService._call_openrouter(
-                                prompt, or_model, api_key, max_tokens=max_tokens
+                                prompt, or_model, api_key, max_tokens=max_tokens, timeout=timeout
                             )
                             model = or_model  # Update model for interaction record
                             or_success = True
@@ -1639,7 +1739,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             fallback_defaults = {
                 "openai": "gpt-4o-mini",
                 "anthropic": "claude-haiku-4-5-20251001",
-                "gemini": "gemini-1.5-flash",
+                "gemini": "gemini-2.0-flash",
                 "deepseek": "deepseek-chat",
                 "openrouter": "deepseek/deepseek-chat",
                 "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -1669,6 +1769,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     max_tokens=max_tokens,
                     pipeline_stage_id=pipeline_stage_id,
                     _already_tried=_already_tried,
+                    timeout=timeout,
                 )
             except Exception as fb_err:
                 logger.warning(f"Cross-provider fallback to {fallback_provider} also failed: {str(fb_err)[:80]}")
@@ -1691,6 +1792,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         max_tokens: Optional[int] = None,
         expected_schema: Optional[str] = None,
         job_id: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Internal method to call LLM API and track the interaction.
@@ -1708,6 +1810,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             pipeline_stage_id: Optional PipelineStage ID for tracking
             user_id: Optional user ID for budget tracking
             project_id: Optional project ID for budget tracking
+            timeout: Optional per-call client-level timeout override (seconds),
+                passed through to the provider client for this call only.
 
         Returns:
             Tuple of (response_text, LLMInteraction instance)
@@ -1740,6 +1844,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 provider=provider,
                 max_tokens=max_tokens,
                 pipeline_stage_id=pipeline_stage_id,
+                timeout=timeout,
             )
         except RuntimeError as e:
             # All API keys failed
@@ -1778,6 +1883,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                         max_tokens=max_tokens,
                         expected_schema=expected_schema,
                         job_id=job_id,
+                        timeout=timeout,
                     )
                 except ValueError as fallback_error:
                     logger.error(f"❌ No alternative provider available: {fallback_error}")
@@ -1847,13 +1953,23 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
 
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
-    def _call_openai(prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None) -> Tuple[str, int, int, float]:
+    def _call_openai(
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
+    ) -> Tuple[str, int, int, float]:
         """
         Call OpenAI API with automatic retry on transient failures.
 
         Retries on: Timeout, ConnectionError, RateLimitError
         Max attempts: 3
         Backoff: Exponential (2s, 4s, 8s)
+
+        ``timeout`` overrides the default 90s client-level timeout for this
+        call only (e.g. application_pattern_classifier_service.py passes a
+        tighter bound); other callers keep the 90s default.
         """
         try:
             from openai import OpenAI
@@ -1864,6 +1980,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             # gpt-4/gpt-5 series support 16K output; gpt-3.5 supports 4K.
             if max_tokens is None:
                 max_tokens = 8192 if ("gpt-4" in model or "gpt-5" in model) else 4096
+
+            effective_timeout = timeout if timeout is not None else 90.0
 
             # Enforce deterministic output for critical generation tasks
             response = client.chat.completions.create(
@@ -1877,7 +1995,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 ],
                 temperature=0.0,
                 max_completion_tokens=max_tokens,
-                timeout=90.0,  # 90 second timeout (expanded prompts need more time)
+                timeout=effective_timeout,
             )
 
             response_text = response.choices[0].message.content
@@ -1911,7 +2029,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_anthropic(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call Anthropic Claude API with prompt caching for 90% cost reduction.
@@ -1926,6 +2048,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         - Max attempts: 3
         - Backoff: Exponential (2s, 4s, 8s)
         - Retries on: Timeout, ConnectionError, RateLimitError, APIError
+
+        ``timeout`` overrides the default 85s client-level timeout for this
+        call only; other callers keep the 85s default.
         """
         try:
             import anthropic
@@ -1941,8 +2066,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"System prompt length: {len(ARCHIMATE_SYSTEM_PROMPT)} characters")
             logger.info("=" * 80 + "\n")
 
+            effective_timeout = timeout if timeout is not None else 85.0
+
             client = anthropic.Anthropic(
-                api_key=api_key, timeout=85.0
+                api_key=api_key, timeout=effective_timeout
             )
 
             # Use prompt caching to reduce costs by 90%
@@ -1974,7 +2101,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     }
                 ],
                 messages=[{"role": "user", "content": prompt}],
-                timeout=85.0,
+                timeout=effective_timeout,
             )
 
             response_text = response.content[0].text
@@ -1987,7 +2114,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"Response length: {len(response_text)} characters")
             logger.info(f"Input tokens: {token_input}")
             logger.info(f"Output tokens: {token_output}")
-            logger.info(f"\nFirst 500 chars of response:")
+            logger.info("\nFirst 500 chars of response:")
             logger.info("-" * 80)
             logger.info(response_text[:500])
             logger.info("-" * 80)
@@ -2037,10 +2164,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             logger.info(f"\n❌ ERROR: Anthropic API timeout: {str(e)}")
             logger.error(f"Anthropic API timeout after 120 seconds: {str(e)}")
             raise TimeoutError(
-                f"ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
+                "ArchiMate generation timed out. The complexity of your requirements may require simplification or breaking into smaller parts."
             )
         except anthropic.AuthenticationError as e:
-            logger.info(f"\n❌ ERROR: Authentication failed - Invalid API key")
+            logger.info("\n❌ ERROR: Authentication failed - Invalid API key")
             logger.info(f"Error details: {str(e)}")
             logger.error(f"Anthropic authentication error: {str(e)}")
             raise ValueError(
@@ -2054,7 +2181,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             # Check if this is a credit/balance error (400 with credit balance message)
             if "credit balance" in error_str.lower() or "insufficient credits" in error_str.lower():
                 logger.warning(
-                    f"⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
+                    "⚠️ Anthropic API credits exhausted. Error will trigger automatic fallback."
                 )
             raise
         except anthropic.APIError as e:
@@ -2071,14 +2198,21 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_gemini(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
-        """Call Google Gemini models via REST API."""
+        """Call Google Gemini models via REST API.
+
+        ``timeout`` overrides the default 60s request timeout for this call
+        only; other callers keep the 60s default.
+        """
 
         # Normalize Gemini model names to correct API format
         # Try multiple model name formats if first fails
         model_normalized = model.lower().strip()
-        original_model = model_normalized
 
         # Try common model name variations
         model_variations = []
@@ -2109,8 +2243,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         if max_tokens is not None:
             payload["generationConfig"] = {"maxOutputTokens": max_tokens}
 
+        effective_timeout = timeout if timeout is not None else 60
         try:
-            response = requests.post(endpoint, params={"key": api_key}, json=payload, timeout=60)
+            response = requests.post(
+                endpoint, params={"key": api_key}, json=payload, timeout=effective_timeout
+            )
             response.raise_for_status()
         except requests.exceptions.HTTPError as exc:
             status = exc.response.status_code if exc.response else "unknown"
@@ -2167,7 +2304,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     @retry_on_transient_error(max_attempts=3, min_wait=2, max_wait=10)
     def _call_deepseek(
-        prompt: str, model: str, api_key: str, max_tokens: Optional[int] = None
+        prompt: str,
+        model: str,
+        api_key: str,
+        max_tokens: Optional[int] = None,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call DeepSeek API with automatic retry on transient failures.
@@ -2177,11 +2318,20 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         Retries on: Timeout, ConnectionError, RateLimitError
         Max attempts: 3
         Backoff: Exponential (2s, 4s, 8s)
+
+        ``timeout`` overrides the default 60s client-level timeout for this
+        call only; other callers keep the 60s default.
         """
         try:
             from openai import OpenAI
 
-            client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com/v1")
+            # NOTE: the OpenAI client has no request timeout by default, which let a
+            # stalled DeepSeek connection hang a worker indefinitely (see Task 4,
+            # P0 wave). Bound it explicitly at the client level.
+            effective_timeout = timeout if timeout is not None else 60.0
+            client = OpenAI(
+                api_key=api_key, base_url="https://api.deepseek.com/v1", timeout=effective_timeout
+            )
 
             # Use model-specific optimal token limits
             if max_tokens is None:
@@ -2202,6 +2352,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 ],
                 temperature=0.0,
                 max_tokens=max_tokens,
+                timeout=effective_timeout,
             )
 
             response_text = response.choices[0].message.content
@@ -2351,7 +2502,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 )
 
                 # Calculate max length (input + output, but don't exceed model max)
-                max_length = min(prompt_length + output_tokens, model_max_length)
+                min(prompt_length + output_tokens, model_max_length)
 
                 # Generate text with proper truncation
                 result = generator(
@@ -2403,6 +2554,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         model: str,
         api_key: str,
         max_tokens: Optional[int] = 4096,
+        timeout: Optional[float] = None,
     ) -> Tuple[str, int, int, float]:
         """
         Call OpenRouter API (OpenAI-compatible chat completions).
@@ -2415,6 +2567,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             model: Model ID in provider/model format (e.g. "google/gemini-2.5-flash-preview:free")
             api_key: OpenRouter API key
             max_tokens: Maximum response tokens
+            timeout: Optional override for the read timeout (seconds) of this
+                call only; other callers keep the default (10s connect, 80s
+                read). The connect timeout is left at 10s regardless.
 
         Returns:
             Tuple of (response_text, input_tokens, output_tokens, cost)
@@ -2438,12 +2593,13 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             "temperature": 0.0,
         }
 
+        read_timeout = timeout if timeout is not None else 80
         try:
             response = http_requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=(10, 80),
+                timeout=(10, read_timeout),
             )
             response.raise_for_status()
             data = response.json()
@@ -2523,11 +2679,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             },
             "anthropic": {
                 "name": "Anthropic (Claude)",
-                "default_models": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"]
+                "default_models": ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"]
             },
             "gemini": {
                 "name": "Google (Gemini)",
-                "default_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-pro"]
+                "default_models": ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
             },
             "deepseek": {
                 "name": "DeepSeek",
@@ -2772,13 +2928,13 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         """
         try:
             # Build the decision log entry
-            decision_log = {
+            ({
                 "decision_type": decision_type,
                 "context": context,
                 "decision": decision,
                 "rationale": rationale,
                 "timestamp": datetime.utcnow().isoformat(),
-            }
+            })
 
             # Create LLMInteraction record for audit
             interaction = LLMInteraction(
@@ -2938,7 +3094,7 @@ def test_api_key(provider: str, api_key: str, model: str | None = None) -> Dict:
             return {"success": True, "message": f"Connection successful. Model: {response.model}"}
 
         elif provider == "gemini":
-            model_name = _resolve_model("gemini", model) or "gemini-1.5-flash"
+            model_name = _resolve_model("gemini", model) or "gemini-2.0-flash"
 
             try:
                 ping_response = requests.post(

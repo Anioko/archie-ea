@@ -9,13 +9,13 @@ validation, rule management, and violation correction for enterprise architectur
 """
 
 import logging
-from typing import Optional
 
 from flask import Blueprint, jsonify, request
 
 from app.decorators import audit_log
 from app.services.capability_taxonomy_service import CapabilityTaxonomyService
 from flask_login import login_required
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -407,7 +407,7 @@ def get_audit_trail():
 
         capability_id = request.args.get("capability_id", type=int)
         audit_type = request.args.get("audit_type")
-        limit = min(request.args.get("limit", 100, type=int), 500)
+        limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
 
         query = CapabilityTaxonomyAudit.query
 

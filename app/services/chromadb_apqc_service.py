@@ -28,14 +28,13 @@ The UnifiedAPQCService automatically delegates to this service when appropriate.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from flask import has_app_context
 
-from app import db
 from app.models.apqc_process import APQCProcess
 from app.utils.deprecation import (
     APQC_UNIFIED_GETTER,

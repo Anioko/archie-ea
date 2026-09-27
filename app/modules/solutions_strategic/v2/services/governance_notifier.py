@@ -12,6 +12,7 @@ doesn't spam. Fully guarded — a push can never break the pass that triggered i
 
 import logging
 from datetime import datetime, timedelta
+from html import escape
 from typing import Any, Dict, List, Optional, Sequence
 
 from app import db
@@ -82,11 +83,20 @@ class GovernanceNotifier:
 
     @staticmethod
     def _audience_user_ids(roles, extra_user_ids) -> List[int]:
+        from flask import g
         from app.models.user import User
 
         ids = set()
         try:
+            # tenant-scoping-ok when g.current_org_id is set: restrict the
+            # audience to the org whose finding triggered this push, or every
+            # org's platform_admin/enterprise_architect gets emailed about
+            # another tenant's data. Falls back to unscoped only outside a
+            # request context (no cross-tenant notion applies there).
+            org_id = getattr(g, "current_org_id", None)
             q = User.query.filter(User.enterprise_role.in_(list(roles)))
+            if org_id is not None:
+                q = q.filter(User.organization_id == org_id)
             for u in q.all():
                 ids.add(u.id)
         except Exception as exc:
@@ -120,30 +130,36 @@ class GovernanceNotifier:
     @staticmethod
     def _email_digest(source_label, flagged, url) -> bool:
         try:
-            from flask import current_app
+            from flask import current_app, g
             from app._bootstrap._digest_emails import _safe_send_email
             from app.models.user import User
 
-            recipients = [
-                u.email for u in User.query.filter(
-                    User.enterprise_role.in_(list(_DEFAULT_ROLES))
-                ).all() if getattr(u, "email", None)
-            ]
+            # tenant-scoping-ok when g.current_org_id is set — see
+            # _audience_user_ids above for why this must not be global.
+            org_id = getattr(g, "current_org_id", None)
+            _q = User.query.filter(User.enterprise_role.in_(list(_DEFAULT_ROLES)))
+            if org_id is not None:
+                _q = _q.filter(User.organization_id == org_id)
+            recipients = [u.email for u in _q.all() if getattr(u, "email", None)]
             if not recipients:
                 return False
+            # finding titles come from AI governance analysis of real data
+            # (application/capability names etc.) -- freeform, no character
+            # restriction. source_label/url are caller-supplied strings too;
+            # escape all of it before it reaches this HTML email.
             items = "".join(
-                f"<li><b>{f.get('severity', '').upper()}</b> — {f.get('title', '')}</li>"
+                f"<li><b>{escape(f.get('severity', '').upper())}</b> — {escape(str(f.get('title', '')))}</li>"
                 for f in flagged[:10]
             )
             html = (
-                f"<h2>{source_label}: {len(flagged)} finding(s) need attention</h2>"
-                f"<ul>{items}</ul>"
-                f"<p><a href=\"{url}\">Open in A.R.C.H.I.E.</a></p>"
+                f"<h2>{escape(source_label)}: {len(flagged)} finding(s) need attention</h2>"
+                f"<ul>{items}</ul>"  # raw-html-ok: items is built entirely from escape()'d parts above
+                f"<p><a href=\"{escape(url)}\">Open in Entelim</a></p>"
             )
             # degrades to logging if SMTP is unconfigured — never raises
             return bool(_safe_send_email(
                 current_app._get_current_object(),
-                f"[A.R.C.H.I.E.] {source_label}: {len(flagged)} finding(s) need attention",
+                f"[Entelim] {source_label}: {len(flagged)} finding(s) need attention",
                 recipients, html,
             ))
         except Exception as exc:

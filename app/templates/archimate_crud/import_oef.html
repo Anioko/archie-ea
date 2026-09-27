@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Import ArchiMate Model (OEF){% endblock %}
 
@@ -12,23 +13,20 @@
 {% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6 space-y-6 max-w-2xl">
+<div class="p-6 space-y-6 mx-auto max-w-2xl">
     <!-- Header -->
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-3xl font-bold">Import ArchiMate Model (OEF)</h1>
-            <p class="text-muted-foreground mt-2">Upload an ArchiMate Open Exchange Format XML file</p>
-        </div>
-        <a href="{{ url_for('archimate_crud.dashboard') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('archimate_crud.dashboard') }}"
            class="inline-flex items-center gap-2 px-3 py-2 text-sm border border-border rounded-md hover:bg-accent">
             <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i> Back to Dashboard
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Import ArchiMate Model (OEF)', subtitle='Upload an ArchiMate Open Exchange Format XML file', actions_caller=_ps_actions) }}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% for category, message in messages %}
         <div class="rounded-md border px-4 py-3 text-sm
-            {{ 'bg-destructive/10 border-destructive text-destructive' if category == 'error' else 'bg-success/10 border-success text-success' }}">
+            {{ 'bg-destructive/10 border-destructive text-destructive-emphasis' if category == 'error' else 'bg-success/10 border-success text-success-emphasis' }}">
             {{ message }}
         </div>
         {% endfor %}
@@ -61,8 +59,8 @@
 
         {% if result.warnings %}
         <div class="rounded-md border border-warning bg-warning/5 p-4 space-y-1">
-            <p class="text-sm font-medium text-warning">Warnings:</p>
-            <ul class="list-disc list-inside text-sm text-warning/80 space-y-0.5">
+            <p class="text-sm font-medium text-warning-emphasis">Warnings:</p>
+            <ul class="list-disc list-inside text-sm text-warning-emphasis/80 space-y-0.5">
                 {% for w in result.warnings %}
                 <li>{{ w }}</li>
                 {% endfor %}
@@ -72,8 +70,8 @@
 
         {% if result.errors %}
         <div class="rounded-md border border-destructive bg-destructive/5 p-4 space-y-1">
-            <p class="text-sm font-medium text-destructive">Errors encountered during import:</p>
-            <ul class="list-disc list-inside text-sm text-destructive/80 space-y-0.5">
+            <p class="text-sm font-medium text-destructive-emphasis">Errors encountered during import:</p>
+            <ul class="list-disc list-inside text-sm text-destructive-emphasis/80 space-y-0.5">
                 {% for err in result.errors %}
                 <li>{{ err }}</li>
                 {% endfor %}
@@ -102,7 +100,7 @@
     <!-- Upload Form -->
     <div class="rounded-lg border bg-card p-6 space-y-4">
         <h2 class="text-lg font-semibold">Upload OEF XML File</h2>
-        <form method="POST" enctype="multipart/form-data" class="space-y-4">
+        <form method="POST" action="{{ url_for('architect_ui.import_oef') }}" enctype="multipart/form-data" class="space-y-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div
                 class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
@@ -113,7 +111,7 @@
                 <p class="text-xs text-muted-foreground mt-1">ArchiMate OEF XML files (.xml)</p>
                 <p class="text-xs text-primary mt-2" x-text="fileName"></p>
                 <input x-ref="oefFile" id="oef_file" name="oef_file" type="file" accept=".xml" class="sr-only"
-                    @change="fileName = $event.target.files[0]?.name || ''">
+                    @change="fileName = $event.target.files[0]?.name || ''" aria-label="Oef file">
             </div>
 
             <button type="submit"

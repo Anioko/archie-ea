@@ -6,9 +6,7 @@ Used by application_mgmt template_routes session management endpoints.
 """
 
 import logging
-from datetime import datetime
 
-from app import db
 
 logger = logging.getLogger(__name__)
 

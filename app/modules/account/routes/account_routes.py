@@ -16,7 +16,16 @@ Endpoints:
 """
 import logging
 
-from flask import Blueprint, flash, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from app.security.audit import audit_logger
@@ -45,6 +54,23 @@ _svc = AccountService
 @rate_limit(10, "1m", methods=("POST",))  # SECURITY: Brute-force protection on credential submits only
 def login():
     """Log in an existing user."""
+    # Opening /login while already signed in must not disturb the existing
+    # session (it is still fully valid) -- send the user on rather than
+    # re-rendering the sign-in form, which otherwise reads as an unexpected
+    # sign-out even though the session was never touched. Same
+    # already-authenticated guard as reset_password_request()/reset_password()
+    # below, reused here rather than duplicated with new logic. Honour a
+    # same-origin ?next= the way a successful login below already does --
+    # arriving here signed in from a deep link (e.g. a bookmarked page whose
+    # session just outlived a tab) must land back on that page, not always
+    # the dashboard; safe_next_url() is the same allow-list guard against an
+    # off-site next, reused rather than re-implemented here.
+    if current_user.is_authenticated:
+        from app.utils.safe_redirect import safe_next_url
+
+        return redirect(
+            safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+        )
     form = LoginForm()
     if form.validate_on_submit():
         # COM-005: Check email-domain SSO config before password auth.
@@ -72,19 +98,35 @@ def login():
                 audit_logger.log_authentication(success=True)
             except Exception as _exc:
                 _log.warning("Audit log failed on login success: %s", _exc)
+            # V-06: audit_logger writes to `audit_events`, which nothing
+            # surfaces. Record the same event in `soc2_audit_log`, the table
+            # /admin/audit-log actually reads, with IP and user agent.
+            from app.services import auth_audit
+
+            _login_entry = auth_audit.record_login_success(user)
+            if _login_entry is not None:
+                session["_login_audit_id"] = _login_entry.id
             flash("You are now logged in. Welcome back!", "success")
-            next_url = request.args.get("next", "")
-            # Prevent open redirect: only allow relative URLs
-            if not next_url or next_url.startswith("//") or "://" in next_url:
-                next_url = url_for("dashboard.overview")
-            return redirect(next_url)
+            # Prevent open redirect. The previous inline check (reject "//" and
+            # "://") let "/\evil.com" through, which browsers normalise to
+            # "//evil.com" and follow off-site.
+            from app.utils.safe_redirect import safe_next_url
+
+            return redirect(
+                safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+            )
         else:
             try:
                 audit_logger.log_authentication(success=False)
             except Exception as _exc:
                 _log.warning("Audit log failed on login failure: %s", _exc)
+            # V-06: failed-login monitoring needs the attempt in the surfaced
+            # audit table, attributed to the account it targeted where one exists.
+            from app.services import auth_audit
+
+            auth_audit.record_login_failure(form.email.data)
             flash("Invalid email or password.", "form-error")
-    # Gather configured SSO / SAML providers for the login page buttons
+    # Gather configured SSO providers for the login page buttons
     from app.auth.sso import sso_service
 
     oidc_providers = []
@@ -97,7 +139,6 @@ def login():
         "account/login.html",
         form=form,
         sso_providers=oidc_providers,
-        saml_enabled=sso_service.is_saml_enabled(),
     )
 
 
@@ -107,13 +148,13 @@ def register():
     """Register a new user, and send them a confirmation email."""
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = _svc.register_user(
+        (_svc.register_user(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
-        )
-        flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
+        ))
+        flash(f"Account created successfully. Welcome to {current_app.config['APP_NAME']}!", "success")
         return redirect(url_for("main.index"))
     return render_template("account/register.html", form=form)
 
@@ -126,6 +167,11 @@ def logout():
         audit_logger.log_logout()
     except Exception as _exc:
         _log.warning("Audit log failed on logout: %s", _exc)
+    # V-06: logout is a session-forensics event too; record it in the surfaced
+    # audit table while current_user is still resolvable.
+    from app.services import auth_audit
+
+    auth_audit.record_logout(current_user if current_user.is_authenticated else None)
     _svc.logout()
     flash("You have been logged out.", "info")
     return redirect(url_for("main.index"))
@@ -136,7 +182,46 @@ def logout():
 @login_required
 def manage():
     """Display a user's account information."""
-    return render_template("account/manage.html", user=current_user, form=None)
+    # V-06: last login is read back from the audit log rather than duplicated
+    # into a User column, so the account page and /admin/audit-log cannot
+    # disagree. The entry written by the CURRENT login is excluded, otherwise
+    # "last login" would always read "just now".
+    from app.services import auth_audit
+
+    last_login_entry = auth_audit.last_login(
+        current_user.id, before_id=session.get("_login_audit_id")
+    )
+    return render_template(
+        "account/manage.html",
+        user=current_user,
+        form=None,
+        last_login_entry=last_login_entry,
+        recent_auth_events=auth_audit.recent_auth_events(current_user.id),
+    )
+
+
+@account_bp.route("/session/keepalive", methods=["GET"])
+@login_required
+def session_keepalive():
+    """F-07: cheap same-origin ping that refreshes the server idle stamp.
+
+    The client-side warning used to ping /health, which is a liveness endpoint
+    and says nothing about the session — and /health is deliberately exempt
+    from the idle check so a background poll cannot keep an abandoned tab
+    alive. This endpoint is not exempt: reaching it IS activity, and it is
+    behind @login_required so an expired session gets the 401/redirect the
+    before_request hook produces rather than a misleading 200.
+    """
+    from flask import jsonify
+
+    return jsonify(
+        {
+            "ok": True,
+            "idle_timeout_seconds": current_app.config.get(
+                "SESSION_IDLE_TIMEOUT_SECONDS"
+            ),
+        }
+    )
 
 
 @account_bp.route("/manage/notification-preferences", methods=["POST"])
@@ -160,6 +245,43 @@ def save_notification_preferences():
         flash("Notification preferences saved.", "success")
     except Exception as exc:
         _log.error("Failed to save notification preferences for user %s: %s", current_user.id, exc)
+        db.session.rollback()
+        flash("Could not save preferences. Please try again.", "error")
+    return redirect(url_for("account.manage"))
+
+
+@account_bp.route("/manage/preferences", methods=["POST"])
+@login_required
+def save_preferences():
+    """Save user preferences (notifications and display) for the current user.
+
+    Mirrors the v2 endpoint so the /account/manage template works correctly
+    on the rollback path (USE_ACCOUNT_GUARDRAILS=false).
+    """
+    from app import db
+
+    form_type = request.form.get("form_type", "")
+    known_keys = [
+        "arb_decisions",
+        "solution_updates",
+        "assignment_changes",
+        "weekly_digest",
+        "mention_notifications",
+    ]
+    try:
+        if form_type == "notifications":
+            prefs = {key: (request.form.get(key) == "on") for key in known_keys}
+            current_user.set_notification_preferences(prefs)
+        elif form_type == "display":
+            current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        else:
+            flash("Unknown preference form type.", "error")
+            return redirect(url_for("account.manage"))
+        db.session.add(current_user)
+        db.session.commit()
+        flash("Preferences saved.", "success")
+    except Exception as exc:
+        _log.error("Failed to save preferences for user %s: %s", current_user.id, exc)
         db.session.rollback()
         flash("Could not save preferences. Please try again.", "error")
     return redirect(url_for("account.manage"))
@@ -200,14 +322,30 @@ def change_password():
     """Change an existing user's password."""
     form = ChangePasswordForm()
     if form.validate_on_submit():
-        success, message = _svc.change_password(
+        success, message, revoked_count = _svc.change_password(
             current_user, form.old_password.data, form.new_password.data
         )
         flash_cat = "form-success" if success else "form-error"
         flash(message, flash_cat)
         if success:
+            if revoked_count is not None and revoked_count > 0:
+                device_word = "device" if revoked_count == 1 else "devices"
+                flash(
+                    "{} other signed-in {} {} signed out.".format(
+                        revoked_count, device_word, "was" if revoked_count == 1 else "were"
+                    ),
+                    "info",
+                )
+            elif revoked_count is None:
+                flash(
+                    "We could not confirm your other sessions were signed out. "
+                    "Please sign out of other devices manually.",
+                    "warning",
+                )
             return redirect(url_for("main.index"))
-    return render_template("account/manage.html", form=form)
+    # user= is required: account/manage.html reads user.first_name / user.last_name
+    # unconditionally, so omitting it raises UndefinedError and 500s the page.
+    return render_template("account/manage.html", user=current_user, form=form)
 
 
 @account_bp.route("/manage/change-email", methods=["GET", "POST"])
@@ -223,7 +361,9 @@ def change_email_request():
         flash(message, flash_cat)
         if success:
             return redirect(url_for("main.index"))
-    return render_template("account/manage.html", form=form)
+    # user= is required: account/manage.html reads user.first_name / user.last_name
+    # unconditionally, so omitting it raises UndefinedError and 500s the page.
+    return render_template("account/manage.html", user=current_user, form=form)
 
 
 @account_bp.route("/manage/change-email/<token>", methods=["GET", "POST"])
@@ -290,6 +430,24 @@ def join_from_invite(user_id, token):
     return redirect(url_for("main.index"))
 
 
+@account_bp.route("/invitation/<int:invitation_id>/accept", methods=["POST"])
+@login_required
+def accept_invitation(invitation_id):
+    """Accept a pending invitation and gain the offered role."""
+    success, message = _svc.accept_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
+
+
+@account_bp.route("/invitation/<int:invitation_id>/decline", methods=["POST"])
+@login_required
+def decline_invitation(invitation_id):
+    """Decline a pending invitation — no role is granted."""
+    success, message = _svc.decline_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
+
+
 @account_bp.before_app_request
 def before_request():
     """Force user to confirm email before accessing login-required routes."""
@@ -351,7 +509,7 @@ def _sso_enabled():
 @account_bp.route("/sso/<provider>")
 def sso_login(provider):
     """Initiate SSO login flow for the given provider."""
-    from flask import abort, current_app
+    from flask import abort
 
     if not _sso_enabled():
         abort(404)
@@ -426,6 +584,8 @@ def sso_callback(provider):
     from app import db
     from app.models.user import User
 
+    # tenant-scoping-ok: pre-auth SSO callback, no org context yet -- scoped
+    # by the (external_id, sso_provider) pair, which is unique per IdP.
     user = User.query.filter_by(external_id=external_id, sso_provider=provider).first()
     if user is None:
         # Try matching by email for existing password-auth users linking SSO
@@ -448,118 +608,9 @@ def sso_callback(provider):
         db.session.commit()
 
     # Establish Flask-Login session (same as password login)
-    session.clear()
-    session.modified = True
-    from flask_login import login_user
+    from app.services import session_registry
 
-    login_user(user, remember=True)
-    session.permanent = True
+    session_registry.login_and_register(user, remember=True)
 
     flash("Successfully signed in via SSO.", "success")
     return redirect(url_for("main.index"))
-
-
-# =========================================================================
-# SAML 2.0 Routes (PLT-030)
-# Coexists with OIDC SSO routes above.  Feature-flagged behind the same
-# FeatureFlag(key='sso_authentication') + SAML_IDP_SSO_URL config.
-# =========================================================================
-
-
-def _saml_available():
-    """Return True when SAML is configured and the SSO feature flag is on."""
-    from app.auth.sso import sso_service
-
-    return sso_service.is_saml_enabled()
-
-
-@account_bp.route("/saml/login")
-def saml_login():
-    """Initiate SAML 2.0 SSO — redirect user to IdP with SAMLRequest.
-
-    GET /account/saml/login
-    """
-    from flask import abort, current_app
-
-    from app.auth.sso import SSOError, sso_service
-
-    if not _saml_available():
-        abort(404)
-
-    try:
-        redirect_url = sso_service.build_saml_authn_request_url()
-    except SSOError as exc:
-        current_app.logger.error("SAML login initiation failed: %s", exc)
-        flash("SAML SSO is not available. Please contact your administrator.", "error")
-        return redirect(url_for("account.login"))
-
-    return redirect(redirect_url)
-
-
-@account_bp.route("/saml/acs", methods=["POST"])
-def saml_acs():
-    """SAML Assertion Consumer Service — receive SAML Response from IdP.
-
-    POST /account/saml/acs
-    The IdP posts a base64-encoded SAMLResponse form field here after
-    authenticating the user.
-    """
-    from flask import abort, current_app
-
-    from app.auth.sso import SSOError, sso_service
-
-    if not _saml_available():
-        abort(404)
-
-    saml_response = request.form.get("SAMLResponse", "")
-    if not saml_response:
-        _log.warning("SAML ACS called with no SAMLResponse field")
-        flash("SAML authentication failed: missing response. Please try again.", "error")
-        return redirect(url_for("account.login"))
-
-    try:
-        user = sso_service.handle_saml_callback(saml_response)
-    except SSOError as exc:
-        current_app.logger.error("SAML ACS error: %s", exc)
-        flash("SAML authentication failed. Please try again or contact your administrator.", "error")
-        return redirect(url_for("account.login"))
-
-    # Establish Flask-Login session
-    session.clear()
-    session.modified = True
-    from flask_login import login_user
-
-    login_user(user, remember=True)
-    session.permanent = True
-
-    # Honor RelayState redirect when present and safe
-    relay_state = request.form.get("RelayState", "")
-    next_url = url_for("main.index")
-    if relay_state and relay_state.startswith("/") and not relay_state.startswith("//"):
-        next_url = relay_state
-
-    flash("Successfully signed in via SAML SSO.", "success")
-    return redirect(next_url)
-
-
-@account_bp.route("/saml/metadata")
-def saml_metadata():
-    """Return SP (Service Provider) SAML metadata XML.
-
-    GET /account/saml/metadata
-    IdP administrators import this XML to configure the trust relationship.
-    """
-    from flask import Response, abort, current_app
-
-    from app.auth.sso import SSOError, sso_service
-
-    if not _saml_available():
-        abort(404)
-
-    try:
-        xml = sso_service.build_sp_metadata_xml()
-    except SSOError as exc:
-        current_app.logger.error("SAML metadata generation failed: %s", exc)
-        abort(500)
-
-    return Response(xml, mimetype="application/samlmetadata+xml")

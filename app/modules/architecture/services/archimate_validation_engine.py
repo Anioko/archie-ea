@@ -16,7 +16,7 @@ Features:
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 logger = logging.getLogger(__name__)
 

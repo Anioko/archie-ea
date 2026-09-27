@@ -11,11 +11,9 @@ Features:
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from difflib import SequenceMatcher
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from app import db
 from app.models.document_analysis import DocumentAnalysis
 
 logger = logging.getLogger(__name__)
@@ -159,8 +157,8 @@ class DocumentComparisonService:
     ) -> Dict:
         """Compare two lists of elements."""
         # Build name index for quick lookup
-        elements1_by_name = {e.get("name", ""): e for e in elements1}
-        elements2_by_name = {e.get("name", ""): e for e in elements2}
+        {e.get("name", ""): e for e in elements1}
+        {e.get("name", ""): e for e in elements2}
 
         added = []
         removed = []

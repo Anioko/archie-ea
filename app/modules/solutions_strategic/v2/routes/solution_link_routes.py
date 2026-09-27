@@ -1,7 +1,8 @@
+from app.services.archimate_backbone import sync_archimate_element
 import logging
-from flask import abort, jsonify, request, url_for
+from flask import abort, g, jsonify, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import distinct, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 from app import db
 from app.models.application_portfolio import ApplicationComponent
@@ -14,6 +15,7 @@ from .solution_design_routes import (
     _get_solution_requirements,
     solution_design_bp,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,10 @@ def _check_completeness_threshold(solution, old_score):
     Caller must commit.
     """
     if not solution or not getattr(solution, 'created_by_id', None):
+        return
+    if old_score is None:
+        # The "before" score could not be read, so no crossing can be proven.
+        # Notifying anyway would assert a threshold the user never crossed.
         return
     try:
         result = solution.architecture_completeness_score
@@ -50,12 +56,21 @@ def _check_completeness_threshold(solution, old_score):
 
 
 def _get_completeness_score(solution):
-    """PLT-014: Safely get the current completeness score."""
+    """PLT-014: Get the current completeness score, or None if unreadable.
+
+    Returns None — not 0 — when the score cannot be computed. The only caller
+    passes this to `_check_completeness_threshold` as the *before* score, and
+    0 is the one value that makes every threshold look freshly crossed: a
+    failure here used to send the owner "completeness reached 100%" on a score
+    that was never read. `_check_completeness_threshold` skips on None.
+    """
     try:
         result = solution.architecture_completeness_score
         return result.get("score", 0) if isinstance(result, dict) else 0
     except Exception:
-        return 0
+        logger.exception("Completeness score unreadable for solution %s",
+                         getattr(solution, "id", None))
+        return None
 
 
 def _create_notification(user_id, notification_type, message, solution_id=None):
@@ -104,7 +119,7 @@ def _create_notification(user_id, notification_type, message, solution_id=None):
 @login_required
 def list_solution_notifications():
     """List notifications for the current user. Returns unread_count for badge."""
-    limit = min(request.args.get("limit", 50, type=int), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
     unread_only = request.args.get("unread_only", "false").lower() == "true"
     q = SolutionNotification.query.filter_by(user_id=current_user.id).order_by(
         SolutionNotification.created_at.desc()
@@ -158,6 +173,7 @@ def api_solution_users_search():
         return jsonify({"users": []})
     term = f"%{q}%"
     users = User.query.filter(
+        User.organization_id == g.current_org_id,
         or_(
             User.email.ilike(term),
             User.first_name.ilike(term),
@@ -184,7 +200,7 @@ def api_solution_activity(solution_id: int):
     solution = Solution.query.get_or_404(solution_id)
     if solution.created_by_id != current_user.id and not current_user.is_admin:
         abort(403)
-    limit = min(request.args.get("limit", 50, type=int), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
     activities = []
     comments = SolutionComment.query.filter_by(solution_id=solution_id).order_by(
         SolutionComment.created_at.desc()
@@ -212,7 +228,7 @@ def api_get_comments(solution_id: int):
     """Get comments for a solution, optionally filtered by section."""
     from app.models.solution_models import SolutionComment
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     section = request.args.get("section", "").strip()
 
     query = SolutionComment.query.filter_by(solution_id=solution_id)
@@ -314,6 +330,7 @@ def _import_app_capabilities(solution_id: int, app_id: int, user_id: int) -> int
         from app.models.solution_models import SolutionCapabilityMapping
 
         app_caps = (
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             ApplicationCapabilityMapping.query
             .filter_by(application_component_id=app_id, is_active=True)
             .limit(25)
@@ -430,6 +447,7 @@ def capability_coverage(solution_id):
             covering_app_names = []
             if app_ids:
                 acm_list = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query
                     .filter(
                         ApplicationCapabilityMapping.application_component_id.in_(app_ids),
@@ -637,8 +655,8 @@ def search_adrs():
             ]
         })
     except Exception as e:
-        logger.error(f"ADR search error: {e}", exc_info=True)
-        return jsonify({"results": []})
+        logger.exception(f"ADR search error: {e}")
+        return jsonify({"success": False, "error": "ADR search failed"}), 500
 
 
 # =============================================================================
@@ -711,8 +729,8 @@ def all_applications(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing applications: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing applications: {e}")
+        return jsonify({"success": False, "error": "Could not load applications"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-vendor-products", methods=["GET"])
@@ -735,8 +753,8 @@ def all_vendor_products(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing vendor products: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing vendor products: {e}")
+        return jsonify({"success": False, "error": "Could not load vendor products"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-adrs", methods=["GET"])
@@ -758,8 +776,8 @@ def all_adrs(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing ADRs: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing ADRs: {e}")
+        return jsonify({"success": False, "error": "Could not load ADRs"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/all-apqc-processes", methods=["GET"])
@@ -776,8 +794,8 @@ def all_apqc_processes(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing APQC processes: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing APQC processes: {e}")
+        return jsonify({"success": False, "error": "Could not load APQC processes"}), 500
 
 
 # =============================================================================
@@ -790,18 +808,18 @@ def all_apqc_processes(solution_id):
 def sync_applications(solution_id):
     """Replace all application links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution_applications junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
         tbl = db.metadata.tables.get("solution_applications")
         if tbl is None:
             return jsonify({"success": False, "error": "Junction table not found"}), 500
-        current = set(
+        (set(
             r[0] for r in db.session.execute(  # tenant-filtered: scoped via solution_id FK
                 tbl.select().where(tbl.c.solution_id == solution_id)
             ).fetchall()
-        )
+        ))
         # The first column after solution_id is application_component_id
         current_rows = db.session.execute(  # tenant-filtered: scoped via solution_id FK
             tbl.select().where(tbl.c.solution_id == solution_id)
@@ -828,7 +846,7 @@ def sync_applications(solution_id):
 def sync_vendor_products(solution_id):
     """Replace all vendor product links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution_vendor_products junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -860,7 +878,7 @@ def sync_vendor_products(solution_id):
 def sync_adrs(solution_id):
     """Replace all direct ADR links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution ADR junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -887,7 +905,7 @@ def sync_adrs(solution_id):
 def sync_apqc_processes(solution_id):
     """Replace all direct APQC process links with the given set of IDs."""
     # tenant-filtered: scoped via parent FK (solution APQC junction)
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     selected_ids = set(data.get("ids", []))
     try:
@@ -977,8 +995,8 @@ def all_capabilities(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error listing capabilities: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error listing capabilities: {e}")
+        return jsonify({"success": False, "error": "Could not load capabilities"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/sync-capabilities", methods=["POST"])
@@ -987,7 +1005,10 @@ def sync_capabilities(solution_id):
     """Replace all capability mappings with the given set of IDs (picker save)."""
     solution = Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
-    selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    try:
+        selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "ids must be integers"}), 400
     try:
         from app.models.solution_models import SolutionCapabilityMapping
         from app.models.solution_architect_models import SolutionProblemDefinition
@@ -1063,8 +1084,10 @@ def sync_capabilities(solution_id):
 @login_required
 def all_requirements(solution_id):
     """Return all requirements in the solution's canonical requirement set."""
+    # Outside the try, as in every sibling picker endpoint: a missing solution
+    # is a genuine 404 and must not be swallowed into the generic handler.
+    solution = Solution.query.get_or_404(solution_id)
     try:
-        solution = Solution.query.get_or_404(solution_id)
         rows = _get_solution_requirements(solution)
         items = [
             {
@@ -1078,8 +1101,8 @@ def all_requirements(solution_id):
         ]
         return jsonify({"items": items})
     except Exception as e:
-        logger.error(f"Error loading requirements: {e}", exc_info=True)
-        return jsonify({"items": []})
+        logger.exception(f"Error loading requirements: {e}")
+        return jsonify({"success": False, "error": "Could not load requirements"}), 500
 
 
 @solution_design_bp.route("/<int:solution_id>/sync-requirements", methods=["POST"])
@@ -1088,7 +1111,10 @@ def sync_requirements(solution_id):
     """Replace direct requirement links with the selected requirement IDs."""
     solution = Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
-    selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    try:
+        selected_ids = set(int(i) for i in data.get("ids", []) if i)
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "ids must be integers"}), 400
     try:
         from app.models.solution_architect_models import SolutionRequirement
 
@@ -1127,7 +1153,7 @@ def generate_from_capabilities(solution_id):
     """Generate ArchiMate elements from this solution's linked capabilities."""
     from app.models.solution_models import SolutionArchiMateElement, SolutionCapabilityMapping
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     capability_ids = data.get("capability_ids", [])
 
@@ -1278,6 +1304,7 @@ def link_archimate_element(solution_id):
                     source="AI-generated from capability-driven design",
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 auto_linked["requirement"] = {"name": element_name}
 
         db.session.commit()
@@ -1360,7 +1387,7 @@ def create_fit_gap_entry(solution_id):
                 entity_id=entry.id,
                 action="create",
                 user_id=current_user.id,
-                details={"solution_id": solution_id, "business_process": business_process},
+                new_value={"solution_id": solution_id, "business_process": business_process},
             )
             db.session.add(audit)
         except Exception as exc:
@@ -1399,7 +1426,7 @@ def update_fit_gap_entry(solution_id, entry_id):
                 entity_id=entry_id,
                 action="update",
                 user_id=current_user.id,
-                details={"fields_updated": [f for f in updatable if f in data]},
+                new_value={"fields_updated": [f for f in updatable if f in data]},
             )
             db.session.add(audit)
         except Exception as exc:
@@ -1429,7 +1456,7 @@ def delete_fit_gap_entry(solution_id, entry_id):
                 entity_id=entry_id,
                 action="delete",
                 user_id=current_user.id,
-                details={"solution_id": solution_id},
+                new_value={"solution_id": solution_id},
             )
             db.session.add(audit)
         except Exception as exc:
@@ -1447,7 +1474,7 @@ def delete_fit_gap_entry(solution_id, entry_id):
 @login_required
 def export_fit_gap_csv(solution_id):
     """Export fit-gap entries as CSV for SI handoff."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.solution_models import SolutionFitGapEntry
         import csv
@@ -1625,7 +1652,7 @@ def list_integration_patterns():
     q = request.args.get("q", "").strip()
     vendor_key = request.args.get("vendor_key", "").strip()
     approval_status = request.args.get("approval_status", "").strip()
-    limit = min(int(request.args.get("limit", 50)), 100)
+    limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
     try:
         query = IntegrationPattern.query

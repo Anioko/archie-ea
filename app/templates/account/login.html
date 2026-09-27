@@ -1,6 +1,7 @@
 {% extends 'layouts/public_base.html' %}
+{% block title %}Sign In{% endblock %}
 {% import 'macros/form_macros.html' as f %}
-{% from 'components/accessibility_helpers.html' import skip_to_main, live_region %}
+{% from 'components/accessibility_helpers.html' import skip_to_main, live_region with context %}
 {% from 'components/loading_state.html' import loading_inline %}
 {% from 'components/error_boundary.html' import error_boundary %}
 
@@ -33,7 +34,7 @@
 
 {# Split-screen login: branded panel (left) + credential form (right).
    No second <main> landmark — public_base.html already provides one.
-   Brand-panel colours come from the scoped <style> block below: ARCHIE's
+   Brand-panel colours come from the scoped <style> block below: Entelim's
    purged Tailwind build does NOT include slate-950 / these slate shades,
    so relying on those utility classes rendered the panel white-on-white. #}
 <div class="grid min-h-screen lg:grid-cols-2" aria-labelledby="login-title">
@@ -49,7 +50,7 @@
                 <span class="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                     <i data-lucide="layout-grid" class="h-5 w-5"></i>
                 </span>
-                <span class="login-brand__wordmark text-lg font-bold tracking-[0.18em]">A.R.C.H.I.E.</span>
+                <span class="login-brand__wordmark text-lg font-bold tracking-[0.18em]">Entelim</span>
             </div>
         </div>
 
@@ -80,7 +81,7 @@
                 <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                     <i data-lucide="layout-grid" class="h-4 w-4"></i>
                 </span>
-                <span class="text-base font-bold tracking-[0.18em] text-foreground">A.R.C.H.I.E.</span>
+                <span class="text-base font-bold tracking-[0.18em] text-foreground">Entelim</span>
             </div>
 
             <div class="rounded-xl border bg-card text-card-foreground shadow-sm">
@@ -111,7 +112,7 @@
                         <div class="space-y-2 mb-4">
                             <label for="{{ form.email.id }}" class="text-sm font-medium leading-none block">
                                 {{ form.email.label.text }}
-                                <span class="text-destructive" aria-label="required">*</span>
+                                <span class="text-destructive-emphasis" aria-label="required">*</span>
                             </label>
                             {% if form.email.errors %}
                                 {{ form.email(
@@ -124,9 +125,9 @@
                                         'aria-describedby': form.email.id ~ '-error',
                                         'aria-required': 'true'
                                     }) }}
-                                <p id="{{ form.email.id }}-error" class="text-sm font-medium text-destructive mt-1" role="alert">
+                                <p id="{{ form.email.id }}-error" class="text-sm font-medium text-destructive-emphasis mt-1" role="alert">
                                     <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1" aria-hidden="true"></i>
-                                    {{ form.email.errors[0] | safe }}
+                                    {{ form.email.errors[0] }}
                                 </p>
                             {% else %}
                                 {{ form.email(
@@ -171,8 +172,8 @@
                         </a>
                     </div>
 
-                    {# SSO / SAML login options — shown only when configured #}
-                    {% if sso_providers or saml_enabled %}
+                    {# SSO login options — shown only when configured #}
+                    {% if sso_providers %}
                     <div class="mt-6">
                         <div class="relative">
                             <div class="absolute inset-0 flex items-center">
@@ -189,12 +190,6 @@
                                 {{ provider.name }}
                             </a>
                             {% endfor %}
-                            {% if saml_enabled %}
-                            <a href="{{ url_for('account.saml_login') }}"
-                               class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 w-full">
-                                Sign in with SAML SSO
-                            </a>
-                            {% endif %}
                         </div>
                     </div>
                     {% endif %}

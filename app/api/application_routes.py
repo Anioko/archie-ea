@@ -29,12 +29,14 @@ from flask import Blueprint, jsonify, request
 from flask_login import login_required
 from sqlalchemy import inspect
 from sqlalchemy.orm import joinedload
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log, require_roles
 from app.models.application_portfolio import ApplicationComponent
 from app.utils.api_helpers import api_error
 from app.services.rate_limiter import rate_limit
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +130,8 @@ def api_applications_table():
     """
     try:
         # Get query parameters
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(max(request.args.get("per_page", 10, type=int), 1), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(max(safe_int_arg('per_page', 10, minimum=1, maximum=500), 1), 100)
         search = request.args.get("search", "")
         sort_column = request.args.get("sort_column", "name")
         sort_direction = request.args.get("sort_direction", "asc")
@@ -301,10 +303,12 @@ def api_application_solutions(app_id):
                 for s in solutions
             ]
         })
+    except HTTPException:
+        raise
     except Exception as exc:
         db.session.rollback()
         logger.error(f"Error fetching solutions for application {app_id}: {exc}", exc_info=True)
-        return jsonify({"solutions": [], "error": "Failed to load linked solutions"}), 200
+        return jsonify({"success": False, "error": "Failed to load linked solutions"}), 500
 
 
 # =============================================================================
@@ -368,6 +372,8 @@ def api_application_details(id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching application details: {e}")
         return jsonify(
@@ -403,7 +409,7 @@ def api_arch_elements(id):
         }
     """
     try:
-        app = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         if request.method == "GET":
             # Return linked architecture elements
@@ -415,9 +421,6 @@ def api_arch_elements(id):
                 ApplicationService,
                 DataObject,
             )
-            from app.models.business_layer import BusinessService
-            from app.models.process_data import BusinessProcess
-            from app.models.technology_layer import TechnologyService
 
             # Collect all elements
             processes = ApplicationProcess.query.filter_by(
@@ -529,6 +532,8 @@ def api_arch_elements(id):
                     }
                 ), 201
 
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error with architecture elements: {e}")
@@ -619,7 +624,7 @@ def api_arch_export(id):
         import csv
         import io
 
-        app = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         # Get all elements
         from app.models.application_layer import (
@@ -669,6 +674,8 @@ def api_arch_export(id):
             },
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error exporting architecture: {e}")
         return jsonify(
@@ -697,9 +704,7 @@ def api_find_duplicates():
     """
     try:
         threshold = request.args.get("threshold", 0.7, type=float)
-        include_processed = (
-            request.args.get("include_processed", "false").lower() == "true"
-        )
+        request.args.get("include_processed", "false").lower() == "true"
 
         # Get all applications
         apps = ApplicationComponent.query.limit(2000).all()
@@ -935,7 +940,7 @@ def api_bulk_consolidate():
                         "message": f"Consolidated {secondary.name} into {primary.name}",
                     }
                 )
-            except Exception as e:
+            except Exception:
                 results.append(
                     {
                         "pair": {
@@ -1023,7 +1028,7 @@ def api_process_links(app_id):
         }
     """
     try:
-        app = ApplicationComponent.query.get_or_404(app_id)
+        ApplicationComponent.query.get_or_404(app_id)
 
         if request.method == "GET":
             from app.models.relationship_tables import ApplicationProcessSupport
@@ -1114,6 +1119,8 @@ def api_process_links(app_id):
                 }
             ), 201
 
+    except HTTPException:
+        raise
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error with process links: {e}")
@@ -1168,7 +1175,7 @@ def api_work_packages(id):
     try:
         from app.models.implementation_migration import WorkPackage
 
-        app_obj = ApplicationComponent.query.get_or_404(id)
+        ApplicationComponent.query.get_or_404(id)
 
         work_packages = WorkPackage.query.filter_by(application_component_id=id).all()
 
@@ -1195,6 +1202,8 @@ def api_work_packages(id):
             )
 
         return jsonify({"work_packages": wp_data})
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching work packages for app {id}: {e}")
         return api_error("An internal error occurred", "INTERNAL_ERROR", 500)
@@ -1253,19 +1262,20 @@ def api_bulk_process_link():
         confidence_threshold: float - minimum confidence (0-1)
         dry_run: bool - only return suggestions without creating links
     """
-    import re
-    from difflib import SequenceMatcher
 
-    from sqlalchemy import or_
 
-    from app.models.process_data import BusinessProcess
     from app.models.relationship_tables import ApplicationProcessSupport
 
     data = request.get_json() or {}
 
     app_ids = data.get("application_ids", [])
     auto_link = data.get("auto_link", False)
-    confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    try:
+        confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number between 0 and 1"}), 400
+    if not 0 <= confidence_threshold <= 1:
+        return jsonify({"error": "confidence_threshold must be between 0 and 1"}), 400
     dry_run = data.get("dry_run", True)
 
     if app_ids == "all":

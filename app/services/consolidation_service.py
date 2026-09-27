@@ -977,7 +977,7 @@ class ConsolidationService:
 
         except Exception as e:
             logger.error(f"Error generating forecast: {e}")
-            return {"forecast_by_year": {}, "opportunities_included": 0}
+            return {"forecast_by_year": {}, "opportunities_included": None}
 
     @staticmethod
     def get_consolidation_dashboard_data() -> Dict[str, Any]:
@@ -1032,7 +1032,7 @@ class ConsolidationService:
                 "forecast": forecast,
             }
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: error path returns empty collections (no items), not fabricated counts
             logger.error(f"Error getting dashboard data: {e}")
             return {
                 "statistics": {},

@@ -14,15 +14,13 @@ Replaces vanity metrics (card counts, completion percentages) with real EA KPIs:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from sqlalchemy import func, and_
+from sqlalchemy import func
 
 from app import db
-from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
-from app.models.adm_phase_approval import ADMPhaseApproval, ADMComplianceCheckpoint, ADMStakeholderConcurrence, ApprovalStatus
-from app.models.adm_audit_log import ADMAuditLog
-from app.models.architecture_review_board import ARBReviewItem, ARBReviewStatus
+from app.models.adm_kanban import ADMPhase, KanbanCard
+from app.models.adm_phase_approval import ADMPhaseApproval, ADMComplianceCheckpoint, ADMStakeholderConcurrence
 
 logger = logging.getLogger(__name__)
 

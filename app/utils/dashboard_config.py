@@ -2,9 +2,6 @@
 Dashboard Configuration Generator
 Creates reusable dashboard configurations using the Hybrid approach
 """
-import random
-from datetime import datetime, timedelta
-
 from app.services.metrics_service import MetricsService
 
 
@@ -85,322 +82,10 @@ class DashboardConfig:
         }
 
 
-class AdminDashboardConfig:
-    """Pre-built configuration for Admin Dashboard"""
-
-    @staticmethod
-    def get_config():
-        config = DashboardConfig("Admin Dashboard", "Overview of key metrics")
-
-        # Metrics
-        config.add_metric(
-            "Total Revenue",
-            "$1,250.00",
-            "+12.5%",
-            "up",
-            "Trending up this month",
-            "Visitors for the last 6 months",
-        )
-        config.add_metric(
-            "New Customers",
-            "1,234",
-            "-20%",
-            "down",
-            "Down 20% this period",
-            "Acquisition needs attention",
-        )
-        config.add_metric(
-            "Active Accounts",
-            "45,678",
-            "+12.5%",
-            "up",
-            "Strong user retention",
-            "Engagement exceed targets",
-        )
-        config.add_metric(
-            "Growth Rate",
-            "4.5%",
-            "+4.5%",
-            "up",
-            "Steady performance increase",
-            "Meets growth projections",
-        )
-
-        # Chart data
-        chart_data = AdminDashboardConfig._generate_chart_data()
-        config.add_chart(
-            "adminChart",
-            "Total Visitors",
-            "Total for the last 3 months",
-            chart_data,
-            [
-                {"label": "Last 3 months", "value": "90d"},
-                {"label": "Last 30 days", "value": "30d"},
-                {"label": "Last 7 days", "value": "7d"},
-            ],
-        )
-
-        # Table
-        table_data = AdminDashboardConfig._generate_table_data()
-        config.add_table(
-            "adminTable",
-            [
-                {"id": "outline", "label": "Outline", "badge": None},
-                {"id": "past-performance", "label": "Past Performance", "badge": "3"},
-                {"id": "key-personnel", "label": "Key Personnel", "badge": "2"},
-                {"id": "focus-documents", "label": "Focus Documents", "badge": None},
-            ],
-            [
-                {"id": "drag", "label": "", "sortable": False},
-                {"id": "select", "label": "", "sortable": False},
-                {"id": "header", "label": "Header", "sortable": True},
-                {"id": "type", "label": "Section Type", "sortable": True},
-                {"id": "status", "label": "Status", "sortable": True},
-                {"id": "target", "label": "Target", "sortable": True},
-                {"id": "limit", "label": "Limit", "sortable": True},
-                {"id": "reviewer", "label": "Reviewer", "sortable": True},
-                {"id": "actions", "label": "", "sortable": False},
-            ],
-            table_data,
-        )
-
-        return config
-
-    @staticmethod
-    def _generate_chart_data():
-        """Generate sample chart data"""
-        chart_data = []
-        start_date = datetime(2024, 4, 1)
-        for i in range(90):
-            current_date = start_date + timedelta(days=i)
-            chart_data.append(
-                {
-                    "date": current_date.strftime("%Y-%m-%d"),
-                    "desktop": random.randint(50, 500),
-                    "mobile": random.randint(100, 400),
-                }
-            )
-        return chart_data
-
-    @staticmethod
-    def _generate_table_data():
-        """Generate sample table data"""
-        return [
-            {
-                "id": 1,
-                "header": "Cover page",
-                "type": "Cover page",
-                "status": "In Process",
-                "target": "18",
-                "limit": "5",
-                "reviewer": "Eddie Lake",
-            },
-            {
-                "id": 2,
-                "header": "Table of contents",
-                "type": "Table of contents",
-                "status": "Done",
-                "target": "29",
-                "limit": "24",
-                "reviewer": "Eddie Lake",
-            },
-            {
-                "id": 3,
-                "header": "Executive summary",
-                "type": "Narrative",
-                "status": "Done",
-                "target": "10",
-                "limit": "13",
-                "reviewer": "Eddie Lake",
-            },
-            {
-                "id": 4,
-                "header": "Technical approach",
-                "type": "Narrative",
-                "status": "Done",
-                "target": "27",
-                "limit": "23",
-                "reviewer": "Jamik Tashpulatov",
-            },
-            {
-                "id": 5,
-                "header": "Design",
-                "type": "Narrative",
-                "status": "In Process",
-                "target": "2",
-                "limit": "16",
-                "reviewer": "Jamik Tashpulatov",
-            },
-            {
-                "id": 6,
-                "header": "Capabilities",
-                "type": "Narrative",
-                "status": "In Process",
-                "target": "20",
-                "limit": "8",
-                "reviewer": "Jamik Tashpulatov",
-            },
-            {
-                "id": 7,
-                "header": "Integration",
-                "type": "Narrative",
-                "status": "In Process",
-                "target": "19",
-                "limit": "21",
-                "reviewer": "Jamik Tashpulatov",
-            },
-            {
-                "id": 8,
-                "header": "Project timeline",
-                "type": "Narrative",
-                "status": "Not Started",
-                "target": "25",
-                "limit": "1",
-                "reviewer": "Assign reviewer",
-            },
-            {
-                "id": 9,
-                "header": "Cost analysis",
-                "type": "Financial",
-                "status": "Not Started",
-                "target": "12",
-                "limit": "29",
-                "reviewer": "Assign reviewer",
-            },
-            {
-                "id": 10,
-                "header": "Risk assessment",
-                "type": "Narrative",
-                "status": "Not Started",
-                "target": "6",
-                "limit": "22",
-                "reviewer": "Assign reviewer",
-            },
-        ]
-
-
-class SalesDashboardConfig:
-    """Pre-built configuration for Sales Dashboard"""
-
-    @staticmethod
-    def get_config():
-        config = DashboardConfig("Sales Dashboard", "Track your sales performance")
-
-        # Sales metrics
-        config.add_metric(
-            "Total Sales",
-            "$45,231.89",
-            "+20.1%",
-            "up",
-            "Strong sales growth",
-            "Best month this quarter",
-        )
-        config.add_metric(
-            "Orders", "2,350", "+180", "up", "180 new orders", "Compared to last month"
-        )
-        config.add_metric(
-            "Conversion Rate",
-            "3.2%",
-            "+0.5%",
-            "up",
-            "Improved conversion",
-            "Marketing efforts paying off",
-        )
-        config.add_metric(
-            "Average Order",
-            "$19.25",
-            "-2.1%",
-            "down",
-            "Slightly lower AOV",
-            "Within acceptable range",
-        )
-
-        # Sales chart
-        chart_data = SalesDashboardConfig._generate_sales_chart_data()
-        config.add_chart(
-            "salesChart",
-            "Revenue Over Time",
-            "Daily revenue for the last 90 days",
-            chart_data,
-            [
-                {"label": "Last 90 days", "value": "90d"},
-                {"label": "Last 30 days", "value": "30d"},
-                {"label": "Last 7 days", "value": "7d"},
-            ],
-        )
-
-        # Top products table
-        table_data = SalesDashboardConfig._generate_products_table()
-        config.add_table(
-            "salesTable",
-            [
-                {"id": "products", "label": "Top Products", "badge": None},
-                {"id": "customers", "label": "Top Customers", "badge": "5"},
-                {"id": "regions", "label": "By Region", "badge": None},
-            ],
-            [
-                {"id": "select", "label": "", "sortable": False},
-                {"id": "product", "label": "Product", "sortable": True},
-                {"id": "revenue", "label": "Revenue", "sortable": True},
-                {"id": "units", "label": "Units Sold", "sortable": True},
-                {"id": "growth", "label": "Growth", "sortable": True},
-                {"id": "actions", "label": "", "sortable": False},
-            ],
-            table_data,
-            show_add_section=False,
-        )
-
-        return config
-
-    @staticmethod
-    def _generate_sales_chart_data():
-        """Generate sales chart data"""
-        chart_data = []
-        start_date = datetime(2024, 4, 1)
-        for i in range(90):
-            current_date = start_date + timedelta(days=i)
-            chart_data.append(
-                {
-                    "date": current_date.strftime("%Y-%m-%d"),
-                    "desktop": random.randint(1000, 5000),
-                    "mobile": random.randint(500, 3000),
-                }
-            )
-        return chart_data
-
-    @staticmethod
-    def _generate_products_table():
-        """Generate products table data"""
-        return [
-            {
-                "id": 1,
-                "product": "Product A",
-                "revenue": "$12,345",
-                "units": "456",
-                "growth": "+15%",
-            },
-            {
-                "id": 2,
-                "product": "Product B",
-                "revenue": "$9,876",
-                "units": "321",
-                "growth": "+22%",
-            },
-            {"id": 3, "product": "Product C", "revenue": "$7,654", "units": "234", "growth": "+8%"},
-            {"id": 4, "product": "Product D", "revenue": "$5,432", "units": "189", "growth": "-5%"},
-            {
-                "id": 5,
-                "product": "Product E",
-                "revenue": "$3,210",
-                "units": "145",
-                "growth": "+12%",
-            },
-        ]
-
-
-# ============================================================================
-# ENTERPRISE METRICS DASHBOARDS
-# ============================================================================
+# AdminDashboardConfig and SalesDashboardConfig were removed here. Both were
+# unreferenced shadcn demo scaffolding (desktop-vs-mobile traffic, "Sales
+# Dashboard") whose charts were filled with randomly generated values presented
+# as 90 days of real data. The remaining configs below query MetricsService.
 
 
 class ExecutiveDashboardConfig:
@@ -490,7 +175,7 @@ class ExecutiveDashboardConfig:
             f"{health_score}%",
             health_trend,
             "up" if health_score > 70 else "down",
-            f"Composite score across 4 dimensions",
+            "Composite score across 4 dimensions",
             f'{tech_debt["total_apps"]} applications assessed',
         )
 
@@ -501,7 +186,7 @@ class ExecutiveDashboardConfig:
             f"{debt_index}",
             f'{tech_debt["high_debt_apps"]} apps',
             "down" if debt_index < 50 else "up",
-            f"High debt applications",
+            "High debt applications",
             f'Average: {tech_debt["avg_debt_hours"]}h per app',
         )
 
@@ -632,7 +317,7 @@ class ArchitectureDashboardConfig:
             f"{tech_debt.get('avg_debt_hours', 0)}h",
             f"{tech_debt.get('high_debt_apps', 0)} apps",
             "down" if tech_debt.get("avg_debt_hours", 0) < 100 else "up",
-            f"High debt applications need refactoring",
+            "High debt applications need refactoring",
             f'Total: {tech_debt.get("total_debt_hours", 0)} hours across portfolio',
         )
 
@@ -644,7 +329,7 @@ class ArchitectureDashboardConfig:
             str(high_complexity),
             f"{int_summary['very_high']} critical",
             "down",
-            f"Very high integration complexity",
+            "Very high integration complexity",
             f'{len(integration["applications"])} apps analyzed',
         )
 
@@ -897,7 +582,7 @@ class FinancialDashboardConfig:
             f"${optimization['total_savings']:,.0f}",
             f"{optimization['opportunity_count']} opportunities",
             "up",
-            f"Potential savings from consolidation",
+            "Potential savings from consolidation",
             f'{optimization["opportunity_count"]} app pairs identified',
         )
 
@@ -907,7 +592,7 @@ class FinancialDashboardConfig:
             str(vendor_risk["critical_risk_count"]),
             f"{vendor_risk['high_risk_count']} high risk",
             "down" if vendor_risk["critical_risk_count"] == 0 else "up",
-            f"Critical vendor dependencies",
+            "Critical vendor dependencies",
             f'Total vendor spend: ${vendor_risk["total_spend"]:,.0f}',
         )
 

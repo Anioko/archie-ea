@@ -4,9 +4,9 @@ Admin User Service - Business logic for admin user management.
 Extracted from: app/admin/views.py (user CRUD, invitations, role changes)
 """
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
-from flask import url_for
+from flask import g, url_for
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
@@ -39,9 +39,15 @@ class AdminUserService:
 
     @staticmethod
     def get_all_users():
-        """Get all registered users ordered by last name, first name."""
+        """Get all registered users ordered by last name, first name.
+
+        Callers run under admin_required (org-level admin), not
+        platform_admin_required, so this is restricted to the current org
+        (tenant-scoping-ok: cross-org user-listing IDOR fix).
+        """
         return (
-            User.query.options(joinedload(User.role))
+            User.query.filter_by(organization_id=g.current_org_id)
+            .options(joinedload(User.role))
             .order_by(
                 func.lower(func.coalesce(User.last_name, "")),
                 func.lower(func.coalesce(User.first_name, "")),
@@ -60,7 +66,10 @@ class AdminUserService:
         """Get user by ID or abort with 404."""
         from flask import abort
 
-        user = User.query.options(joinedload(User.role)).filter_by(id=user_id).first()
+        # tenant-scoping-ok: org-scoped admin, restrict lookup to the current org.
+        user = User.query.options(joinedload(User.role)).filter_by(
+            id=user_id, organization_id=g.current_org_id
+        ).first()
         if user is None:
             abort(404)
         return user
@@ -77,7 +86,8 @@ class AdminUserService:
         Returns:
             Pagination object.
         """
-        query = User.query.options(joinedload(User.role))
+        # tenant-scoping-ok: org-scoped admin, restrict listing to the current org.
+        query = User.query.filter_by(organization_id=g.current_org_id).options(joinedload(User.role))
         if search_query:
             query = query.filter(
                 User.first_name.ilike(f"%{search_query}%")
@@ -176,12 +186,28 @@ class AdminUserService:
 
     @staticmethod
     def set_user_password(user: User, new_password: str, confirm_user: bool = True) -> None:
-        """Set a user's password and optionally mark the account confirmed."""
+        """Set a user's password and optionally mark the account confirmed.
+
+        Revokes every existing session for the user (D2, round 2): this is
+        the primary incident-response path -- an admin resetting a
+        compromised account's password must also kick out whatever session
+        the attacker's captured cookie is still riding on, or the reset is
+        cosmetic.
+        """
         user.password = new_password
         if confirm_user:
             user.confirmed = True
         db.session.add(user)
         db.session.commit()
+
+        from app.services import session_registry
+
+        try:
+            session_registry.revoke_all_for_user(user.id, "admin")
+        except Exception:
+            logging.getLogger(__name__).error(
+                "set_user_password: failed to revoke sessions for user_id=%s", user.id, exc_info=True
+            )
 
     @staticmethod
     def delete_user(user: User) -> Tuple[bool, str]:
@@ -193,8 +219,9 @@ class AdminUserService:
         Returns:
             Tuple of (success, message).
         """
+        user_name = user.full_name()
         db.session.delete(user)
         db.session.commit()
         return True, "Successfully deleted user {}.".format(
-            user.full_name()
+            user_name
         )

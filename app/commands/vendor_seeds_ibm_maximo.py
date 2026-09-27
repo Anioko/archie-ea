@@ -1324,11 +1324,11 @@ def seed_ibm_maximo(link_capabilities: bool = True):
 
             print("✅ IBM Maximo EAM template seeded successfully!")
             print(f"   - Vendor: {template.vendor_name}")
-            print(f"   - Maintenance Capabilities: 22")
+            print("   - Maintenance Capabilities: 22")
             print(
-                f"   - Primary Focus: Work Orders, PM, Predictive, Asset Lifecycle, MRO Inventory"
+                "   - Primary Focus: Work Orders, PM, Predictive, Asset Lifecycle, MRO Inventory"
             )
-            print(f"   - Total ArchiMate Coverage: 100%")
+            print("   - Total ArchiMate Coverage: 100%")
 
         except Exception as e:
             db.session.rollback()

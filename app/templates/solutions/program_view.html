@@ -20,7 +20,7 @@
 
 {% block content %}
 <!-- modal-a11y-ok -->
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+<div class="p-6 space-y-6 mx-auto max-w-7xl">
     {{ page_header(
         title='Solution Programme Map',
         description='Dependency graph showing how solutions relate to each other. Arrows indicate dependency direction.',
@@ -33,7 +33,7 @@
 
     {# Filter bar #}
     <div class="flex items-center gap-3 mb-4">
-        <label class="text-sm font-medium text-muted-foreground">Filter by status:</label>
+        <label for="statusFilter" class="text-sm font-medium text-muted-foreground">Filter by status:</label>
         <select id="statusFilter" class="h-8 rounded-md border border-input bg-background px-2 py-1 text-sm">
             <option value="">All statuses</option>
             <option value="planned">Planned</option>
@@ -73,13 +73,17 @@
                     {% endfor %}
                     {% for dep in dependencies %}
                     <tr class="border-t border-border hover:bg-muted/30">
-                        <td class="px-4 py-2 font-medium text-foreground">{{ sol_map.get(dep.source, 'Solution #' ~ dep.source) }}</td>
+                        <td class="px-4 py-2 font-medium text-foreground">
+                            <a href="{{ url_for('solution_design.view_solution', solution_id=dep.source) }}" class="text-primary hover:underline">{{ sol_map.get(dep.source, 'Solution #' ~ dep.source) }}</a>
+                        </td>
                         <td class="px-4 py-2">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if dep.type == 'blocks' %}bg-destructive/10 text-destructive{% elif dep.type == 'enables' %}bg-primary/10 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if dep.type == 'blocks' %}bg-destructive/10 text-destructive-emphasis{% elif dep.type == 'enables' %}bg-primary/10 text-primary{% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ dep.type or 'depends_on' }}
                             </span>
                         </td>
-                        <td class="px-4 py-2 font-medium text-foreground">{{ sol_map.get(dep.target, 'Solution #' ~ dep.target) }}</td>
+                        <td class="px-4 py-2 font-medium text-foreground">
+                            <a href="{{ url_for('solution_design.view_solution', solution_id=dep.target) }}" class="text-primary hover:underline">{{ sol_map.get(dep.target, 'Solution #' ~ dep.target) }}</a>
+                        </td>
                         <td class="px-4 py-2 text-muted-foreground">{{ dep.notes or '—' }}</td>
                     </tr>
                     {% endfor %}
@@ -102,7 +106,7 @@
 {% endblock %}
 
 {% block extra_head_js %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <script>
 (function() {
   'use strict';

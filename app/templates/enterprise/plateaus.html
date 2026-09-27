@@ -7,8 +7,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Plateaus', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -20,10 +20,13 @@
         title='Implementation Plateaus',
         description='Define architecture plateaus representing stable states in the transition.'
     ) }}
-        <button class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Action">
-            <i data-lucide="plus" class="h-4 w-4 mr-2" aria-hidden="true"></i>
-            New Plateau
-        </button>
+        {# The ArchiMate CRUD workflow operates on this same Plateau model
+           (MODEL_REGISTRY['Plateau']), so create and detail are real destinations. #}
+        <a href="{{ url_for('archimate_crud.create_element', layer='implementation', element_type='Plateau') }}"
+           class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+           data-testid="btn-new-plateau">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New Plateau
+        </a>
     </div>
 
     <!-- Plateaus Grid -->
@@ -35,26 +38,26 @@
                     <i data-lucide="layers" class="h-5 w-5 text-primary" aria-hidden="true"></i>
                 </div>
                 <span class="px-2 py-1 text-xs rounded-full
-                    {% if plateau.status == 'Active' %}bg-success/20 text-success
+                    {% if plateau.status == 'Active' %}bg-success/20 text-success-emphasis
                     {% elif plateau.status == 'Planned' %}bg-primary/20 text-primary
                     {% else %}bg-muted text-muted-foreground{% endif %}">
-                    {{ plateau.status|default('Draft') }}
+                    {{ plateau.status|default('—', true) }}
                 </span>
             </div>
-            <h3 class="font-semibold mb-2">{{ plateau.name|default('Unnamed Plateau') }}</h3>
-            <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('No description')|truncate(100) }}</p>
-            <div class="flex items-center justify-between text-sm">
-                <span class="text-muted-foreground">Target: {{ plateau.target_date|default('TBD') }}</span>
-                <button class="p-1 hover:bg-muted rounded" aria-label="Action">
-                    <i data-lucide="arrow-right" class="h-4 w-4" aria-hidden="true"></i>
-                </button>
+            <h3 class="font-semibold mb-2">
+                <a href="{{ url_for('archimate_crud.detail_element', layer='implementation', element_type='Plateau', element_id=plateau.id) }}"
+                   class="hover:underline" data-testid="plateau-link-{{ plateau.id }}">{{ plateau.name|default('—', true) }}</a>
+            </h3>
+            <p class="text-sm text-muted-foreground mb-4">{{ plateau.description|default('—', true)|truncate(100) }}</p>
+            <div class="text-sm">
+                <span class="text-muted-foreground">Target: {{ plateau.target_date|default('—', true) }}</span>
             </div>
         </div>
         {% else %}
         <div data-slot="card" class="col-span-full p-12 text-center text-muted-foreground rounded-xl border bg-card">
             <i data-lucide="layers" class="h-12 w-12 mx-auto mb-4 opacity-50" aria-hidden="true"></i>
             <p>No plateaus defined yet</p>
-            <p class="text-sm">Create your first plateau to start planning transitions</p>
+            <p class="text-sm">Plateaus registered through the roadmap appear here.</p>
         </div>
         {% endfor %}
     </div>

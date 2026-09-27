@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}Implementation Planning Dashboard{% endblock %}
@@ -12,18 +13,19 @@
 ]) }}
 {% endblock %}
 
-{% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget %}
+{% from 'components/archimate_gantt_widget.html' import archimate_gantt_widget with context %}
 
 {% block content %}
 <div class="mx-auto px-4 py-6" x-data="implementationPlanningDashboard()">
     <!-- Header -->
     <div class="space-y-6 mb-6">
         <!-- Title Section (Jumbotron-style) -->
-        <div class="text-center py-8 bg-primary/10 rounded-lg border border-border">
-            <h1 class="text-4xl font-bold text-foreground mb-3">Implementation Planning</h1>
-            <p class="text-lg text-muted-foreground max-w-3xl mx-auto">Enterprise Architecture Migration & Implementation Roadmap</p>
-        </div>
-        
+        {{ page_shell(title='Implementation Planning', subtitle='Enterprise Architecture Migration & Implementation Roadmap') }}
+
+        {# A failed load must be visible on the page, not only in a toast that
+           has already faded by the time the user reads the roadmap. #}
+        <div x-show="loadError" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="loadError"></div>
+
         <!-- Main Content -->
         <div class="space-y-6">
             <!-- ArchiMate Gantt Widget Section -->
@@ -96,11 +98,11 @@
             </div>
             
             <div class="flex justify-end gap-2 mt-6">
-                <button @click="showExportModal = false"
+                <button type="button" @click="showExportModal = false"
                         class="px-4 py-2 border border-input bg-background rounded-md hover:bg-accent" aria-label="Export">
                     Cancel
                 </button>
-                <button @click="performExport()"
+                <button type="button" @click="performExport()"
                         class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Export">
                     Export
                 </button>
@@ -120,66 +122,78 @@ function implementationPlanningDashboard() {
             gaps: true,
             deliverables: false
         },
+        // null, not 0: a count that never loaded renders as an em dash, whereas
+        // a 0 would be indistinguishable from a measured zero.
         stats: {
-            work_packages: 0,
-            in_progress: 0,
-            completed: 0,
-            critical_gaps: 0
+            work_packages: null,
+            in_progress: null,
+            completed: null,
+            critical_gaps: null
         },
         workPackages: [],
         criticalGaps: [],
         recentWorkPackages: [],
-        
+        loadError: '',
+
         init() {
             this.loadDashboardData();
         },
-        
+
         loadDashboardData() {
+            this.loadError = '';
+            // Platform.fetch rejects on 4xx/5xx — without that an error page would
+            // be parsed as a legitimately empty roadmap.
+            // Four requests failing at once is one outage: report it once.
+            const reportFailure = () => {
+                if (this.loadError) return;
+                this.loadError = 'Some implementation planning data could not be loaded — figures shown as — are unknown, not zero.';
+                Platform.toast.error('Could not load implementation planning data.');
+            };
+
             // Load statistics
-            fetch('/implementation/api/dashboard-stats')
-                .then(response => response.json())
+            Platform.fetch('/implementation/api/dashboard-stats', { silent: true })
                 .then(data => {
                     this.stats = data.stats;
                 })
-                .catch(error => {
-                    console.error('Error loading stats:', error);
+                .catch(() => {
+                    this.stats = { work_packages: null, in_progress: null, completed: null, critical_gaps: null };
+                    reportFailure();
                 });
-            
+
             // Load work packages
-            fetch('/implementation/api/work-packages')
-                .then(response => response.json())
+            Platform.fetch('/implementation/api/work-packages', { silent: true })
                 .then(data => {
                     this.workPackages = data.work_packages || [];
                 })
-                .catch(error => {
-                    console.error('Error loading work packages:', error);
+                .catch(() => {
+                    this.workPackages = [];
+                    reportFailure();
                 });
-            
+
             // Load critical gaps
-            fetch('/implementation/api/gaps?priority=critical&limit=5')
-                .then(response => response.json())
+            Platform.fetch('/implementation/api/gaps?priority=critical&limit=5', { silent: true })
                 .then(data => {
                     this.criticalGaps = data.gaps || [];
                 })
-                .catch(error => {
-                    console.error('Error loading gaps:', error);
+                .catch(() => {
+                    this.criticalGaps = [];
+                    reportFailure();
                 });
-            
+
             // Load recent work packages
-            fetch('/implementation/api/work-packages?limit=5&sort=updated_at')
-                .then(response => response.json())
+            Platform.fetch('/implementation/api/work-packages?limit=5&sort=updated_at', { silent: true })
                 .then(data => {
                     this.recentWorkPackages = data.work_packages || [];
                 })
-                .catch(error => {
-                    console.error('Error loading recent work packages:', error);
+                .catch(() => {
+                    this.recentWorkPackages = [];
+                    reportFailure();
                 });
         },
         
         async runGapDiscovery() {
             if ((await Platform.modal.confirm('Run intelligent gap discovery? This may take a few minutes.'))) {
-                fetch('/implementation/gaps/discover', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} })
-                    .then(response => response.json())
+                Platform.fetch.post('/implementation/gaps/discover', undefined, { silent: true })
                     .then(data => {
                         if (data.success) {
                             Platform.toast.success('Gap discovery completed successfully!');
@@ -189,8 +203,7 @@ function implementationPlanningDashboard() {
                         }
                     })
                     .catch(error => {
-                        console.error('Error running gap discovery:', error);
-                        Platform.toast.error('Error during gap discovery');
+                        Platform.toast.error('Error during gap discovery: ' + (error.message || 'request failed'));
                     });
             }
         },
@@ -271,7 +284,7 @@ function implementationPlanningDashboard() {
 <form @submit.prevent="submitCreateWorkPackage()" class="space-y-4" x-data="workPackageCreateModal()">
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div class="sm:col-span-2">
-      <label for="cwp-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive">*</span></label>
+      <label for="cwp-name" class="block text-sm font-medium mb-1">Name <span class="text-destructive-emphasis">*</span></label>
       <input type="text" id="cwp-name" x-model="formData.name" required maxlength="255"
              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              placeholder="e.g. Cloud Migration Phase 1">
@@ -319,7 +332,7 @@ function implementationPlanningDashboard() {
                 placeholder="Describe the scope and objectives"></textarea>
     </div>
   </div>
-  <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+  <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
   <div class="flex justify-end gap-3 pt-2 border-t border-border">
     <button type="button" data-modal-close="create-work-package"
             class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>
@@ -342,15 +355,7 @@ function workPackageCreateModal() {
       if (!this.formData.name.trim()) { this.errorMsg = 'Name is required.'; return; }
       this.submitting = true;
       this.errorMsg = '';
-      fetch('{{ url_for("implementation_planning.create_work_package") }}', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(this.formData)
-      })
-      .then(r => r.json())
+      Platform.fetch.post('{{ url_for("implementation_planning.create_work_package") }}', this.formData, { silent: true })
       .then(data => {
         this.submitting = false;
         if (!data.success) {
@@ -361,7 +366,7 @@ function workPackageCreateModal() {
         showToast({ title: 'Work package created successfully', variant: 'default' });
         setTimeout(() => window.location.reload(), 800);
       })
-      .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
+      .catch((e) => { this.submitting = false; this.errorMsg = e.message || 'Network error. Please try again.'; });
     }
   };
 }

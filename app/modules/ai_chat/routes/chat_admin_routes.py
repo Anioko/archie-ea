@@ -12,7 +12,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import abort, jsonify, render_template, request
+from flask import abort, g, jsonify, render_template, request
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
@@ -199,16 +199,24 @@ def _safe_import_analytics_models():
     """Import feedback / audit models; return None for missing ones."""
     AIChatFeedback = None
     AIChatAuditLog = None
+    # Each returns None on failure and the dashboard degrades to the half it
+    # can compute. That is the right behaviour, but the log has to say WHICH
+    # half went missing: "Failed to operation" told an administrator staring at
+    # a half-empty analytics page precisely nothing.
     try:
         from app.models.ai_chat_feedback import AIChatFeedback
     except Exception:
-        logger.exception("Failed to operation")
-        pass
+        logger.exception(
+            "AIChatFeedback model unavailable; AI chat analytics will report "
+            "no feedback data"
+        )
     try:
         from app.models.ai_chat_audit_log import AIChatAuditLog
     except Exception:
-        logger.exception("Failed to operation")
-        pass
+        logger.exception(
+            "AIChatAuditLog model unavailable; AI chat analytics will report "
+            "no audit data"
+        )
     return AIChatFeedback, AIChatAuditLog
 
 
@@ -257,6 +265,12 @@ def admin_analytics_data():
     }
 
     # --- Feedback summary ---
+    # AIChatFeedback now carries TenantMixin, so do_orm_execute scopes this
+    # SELECT to g.current_org_id. Before that it did not: message_text holds the
+    # assistant's reply — portfolio content — and this aggregation, filtered on
+    # created_at alone, counted every organisation's feedback together.
+    # The explicit predicate is belt-and-braces: this view is admin-facing, and
+    # a future caller running it outside a request context would be unfiltered.
     if AIChatFeedback is not None:
         try:
             fb_rows = (
@@ -266,6 +280,7 @@ def admin_analytics_data():
                     func.count(AIChatFeedback.id),
                 )
                 .filter(AIChatFeedback.created_at >= cutoff)
+                .filter(AIChatFeedback.organization_id == g.current_org_id)
                 .group_by(AIChatFeedback.domain, AIChatFeedback.rating)
                 .all()
             )

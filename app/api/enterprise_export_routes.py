@@ -4,15 +4,14 @@ Provides download endpoints for Fortune 500 export formats.
 All exports require authentication and audit logging.
 """
 
-from flask import Blueprint, send_file, request, abort, current_app
+from flask import Blueprint, send_file, request, abort
 from flask_login import login_required, current_user
 from io import BytesIO
 from datetime import datetime
 import logging
 
 from app.services.enterprise_export import EnterpriseExportService
-from app.models import Solution, Application
-from app.extensions import db
+from app.models import Solution
 
 logger = logging.getLogger(__name__)
 

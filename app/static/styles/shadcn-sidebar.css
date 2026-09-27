@@ -58,3 +58,46 @@ aside.sidebar-collapsed {
 aside.sidebar-collapsed .sidebar-collapse-btn i[data-lucide="panel-left"] {
     transform: rotate(180deg);
 }
+
+/* ── Sidebar scroll affordance (evidence review) ─────────────────────────────
+   #sidebar-nav hides its native scrollbar entirely
+   ([&::-webkit-scrollbar]:w-0, scrollbar-width:none in admin_sidebar.html) so
+   a role with enough zones/links to overflow the viewport — platform_admin's
+   Governance + Admin zones are the worst case, 14 links past Home/My
+   work/Library — had literally no cue that those zones existed below the
+   fold: the Governance heading sat right at the edge with its links
+   scrolled out of view, and the whole Admin zone was invisible. A bottom
+   fade signals "more below, scroll" without reintroducing a visible
+   scrollbar; app.js's initSidebarScrollFade() toggles `.at-scroll-end` once
+   the nav is actually scrolled to its end so the fade never implies more
+   content than there is. */
+#sidebar-nav {
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to bottom, black calc(100% - 28px), transparent 100%);
+    /* T-236: app.css's legacy `nav { margin-bottom: 40px !important; }` (a Semantic-UI-era rule with no
+       sidebar-specific exclusion) applies to every <nav>, this one included, eating 40px of the scrolling
+       list's own height for no visual reason -- it sits inside a flex column with its own footer below it,
+       not free-floating content that needs bottom margin. !important is required to win against app.css's
+       own !important. */
+    margin-bottom: 0 !important;
+}
+#sidebar-nav.at-scroll-end {
+    -webkit-mask-image: none;
+    mask-image: none;
+}
+
+/* ── Workbench table horizontal scroll affordance ────────────────────────────
+   Mirrors the sidebar's vertical scroll-fade pattern above, adapted to the
+   horizontal axis. A right-edge fade signals "more columns, scroll right"
+   without adding a custom scrollbar. The companion JS in
+   workbench_table.html toggles `.at-scroll-end-x` once the container is
+   scrolled fully right (or was never scrollable) so the fade never implies
+   content that isn't there. */
+.workbench-table-scroll {
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+    mask-image: linear-gradient(to right, black calc(100% - 28px), transparent 100%);
+}
+.workbench-table-scroll.at-scroll-end-x {
+    -webkit-mask-image: none;
+    mask-image: none;
+}

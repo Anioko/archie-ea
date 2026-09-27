@@ -13,6 +13,8 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
+from app.utils.tenant_sql import org_scope
+
 logger = logging.getLogger(__name__)
 
 
@@ -430,23 +432,28 @@ class ScenarioAnalysisService:
         return [self._load_application(aid) for aid in app_ids if self._load_application(aid)]
 
     def _load_all_applications(self, limit: int = 20) -> List[Dict]:
-        """Load all applications."""
-        try:
-            from app.models.application_portfolio import ApplicationComponent
+        """Load all applications.
 
-            apps = ApplicationComponent.query.limit(limit).all()
-            return [
-                {
-                    "id": app.id,
-                    "name": app.name,
-                    "status": getattr(app, "lifecycle_status", "Active"),  # model-safety-ok
-                    "criticality": getattr(app, "criticality", "Medium"),  # model-safety-ok
-                    "technology_stack": getattr(app, "technology_stack", ""),  # model-safety-ok
-                }
-                for app in apps
-            ]
-        except Exception:
-            return []
+        Deliberately unguarded. This is the whole input set for a cloud
+        migration scenario when the caller names no applications: returning []
+        produced a full analysis — readiness assessment, 6R strategies, cost
+        projection, risk score — over zero applications, and reported it as the
+        migration plan for the portfolio. analyze_scenario logs the exception
+        with a traceback and answers {"success": False, "error": ...}.
+        """
+        from app.models.application_portfolio import ApplicationComponent
+
+        apps = ApplicationComponent.query.limit(limit).all()
+        return [
+            {
+                "id": app.id,
+                "name": app.name,
+                "status": getattr(app, "lifecycle_status", "Active"),  # model-safety-ok
+                "criticality": getattr(app, "criticality", "Medium"),  # model-safety-ok
+                "technology_stack": getattr(app, "technology_stack", ""),  # model-safety-ok
+            }
+            for app in apps
+        ]
 
     def _load_capability(self, cap_id: int) -> Optional[Dict]:
         """Load capability details."""
@@ -490,18 +497,32 @@ class ScenarioAnalysisService:
             from app import db
             from sqlalchemy import text
 
+            # app_id is an LLM tool argument — it reaches here from chat text, so
+            # the FK join proves only that the mapping exists, not whose it is.
+            #
+            # Scope on business_capability, NOT on application_capability_mapping:
+            # acm has an organization_id column but nothing populates it (0 of
+            # 2686 rows non-NULL — it is not a TenantMixin model), so a predicate
+            # there would match no rows and silently report "no capabilities
+            # affected" for every retirement.
+            _org_clause, _org_params = org_scope(prefix="bc.")
+
             # Find capabilities this app supports
-            cap_rows = db.session.execute(text(  # tenant-filtered: scoped via parent FK (application_capability_mapping + business_capability)
+            cap_rows = db.session.execute(text(
                 "SELECT DISTINCT acm.business_capability_id, bc.name "
                 "FROM application_capability_mapping acm "
                 "JOIN business_capability bc ON bc.id = acm.business_capability_id "
-                "WHERE acm.application_component_id = :app_id"
-            ), {"app_id": app_id}).fetchall()
+                "WHERE acm.application_component_id = :app_id" + _org_clause
+            ), {"app_id": app_id, **_org_params}).fetchall()
 
             affected = []
             critical_gaps = 0
             for cap_id, cap_name in cap_rows:
-                other_apps = db.session.execute(text(  # tenant-filtered: scoped via parent FK
+                # tenancy-ok: cap_id comes from the org-scoped query above, so
+                # the capability is this tenant's; acm rows are reachable only
+                # through it. acm itself cannot be scoped (organization_id is
+                # NULL for every row).
+                other_apps = db.session.execute(text(
                     "SELECT COUNT(DISTINCT application_component_id) "
                     "FROM application_capability_mapping "
                     "WHERE business_capability_id = :cap_id "
@@ -537,17 +558,20 @@ class ScenarioAnalysisService:
             from app import db
             from sqlalchemy import text
 
+            _org_clause, _org_params = org_scope()
+
             # Get the app's archimate element ID
-            elem_id = db.session.execute(text(  # tenant-filtered: scoped via application_components (tenant-scoped table)
-                "SELECT archimate_element_id FROM application_components WHERE id = :app_id"
-            ), {"app_id": app_id}).scalar()
+            elem_id = db.session.execute(text(
+                "SELECT archimate_element_id FROM application_components "
+                "WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
+            ), {"app_id": app_id, **_org_params}).scalar()
 
             if not elem_id:
                 # Fallback: use app fields
-                row = db.session.execute(text(  # tenant-filtered: scoped via application_components (tenant-scoped table)
+                row = db.session.execute(text(
                     "SELECT number_of_integrations, interfaces_count, dependencies_count "
-                    "FROM application_components WHERE id = :app_id"
-                ), {"app_id": app_id}).fetchone()
+                    "FROM application_components WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
+                ), {"app_id": app_id, **_org_params}).fetchone()
                 if row:
                     total = (row[0] or 0) + (row[1] or 0) + (row[2] or 0)
                     return {"score": min(total * 10, 100), "count": total,
@@ -556,13 +580,17 @@ class ScenarioAnalysisService:
                 return {"score": 0, "count": 0, "upstream_systems": 0, "downstream_systems": 0,
                         "interfaces": [], "recommendation": "No integration data"}
 
-            # Count ArchiMate relationships
-            upstream = db.session.execute(text(  # tenant-filtered: scoped via parent FK (archimate_relationships)
-                "SELECT COUNT(*) FROM archimate_relationships WHERE target_id = :eid"
-            ), {"eid": elem_id}).scalar() or 0
-            downstream = db.session.execute(text(  # tenant-filtered: scoped via parent FK (archimate_relationships)
-                "SELECT COUNT(*) FROM archimate_relationships WHERE source_id = :eid"
-            ), {"eid": elem_id}).scalar() or 0
+            # Count ArchiMate relationships. elem_id now comes from an org-scoped
+            # read, but archimate_relationships carries organization_id on every
+            # row, so scope it directly rather than inferring it.
+            upstream = db.session.execute(text(
+                "SELECT COUNT(*) FROM archimate_relationships "
+                "WHERE target_id = :eid" + _org_clause
+            ), {"eid": elem_id, **_org_params}).scalar() or 0
+            downstream = db.session.execute(text(
+                "SELECT COUNT(*) FROM archimate_relationships "
+                "WHERE source_id = :eid" + _org_clause
+            ), {"eid": elem_id, **_org_params}).scalar() or 0
 
             total = upstream + downstream
             score = min(total * 8, 100)
@@ -581,13 +609,24 @@ class ScenarioAnalysisService:
             from app import db
             from sqlalchemy import text
 
-            row = db.session.execute(text(  # tenant-filtered: scoped via application_components (tenant-scoped table)
-                "SELECT user_count FROM application_components WHERE id = :app_id"
-            ), {"app_id": app_id}).fetchone()
-            user_count = (row[0] or 0) if row else 0
+            _org_clause, _org_params = org_scope()
+            row = db.session.execute(text(
+                "SELECT user_count FROM application_components "
+                "WHERE id = :app_id AND deleted_at IS NULL" + _org_clause
+            ), {"app_id": app_id, **_org_params}).fetchone()
+            if not row:
+                # The org-scoped read above found no such application in this
+                # tenant. Do not go on to sum its capability mappings.
+                return {"score": 0, "count": 0, "departments": [], "training_required": None,
+                        "change_management_effort": "Not assessed",
+                        "recommendation": "No user count data available"}
+            user_count = row[0] or 0
 
-            # Also sum user_count from capability mappings if available
-            cap_users = db.session.execute(text(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
+            # Also sum user_count from capability mappings if available.
+            # tenancy-ok: reached only after the org-scoped read above confirmed
+            # app_id belongs to this tenant, and application_capability_mapping
+            # cannot be scoped directly — its organization_id is NULL on every row.
+            cap_users = db.session.execute(text(
                 "SELECT SUM(user_count) FROM application_capability_mapping "
                 "WHERE application_component_id = :app_id AND user_count IS NOT NULL"
             ), {"app_id": app_id}).scalar() or 0
@@ -611,10 +650,11 @@ class ScenarioAnalysisService:
             from sqlalchemy import text
 
             app_id = app_details.get("id")
-            row = db.session.execute(text(  # tenant-filtered: scoped via application_components (tenant-scoped table)
+            _org_clause, _org_params = org_scope()
+            row = db.session.execute(text(
                 "SELECT annual_cost, maintenance_cost, infrastructure_cost, support_cost "
-                "FROM application_components WHERE id = :app_id"
-            ), {"app_id": app_id}).fetchone()
+                "FROM application_components WHERE id = :app_id" + _org_clause
+            ), {"app_id": app_id, **_org_params}).fetchone()
 
             if row:
                 annual = float(row[0] or 0)
@@ -638,8 +678,8 @@ class ScenarioAnalysisService:
             }
         except Exception as e:
             logger.warning(f"Retirement cost calculation failed: {e}")
-            return {"current_annual_cost": 0, "migration_cost": 0, "annual_savings": 0,
-                    "payback_period_months": 0, "five_year_savings": 0}
+            return {"current_annual_cost": None, "migration_cost": None, "annual_savings": None,
+                    "payback_period_months": None, "five_year_savings": None}  # honest: costs not computed on error
 
     def _assess_retirement_risks(
         self, app_details: Dict, capability_impact: Dict, integration_impact: Dict
@@ -749,12 +789,18 @@ class ScenarioAnalysisService:
         try:
             from app import db
             from sqlalchemy import text
-            rows = db.session.execute(text(  # tenant-filtered: scoped via application_components (tenant-scoped table)
+            # No id key at all — a bare LIKE over the whole table, so unfiltered
+            # this named other organisations' applications as the migration scope.
+            # The OR chain must be parenthesised or the org predicate binds only
+            # to the last branch.
+            _org_clause, _org_params = org_scope()
+            rows = db.session.execute(text(
                 "SELECT id, name, lifecycle_status, criticality, technology_stack "
                 "FROM application_components "
-                "WHERE LOWER(technology_stack) LIKE :tech OR LOWER(programming_languages) LIKE :tech "
-                "OR LOWER(database_platforms) LIKE :tech"
-            ), {"tech": f"%{tech.lower()}%"}).fetchall()
+                "WHERE (LOWER(technology_stack) LIKE :tech "
+                "OR LOWER(programming_languages) LIKE :tech "
+                "OR LOWER(database_platforms) LIKE :tech)" + _org_clause
+            ), {"tech": f"%{tech.lower()}%", **_org_params}).fetchall()
             return [{"id": r[0], "name": r[1], "status": r[2] or "Active",
                      "criticality": r[3] or "Medium", "technology_stack": r[4] or ""}
                     for r in rows]
@@ -791,7 +837,10 @@ class ScenarioAnalysisService:
             from app import db
             from sqlalchemy import text
             rows = db.session.execute(text(  # tenant-filtered: scoped via vendor_products (tenant-scoped table)
-                "SELECT id, name, product_type, version FROM vendor_products WHERE vendor_id = :vid"
+                # vendor_products's FK to the vendor is vendor_organization_id;
+                # there is no vendor_id column on that table.
+                "SELECT id, name, product_type, version FROM vendor_products "
+                "WHERE vendor_organization_id = :vid"
             ), {"vid": vendor_id}).fetchall()
             return [{"id": r[0], "name": r[1], "type": r[2] or "", "version": r[3] or ""} for r in rows]
         except Exception as e:
@@ -802,11 +851,16 @@ class ScenarioAnalysisService:
         try:
             from app import db
             from sqlalchemy import text
-            rows = db.session.execute(text(  # tenant-filtered: scoped via application_components + vendor_products (tenant-scoped tables)
+            # vendor_products has no organization_id column, so the subquery
+            # cannot be scoped; application_components does, so scope the outer
+            # read — otherwise a vendor id names every tenant's apps.
+            _org_clause, _org_params = org_scope(prefix="ac.")
+            rows = db.session.execute(text(
                 "SELECT ac.id, ac.name, ac.lifecycle_status, ac.criticality "
                 "FROM application_components ac "
-                "WHERE ac.vendor_product_id IN (SELECT id FROM vendor_products WHERE vendor_id = :vid)"
-            ), {"vid": vendor_id}).fetchall()
+                "WHERE ac.vendor_product_id IN "
+                "(SELECT id FROM vendor_products WHERE vendor_id = :vid)" + _org_clause
+            ), {"vid": vendor_id, **_org_params}).fetchall()
             return [{"id": r[0], "name": r[1], "status": r[2] or "Active", "criticality": r[3] or "Medium"}
                     for r in rows]
         except Exception as e:

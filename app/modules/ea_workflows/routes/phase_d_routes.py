@@ -118,7 +118,10 @@ def complexity_matrix():
         return jsonify({"matrix": matrix}), 200
     except Exception as exc:
         logger.error("complexity-matrix error: %s", exc, exc_info=True)
-        return jsonify({"matrix": []}), 200
+        # 500, not 200. An empty matrix at 200 reads as "no infrastructure
+        # complexity anywhere", which on a Phase D screen is a finding rather
+        # than an outage, and the client could not tell the difference.
+        return jsonify({"error": "Could not compute the complexity matrix"}), 500
 
 
 # ---------------------------------------------------------------------------

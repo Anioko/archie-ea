@@ -597,19 +597,11 @@ class ApplicationComponentForm(FlaskForm):
     )
 
 
-class OverviewForm(FlaskForm):
-    """Form for updating application overview"""
-
-    name = StringField("Name", validators=[Optional()])
-    version = StringField("Version", validators=[Optional()])
-    application_category = StringField("Category", validators=[Optional()])
-    deployment_status = StringField("Status", validators=[Optional()])
-    businessCriticality = StringField("Criticality", validators=[Optional()])
-    userCount = IntegerField("User Count", validators=[Optional()])
-    businessOwner = StringField("Business Owner", validators=[Optional()])
-    techOwner = StringField("Technical Owner", validators=[Optional()])
-    devTeam = StringField("Dev Team", validators=[Optional()])
-    businessDomain = StringField("Business Domain", validators=[Optional()])
+# NOTE: a second, standalone `class OverviewForm(FlaskForm)` with its own ten
+# fields used to be defined immediately above this one. Python bound the name to
+# whichever came last, so that definition was dead — every `OverviewForm()` in the
+# codebase already resolved to the alias below. Removed rather than kept, since two
+# forms sharing a name is how the wrong one gets edited.
 
 
 # Alias for backward compatibility - OverviewForm is the same as ApplicationComponentForm

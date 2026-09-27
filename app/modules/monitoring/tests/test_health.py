@@ -4,8 +4,6 @@ Tests for monitoring module — health check endpoints.
 Verifies that the migrated health routes produce identical responses
 to the original app/routes/health_routes.py implementation.
 """
-import pytest
-from unittest.mock import patch, MagicMock
 
 from app.modules.monitoring.services.health_service import HealthService
 

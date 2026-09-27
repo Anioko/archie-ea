@@ -6,12 +6,21 @@
 # Migration: Copied from app/routes/enterprise_api_routes.py -> app/modules/capabilities/routes/
 # Date: 2026-02-14 | Relative imports fixed for new location.
 #
+# CORRECTION (2026-07-30): the "DEPRECATED / fallback / do NOT modify" note above is
+# stale. app/routes/enterprise_api_routes.py no longer exists, and this file is
+# imported live by app/modules/capabilities/__init__.py — it is the only copy and it
+# serves traffic. Two real defects were fixed here on that basis (an unbound `logger`
+# used in nine except blocks, and Python accidentally embedded in the Playwright
+# template string). Treat this as live code, not a frozen fallback.
+#
 # Enterprise Entity API Routes for Unified Mapping Modal
 # Provides endpoints for fetching applications, systems, initiatives, projects
 # Used by ADM Kanban enterprise integration
 
+from app.services.archimate_backbone import sync_archimate_element
 import csv
 import io
+import logging
 
 import requests
 from flask import Blueprint, Response, jsonify, request
@@ -27,6 +36,16 @@ from app.models.project_models import Project
 from app.models.solution_architect_models import SolutionRequirement
 from app.models.system_architecture import SystemBoundary
 from app.models.vendor.vendor_organization import EnterpriseInitiative
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
+
+# Module-level logger. Nine call sites in this file referenced `logger` — all inside
+# `except` blocks — but it was never bound at module scope: the only
+# `logger = logging.getLogger(__name__)` in the file was accidentally embedded in the
+# Playwright TypeScript template string below, so it was string content, not code.
+# Every one of those handlers therefore raised NameError and masked the exception it
+# was meant to report.
+logger = logging.getLogger(__name__)
 
 enterprise_api_bp = Blueprint(
     "enterprise_entity_api", __name__, url_prefix="/api/enterprise"
@@ -166,6 +185,7 @@ def populate_solution_from_template(solution_id):
                 created_by_id=current_user.id
             )
             db.session.add(req)
+            sync_archimate_element(req)
             created.append({
                 'name': tpl.name,
                 'layer': tpl.layer,
@@ -215,7 +235,7 @@ def get_applications():
     """Get applications for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = ApplicationComponent.query
 
@@ -250,7 +270,7 @@ def get_applications():
 
         return jsonify({"applications": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -260,7 +280,7 @@ def get_systems():
     """Get systems for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = SystemBoundary.query
 
@@ -291,7 +311,7 @@ def get_systems():
 
         return jsonify({"systems": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -301,7 +321,7 @@ def get_initiatives():
     """Get initiatives for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = EnterpriseInitiative.query
 
@@ -323,18 +343,16 @@ def get_initiatives():
                     "name": init.name,
                     "description": init.description,
                     "type": init.initiative_type or "Unknown",
-                    "status": init.status or "Unknown",
-                    "priority": init.priority or "Unknown",
-                    "start_date": init.start_date.isoformat()
-                    if init.start_date
-                    else None,
-                    "end_date": init.end_date.isoformat() if init.end_date else None,
+                    "status": getattr(init, "status", None) or getattr(init, "current_phase", None) or "Unknown",
+                    "priority": getattr(init, "priority", None) or "Unknown",
+                    "start_date": init.planned_start_date.isoformat() if getattr(init, "planned_start_date", None) else None,
+                    "end_date": init.planned_end_date.isoformat() if getattr(init, "planned_end_date", None) else None,
                 }
             )
 
         return jsonify({"initiatives": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -344,7 +362,7 @@ def get_projects():
     """Get projects for mapping modal"""
     try:
         search = request.args.get("search", "").strip()
-        limit = int(request.args.get("limit", 100))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         query = Project.query
 
@@ -378,7 +396,7 @@ def get_projects():
 
         return jsonify({"projects": result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -403,7 +421,7 @@ def create_requirement():
             tpl = RequirementTemplate.query.get(template_id)
             if tpl:
                 req_type = getattr(tpl, 'type', None)
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -414,7 +432,7 @@ def create_requirement():
             if card:
                 card_phase = getattr(card, 'phase', None) or getattr(card, 'adm_phase', None) or ''
                 layer = _suggest_layer_from_phase(card_phase) or layer
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -444,13 +462,14 @@ def create_requirement():
         try:
             from datetime import date
             req.target_release_date = date.fromisoformat(raw_date)
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
     compliance_tags = data.get('compliance_tags', [])
     if compliance_tags and isinstance(compliance_tags, list):
         req.compliance_tags = compliance_tags
     db.session.add(req)
+    sync_archimate_element(req)
     db.session.commit()
     return jsonify({"success": True, "requirement": {
         "id": req.id,
@@ -495,7 +514,7 @@ def suggest_requirement_layer():
                     elif 'technology' in title or 'infrastructure' in title:
                         suggested_layer = 'technology'
                         source = 'work_package_title'
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -530,7 +549,7 @@ def generate_requirement_ac(req_id):
             template = RequirementTemplate.query.get(req.template_id)
             if template and template.ac_hint:
                 template_hint = template.ac_hint
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to database query")
             pass
 
@@ -643,8 +662,6 @@ Then response status is 401
 // Generated from: {req_ac}
 import {{ test, expect }} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
-import logging
-logger = logging.getLogger(__name__)
 
 test('{req_name} - WCAG 2.1 AA compliance', async ({{ page }}) => {{
   await page.goto('/relevant-page');
@@ -733,7 +750,7 @@ def get_all_entities():
         entity_type = request.args.get(
             "type"
         )  # application, system, initiative, project
-        limit = int(request.args.get("limit", 50))
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         result = {}
 
@@ -810,12 +827,10 @@ def get_all_entities():
                     "code": getattr(init, "code", None),
                     "type": "initiative",
                     "subtype": init.initiative_type or "Unknown",
-                    "status": init.status or "Unknown",
-                    "priority": init.priority or "Unknown",
-                    "start_date": init.start_date.isoformat()
-                    if init.start_date
-                    else None,
-                    "end_date": init.end_date.isoformat() if init.end_date else None,
+                    "status": getattr(init, "status", None) or getattr(init, "current_phase", None) or "Unknown",
+                    "priority": getattr(init, "priority", None) or "Unknown",
+                    "start_date": init.planned_start_date.isoformat() if getattr(init, "planned_start_date", None) else None,
+                    "end_date": init.planned_end_date.isoformat() if getattr(init, "planned_end_date", None) else None,
                 }
                 for init in initiatives
             ]
@@ -852,7 +867,7 @@ def get_all_entities():
 
         return jsonify(result)
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -996,7 +1011,7 @@ def _resolve_archimate_req_name(archimate_requirement_id):
         if elem:
             return elem.title or getattr(elem, 'name', None)
         return None
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         return None
 
 
@@ -1017,7 +1032,6 @@ def _req_to_dict(req):
     # Motivation layer name resolution (lazy — use ORM relationship if loaded)
     driver_name = req.driver.name if req.driver_id and req.driver else None
     goal_name = req.goal.name if req.goal_id and req.goal else None
-    stakeholder_name = req.stakeholder.name if req.stakeholder_id and req.stakeholder else None
     return {
         "id": req.id,
         "reference_id": f"REQ-{req.id:04d}",
@@ -1042,7 +1056,6 @@ def _req_to_dict(req):
         "goal_id": req.goal_id,
         "goal_name": goal_name,
         "stakeholder_id": req.stakeholder_id,
-        "stakeholder_name": stakeholder_name,
         "archimate_requirement_id": req.archimate_requirement_id,
         "archimate_requirement_name": _resolve_archimate_req_name(req.archimate_requirement_id),
         # User Story / Epic fields (TPM-003)
@@ -1229,7 +1242,10 @@ def export_requirements():
 @login_required
 def get_requirement_count(solution_id):
     """Return count of live (non-deleted) requirements for a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     count = SolutionRequirement.query.filter(
         SolutionRequirement.solution_id == solution_id,
@@ -1282,7 +1298,7 @@ def patch_requirement_status(req_id):
             new_values={"status": req.status, "owner": req.owner},
             status="success",
         )
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return jsonify({"success": True, "data": _req_to_dict(req)})
@@ -1343,24 +1359,28 @@ def enrich_requirement(req_id):
     if "moscow_priority" in data:
         req.moscow_priority = data["moscow_priority"] or None
     # ArchiMate 3.2 Motivation Layer FKs
-    if "driver_id" in data:
-        req.driver_id = int(data["driver_id"]) if data["driver_id"] else None
-    if "goal_id" in data:
-        req.goal_id = int(data["goal_id"]) if data["goal_id"] else None
-    if "stakeholder_id" in data:
-        req.stakeholder_id = int(data["stakeholder_id"]) if data["stakeholder_id"] else None
-    if "archimate_requirement_id" in data:
-        req.archimate_requirement_id = int(data["archimate_requirement_id"]) if data["archimate_requirement_id"] else None
-    if "capability_id" in data:
-        req.capability_id = int(data["capability_id"]) if data["capability_id"] else None
+    try:
+        if "driver_id" in data:
+            req.driver_id = int(data["driver_id"]) if data["driver_id"] else None
+        if "goal_id" in data:
+            req.goal_id = int(data["goal_id"]) if data["goal_id"] else None
+        if "stakeholder_id" in data:
+            req.stakeholder_id = int(data["stakeholder_id"]) if data["stakeholder_id"] else None
+        if "archimate_requirement_id" in data:
+            req.archimate_requirement_id = int(data["archimate_requirement_id"]) if data["archimate_requirement_id"] else None
+        if "capability_id" in data:
+            req.capability_id = int(data["capability_id"]) if data["capability_id"] else None
+        if "template_id" in data:
+            req.template_id = int(data["template_id"]) if data["template_id"] else None
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({"success": False, "error": "driver_id, goal_id, stakeholder_id, archimate_requirement_id, capability_id and template_id must be integers"}), 400
     if "owner" in data:
         req.owner = data["owner"] or None
     if "layer" in data:
         req.layer = data["layer"] or None
     if "req_type" in data:
         req.req_type = data["req_type"]
-    if "template_id" in data:
-        req.template_id = int(data["template_id"]) if data["template_id"] else None
     for field in ['stakeholder_name', 'stakeholder_role', 'source_document', 'approval_status']:
         if field in data:
             setattr(req, field, data[field])
@@ -1371,17 +1391,21 @@ def enrich_requirement(req_id):
         try:
             from datetime import date
             req.target_release_date = date.fromisoformat(data['target_release_date'])
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
     if 'compliance_tags' in data:
         tags = data['compliance_tags']
         if isinstance(tags, list):
             req.compliance_tags = tags
-    if "story_points" in data:
-        req.story_points = int(data["story_points"]) if data["story_points"] else None
-    if "epic_parent_id" in data:
-        req.epic_parent_id = int(data["epic_parent_id"]) if data["epic_parent_id"] else None
+    try:
+        if "story_points" in data:
+            req.story_points = int(data["story_points"]) if data["story_points"] else None
+        if "epic_parent_id" in data:
+            req.epic_parent_id = int(data["epic_parent_id"]) if data["epic_parent_id"] else None
+    except (ValueError, TypeError):
+        db.session.rollback()
+        return jsonify({"success": False, "error": "story_points and epic_parent_id must be integers"}), 400
     if "dod_complete" in data:
         req.dod_complete = bool(data["dod_complete"])
     # PRQ-005: gate — block 'implemented' unless approved
@@ -1420,7 +1444,7 @@ def enrich_requirement(req_id):
             },
             status="success",
         )
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return jsonify({"success": True, "data": _req_to_dict(req)})
@@ -1434,7 +1458,10 @@ _COMPLIANCE_FRAMEWORKS = ['GDPR', 'SOX', 'HIPAA', 'ISO27001', 'PCI-DSS', 'NIST',
 @login_required
 def compliance_summary(solution_id):
     """PRQ-008: Return compliance tagging summary for a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
     reqs = SolutionRequirement.query.filter_by(solution_id=solution_id).all()
     reqs = [r for r in reqs if r.deleted_at is None]
     tag_counts = {}
@@ -1760,7 +1787,7 @@ def batch_enrich_requirements():
                     _tmpl = RequirementTemplate.query.get(req.template_id)
                     if _tmpl and _tmpl.ac_hint:
                         _template_hint = _tmpl.ac_hint
-                except Exception:  # fabricated-values-ok
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to database query")
                     pass
             _layer_context = getattr(req, 'layer', None) or ''
@@ -2113,7 +2140,7 @@ def sync_requirement_from_jira(req_id):
         req.jira_push_status = f'synced:{jira_status}'
         db.session.commit()
         return jsonify({'jira_issue_key': req.jira_issue_key, 'jira_status': jira_status}), 200
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: returns an honest 502 error, fabricates no value
         return jsonify({'error': 'Failed to reach Jira'}), 502
 
 
@@ -2150,7 +2177,10 @@ def link_work_package(req_id):
 
     data = request.get_json(silent=True) or {}
     wp_id = data.get("work_package_id")
-    req.work_package_id = int(wp_id) if wp_id is not None else None
+    try:
+        req.work_package_id = int(wp_id) if wp_id is not None else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "work_package_id must be an integer"}), 400
 
     try:
         db.session.commit()
@@ -2251,6 +2281,9 @@ def solution_traceability_chain(solution_id):
 @login_required
 def list_epics(solution_id):
     """Return top-level epics (epic_parent_id IS NULL) with their child requirements."""
+    from app.models.solution_models import Solution
+
+    require_entity(Solution, solution_id, description="Solution not found")
     epics = SolutionRequirement.query.filter_by(
         solution_id=solution_id,
         epic_parent_id=None,
@@ -2600,7 +2633,7 @@ def auto_classify_requirement(req_id):
             if tpl_score > best_template_score:
                 best_template_score = tpl_score
                 best_template = tpl
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         best_template = None
 
     apply_changes = request.get_json(silent=True) or {}
@@ -2761,7 +2794,7 @@ def solution_readiness_report(solution_id):
     coverage_score = round(len(present_layers) / len(required_layers) * 100)
 
     # --- DIMENSION 2: Requirements Quality ---
-    classified = sum(layer_counts.get(l, 0) for l in required_layers)
+    classified = sum(layer_counts.get(item, 0) for item in required_layers)
     with_ac = sum(1 for r in reqs if r.acceptance_criteria and len(r.acceptance_criteria) > 20)
     quality_score = round((classified / total * 50 + with_ac / max(total, 1) * 50)) if total > 0 else 0
 
@@ -2961,7 +2994,7 @@ def get_requirement_dependencies(req_id):
     """PRQ-001: Get dependency graph for a requirement."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
 
     outgoing = RequirementDependency.query.filter_by(req_id=req_id).all()
     incoming = RequirementDependency.query.filter_by(depends_on_id=req_id).all()
@@ -2992,7 +3025,7 @@ def add_requirement_dependency(req_id):
     """PRQ-001: Add a dependency between two requirements."""
     from app.models.solution_architect_models import SolutionRequirement, RequirementDependency
 
-    req = SolutionRequirement.query.get_or_404(req_id)
+    SolutionRequirement.query.get_or_404(req_id)
     data = request.get_json() or {}
 
     depends_on_id = data.get('depends_on_id')
@@ -3009,7 +3042,7 @@ def add_requirement_dependency(req_id):
     if existing:
         return jsonify({'error': 'Circular dependency detected'}), 400
 
-    target = SolutionRequirement.query.get_or_404(depends_on_id)
+    SolutionRequirement.query.get_or_404(depends_on_id)
 
     dep = RequirementDependency(
         req_id=req_id,
@@ -3056,7 +3089,10 @@ def score_requirement_ac(req_id):
 @login_required
 def ac_quality_summary(solution_id):
     """PRQ-007: Return aggregate AC quality scores for all requirements in a solution."""
+    from app.models.solution_models import Solution
     from app.models.solution_architect_models import SolutionRequirement
+
+    require_entity(Solution, solution_id, description="Solution not found")
     reqs = SolutionRequirement.query.filter_by(solution_id=solution_id).all()
     reqs = [r for r in reqs if r.deleted_at is None]
     results = []

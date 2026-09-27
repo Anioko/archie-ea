@@ -18,10 +18,16 @@ Features:
 import logging
 
 from flask import Blueprint, jsonify, render_template, request
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 from flask_login import login_required
-from fuzzywuzzy import fuzz
+# rapidfuzz (MIT), not fuzzywuzzy (GPL-2.0-only). fuzzywuzzy and its
+# python-Levenshtein speedup are GPL-2.0, which cannot be sublicensed under
+# Entelim's commercial licence — see docs/adr/0006. rapidfuzz is API-compatible
+# for the functions used here; it returns a float where fuzzywuzzy returned
+# int(round(...)), so call sites round to keep scores identical.
+from rapidfuzz import fuzz
 from sqlalchemy import or_
 
 from app import db
@@ -67,7 +73,7 @@ def index():
 def get_candidates():
     """Get duplicate merge candidates as JSON."""
     threshold = int(request.args.get("threshold", 80))
-    limit = int(request.args.get("limit", 100))
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
     candidates = find_duplicate_candidates(similarity_threshold=threshold, limit=limit)
 
@@ -238,9 +244,9 @@ def find_duplicate_candidates(similarity_threshold=80, limit=100):
     for abacus_cap in abacus_caps:
         for manual_cap in manual_caps:
             # Calculate similarity
-            name_similarity = fuzz.token_sort_ratio(
+            name_similarity = round(fuzz.token_sort_ratio(
                 abacus_cap.name.lower(), manual_cap.name.lower()
-            )
+            ))
 
             if name_similarity >= similarity_threshold:
                 # Check if codes match
@@ -296,9 +302,11 @@ def merge_keep_target(source, target, options):
             db.session.delete(mapping)
 
     # Migrate application-capability mappings
+    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
     app_mappings = ApplicationCapabilityMapping.query.filter_by(business_capability_id=source.id).all()
     existing_app_ids = {
         m.application_component_id
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         for m in ApplicationCapabilityMapping.query.filter_by(business_capability_id=target.id).all()
     }
     for mapping in app_mappings:

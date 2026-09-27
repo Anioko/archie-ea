@@ -20,6 +20,120 @@
     function invalidateEl(id) { _domCache.delete(id); }
 
 
+    // Attribute-safe escaping. The global escapeHtml() round-trips through
+    // textContent/innerHTML, which escapes < > & but NOT the double quote --
+    // fine for a text node, unsafe for an attribute value. Every data-* value
+    // written into a template literal below goes through this instead.
+    function escapeAttr(value) {
+        if (value === null || value === undefined) return '';
+        return String(value)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // ---- Delegated action dispatcher ---------------------------------------
+    //
+    // The app ships script-src 'self' 'nonce-...' 'strict-dynamic' with no
+    // 'unsafe-inline' and no 'unsafe-hashes', so an on*= attribute NEVER runs
+    // -- innerHTML-injected ones included. (safeHTML's DOMPurify config also
+    // lists onclick in FORBID_ATTR, so these were stripped before the CSP even
+    // got a say.) Every control in this file therefore did nothing at all.
+    //
+    // Each is now `data-cm-action="<name>"` plus data-* arguments, dispatched
+    // by ONE document-level listener. Delegation is required, not stylistic:
+    // these grids are rebuilt wholesale from fetched data, so a listener bound
+    // to a node dies with the next render.
+    //
+    // closest() picks the INNERMOST matching element, which is what the old
+    // `event.stopPropagation()` calls were for (an icon button sitting inside
+    // a clickable bar). One listener + closest() gives that for free.
+    const CM_ACTIONS = {
+        'retry-load':            (el) => retryLoadData(el.dataset.tab),
+        'roadmap-retry':         ()   => { roadmapData.initialized = false; initRoadmapTab(); },
+        'process-gap-retry':     ()   => { processGapData.loaded = false; loadProcessGapData(); },
+        'expand-all-roadmap':    ()   => expandAllRoadmapRows(),
+        'collapse-all-roadmap':  ()   => collapseAllRoadmapRows(),
+        'toggle-row-expansion':  (el) => toggleRowExpansion(el.dataset.itemId),
+        'toggle-wp-expansion':   (el) => toggleWorkPackageExpansion(el.dataset.wpId),
+        'show-gap-details':      (el) => showGapDetails(el.dataset.itemId),
+        'show-comments':         (el) => showCommentsPanel(el.dataset.itemId, el.dataset.itemType),
+        'add-comment':           (el) => addComment(el.dataset.itemId, el.dataset.itemType),
+        'delete-confirm':        (el) => openDeleteConfirmModal(
+                                            el.dataset.itemId, el.dataset.itemType,
+                                            el.dataset.itemName, parseInt(el.dataset.childCount, 10) || 0),
+        'open-edit-wp':          (el) => openEditWPModal(el.dataset.wpId),
+        'set-roadmap-view':      (el) => setRoadmapView(el.dataset.view),
+        'open-convert-modal':    ()   => openConvertModal(),
+        'load-persisted-roadmap':()   => loadPersistedRoadmapData(),
+        'clear-filter':          (el) => clearFilter(el.dataset.field),
+        'bulk-status-update':    ()   => executeBulkStatusUpdate(),
+        'bulk-owner-update':     ()   => executeBulkOwnerUpdate(),
+        'bulk-delete':           ()   => executeBulkDelete(),
+        'save-dependency':       (el) => saveDependency(el.dataset.itemId),
+        'quick-add-roadmap':     (el) => quickAddToRoadmap(el.dataset.capId, el.dataset.capName,
+                                            'business', parseInt(el.dataset.capLevel, 10) || 1,
+                                            el.dataset.capPriority),
+        'add-to-roadmap':        (el) => addToRoadmap(el.dataset.capId, el.dataset.capName,
+                                            'business', parseInt(el.dataset.capLevel, 10) || 1,
+                                            el.dataset.capPriority),
+        'open-mapping-modal':    (el) => openMappingModal(el.dataset.capId, el.dataset.capName),
+        'toggle-row-selection':  (el) => {
+            const tab = el.dataset.tab;
+            const id = el.dataset.capId;
+            if (!tableData[tab]) return;
+            toggleRowSelection(id, tab, !tableData[tab].selected.has(id));
+        },
+        // openProcessMappingModal lives in index_inline.js, which loads after
+        // this file; the name is resolved at click time, so order is fine.
+        'open-process-mapping':  (el) => openProcessMappingModal(
+                                            el.dataset.processId, el.dataset.processName,
+                                            el.dataset.processCode, el.dataset.processType),
+        'delete-mapping':        (el) => deleteMapping(el.dataset.mappingId, el.dataset.appId),
+        'close-modal':           (el) => { const m = el.closest('.fixed'); if (m) m.remove(); },
+        'dismiss-parent':        (el) => { if (el.parentElement) el.parentElement.remove(); },
+    };
+
+    function runCmAction(event) {
+        const el = event.target.closest('[data-cm-action]');
+        if (!el) return;
+        const handler = CM_ACTIONS[el.getAttribute('data-cm-action')];
+        if (!handler) return;
+        handler(el, event);
+    }
+
+    document.addEventListener('click', runCmAction);
+
+    // Delegated CHANGE handler — the Map Applications modal's checkboxes and the
+    // per-application mapping settings (support level, coverage %, priority, ...)
+    // used inline on*= handlers, which the strict CSP silently drops, so nothing
+    // fired: the "N selected" counter stayed 0 and Save Mappings had an empty set.
+    // Same delegation reason as CM_ACTIONS: the list is re-rendered wholesale.
+    const CM_CHANGES = {
+        'toggle-app':         (el) => toggleApplicationSelection(el.dataset.appId),
+        'update-app-mapping': (el) => {
+            const raw = el.value;
+            const value = el.dataset.parse === 'int' ? parseInt(raw, 10) : raw;
+            updateApplicationMapping(el.dataset.appId, el.dataset.field, value);
+        },
+    };
+    document.addEventListener('change', function(event) {
+        const el = event.target.closest('[data-cm-change]');
+        if (!el) return;
+        const handler = CM_CHANGES[el.getAttribute('data-cm-change')];
+        if (handler) handler(el, event);
+    });
+    // Two of the controls are <div role="button"> -- absolutely positioned
+    // gradient roadmap bars, not buttons -- so keyboard activation has to be
+    // wired explicitly rather than inherited from the element.
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const el = event.target.closest('[data-cm-action][role="button"]');
+        if (!el) return;
+        event.preventDefault();
+        runCmAction(event);
+    });
+
+
     // Dynamic Domain Colors using string hash
     function getDomainColor(domain) {
         if (!domain) return 'bg-muted text-foreground';
@@ -119,43 +233,32 @@
     // Format: { 'gap-123': true, 'wp-456': true, 'wp-789': false }
     const expandedRows = new Map();
     
-    // Fetch with timeout and retry — wraps native fetch with AbortController timeout.
-    // Platform.fetch handles loading indicators; this adds timeout protection for long API calls.
+    // Fetch with timeout and retry — wraps Platform.fetch with timeout protection for long API calls.
     async function fetchWithTimeout(url, options = {}, timeout = 30000) {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        // Inject CSRF token for mutating methods
-        const method = (options.method || 'GET').toUpperCase();
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
-            options.headers = options.headers || {};
-            if (!options.headers['X-CSRFToken']) {
-                const meta = document.querySelector('meta[name="csrf-token"]');
-                if (meta) options.headers['X-CSRFToken'] = meta.content || '';
-            }
-        }
+        // Platform.fetch already handles CSRF token injection, loading indicators, and error toasting.
+        // We'll use a Promise.race to implement timeout on top of Platform.fetch.
+        // Pass silent: true to prevent duplicate toasts from Platform.fetch when timeout occurs
+        const fetchPromise = Platform.fetch(url, { ...options, silent: true })
+            .catch(error => {
+                // Re-throw the error so it can be caught by the caller
+                throw error;
+            });
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+                const timeoutMsg = 'Request timeout - server took too long to respond';
+                reject(new Error(timeoutMsg));
+            }, timeout);
+        });
 
         try {
-            const response = await fetch(url, {
-                ...options,
-                credentials: 'include',
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            return response;
+            const result = await Promise.race([fetchPromise, timeoutPromise]);
+            return result;
         } catch (error) {
-            clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
-                const timeoutMsg = 'Request timeout - server took too long to respond';
-                if (window.Platform && Platform.toast) Platform.toast.error(timeoutMsg);
-                throw new Error(timeoutMsg);
+            // Show toast for timeout errors only
+            if (error.message === 'Request timeout - server took too long to respond') {
+                if (window.Platform && Platform.toast) Platform.toast.error(error.message);
             }
-            if (window.Platform && Platform.toast) Platform.toast.error(error.message || 'Network request failed');
             throw error;
         }
     }
@@ -166,7 +269,7 @@
         if (!tableBody) return;
     
         const retryButton = showRetry ?
-            `<button onclick="retryLoadData('${tabType}')" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            `<button type="button" data-cm-action="retry-load" data-tab="${escapeAttr(tabType)}" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>` : '';
@@ -205,8 +308,7 @@
     async function loadDataForAllTabs() {
         try {
             // Load unified data (source for all capability tabs)
-            const unifiedResponse = await fetchWithTimeout('/capability-map/api/unified-capabilities');
-            const unifiedData = await unifiedResponse.json();
+            const unifiedData = await fetchWithTimeout('/capability-map/api/unified-capabilities');
             if (unifiedData.unified_capabilities || unifiedData.capabilities) {
                 // Normalize unified array from possible keys
                 const unifiedArr = unifiedData.unified_capabilities || unifiedData.capabilities || [];
@@ -244,9 +346,6 @@
             updateGapTabMetricCards(tableData.gap.data);
     
         } catch (error) {
-            console.error('Error loading data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Failed to load capability data');
-
             // Display error in all table bodies
             const errorMsg = error.message || 'Failed to load capability data. Please check your connection and try again.';
             displayTableError('unified', errorMsg);
@@ -260,7 +359,30 @@
     function populateDomainFilter(tabType, data) {
         const domainFilter = getEl(`${tabType}-domain-filter`);
         if (domainFilter) {
-            const domains = [...new Set(data.map(item => item.domain?.code || item.domain?.name || 'Unassigned').filter(Boolean))];
+            // The API returns the literal code "UNK" (and sometimes "Unknown")
+            // for capabilities with no business domain set — show "Unassigned"
+            // rather than the raw code, same normalisation already applied in
+            // generateTableRow() below. This is a display-level fix only; the
+            // option's value stays the raw code so filtering still matches
+            // the underlying data.
+            // Key on the code only where there IS a real one. This used to be
+            // `code || name`, and the API returns the literal placeholder "UNK"
+            // as a code for every capability with no business domain set -- so
+            // the whole dropdown collapsed to a single "UNK" option while the
+            // domain cards above it, which key on the NAME in that case, showed
+            // Customer / Product / Operations / ... Clicking a card assigned
+            // `select.value = "Customer"` to a <select> whose only option was
+            // "UNK"; the browser silently resolves an unmatched assignment to
+            // "" and the filter did nothing. Both surfaces must agree on the key.
+            // filterTable() matches on `domain.code === v || domain.name === v`,
+            // so a name is a valid filter value.
+            const domainKey = (item) => {
+                const code = item.domain?.code;
+                if (code && code !== 'UNK' && code !== 'Unknown') return code;
+                return item.domain?.name && item.domain.name !== 'Unknown'
+                    ? item.domain.name : 'Unassigned';
+            };
+            const domains = [...new Set(data.map(domainKey).filter(Boolean))].sort();
             safeHTML(domainFilter, '<option value="">All Domains</option>');
             domains.forEach(domain => {
                 domainFilter.innerHTML += `<option value="${escapeHtml(domain)}">${escapeHtml(domain)}</option>`; // safe: escapeHtml applied
@@ -268,6 +390,26 @@
         }
     }
     
+    // Delegated, because the CSP forbids inline handlers.
+    //
+    // These cards carried onclick="getEl('application-domain-filter')..." and
+    // therefore did NOTHING for their entire life -- while wearing
+    // cursor-pointer and a hover shadow, so they looked interactive. The owner
+    // reported it as "what is the purpose of these if I cannot click them".
+    //
+    // The inline-handlers gate reported 0 the whole time: it scans templates,
+    // and this handler is generated inside a JS template literal where it
+    // cannot see it. Delegation is bound once, at document level, and survives
+    // the grid being re-rendered.
+    document.addEventListener('click', (event) => {
+        const card = event.target.closest('[data-domain-filter]');
+        if (!card) return;
+        const select = getEl('application-domain-filter');
+        if (!select) return;
+        select.value = card.getAttribute('data-domain-filter');
+        filterTable('application');
+    });
+
     // Render Application Domain Cards from loaded data
     function renderApplicationDomainCards(data) {
         const grid = getEl('application-domains-grid');
@@ -284,11 +426,25 @@
             let name = item.domain?.name || 'Unassigned';
             if (code === 'UNK') code = 'N/A';
             if (name === 'Unknown') name = 'Unassigned';
-            if (!domainMap[code]) {
-                domainMap[code] = { code, name, total: 0, mapped: 0 };
+
+            // Group by code where there IS one, otherwise by NAME.
+            //
+            // This used to key on `code` alone. Most capabilities carry a
+            // business_domain name and no domain code, so every one of them
+            // landed in the single 'N/A' bucket -- six distinct domains
+            // (Customer, Product, Operations, Finance, Technology, People)
+            // rendered as ONE card, labelled with whichever member happened to
+            // arrive first. The screen said "Product: 30 capabilities" for an
+            // estate that had six domains and five capabilities in Product.
+            //
+            // A constant fallback is never a grouping key: it merges everything
+            // it touches and then names the merge after an arbitrary member.
+            const key = (code !== 'N/A') ? code : name;
+            if (!domainMap[key]) {
+                domainMap[key] = { key, code, name, total: 0, mapped: 0 };
             }
-            domainMap[code].total++;
-            if (item.is_mapped) domainMap[code].mapped++;
+            domainMap[key].total++;
+            if (item.is_mapped) domainMap[key].mapped++;
         });
     
         const domains = Object.values(domainMap).sort((a, b) => b.total - a.total);
@@ -318,10 +474,14 @@
             const statusColor = coverage >= 70 ? 'bg-sky-400' : coverage >= 40 ? 'bg-amber-400' : 'bg-rose-400';
     
             return `
-                <div class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                     onclick="getEl('application-domain-filter').value='${escapeHtml(domain.code)}'; filterTable('application');">
+                <button type="button"
+                     class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer text-left w-full"
+                     data-domain-filter="${escapeAttr(domain.key)}"
+                     aria-label="Filter capabilities to ${escapeHtml(domain.name)}">
                     <div class="flex items-start justify-between mb-3">
-                        <span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${escapeHtml(domain.code)}</span>
+                        ${domain.code && domain.code !== 'N/A'
+                            ? `<span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${escapeHtml(domain.code)}</span>`
+                            : '<span></span>'}
                         <div class="w-2 h-2 rounded-full ${statusColor}"></div>
                     </div>
                     <h4 class="text-sm font-semibold ${cs.textHead} mb-1">${escapeHtml(domain.name)}</h4>
@@ -335,7 +495,7 @@
                     <div class="mt-2 text-xs text-muted-foreground">
                         ${domain.mapped} mapped | ${domain.total - domain.mapped} gaps
                     </div>
-                </div>
+                </button>
             `;
         }).join(''));
     }
@@ -495,10 +655,12 @@
         if (pageData.length === 0) {
             safeHTML(tableBody, `
                 <tr>
-                    <td colspan="11" class="px-6 py-8 text-center text-muted-foreground">
-                        <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-4"></i>
-                        <p>No ${tabType} capabilities found.</p>
-                        <p class="text-sm">Try adjusting your filters.</p>
+                    <td colspan="11" class="px-6 py-8 text-center">
+                        <div class="text-center">
+                            <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-4 text-muted-foreground"></i>
+                            <p class="text-muted-foreground">No ${tabType} capabilities found.</p>
+                            <p class="text-sm text-muted-foreground">Try adjusting your filters.</p>
+                        </div>
                     </td>
                 </tr>
             `);
@@ -552,6 +714,7 @@
                     <input type="checkbox"
                         class="rounded border-input text-primary focus-visible:ring-ring"
                         ${isSelected ? 'checked' : ''}
+                        aria-label="Select ${escapeHtml(item.name || item.capability_name || 'capability')}"
                         onchange="toggleRowSelection('${capabilityId}', '${tabType}', this.checked)">
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-foreground">
@@ -696,7 +859,8 @@
     // Export functions — uses raw fetch for blob download (not JSON)
     async function exportData(format) {
         try {
-            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {
+            // raw-fetch-ok: blob download requires Response object, not parsed body
+            const response = await fetch(`/capability-map/api/export-mappings?format=${format}`, {  // raw-fetch-ok: blob download; needs the raw Response
                 credentials: 'include'
             });
             if (!response.ok) {
@@ -712,7 +876,6 @@
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
         } catch (error) {
-            console.error('Error exporting data:', error);
             if (window.Platform && Platform.toast) Platform.toast.error('Error exporting data: ' + (error.message || 'Unknown error'));
         }
     }
@@ -725,8 +888,20 @@
     
     // Close export menu when clicking outside
     document.addEventListener('click', function(event) {
+        // getEl() returns null when the element is absent, and #export-menu is
+        // absent from capability_map/index.html -- so this threw an uncaught
+        // TypeError on EVERY click anywhere on the page. Harmless-looking
+        // (nothing depended on it) but it aborted the listener and filled the
+        // console with "Cannot read properties of null (reading 'classList')",
+        // which is exactly the noise that hides a real failure.
         const menu = getEl('export-menu');
+        if (!menu) return;
         const button = event.target.closest('button');
+        // NOTE: `button.onclick` is always null under the app's CSP -- an
+        // inline handler never becomes a property -- so this can no longer
+        // recognise the toggle button and the menu closes on any click. That
+        // is the existing behaviour and is left alone here; it only matters on
+        // a page that actually renders #export-menu.
         if (!button || !button.onclick || !button.onclick.toString().includes('toggleExportMenu')) {
             menu.classList.add('hidden');
         }
@@ -749,7 +924,25 @@
         if (toggleBtn) {
             event.stopPropagation();
             let menu = toggleBtn.parentElement.querySelector('.cap-actions-menu');
-            if (menu) menu.classList.toggle('hidden');
+            if (menu) {
+                const wasHidden = menu.classList.contains('hidden');
+                menu.classList.toggle('hidden');
+                // DEF-078, Capgemini dry-run: the menu was position:absolute
+                // inside the table's overflow-x-auto scroll container, which
+                // clips any descendant that would render past its edge — so
+                // every menu item's text ("View Detai…", "Map to App…", "Add
+                // to Roa…") was cut off. Reposition as position:fixed using
+                // the toggle button's real viewport coordinates so the menu
+                // escapes the table's clipping box entirely.
+                if (wasHidden) {
+                    const rect = toggleBtn.getBoundingClientRect();
+                    menu.style.position = 'fixed';
+                    menu.style.top = (rect.bottom + 4) + 'px';
+                    menu.style.right = (window.innerWidth - rect.right) + 'px';
+                    menu.style.left = 'auto';
+                    menu.style.marginTop = '0';
+                }
+            }
             return;
         }
 
@@ -797,22 +990,31 @@
                 const urlTab = new URLSearchParams(window.location.search).get('tab');
                 if (urlTab) {
                     this.activeTab = urlTab;
-                    // Trigger tab-specific initialization
-                    if (urlTab === 'roadmap') {
-                        setTimeout(() => initRoadmapTab(), 100);
-                    } else if (urlTab === 'unified') {
-                        setTimeout(() => loadBusinessDomainCards(), 100);
-                    } else if (urlTab === 'manufacturing') {
-                        setTimeout(() => loadManufacturingDomainStats(), 100);
-                    } else if (urlTab === 'gaps') {
-                        setTimeout(() => loadACMGapAnalysis(), 100);
-                    } else if (urlTab === 'process-gaps') {
-                        setTimeout(() => { loadProcessGapData(); loadProcessCategoryStats(); }, 100);
-                    } else if (urlTab === 'technical') {
-                        setTimeout(() => loadTechnicalTab(), 100);
-                    } else if (urlTab === 'heatmap') {
-                        setTimeout(() => loadHeatMap(), 100);
-                    }
+                    this.onLensChange(urlTab);
+                }
+            },
+            // Shared by the Lens dropdown's @change and init()'s ?tab= handling
+            // — replaces the per-button @click handlers the old 11-button tab
+            // row used to call directly.
+            onLensChange(tab) {
+                if (tab === 'roadmap') {
+                    setTimeout(() => initRoadmapTab(), 100);
+                } else if (tab === 'unified') {
+                    setTimeout(() => loadBusinessDomainCards(), 100);
+                } else if (tab === 'capability-model') {
+                    setTimeout(() => loadCapabilityModelTab(), 100);
+                } else if (tab === 'manufacturing') {
+                    setTimeout(() => loadManufacturingDomainStats(), 100);
+                } else if (tab === 'gaps') {
+                    setTimeout(() => loadACMGapAnalysis(), 100);
+                } else if (tab === 'process-gaps') {
+                    setTimeout(() => { loadProcessGapData(); loadProcessCategoryStats(); }, 100);
+                } else if (tab === 'technical') {
+                    setTimeout(() => loadTechnicalTab(), 100);
+                } else if (tab === 'heatmap') {
+                    setTimeout(() => loadHeatMap(), 100);
+                } else if (tab === 'maturity') {
+                    setTimeout(() => loadMaturityRadarTab(), 100);
                 }
             }
         }
@@ -852,6 +1054,22 @@
     };
     
     // Initialize roadmap tab when clicked
+    // MEASURED, 31 Aug 2026: this whole roadmap renderer no longer reaches the
+    // screen on /capability-map/. The roadmap panel in
+    // templates/capability_map/index.html is now the `roadmap_widget`
+    // component with container_id='capability-roadmap', so its containers are
+    // id="roadmap-timeline-capability-roadmap" etc. The functions below still
+    // target the unsuffixed ids ("roadmap-labels", "roadmap-timeline") that no
+    // template defines any more, so loadRoadmapData() fetches
+    // /api/roadmap/gaps, hands the result to safeHTML(null, ...) and the
+    // Platform logs "sanitize.html: target is not a DOM element null".
+    //
+    // Consequence: the controls this file renders for the roadmap (expand /
+    // collapse all, gap-bar details, work-package edit and delete, convert,
+    // set-view, comments, dependencies) are unreachable -- they were converted
+    // off their dead onclick= attributes so they are correct if this renderer
+    // is ever re-pointed at the widget's ids, but nothing renders them today.
+    // Re-pointing them is a change to the widget contract, not to this file.
     function initRoadmapTab() {
         if (!roadmapData.initialized) {
             loadRoadmapData();
@@ -883,8 +1101,7 @@
     
         try {
             // Fetch comprehensive gap analysis from new API
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/gaps');
     
             if (data.success && data.gaps) {
                 // Store statistics
@@ -929,9 +1146,7 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading roadmap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading roadmap data');
-            const retryButton = `<button onclick="roadmapData.initialized = false; initRoadmapTab();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
+            const retryButton = `<button type="button" data-cm-action="roadmap-retry" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>`;
@@ -1171,18 +1386,30 @@
         const items = roadmapData.filteredItems;
         const stats = roadmapData.statistics;
     
-        // Total gaps (filtered)
-        getEl('roadmap-gap-count').textContent = items.length;
-    
+        // Total gaps (filtered) — each element is guarded, not every roadmap
+        // stat badge exists in every render of this view (17 Aug 2026 QA
+        // finding: "Cannot set properties of null" — these five ran
+        // unguarded while the ones below already checked for null).
+        const gapCountEl = getEl('roadmap-gap-count');
+        if (gapCountEl) gapCountEl.textContent = items.length;
+
         // Update item count badges
-        getEl('roadmap-visible-count').textContent = items.length;
-        getEl('roadmap-total-count').textContent = roadmapData.items.length;
-    
+        const visibleCountEl = getEl('roadmap-visible-count');
+        if (visibleCountEl) visibleCountEl.textContent = items.length;
+        const totalCountEl = getEl('roadmap-total-count');
+        if (totalCountEl) totalCountEl.textContent = roadmapData.items.length;
+
         // Priority counts (filtered)
-        getEl('roadmap-critical-count').textContent =
-            items.filter(i => i.priority?.toLowerCase() === 'critical').length;
-        getEl('roadmap-high-count').textContent =
-            items.filter(i => i.priority?.toLowerCase() === 'high').length;
+        const criticalCountEl = getEl('roadmap-critical-count');
+        if (criticalCountEl) {
+            criticalCountEl.textContent =
+                items.filter(i => i.priority?.toLowerCase() === 'critical').length;
+        }
+        const highCountEl = getEl('roadmap-high-count');
+        if (highCountEl) {
+            highCountEl.textContent =
+                items.filter(i => i.priority?.toLowerCase() === 'high').length;
+        }
     
         // Gap type counts (from full statistics)
         const coverageEl = getEl('roadmap-coverage-count');
@@ -1430,8 +1657,8 @@
         const labelsContainer = getEl('roadmap-labels');
         safeHTML(labelsContainer, `
             <div class="h-12 px-4 flex items-center font-semibold text-muted-foreground border-b border-border">
-                <button onclick="expandAllRoadmapRows()" class="mr-2 text-xs text-primary hover:text-primary/90 font-semibold">Expand All</button>
-                <button onclick="collapseAllRoadmapRows()" class="mr-4 text-xs text-muted-foreground hover:text-foreground font-semibold">Collapse All</button>
+                <button type="button" data-cm-action="expand-all-roadmap" class="mr-2 text-xs text-primary hover:text-primary/90 font-semibold">Expand All</button>
+                <button type="button" data-cm-action="collapse-all-roadmap" class="mr-4 text-xs text-muted-foreground hover:text-foreground font-semibold">Collapse All</button>
                 Capability / Gap Type
             </div>
             ${roadmapData.filteredItems.map(item => renderRoadmapLabel(item, capTypeIcons)).join('')}
@@ -1494,7 +1721,7 @@
                 <div class="flex items-start gap-3 w-full pl-2">
                     <!-- Expand/Collapse Icon Button -->
                     ${hasWorkPackages ? `
-                        <button onclick="toggleRowExpansion('${item.id}')"
+                        <button type="button" data-cm-action="toggle-row-expansion" data-item-id="${escapeAttr(item.id)}"
                                 class="mt-0.5 flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-accent transition-colors"
                                 title="${isExpanded ? 'Collapse' : 'Expand'} work packages">
                             <i data-lucide="${isExpanded ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4 text-muted-foreground"></i>
@@ -1606,7 +1833,7 @@
                     ` : ''}
                     <div class="flex items-center gap-2.5 w-full relative z-10">
                         ${hasChildren ? `
-                            <button onclick="toggleWorkPackageExpansion('${wp.id}')"
+                            <button type="button" data-cm-action="toggle-wp-expansion" data-wp-id="${escapeAttr(wp.id)}"
                                     class="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded hover:bg-indigo-200 transition-colors"
                                     title="${isWpExpanded ? 'Collapse' : 'Expand'} sub-packages">
                                 <i data-lucide="${isWpExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5 text-indigo-700"></i>
@@ -1664,9 +1891,9 @@
         const isPersistedGap = roadmapData.viewMode === 'persisted' && item.is_persisted;
         const commentCount = (commentsData.get(`gap-${item.id}`) || []).length;
         const actionIcons = isPersistedGap ? `
-            <i data-lucide="message-square" class="w-4 h-4 mr-1 opacity-0 group-hover:opacity-70 transition-opacity cursor-pointer" onclick="event.stopPropagation(); showCommentsPanel('${item.id}', 'gap')" title="Comments${commentCount > 0 ? ` (${commentCount})` : ''}"></i>
+            <button type="button" data-cm-action="show-comments" data-item-id="${escapeAttr(item.id)}" data-item-type="gap" class="mr-1 opacity-0 group-hover:opacity-70 transition-opacity" title="Comments${commentCount > 0 ? ` (${commentCount})` : ''}" aria-label="Comments on ${escapeAttr(item.name)}"><i data-lucide="message-square" class="w-4 h-4"></i></button>
             <i data-lucide="edit-2" class="w-4 h-4 mr-1 opacity-0 group-hover:opacity-70 transition-opacity"></i>
-            <i data-lucide="trash-2" class="w-4 h-4 mr-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" onclick="event.stopPropagation(); openDeleteConfirmModal('${item.id}', 'gap', '${escapeHtml(item.name)}', ${item.work_package_count || 0})"></i>
+            <button type="button" data-cm-action="delete-confirm" data-item-id="${escapeAttr(item.id)}" data-item-type="gap" data-item-name="${escapeAttr(item.name)}" data-child-count="${item.work_package_count || 0}" class="mr-2 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" aria-label="Delete ${escapeAttr(item.name)}"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
         ` : '';
     
         let html = `
@@ -1681,7 +1908,9 @@
                 <div class="absolute rounded-md flex items-center cursor-pointer hover:opacity-90 transition-opacity group"
                      style="left: ${barStyle.left}; width: ${barStyle.width}; top: 50%; transform: translateY(-50%); height: 44px; background: linear-gradient(135deg, ${barColor} 0%, ${darkerBarColor} 100%); box-shadow: 0 2px 4px rgba(0,0,0,0.15);"
                      title="${tooltip}${isPersistedGap ? '\n(Click to edit)' : ''}"
-                     onclick="showGapDetails('${item.id}')">
+                     role="button" tabindex="0"
+                     data-cm-action="show-gap-details" data-item-id="${escapeAttr(item.id)}"
+                     aria-label="Open details for ${escapeAttr(item.name)}">
                     <span style="color: white; font-size: 14px; font-weight: 600; padding: 0 12px; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.3); overflow: hidden; text-overflow: ellipsis; flex: 1;">${escapeHtml(item.name)}</span>
                     ${item.work_package_count ? `<span class="text-primary-foreground text-xs bg-background/20 px-2 py-0.5 rounded mr-2">${item.work_package_count} WP</span>` : ''}
                     ${actionIcons}
@@ -1723,7 +1952,7 @@
     
             // Chevron for expandable work packages
             const chevron = hasChildren ? (isWpExpanded ? '▼' : '▶') : '';
-            const chevronHtml = chevron ? `<span class="text-muted-foreground mr-1 cursor-pointer" onclick="event.stopPropagation(); toggleWorkPackageExpansion('${wp.id}')">${chevron}</span>` : '';
+            const chevronHtml = chevron ? `<button type="button" class="text-muted-foreground mr-1 cursor-pointer" data-cm-action="toggle-wp-expansion" data-wp-id="${escapeAttr(wp.id)}" aria-label="Toggle sub-packages of ${escapeAttr(wp.name)}">${chevron}</button>` : '';
     
             // Level indicator (L1, L2, L3, etc.)
             const levelBadge = `<span class="text-primary-foreground text-xs bg-white/30 px-1.5 py-0.5 rounded mr-1 font-semibold">L${level}</span>`;
@@ -1743,13 +1972,15 @@
                     <div class="absolute rounded-md flex items-center cursor-pointer hover:opacity-90 transition-opacity group"
                          style="left: calc(${wpBarStyle.left} + ${indentPx}px); width: calc(${wpBarStyle.width} - ${indentPx}px); top: 50%; transform: translateY(-50%); height: ${barHeight}px; background: linear-gradient(135deg, ${wpColor} 0%, ${wpDarkerColor} 100%); box-shadow: 0 1px 3px rgba(0,0,0,0.1);"
                          title="Level ${level}: ${escapeHtml(wp.name)}\nStatus: ${escapeHtml(wp.status || 'Not Started')}\nProgress: ${wp.percent_complete || 0}%\nOwner: ${escapeHtml(wp.owner_name || 'Unassigned')}"
-                         onclick="openEditWPModal('${wp.id}')">
+                         role="button" tabindex="0"
+                         data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(wp.id)}"
+                         aria-label="Edit work package ${escapeAttr(wp.name)}">
                         ${chevronHtml}
                         ${levelBadge}
                         <span style="color: white; font-size: ${fontSize}px; font-weight: 500; padding: 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">${escapeHtml(wp.name)}</span>
                         ${childBadge}
                         <span class="text-primary-foreground text-xs bg-background/20 px-1.5 py-0.5 rounded mr-1">${escapeHtml(wp.status || 'Not Started')}</span>
-                        <i data-lucide="trash-2" class="w-3.5 h-3.5 mr-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" onclick="event.stopPropagation(); openDeleteConfirmModal('${wp.id}', 'work_package', '${escapeHtml(wp.name)}', ${hasChildren ? wp.children.length : 0})"></i>
+                        <button type="button" data-cm-action="delete-confirm" data-item-id="${escapeAttr(wp.id)}" data-item-type="work_package" data-item-name="${escapeAttr(wp.name)}" data-child-count="${hasChildren ? wp.children.length : 0}" class="mr-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 hover:text-red-200 transition-opacity" aria-label="Delete ${escapeAttr(wp.name)}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                     </div>
                 </div>
             `;
@@ -1857,7 +2088,7 @@
         const hierarchyControls = getEl('hierarchy-controls');
     
         if (!btnAuto || !btnPersisted) {
-            console.warn('View toggle buttons not found');
+            showToast('Unable to switch roadmap view: the view controls did not load. Please refresh the page.', 'error');
             return;
         }
     
@@ -1907,8 +2138,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/roadmap/archimate-gaps');
     
             if (data.success) {
                 roadmapData.persistedGaps = data.gaps || [];
@@ -1950,8 +2180,6 @@
                 renderRoadmapTimeline();
             }
         } catch (error) {
-            console.error('Error loading persisted roadmap:', error);
-
             // Check if it's an empty state (no data) vs actual error
             const isEmptyState = error.message && error.message.includes('No gaps found');
             if (!isEmptyState && window.Platform && Platform.toast) Platform.toast.error('Error loading persisted roadmap');
@@ -1970,11 +2198,11 @@
                                 Start by analyzing auto-detected gaps and converting them to trackable roadmap items.
                             </p>
                             <div class="flex justify-center space-x-3">
-                                <button onclick="setRoadmapView('auto')" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
+                                <button type="button" data-cm-action="set-roadmap-view" data-view="auto" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
                                     <i data-lucide="eye" class="w-4 h-4 mr-2"></i>
                                     View Auto-Detected Gaps
                                 </button>
-                                <button onclick="openConvertModal()" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 font-medium flex items-center">
+                                <button type="button" data-cm-action="open-convert-modal" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 font-medium flex items-center">
                                     <i data-lucide="save" class="w-4 h-4 mr-2"></i>
                                     Convert Gaps
                                 </button>
@@ -1996,11 +2224,11 @@
                                 This could be due to a network issue or server problem. Please try again.
                             </p>
                             <div class="flex justify-center space-x-3">
-                                <button onclick="loadPersistedRoadmapData()" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
+                                <button type="button" data-cm-action="load-persisted-roadmap" class="px-5 py-2.5 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 font-medium flex items-center">
                                     <i data-lucide="refresh-cw" class="w-4 h-4 mr-2"></i>
                                     Retry
                                 </button>
-                                <button onclick="setRoadmapView('auto')" class="px-5 py-2.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 font-medium flex items-center">
+                                <button type="button" data-cm-action="set-roadmap-view" data-view="auto" class="px-5 py-2.5 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 font-medium flex items-center">
                                     <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
                                     View Auto-Detected
                                 </button>
@@ -2086,7 +2314,6 @@
                 showToast(data.error || 'Conversion failed', 'error');
             }
         } catch (error) {
-            console.error('Error converting gaps:', error);
             showToast('Error converting gaps', 'error');
         } finally {
             safeHTML(btn, originalText);
@@ -2243,7 +2470,7 @@
                         <i data-lucide="keyboard" class="w-5 h-5 mr-2 text-primary"></i>
                         Keyboard Shortcuts
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2251,7 +2478,7 @@
                     ${shortcutsHtml}
                 </div>
                 <div class="mt-4 text-center">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Got it!
                     </button>
                 </div>
@@ -2402,7 +2629,7 @@
             safeHTML(activeFiltersTags, filters.map(f => `
                 <span class="inline-flex items-center px-3 py-1 bg-primary/10 text-primary/90 rounded-full text-sm">
                     ${f.label}
-                    <button onclick="clearFilter('${f.field}')" class="ml-2 hover:text-blue-900">
+                    <button type="button" data-cm-action="clear-filter" data-field="${escapeAttr(f.field)}" aria-label="Clear filter" class="ml-2 hover:text-blue-900">
                         <i data-lucide="x" class="w-3 h-3"></i>
                     </button>
                 </span>
@@ -2509,7 +2736,7 @@
     }
     
     // Save current filters as preset
-    function saveCurrentFilters() {
+    async function saveCurrentFilters() {
         const filters = {
             search: getEl('roadmap-search')?.value || '',
             status: getEl('filter-status')?.value || '',
@@ -2521,7 +2748,9 @@
         };
     
         // Save to localStorage
-        const presetName = prompt('Enter a name for this filter preset:');
+        const presetName = await Platform.modal.promptText('Enter a name for this filter preset:', {
+            title: 'Save filter preset'
+        });
         if (presetName) {
             const savedPresets = JSON.parse(localStorage.getItem('roadmapFilterPresets') || '{}');
             savedPresets[presetName] = filters;
@@ -2636,7 +2865,7 @@
             <div class="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-foreground">Update Status</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2647,10 +2876,10 @@
                     ${statuses.map(s => `<option value="${s.value}">${s.label}</option>`).join('')}
                 </select>
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkStatusUpdate()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="bulk-status-update" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Update Status
                     </button>
                 </div>
@@ -2660,29 +2889,20 @@
         lucide.createIcons();
     }
     
+    // Bulk status / owner / delete were never wired to an API: each one closed the
+    // modal, cleared the selection and toasted "Successfully ...", so the user was
+    // told a bulk edit -- including a bulk DELETE -- had been applied when nothing
+    // had happened. Reporting the truth is the only correct behaviour until the
+    // endpoints exist; the selection is deliberately left intact because nothing
+    // was changed.
+    function _bulkNotWired(action) {
+        document.querySelector('.fixed')?.remove();
+        showToast(`Bulk ${action} is not available yet — no changes were made.`, 'error');
+    }
+
     // Execute bulk status update
     async function executeBulkStatusUpdate() {
-        const statusSelect = getEl('bulk-status-select');
-        const newStatus = statusSelect.value;
-    
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            // In a real implementation, this would call an API
-            // For now, we'll simulate the update
-            showToast(`Updating ${items.length} items to ${newStatus}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully updated ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk update error:', error);
-            showToast('Error updating items', 'error');
-        }
+        _bulkNotWired('status update');
     }
     
     // Bulk update owner
@@ -2698,7 +2918,7 @@
             <div class="bg-card rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-semibold text-foreground">Assign Owner</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2709,10 +2929,10 @@
         <input type="text" id="bulk-owner-input" placeholder="Enter owner name..."
                        class="w-full px-3 py-2 border border-input rounded-md mb-4">
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkOwnerUpdate()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700">
+                    <button type="button" data-cm-action="bulk-owner-update" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700">
                         Assign Owner
                     </button>
                 </div>
@@ -2732,22 +2952,7 @@
             return;
         }
     
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Assigning ${items.length} items to ${newOwner}...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully assigned ${items.length} items to ${newOwner}`, 'success');
-        } catch (error) {
-            console.error('Bulk owner update error:', error);
-            showToast('Error assigning owner', 'error');
-        }
+        _bulkNotWired('owner assignment');
     }
     
     // Bulk delete
@@ -2766,7 +2971,7 @@
                         <i data-lucide="alert-triangle" class="w-5 h-5 inline mr-2"></i>
                         Confirm Bulk Delete
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2777,10 +2982,10 @@
                     <strong>Warning:</strong> This action cannot be undone.
                 </p>
                 <div class="flex justify-end space-x-3">
-                    <button onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="px-4 py-2 text-muted-foreground hover:bg-accent rounded-md">
                         Cancel
                     </button>
-                    <button onclick="executeBulkDelete()" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-red-700">
+                    <button type="button" data-cm-action="bulk-delete" class="px-4 py-2 bg-destructive text-primary-foreground rounded-md hover:bg-red-700">
                         Delete Items
                     </button>
                 </div>
@@ -2792,22 +2997,7 @@
     
     // Execute bulk delete
     async function executeBulkDelete() {
-        const items = Array.from(bulkSelectedItems);
-    
-        try {
-            showToast(`Deleting ${items.length} items...`, 'info');
-    
-            // Close modal
-            document.querySelector('.fixed')?.remove();
-    
-            // Clear selection
-            clearBulkSelection();
-    
-            showToast(`Successfully deleted ${items.length} items`, 'success');
-        } catch (error) {
-            console.error('Bulk delete error:', error);
-            showToast('Error deleting items', 'error');
-        }
+        _bulkNotWired('delete');
     }
     
     // ============================================
@@ -2930,7 +3120,7 @@
                         </h3>
                         <p class="text-sm text-muted-foreground mt-1">${escapeHtml(item.name)}</p>
                     </div>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -2972,7 +3162,7 @@
                               rows="3"></textarea>
                     <div class="flex justify-between items-center mt-3">
                         <span class="text-xs text-muted-foreground">Tip: Use @username to mention team members</span>
-                        <button onclick="addComment('${itemId}', '${itemType}')"
+                        <button type="button" data-cm-action="add-comment" data-item-id="${escapeAttr(itemId)}" data-item-type="${escapeAttr(itemType)}"
                                 class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center">
                             <i data-lucide="send" class="w-4 h-4 mr-2"></i>
                             Post Comment
@@ -3141,7 +3331,7 @@
     function toggleRoadmapExportMenu() {
         const menu = getEl('roadmap-export-menu');
         if (!menu) {
-            console.error('Export menu not found');
+            showToast('Unable to open the export menu: it did not load. Please refresh the page.', 'error');
             return;
         }
         menu.classList.toggle('hidden');
@@ -3177,7 +3367,6 @@
                 await exportAsSVG();
             }
         } catch (error) {
-            console.error('Export error:', error);
             showToast(`Error exporting roadmap: ${error.message}`, 'error');
         }
     }
@@ -3259,12 +3448,12 @@
         try {
             // Load html2canvas dynamically if not already loaded
             if (typeof html2canvas === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+                await loadScript('/static/vendor/html2canvas.min.js');
             }
     
             // Load jsPDF dynamically if not already loaded
             if (typeof jspdf === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+                await loadScript('/static/vendor/jspdf.umd.min.js');
             }
     
             showToast('Generating high-quality PDF...', 'info');
@@ -3320,7 +3509,6 @@
     
             showToast('High-quality PDF exported successfully!', 'success');
         } catch (error) {
-            console.error('PDF export error:', error);
             showToast(`PDF export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3331,7 +3519,7 @@
         try {
             // Load html2canvas dynamically if not already loaded
             if (typeof html2canvas === 'undefined') {
-                await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+                await loadScript('/static/vendor/html2canvas.min.js');
             }
     
             showToast(`Generating high-quality ${format.toUpperCase()}...`, 'info');
@@ -3372,7 +3560,6 @@
                 showToast(`High-quality ${format.toUpperCase()} exported successfully!`, 'success');
             }, mimeType, quality);
         } catch (error) {
-            console.error('Image export error:', error);
             showToast(`${format.toUpperCase()} export failed: ${error.message}`, 'error');
             throw error;
         }
@@ -3425,7 +3612,6 @@
     
             showToast('SVG exported successfully!', 'success');
         } catch (error) {
-            console.error('SVG export error:', error);
             throw error;
         }
     }
@@ -3606,7 +3792,7 @@
                         <i data-lucide="git-branch" class="w-5 h-5 mr-2 text-primary"></i>
                         Manage Dependencies
                     </h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
@@ -3633,7 +3819,7 @@
                         </select>
                     </div>
     
-                    <button onclick="saveDependency('${itemId}')" class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    <button type="button" data-cm-action="save-dependency" data-item-id="${escapeAttr(itemId)}" class="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
                         Add Dependency
                     </button>
                 </div>
@@ -3732,7 +3918,7 @@
                             </div>
                             <div class="flex items-center space-x-2">
                                 <span class="text-xs text-muted-foreground">${wp.start_date || 'No date'} - ${wp.end_date || 'No date'}</span>
-                                <button onclick="openEditWPModal(${wp.id})" class="text-primary hover:text-primary/90">
+                                <button type="button" data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(wp.id)}" aria-label="Edit work package ${escapeAttr(wp.name)}" class="text-primary hover:text-primary/90">
                                     <i data-lucide="edit-2" class="w-4 h-4"></i>
                                 </button>
                             </div>
@@ -3740,6 +3926,10 @@
                     `).join(''));
                     lucide.createIcons();
                 }
+            } else {
+                // Without this the container was left reading "Loading work packages…"
+                // forever whenever the payload came back without a work_packages list.
+                safeHTML(container, '<p class="text-sm text-destructive">Could not read the work package list for this gap.</p>');
             }
         } catch (error) {
             safeHTML(container, '<p class="text-sm text-destructive">Error loading work packages</p>');
@@ -3781,7 +3971,6 @@
                 showToast(data.error || 'Update failed', 'error');
             }
         } catch (error) {
-            console.error('Error saving gap:', error);
             showToast('Error saving changes', 'error');
         }
     }
@@ -4105,6 +4294,7 @@
                         <div class="flex items-start space-x-3 flex-1">
                             <input type="checkbox"
                                    class="mt-1 rounded border-input text-primary focus-visible:ring-ring"
+                                   aria-label="Select ${escapeHtml(child.name)}"
                                    onchange="toggleWPChildSelection(${child.id}, this.checked)">
                             <div class="flex-1">
                                 <div class="flex items-center space-x-2 mb-1">
@@ -4124,7 +4314,7 @@
                             <span class="px-3 py-1 rounded-full text-xs font-medium ${statusColor}">
                                 ${child.status || 'planned'}
                             </span>
-                            <button onclick="openEditWPModal(${child.id})" class="text-primary hover:text-primary/90 p-1">
+                            <button type="button" data-cm-action="open-edit-wp" data-wp-id="${escapeAttr(child.id)}" aria-label="Edit work package ${escapeAttr(child.name)}" class="text-primary hover:text-primary/90 p-1">
                                 <i data-lucide="edit-2" class="w-4 h-4"></i>
                             </button>
                         </div>
@@ -4278,8 +4468,13 @@
                 showToast(data.error || 'Failed to add to roadmap', 'error');
             }
         } catch (error) {
-            console.error('Error adding to roadmap:', error);
-            showToast('Error adding to roadmap', 'error');
+            // DEF-078, Capgemini dry-run: Platform.fetch throws on a non-2xx
+            // response (silent:true suppresses its own toast, not the real
+            // reason) — this discarded the server's actual message (e.g.
+            // "This capability is already on the roadmap") in favour of a
+            // generic "Error adding to roadmap" that told the user nothing
+            // they could act on.
+            showToast((error && error.message) || 'Error adding to roadmap', 'error');
         }
     }
     
@@ -4401,7 +4596,6 @@
             }
     
         } catch (error) {
-            console.error('Error bulk adding to roadmap:', error);
             showToast('Error adding capabilities to roadmap', 'error');
         }
     }
@@ -4478,7 +4672,7 @@
                             <span class="px-2 py-0.5 rounded bg-primary/10 text-primary text-xs">L${level}</span>
                         </div>
                     </div>
-                    <button onclick="quickAddToRoadmap('${capId}', '${escapeHtml(capName).replace(/'/g, "\\'")}', 'business', ${level}, '${escapeHtml(priority)}')"
+                    <button type="button" data-cm-action="quick-add-roadmap" data-cap-id="${escapeAttr(capId)}" data-cap-name="${escapeAttr(capName)}" data-cap-level="${escapeAttr(level)}" data-cap-priority="${escapeAttr(priority)}" aria-label="Add ${escapeAttr(capName)} to roadmap"
                             class="px-3 py-1.5 bg-primary text-primary-foreground text-sm rounded-md hover:bg-purple-700">
                         <i data-lucide="plus" class="w-4 h-4 inline mr-1"></i>
                         Add
@@ -4613,7 +4807,7 @@
             <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-card">
                 <div class="flex justify-between items-center mb-4 pb-3 border-b">
                     <h3 class="text-lg font-bold text-foreground">Keyboard Shortcuts</h3>
-                    <button onclick="this.closest('.fixed').remove()" class="text-muted-foreground hover:text-muted-foreground">
+                    <button type="button" data-cm-action="close-modal" aria-label="Close dialog" class="text-muted-foreground hover:text-muted-foreground">
                         <i data-lucide="x" class="w-6 h-6"></i>
                     </button>
                 </div>
@@ -4661,18 +4855,18 @@
         const priority = item?.strategic_importance || 'medium';
     
         safeHTML(menu, `
-            <button onclick="openMappingModal('${capabilityId}', '${capabilityName}')"
+            <button type="button" data-cm-action="open-mapping-modal" data-cap-id="${escapeAttr(capabilityId)}" data-cap-name="${escapeAttr(capabilityName)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="layout-grid" class="w-4 h-4 text-primary"></i>
                 <span>Map to Applications</span>
             </button>
-            <button onclick="addToRoadmap('${capabilityId}', '${capabilityName}', 'business', ${level}, '${priority}')"
+            <button type="button" data-cm-action="add-to-roadmap" data-cap-id="${escapeAttr(capabilityId)}" data-cap-name="${escapeAttr(capabilityName)}" data-cap-level="${escapeAttr(level)}" data-cap-priority="${escapeAttr(priority)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="map" class="w-4 h-4 text-primary"></i>
                 <span>Add to Roadmap</span>
             </button>
             <hr class="my-1">
-            <button onclick="toggleRowSelection('${capabilityId}', '${tabType}', !tableData['${tabType}'].selected.has('${capabilityId}'))"
+            <button type="button" data-cm-action="toggle-row-selection" data-cap-id="${escapeAttr(capabilityId)}" data-tab="${escapeAttr(tabType)}"
                     class="w-full text-left px-4 py-2 hover:bg-accent flex items-center gap-2">
                 <i data-lucide="check-square" class="w-4 h-4 text-muted-foreground"></i>
                 <span>${tableData[tabType].selected.has(capabilityId) ? 'Deselect' : 'Select'}</span>
@@ -4762,8 +4956,7 @@
         lucide.createIcons();
     
         try {
-            const response = await fetchWithTimeout('/capability-map/api/process-gaps');
-            const data = await response.json();
+            const data = await fetchWithTimeout('/capability-map/api/process-gaps');
     
             if (data.error) {
                 throw new Error(data.error);
@@ -4785,9 +4978,7 @@
             updateProcessGapTable();
     
         } catch (error) {
-            console.error('Error loading process gap data:', error);
-            if (window.Platform && Platform.toast) Platform.toast.error('Error loading process gap data');
-            const retryButton = `<button onclick="processGapData.loaded = false; loadProcessGapData();" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
+            const retryButton = `<button type="button" data-cm-action="process-gap-retry" class="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-purple-700 transition-colors">
                 <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-2"></i>
                 Retry
             </button>`;
@@ -5008,7 +5199,7 @@
                     </span>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm">
-                    <button onclick="openProcessMappingModal(${item.id}, '${escapeHtml(item.name || 'Unknown')}', '${escapeHtml(item.process_code || '')}', '${escapeHtml(item.process_type || '')}')"
+                    <button type="button" data-cm-action="open-process-mapping" data-process-id="${escapeAttr(item.id)}" data-process-name="${escapeAttr(item.name || 'Unknown')}" data-process-code="${escapeAttr(item.process_code || '')}" data-process-type="${escapeAttr(item.process_type || '')}" aria-label="Map process ${escapeAttr(item.name || 'Unknown')}"
                             class="text-primary hover:text-primary/90 text-sm font-medium">
                         <i data-lucide="map" class="w-4 h-4 inline mr-1"></i>Map
                     </button>
@@ -5066,6 +5257,9 @@
     
     // Make function globally accessible
     window.openMappingModal = async function(capabilityId, capabilityName) {
+        // ARCH-064: the dialog is not in the page until it is first opened.
+        if (!await window.CapabilityMapModals.ensure('mapping-modal')) { return; }
+
         // Ensure capabilityId is always a string to preserve precision for large Snowflake IDs
         currentCapabilityId = String(capabilityId);
         currentCapabilityName = capabilityName;
@@ -5104,7 +5298,87 @@
         selectedApplications.clear();
         applicationsData = [];
     }
-    
+
+    // Row action "View Details" — opens a read-only detail dialog for a
+    // capability. Fetches the canonical detail record and renders it with a
+    // dynamically-created Platform modal (no inline handlers; CSP-safe).
+    // Missing values render as an em dash, never a fabricated 0/blank.
+    window.openCapabilityDetail = async function(capabilityId, capabilityName) {
+        const DASH = '—';
+        const esc = (window.Platform && Platform.sanitize && Platform.sanitize.escape)
+            ? Platform.sanitize.escape
+            : (s => String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+                {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])));
+        const val = v => (v === null || v === undefined || v === '') ? DASH : esc(v);
+
+        const modalId = 'capability-detail-modal';
+        // Destroy any prior instance so re-opening always shows fresh data.
+        if (window.Platform && Platform.modal && typeof Platform.modal.destroy === 'function') {
+            Platform.modal.destroy(modalId);
+        }
+
+        let data;
+        try {
+            const resp = await Platform.fetch(`/enterprise/capabilities/${encodeURIComponent(capabilityId)}`, { silent: true });
+            data = (resp && resp.data) ? resp.data : resp;
+        } catch (e) {
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Could not load capability details. Please try again.');
+            }
+            return;
+        }
+        if (!data) {
+            if (window.Platform && Platform.toast) Platform.toast.error('Capability not found.');
+            return;
+        }
+
+        const rows = [
+            ['Domain', val(data.business_domain)],
+            ['Level', val(data.level)],
+            ['Category', val(data.category)],
+            ['Strategic Importance', val(data.strategic_importance)],
+            ['Current Maturity', val(data.current_maturity_level)],
+            ['Target Maturity', val(data.target_maturity_level)],
+            ['Business Owner', val(data.business_owner)],
+            ['IT Owner', val(data.it_owner)],
+            ['Mapped Applications', val(data.application_count)]
+        ];
+        let content = '<dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">';
+        rows.forEach(([label, value]) => {
+            content += '<dt class="font-medium text-muted-foreground">' + esc(label) + '</dt>'
+                     + '<dd class="text-foreground">' + value + '</dd>';
+        });
+        content += '</dl>';
+
+        if (data.description) {
+            content += '<div class="mt-4"><p class="font-medium text-muted-foreground text-sm mb-1">Description</p>'
+                     + '<p class="text-sm text-foreground whitespace-pre-line">' + esc(data.description) + '</p></div>';
+        }
+
+        const apps = Array.isArray(data.applications) ? data.applications : [];
+        if (apps.length) {
+            content += '<div class="mt-4"><p class="font-medium text-muted-foreground text-sm mb-2">Applications</p><ul class="space-y-1">';
+            apps.forEach(a => {
+                content += '<li class="text-sm text-foreground flex items-center justify-between border-b border-border py-1">'
+                         + '<span>' + esc(a.name) + '</span>'
+                         + '<span class="text-xs text-muted-foreground">' + val(a.support_level) + '</span></li>';
+            });
+            content += '</ul></div>';
+        }
+
+        Platform.modal.create({
+            id: modalId,
+            title: (data.name || capabilityName || 'Capability') + ' — Details',
+            size: 'lg',
+            content: content,
+            buttons: [{ label: 'Close', variant: 'secondary' }]
+        });
+        Platform.modal.open(modalId);
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    };
+
     // AUDIT-CAP-003: Set loading state for modal dropdowns and application list
     function setModalLoadingState(isLoading) {
         const typeFilter = getEl('filter-type');
@@ -5204,7 +5478,6 @@
             // AUDIT-CAP-002: Only show error if this is still the current request
             if (requestId === currentModalRequestId) {
                 setModalLoadingState(false);
-                console.error('Error loading applications:', error);
                 showNotification('Error loading applications', 'error');
             }
         }
@@ -5299,9 +5572,11 @@
                             <input
                                 type="checkbox"
                                 ${isSelected ? 'checked' : ''}
-                                onchange="toggleApplicationSelection('${app.id}')"
+                                data-cm-change="toggle-app"
+                                data-app-id="${escapeAttr(app.id)}"
                                 class="mt-1 h-5 w-5 text-primary focus-visible:ring-ring border-input rounded cursor-pointer"
                                 title="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
+                                aria-label="${isSelected ? 'Deselect' : 'Select'} ${escapeHtml(app.name)}"
                             />
                             <div class="flex-1">
                                 <div class="flex items-center space-x-2">
@@ -5324,7 +5599,10 @@
                         </div>
                         ${app.is_mapped && app.mapping_id ? `
                             <button
-                                onclick="deleteMapping('${app.mapping_id}', '${app.id}')"
+                                type="button"
+                                data-cm-action="delete-mapping"
+                                data-mapping-id="${escapeAttr(app.mapping_id)}"
+                                data-app-id="${escapeAttr(app.id)}"
                                 class="ml-2 px-3 py-1.5 text-xs bg-destructive text-primary-foreground rounded hover:bg-destructive/90 transition-colors flex items-center space-x-1"
                                 title="Remove mapping"
                             >
@@ -5367,14 +5645,11 @@
         const container = getEl('applications-list');
         if (!container) return;
     
-        const checkboxes = container.querySelectorAll('input[type="checkbox"]:not(:checked)');
+        const checkboxes = container.querySelectorAll('input[type="checkbox"][data-app-id]:not(:checked)');
         checkboxes.forEach(checkbox => {
-            const match = checkbox.getAttribute('onchange').match(/toggleApplicationSelection\('([^']+)'\)/);
-            if (match) {
-                const appId = match[1];
-                if (!selectedApplications.has(appId)) {
-                    toggleApplicationSelection(appId);
-                }
+            const appId = checkbox.getAttribute('data-app-id');
+            if (appId) {
+                toggleApplicationSelection(appId);
             }
         });
     }
@@ -5393,7 +5668,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Support Level</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'support_level', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="support_level"
                         >
                             <option value="full" ${mappingData.support_level === 'full' ? 'selected' : ''}>Full</option>
                             <option value="partial" ${mappingData.support_level === 'partial' ? 'selected' : ''}>Partial</option>
@@ -5407,8 +5682,9 @@
                             min="0"
                             max="100"
                             value="${mappingData.coverage_percentage || 0}"
+                            aria-label="Coverage %"
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'coverage_percentage', parseInt(this.value))"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="coverage_percentage" data-parse="int"
                         />
                     </div>
                     <div>
@@ -5418,15 +5694,16 @@
                             min="1"
                             max="5"
                             value="${mappingData.support_quality || 3}"
+                            aria-label="Support Quality (1-5)"
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'support_quality', parseInt(this.value))"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="support_quality" data-parse="int"
                         />
                     </div>
                     <div>
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Relationship Type</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'relationship_type', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="relationship_type"
                         >
                             <option value="enables" ${mappingData.relationship_type === 'enables' ? 'selected' : ''}>Enables</option>
                             <option value="supports" ${mappingData.relationship_type === 'supports' ? 'selected' : ''}>Supports</option>
@@ -5438,7 +5715,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Dependency Level</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'dependency_level', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="dependency_level"
                         >
                             <option value="critical" ${mappingData.dependency_level === 'critical' ? 'selected' : ''}>Critical</option>
                             <option value="high" ${mappingData.dependency_level === 'high' ? 'selected' : ''}>High</option>
@@ -5450,7 +5727,7 @@
                         <label class="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
                         <select
                             class="w-full text-sm border border-input rounded px-2 py-1"
-                            onchange="updateApplicationMapping(${appId}, 'priority', this.value)"
+                            data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="priority"
                         >
                             <option value="high" ${mappingData.priority === 'high' ? 'selected' : ''}>High</option>
                             <option value="medium" ${mappingData.priority === 'medium' ? 'selected' : ''}>Medium</option>
@@ -5463,7 +5740,7 @@
                     <textarea
                         class="w-full text-sm border border-input rounded px-2 py-1"
                         rows="2"
-                        onchange="updateApplicationMapping(${appId}, 'gap_description', this.value)"
+                        data-cm-change="update-app-mapping" data-app-id="${escapeAttr(appId)}" data-field="gap_description"
                     >${mappingData.gap_description || ''}</textarea>
                 </div>
             </div>
@@ -5471,8 +5748,12 @@
     }
     
     window.toggleApplicationSelection = function(appId) {
-        const app = applicationsData.find(a => a.id === appId);
+        // appId arrives as a string from data-app-id; applicationsData ids and the
+        // selectedApplications keys are the native JSON type (usually number), so
+        // resolve the app by loose match and key everything by its real id.
+        const app = applicationsData.find(a => String(a.id) === String(appId));
         if (!app) return;
+        appId = app.id;
     
         if (selectedApplications.has(appId)) {
             // Remove selection
@@ -5518,6 +5799,9 @@
     }
     
     window.updateApplicationMapping = function(appId, field, value) {
+        // Normalise the string data-app-id to the native key used in the map.
+        const app = applicationsData.find(a => String(a.id) === String(appId));
+        if (app) appId = app.id;
         if (!selectedApplications.has(appId)) return;
     
         const appData = selectedApplications.get(appId);
@@ -5534,14 +5818,10 @@
         try {
             const applications = Array.from(selectedApplications.values());
 
-            const data = await Platform.fetch('/capability-map/api/mappings', {
-                method: 'POST',
-                body: {
-                    capability_id: currentCapabilityId,
-                    applications: applications
-                },
-                silent: true
-            });
+            const data = await Platform.fetch.post('/capability-map/api/mappings', {
+                capability_id: currentCapabilityId,
+                applications: applications
+            }, { silent: true });
     
             if (data.error) {
                 showNotification('Error saving mappings: ' + data.error, 'error');
@@ -5559,7 +5839,6 @@
             // Close modal
             closeMappingModal();
         } catch (error) {
-            console.error('Error saving mappings:', error);
             showNotification('Error saving mappings', 'error');
         }
     }
@@ -5573,10 +5852,7 @@
                 { text: 'Cancel', class: 'px-4 py-2 text-sm font-medium text-foreground bg-background border border-border rounded-md hover:bg-muted', action: 'cancel', handler: function() {} },
                 { text: 'Remove', class: 'px-4 py-2 text-sm font-medium text-destructive-foreground bg-destructive border border-transparent rounded-md hover:bg-destructive/90', action: 'remove', handler: async function() {
                     try {
-                        const data = await Platform.fetch(`/capability-map/api/mappings/${mappingId}`, {
-                            method: 'DELETE',
-                            silent: true
-                        });
+                        const data = await Platform.fetch.delete(`/capability-map/api/mappings/${mappingId}`, { silent: true });
 
                         if (data.error) {
                             showNotification('Error removing mapping: ' + data.error, 'error');
@@ -5588,7 +5864,6 @@
                         // Reload all table data to reflect the removal
                         await loadDataForAllTabs();
                     } catch (error) {
-                        console.error('Error deleting mapping:', error);
                         showNotification('Error removing mapping', 'error');
                     }
                 } }
@@ -5660,10 +5935,7 @@
                 return;
             }
     
-            const data = await Platform.fetch(endpoint, {
-                method: 'DELETE',
-                silent: true
-            });
+            const data = await Platform.fetch.delete(endpoint, { silent: true });
     
             if (data.success) {
                 const itemTypeName = itemType === 'gap' ? 'Gap' : 'Work package';
@@ -5680,7 +5952,6 @@
                 showToast(data.error || 'Delete failed', 'error');
             }
         } catch (error) {
-            console.error('Error deleting item:', error);
             showToast('Error deleting item', 'error');
         }
     }
@@ -5696,7 +5967,7 @@
         notification.className = `fixed top-4 right-4 ${bgColor} text-primary-foreground px-6 py-3 rounded-lg shadow-lg z-50 flex items-center space-x-2`;
         safeHTML(notification, `
             <span>${escapeHtml(message)}</span>
-            <button onclick="this.parentElement.remove()" class="ml-4 text-primary-foreground hover:text-foreground/80">×</button>
+            <button type="button" data-cm-action="dismiss-parent" aria-label="Dismiss notification" class="ml-4 text-primary-foreground hover:text-foreground/80">×</button>
         `);
     
         document.body.appendChild(notification);
@@ -5786,6 +6057,8 @@
     if (typeof executeBulkDelete !== 'undefined') window.executeBulkDelete = executeBulkDelete;
     
     // Modal Functions
+    if (typeof openQuickAddModal !== 'undefined') window.openQuickAddModal = openQuickAddModal;
+    if (typeof closeQuickAddModal !== 'undefined') window.closeQuickAddModal = closeQuickAddModal;
     if (typeof openConvertModal !== 'undefined') window.openConvertModal = openConvertModal;
     if (typeof closeConvertModal !== 'undefined') window.closeConvertModal = closeConvertModal;
     if (typeof executeConvertGaps !== 'undefined') window.executeConvertGaps = executeConvertGaps;
@@ -5896,8 +6169,7 @@
         let container = document.getElementById('heatmap-container');
         if (!loading || !container) return;
 
-        fetch('/capability-map/api/unified-capabilities')
-            .then(function(r) { return r.json(); })
+        Platform.fetch('/capability-map/api/unified-capabilities')
             .then(function(data) {
                 let caps = data.unified_capabilities || data.capabilities || [];
                 if (caps.length === 0) {

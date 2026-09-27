@@ -7,7 +7,7 @@ Optimized for speed over comprehensive analysis.
 
 import logging
 from difflib import SequenceMatcher
-from typing import Any, Dict, List
+from typing import Any, List
 
 from .base import DetectionResult, DetectionStrategy, SimilarityResult
 

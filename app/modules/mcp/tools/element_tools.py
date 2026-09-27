@@ -38,28 +38,35 @@ class Tool:
 
 
 def _search_elements(arguments: dict, bearer: str) -> InternalAPIResult:
+    # The one canonical element search — the same route the product's own
+    # entity picker calls (docs/artifacts/reuse-register.yml, id
+    # element-picker). Never a duplicate route.
     params = {}
-    for key in ("q", "type", "layer"):
-        if arguments.get(key):
-            params[key] = arguments[key]
-    return call_internal_api("GET", "/architecture/api/elements", params=params, bearer=bearer)
+    if arguments.get("q"):
+        params["q"] = arguments["q"]
+    if arguments.get("limit"):
+        params["limit"] = arguments["limit"]
+    return call_internal_api(
+        "GET", "/archimate/api/elements/search", params=params, bearer=bearer
+    )
 
 
 def _get_element(arguments: dict, bearer: str) -> InternalAPIResult:
     element_id = arguments.get("element_id")
-    return call_internal_api("GET", f"/architecture/api/elements/{element_id}", bearer=bearer)
+    return call_internal_api(
+        "GET", f"/archimate/api/elements/{element_id}/detail", bearer=bearer
+    )
 
 
 SEARCH_ELEMENTS = Tool(
     name="search_elements",
     title="Search architecture elements",
-    description="Search architecture elements by name, type, and ArchiMate layer.",
+    description="Find architecture elements by name; returns the id each lens question needs.",
     input_schema={
         "type": "object",
         "properties": {
             "q": {"type": "string", "description": "Case-insensitive name search"},
-            "type": {"type": "string", "description": "ArchiMate element type, e.g. ApplicationComponent"},
-            "layer": {"type": "string", "description": "ArchiMate layer, e.g. application"},
+            "limit": {"type": "integer", "description": "Maximum number of results"},
         },
     },
     required_scope="mcp:read",

@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}Billing & Subscription{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 
 {% block content %}
@@ -16,7 +17,7 @@
         {% if messages %}
             <div class="space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success-emphasis{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive-emphasis{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -25,7 +26,7 @@
     {% endwith %}
 
     {% if error %}
-        <div class="rounded-md border p-4 bg-destructive/5 border-destructive/20 text-destructive">
+        <div class="rounded-md border p-4 bg-destructive/5 border-destructive/20 text-destructive-emphasis">
             {{ error }}
         </div>
     {% endif %}
@@ -42,7 +43,7 @@
             {% set plan_val = subscription.plan.value %}
             <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
                 {% if plan_val == 'enterprise' %}bg-primary/10 text-primary border border-primary/20
-                {% elif plan_val == 'pro' %}bg-success/10 text-success border border-success/20
+                {% elif plan_val == 'pro' %}bg-success/10 text-success-emphasis border border-success/20
                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                 {{ plan_val | capitalize }}
             </span>
@@ -54,9 +55,9 @@
                 <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-1">Status</p>
                 {% set status_val = subscription.status.value %}
                 <p class="text-sm font-semibold
-                    {% if status_val == 'active' %}text-success
-                    {% elif status_val == 'past_due' %}text-warning
-                    {% elif status_val == 'cancelled' %}text-destructive
+                    {% if status_val == 'active' %}text-success-emphasis
+                    {% elif status_val == 'past_due' %}text-warning-emphasis
+                    {% elif status_val == 'cancelled' %}text-destructive-emphasis
                     {% else %}text-foreground{% endif %}">
                     {{ status_val | replace('_', ' ') | title }}
                 </p>
@@ -70,7 +71,7 @@
                     <span class="text-muted-foreground font-normal">used</span>
                 </p>
                 {% if seats_used >= subscription.seats_purchased %}
-                    <p class="text-xs text-destructive mt-1">Seat limit reached — upgrade to add users</p>
+                    <p class="text-xs text-destructive-emphasis mt-1">Seat limit reached — upgrade to add users</p>
                 {% endif %}
             </div>
 
@@ -127,6 +128,7 @@
                     </ul>
                     {% if stripe_configured %}
                     <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="plan" value="pro">
                         <input type="hidden" name="seats" value="5">
                         <button type="submit"
@@ -154,6 +156,7 @@
                     </ul>
                     {% if stripe_configured %}
                     <form method="post" action="{{ url_for('billing.billing_upgrade') }}" class="mt-auto">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="plan" value="pro">
                         <input type="hidden" name="seats" value="20">
                         <button type="submit"
@@ -178,7 +181,7 @@
                         <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Dedicated SLA support</li>
                         <li class="flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5 text-success" aria-hidden="true"></i> Custom data residency</li>
                     </ul>
-                    <a href="mailto:sales@archie.ai?subject=Enterprise%20Enquiry"
+                    <a href="mailto:sales@entelim.com?subject=Enterprise%20Enquiry"
                        class="mt-auto inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 transition-colors">
                         Contact Sales
                     </a>

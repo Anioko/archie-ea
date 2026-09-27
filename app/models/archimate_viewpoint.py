@@ -216,6 +216,19 @@ class ViewpointView(db.Model):
     A view is an instantiation of a viewpoint for a specific architecture model,
     potentially with additional filtering or customization. While a viewpoint is
     a template/specification, a view is an actual diagram or model subset.
+
+    DEPRECATED (composer-diagram-link-mismatches, D3, 2026-09-19): this table
+    has no readers anywhere in the codebase — no route, service, template or
+    test ever queries ``viewpoint_views``. It also lacks ``TenantMixin``, so it
+    was a tenant-isolation gap on top of being a dead store. Its former sole
+    writer, ``architect_viewpoints()`` in
+    ``app/modules/ai_chat/routes/chat_workflows.py``, now creates
+    ``SavedDiagram`` rows via
+    ``app.services.archimate_composer_service.create_diagram`` instead, since
+    ``SavedDiagram`` is the composer's actual system of record and is already
+    served by the ``/archimate/api/saved-viewpoints/*`` endpoints. Retired per
+    ADR 0008 (retire, never accumulate) — do not drop the table, and do not add
+    a new writer here; extend ``SavedDiagram`` instead.
     """
 
     __tablename__ = "viewpoint_views"
@@ -335,9 +348,16 @@ class ArchimateAuditLog(db.Model):
     __tablename__ = "archimate_audit_logs"
 
     id = db.Column(db.Integer, primary_key=True)
-    viewpoint_id = db.Column(
-        db.Integer, db.ForeignKey("archimate_viewpoints.id"), nullable=True
-    )
+    # CMP-03: viewpoint_id is the COMPOSER diagram id (saved_diagrams.id), which
+    # is what the composer sends as currentSavedVpId. It previously carried a
+    # FOREIGN KEY to archimate_viewpoints.id — a different table — so every audit
+    # write from the composer (e.g. removing an element from a saved diagram)
+    # raised a FK violation and surfaced as a "Failed to log audit event" toast,
+    # silently breaking the governance trail. It is a loose reference (no FK):
+    # audit rows are append-only diagnostics and must never fail the user action
+    # they record. The matching DB constraint is dropped by
+    # `flask drop-audit-log-viewpoint-fk` in the compose boot chain.
+    viewpoint_id = db.Column(db.Integer, nullable=True, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     action = db.Column(db.String(100), nullable=False)
     entity_type = db.Column(db.String(100), nullable=True)
@@ -347,7 +367,6 @@ class ArchimateAuditLog(db.Model):
     new_value = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
-    viewpoint = db.relationship("ArchiMateViewpoint", backref="audit_logs")
     actor = db.relationship("User", foreign_keys=[user_id], lazy="joined")
 
     def __repr__(self):

@@ -9,17 +9,48 @@ ADR Reference: docs/adr/0010-procurement-persona.md
 
 from datetime import date, timedelta
 
-from flask import render_template
+from flask import render_template, request
 from flask_login import current_user, login_required
-from sqlalchemy import func
 
 from app.decorators import requires_procurement
-from app.extensions import db
 from app.models.application_portfolio import VendorContract
 from app.models.license_entitlement import LicenseEntitlement
-from app.models.vendor.vendor_organization import VendorOrganization
 
 from . import procurement_bp
+
+# As in my_applications, services.py held the summary shapes these templates
+# read and was never imported, so every dashboard raised jinja2.UndefinedError.
+from .services import (
+    get_contract_amounts,
+    get_days_until_renewal,
+    get_renewal_summary,
+    get_renewal_urgency,
+    get_spend_by_category,
+    get_spend_summary,
+)
+
+
+def _compliance_summary(licenses):
+    """Shape compliance_dashboard.html reads: compliant, warning, violation,
+    total, total_entitled, total_consumed, utilization.
+
+    Unlike renewals and spend there is no service equivalent, so this derives
+    from the same LicenseEntitlement rows the page already renders rather than
+    re-querying - one source of truth per request.
+    """
+    total_entitled = sum(lic.quantity_entitled or 0 for lic in licenses)
+    total_consumed = sum(lic.quantity_deployed or 0 for lic in licenses)
+    return {
+        "total": len(licenses),
+        "compliant": sum(1 for lic in licenses if lic.compliance_status == "compliant"),
+        "warning": sum(1 for lic in licenses if lic.compliance_status == "under_utilized"),
+        "violation": sum(1 for lic in licenses if lic.compliance_status == "over_deployed"),
+        "total_entitled": total_entitled,
+        "total_consumed": total_consumed,
+        # Guarded: an empty tenant has nothing entitled, and a ZeroDivisionError
+        # on day one is the same class of failure this whole exercise is fixing.
+        "utilization": round(total_consumed / total_entitled * 100, 1) if total_entitled > 0 else None,
+    }
 
 
 @procurement_bp.route("/contracts")
@@ -32,17 +63,50 @@ def contracts_list():
     contracts = VendorContract.query.filter_by(organization_id=org_id).all()
 
     # Summary stats
-    total_value = sum(c.contract_value or 0 for c in contracts)
     active_count = sum(1 for c in contracts if c.status == "active")
     expiring_soon = sum(
         1 for c in contracts
         if c.end_date and c.end_date <= date.today() + timedelta(days=90)
     )
 
+    # contracts_list.html iterates item.contract.* plus item.days_until_renewal
+    # and item.urgency - it wants each contract wrapped with its renewal state,
+    # not the bare row. Passing the rows directly raised UndefinedError on
+    # item.contract for every line, so the page 500'd the moment a single
+    # contract existed. An empty portfolio never enters the loop, which is why it
+    # looked healthy until the first record was created.
+    today = date.today()
+
+    def _wrap(contract):
+        days = (contract.end_date - today).days if contract.end_date else None
+        if days is None:
+            urgency = "unknown"
+        elif days < 0:
+            urgency = "expired"
+        elif days <= 30:
+            urgency = "critical"
+        elif days <= 90:
+            urgency = "warning"
+        else:
+            urgency = "ok"
+        # The row's amounts come from the same function the spend totals read,
+        # so a contract with no annual cost is a dash here and is left out of
+        # the total there, never a zero on either.
+        return {
+            "contract": contract,
+            "days_until_renewal": days,
+            "urgency": urgency,
+            **get_contract_amounts(contract),
+        }
+
     return render_template(
         "procurement/contracts_list.html",
-        contracts=contracts,
-        total_value=total_value,
+        contracts=[_wrap(c) for c in contracts],
+        # The pagination footer reads both. It is guarded by `total > 20`, so on a
+        # small portfolio the block never renders and their absence went unnoticed
+        # until a real dataset existed.
+        total=len(contracts),
+        page=1,
         active_count=active_count,
         expiring_soon=expiring_soon,
     )
@@ -81,21 +145,38 @@ def renewals_dashboard():
     org_id = current_user.organization_id
     today = date.today()
 
-    # Contracts expiring in different windows
-    contracts = VendorContract.query.filter_by(organization_id=org_id).all()
+    # The template renders `contracts` as [{contract, urgency, days_until_renewal}]
+    # filtered to the ?days= window. This route used to pass neither `contracts`
+    # nor `days_filter`, so the list below the summary tiles NEVER rendered — the
+    # page always claimed "No expiring contracts" while the tiles showed real
+    # counts, and the days dropdown submitted a parameter nothing read.
+    if request.args.get("days") in ("30", "60", "90", "180", "365"):
+        days_filter = int(request.args["days"])
+    else:
+        days_filter = 30
 
-    expiring_30 = [c for c in contracts if c.end_date and today <= c.end_date <= today + timedelta(days=30)]
-    expiring_60 = [c for c in contracts if c.end_date and today + timedelta(days=30) < c.end_date <= today + timedelta(days=60)]
-    expiring_90 = [c for c in contracts if c.end_date and today + timedelta(days=60) < c.end_date <= today + timedelta(days=90)]
-    expired = [c for c in contracts if c.end_date and c.end_date < today]
+    all_contracts = VendorContract.query.filter_by(organization_id=org_id).all()
+    items = []
+    for c in all_contracts:
+        days = get_days_until_renewal(c)
+        if days is None:
+            continue
+        if days <= days_filter:  # includes expired (negative days)
+            items.append({
+                "contract": c,
+                "urgency": get_renewal_urgency(c),
+                "days_until_renewal": days,
+            })
+    items.sort(key=lambda i: i["days_until_renewal"])
 
     return render_template(
         "procurement/renewals_dashboard.html",
-        expiring_30=expiring_30,
-        expiring_60=expiring_60,
-        expiring_90=expiring_90,
-        expired=expired,
+        contracts=items,
+        days_filter=days_filter,
         today=today,
+        # Template reads summary.{critical,warning,ok,unknown,upcoming,total} -
+        # precisely get_renewal_summary()'s return shape.
+        summary=get_renewal_summary(),
     )
 
 
@@ -109,14 +190,14 @@ def licenses_list():
     licenses = LicenseEntitlement.query.filter_by(organization_id=org_id).all()
 
     # Summary stats
-    total_entitled = sum(l.quantity_entitled or 0 for l in licenses)
-    total_deployed = sum(l.quantity_deployed or 0 for l in licenses)
-    total_used = sum(l.quantity_used or 0 for l in licenses)
+    total_entitled = sum(item.quantity_entitled or 0 for item in licenses)
+    total_deployed = sum(item.quantity_deployed or 0 for item in licenses)
+    total_used = sum(item.quantity_used or 0 for item in licenses)
 
     # Compliance breakdown
-    compliant = sum(1 for l in licenses if l.compliance_status == "compliant")
-    over_deployed = sum(1 for l in licenses if l.compliance_status == "over_deployed")
-    under_utilized = sum(1 for l in licenses if l.compliance_status == "under_utilized")
+    compliant = sum(1 for item in licenses if item.compliance_status == "compliant")
+    over_deployed = sum(1 for item in licenses if item.compliance_status == "over_deployed")
+    under_utilized = sum(1 for item in licenses if item.compliance_status == "under_utilized")
 
     return render_template(
         "procurement/licenses_list.html",
@@ -159,24 +240,24 @@ def compliance_dashboard():
 
     # Group by compliance status
     by_status = {}
-    for l in licenses:
-        status = l.compliance_status or "unknown"
+    for item in licenses:
+        status = item.compliance_status or "unknown"
         if status not in by_status:
             by_status[status] = []
-        by_status[status].append(l)
+        by_status[status].append(item)
 
     # Calculate risk exposure (over-deployed licenses)
     risk_exposure = sum(
-        (l.quantity_deployed - l.quantity_entitled) * float(l.unit_cost or 0)
-        for l in licenses
-        if l.compliance_status == "over_deployed" and l.quantity_deployed and l.quantity_entitled
+        (item.quantity_deployed - item.quantity_entitled) * float(item.unit_cost or 0)
+        for item in licenses
+        if item.compliance_status == "over_deployed" and item.quantity_deployed and item.quantity_entitled
     )
 
     # Shelfware (entitled but not used)
     shelfware_value = sum(
-        (l.quantity_entitled - l.quantity_used) * float(l.unit_cost or 0)
-        for l in licenses
-        if l.quantity_entitled and l.quantity_used and l.quantity_entitled > l.quantity_used
+        (item.quantity_entitled - item.quantity_used) * float(item.unit_cost or 0)
+        for item in licenses
+        if item.quantity_entitled and item.quantity_used and item.quantity_entitled > item.quantity_used
     )
 
     return render_template(
@@ -185,6 +266,7 @@ def compliance_dashboard():
         by_status=by_status,
         risk_exposure=risk_exposure,
         shelfware_value=shelfware_value,
+        summary=_compliance_summary(licenses),
     )
 
 
@@ -195,36 +277,16 @@ def spend_analytics():
     """Spend analytics dashboard."""
     org_id = current_user.organization_id
 
-    contracts = VendorContract.query.filter_by(organization_id=org_id).all()
-
-    # Total spend
-    total_spend = sum(c.contract_value or 0 for c in contracts)
-    annual_spend = sum(c.annual_cost or 0 for c in contracts)
-
-    # Spend by vendor
-    spend_by_vendor = {}
-    for c in contracts:
-        vendor_name = c.vendor.name if c.vendor else "Unknown"
-        if vendor_name not in spend_by_vendor:
-            spend_by_vendor[vendor_name] = 0
-        spend_by_vendor[vendor_name] += c.contract_value or 0
-
-    # Sort by spend
-    spend_by_vendor = dict(sorted(spend_by_vendor.items(), key=lambda x: -x[1]))
-
-    # Spend by category
-    spend_by_category = {}
-    for c in contracts:
-        cat = c.contract_category or "Uncategorized"
-        if cat not in spend_by_category:
-            spend_by_category[cat] = 0
-        spend_by_category[cat] += c.contract_value or 0
+    # Spend by category - shared with the AI recommendations endpoint
+    # (procurement_ai_service.py) via get_spend_by_category() rather than a
+    # second parallel loop over the same rows.
+    spend_by_category = get_spend_by_category(org_id)
 
     return render_template(
         "procurement/spend_analytics.html",
-        contracts=contracts,
-        total_spend=total_spend,
-        annual_spend=annual_spend,
-        spend_by_vendor=spend_by_vendor,
         spend_by_category=spend_by_category,
+        # Every figure on the page comes from this one summary. Total contract
+        # value and annual cost are each summed here and nowhere else, so the
+        # page cannot state two different totals or add a missing amount as 0.
+        summary=get_spend_summary(),
     )

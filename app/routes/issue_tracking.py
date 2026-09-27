@@ -4,10 +4,10 @@ Handles CRUD operations for issue tracking and escalation
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.models import User
@@ -27,6 +27,12 @@ def list_issues(solution_id):
     Returns all issues for a solution, with filtering and sorting
     """
     try:
+        from app.models.solution_models import Solution
+        from app.utils.route_guards import require_entity
+
+        # Unknown solution -> 404, not an empty issue list.
+        require_entity(Solution, solution_id, description="Solution not found")
+
         # Get query parameters
         status = request.args.get('status')
         priority = request.args.get('priority')
@@ -70,12 +76,14 @@ def list_issues(solution_id):
             
             # Add assignee info
             if issue.assigned_to_id:
+                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
                 assignee = User.query.get(issue.assigned_to_id)
                 if assignee:
                     issue_dict['assigned_to'] = assignee.email.split('@')[0]
 
             # Add creator info
             if issue.created_by_id:
+                # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
                 creator = User.query.get(issue.created_by_id)
                 if creator:
                     issue_dict['created_by'] = creator.email.split('@')[0]
@@ -112,6 +120,8 @@ def list_issues(solution_id):
 
         return jsonify(issues_data)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f'Error listing issues: {str(e)}')
         return jsonify({'error': 'Failed to list issues'}), 500
@@ -137,11 +147,13 @@ def get_issue(solution_id, issue_id):
 
         # Add related data
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]
 
         if issue.created_by_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             creator = User.query.get(issue.created_by_id)
             if creator:
                 issue_dict['created_by'] = creator.email.split('@')[0]
@@ -258,6 +270,7 @@ def update_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]
@@ -306,6 +319,7 @@ def escalate_issue(solution_id, issue_id):
 
         issue_dict = issue.to_dict()
         if issue.assigned_to_id:
+            # tenant-scoping-ok: id is a FK from an already org-scoped SolutionIssue.
             assignee = User.query.get(issue.assigned_to_id)
             if assignee:
                 issue_dict['assigned_to'] = assignee.email.split('@')[0]

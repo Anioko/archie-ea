@@ -11,8 +11,8 @@ Provides REST API endpoints and dashboard views for data architecture models:
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, render_template, request
-from flask_login import login_required
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log
@@ -24,6 +24,7 @@ from app.models import (
     LogicalDataModel,
     PhysicalDataModel,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,12 @@ def data_architecture_dashboard():
                             "vendor": m.vendor_product.vendor.name
                             if m.vendor_product.vendor
                             else "Internal",
+                            # Carried so the dashboard row can link to the vendor
+                            # record; without it the row names a supplier the
+                            # user has no way to open.
+                            "vendor_id": m.vendor_product.vendor.id
+                            if m.vendor_product.vendor
+                            else None,
                             "maturity": m.maturity_level,
                             "fit": m.fit_score,
                         }
@@ -103,7 +110,28 @@ def data_architecture_dashboard():
             conceptual_count = ConceptualDataModel.query.count()
             logical_count = LogicalDataModel.query.count()
             physical_count = PhysicalDataModel.query.count()
+            # DEF-064, Capgemini dry-run: this counted DataLineage rows only,
+            # while /architecture/data-lineage's "Recorded Lineage Edges"
+            # (data_lineage_view below) counts those SAME rows plus
+            # ArchiMateRelationship edges between DataObjects — a real,
+            # already-drawn subset of lineage this tile just never counted.
+            # Match the fuller, more complete definition rather than leave
+            # two different numbers answering "how much lineage exists".
+            from app.models.archimate_core import ArchiMateElement as _ArchiMateElement
+            from app.models.archimate_core import ArchiMateRelationship as _ArchiMateRelationship
+
+            _data_object_ids = [
+                row.id for row in
+                db.session.query(_ArchiMateElement.id).filter(_ArchiMateElement.type == "DataObject").all()
+            ]
             data_lineage_count = DataLineage.query.count()
+            if _data_object_ids:
+                data_lineage_count += _ArchiMateRelationship.query.filter(
+                    db.or_(
+                        _ArchiMateRelationship.source_id.in_(_data_object_ids),
+                        _ArchiMateRelationship.target_id.in_(_data_object_ids),
+                    )
+                ).count()
         except Exception:
             logger.debug(
                 "Failed to query data architecture model counts", exc_info=True
@@ -118,7 +146,21 @@ def data_architecture_dashboard():
             archimate_data_count = ArchiMateElement.query.filter(
                 ArchiMateElement.layer.in_(["Application", "Technology"])
             ).count()
-            archimate_rel_count = ArchiMateRelationship.query.count()
+            # ADR-0008: ArchiMateRelationship is NOT tenant-scoped (no TenantMixin),
+            # so a bare .count() sums every org's edges and disagrees with the
+            # tenant-filtered traceability matrix. Count only edges whose endpoints
+            # are this tenant's elements — the same relationships the matrix sees.
+            tenant_element_ids = [
+                row[0]
+                for row in db.session.query(ArchiMateElement.id).all()
+            ]
+            if tenant_element_ids:
+                archimate_rel_count = ArchiMateRelationship.query.filter(
+                    ArchiMateRelationship.source_id.in_(tenant_element_ids),
+                    ArchiMateRelationship.target_id.in_(tenant_element_ids),
+                ).count()
+            else:
+                archimate_rel_count = 0
         except Exception:
             logger.debug(
                 "Failed to query ArchiMate element/relationship counts", exc_info=True
@@ -136,23 +178,143 @@ def data_architecture_dashboard():
             archimate_rel_count=archimate_rel_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading data architecture dashboard: {e}")
+        from flask import flash
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading data architecture dashboard: %s", e)
+        flash("Error loading data architecture dashboard.", "error")
         return render_template(
             "enterprise/data_architecture_dashboard.html",
             data_stack=[],
-            data_cap_count=0,
-            conceptual_count=0,
-            logical_count=0,
-            physical_count=0,
-            data_lineage_count=0,
-            archimate_data_count=0,
-            archimate_rel_count=0,
+            data_cap_count=None,
+            conceptual_count=None,
+            logical_count=None,
+            physical_count=None,
+            data_lineage_count=None,
+            archimate_data_count=None,
+            archimate_rel_count=None,
+            load_error="The data architecture inventory could not be read.",
         )
 
 
 # ============================================================================
 # Data Architecture API Endpoints
 # ============================================================================
+
+
+@data_architecture_bp.route("/data-lineage")
+@login_required
+def data_lineage_view():
+    """ARCH-123: field-level lineage over the DataObject ArchiMateElement
+    catalogue. Three real, derived sections, no fabricated data:
+      1. DataLineage rows already grounded in a source/target DataObject.
+      2. Existing ArchiMateRelationship edges between DataObjects (drawn
+         elsewhere, e.g. the ArchiMate composer or an import).
+      3. Semantic-similarity suggestions from the Data Stewardship
+         reviewer's embedding engine — labelled as suggestions, never
+         asserted as lineage until a human confirms them.
+    """
+    from app import db
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    data_objects = (
+        ArchiMateElement.query.filter(ArchiMateElement.type == "DataObject")
+        .order_by(ArchiMateElement.name)
+        .all()
+    )
+    object_ids = [o.id for o in data_objects]
+
+    grounded_lineage = []
+    relationship_edges = []
+    suggestions = []
+    if object_ids:
+        grounded_lineage = (
+            DataLineage.query.filter(
+                DataLineage.archimate_element_id.in_(object_ids)
+            )
+            .order_by(DataLineage.id.desc())
+            .all()
+        )
+        relationship_edges = (
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(object_ids),
+                    ArchiMateRelationship.target_id.in_(object_ids),
+                )
+            )
+            .order_by(ArchiMateRelationship.id)
+            .all()
+        )
+        try:
+            from app.modules.solutions_strategic.v2.services.data_stewardship_reviewer import (
+                _semantic_pairs,
+            )
+
+            names = [o.name for o in data_objects if o.name]
+            by_name = {o.name: o for o in data_objects if o.name}
+            for a, b, sim in _semantic_pairs(names)[:10]:
+                oa, ob = by_name.get(a), by_name.get(b)
+                if oa and ob:
+                    suggestions.append({"a": oa, "b": ob, "similarity": sim})
+        except Exception:
+            logger.debug("semantic lineage suggestions unavailable", exc_info=True)
+
+    traced_ids = {row.archimate_element_id for row in grounded_lineage if row.archimate_element_id}
+    traced_ids |= {
+        row.target_archimate_element_id
+        for row in grounded_lineage
+        if row.target_archimate_element_id
+    }
+    for edge in relationship_edges:
+        traced_ids.add(edge.source_id)
+        traced_ids.add(edge.target_id)
+    untraced = [o for o in data_objects if o.id not in traced_ids]
+
+    return render_template(
+        "enterprise/data_lineage.html",
+        data_objects=data_objects,
+        grounded_lineage=grounded_lineage,
+        relationship_edges=relationship_edges,
+        suggestions=suggestions,
+        untraced=untraced,
+    )
+
+
+@data_architecture_bp.route("/data-lineage/create", methods=["POST"])
+@login_required
+@audit_log("create_data_lineage")
+def create_data_lineage():
+    """Create a real, grounded lineage row: both endpoints must be
+    existing DataObject ArchiMateElements — never free text. Rejects
+    anything that does not resolve to a real element."""
+    from app import db
+    from app.models.archimate_core import ArchiMateElement
+
+    source_id = request.form.get("source_id", type=int)
+    target_id = request.form.get("target_id", type=int)
+    lineage_type = (request.form.get("lineage_type") or "").strip() or None
+
+    source = ArchiMateElement.query.get(source_id) if source_id else None
+    target = ArchiMateElement.query.get(target_id) if target_id else None
+
+    if not source or source.type != "DataObject" or not target or target.type != "DataObject":
+        flash("Both source and target must be existing data objects.", "error")
+        return redirect(url_for("data_architecture.data_lineage_view"))
+    if source.id == target.id:
+        flash("A data object cannot flow into itself.", "error")
+        return redirect(url_for("data_architecture.data_lineage_view"))
+
+    row = DataLineage(
+        name=f"{source.name} -> {target.name}",
+        archimate_element_id=source.id,
+        target_archimate_element_id=target.id,
+        lineage_type=lineage_type,
+        created_by_id=current_user.id if current_user.is_authenticated else None,
+    )
+    db.session.add(row)
+    db.session.commit()
+    flash("Lineage recorded.", "success")
+    return redirect(url_for("data_architecture.data_lineage_view"))
 
 
 @data_architecture_bp.route("/api/data-models")
@@ -209,7 +371,7 @@ def api_data_models():
                 ],
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -236,7 +398,7 @@ def api_data_lineage():
                 for m in lineage_models
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -262,7 +424,7 @@ def api_data_transformations():
                 for t in transformations
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -324,7 +486,7 @@ def create_data_model():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -445,6 +607,17 @@ def edit_data_entity(entity_id):
         entity.contains_pii = "contains_pii" in request.form
         entity.system_of_record = request.form.get("system_of_record", "").strip() or None
         entity.is_master_data = "is_master_data" in request.form
+
+        # ArchiMate is the backbone: keep the mirrored element's name (and
+        # description) in sync on rename so the two never drift apart.
+        if entity.archimate_element_id:
+            from app.models.archimate_core import ArchiMateElement
+
+            element = db.session.get(ArchiMateElement, entity.archimate_element_id)
+            if element:
+                element.name = entity.name
+                element.description = entity.description or f"Data object for entity: {entity.name}"
+
         db.session.commit()
         flash(f"Data entity '{entity.name}' updated.", "success")
         return redirect(url_for("data_architecture.data_entity_catalog"))
@@ -475,7 +648,7 @@ def api_data_entities():
     from app.models.process_data import DataEntity
 
     search = request.args.get("search", "").strip()
-    limit = request.args.get("limit", 50, type=int)
+    limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
     query = DataEntity.query
     if search:

@@ -11,7 +11,22 @@ from typing import Dict, List
 from sqlalchemy import text
 
 from app import db
+from app.middleware.tenant_context import current_org_id
 from .decorators import transactional
+
+
+def _acting_user_id():
+    """Id of the signed-in user running the analysis, or None outside a request.
+
+    Stored results belong to the organisation of this user, so a result with no
+    user is visible to nobody.
+    """
+    from flask import has_request_context
+    from flask_login import current_user
+
+    if not has_request_context() or not current_user.is_authenticated:
+        return None
+    return getattr(current_user, "id", None)
 
 
 class ImpactAnalysisService:
@@ -56,9 +71,12 @@ class ImpactAnalysisService:
         else:
             risk_level = "LOW"
 
-        # Compute real financial exposure from linked application TCO
+        # Compute real financial exposure from linked application TCO. No
+        # invented fallback (CLAUDE.md "never invent data") — a per-element
+        # dollar guess is indistinguishable from a measured figure to the
+        # architect reading it. None -> the template renders "not costed".
         real_tco = sum(d.get("tco", 0) for d in all_deps)
-        estimated_financial_risk = real_tco if real_tco > 0 else total_affected * 25000
+        estimated_financial_risk = real_tco if real_tco > 0 else None
 
         # Store in impact_analysis_results (ORM model - table exists)
         analysis_id = None
@@ -73,6 +91,7 @@ class ImpactAnalysisService:
                 impacted_elements=_json.dumps([d["id"] for d in all_deps]),
                 overall_severity=risk_level.lower(),
                 affected_applications_count=sum(1 for d in all_deps if d.get("app_name")),
+                created_by_id=_acting_user_id(),
             )
             db.session.add(record)
             db.session.commit()
@@ -96,6 +115,21 @@ class ImpactAnalysisService:
     def _get_dependencies(cls, element_id: int, depth: int = 3) -> List[Dict]:
         """Get dependencies with specified depth, enriched with application portfolio data."""
 
+        # Every arm of the walk carries an explicit organization_id predicate.
+        # It previously carried only the comment "scoped via element_id FK",
+        # which is an assumption rather than a filter: archimate_elements ids are
+        # global, so ANY id -- including one from a different tenant, and
+        # including an application_components id that happens to collide with a
+        # foreign element id -- seeded the recursion and returned that other
+        # organisation's dependency graph. Measured: an architect in org A asked
+        # "what breaks if I retire Nimbus Billing?" and was shown a capability
+        # belonging to org B, presented as their own. Fail closed instead: with
+        # no tenant in context (CLI, scheduler) return nothing rather than
+        # everything.
+        org_id = current_org_id()
+        if org_id is None:
+            return []
+
         query = """
             WITH RECURSIVE dependencies AS (
                 SELECT
@@ -105,6 +139,7 @@ class ImpactAnalysisService:
                     e.application_component_id
                 FROM archimate_elements e
                 WHERE e.id = :element_id
+                  AND e.organization_id = :org_id
 
                 UNION ALL
 
@@ -118,6 +153,7 @@ class ImpactAnalysisService:
                 JOIN dependencies d ON r.source_id = d.id
                 WHERE e.id NOT IN (SELECT unnest(d.path))
                 AND d.level < :depth
+                AND e.organization_id = :org_id
             )
             SELECT
                 d.id, d.name, d.type, d.level, d.dependency_level,
@@ -125,13 +161,15 @@ class ImpactAnalysisService:
                 ac.criticality AS app_criticality,
                 COALESCE(ac.total_cost_of_ownership, 0) AS app_tco
             FROM dependencies d
-            LEFT JOIN application_components ac ON d.application_component_id = ac.id
+            LEFT JOIN application_components ac
+                   ON d.application_component_id = ac.id
+                  AND ac.organization_id = :org_id
             WHERE d.level > 1
             ORDER BY d.level, d.name
         """
 
-        result = db.session.execute(  # tenant-filtered: scoped via element_id FK
-            text(query), {"element_id": element_id, "depth": depth}
+        result = db.session.execute(  # tenancy-ok: explicit organization_id predicate on every arm
+            text(query), {"element_id": element_id, "depth": depth, "org_id": org_id}
         ).fetchall()
 
         return [
@@ -264,7 +302,7 @@ class ImpactAnalysisService:
     def _evaluate_principle(solution, principle) -> str:
         """Return a violation reason string, or empty string if compliant."""
         name_lower = (principle.name or "").lower()
-        statement_lower = (principle.statement or "").lower()
+        (principle.statement or "").lower()
 
         # Security principle: solution must have a security_lead defined
         if "security" in name_lower and not solution.security_lead:

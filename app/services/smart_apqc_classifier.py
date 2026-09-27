@@ -23,9 +23,8 @@ Use the unified_apqc_service module instead.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from flask import current_app
 
 from app import db
 from app.services.business_process_knowledge import BusinessProcessKnowledge

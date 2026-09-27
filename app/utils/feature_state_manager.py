@@ -8,10 +8,9 @@ Automated detection and classification of feature states based on:
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import List, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 
@@ -326,7 +325,6 @@ class FeatureStateManager:
 
 def main():
     """CLI entry point"""
-    import sys
     
     manager = FeatureStateManager()
     classifications = manager.classify_all_features()

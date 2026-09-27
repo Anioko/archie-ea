@@ -13,7 +13,7 @@ the full monolithic model graph during startup.
 import os
 from datetime import datetime  # dead-code-ok
 
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 from .. import db
 
@@ -23,9 +23,14 @@ if not _FAST_INIT:
     # Normal runtime: re-export models from models.py (already imported)
     from .models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 
+# CMP-01: SavedDiagram must be tenant-scoped (see class docstring below). The
+# mixin is imported unconditionally so the column exists in both the normal and
+# APP_FAST_INIT model graphs.
+from .mixins import TenantMixin
+
 if _FAST_INIT:
 
-    class ArchitectureModel(db.Model):
+    class ArchitectureModel(TenantMixin, db.Model):
         __tablename__ = "architecture_models"
         __table_args__ = {"extend_existing": True}
 
@@ -45,7 +50,7 @@ if _FAST_INIT:
         def __repr__(self):
             return f"<ArchitectureModel {self.name} v{self.version}>"
 
-    class ArchiMateElement(db.Model):
+    class ArchiMateElement(TenantMixin, db.Model):
         __tablename__ = "archimate_elements"
         __table_args__ = {"extend_existing": True}
 
@@ -66,6 +71,10 @@ if _FAST_INIT:
         # TOGAF Plateau classification for transition architectures
         # Values: 'Baseline', 'Target', 'Transition', or None
         plateau = db.Column(db.String(20), nullable=True, index=True)
+        # In normal runtime the column attribute is `togaf_plateau` ("plateau" is
+        # the Plateau.archimate_element backref); mirror the name here so queries
+        # can use ArchiMateElement.togaf_plateau under either mapping.
+        togaf_plateau = synonym("plateau")
 
         # Custom tagged-value properties (CMP-043)
         custom_properties = db.Column(db.JSON, nullable=True, default=dict)
@@ -98,7 +107,13 @@ if _FAST_INIT:
         def __repr__(self):
             return f"<ArchiMateElement {self.name} ({self.type})>"
 
-    class ArchiMateRelationship(db.Model):
+    class ArchiMateRelationship(TenantMixin, db.Model):
+        # The normal-runtime twin of this class (app/models/models.py) is
+        # tenant-scoped. Its siblings in this fast-init block, ArchiMateElement
+        # and ArchitectureModel, already carry TenantMixin -- this class was
+        # the sole exception, so a fast-init boot silently ran the ArchiMate
+        # relationship backbone unfiltered across every tenant. Mixin required
+        # to keep tenancy semantics identical between both branches.
         __tablename__ = "archimate_relationships"
         __table_args__ = {"extend_existing": True}
 
@@ -121,6 +136,29 @@ if _FAST_INIT:
         # Stores per-relationship interface contract: data name, transfer strategy,
         # interface type, IAM method, file format, file name pattern, protocol, direction.
         connection_spec = db.Column(db.JSON, nullable=True, default=dict)
+
+        # How this relationship came to exist, when it was not drawn explicitly.
+        # "notation" - read from the arrowhead and stroke of a line.
+        # "stroke-stripped-label" - inferred from a line's label because the
+        #   export discarded the stroke that would have said flow vs serving.
+        # "nesting" - derived from one shape being drawn inside another.
+        # NULL - stated outright, by a person or by an explicit connector.
+        #
+        # Nullable and unindexed-by-default on purpose: reconcile-schema adds
+        # columns as nullable with no backfill, so every existing row reads NULL,
+        # which is exactly right - they were not inferred by this importer.
+        # Without this the import review queue has nothing to triage: element
+        # provenance survived in custom_properties and relationship provenance
+        # was dropped on the way into the database.
+        derived_from = db.Column(db.String(40), nullable=True, index=True)
+
+        # Step number for the Composer's Sequence View (a lifeline/message render
+        # of the ArchiMate elements and relationships already on the canvas — no
+        # separate sequence-diagram store; see ADR 0008). NULL means "not
+        # explicitly ordered yet" and the Sequence View falls back to created_at,
+        # so every pre-existing relationship renders (in creation order) instead
+        # of being dropped for lacking a value reconcile-schema cannot backfill.
+        sequence_order = db.Column(db.Integer, nullable=True)
 
         def __repr__(self):
             return f"<ArchiMateRelationship {self.source_id} -> {self.target_id}>"
@@ -177,6 +215,16 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
 # ArchiMate 3.2 relationship validity matrix
 # Key: (relationship_type, source_layer, target_layer) → bool
 # Layers: business, application, technology, motivation, strategy, implementation, physical
+#
+# This layer-triple matrix is coarser than the element-type-keyed one in
+# app/config/archimate_relationship_matrix.py (via RelationshipValidator),
+# which is authoritative and which the OEF importer
+# (app/services/archimate_import_service.py) now calls exclusively. This
+# table is NOT retired — it is still read by
+# solution_ai_orchestrator.py, solutions_strategic/v2/routes/
+# solution_archimate_routes.py and modules/genome/patch/coherence.py — so do
+# not delete it. Just don't add a new caller: the importer and any new
+# relationship-validity check belong on RelationshipValidator, not here.
 VALID_RELATIONSHIPS = {
     # Composition — within same layer only
     ("composition", "business", "business"): True,
@@ -191,11 +239,13 @@ VALID_RELATIONSHIPS = {
     ("aggregation", "application", "application"): True,
     ("aggregation", "technology", "technology"): True,
     ("aggregation", "motivation", "motivation"): True,
+    ("aggregation", "strategy", "strategy"): True,  # ArchiMate 3.2 §5.1.2: Capability/Resource hierarchies (same type)
     # Assignment — within same layer and specific cross-layer
     ("assignment", "business", "business"): True,
     ("assignment", "application", "application"): True,
     ("assignment", "technology", "technology"): True,
     ("assignment", "technology", "application"): True,
+    ("assignment", "strategy", "strategy"): True,  # ArchiMate 3.2 §7.4: Resource assigned to Capability
     # Realization — typically lower layer realizes upper layer
     ("realization", "business", "business"): True,
     ("realization", "application", "business"): True,
@@ -247,6 +297,12 @@ VALID_RELATIONSHIPS = {
     ("association", "technology", "application"): True,
     ("association", "business", "motivation"): True,
     ("association", "motivation", "business"): True,
+    ("association", "strategy", "implementation"): True,  # ArchiMate 3.2 §5.2.4: option ↔ plan item
+    ("association", "implementation", "strategy"): True,  # ArchiMate 3.2 §5.2.4: plan item ↔ option
+    ("association", "motivation", "implementation"): True,  # ArchiMate 3.2 §5.2.4: outcome ↔ work package
+    ("association", "implementation", "motivation"): True,  # ArchiMate 3.2 §5.2.4: work package ↔ outcome
+    ("association", "business", "strategy"): True,  # ArchiMate 3.2 §5.2.4: key partner ↔ resource/capability
+    ("association", "strategy", "business"): True,  # ArchiMate 3.2 §5.2.4: resource/capability ↔ key partner
     # Specialization — within same layer
     ("specialization", "business", "business"): True,
     ("specialization", "application", "application"): True,
@@ -350,8 +406,23 @@ class OtherRelationship(db.Model):
         return f"<OtherRelationship {self.relationship_type}>"
 
 
-class SavedDiagram(db.Model):
-    """Persisted composer diagram (viewpoint instance)."""
+class SavedDiagram(TenantMixin, db.Model):
+    """Persisted composer diagram (viewpoint instance).
+
+    CMP-01 (composer QA, 18 Aug 2026): a saved view listed "36 elements" in the
+    picker yet loaded a blank canvas for any viewer outside the owning org. Root
+    cause was a tenancy split, not data corruption: ``ArchiMateElement`` is
+    tenant-scoped (TenantMixin), so the element SELECT in the load endpoint gets
+    ``WHERE organization_id = <current>`` and returns nothing cross-org — while
+    ``element_count`` counts ``saved_diagram_elements`` rows, which were NOT
+    tenant-scoped, so the count stayed 36. The two numbers derived from
+    different scopes and desynced. SavedDiagram is now tenant-scoped too, so a
+    diagram only ever lists for, and loads for, the org that owns it — the count
+    and the payload can no longer disagree because a cross-org viewer sees
+    neither. reconcile-schema adds organization_id as nullable on deploy;
+    ``backfill-saved-diagram-tenancy`` then derives each existing diagram's org
+    from its member elements (see app/commands/backfill_saved_diagram_tenancy.py).
+    """
 
     __tablename__ = "saved_diagrams"
     __table_args__ = {"extend_existing": True}
@@ -364,6 +435,14 @@ class SavedDiagram(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = db.Column(db.String(100), nullable=True)
+    # DEF-007, Capgemini dry-run: nullable FK so reconcile-schema can add it to
+    # existing installs. NULL means a pre-existing row with no known owner —
+    # treated as shared/legacy, never as "owned by nobody in particular".
+    # Used to keep one user's un-named autosave draft ("Unsaved diagram — ...")
+    # out of another user's composer tab list and off their PUT autosave path;
+    # explicitly-named saved viewpoints stay visible/editable org-wide as the
+    # shared collaborative artifacts they already were.
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     # QA-CMP-002: Optimistic locking — incremented on every save
     version = db.Column(db.Integer, default=1, server_default="1", nullable=False)
 

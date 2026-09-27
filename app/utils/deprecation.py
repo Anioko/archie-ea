@@ -262,7 +262,7 @@ APQC_UNIFIED_GETTER = "app.services.unified_apqc_service.get_unified_apqc_servic
 # ROUTE DEPRECATION UTILITIES (for safe route migration)
 # ============================================================================
 
-from flask import current_app, jsonify, redirect, request, url_for
+from flask import jsonify, redirect, request, url_for
 
 
 class RouteDeprecationWarning:
@@ -482,7 +482,7 @@ def create_deprecation_response(
 
 import threading
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 
@@ -713,11 +713,11 @@ class DeprecationMetrics:
 
         for ep, ep_stats in stats["endpoints"].items():
             metrics_output["by_endpoint"][ep] = {
-                f'deprecated_endpoint_requests{{endpoint="{ep}"}}': ep_stats["count"],
-                f'deprecated_endpoint_rpm{{endpoint="{ep}"}}': ep_stats[
+                f'deprecated_endpoint_requests{{endpoint="{ep}"}}': ep_stats["count"],  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
+                f'deprecated_endpoint_rpm{{endpoint="{ep}"}}': ep_stats[  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
                     "requests_per_minute"
                 ],
-                f'deprecated_endpoint_unique_ips{{endpoint="{ep}"}}': ep_stats[
+                f'deprecated_endpoint_unique_ips{{endpoint="{ep}"}}': ep_stats[  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; ep is an internal Flask route path, not user input
                     "unique_ips"
                 ],
             }

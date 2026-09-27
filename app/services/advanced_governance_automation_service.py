@@ -6,12 +6,11 @@ Implements automated governance workflows and business process integration.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict
 
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from app.models.unified_capability import UnifiedCapability
 
-from .. import db
 
 logger = logging.getLogger(__name__)
 

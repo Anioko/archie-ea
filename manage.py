@@ -1,6 +1,26 @@
 #!/usr/bin/env python
 import os
 import subprocess
+import sys
+
+# Force UTF-8 on stdout/stderr before anything prints.
+#
+# Several CLI commands below print non-ASCII progress markers (check marks, warning
+# signs). On Windows the default console encoding is cp1252, which cannot encode
+# them, so `flask --app manage init-db` died mid-run with:
+#
+#     UnicodeEncodeError: 'charmap' codec can't encode character '✓'
+#
+# That aborted the documented setup path from README.md partway through — after some
+# tables were created but before the final commit. Reconfiguring here fixes the whole
+# class of failure rather than the ~30 individual call sites, and covers future ones.
+# errors="replace" guarantees output can never again crash a command.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Not a TextIOWrapper (redirected/wrapped stream) — nothing to reconfigure.
+        pass
 
 # Load .env file if present — allows API keys to be set without restarting
 try:
@@ -513,7 +533,7 @@ def register_cli_commands(app):
         print("=" * 60)
         print(f"Admin Email:    {admin_email}")
         print(f"Admin Password: {admin_password}")
-        print(f"Login Route:    /account/login")
+        print("Login Route:    /account/login")
         print("=" * 60)
 
     @app.cli.command()
@@ -639,7 +659,7 @@ def register_cli_commands(app):
             else:
                 print(f"Server Status (Port {port}):")
                 if result.get("running"):
-                    print(f"✅ Server is running")
+                    print("✅ Server is running")
                     flask_processes = result.get("flask_processes", [])
                     if flask_processes:
                         print(f"   Flask processes: {len(flask_processes)}")
@@ -752,7 +772,7 @@ def register_cli_commands(app):
                 if killed:
                     print(f"   Killed: {', '.join(killed)}")
             else:
-                print(f"❌ Failed to kill some processes")
+                print("❌ Failed to kill some processes")
                 if killed:
                     print(f"   Killed: {', '.join(killed)}")
 
@@ -1487,7 +1507,48 @@ def register_cli_commands(app):
         if not dry_run:
             db.session.commit()
             print(f"\nCapabilities: {caps_created} created, {caps_skipped} skipped")
-            print(f"\n✅ Seeding complete! Total capabilities: {UnifiedCapability.query.count()}")
+            # Also seed the BUSINESS capability store, because that is the one
+            # the product actually reads.
+            #
+            # This command shadows the richer `seed-capabilities` group in
+            # app/commands/seed_capabilities.py -- same name, registered later --
+            # and it only ever wrote UnifiedCapability + BusinessDomain. But
+            # /capability-map counts BusinessCapability through
+            # capability_count_service.count_business_capabilities(), so the
+            # documented command reported "60 capabilities seeded" on a fresh
+            # install and left the flagship screen showing zero. That is the
+            # five-capability-stores problem costing an evaluator their first hour.
+            from flask import g as _g
+
+            from app.commands.seed_capabilities import seed_business_caps
+            from app.models.organization import Organization
+
+            # An explicit tenant, because TenantMixin fills organization_id
+            # from g.current_org_id on flush and a CLI has no request. Without
+            # this the seed died on a NOT NULL violation, which is why this
+            # store was never populated by the documented command.
+            _org = Organization.query.order_by(Organization.id).first()
+            if _org is None:
+                print(
+                    "[skip] No organisation exists yet, so business "
+                    "capabilities have no tenant to belong to. Create one "
+                    "(python create_admin.py) and re-run."
+                )
+                _business = {"created": 0}
+            else:
+                _previous = getattr(_g, "current_org_id", None)
+                _g.current_org_id = _org.id
+                try:
+                    _business = seed_business_caps()
+                finally:
+                    _g.current_org_id = _previous
+                print(f"    seeded into organisation {_org.id} ({_org.name})")
+
+            print(
+                "\n[OK] Seeding complete! Unified capabilities: "
+                f"{UnifiedCapability.query.count()}, business capabilities: "
+                f"{_business.get('created', 0)} created"
+            )
         else:
             print(
                 f"\nCapabilities: {caps_created} would be created, {caps_skipped} would be skipped"
@@ -1607,20 +1668,20 @@ def register_cli_commands(app):
                 else:
                     print(f"  {app.name}")
                     print(f"    vendor_name: {app.vendor_name}")
-                    print(f"    -> No matching vendor found")
+                    print("    -> No matching vendor found")
             return
 
         print("Mapping applications to vendor products...\n")
         results = service.bulk_auto_map_applications(limit=limit)
 
-        print(f"=== Mapping Results ===")
+        print("=== Mapping Results ===")
         print(f"Total processed: {results['total_processed']}")
         print(f"Successfully mapped: {results['mapped']}")
         print(f"Already mapped (skipped): {results['skipped']}")
         print(f"Failed: {results['failed']}")
 
         if verbose:
-            print(f"\n=== Details ===")
+            print("\n=== Details ===")
             for detail in results["details"]:
                 status = "OK" if detail["success"] else "FAIL"
                 print(f"  [{status}] {detail['application_name']}: {detail['message']}")
@@ -1700,7 +1761,6 @@ def register_cli_commands(app):
             flask standardize-vendor-domains -v
         """
         from app.models.vendor.domain_choices import (
-            VENDOR_DOMAINS,
             get_domain_label,
             normalize_domain,
         )
@@ -1910,5 +1970,13 @@ else:
     from app import create_app
 
     app = create_app(os.getenv("FLASK_CONFIG") or "default")
+    # Behind a TLS-terminating reverse proxy (Caddy/nginx), honour X-Forwarded-Proto/Host
+    # so the app builds https:// URLs + form actions (no mixed-content warnings) and the
+    # secure session cookie stays consistent. Opt-in via TRUST_PROXY to avoid trusting
+    # forged headers when exposed directly.
+    if os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes") and not getattr(app, "_proxyfix_applied", False):
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+        app._proxyfix_applied = True
     migrate = Migrate(app, db)
     register_cli_commands(app)

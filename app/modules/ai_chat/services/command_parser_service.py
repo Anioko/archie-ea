@@ -465,7 +465,7 @@ class CommandParserService:
                 severity_counts[severity or "unclassified"] = count
 
             lines = [
-                f"**Gap Analysis Summary**\n",
+                "**Gap Analysis Summary**\n",
                 f"- **Total Analyses:** {total_analyses}",
                 f"- **Total Gaps Identified:** {total_gaps}",
             ]
@@ -846,6 +846,14 @@ class CommandParserService:
                 ],
             }
 
+            # Governance note (reconciles config.py's REQUIRE_AI_APPROVAL default
+            # and the mutating-tool approval queue in
+            # app/modules/ai_chat/services/agent_runner.py): like /link-capability
+            # above, /generate-from-capabilities is parsed verbatim from the
+            # user's own typed chat message — deterministic, not LLM-initiated.
+            # A prompt-injected document cannot type a slash command, so this
+            # write proceeds directly and is deliberately exempt from the
+            # approval queue regardless of REQUIRE_AI_APPROVAL.
             generated_rows = []
             for mapping in cap_mappings:
                 cap = BusinessCapability.query.get(mapping.capability_id)
@@ -1033,18 +1041,17 @@ class CommandParserService:
                     "command_type": "link-capability",
                 }
 
-            from flask import current_app
-
-            if current_app.config.get("REQUIRE_AI_APPROVAL", False):
-                return {
-                    "response": (
-                        f"Linking '{cap.name}' to '{sol.name}' requires approval. "
-                        "Request has been submitted for review."
-                    ),
-                    "domain": domain,
-                    "command_type": "link-capability",
-                    "pending_approval": True,
-                }
+            # Governance note (reconciles config.py's REQUIRE_AI_APPROVAL default
+            # and the mutating-tool approval queue in
+            # app/modules/ai_chat/services/agent_runner.py): /link-capability is
+            # parsed verbatim from the user's own typed chat message, not proposed
+            # by the LLM. It is not an AI-initiated write — a prompt-injected
+            # document cannot type a slash command — so it executes directly and
+            # is deliberately exempt from the approval queue regardless of
+            # REQUIRE_AI_APPROVAL. (This used to check the flag here and return a
+            # "submitted for review" message without ever actually submitting
+            # anything for review — a fabricated-success response with no backing
+            # queue entry. Removed rather than wired up, per the exemption above.)
 
             mapping = SolutionCapabilityMapping(
                 solution_id=sol.id,
@@ -1165,8 +1172,8 @@ class CommandParserService:
             qs = _calculate_quality_score(sol.id)
             lines = [
                 f"**ArchiMate Quality Score: {sol.name}**\n",
-                f"| Metric | Score |",
-                f"|--------|-------|",
+                "| Metric | Score |",
+                "|--------|-------|",
                 f"| **Overall** | **{qs['overall']}%** |",
                 f"| Completeness | {qs['completeness']}% ({len(qs['layers_covered'])}/6 layers) |",
                 f"| Traceability | {qs['traceability']}% (elements with relationships) |",
@@ -1238,8 +1245,8 @@ class CommandParserService:
 
         lines = [
             f"**Downstream dependents of {el.name}** ({el.type}, {el.layer})\n",
-            f"| Element | Type | Layer | Via | Hops |",
-            f"|---------|------|-------|-----|------|",
+            "| Element | Type | Layer | Via | Hops |",
+            "|---------|------|-------|-----|------|",
         ]
         for d in dependents[:20]:
             lines.append(f"| {d['name']} | {d['type']} | {d['layer']} | {d['rel']} | {d['hop']} |")

@@ -11,7 +11,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from app.services.critique_verification_service import get_critique_service
 from app.services.automated_code_analyzer import get_code_analyzer

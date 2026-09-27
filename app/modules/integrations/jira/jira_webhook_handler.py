@@ -27,14 +27,33 @@ _JIRA_STATUS_MAP = {
 
 
 def _verify_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
-    """Return True when the HMAC-SHA256 digest matches the request header."""
+    """Return True when the HMAC-SHA256 digest matches the request header.
+
+    Fails CLOSED when no secret is configured. This previously returned True in
+    that case, described as "dev/test mode" - but `POST /webhooks/jira` is
+    unauthenticated and csrf-exempt by necessity, and the handler updates
+    KanbanCard rows outside any request-scoped tenant context, so the tenant
+    filter does not apply. Combined with `JIRA_WEBHOOK_SECRET` never having been
+    defined in config.py, the secret was always "" and every caller on the
+    internet verified successfully and could rewrite any organisation's kanban
+    statuses.
+
+    An unset secret means the integration is not configured, which must mean
+    "reject", never "trust everyone". Set JIRA_WEBHOOK_SECRET to enable it.
+    """
     if not secret:
-        # No secret configured — skip verification (dev/test mode)
-        return True
+        logger.error(
+            "[TPM-008] Jira webhook rejected: JIRA_WEBHOOK_SECRET is not set. "
+            "Set it to the secret configured on the Jira webhook to enable this "
+            "endpoint; it stays disabled rather than accepting unsigned requests."
+        )
+        return False
+    if not signature_header:
+        return False
     expected = hmac.new(
         secret.encode("utf-8"), raw_body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, signature_header or "")
+    return hmac.compare_digest(expected, signature_header)
 
 
 def handle_jira_webhook(payload: dict, raw_body: bytes, secret_header: str) -> dict:

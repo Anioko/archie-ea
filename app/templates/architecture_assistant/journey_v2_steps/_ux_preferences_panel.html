@@ -10,11 +10,11 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h10M4 18h6"/>
             </svg>
             <span class="text-sm font-semibold text-foreground">UX Preferences</span>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20">Auto-inferred</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/20">Auto-inferred</span>
         </div>
         <div class="flex items-center gap-2">
             <span x-show="saved" x-cloak
-                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                  class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/20">
                 <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                 Saved
             </span>
@@ -47,7 +47,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
                     </svg>
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Navigation Order</h3>
-                    <span class="text-[10px] text-muted-foreground/60">Drag or use arrows to reorder entities in sidebar/tabs</span>
+                    <span class="text-xs text-muted-foreground/60">Drag or use arrows to reorder entities in sidebar/tabs</span>
                 </div>
 
                 <div x-show="tabOrder.length === 0" class="text-xs text-muted-foreground/60 italic">
@@ -57,7 +57,7 @@
                 <div class="space-y-1.5">
                     <template x-for="(tab, idx) in tabOrder" :key="tab.entity">
                         <div class="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-background">
-                            <span class="text-[10px] font-mono text-muted-foreground w-5 text-right shrink-0" x-text="idx + 1 + '.'"></span>
+                            <span class="text-xs font-mono text-muted-foreground w-5 text-right shrink-0" x-text="idx + 1 + '.'"></span>
                             <span class="flex-1 text-sm font-medium text-foreground" x-text="tab.entity"></span>
                             <div class="flex items-center gap-1 shrink-0">
                                 <button type="button"
@@ -91,7 +91,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M7 7h.01M7 12h.01M7 17h.01M11 7h6M11 12h6M11 17h6"/>
                     </svg>
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Detected Enum Values</h3>
-                    <span class="text-[10px] text-muted-foreground/60">Read-only — inferred from your data model</span>
+                    <span class="text-xs text-muted-foreground/60">Read-only — inferred from your data model</span>
                 </div>
 
                 <div class="space-y-3">
@@ -101,14 +101,14 @@
                             <div class="space-y-1.5">
                                 <template x-for="[field, meta] in Object.entries(fields)" :key="field">
                                     <div class="flex items-start gap-2" x-show="meta.type === 'enum'">
-                                        <span class="text-[10px] text-muted-foreground font-mono w-28 pt-0.5 shrink-0" x-text="field"></span>
+                                        <span class="text-xs text-muted-foreground font-mono w-28 pt-0.5 shrink-0" x-text="field"></span>
                                         <div class="flex flex-wrap gap-1">
                                             <template x-for="val in (meta.detected_values || [])" :key="val">
-                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/20"
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/20"
                                                       x-text="val"></span>
                                             </template>
                                             <span x-show="!meta.detected_values || meta.detected_values.length === 0"
-                                                  class="text-[10px] text-muted-foreground/50 italic">no values detected</span>
+                                                  class="text-xs text-muted-foreground/50 italic">no values detected</span>
                                         </div>
                                     </div>
                                 </template>
@@ -157,7 +157,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
                     </svg>
                     <h3 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Screen Auth Requirement</h3>
-                    <span class="text-[10px] text-muted-foreground/60">Controls which screens require authentication in generated code</span>
+                    <span class="text-xs text-muted-foreground/60">Controls which screens require authentication in generated code</span>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -185,11 +185,11 @@
 
             {# ── Error / success feedback ── #}
             <div x-show="saveError" x-cloak
-                 class="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
+                 class="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
                 <svg class="h-4 w-4 text-destructive shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                 </svg>
-                <p class="text-sm text-destructive" x-text="saveError"></p>
+                <p class="text-sm text-destructive-emphasis" x-text="saveError"></p>
             </div>
 
             {# ── Confirm button ── #}
@@ -233,11 +233,10 @@ function uxPreferences(solutionId) {
             this.loading = true;
             this.saveError = null;
             try {
-                const resp = await fetch('/architecture-journey/' + solutionId + '/ux-enrichment', {
-                    headers: { 'Accept': 'application/json' }
+                const data = await Platform.fetch.get('/architecture-journey/' + solutionId + '/ux-enrichment', null, {
+                    headers: { 'Accept': 'application/json' },
+                    silent: true
                 });
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                const data = await resp.json();
                 this.enrichment = data;
                 this.enrichment.loaded = true;
                 // Tab order: array of {entity: "..."} objects
@@ -250,7 +249,6 @@ function uxPreferences(solutionId) {
                 if (data.design_system?.primary_color) this.primaryColor = data.design_system.primary_color;
                 if (data.security?.require_auth) this.authRequirement = data.security.require_auth;
             } catch (err) {
-                console.warn('[ux-preferences] load failed:', err);
                 this.saveError = 'Could not load preferences — showing defaults.';
                 this.enrichment = { loaded: true };
             } finally {
@@ -274,29 +272,20 @@ function uxPreferences(solutionId) {
             this.saveError = null;
             this.saved = false;
             try {
-                const resp = await fetch('/architecture-journey/' + solutionId + '/save-ux-preferences', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''
-                    },
-                    body: JSON.stringify({
-                        navigation:    { tab_order: this.tabOrder },
-                        design_system: { primary_color: this.primaryColor },
-                        security:      { require_auth: this.authRequirement }
-                    })
-                });
-                if (!resp.ok) {
-                    let errData = {};
-                    try { errData = await resp.json(); } catch(_) {}
-                    throw new Error(errData.error || errData.message || 'Save failed (HTTP ' + resp.status + ')');
-                }
+                await Platform.fetch.post('/architecture-journey/' + solutionId + '/save-ux-preferences', {
+                    navigation:    { tab_order: this.tabOrder },
+                    design_system: { primary_color: this.primaryColor },
+                    security:      { require_auth: this.authRequirement }
+                }, { silent: true });
                 this.saved = true;
                 // Auto-hide the saved badge after 3 s
                 setTimeout(() => { this.saved = false; }, 3000);
             } catch (err) {
-                this.saveError = err.message || 'Could not save preferences. Please try again.';
-                console.warn('[ux-preferences] save failed:', err);
+                // Platform.fetch throws a PlatformError with err.message and err.data
+                // The error body is already parsed and attached as err.data.
+                const errData = err.data || {};
+                const message = errData.error || errData.message || err.message || 'Could not save preferences. Please try again.';
+                this.saveError = message;
             } finally {
                 this.saving = false;
             }

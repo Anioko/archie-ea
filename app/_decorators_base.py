@@ -28,6 +28,22 @@ def admin_required(f):
     return permission_required(Permission.ADMINISTER)(f)
 
 
+def governance_gate_reader_required(f):
+    """Allow gate-policy readers without granting configuration authority."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        may_administer = current_user.can(Permission.ADMINISTER)
+        is_security_architect = (
+            getattr(current_user, "enterprise_role", None) == "security_architect"
+        )
+        if not (may_administer or is_security_architect):
+            abort(403)
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def require_auth(f):
     """Require user authentication"""
 
@@ -249,6 +265,44 @@ def require_roles(*allowed_roles):
                     normalized = _normalize_role_name(role_obj)
                     if normalized:
                         user_roles.add(normalized)
+
+            # enterprise_role is the persona system the product actually gates
+            # navigation and dashboards on, but require_roles never looked at
+            # it -- so a business_architect was 403ed by @require_roles("admin",
+            # "architect") on the capability CRUD endpoints that exist for that
+            # persona. Contribute the role itself, plus the coarse name it
+            # stands for, so the two vocabularies agree.
+            #
+            # But ONLY for an account whose Role already carries permission.
+            # enterprise_role says what someone DOES; Role says what they are
+            # allowed to DO, and a persona label must never manufacture the
+            # second from the first. Without this guard the read-only Viewer
+            # role (permissions=0, added by A-03 precisely so an account can
+            # read and never write) was defeated on every
+            # @require_roles("admin", "architect") route: nearly every user
+            # carries an enterprise_role because it drives the sidebar, so a
+            # Viewer whose persona happened to end in "_architect" was handed
+            # "architect" and could create and delete ArchiMate elements.
+            # Caught by tests/test_r32_ai_permission_gate.py's V-04 regression
+            # pair, which is exactly what those tests were written to hold.
+            try:
+                from app.models.user import Permission
+
+                may_write = bool(current_user.can(Permission.GENERAL))
+                may_administer = bool(current_user.can(Permission.ADMINISTER))
+            except Exception:  # noqa: BLE001 - unusual user models stay as before
+                may_write = True
+                may_administer = True
+
+            enterprise_role = _normalize_role_name(
+                getattr(current_user, "enterprise_role", None)
+            )
+            if enterprise_role and may_write:
+                user_roles.add(enterprise_role)
+                if enterprise_role.endswith("_architect"):
+                    user_roles.add("architect")
+                elif enterprise_role == "platform_admin" and may_administer:
+                    user_roles.add("admin")
 
             if hasattr(current_user, "role_archetype") and current_user.role_archetype:
                 normalized_archetype = _normalize_role_name(current_user.role_archetype)

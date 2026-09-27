@@ -295,7 +295,7 @@ class AIChatMemoryService:
                 r for r in all_results if r.get("user_id") == self.user_id
             ][:limit]
             return user_results
-        except Exception as e:  # fabricated-values-ok: graceful pgvector fallback
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.warning("pgvector search unavailable, returning empty: %s", e)
             return []
 

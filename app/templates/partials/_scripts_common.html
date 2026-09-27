@@ -4,7 +4,7 @@
 <script>
     // Global CSRF token helper for AJAX requests
     window.getCSRFToken = function() {
-        return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        return document.querySelector('meta[name=csrf-token]')?.getAttribute('content') || '';
     };
 
     // Automatically add CSRF token to all native fetch requests.
@@ -40,6 +40,31 @@
         }
         return originalXHRSend.apply(this, [data]);
     };
+
+    // Guard: lucide.createIcons() copies a placeholder <i data-lucide>'s
+    // attributes onto the generated <svg> via setAttribute. Alpine directive
+    // attributes on icons (:class, x-bind:*, @click, @keydown.escape.window —
+    // used on dozens of icons across the app) have names setAttribute REJECTS, so
+    // the first one THROWS and aborts icon rendering for the rest of the page.
+    // A createIcons-scoped wrapper proved fragile (lucide's setAttribute can run
+    // after the wrapper restores). So install ONE permanent, safe override of
+    // Element.prototype.setAttribute that skips @ / : / x- prefixed names — which
+    // are Alpine markup parsed by the HTML parser and are NEVER valid setAttribute
+    // names in any legitimate code path — and swallows any other invalid-name
+    // throw. Every real attribute (class, id, aria-*, data-*, style, …) is
+    // unaffected. Idempotent.
+    if (!Element.prototype.__alpineSafeSetAttr) {
+        var _nativeSetAttr = Element.prototype.setAttribute;
+        Element.prototype.setAttribute = function (name, value) {
+            var c = name ? name.charCodeAt(0) : 0;
+            if (c === 64 /*@*/ || c === 58 /*:*/ || (name && name.charCodeAt(0) === 120 && name.charCodeAt(1) === 45)) return; // @ : x-
+            try { return _nativeSetAttr.call(this, name, value); }
+            catch (e) {
+                /* swallow-ok: lucide invalid attributes are skipped so remaining icons render */
+            }
+        };
+        Element.prototype.__alpineSafeSetAttr = true;
+    }
 
     // Initialize Lucide icons
     if (typeof lucide !== 'undefined') {

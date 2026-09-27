@@ -15,7 +15,7 @@ Usage::
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 
 from flask_login import current_user
 

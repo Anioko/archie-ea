@@ -7,11 +7,9 @@ Provides non-AI fallback functionality when AI features are unavailable.
 import logging
 import re
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
-import json
 
-from flask import current_app
 
 logger = logging.getLogger(__name__)
 

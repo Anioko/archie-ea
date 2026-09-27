@@ -7,7 +7,7 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {{ page_header(
-        title='Framework Migration',
+        title='Framework Migration', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Framework Migration'}],
         description='Manage and monitor framework version migrations'
     ) }}
 
@@ -23,7 +23,8 @@
                     <th class="px-6 py-3 text-left font-medium text-muted-foreground">Created</th>
                 </tr>
             </thead>
-            <tbody class="divide-y divide-border">
+            <tbody class="divide-y divide-border">{# actionable-rows-ok: FrameworkMigrationMapping has no detail page; a migration is defined and run
+                 from the Migration Wizard, and this table is its progress report. #}
                 {% for migration in migrations %}
                 <tr class="hover:bg-muted/30">
                     <td class="px-6 py-3">
@@ -53,11 +54,11 @@
                     <td class="px-6 py-3">
                         {% set s = migration.status or 'planned' %}
                         {% if s == 'completed' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">Completed</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Completed</span>
                         {% elif s == 'in_progress' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30">In Progress</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">In Progress</span>
                         {% elif s == 'failed' %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Failed</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Failed</span>
                         {% elif s == 'cancelled' %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Cancelled</span>
                         {% else %}

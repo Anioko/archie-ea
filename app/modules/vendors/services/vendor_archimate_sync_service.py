@@ -93,7 +93,7 @@ class VendorArchiMateSync:
         )
         for cap_data in capabilities:
             # Create unique identifier for capability
-            cap_code = cap_data.get("code", cap_data.get("name", "").replace(" ", "_"))
+            cap_data.get("code", cap_data.get("name", "").replace(" ", "_"))
             cap_name = cap_data.get("name")
 
             if not cap_name:

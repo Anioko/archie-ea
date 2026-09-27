@@ -1,0 +1,9 @@
+{#- The breadcrumb root is "Home" on every screen.
+
+   Callers pass their own first crumb, and 48 templates wrote it as "Dashboard" while 135 wrote "Home".
+   Both point at the same page, so a user learning to navigate by breadcrumb had no consistent anchor. The three macros that render a trail (page_header, page_shell, breadcrumb_nav) pass
+   every crumb label through this, so the rule lives here once. Only the FIRST crumb is renamed; a later crumb
+   genuinely called "Dashboard" is left alone, and other roots ("Admin", ...) are not touched. -#}
+{% macro crumb_label(label, is_first) -%}
+{{- 'Home' if (is_first and label == 'Dashboard') else label -}}
+{%- endmacro %}

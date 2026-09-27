@@ -15,17 +15,15 @@ Features:
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta  # dead-code-ok: used in contract expiry check
-from typing import Any, Dict, List, Optional
+from datetime import datetime  # dead-code-ok: used in contract expiry check
+from typing import Any, Dict, List
 
-from sqlalchemy import and_, func, or_  # dead-code-ok: used in scan methods
+from sqlalchemy import func, or_  # dead-code-ok: used in scan methods
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.archimate_core import ArchiMateElement  # dead-code-ok: used in cross-domain analysis
 from app.models.business_capabilities import BusinessCapability
-from app.models.unified_capability import UnifiedCapability  # dead-code-ok: used in capability scanning
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct  # dead-code-ok: used in vendor scanning
+from app.models.vendor.vendor_organization import VendorOrganization  # dead-code-ok: used in vendor scanning
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +338,6 @@ class RecommendationsEngineService:
 
             low_maturity_count = 0
             no_automation_count = 0
-            orphan_count = 0
 
             for cap in capabilities:
                 # Check maturity level
@@ -624,28 +621,55 @@ class RecommendationsEngineService:
                         }
                     )
 
-            # Check for vendor concentration risk
+            # Check for vendor concentration risk (ARCH-016).
+            #
+            # A concentration finding is a statement about the *distribution* of a
+            # non-empty set. It requires a real population to be meaningful, so this
+            # only fires above a minimum sample size (MIN_VENDORS_FOR_CONCENTRATION),
+            # and zero-strategic-tier is treated as missing data quality, not a risk
+            # finding — "0 of N vendors are strategic" is an onboarding/data-quality
+            # gap (nobody has tagged tiers yet), not evidence of concentration.
+            MIN_VENDORS_FOR_CONCENTRATION = 10
             vendors = VendorOrganization.query.all()
             strategic_vendors = [
                 v
                 for v in vendors
                 if getattr(v, "strategic_tier", "") in ["1", "Tier 1", "Strategic"]
             ]
-            if len(strategic_vendors) < 3 and len(vendors) > 5:
-                alerts.append(
-                    {
-                        "id": "vendor_concentration",
-                        "type": "cross_domain",
-                        "category": "risk",
-                        "title": "Vendor concentration risk detected",
-                        "description": f"Only {len(strategic_vendors)} strategic vendors identified. Consider diversifying vendor portfolio.",
-                        "priority": "medium",
-                        "priority_score": 35,
-                        "action": "Review vendor portfolio for strategic diversity",
-                        "impact": "risk",
-                        "effort": "medium",
-                    }
-                )
+            if len(vendors) >= MIN_VENDORS_FOR_CONCENTRATION:
+                if len(strategic_vendors) == 0:
+                    alerts.append(
+                        {
+                            "id": "vendor_tier_data_missing",
+                            "type": "cross_domain",
+                            "category": "data_quality",
+                            "title": "Vendor strategic tiers not set",
+                            "description": (
+                                f"None of {len(vendors)} vendors have a strategic tier assigned, "
+                                "so concentration risk cannot be assessed yet."
+                            ),
+                            "priority": "low",
+                            "priority_score": 15,
+                            "action": "Assign strategic tiers to vendors to enable concentration analysis",
+                            "impact": "data_quality",
+                            "effort": "low",
+                        }
+                    )
+                elif len(strategic_vendors) < 3:
+                    alerts.append(
+                        {
+                            "id": "vendor_concentration",
+                            "type": "cross_domain",
+                            "category": "risk",
+                            "title": "Vendor concentration risk detected",
+                            "description": f"Only {len(strategic_vendors)} strategic vendors identified. Consider diversifying vendor portfolio.",
+                            "priority": "medium",
+                            "priority_score": 35,
+                            "action": "Review vendor portfolio for strategic diversity",
+                            "impact": "risk",
+                            "effort": "medium",
+                        }
+                    )
 
             # Standard portfolio review recommendation
             recommendations.append(

@@ -1,48 +1,31 @@
 # migration-exempt: spec_data column added via ALTER TABLE (scripts/migrate_blueprint_columns.sql)
+"""Compatibility shim. The junction model lives in solution_models.py.
+
+This module used to declare a SECOND SolutionArchiMateElement class mapped to
+the same `solution_archimate_elements` table as solution_models.py. The two
+disagreed about one column, and that disagreement reached production:
+
+    element_id is POLYMORPHIC -- element_table is its discriminator, and rows
+    legitimately reference courses_of_action, goals, drivers, stakeholders and
+    the other layer tables. solution_models.py declared it correctly, with no
+    foreign key. This module declared a hard FK to archimate_elements.id, and
+    because both classes share one Table via extend_existing, that constraint
+    reached the physical table.
+
+Any write whose element_id did not also exist in archimate_elements then raised
+ForeignKeyViolation, aborting the transaction and 500-ing the solution creation
+wizard. Production carried 83 such rows, 5 of them referencing goals, drivers,
+stakeholders and constraints -- surviving only because the ids happened to
+collide. The constraint is dropped by
+scripts/migrate_drop_polymorphic_element_fk.sql.
+
+Resolved 31 Aug 2026 by making this a re-export. The class in solution_models.py
+is a strict superset -- it declares every column this one did, plus the
+LAYER_TABLES/LAYER_COLORS maps and the `solution` and `created_by`
+relationships -- so nothing is lost. 49 modules import this name; they all keep
+working and now all get the same class.
 """
-Junction table: solution_archimate_elements
-Many-to-many: Solution <-> ArchiMateElement with element_role annotation.
-SA-001: SolutionArchiMateService keystone.
-"""
 
-from datetime import datetime
+from app.models.solution_models import SolutionArchiMateElement  # noqa: F401
 
-from app import db
-
-
-class SolutionArchiMateElement(db.Model):  # migration-exempt
-    __tablename__ = "solution_archimate_elements"
-
-    id = db.Column(db.Integer, primary_key=True)
-    solution_id = db.Column(
-        db.Integer,
-        db.ForeignKey("solutions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    element_id = db.Column(
-        db.Integer,
-        db.ForeignKey("archimate_elements.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    layer_type = db.Column(db.String(64), nullable=True)
-    element_table = db.Column(db.String(128), nullable=True)
-    element_name = db.Column(db.String(256), nullable=True)
-    relationship_type = db.Column(db.String(64), nullable=True)
-    notes = db.Column(db.Text, nullable=True)
-    is_new_element = db.Column(db.Boolean, nullable=True, default=False)
-    # e.g. 'primary', 'supporting', 'impacted', 'ai_derived'
-    element_role = db.Column(db.String(64), nullable=False, default="primary")
-    # Structured spec data: fields, api_contract, business_rules, integrations, deployment
-    spec_data = db.Column(db.JSON, nullable=True, default=None)
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=True, onupdate=datetime.utcnow)
-    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-
-    __table_args__ = (
-        db.UniqueConstraint(
-            "solution_id", "element_id", name="uq_sol_archimate_elem_direct"
-        ),
-        {"extend_existing": True},
-    )
+__all__ = ["SolutionArchiMateElement"]

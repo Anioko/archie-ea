@@ -6,11 +6,10 @@ without requiring PostgreSQL extensions.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import numpy as np
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from sklearn.preprocessing import normalize
+from sklearn.metrics.pairwise import euclidean_distances
 
 logger = logging.getLogger(__name__)
 

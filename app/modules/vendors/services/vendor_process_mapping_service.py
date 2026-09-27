@@ -109,7 +109,6 @@ class VendorProcessMappingService:
             "sap": ["financial", "procurement", "hr", "operations", "supply chain"],
             "oracle": ["financial", "hr", "procurement", "it", "supply chain"],
             "microsoft": ["it", "operations", "customer", "collaboration", "productivity"],
-            "workday": ["hr", "financial", "procurement", "talent management"],
             "sage": ["financial", "hr", "procurement"],
             "intuit": ["financial", "accounting", "procurement"],
             "coupa": ["procurement", "financial", "supply chain"],
@@ -130,7 +129,6 @@ class VendorProcessMappingService:
             # CRM & Customer Experience
             "salesforce": ["customer", "sales", "marketing", "service", "crm"],
             "adobe": ["customer", "marketing", "digital experience", "content"],
-            "hubspot": ["customer", "marketing", "sales", "crm"],
             "zendesk": ["customer", "service", "support"],
             "freshdesk": ["customer", "service", "support"],
             "liveagent": ["customer", "service", "support"],
@@ -164,12 +162,8 @@ class VendorProcessMappingService:
             "zoom": ["collaboration", "communication", "video conferencing"],
             "webex": ["collaboration", "communication", "video conferencing"],
             # E-commerce & Digital
-            "shopify": ["e-commerce", "customer", "sales", "digital"],
-            "magento": ["e-commerce", "customer", "sales", "digital"],
-            "woocommerce": ["e-commerce", "customer", "sales", "digital"],
             # Social Media & Marketing
             "twitter": ["marketing", "customer", "social media", "communications"],
-            "linkedin": ["marketing", "customer", "social media", "hr", "professional networking"],
             "facebook": ["marketing", "customer", "social media"],
             "instagram": ["marketing", "customer", "social media"],
             # Streaming & Entertainment
@@ -542,15 +536,31 @@ class VendorProcessMappingService:
     def save_mapping_to_database(self, mapping: Dict, validated_by: Optional[int] = None) -> bool:
         """Save a single mapping to the database."""
         try:
+            # business_process_id originates in get_all_processes(), which reads
+            # apqc_process — global reference data with no organization_id — so
+            # it carries no tenant scope of its own. business_processes is
+            # tenant-owned, so scope the existence check. The same reasoning
+            # covers the vendor_process_mappings statements below: neither
+            # vendor_products nor apqc_process carries organization_id, so the
+            # (product, process) pair is not a tenant boundary — without the
+            # predicate another org's mapping reads as "already exists" and this
+            # org silently never gets one.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and_bp = " AND organization_id = :org" if _org is not None else ""
+            _org_and = _org_and_bp
+            _org_params = {"org": _org} if _org is not None else {}
+
             # Validate that business process exists
-            process_exists = db.session.execute(  # tenant-exempt: system table (business_processes reference data)
+            process_exists = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT id FROM business_processes
-                WHERE id = :process_id
+                WHERE id = :process_id{_org_and_bp}
             """
                 ),
-                {"process_id": mapping["business_process_id"]},
+                {"process_id": mapping["business_process_id"],
+                 **({"org": _org} if _org is not None else {})},
             ).fetchone()
 
             if not process_exists:
@@ -560,16 +570,17 @@ class VendorProcessMappingService:
                 return False
 
             # Check if mapping already exists
-            existing = db.session.execute(  # tenant-filtered: scoped via parent FK (product_id + process_id)
+            existing = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT id FROM vendor_process_mappings
-                WHERE vendor_product_id = :product_id AND business_process_id = :process_id
+                WHERE vendor_product_id = :product_id AND business_process_id = :process_id{_org_and}
             """
                 ),
                 {
                     "product_id": mapping["vendor_product_id"],
                     "process_id": mapping["business_process_id"],
+                    **_org_params,
                 },
             ).fetchone()
 
@@ -579,11 +590,15 @@ class VendorProcessMappingService:
                 )
                 return False  # Already exists
 
-            # Insert new mapping
-            db.session.execute(  # tenant-filtered: scoped via parent FK (product_id + process_id)
+            # Insert new mapping. Stamp organization_id explicitly — a raw
+            # INSERT bypasses the TenantMixin flush hook, so without it the row
+            # is unowned and visible to no org (the batch path below already
+            # does this).
+            db.session.execute(
                 text(
                     """
                 INSERT INTO vendor_process_mappings (
+                    organization_id,
                     vendor_product_id, business_process_id, support_level,
                     automation_coverage, out_of_box_fit, integration_complexity,
                     customization_required, expected_cycle_time_reduction,
@@ -591,6 +606,7 @@ class VendorProcessMappingService:
                     implementation_effort_weeks, configuration_complexity,
                     change_management_impact, validated_by_id, created_at, updated_at
                 ) VALUES (
+                    :org,
                     :product_id, :process_id, :support_level,
                     :automation_coverage, :out_of_box_fit, :integration_complexity,
                     :customization_required, :cycle_time_reduction,
@@ -601,6 +617,7 @@ class VendorProcessMappingService:
             """
                 ),
                 {
+                    "org": _org,
                     "product_id": mapping["vendor_product_id"],
                     "process_id": mapping["business_process_id"],
                     "support_level": self._estimate_support_level(mapping["confidence"]),
@@ -686,15 +703,21 @@ class VendorProcessMappingService:
             return {"saved_count": 0, "skipped_count": 0, "error_count": 0}
 
         try:
-            # Get all existing mapping pairs in one query
+            # Get all existing mapping pairs in one query. Unfiltered, this read
+            # every organisation's pairs and then skipped this org's inserts as
+            # "already existing".
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where = " WHERE organization_id = :org" if _org is not None else ""
             existing_pairs = set()
-            existing_result = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor product relationships)
+            existing_result = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT vendor_product_id, business_process_id
-                FROM vendor_process_mappings
+                FROM vendor_process_mappings{_org_where}
             """
-                )
+                ),
+                ({"org": _org} if _org is not None else {}),
             ).fetchall()
             for row in existing_result:
                 existing_pairs.add((row[0], row[1]))
@@ -727,15 +750,18 @@ class VendorProcessMappingService:
                 batch = new_mappings[i : i + batch_size]
 
                 try:
-                    # Build batch insert values
+                    # Build batch insert values. Stamp organization_id explicitly —
+                    # raw INSERT bypasses the TenantMixin before_flush auto-set, so
+                    # without this the mappings would be unowned / not org-scoped.
+                    from flask import g as _g
                     values_list = []
-                    params = {}
+                    params = {"org": getattr(_g, "current_org_id", None)}
 
                     for idx, mapping in enumerate(batch):
                         prefix = f"m{idx}_"
                         values_list.append(
                             f"""(
-                            :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
+                            :org, :{prefix}product_id, :{prefix}process_id, :{prefix}support_level,
                             :{prefix}automation_coverage, :{prefix}out_of_box_fit, :{prefix}integration_complexity,
                             :{prefix}customization_required, :{prefix}cycle_time_reduction,
                             :{prefix}cost_reduction, :{prefix}error_rate_reduction,
@@ -767,6 +793,7 @@ class VendorProcessMappingService:
                     # Execute batch insert
                     insert_sql = f"""
                         INSERT INTO vendor_process_mappings (
+                            organization_id,
                             vendor_product_id, business_process_id, support_level,
                             automation_coverage, out_of_box_fit, integration_complexity,
                             customization_required, expected_cycle_time_reduction,
@@ -809,20 +836,24 @@ class VendorProcessMappingService:
         """Analyze process coverage by vendors."""
         try:
             # Get process coverage stats
-            coverage_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor product joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _jc = " AND vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            coverage_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     p.category_level_1,
                     COUNT(DISTINCT p.id) as total_processes,
                     COUNT(DISTINCT vpm.business_process_id) as covered_processes,
                     ROUND(COUNT(DISTINCT vpm.business_process_id) * 100.0 / COUNT(DISTINCT p.id), 2) as coverage_percentage
                 FROM apqc_process p
-                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id
+                LEFT JOIN vendor_process_mappings vpm ON p.id = vpm.business_process_id{_jc}
                 GROUP BY p.category_level_1
                 ORDER BY coverage_percentage DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}
@@ -844,9 +875,13 @@ class VendorProcessMappingService:
     def get_vendor_capability_analysis(self) -> Dict:
         """Analyze vendor capabilities across processes."""
         try:
-            vendor_stats = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor organization joins)
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _wc = " WHERE vpm.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            vendor_stats = db.session.execute(
                 text(
-                    """
+                    f"""
                 SELECT
                     vo.name as vendor_name,
                     COUNT(DISTINCT vpm.business_process_id) as processes_supported,
@@ -855,11 +890,11 @@ class VendorProcessMappingService:
                     AVG(vpm.out_of_box_fit) as avg_fit
                 FROM vendor_process_mappings vpm
                 JOIN vendor_products vp ON vpm.vendor_product_id = vp.id
-                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id
+                JOIN vendor_organizations vo ON vp.vendor_organization_id = vo.id{_wc}
                 GROUP BY vo.name
                 ORDER BY processes_supported DESC
             """
-                )
+                ), _p
             ).fetchall()
 
             analysis = {}
@@ -914,11 +949,11 @@ class VendorProcessMappingService:
                     level = process_info.get("level", 1)
                     parts = process_code.split(".")
                     category_l1 = parts[0] + ".0" if len(parts) >= 1 else None
-                    category_l2 = ".".join(parts[:2]) if len(parts) >= 2 else None
-                    category_l3 = ".".join(parts[:3]) if len(parts) >= 3 else None
+                    ".".join(parts[:2]) if len(parts) >= 2 else None
+                    ".".join(parts[:3]) if len(parts) >= 3 else None
 
                     # Get parent code
-                    parent_code = process_info.get("parent")
+                    process_info.get("parent")
 
                     # Get category name
                     category_name = APQC_CATEGORIES.get(category_l1, "")
@@ -1036,7 +1071,7 @@ class VendorProcessMappingService:
                 # Get category mapping info
                 category_mapping = VENDOR_CATEGORY_APQC_MAPPING.get(category, {})
                 coverage_level = category_mapping.get("coverage_level", "partial")
-                arch_domains = category_mapping.get("architecture_domains", [])
+                category_mapping.get("architecture_domains", [])
 
                 # Create mappings for each APQC process
                 for apqc_code in apqc_codes:

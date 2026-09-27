@@ -5,12 +5,28 @@
 {% block title %}Business Capabilities{% endblock %}
 
 {% block content %}
+{# role_archetype is an optional onboarding answer and is NULL for most users, so
+   gating on it hid the only create-a-capability control in the product from the
+   business_architect persona. Gate on the enterprise_role that defines the job. #}
+{% set can_edit = can_edit_capabilities(current_user) %}
+{% set can_delete = current_user.is_admin() %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    {{ page_header(title='Business Capabilities', description='Capability taxonomy and hierarchy') }}
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        {{ page_header(title='Business Capabilities', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Business Capabilities'}], description='Capability taxonomy and hierarchy') }}
+        {% if can_edit %}
+        <button type="button" data-action="openCapCreate"
+            class="inline-flex items-center gap-2 h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 shrink-0"
+            aria-label="New Capability">
+            <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> New Capability
+        </button>
+        {% endif %}
+    </div>
+
+    {% with active_view = 'capabilities' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     {% set total = capabilities|length %}
     {% set level1 = capabilities|selectattr('level', 'equalto', 1)|list|length %}
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 mt-4">
         {{ metrics_card(title='Total Capabilities', value=total, icon='layers') }}
         {{ metrics_card(title='Level 1', value=level1, icon='chevrons-up', value_class='text-primary') }}
         {{ metrics_card(title='Level 2+', value=total - level1, icon='chevrons-down', value_class='text-primary') }}
@@ -19,55 +35,204 @@
     <!-- Level filter -->
     <div class="mb-4 flex flex-wrap gap-2 items-center">
         <span class="text-sm text-muted-foreground">Filter by level:</span>
-        <button @click="filterLevel(0)" id="btn-all"
-            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="Action">All</button>
+        <button type="button" data-action="filterLevel" data-level="0" id="btn-all"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-primary text-primary-foreground" aria-label="All levels">All</button>
         {% for lvl in [1,2,3,4,5] %}
-        <button @click="filterLevel({{ lvl }})" id="btn-{{ lvl }}"
-            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Action">Level {{ lvl }}</button>
+        <button type="button" data-action="filterLevel" data-level="{{ lvl }}" id="btn-{{ lvl }}"
+            class="px-3 py-1 rounded-md text-xs font-medium border border-border bg-background text-foreground hover:bg-muted" aria-label="Level {{ lvl }}">Level {{ lvl }}</button>
         {% endfor %}
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="cap-grid">
         {% for cap in capabilities %}
-        {% set current_mat = cap.current_maturity_level|default(0)|int %}
+        {# None means never assessed — render an em dash, not a fabricated score. #}
+        {% set current_mat = cap.current_maturity_level|int if cap.current_maturity_level else none %}
         {% set mat_pct = ((current_mat / 5) * 100)|int if current_mat else 0 %}
         <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-5 hover:bg-muted/30 cap-card"
-             data-level="{{ cap.level|default(1) }}">
+             data-level="{{ cap.level|default(1) }}"
+             data-cap-id="{{ cap.id }}"
+             data-cap-name="{{ cap.name|e }}"
+             data-cap-category="{{ cap.category|default('operational')|e }}"
+             data-cap-level="{{ cap.level|default(1) }}"
+             data-cap-desc="{{ cap.description|default('', true)|e }}"
+             data-cap-parent="{{ cap.parent_capability_id or '' }}"
+             data-cap-maturity="{{ cap.current_maturity_level or '' }}"
+             data-cap-target-maturity="{{ cap.target_maturity_level or '' }}"
+             data-cap-owner="{{ cap.business_owner|default('', true)|e }}"
+             data-cap-importance="{{ cap.strategic_importance|default('', true)|e }}"
+             data-cap-value="{{ cap.business_value or '' }}">
             <div class="flex justify-between items-start mb-2">
                 <h3 class="font-medium text-foreground leading-snug">{{ cap.name }}</h3>
-                <span class="ml-2 shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
-                    L{{ cap.level|default(1) }}
-                </span>
+                <div class="flex items-center gap-1 shrink-0 ml-2">
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">L{{ cap.level|default(1) }}</span>
+                    {% if can_edit %}
+                    <button type="button" data-action="openCapEdit"
+                        class="p-1 rounded hover:bg-muted text-muted-foreground" aria-label="Edit {{ cap.name|e }}">
+                        <i data-lucide="pencil" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
+                    {% if can_delete %}
+                    <button type="button" data-action="deleteCap" data-cap-id="{{ cap.id }}"
+                        class="p-1 rounded hover:bg-destructive/10 text-destructive-emphasis" aria-label="Delete {{ cap.name|e }}">
+                        <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </button>
+                    {% endif %}
+                </div>
             </div>
-            <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description')|truncate(100) }}</p>
-            {% if cap.parent_capability_id %}
-            <p class="text-xs text-muted-foreground mb-2">Sub-capability</p>
+            {% if cap.description %}
+            <p class="text-sm text-muted-foreground mb-3">{{ cap.description|default('No description', true)|truncate(100) }}</p>
             {% endif %}
+            {% if cap.parent_capability_id %}
+            {# Naming the parent is the point of a hierarchy; "Sub-capability" on its
+               own told the user nothing about where the capability actually sits. #}
+            <p class="text-xs text-muted-foreground mb-2">
+                Sub-capability of {{ parent_names.get(cap.parent_capability_id) or 'an unknown capability' }}
+            </p>
+            {% endif %}
+            <p class="text-xs text-muted-foreground mb-2">
+                Owner: {% if cap.business_owner %}{{ cap.business_owner }}{% else %}&mdash;{% endif %}
+            </p>
             <!-- Maturity progress bar -->
             <div class="mt-2">
                 <div class="flex justify-between text-xs text-muted-foreground mb-1">
                     <span>Maturity</span>
-                    <span>{{ current_mat }}/5</span>
+                    <span>{% if current_mat %}{{ current_mat }}/5{% else %}&mdash;{% endif %}</span>
                 </div>
+                {% if current_mat %}
                 <div class="w-full h-1.5 rounded-full bg-muted overflow-hidden">
                     <div class="h-full rounded-full {% if mat_pct >= 80 %}bg-success{% elif mat_pct >= 40 %}bg-warning{% else %}bg-destructive/40{% endif %}"
                          style="width: {{ mat_pct }}%"></div>
                 </div>
+                {% else %}
+                <div class="w-full h-1.5 rounded-full bg-muted"></div>
+                {% endif %}
             </div>
             <div class="mt-3">
                 <a href="{{ url_for('unified_low_priority.capability_map_mapping') }}"
-                   class="text-xs text-primary dark:text-primary/80 hover:underline">View mapping &rarr;</a>
+                   class="text-xs text-primary hover:underline">View mapping &rarr;</a>
             </div>
         </div>
         {% else %}
         <div data-slot="card" class="col-span-full rounded-xl border bg-card shadow-sm p-10 text-center text-muted-foreground">
-            No capabilities found.
+            No capabilities yet.{% if can_edit %} Click <b>New Capability</b> to add one.{% endif %}
         </div>
         {% endfor %}
     </div>
 </div>
 
+{% if can_edit %}
+<dialog id="cap-dialog" class="rounded-xl border border-border bg-card text-foreground p-0 w-full max-w-md backdrop:bg-black/50">
+  <div class="p-6">
+    <h3 id="cap-dialog-title" class="text-lg font-semibold mb-4">New Capability</h3>
+    <input type="hidden" id="cap-id" value="">
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-name">Name *</label>
+        <input id="cap-name" type="text" class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm" required>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-category">Category</label>
+          <select id="cap-category" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="operational">Operational</option>
+            <option value="strategic">Strategic</option>
+            <option value="foundational">Foundational</option>
+            <option value="supporting">Supporting</option>
+            <option value="enabling">Enabling</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-level">Level</label>
+          <select id="cap-level" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-parent">Parent capability</label>
+        <select id="cap-parent" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+          <option value="">None (top level)</option>
+          {% for cap in capabilities %}
+          <option value="{{ cap.id }}">L{{ cap.level|default(1) }} &middot; {{ cap.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-maturity">Current maturity</label>
+          <select id="cap-maturity" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="">Not assessed</option>
+            <option value="1">1 - Initial</option>
+            <option value="2">2 - Developing</option>
+            <option value="3">3 - Defined</option>
+            <option value="4">4 - Managed</option>
+            <option value="5">5 - Optimising</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-target-maturity">Target maturity</label>
+          <select id="cap-target-maturity" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="">Not set</option>
+            <option value="1">1 - Initial</option>
+            <option value="2">2 - Developing</option>
+            <option value="3">3 - Defined</option>
+            <option value="4">4 - Managed</option>
+            <option value="5">5 - Optimising</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-owner">Business owner</label>
+        <input id="cap-owner" type="text" class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
+               placeholder="Name of the accountable owner">
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-importance">Strategic importance</label>
+          <select id="cap-importance" class="w-full h-9 px-2 rounded-md border border-border bg-background text-sm">
+            <option value="">—</option>
+            <option value="critical">Critical</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1" for="cap-value">Business value (1–10)</label>
+          <input id="cap-value" type="number" min="1" max="10" step="1"
+                 class="w-full h-9 px-3 rounded-md border border-border bg-background text-sm"
+                 placeholder="—">
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1" for="cap-desc">Description</label>
+        <textarea id="cap-desc" rows="3" class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm"></textarea>
+      </div>
+    </div>
+    <div class="flex justify-end gap-2 mt-5">
+      <button type="button" data-action="closeCapDialog"
+        class="h-9 px-4 rounded-md text-sm border border-border hover:bg-muted">Cancel</button>
+      <button type="button" id="cap-save" data-action="submitCap"
+        class="h-9 px-4 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:opacity-90">Save</button>
+    </div>
+  </div>
+</dialog>
+{% endif %}
+
 <script>
+// CAP_CSRF is no longer needed because Platform.fetch automatically injects the CSRF token.
+// const CAP_CSRF = '{{ csrf_token() }}';
+
+// Everything below is scoped to this IIFE deliberately. partials/_scripts_common.html
+// installs a GLOBAL [data-action] delegator that resolves the action name against
+// `window` and calls it, and this page installs its own delegator as well (it has to:
+// openCapEdit needs the clicked card, which the global one cannot pass). While these
+// functions were globals, both delegators fired for one click and every "Save" wrote
+// the capability TWICE -- two rows, ~15ms apart, with no error and nothing on screen to
+// suggest it. Keeping them out of `window` makes the global delegator a no-op here.
+(function () {
+'use strict';
+
 function filterLevel(lvl) {
     document.querySelectorAll('.cap-card').forEach(function(c) {
         c.style.display = (lvl === 0 || parseInt(c.dataset.level) === lvl) ? '' : 'none';
@@ -80,5 +245,148 @@ function filterLevel(lvl) {
             (active ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground hover:bg-muted');
     });
 }
+
+function capToast(msg, isErr) {
+    if (window.Platform && Platform.toast) { isErr ? Platform.toast.error(msg) : Platform.toast.success(msg); }
+    else { /* console output is forbidden in shipped code; fallback to a no‑op */ }
+}
+
+function capField(id) { return document.getElementById(id); }
+
+function openCapCreate() {
+    capField('cap-dialog-title').textContent = 'New Capability';
+    capField('cap-id').value = '';
+    capField('cap-name').value = '';
+    capField('cap-category').value = 'operational';
+    capField('cap-level').value = '1';
+    capField('cap-desc').value = '';
+    capField('cap-parent').value = '';
+    capField('cap-maturity').value = '';
+    capField('cap-target-maturity').value = '';
+    capField('cap-owner').value = '';
+    capField('cap-importance').value = '';
+    capField('cap-value').value = '';
+    capField('cap-dialog').showModal();
+}
+
+function openCapEdit(card) {
+    capField('cap-dialog-title').textContent = 'Edit Capability';
+    capField('cap-id').value = card.dataset.capId;
+    capField('cap-name').value = card.dataset.capName || '';
+    capField('cap-category').value = card.dataset.capCategory || 'operational';
+    capField('cap-level').value = card.dataset.capLevel || '1';
+    capField('cap-desc').value = card.dataset.capDesc || '';
+    capField('cap-parent').value = card.dataset.capParent || '';
+    capField('cap-maturity').value = card.dataset.capMaturity || '';
+    capField('cap-target-maturity').value = card.dataset.capTargetMaturity || '';
+    capField('cap-owner').value = card.dataset.capOwner || '';
+    capField('cap-importance').value = card.dataset.capImportance || '';
+    capField('cap-value').value = card.dataset.capValue || '';
+    // A capability cannot be its own parent; the server rejects it, but the
+    // option should not be offered either.
+    [...capField('cap-parent').options].forEach(function (o) {
+        o.disabled = (o.value !== '' && o.value === card.dataset.capId);
+    });
+    capField('cap-dialog').showModal();
+}
+
+let capSubmitting = false;
+
+async function submitCap() {
+    // Guard against any duplicate dispatch of the same click: a second write
+    // must be impossible, not merely unlikely.
+    if (capSubmitting) return;
+    capSubmitting = true;
+    const id = capField('cap-id').value;
+    const payload = {
+        name: capField('cap-name').value.trim(),
+        type: capField('cap-category').value,
+        level: parseInt(capField('cap-level').value, 10),
+        description: capField('cap-desc').value.trim(),
+        parent_capability_id: capField('cap-parent').value || null,
+        current_maturity_level: capField('cap-maturity').value || null,
+        target_maturity_level: capField('cap-target-maturity').value || null,
+        business_owner: capField('cap-owner').value.trim(),
+        strategic_importance: capField('cap-importance').value || null,
+        business_value: capField('cap-value').value || null
+    };
+    if (!payload.name) { capToast('Name is required', true); return; }
+    const btn = capField('cap-save'); btn.disabled = true;
+    try {
+        const url = id ? '/enterprise/capabilities/' + id : '/enterprise/capabilities';
+        const data = id
+            ? await Platform.fetch.put(url, payload, { silent: true })
+            : await Platform.fetch.post(url, payload, { silent: true });
+        // Platform.fetch throws on non‑ok, so reaching here means success.
+        // The server response is expected to have a 'success' boolean.
+        // If success is false, treat as an error (the server returned a 200 with an error indication).
+        if (data && data.success) {
+            capToast(id ? 'Capability updated' : 'Capability created');
+            capField('cap-dialog').close();
+            setTimeout(function() { window.location.reload(); }, 400);
+        } else {
+            // The server returned success:false (or missing success field).
+            capToast(data && data.error ? data.error : 'Save failed', true);
+            btn.disabled = false;
+            capSubmitting = false;
+        }
+    } catch (e) {
+        // Platform.fetch already shows a toast unless silent:true; we passed silent:true
+        // because we want to show our own toast via capToast.
+        // e.message is response.statusText ("Bad Request") when the body carries
+        // a field-error map, which tells the user nothing about what to change.
+        var detail = '';
+        if (e && e.data) {
+            if (e.data.errors && typeof e.data.errors === 'object') {
+                detail = Object.keys(e.data.errors).map(function (f) {
+                    var m = e.data.errors[f];
+                    return Array.isArray(m) ? m.join('; ') : m;
+                }).join('; ');
+            } else if (e.data.error) {
+                detail = e.data.error;
+            }
+        }
+        capToast('Save failed: ' + (detail || e.message || e), true);
+        btn.disabled = false;
+        capSubmitting = false;
+    }
+}
+
+async function deleteCap(id, name) {
+    if (!await Platform.confirm({ title: 'Delete "' + name + '"?',
+            message: 'This cannot be undone.', confirmText: 'Delete',
+            variant: 'destructive' })) return;
+    try {
+        const data = await Platform.fetch.delete('/enterprise/capabilities/' + id, { silent: true });
+        // Platform.fetch throws on non‑ok, so reaching here means success.
+        // The server response is expected to have a 'success' boolean.
+        if (data && data.success) {
+            capToast('Capability deleted');
+            setTimeout(function() { window.location.reload(); }, 400);
+        } else {
+            // The server returned success:false (or missing success field).
+            capToast(data && data.error ? data.error : 'Delete failed', true);
+        }
+    } catch (e) {
+        // Platform.fetch already shows a toast unless silent:true; we passed silent:true
+        // because we want to show our own toast via capToast.
+        capToast('Delete failed: ' + (e.message || e), true);
+    }
+}
+
+/* CSP-safe: delegate the page actions instead of inline onclick= (DESIGN.md). */
+document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-action]');
+    if (!el) return;
+    var a = el.getAttribute('data-action');
+    if (a === 'openCapCreate') return openCapCreate();
+    if (a === 'submitCap') return submitCap();
+    if (a === 'filterLevel') return filterLevel(Number(el.getAttribute('data-level')));
+    if (a === 'openCapEdit') return openCapEdit(el.closest('.cap-card'));
+    if (a === 'deleteCap') { var c = el.closest('.cap-card'); return deleteCap(el.getAttribute('data-cap-id'), c && c.dataset.capName); }
+    if (a === 'closeCapDialog') { var d = document.getElementById('cap-dialog'); if (d) d.close(); }
+});
+})();
 </script>
+
 {% endblock %}

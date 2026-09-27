@@ -16,6 +16,16 @@ let selectedStrategy = 'hybrid';
 let thresholdSlider = null;
 let thresholdValue = null;
 
+// Attribute-value escaping. escapeHtml() (core/02-sanitize.js) escapes through
+// textContent -> innerHTML, which leaves " and ' untouched: correct for a text
+// node, unsafe inside an attribute. Anything interpolated into a data-* value
+// must go through this instead.
+function escapeAttr(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 // CSRF token helper (avoids 6 inline querySelector lookups)
 function getCSRFToken() {
   return document.querySelector('meta[name="csrf-token"]')?.content || '';
@@ -97,22 +107,22 @@ function setupAppAutocomplete(searchInputId, hiddenInputId, dropdownId, onSelect
     abortController = new AbortController();
     try {
       let url = '/api/enterprise/applications?search=' + encodeURIComponent(query) + '&limit=10';
-      let response = await fetch(url, {
-        method: 'GET',
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-        signal: abortController.signal
+      // silent: this paints its own inline failure state below, so the global
+      // error toast would be a duplicate.
+      let data = await Platform.fetch.get(url, null, {
+        signal: abortController.signal,
+        silent: true
       });
-      if (!response.ok) {
-        safeHTML(dropdown, '<div class="px-3 py-2 text-sm text-destructive">Search failed. Please try again.</div>');
-        dropdown.classList.remove('hidden');
-        return;
-      }
-      let data = await response.json();
       renderItems(data.applications || []);
     } catch (err) {
       if (err.name === 'AbortError') return;
-      console.error('Autocomplete error:', err);
+      /* Platform.fetch throws on both a network failure and a non-ok response, so
+         this one branch now covers what used to be two. Painting "Search failed"
+         here is load-bearing: a network failure used to paint nothing, leaving the
+         previous query's results (or an empty dropdown) on screen as though they
+         were the answer for what was just typed. */
+      safeHTML(dropdown, '<div class="px-3 py-2 text-sm text-destructive">Search failed. Please try again.</div>');
+      dropdown.classList.remove('hidden');
     }
   }
 
@@ -242,22 +252,10 @@ async function runDetection() {
   resultsDiv.classList.add('hidden');
 
   try {
-    let response = await fetch(APP_CONFIG.runDetectionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      },
-      body: JSON.stringify({
-        method: selectedStrategy,
-        threshold: parseInt((thresholdSlider || {}).value || '80') / 100
-      })
+    let data = await Platform.fetch.post(APP_CONFIG.runDetectionUrl, {
+      method: selectedStrategy,
+      threshold: parseInt((thresholdSlider || {}).value || '80') / 100
     });
-
-    if (!response.ok) {
-      throw new Error('Detection request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
 
     if (data.success) {
       // Update strategy name
@@ -306,7 +304,6 @@ async function runDetection() {
       showToast('Detection failed: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Detection error:', error);
     showToast('Detection failed: ' + error.message, 'error');
   } finally {
     btn.disabled = false;
@@ -334,18 +331,7 @@ async function _doAutoResolveExact() {
   setButtonLoading(btn, true, 'Resolving...');
 
   try {
-    let response = await fetch(APP_CONFIG.autoResolveUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Auto-resolve request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.post(APP_CONFIG.autoResolveUrl);
 
     if (data.success) {
       showToast('Auto-Resolve Complete: ' + data.resolved_count + ' exact match groups resolved', 'success');
@@ -356,7 +342,6 @@ async function _doAutoResolveExact() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error in auto-resolve:', error);
     showToast('Failed to auto-resolve: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -369,19 +354,7 @@ async function scorePortfolio() {
   setButtonLoading(btn, true, 'Scoring...');
 
   try {
-    let response = await fetch(APP_CONFIG.scorePortfolioUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      },
-      body: JSON.stringify({ force_recalculate: false })
-    });
-
-    if (!response.ok) {
-      throw new Error('Portfolio scoring request failed (HTTP ' + response.status + ')');
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.post(APP_CONFIG.scorePortfolioUrl, { force_recalculate: false });
 
     if (data.success) {
       let scored = (data.data && data.data.total_scored) || 0;
@@ -391,7 +364,6 @@ async function scorePortfolio() {
       showToast('Error: ' + (data.error || 'Unknown error'), 'error');
     }
   } catch (error) {
-    console.error('Error scoring portfolio:', error);
     showToast('Failed to score portfolio: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -534,21 +506,10 @@ async function checkRetirementBlockers() {
   try {
     // Fire both the dependency-level check (existing) and the new authoritative
     // 5-category assessment (RAT-109) in parallel for a complete picture.
-    let [response, assessResponse] = await Promise.all([
-      fetch('/dashboard/api/rationalization/retirement-blockers/' + appId, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      }),
-      fetch('/applications/rationalization/api/retirement-blockers/' + appId, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      })
+    let [result, assessResult] = await Promise.all([
+      Platform.fetch.get('/dashboard/api/rationalization/retirement-blockers/' + appId, null, { silent: true }),
+      Platform.fetch.get('/applications/rationalization/api/retirement-blockers/' + appId, null, { silent: true })
     ]);
-
-    if (!response.ok) {
-      throw new Error('Retirement blockers request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
 
     if (!result.success) {
       showToast('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -556,14 +517,11 @@ async function checkRetirementBlockers() {
     }
 
     // Render the RAT-109 category assessment if the container is present
-    if (assessResponse.ok) {
-      let assessResult = await assessResponse.json();
-      if (assessResult.success && assessResult.data) {
-        renderRetirementBlockers(assessResult.data, 'retirement-blocker-assessment');
-        // Reveal the assessment container
-        let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
-        if (assessContainer) assessContainer.classList.remove('hidden');
-      }
+    if (assessResult.success && assessResult.data) {
+      renderRetirementBlockers(assessResult.data, 'retirement-blocker-assessment');
+      // Reveal the assessment container
+      let assessContainer = document.getElementById('retirement-blocker-assessment-wrapper');
+      if (assessContainer) assessContainer.classList.remove('hidden');
     }
 
     let data = result.data;
@@ -659,7 +617,6 @@ async function checkRetirementBlockers() {
     }
 
   } catch (error) {
-    console.error('Error checking blockers:', error);
     showToast('Failed to check retirement blockers: ' + error.message, 'error');
   } finally {
     setButtonLoading(btn, false);
@@ -678,18 +635,7 @@ async function checkBlastRadius() {
   setButtonLoading(blastBtn, true, 'Analyzing...');
 
   try {
-    let response = await fetch('/dashboard/api/rationalization/blast-radius/' + appId + '?depth=3', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Blast radius request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get('/dashboard/api/rationalization/blast-radius/' + appId + '?depth=3', null, { silent: true });
 
     if (!result.success) {
       showToast('Error: ' + (result.error || 'Unknown error'), 'error');
@@ -774,7 +720,6 @@ async function checkBlastRadius() {
     }
 
   } catch (error) {
-    console.error('Error checking blast radius:', error);
     showToast('Failed to check blast radius: ' + error.message, 'error');
   } finally {
     setButtonLoading(blastBtn, false);
@@ -936,6 +881,27 @@ function hideBlastResults() {
 
 let optionsRadarChart = null;
 
+// ── Null-safe score handling ────────────────────────────────────────────────
+// A score of null means "not calculated". It must never be coerced to 0: a 0 is
+// indistinguishable from a measured zero, ranks the option last as though it had
+// been evaluated, and plots as a real point on the radar chart.
+const SCORE_UNAVAILABLE = '—';  // em dash: the null display per CLAUDE.md
+
+function hasScore(value) {
+  return typeof value === 'number' && isFinite(value);
+}
+
+// Descending by score. Unscored options sink below every scored one and keep
+// their catalogue order relative to each other (Array#sort is stable).
+function compareByOverallScoreDesc(a, b) {
+  let aScored = hasScore(a.overall_score);
+  let bScored = hasScore(b.overall_score);
+  if (aScored && bScored) return b.overall_score - a.overall_score;
+  if (aScored) return -1;
+  if (bScored) return 1;
+  return 0;
+}
+
 async function analyzeOptions() {
   let appId = validateAppId('options-app-id');
   if (!appId) {
@@ -948,18 +914,7 @@ async function analyzeOptions() {
 
   try {
     // First, get the application's rationalization score to understand its current state
-    let scoreResponse = await fetch('/dashboard/api/rationalization/calculate/' + appId, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getCSRFToken()
-      }
-    });
-
-    if (!scoreResponse.ok) {
-      throw new Error('Score calculation failed (HTTP ' + scoreResponse.status + ')');
-    }
-    let scoreData = await scoreResponse.json();
+    let scoreData = await Platform.fetch.post('/dashboard/api/rationalization/calculate/' + appId);
     if (!scoreData.success) {
       throw new Error(scoreData.error || 'Failed to get application score');
     }
@@ -973,39 +928,25 @@ async function analyzeOptions() {
     // Call options analysis API (may return 503 if engine not available)
     let useLocalFallback = false;
     try {
-      let response = await fetch('/dashboard/api/rationalization/options-analysis/' + appId, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': getCSRFToken()
+      let data = await Platform.fetch.post('/dashboard/api/rationalization/options-analysis/' + appId, {
+        requirements: {
+          business_criticality: appScore.business_score > 70 ? 'HIGH' : appScore.business_score > 40 ? 'MEDIUM' : 'LOW',
+          current_technical_score: appScore.technical_score,
+          current_cost_score: appScore.cost_score,
+          time_action: timeAction
         },
-        body: JSON.stringify({
-          requirements: {
-            business_criticality: appScore.business_score > 70 ? 'HIGH' : appScore.business_score > 40 ? 'MEDIUM' : 'LOW',
-            current_technical_score: appScore.technical_score,
-            current_cost_score: appScore.cost_score,
-            time_action: timeAction
-          },
-          options: options
-        })
+        options: options
       });
 
-      if (!response.ok) {
-        // Service unavailable (503) or other error — use local analysis
-        useLocalFallback = true;
+      if (data.success && data.data && data.data.results) {
+        displayOptionsResults(appId, data.data, appScore);
+      } else if (data.success && data.data) {
+        displayOptionsResults(appId, { results: [data.data] }, appScore);
       } else {
-        let data = await response.json();
-
-        if (data.success && data.data && data.data.results) {
-          displayOptionsResults(appId, data.data, appScore);
-        } else if (data.success && data.data) {
-          displayOptionsResults(appId, { results: [data.data] }, appScore);
-        } else {
-          useLocalFallback = true;
-        }
+        useLocalFallback = true;
       }
     } catch (fetchError) {
-      console.warn('Options analysis API unavailable, using local estimates:', fetchError.message);
+      // Platform.fetch throws on network or HTTP error — use local analysis
       useLocalFallback = true;
     }
 
@@ -1014,7 +955,6 @@ async function analyzeOptions() {
     }
 
   } catch (error) {
-    console.error('Error analyzing options:', error);
     // Only show error fallback if score calculation itself failed
     displayFallbackOptions(appId, error.message);
   } finally {
@@ -1023,7 +963,16 @@ async function analyzeOptions() {
 }
 
 function generateOptionsForTimeAction(timeAction, appScore) {
-  // Generate relevant options based on the TIME framework recommendation
+  // The strategy catalogue for a TIME action: names, descriptions and the
+  // qualitative shape of each option. These are static templates, not claims
+  // about this portfolio.
+  //
+  // `cost_estimates` is deliberately empty. It previously carried invented
+  // figures (annual_cost 120000, decommission_cost 30000, annual_savings
+  // 100000 …) which had no source in the user's data, yet were posted to the
+  // scoring engine and surfaced as cost analysis. An empty object is the honest
+  // input — the engine already treats "no cost data" as lower confidence —
+  // whereas a fabricated one silently anchors a decommissioning business case.
   let options = [];
 
   if (timeAction === 'MIGRATE' || timeAction === 'INVEST') {
@@ -1032,7 +981,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Cloud SaaS Migration',
       description: 'Migrate to modern cloud-native SaaS platform',
       technical_specs: { deployment: 'cloud', scalability: 'high', maintenance: 'vendor-managed' },
-      cost_estimates: { annual_cost: 120000, migration_cost: 80000 },
+      cost_estimates: {},
       metadata: { reduces_tech_debt: true, improves_scalability: true }
     });
     options.push({
@@ -1040,7 +989,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Modernize In-Place',
       description: 'Upgrade current system with modern technologies',
       technical_specs: { deployment: 'hybrid', scalability: 'medium', maintenance: 'internal' },
-      cost_estimates: { annual_cost: 150000, migration_cost: 200000 },
+      cost_estimates: {},
       metadata: { preserves_customization: true, gradual_transition: true }
     });
   }
@@ -1051,7 +1000,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Strategic Enhancement',
       description: 'Invest in new features and capabilities',
       technical_specs: { deployment: 'current', scalability: 'improved', maintenance: 'internal' },
-      cost_estimates: { annual_cost: 180000, investment: 150000 },
+      cost_estimates: {},
       metadata: { business_growth: true, competitive_advantage: true }
     });
   }
@@ -1062,7 +1011,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Continue As-Is',
       description: 'Maintain current system with minimal changes',
       technical_specs: { deployment: 'current', scalability: 'current', maintenance: 'minimal' },
-      cost_estimates: { annual_cost: 80000 },
+      cost_estimates: {},
       metadata: { low_risk: true, stable: true }
     });
     options.push({
@@ -1070,7 +1019,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Cost Optimization',
       description: 'Optimize licenses and reduce operational costs',
       technical_specs: { deployment: 'current', scalability: 'current', maintenance: 'optimized' },
-      cost_estimates: { annual_cost: 60000, optimization_cost: 20000 },
+      cost_estimates: {},
       metadata: { cost_reduction: true }
     });
   }
@@ -1081,7 +1030,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Planned Retirement',
       description: 'Phase out and decommission the application',
       technical_specs: { deployment: 'none', timeline: '6-12 months' },
-      cost_estimates: { decommission_cost: 30000, annual_savings: 100000 },
+      cost_estimates: {},
       metadata: { data_migration_required: true }
     });
     options.push({
@@ -1089,7 +1038,7 @@ function generateOptionsForTimeAction(timeAction, appScore) {
       name: 'Consolidate with Existing',
       description: 'Merge functionality into existing applications',
       technical_specs: { deployment: 'existing', migration_complexity: 'medium' },
-      cost_estimates: { consolidation_cost: 50000, annual_savings: 80000 },
+      cost_estimates: {},
       metadata: { reduces_portfolio: true }
     });
   }
@@ -1098,26 +1047,29 @@ function generateOptionsForTimeAction(timeAction, appScore) {
 }
 
 function displayLocalOptionsResults(appId, options, appScore, timeAction) {
-  // Build analysis results locally when API is unavailable.
-  // Derives deterministic scores from actual appScore data instead of random values.
-  let techScore = appScore?.technical_score || 50;
-  let costScore = appScore?.cost_score || 50;
-  let bizScore = appScore?.business_score || 50;
-  let vendorScore = appScore?.vendor_score || 50;
-
-  let results = options.map(function(opt, idx) {
+  // The options-analysis service is unavailable, so nothing has been scored.
+  //
+  // The candidate strategies are still worth showing — they are a static
+  // catalogue, not a claim about this portfolio — but every number stays null.
+  // These fields used to be manufactured: overall_score from the option's
+  // position in the list, confidence hard-coded at 0.60, each criterion an
+  // arithmetic nudge of an unrelated health score. On screen those are
+  // indistinguishable from measurements, and an architect can carry them into a
+  // decommissioning business case. Null renders as an em dash (CLAUDE.md).
+  let results = options.map(function(opt) {
     return {
       option_id: opt.id,
       option_name: opt.name,
-      overall_score: Math.max(20, 85 - (idx * 10)),
-      confidence_score: 0.60,
+      overall_score: null,
+      confidence_score: null,
       criteria_scores: {
-        cost_efficiency: Math.max(10, Math.min(100, costScore + (idx === 0 ? 10 : -5 * idx))),
-        technical_fit: Math.max(10, Math.min(100, techScore + (idx === 0 ? 15 : -5 * idx))),
-        risk_level: Math.max(10, Math.min(100, vendorScore + (idx === 0 ? 5 : -5 * idx))),
-        strategic_alignment: Math.max(10, Math.min(100, bizScore + (idx === 0 ? 10 : -3 * idx))),
-        implementation_ease: Math.max(10, Math.min(100, 65 - (idx * 10)))
+        cost_efficiency: null,
+        technical_fit: null,
+        risk_level: null,
+        strategic_alignment: null,
+        implementation_ease: null
       },
+      cost_estimates: {},
       recommendations: [opt.description]
     };
   });
@@ -1126,6 +1078,22 @@ function displayLocalOptionsResults(appId, options, appScore, timeAction) {
 }
 
 function displayFallbackOptions(appId, errorMsg) {
+  // This path renders the error itself and invents no scores or costs. It must
+  // also clear anything left over from an earlier, successful analysis —
+  // a previous app's banner or evidence trail sitting above this error card
+  // reads as though it described the application that just failed.
+  currentAnalysisData = null;
+  currentAppScore = null;
+
+  let staleBanner = document.getElementById('local-estimate-warning');
+  if (staleBanner) staleBanner.remove();
+
+  let evidenceContainer = document.getElementById('options-evidence-trail');
+  if (evidenceContainer) safeHTML(evidenceContainer, '');
+
+  let readinessEl = document.getElementById('options-readiness-indicator');
+  if (readinessEl) safeHTML(readinessEl, '');
+
   document.getElementById('options-results').classList.remove('hidden');
   let appName = document.getElementById('options-app-search')?.value || ('Application #' + appId);
   document.getElementById('options-app-name').textContent = appName;
@@ -1219,7 +1187,7 @@ function displayOptionsResults(appId, analysisData, appScore) {
         });
       } else {
         safeHTML(evidenceContainer,
-          '<p class="text-xs text-muted-foreground py-2">Evidence trail unavailable for estimated analysis. Run a live analysis to see score drivers.</p>'
+          '<p class="text-xs text-muted-foreground py-2">No evidence trail: the options-analysis service was unavailable, so no scores were calculated. Run a live analysis to see score drivers.</p>'
         );
       }
     }
@@ -1239,8 +1207,8 @@ function displayOptionsResults(appId, analysisData, appScore) {
         '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/>' +
       '</svg>' +
       '<div>' +
-        '<p class="text-sm font-medium text-amber-800">Estimated analysis (options API unavailable)</p>' +
-        '<p class="text-xs text-amber-700 mt-0.5">Scores are approximations based on application health data. Run a full analysis for accurate results.</p>' +
+        '<p class="text-sm font-medium text-amber-800">Scores and costs could not be calculated</p>' +
+        '<p class="text-xs text-amber-700 mt-0.5">The options-analysis service was unavailable. The candidate strategies below are listed for reference only — no score, confidence or cost figure was produced for any of them, so those columns show —. Re-run the analysis once the service is available.</p>' +
       '</div>');
     bannerContainer.parentNode.insertBefore(warningBanner, bannerContainer);
   }
@@ -1249,14 +1217,20 @@ function displayOptionsResults(appId, analysisData, appScore) {
   if (analysisData.results && analysisData.results.length > 0) {
     buildOptionsComparisonTable(analysisData.results);
     buildRadarChart(analysisData.results);
+  } else {
+    // No options at all — say so, and clear the previous application's table
+    // and chart rather than leaving them under this application's name.
+    safeHTML(document.getElementById('options-comparison-table'),
+      '<p class="text-sm text-muted-foreground p-2">No options were returned for this application.</p>');
+    buildRadarChart([]);
   }
 }
 
 function buildOptionsComparisonTable(results) {
   let tableEl = document.getElementById('options-comparison-table');
 
-  // Sort by overall score descending
-  let sorted = [].concat(results).sort(function(a, b) { return b.overall_score - a.overall_score; });
+  // Sort by overall score descending; unscored options keep catalogue order at the end
+  let sorted = [].concat(results).sort(compareByOverallScoreDesc);
 
   let html = '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b">';
   html += '<th class="text-left p-2 font-semibold">Rank</th>';
@@ -1267,16 +1241,32 @@ function buildOptionsComparisonTable(results) {
   html += '</tr></thead><tbody>';
 
   sorted.forEach(function(result, idx) {
-    let rankBadge = idx === 0 ? '<span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-500/10 text-emerald-700">Best</span>' :
-                      idx === 1 ? '<span class="px-2 py-0.5 text-xs font-bold rounded bg-primary/10 text-primary">2nd</span>' :
-                      '<span class="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground">' + (idx + 1) + '</span>';
+    // An unscored option has no rank — labelling it "Best" would assert an
+    // ordering that was never computed.
+    let rankBadge;
+    if (!hasScore(result.overall_score)) {
+      rankBadge = '<span class="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground" title="Not ranked — no score calculated">' + SCORE_UNAVAILABLE + '</span>';
+    } else if (idx === 0) {
+      rankBadge = '<span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-500/10 text-emerald-700">Best</span>';
+    } else if (idx === 1) {
+      rankBadge = '<span class="px-2 py-0.5 text-xs font-bold rounded bg-primary/10 text-primary">2nd</span>';
+    } else {
+      rankBadge = '<span class="px-2 py-0.5 text-xs rounded bg-muted text-muted-foreground">' + (idx + 1) + '</span>';
+    }
+
+    let scoreCell = hasScore(result.overall_score)
+      ? '<span class="font-semibold">' + result.overall_score.toFixed(1) + '</span>/100'
+      : '<span class="text-muted-foreground" title="Not calculated">' + SCORE_UNAVAILABLE + '</span>';
+    let confidenceCell = hasScore(result.confidence_score)
+      ? (result.confidence_score * 100).toFixed(0) + '%'
+      : '<span class="text-muted-foreground" title="Not calculated">' + SCORE_UNAVAILABLE + '</span>';
 
     html += '<tr class="border-b hover:bg-muted/30">';
     html += '<td class="p-2">' + rankBadge + '</td>';
     html += '<td class="p-2 font-medium">' + escapeHtml(result.option_name || '') + '</td>';
-    html += '<td class="p-2 text-center"><span class="font-semibold">' + Number(result.overall_score || 0).toFixed(1) + '</span>/100</td>';
-    html += '<td class="p-2 text-center">' + (Number(result.confidence_score || 0) * 100).toFixed(0) + '%</td>';
-    html += '<td class="p-2 text-xs text-muted-foreground">' + escapeHtml(result.recommendations?.[0] || '-') + '</td>';
+    html += '<td class="p-2 text-center">' + scoreCell + '</td>';
+    html += '<td class="p-2 text-center">' + confidenceCell + '</td>';
+    html += '<td class="p-2 text-xs text-muted-foreground">' + escapeHtml(result.recommendations?.[0] || SCORE_UNAVAILABLE) + '</td>';
     html += '</tr>';
   });
 
@@ -1285,24 +1275,33 @@ function buildOptionsComparisonTable(results) {
 }
 
 function buildRadarChart(results) {
-  // Guard: need at least one result with criteria_scores
-  if (!results || results.length === 0 || !results[0].criteria_scores) {
-    console.warn('buildRadarChart: No results or missing criteria_scores');
+  // Only options that actually carry at least one calculated criterion can be
+  // plotted. A null criterion is not a zero, so it is never given a point.
+  let plottable = (results || []).filter(function(result) {
+    let scores = result.criteria_scores;
+    return scores && Object.keys(scores).some(function(key) { return hasScore(scores[key]); });
+  });
+
+  // Destroy any chart left over from a previous analysis before deciding what
+  // to draw — a stale chart alongside fresh results would misattribute figures.
+  if (optionsRadarChart) {
+    optionsRadarChart.destroy();
+    optionsRadarChart = null;
+  }
+
+  if (plottable.length === 0) {
+    // Nothing was calculated. An empty panel is the correct outcome; plotting
+    // zeros would invent five measurements per option.
     return;
   }
 
   let ctx = document.getElementById('options-radar-chart').getContext('2d');
 
-  // Destroy existing chart if present
-  if (optionsRadarChart) {
-    optionsRadarChart.destroy();
-  }
-
-  // Extract criteria labels from first result
-  let criteriaLabels = Object.keys(results[0].criteria_scores);
+  // Extract criteria labels from the first plottable result
+  let criteriaLabels = Object.keys(plottable[0].criteria_scores);
 
   // Build datasets for each option
-  let datasets = results.slice(0, 3).map(function(result, idx) {
+  let datasets = plottable.slice(0, 3).map(function(result, idx) {
     let colors = [
       { bg: 'rgba(139, 92, 246, 0.2)', border: 'rgba(139, 92, 246, 1)' },  // purple
       { bg: 'rgba(59, 130, 246, 0.2)', border: 'rgba(59, 130, 246, 1)' },  // blue
@@ -1311,7 +1310,10 @@ function buildRadarChart(results) {
 
     return {
       label: result.option_name,
-      data: criteriaLabels.map(function(c) { return result.criteria_scores[c]; }),
+      // null leaves a gap in Chart.js rather than drawing a point at the origin
+      data: criteriaLabels.map(function(c) {
+        return hasScore(result.criteria_scores[c]) ? result.criteria_scores[c] : null;
+      }),
       backgroundColor: colors[idx].bg,
       borderColor: colors[idx].border,
       borderWidth: 2,
@@ -1365,7 +1367,11 @@ function generateBusinessCase() {
     showToast('No analysis results available to generate business case', 'warning');
     return;
   }
-  let topOption = results.sort(function(a, b) { return b.overall_score - a.overall_score; })[0];
+  let sortedResults = [].concat(results).sort(compareByOverallScoreDesc);
+  let topOption = sortedResults[0];
+  // When the options service was unavailable nothing carries a score, so the
+  // document must not present a ranking or a recommended option.
+  let isRanked = hasScore(topOption.overall_score);
   let timeAction = currentAppScore?.time_action || 'ANALYZE';
   let overallScore = currentAppScore?.overall_score || 'N/A';
   let appName = document.getElementById('options-app-search')?.value || ('Application #' + appId);
@@ -1376,7 +1382,7 @@ function generateBusinessCase() {
   // Build criteria benefits list
   let criteriaHtml = '';
   if (topOption.criteria_scores) {
-    let entries = Object.entries(topOption.criteria_scores).filter(function(entry) { return entry[1] > 70; });
+    let entries = Object.entries(topOption.criteria_scores).filter(function(entry) { return hasScore(entry[1]) && entry[1] > 70; });
     criteriaHtml = entries.map(function(entry) {
       let label = entry[0].replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
       return '<li>' + label + ': ' + entry[1].toFixed(0) + '%</li>';
@@ -1385,6 +1391,19 @@ function generateBusinessCase() {
   if (!criteriaHtml) {
     criteriaHtml = '<li>Highest overall score among evaluated options</li>';
   }
+
+  // Executive summary and recommendation depend on whether anything was scored.
+  let summaryLine = isRanked
+    ? 'Following analysis of ' + results.length + ' options, the highest-scoring approach is: <strong>' + escapeForDoc(topOption.option_name) + '</strong> with an overall score of ' + topOption.overall_score.toFixed(1) + '/100.'
+    : 'The ' + results.length + ' candidate options listed below were not scored &mdash; the options-analysis service was unavailable &mdash; so this document contains no ranking and no recommended option. Re-generate it once scoring succeeds.';
+
+  let recommendationBlock = isRanked
+    ? '<h3>' + escapeForDoc(topOption.option_name) + '</h3>\n' +
+      '    <p>' + escapeForDoc(topOption.recommendations ? topOption.recommendations[0] : 'Recommended based on multi-criteria analysis') + '</p>\n' +
+      '    <p><strong>Key Benefits:</strong></p>\n' +
+      '    <ul>\n      ' + criteriaHtml + '\n    </ul>'
+    : '<h3>No recommendation available</h3>\n' +
+      '    <p>None of the candidate options was scored, so no option can be recommended over another. The strategies above are the standard candidates for this TIME action and are listed for reference only.</p>';
 
   // Build financial table rows
   let financialRows = '';
@@ -1409,14 +1428,14 @@ function generateBusinessCase() {
     financialRows = '<p>Score data unavailable. Run Options Analysis to populate financial metrics.</p>';
   }
 
-  // Build options table rows
-  let sortedResults = [].concat(results).sort(function(a, b) { return b.overall_score - a.overall_score; });
+  // Build options table rows — an unscored option gets no rank and no figures
   let optionsTableRows = sortedResults.map(function(r, i) {
-    return '<tr' + (i === 0 ? ' style="background: #ecfdf5;"' : '') + '>' +
-      '<td>' + (i + 1) + '</td>' +
+    let ranked = hasScore(r.overall_score);
+    return '<tr' + (i === 0 && ranked ? ' style="background: #ecfdf5;"' : '') + '>' +
+      '<td>' + (ranked ? (i + 1) : '&mdash;') + '</td>' +
       '<td>' + escapeForDoc(r.option_name) + '</td>' +
-      '<td>' + r.overall_score.toFixed(1) + '/100</td>' +
-      '<td>' + (r.confidence_score * 100).toFixed(0) + '%</td>' +
+      '<td>' + (ranked ? r.overall_score.toFixed(1) + '/100' : '&mdash;') + '</td>' +
+      '<td>' + (hasScore(r.confidence_score) ? (r.confidence_score * 100).toFixed(0) + '%' : '&mdash;') + '</td>' +
     '</tr>';
   }).join('');
 
@@ -1480,7 +1499,7 @@ function generateBusinessCase() {
 '  <h2>Executive Summary</h2>\n' +
 '  <div class="section">\n' +
 '    <p>This business case evaluates strategic options for ' + escapeForDoc(appName) + ' based on the TIME framework rationalization assessment. The recommended action is <strong>' + timeAction + '</strong>.</p>\n' +
-'    <p>Following comprehensive analysis of ' + results.length + ' options, the recommended approach is: <strong>' + topOption.option_name + '</strong> with an overall score of ' + topOption.overall_score.toFixed(1) + '/100.</p>\n' +
+'    <p>' + summaryLine + '</p>\n' +
 '  </div>\n' +
 '\n' +
 '  <h2>Options Analysis</h2>\n' +
@@ -1500,12 +1519,7 @@ function generateBusinessCase() {
 '\n' +
 '  <h2>Recommendation</h2>\n' +
 '  <div class="section recommendation">\n' +
-'    <h3>' + escapeForDoc(topOption.option_name) + '</h3>\n' +
-'    <p>' + escapeForDoc(topOption.recommendations ? topOption.recommendations[0] : 'Recommended based on multi-criteria analysis') + '</p>\n' +
-'    <p><strong>Key Benefits:</strong></p>\n' +
-'    <ul>\n' +
-'      ' + criteriaHtml + '\n' +
-'    </ul>\n' +
+'    ' + recommendationBlock + '\n' +
 '  </div>\n' +
 '\n' +
 '  <h2>Financial Analysis</h2>\n' +
@@ -1582,14 +1596,7 @@ async function loadAndRenderEvidenceTrail(appId, containerId) {
   );
 
   try {
-    let response = await fetch(
-      '/applications/rationalization/api/evidence-trail/' + appId,
-      { method: 'GET', credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } }
-    );
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get('/applications/rationalization/api/evidence-trail/' + appId, null, { silent: true });
     if (!data.success) {
       throw new Error(data.error || 'Unknown error');
     }
@@ -1865,14 +1872,7 @@ async function loadPortfolioDependencies(page) {
   if (loadBtn) { loadBtn.disabled = true; }
 
   try {
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('Portfolio dependencies request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get(url, null, { silent: true });
     if (!result.success) {
       throw new Error(result.error || 'Unknown error');
     }
@@ -1902,22 +1902,17 @@ async function loadPortfolioDependencies(page) {
       let appIds = result.apps.map(function(a) { return a.app_id; });
       let readinessBaseUrl = APP_CONFIG.portfolioReadinessUrl || '/applications/rationalization/api/portfolio-readiness';
       let readinessUrl = readinessBaseUrl + '?per_page=100';
-      let rResp = await fetch(readinessUrl, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-      });
-      if (rResp.ok) {
-        let rData = await rResp.json();
-        if (rData.success && rData.apps) {
-          rData.apps.forEach(function(ra) {
-            if (appIds.indexOf(ra.app_id) !== -1) {
-              readinessByAppId[ra.app_id] = ra;
-            }
-          });
-        }
+      let rData = await Platform.fetch.get(readinessUrl, null, { silent: true });
+      if (rData.success && rData.apps) {
+        rData.apps.forEach(function(ra) {
+          if (appIds.indexOf(ra.app_id) !== -1) {
+            readinessByAppId[ra.app_id] = ra;
+          }
+        });
       }
     } catch (_e) {
       // Non-fatal: table renders without readiness column if fetch fails
+      // Platform.fetch already logged the error; we just proceed without readiness data
     }
 
     // Build table rows
@@ -1962,7 +1957,7 @@ async function loadPortfolioDependencies(page) {
           '</td>' +
           '<td class="py-3 px-4">' + readinessBadgeHtml + '</td>' +
           '<td class="py-3 px-4 text-right">' +
-            '<button onclick="loadDependencyImpact(' + app.app_id + ', ' + JSON.stringify(escapeHtml(app.app_name)) + ')" ' +
+            '<button type="button" data-dep-action="impact" data-dep-app-id="' + Number(app.app_id) + '" data-dep-app-name="' + escapeAttr(app.app_name) + '" ' +
               'class="h-7 px-3 rounded-md text-xs font-semibold border border-input bg-background hover:bg-accent transition-colors" ' +
               'aria-label="View dependency detail for ' + escapeHtml(app.app_name) + '">' +
               'Detail' +
@@ -1979,9 +1974,9 @@ async function loadPortfolioDependencies(page) {
       let paginHtml = '<span>Showing ' + (((result.page - 1) * result.per_page) + 1) + '–' + Math.min(result.page * result.per_page, result.total) + ' of ' + result.total + '</span>';
       if (result.total_pages > 1) {
         paginHtml += '<div class="flex gap-1">' +
-          (result.page > 1 ? '<button onclick="loadPortfolioDependencies(' + (result.page - 1) + ')" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Previous page">Prev</button>' : '') +
+          (result.page > 1 ? '<button type="button" data-dep-action="page" data-dep-page="' + (result.page - 1) + '" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Previous page">Prev</button>' : '') +
           '<span class="h-7 px-3 flex items-center text-xs font-semibold">Page ' + result.page + ' / ' + result.total_pages + '</span>' +
-          (result.page < result.total_pages ? '<button onclick="loadPortfolioDependencies(' + (result.page + 1) + ')" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Next page">Next</button>' : '') +
+          (result.page < result.total_pages ? '<button type="button" data-dep-action="page" data-dep-page="' + (result.page + 1) + '" class="h-7 px-3 rounded-md border border-input bg-background text-xs hover:bg-accent transition-colors" aria-label="Next page">Next</button>' : '') +
         '</div>';
       }
       safeHTML(pagination, paginHtml);
@@ -1995,7 +1990,6 @@ async function loadPortfolioDependencies(page) {
   } catch (error) {
     if (elLoading) elLoading.classList.add('hidden');
     if (elEmpty) elEmpty.classList.remove('hidden');
-    console.error('Error loading portfolio dependencies:', error);
     showToast('Failed to load dependency risk data: ' + error.message, 'error');
   } finally {
     if (loadBtn) { loadBtn.disabled = false; }
@@ -2032,14 +2026,7 @@ async function loadDependencyImpact(appId, appName) {
   panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   try {
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('Dependency impact request failed (HTTP ' + response.status + ')');
-    }
-    let result = await response.json();
+    let result = await Platform.fetch.get(url, null, { silent: true });
     if (!result.success) {
       throw new Error(result.error || 'Unknown error');
     }
@@ -2155,7 +2142,6 @@ async function loadDependencyImpact(appId, appName) {
         '<p class="text-sm mt-1">' + escapeHtml(error.message) + '</p>' +
       '</div>'
     );
-    console.error('Error loading dependency impact:', error);
     showToast('Failed to load dependency impact: ' + error.message, 'error');
   }
 }
@@ -2198,12 +2184,7 @@ async function loadReadinessSummary() {
   try {
     APP_CONFIG = window.__APP_CONFIG__ || {};
     let baseUrl = APP_CONFIG.portfolioReadinessUrl || '/applications/rationalization/api/portfolio-readiness';
-    let response = await fetch(baseUrl + '?per_page=1', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) return;
-    let data = await response.json();
+    let data = await Platform.fetch.get(baseUrl + '?per_page=1', null, { silent: true });
     if (!data.success || !data.summary) return;
     let summary = data.summary;
     let readyEl = document.getElementById('readiness-ready-count');
@@ -2420,14 +2401,7 @@ async function loadRetirementSequence() {
   try {
     APP_CONFIG = window.__APP_CONFIG__ || {};
     let url = APP_CONFIG.retirementSequenceUrl || '/applications/rationalization/api/retirement-sequence';
-    let response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get(url, null, { silent: true });
     renderRetirementSequence(data, 'retirement-sequence-container');
   } catch (err) {
     safeHTML(container,
@@ -2436,7 +2410,6 @@ async function loadRetirementSequence() {
         '<p class="text-xs text-muted-foreground mt-1">' + escapeHtml(err.message) + '</p>' +
       '</div>'
     );
-    console.error('loadRetirementSequence error:', err);
   }
 }
 
@@ -2585,17 +2558,8 @@ function renderWorkbenchTable(data, containerId) {
  * @returns {Promise<Object>} — parsed JSON response
  */
 function executeBulkReview(appIds, action, notes) {
-  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content ||
-                    document.cookie.match(/csrf_token=([^;]+)/)?.[1] || '';
-  return fetch('/applications/rationalization/api/bulk-review', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-CSRFToken': csrfToken,
-    },
-    body: JSON.stringify({ app_ids: appIds, action: action, notes: notes || '' }),
-  }).then(function(r) { return r.json(); });
+  return Platform.fetch.post('/applications/rationalization/api/bulk-review', 
+    { app_ids: appIds, action: action, notes: notes || '' });
 }
 
 async function loadPortfolioWorkbench(filters, containerId) {
@@ -2629,14 +2593,7 @@ async function loadPortfolioWorkbench(filters, containerId) {
 
     let baseUrl = (window.__APP_CONFIG__ || {}).portfolioWorkbenchUrl
       || '/applications/rationalization/api/portfolio-workbench';
-    let response = await fetch(baseUrl + '?' + params.toString(), {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRFToken() }
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get(baseUrl + '?' + params.toString(), null, { silent: true });
     if (container) {
       renderWorkbenchTable(data, containerId);
     }
@@ -2650,7 +2607,6 @@ async function loadPortfolioWorkbench(filters, containerId) {
         '</div>'
       );
     }
-    console.error('loadPortfolioWorkbench error:', err);
     return null;
   }
 }
@@ -2671,15 +2627,7 @@ async function loadRoadmapStatus(appId, containerId) {
     );
   }
   try {
-    let response = await fetch('/applications/rationalization/api/roadmap-status/' + encodeURIComponent(appId), {
-      method: 'GET',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      credentials: 'same-origin',
-    });
-    if (!response.ok) {
-      throw new Error('HTTP ' + response.status);
-    }
-    let data = await response.json();
+    let data = await Platform.fetch.get('/applications/rationalization/api/roadmap-status/' + encodeURIComponent(appId), null, { silent: true });
     if (container) {
       renderRoadmapStatus(data, containerId);
     }
@@ -2692,7 +2640,6 @@ async function loadRoadmapStatus(appId, containerId) {
         '</div>'
       );
     }
-    console.error('loadRoadmapStatus error:', err);
     return null;
   }
 }
@@ -2763,17 +2710,8 @@ function renderRoadmapStatus(data, containerId) {
 
       setButtonLoading(submitBtn, true, 'Creating...');
       try {
-        let resp = await fetch('/applications/rationalization/api/create-roadmap-item/' + encodeURIComponent(data._appId || ''), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRFToken': getCSRFToken(),
-          },
-          credentials: 'same-origin',
-          body: JSON.stringify({ owner: owner.trim(), target_date: targetDate || null, notes: notes.trim() || null }),
-        });
-        let result = await resp.json();
+        let result = await Platform.fetch.post('/applications/rationalization/api/create-roadmap-item/' + encodeURIComponent(data._appId || ''), 
+          { owner: owner.trim(), target_date: targetDate || null, notes: notes.trim() || null });
         if (result.success) {
           renderRoadmapStatus({ success: true, has_roadmap_item: true }, containerId);
         } else {
@@ -2783,7 +2721,6 @@ function renderRoadmapStatus(data, containerId) {
       } catch (err) {
         if (errorEl) { errorEl.textContent = 'Network error — please try again.'; errorEl.classList.remove('hidden'); }
         setButtonLoading(submitBtn, false);
-        console.error('createRoadmapItem error:', err);
       }
     });
   }
@@ -2795,10 +2732,7 @@ function loadDecisionDossier(appId, containerId) {
   if (!container) return;
   safeHTML(container, '<p class="text-sm text-muted-foreground">Loading dossier\u2026</p>');
 
-  fetch('/applications/rationalization/api/decision-dossier/' + appId, {
-    headers: { 'X-CSRFToken': getCSRFToken() }
-  })
-    .then(function(r) { return r.json(); })
+  Platform.fetch.get('/applications/rationalization/api/decision-dossier/' + appId, null, { silent: true })
     .then(function(data) {
       if (!data.success) {
         safeHTML(container, '<p class="text-sm text-destructive">Failed to load dossier.</p>');
@@ -2890,8 +2824,7 @@ function loadWorkflowStatus(appId, containerId) {
   let container = document.getElementById(containerId);
   if (!container) return;
   safeHTML(container, '<p class="text-sm text-muted-foreground">Loading workflow status\u2026</p>');
-  fetch('/applications/rationalization/api/workflow-status/' + appId)
-    .then(function(r) { return r.json(); })
+  Platform.fetch.get('/applications/rationalization/api/workflow-status/' + appId, null, { silent: true })
     .then(function(data) {
       if (!data.success) {
         safeHTML(container, '<p class="text-sm text-destructive">Failed to load.</p>');
@@ -2937,26 +2870,26 @@ function renderWorkflowStatus(data, containerId) {
 function executiveSummary() {
   return {
     loaded: false,
+    loadError: false,
     data: {},
 
     load: function() {
       const self = this;
       self.loaded = false;
-      fetch('/applications/rationalization/api/executive-summary', {
-        credentials: 'same-origin',
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
-      })
-        .then(function(r) { return r.json(); })
+      self.loadError = false;
+      Platform.fetch.get('/applications/rationalization/api/executive-summary', null, { silent: true })
         .then(function(json) {
           if (json.success) {
             self.data = json;
             self.loaded = true;
           } else {
-            console.error('Executive summary error:', json.error);
+            self.loadError = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
           }
         })
         .catch(function(err) {
-          console.error('Failed to load executive summary:', err);
+          self.loadError = true;
+          if (window.Platform && Platform.toast) Platform.toast.error('Could not load the executive summary.');
         });
     },
 
@@ -3055,17 +2988,26 @@ function workflowProgress() {
       if (!appId) { this.loaded = false; return; }
       const self = this;
       self.currentAppId = appId;
-      fetch('/applications/rationalization/api/workflow-status/' + appId)
-        .then(function(r) { return r.json(); })
+      Platform.fetch.get('/applications/rationalization/api/workflow-status/' + appId, null, { silent: true })
         .then(function(data) {
-          if (data.success) {
-            self.steps = data.steps;
-            self.completionPct = data.completion_pct;
-            self.currentPhase = data.current_phase;
-            self.loaded = true;
-          }
+          if (!data.success) throw new Error(data.error || 'workflow status unavailable');
+          self.steps = data.steps;
+          self.completionPct = data.completion_pct;
+          self.currentPhase = data.current_phase;
+          self.loaded = true;
         })
-        .catch(function() { self.loaded = false; });
+        .catch(function(e) {
+          /* `loaded = false` is the panel's "Select an application to view workflow
+             progress" state — so a failed load told the user they had not picked an
+             application, for an application they had just picked. */
+          self.steps = [];
+          self.completionPct = null;
+          self.currentPhase = null;
+          self.loaded = false;
+          if (window.Platform && window.Platform.toast) {
+            window.Platform.toast.error('Could not load workflow progress for this application.');
+          }
+        });
     },
 
     init: function() {
@@ -3085,3 +3027,21 @@ function workflowProgress() {
     }
   };
 }
+
+
+// Delegated, because the CSP refuses inline on*= attributes: the dependency-risk
+// table's per-row "Detail" button and the Prev/Next pagination buttons carried
+// onclick="loadDependencyImpact(...)" / onclick="loadPortfolioDependencies(...)"
+// and therefore never fired. Both target functions exist at file scope in this
+// module and hit live read-only endpoints; neither is destructive. Bound once at
+// document level so it survives the table being re-rendered from fetched data.
+document.addEventListener('click', function (event) {
+  var el = event.target.closest('[data-dep-action]');
+  if (!el) return;
+  event.preventDefault();
+  if (el.getAttribute('data-dep-action') === 'impact') {
+    loadDependencyImpact(Number(el.getAttribute('data-dep-app-id')), el.getAttribute('data-dep-app-name'));
+  } else if (el.getAttribute('data-dep-action') === 'page') {
+    loadPortfolioDependencies(Number(el.getAttribute('data-dep-page')));
+  }
+});

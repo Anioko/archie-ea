@@ -26,16 +26,33 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+from flask import g
+
 # ENT-038: session-persistent element context — keyed by stable_session_id (str)
 _SESSION_ELEMENT_CONTEXT: Dict[str, Dict] = {}
 
 # AIF-005: RAG context cache: keyed by domain, value: (context_str, timestamp)
 import time as _time
-_RAG_CONTEXT_CACHE: Dict[str, tuple] = {}
+# AIF-005: RAG context cache, keyed by (ORGANISATION, domain).
+#
+# It was keyed by domain alone. The cached value carries this organisation's
+# architecture principles, PRIOR ARB DECISION TITLES and reference architectures,
+# and it is injected into the AI's system prompt -- so for five minutes after any
+# tenant asked a question in a given business domain, every other tenant asking in
+# that same domain had that tenant's governance history put into their assistant's
+# context, to answer from and cite.
+#
+# Found 30 Aug 2026 by the sweep that followed the same defect in
+# capability_health_service: an unkeyed module-level cache in front of
+# tenant-scoped queries. The RAG query itself is correctly scoped; the cache
+# in front of it threw the scoping away.
+_RAG_CONTEXT_CACHE: Dict[tuple, tuple] = {}
+_RAG_CACHE_MAX_ENTRIES = 512
 _RAG_CACHE_TTL = 300  # 5 minutes
 
 from app import db
 from app.models import User
+from app.utils.tenant_sql import org_scope
 from app.models.vector_embeddings import ChatMessageEmbedding
 
 # Import AI Chat Extension Services
@@ -163,6 +180,37 @@ PERSONA_CONFIGS = {
             "Identify capabilities with lowest automation levels",
         ],
     },
+    # Promoted from charter-only on 31 Aug 2026 alongside data_architect. The
+    # solution blueprint scores a Security Viewpoint as one of its fifteen
+    # sections and no persona owned it. Without an entry here the role resolved
+    # to a default that the picker could not offer -- caught by
+    # test_every_supported_role_has_a_selectable_governed_chat_default.
+    "security_architect": {
+        "name": "Security Architect",
+        "icon": "shield-alert",
+        "color": "violet",
+        "description": "Security posture, controls, and architectural risk",
+        "expertise": [
+            "Threat Modelling",
+            "Security Controls",
+            "Identity and Access",
+            "Regulatory Compliance",
+        ],
+        "focus_areas": [
+            "Security viewpoint",
+            "Control coverage",
+            "Risk register",
+            "Policy conformance",
+        ],
+        "default_domain": "compliance",
+        "context_priority": ["risks", "compliance", "architecture_principles"],
+        "sample_prompts": [
+            "Which applications handle personal data without an owning control?",
+            "Review the security viewpoint of this solution and name the gaps.",
+            "What are the highest-rated open risks in the register right now?",
+            "Which policies are being violated across the current estate?",
+        ],
+    },
     "data_architect": {
         "name": "Data Architect",
         "icon": "database",
@@ -175,7 +223,11 @@ PERSONA_CONFIGS = {
             "Data Integration",
         ],
         "focus_areas": ["Data quality", "Data flows", "Master data", "Data security"],
-        "default_domain": "architecture",
+        # Was "architecture", so the persona named after the data-architecture
+        # context never loaded it: _load_data_architecture_context exists and was
+        # unreachable for this persona, which got the generic architecture
+        # context instead.
+        "default_domain": "data_architecture",
         "context_priority": ["data_flows", "data_models", "governance"],
         "sample_prompts": [
             "Map all data entities for the customer data domain",
@@ -292,7 +344,116 @@ PERSONA_CONFIGS = {
             "Summarize compliance status across regulations",
         ],
     },
+    "arb_member": {
+        "name": "AI ARB Reviewer",
+        "icon": "shield-check",
+        "color": "violet",
+        "description": "Evidence-based Architecture Review Board pre-briefing",
+        "expertise": ["Architecture Governance", "Principle Conformance", "ADR Precedent"],
+        "focus_areas": ["Review readiness", "Conditions", "Governance evidence"],
+        "default_domain": "compliance",
+        "context_priority": ["architecture_principles", "adr_precedent", "arb_pipeline"],
+        "sample_prompts": [
+            "Pre-brief this solution for ARB review and identify the evidence gaps.",
+            "Which approved principles are at risk in this design?",
+            "What conditions would make this submission review-ready?",
+        ],
+    },
+    "portfolio_manager": {
+        "name": "AI Portfolio Steward",
+        "icon": "briefcase-business",
+        "color": "amber",
+        "description": "TIME rationalization and investment portfolio stewardship",
+        "expertise": ["TIME Rationalization", "Investment Planning", "Portfolio Health"],
+        "focus_areas": ["Disposition mix", "Duplication", "Ownership coverage"],
+        "default_domain": "general",
+        "context_priority": ["portfolio_health", "rationalization", "investment_priorities"],
+        "sample_prompts": [
+            "Give me a TIME rationalization verdict for this portfolio.",
+            "Where are our most material application duplication opportunities?",
+            "Which investment decisions need attention this quarter?",
+        ],
+    },
+    "procurement": {
+        "name": "AI Commercial Steward",
+        "icon": "shopping-cart",
+        "color": "amber",
+        "description": "Vendor, contract, licence, and spend stewardship",
+        "expertise": ["Vendor Management", "Contracts", "Licensing", "Spend Analysis"],
+        "focus_areas": ["Renewals", "Compliance", "Commercial risk"],
+        "default_domain": "vendor_intelligence",
+        "context_priority": ["vendors", "contracts", "licences", "spend"],
+        "sample_prompts": [
+            "Which contracts and renewals need action soon?",
+            "Identify licence compliance risks across our vendors.",
+            "Summarize the material commercial risks in this portfolio.",
+        ],
+    },
+    "application_manager": {
+        "name": "AI Application Steward",
+        "icon": "app-window",
+        "color": "green",
+        "description": "Application health, ownership, and modernization support",
+        "expertise": ["Application Health", "Dependencies", "Modernization", "Ownership"],
+        "focus_areas": ["Owned applications", "Lifecycle risk", "Improvement actions"],
+        "default_domain": "technology",
+        "context_priority": ["application_health", "dependencies", "lifecycle"],
+        "sample_prompts": [
+            "Summarize the health and risks of my applications.",
+            "Which dependencies make this application change risky?",
+            "What modernization action should I take next?",
+        ],
+    },
+    "platform_admin": {
+        "name": "AI Platform Administrator",
+        "icon": "settings",
+        "color": "slate",  # token-migration-ok: PERSONA_CONFIGS colour label, not a CSS class
+        "description": "Operational stewardship: users, access, integrations, imports",
+        "expertise": ["User & Role Provisioning", "Tenant Config", "Integrations", "Data Import"],
+        "focus_areas": ["Access", "Configuration", "Import health", "Audit"],
+        "default_domain": "general",
+        "context_priority": ["users", "integrations", "imports", "audit"],
+        "sample_prompts": [
+            "How many users are provisioned and how many are still unconfirmed?",
+            "What is the status of our most recent data import?",
+            "Summarize the current role distribution across the tenant.",
+        ],
+    },
 }
+
+
+# P-02 (persona-naming unification, 18 Aug 2026): four independent persona
+# vocabularies existed — ARCHITECT_PERSONAS (chat charters), VALID_ROLES
+# (User.enterprise_role, the DB-persisted value), PERSONA_CONFIGS (this
+# dict's UI metadata: name/icon/colour/sample prompts) and the domain keys
+# behind /ai-chat/context/<domain>. ARCHITECT_PERSONAS + PERSONA_ALIASES in
+# architect_persona_charters.py is made authoritative here rather than
+# renaming anything: VALID_ROLES is a Postgres column value on existing User
+# rows (renaming a role string would silently orphan any user already saved
+# with the old spelling — see CLAUDE.md's schema-drift warning), so every
+# other vocabulary derives from / validates against ARCHITECT_PERSONAS
+# through PERSONA_ALIASES instead of being renamed to match it byte-for-byte.
+# This assertion is the enforcement: a new PERSONA_CONFIGS entry that isn't
+# either a real charter key or an aliased spelling fails at import time
+# rather than silently drifting into a fifth vocabulary.
+def _validate_persona_configs_against_charters() -> None:
+    from app.modules.ai_chat.services.architect_persona_charters import (
+        ARCHITECT_PERSONAS,
+        PERSONA_ALIASES,
+    )
+
+    known = set(ARCHITECT_PERSONAS) | set(PERSONA_ALIASES)
+    unresolvable = [key for key in PERSONA_CONFIGS if key not in known]
+    if unresolvable:
+        raise ValueError(
+            "PERSONA_CONFIGS has keys not present in the authoritative "
+            f"ARCHITECT_PERSONAS/PERSONA_ALIASES vocabulary: {unresolvable}. "
+            "Add a charter in architect_persona_charters.py or an alias to "
+            "an existing one — do not let PERSONA_CONFIGS drift on its own."
+        )
+
+
+_validate_persona_configs_against_charters()
 
 
 class MultiDomainChatService:
@@ -321,7 +482,7 @@ class MultiDomainChatService:
         self.domains = {
             "general": {
                 "name": "General Assistant",
-                "description": "Multi-Domain AI Assistant",
+                "description": "Ask anything about your architecture — no setup needed",
                 "icon": "bot",
                 "color": "primary",
                 "expertise": ["general_inquiry", "cross_domain_analysis", "comprehensive_support"],
@@ -499,9 +660,20 @@ class MultiDomainChatService:
                     "integration_architect",
                     "systems_architect",
                     "business_architect",
+                    "data_architect",
+                    "security_architect",
+                    "technology_architect",
+                    "capability_architect",
                 ],
                 "analysts": ["business_analyst", "product_analyst"],
                 "executives": ["cio"],
+                "governance": ["arb_member"],
+                "stewards": [
+                    "portfolio_manager",
+                    "procurement",
+                    "application_manager",
+                ],
+                "operations": ["platform_admin"],
             },
         }
 
@@ -684,7 +856,7 @@ class MultiDomainChatService:
                             "success": True,
                             "response": "Capability design workflow cancelled.",
                         }
-            except Exception as _wf_err:  # fabricated-values-ok: workflow guard
+            except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("CAP-014 workflow check: %s", _wf_err)
 
             # AIC-305: Multi-turn ADM design workflow state machine
@@ -965,21 +1137,33 @@ class MultiDomainChatService:
             # AIF-005: Inject organisation RAG context into every prompt
             _rag_ctx = self._get_rag_context(domain)
             if _rag_ctx:
-                domain_context.setdefault("system_prompt", "")
-                domain_context["system_prompt"] = (
-                    f"Organisation Context:\n{_rag_ctx}\n\n"
-                    + domain_context["system_prompt"]
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    fence_untrusted,
                 )
+
+                domain_context.setdefault("system_prompt", "")
+                # Fenced and APPENDED, not prepended. This is organisation-uploaded
+                # document text: it used to enter the system role above the charter
+                # with no boundary, so a planted instruction outranked the
+                # governance rules by position alone.
+                domain_context["system_prompt"] = domain_context[
+                    "system_prompt"
+                ] + fence_untrusted("ORGANISATION DOCUMENT CONTEXT", _rag_ctx)
 
             # RAG-003: Inject semantic search results from pgvector embeddings
             _semantic_ctx = self._get_semantic_context(message, domain)
             if _semantic_ctx:
                 domain_context["semantic_entities"] = _semantic_ctx
-                domain_context.setdefault("system_prompt", "")
-                domain_context["system_prompt"] = (
-                    f"Semantically Relevant Entities (from vector search):\n{_semantic_ctx}\n\n"
-                    + domain_context["system_prompt"]
+                from app.modules.ai_chat.services.architect_persona_charters import (
+                    fence_untrusted,
                 )
+
+                domain_context.setdefault("system_prompt", "")
+                # Same treatment: vector hits carry names and descriptions that
+                # users typed, so they are retrieved content, not platform truth.
+                domain_context["system_prompt"] = domain_context[
+                    "system_prompt"
+                ] + fence_untrusted("SEMANTIC SEARCH RESULTS", _semantic_ctx)
 
             # ENT-078: Context window management — count tokens and trim
             # chat history so downstream prompts stay within provider limits.
@@ -1090,7 +1274,7 @@ class MultiDomainChatService:
                 len(v) for v in domain_context.values() if isinstance(v, list)
             )
             _sampled_items = sum(
-                min(len(v), 50) for v in domain_context.values() if isinstance(v, list)  # fabricated-values-ok: standard cap
+                min(len(v), 50) for v in domain_context.values() if isinstance(v, list)  # fabricated-ok: length cap on real data, computes no value
             )
             response["processing_metadata"] = {
                 "domain": domain,
@@ -1152,7 +1336,7 @@ class MultiDomainChatService:
             if response.get("success") and response.get("response"):
                 try:
                     self._detect_and_handle_decision(message, response["response"], domain_context)
-                except Exception:  # fabricated-values-ok: non-critical decision recording
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass  # Non-critical — don't break chat for decision recording
 
             # ENT-048: Attach executive brief for CIO/executive persona when brief/summary requested
@@ -1352,12 +1536,15 @@ class MultiDomainChatService:
         # First check if this is a confirmation/rejection command
         confirmation = approval_service.check_for_confirmation_command(message)
         if confirmation:
-            if confirmation["action"] == "confirm":
-                # Execute the approved operation
-                return approval_service.approve_and_execute(confirmation["approval_id"])
-            elif confirmation["action"] == "reject":
-                # Reject the pending operation
-                return approval_service.reject_approval(confirmation["approval_id"])
+            # ARCH-020: resolve against this session's pending queue rather than
+            # only handling the numeric-id form. "I approve, proceed" has no id
+            # in it — without this, that phrase fell through everything below and
+            # the CRUD-intent patterns matched nothing either, so nothing
+            # happened and (via a second call from the caller) a duplicate
+            # approval could get queued instead of the pending one being acted on.
+            return approval_service.resolve_natural_confirmation(
+                confirmation, chat_session_id=self._stable_session_id
+            )
         
         # Detect CRUD intent from natural language
         message_lower = message.lower().strip()
@@ -1399,6 +1586,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # Check for application creation patterns
@@ -1438,6 +1626,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # Check for vendor creation patterns
@@ -1475,6 +1664,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
         
         # AIC-303: Check for work package creation patterns
@@ -1527,6 +1717,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         # AIC-303: Check for capability-to-application linking patterns
@@ -1552,6 +1743,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
             elif not apps:
                 return {
@@ -1659,6 +1851,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         # Check for capability mapping / application-to-capability linking
@@ -1692,6 +1885,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload=payload,
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
             elif any(pattern in message_lower for pattern in _MAPPING_TRIGGERS):
                 # Triggered mapping intent but couldn't resolve entities from DB
@@ -1991,6 +2185,7 @@ class MultiDomainChatService:
 
             if detected_entity_type:
                 # Admin gate — check at intent detection time
+                # tenant-scoping-ok: user_id here is the acting/chatting user's own id.
                 actor = User.query.get(user_id) if user_id else None
                 if not actor or not actor.is_admin():
                     return {
@@ -2030,6 +2225,7 @@ class MultiDomainChatService:
                     original_command=message,
                     operation_payload={},
                     summary=summary,
+                    chat_session_id=self._stable_session_id,
                 )
 
         return None
@@ -3146,11 +3342,21 @@ class MultiDomainChatService:
             return {}
 
     def _get_rag_context(self, domain: str) -> str:
-        """Get organisation context from RAG service, cached per domain for 300s."""
+        """Get organisation context from RAG service.
+
+        Cached for 300s per (organisation, domain) -- never per domain alone:
+        the cached text carries this organisation's principles and prior ARB
+        decision titles, and it goes into the AI system prompt.
+        """
         try:
             now = _time.time()
-            cache_key = domain
-            if cache_key in _RAG_CONTEXT_CACHE:
+            from flask import g, has_app_context
+
+            # No tenant means no cache entry: an entry with no owner is exactly
+            # what made this a leak. Outside a request (CLI, scheduler) recompute.
+            _tenant = getattr(g, "current_org_id", None) if has_app_context() else None
+            cache_key = None if _tenant is None else (_tenant, domain)
+            if cache_key is not None and cache_key in _RAG_CONTEXT_CACHE:
                 ctx_str, cached_at = _RAG_CONTEXT_CACHE[cache_key]
                 if now - cached_at < _RAG_CACHE_TTL:
                     return ctx_str
@@ -3171,7 +3377,12 @@ class MultiDomainChatService:
                     r.get("name", str(r)) for r in ctx["reference_architectures"][:3]
                 ))
             ctx_str = "\n".join(parts) if parts else ""
-            _RAG_CONTEXT_CACHE[cache_key] = (ctx_str, now)
+            if cache_key is not None:
+                if len(_RAG_CONTEXT_CACHE) >= _RAG_CACHE_MAX_ENTRIES:
+                    _oldest = min(_RAG_CONTEXT_CACHE,
+                                  key=lambda key: _RAG_CONTEXT_CACHE[key][1])
+                    _RAG_CONTEXT_CACHE.pop(_oldest, None)
+                _RAG_CONTEXT_CACHE[cache_key] = (ctx_str, now)
             return ctx_str
         except Exception as e:
             logger.warning(f"RAG context unavailable for domain {domain}: {e}")
@@ -3336,11 +3547,11 @@ class MultiDomainChatService:
         # Capability Architect gets full 6-phase ArchiMate guided design prompt
         if persona == "capability_architect":
             from app.modules.ai_chat.services.capability_architect_prompts import (
-                CAPABILITY_ARCHITECT_SYSTEM_PROMPT,
+                build_capability_architect_prompt,
             )
 
             arb_context = self._load_arb_history_context(user_id=user_id or 0)
-            base_prompt = CAPABILITY_ARCHITECT_SYSTEM_PROMPT
+            base_prompt = build_capability_architect_prompt()
             if arb_context:
                 base_prompt = base_prompt + "\n\nRecent Governance Context:\n" + arb_context
             return base_prompt
@@ -3514,11 +3725,11 @@ Use enterprise architecture terminology appropriate for this role."""
         t_words = set(item_text.lower().split())
         if not q_words:
             return 0.0
-        return len(q_words & t_words) / len(q_words)  # fabricated-values-ok: normalised ratio
+        return len(q_words & t_words) / len(q_words)  # fabricated-ok: overlap ratio computed from real inputs
 
     @classmethod
     def _sample_context(
-        cls, items: list, query: str, max_items: int = 50  # fabricated-values-ok: token-budget default
+        cls, items: list, query: str, max_items: int = 50  # fabricated-ok: default arg cap, not a measured value
     ) -> list:
         """Return up to max_items items ranked by relevance to query."""
         if not items or len(items) <= max_items:
@@ -3705,7 +3916,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 db.session.rollback()
             except Exception:
                 logger.debug("Failed to rollback session after portfolio health error", exc_info=True)
-            return {"total_applications": 0, "health_distribution": {}}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-app portfolio
 
     def _load_technology_lifecycle_context(self) -> Dict[str, Any]:
         """Load technology lifecycle data from database"""
@@ -3840,7 +4051,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 "vendors": [{"id": v.id, "name": v.name} for v in vendors],
             }
         except Exception:
-            return {"vendor_count": 0, "vendors": []}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-vendor count
 
     def _load_application_health_context(self) -> Dict[str, Any]:
         """Load application health metrics for Application Architects"""
@@ -3873,7 +4084,7 @@ Use enterprise architecture terminology appropriate for this role."""
                 db.session.rollback()
             except Exception:
                 logger.debug("Failed to rollback session after application health error", exc_info=True)
-            return {"application_count": 0, "applications": []}
+            return None  # fabricated-ok: load failed; None signals unavailable, not a measured zero-app count
 
     def _load_dependencies_context(self) -> Dict[str, Any]:
         """Load application dependency data from database"""
@@ -4359,21 +4570,25 @@ Use enterprise architecture terminology appropriate for this role."""
             summary = {
                 "total_elements": total_elements,
                 "by_layer": {layer: count for layer, count in layer_counts if layer},
-                "by_type": [{"type": t, "layer": l, "count": c} for t, l, c in type_counts if t],
+                "by_type": [{"type": t, "layer": item, "count": c} for t, item, c in type_counts if t],
             }
 
-            # Step 2: Load relationship counts per element (batch query)
-            # tenant-filtered: scoped via parent FK (archimate_relationships)
+            # Step 2: Load relationship counts per element (batch query).
+            # Unscoped this counted every organisation's relationships and used
+            # them to rank THIS org's elements for the prompt.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where = " WHERE organization_id = :org" if _org is not None else ""
             rel_counts = {}
             try:
-                rows = _db.session.execute(text(  # tenant-filtered: scoped via parent FK (archimate_relationships)
-                    "SELECT source_id, COUNT(*) FROM archimate_relationships GROUP BY source_id "
+                rows = _db.session.execute(text(
+                    f"SELECT source_id, COUNT(*) FROM archimate_relationships{_org_where} GROUP BY source_id "
                     "UNION ALL "
-                    "SELECT target_id, COUNT(*) FROM archimate_relationships GROUP BY target_id"
-                )).fetchall()
+                    f"SELECT target_id, COUNT(*) FROM archimate_relationships{_org_where} GROUP BY target_id"
+                ), ({"org": _org} if _org is not None else {})).fetchall()
                 for eid, cnt in rows:
                     rel_counts[eid] = rel_counts.get(eid, 0) + cnt
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to database query")
                 pass
 
@@ -4382,7 +4597,21 @@ Use enterprise architecture terminology appropriate for this role."""
             if context_filter and "layer" in context_filter:
                 target_layer = context_filter["layer"]
 
-            elements_query = ArchiMateElement.query
+            # Ordered by name, the same ordering the element list pages already
+            # use (api_elements_search) -- with no explicit order the database
+            # is free to return an organisation's rows in whatever order its
+            # physical layout happens to put them in, which is stable within
+            # one run but not across two (confirmed: the same organisation,
+            # captured the same way, listed a different element in an early
+            # visible slot depending on how much unrelated data existed
+            # elsewhere in the table). LIMIT then a possible re-sort by
+            # rel_counts both need a deterministic starting order to mean
+            # anything -- which 100 (or 200) rows the limit keeps, and which
+            # element wins a tie in the rel_counts sort below, both depend on
+            # it.
+            elements_query = ArchiMateElement.query.order_by(
+                ArchiMateElement.name, ArchiMateElement.id
+            )
             if target_layer:
                 elements_query = elements_query.filter(ArchiMateElement.layer == target_layer)
                 detail_elements = elements_query.limit(200).all()
@@ -4516,15 +4745,25 @@ Use enterprise architecture terminology appropriate for this role."""
 
             capabilities = BusinessCapability.query.all()
 
+            # These counts are joined onto the org-filtered `capabilities` list
+            # above, so leaving them global inflates coverage with other
+            # tenants' rows — the exact failure the raw-SQL tenancy gate exists
+            # for.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_where_m = " WHERE m.organization_id = :org" if _org is not None else ""
+            _org_and = " AND organization_id = :org" if _org is not None else ""
+            _org_params = {"org": _org} if _org is not None else {}
+
             # Get application counts per capability
             app_counts = {}
             try:
-                rows = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("""  # tenant-filtered
+                rows = db.session.execute(
+                    text(f"""
                         SELECT m.business_capability_id, COUNT(DISTINCT m.application_component_id) as app_count
-                        FROM application_capability_mapping m
+                        FROM application_capability_mapping m{_org_where_m}
                         GROUP BY m.business_capability_id
-                    """)
+                    """), _org_params
                 ).fetchall()
                 app_counts = {row[0]: row[1] for row in rows}
             except Exception as e:
@@ -4533,13 +4772,13 @@ Use enterprise architecture terminology appropriate for this role."""
             # Batch-load children counts for all capabilities in a single query
             children_counts = {}
             try:
-                children_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (business_capability)
-                    text("""  # tenant-filtered
+                children_rows = db.session.execute(
+                    text(f"""
                         SELECT parent_capability_id, COUNT(*) as child_count
                         FROM business_capability
-                        WHERE parent_capability_id IS NOT NULL
+                        WHERE parent_capability_id IS NOT NULL{_org_and}
                         GROUP BY parent_capability_id
-                    """)
+                    """), _org_params
                 ).fetchall()
                 children_counts = {row[0]: row[1] for row in children_rows}
             except Exception as e:
@@ -4586,7 +4825,7 @@ Use enterprise architecture terminology appropriate for this role."""
             cap_list.sort(key=lambda c: c["investment_priority"], reverse=True)
             priority_caps = [c for c in cap_list[:5] if c["investment_priority"] > 0]
 
-            return {
+            result = {
                 "business_capabilities": cap_list[:60],
                 "total_capabilities": len(cap_list),
                 "covered_capabilities": covered,
@@ -4595,6 +4834,51 @@ Use enterprise architecture terminology appropriate for this role."""
                 "total_applications": total_apps,
                 "priority_investment_areas": priority_caps,
             }
+
+            # Deep-link focus: ?element_id=<id>&context_type=capability. The list
+            # above is sorted by investment priority and cut at 60, so the asked-for
+            # capability could be absent entirely — pull it to the front and label it.
+            focus_id = (context_filter or {}).get("element_id")
+            focus_type = (context_filter or {}).get("context_type")
+            if focus_id and focus_type in ("capability", "business_capability"):
+                focus_cap = None
+                try:
+                    focus_cap = BusinessCapability.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_cap = None
+                if focus_cap is None:
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a capability page (id={focus_id}) "
+                            "but that capability could not be loaded for this organisation. Do "
+                            "NOT assume it is one of the capabilities listed here — say the "
+                            "record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (c for c in cap_list if c.get("id") == focus_cap.id),
+                        {"id": focus_cap.id, "name": focus_cap.name},
+                    )
+                    if entry not in result["business_capabilities"]:
+                        result["business_capabilities"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "capability",
+                        "id": focus_cap.id,
+                        "name": focus_cap.name,
+                        "resolved": True,
+                        "capability": entry,
+                        "_note": (
+                            "The user opened this chat from this capability's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "capabilities below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading capability context: {e}")
             return {"error": str(e)}
@@ -4778,6 +5062,23 @@ Use enterprise architecture terminology appropriate for this role."""
 
             vendors = VendorOrganization.query.limit(50).all()
 
+            # Deep-link focus. vendor_detail.html links here with
+            # ?element_id=<id>&context_type=vendor, and before this the filter was
+            # dropped on the floor: the model got the first 50 vendors with nothing
+            # saying which one the user had open. Load the asked-for vendor first so
+            # it is guaranteed to survive the 30-row slice below.
+            # (docs/known-issues/ai-chat-parameter-effects.md §2)
+            focus_id = (context_filter or {}).get("element_id")
+            focus_wanted = (context_filter or {}).get("context_type") == "vendor" and focus_id
+            focus_vendor = None
+            if focus_wanted:
+                try:
+                    focus_vendor = VendorOrganization.query.get(int(focus_id))
+                except (TypeError, ValueError):
+                    focus_vendor = None
+                if focus_vendor is not None and all(v.id != focus_vendor.id for v in vendors):
+                    vendors.insert(0, focus_vendor)
+
             # Vendor concentration via 3 data paths
             concentration = {}  # vendor_org_id -> set of app_ids
             try:
@@ -4841,7 +5142,7 @@ Use enterprise architecture terminology appropriate for this role."""
                     .all()
                 )
                 product_counts = {vid: cnt for vid, cnt in prod_rows}
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to compute prod_rows")
                 pass
 
@@ -4890,13 +5191,48 @@ Use enterprise architecture terminology appropriate for this role."""
                     vendor_entry["name"], []
                 )
 
-            return {
+            result = {
                 "vendor_organizations": vendor_list[:30],
                 "total_vendors": len(vendor_list),
                 "high_risk_vendors": [v for v in vendor_list if v["concentration_risk"] == "high"],
                 "total_applications_with_vendor": sum(len(s) for s in concentration.values()),
                 "capability_alternatives": self._get_capability_alternative_vendors(),
             }
+
+            if focus_wanted:
+                if focus_vendor is None:
+                    # Say so. Silently returning the generic list would let the
+                    # model answer about a vendor that is not the one asked about.
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_id,
+                        "resolved": False,
+                        "_note": (
+                            f"The user opened this chat from a vendor page (id={focus_id}) "
+                            "but that vendor record could not be loaded. Do NOT assume it is "
+                            "one of the vendors listed here — say the record could not be read."
+                        ),
+                    }
+                else:
+                    entry = next(
+                        (v for v in vendor_list if v.get("id") == focus_vendor.id), None
+                    )
+                    if entry is not None and entry not in result["vendor_organizations"]:
+                        result["vendor_organizations"].insert(0, entry)
+                    result["context_focus"] = {
+                        "type": "vendor",
+                        "id": focus_vendor.id,
+                        "name": focus_vendor.name,
+                        "resolved": True,
+                        "vendor": entry,
+                        "_note": (
+                            "The user opened this chat from this vendor's page. It is the "
+                            "subject of their question unless they say otherwise. The other "
+                            "vendors below are context, not the subject."
+                        ),
+                    }
+
+            return result
         except Exception as e:
             self.logger.error(f"Error loading vendor context: {e}")
             return {"error": str(e)}
@@ -5064,23 +5400,170 @@ Use enterprise architecture terminology appropriate for this role."""
             total_caps = BusinessCapability.query.count()
             total_vendors = VendorOrganization.query.count()
             try:
-                mapped = db.session.execute(  # tenant-filtered: scoped via parent FK (application_capability_mapping)
-                    text("SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping")  # tenant-filtered
+                # ARCH-015: this WAS a raw db.session.execute("SELECT COUNT(DISTINCT
+                # business_capability_id) FROM application_capability_mapping") with a
+                # comment claiming it was "tenant-filtered: scoped via parent FK" — it
+                # was not. Raw SQL bypasses the ORM do_orm_execute tenant-isolation
+                # event entirely (see CLAUDE.md, "Multi-tenancy is implicit"), so this
+                # counted mapped capabilities across EVERY organisation while
+                # total_caps above (an ORM query) was correctly scoped to the current
+                # org. That is exactly how mapped_capabilities: 50 coexisted with
+                # total_capabilities: 0 — the numerator and denominator were computed
+                # over different tenants. application_capability_mapping carries its
+                # own organization_id (app/models/application_capability.py), so add
+                # the predicate explicitly rather than relying on a comment.
+                mapped = db.session.execute(
+                    text(
+                        "SELECT COUNT(DISTINCT business_capability_id) "
+                        "FROM application_capability_mapping "
+                        "WHERE organization_id = :org_id"
+                    ),
+                    {"org_id": getattr(g, "current_org_id", None)},
                 ).scalar() or 0
             except Exception as e:
                 logger.debug(f"Mapped capabilities count skipped: {e}")
-                mapped = 0
+                mapped = None
 
-            ctx["portfolio_summary"] = {
+            # Never inject a summary that is internally impossible (more mapped
+            # capabilities than capabilities that exist, in particular) — per
+            # CLAUDE.md's "never invent data" rule, a figure that fails a basic
+            # sanity check must be omitted (None → the model is told it is
+            # unavailable), never handed to the model as if it were trustworthy.
+            summary = {
                 "total_applications": total_apps,
                 "total_capabilities": total_caps,
                 "total_vendors": total_vendors,
-                "mapped_capabilities": int(mapped),
-                "capability_gaps": max(0, total_caps - int(mapped)),
-                "coverage_percent": round((int(mapped) / total_caps * 100) if total_caps else 0, 1),
+            }
+            if mapped is None or mapped > total_caps or mapped < 0:
+                if mapped is not None:
+                    logger.warning(
+                        "portfolio_summary: mapped_capabilities (%s) exceeds "
+                        "total_capabilities (%s) after tenant-scoping the mapping "
+                        "count — refusing to inject an inconsistent figure.",
+                        mapped, total_caps,
+                    )
+                summary["mapped_capabilities"] = None
+                summary["capability_gaps"] = None
+                summary["coverage_percent"] = None
+            else:
+                summary["mapped_capabilities"] = int(mapped)
+                summary["capability_gaps"] = max(0, total_caps - int(mapped))
+                summary["coverage_percent"] = round((int(mapped) / total_caps * 100) if total_caps else 0, 1)
+
+            ctx["portfolio_summary"] = summary
+
+            # Name some of the estate, not just count it.
+            #
+            # This context is what the DEFAULT domain injects, and it used to be
+            # six integers and a static domain list - roughly 700 characters with
+            # not one application, capability or vendor NAME in it. The assistant
+            # therefore knew the shape of the customer's portfolio and none of its
+            # contents, so anything specific it said had to come from a tool call
+            # or from invention.
+            #
+            # A sample, explicitly labelled as one. The counts above are the
+            # authority on size; these names exist so the model can recognise and
+            # disambiguate what the user refers to ("the Salesforce one") and know
+            # which tool to reach for. Labelling matters: an unlabelled list of 20
+            # of 5,000 applications reads as the portfolio.
+            SAMPLE = 20
+            ctx["portfolio_sample"] = {
+                "_note": (
+                    "A SAMPLE for recognition and disambiguation only, NOT the "
+                    "full portfolio. Use portfolio_summary for totals and the "
+                    "search tools to look anything up."
+                ),
+                "applications": [
+                    {"id": a.id, "name": a.name, "status": a.deployment_status}
+                    for a in ApplicationComponent.query
+                    .order_by(ApplicationComponent.updated_at.desc().nullslast())
+                    .limit(SAMPLE).all()
+                ],
+                "capabilities": [
+                    {"id": c.id, "name": c.name}
+                    for c in BusinessCapability.query
+                    .filter(BusinessCapability.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "vendors": [
+                    {"id": v.id, "name": v.name}
+                    for v in VendorOrganization.query
+                    .filter(VendorOrganization.name.isnot(None))
+                    .limit(SAMPLE).all()
+                ],
+                "showing": SAMPLE,
+                "of_applications": total_apps,
+                "of_capabilities": total_caps,
+                "of_vendors": total_vendors,
             }
         except Exception as e:
             logger.debug(f"Cross-domain summary skipped: {e}")
+
+        # Deep-link focus. The general domain is the fallback, so it receives every
+        # deep link that carries no `domain` — archimate/composer.html sends
+        # ?element_id=<id>&context_type=solution with no domain at all. Without this
+        # the id was discarded and the model saw only a 20-row sample that need not
+        # contain the record the user was looking at.
+        focus_id = (context_filter or {}).get("element_id")
+        focus_type = (context_filter or {}).get("context_type")
+        if focus_id and focus_type:
+            try:
+                from app.models.application_portfolio import ApplicationComponent
+                from app.models.business_capabilities import BusinessCapability
+                from app.models.solution_models import Solution
+                from app.models.vendor.vendor_organization import VendorOrganization
+
+                model = {
+                    "application": ApplicationComponent,
+                    "capability": BusinessCapability,
+                    "business_capability": BusinessCapability,
+                    "solution": Solution,
+                    "vendor": VendorOrganization,
+                }.get(str(focus_type).lower())
+
+                record = None
+                if model is not None:
+                    try:
+                        record = model.query.get(int(focus_id))
+                    except (TypeError, ValueError):
+                        record = None
+
+                focus = {"type": focus_type, "id": focus_id, "resolved": record is not None}
+                if record is not None:
+                    focus["name"] = record.name
+                    description = getattr(record, "description", None)
+                    if description:
+                        focus["description"] = description[:500]
+                    focus["_note"] = (
+                        f"The user opened this chat from this {focus_type}'s page. It is the "
+                        "subject of their question unless they say otherwise. The "
+                        "portfolio_sample below is a sample, not the subject."
+                    )
+                elif model is None:
+                    focus["_note"] = (
+                        f"The user arrived from a page of an unrecognised type "
+                        f"('{focus_type}', id={focus_id}), so nothing could be loaded for it. "
+                        "Ask what they are asking about rather than guessing."
+                    )
+                else:
+                    focus["_note"] = (
+                        f"The user opened this chat from a {focus_type} page (id={focus_id}) "
+                        "but that record could not be loaded for this organisation. Do NOT "
+                        "assume it is one of the records sampled below — say the record "
+                        "could not be read."
+                    )
+                ctx["context_focus"] = focus
+            except Exception as e:
+                logger.debug(f"Context focus resolution skipped: {e}")
+                ctx["context_focus"] = {
+                    "type": focus_type,
+                    "id": focus_id,
+                    "resolved": False,
+                    "_note": (
+                        "The record this chat was opened from could not be loaded. Do NOT "
+                        "assume it is one of the records sampled below."
+                    ),
+                }
         return ctx
 
     def _get_capability_crossref(self, context: Dict) -> str:
@@ -5236,7 +5719,7 @@ Use enterprise architecture terminology appropriate for this role."""
                         quality_block += f"  Missing layers: {', '.join(qs['layers_missing'])}\n"
                     if qs['invalid_relationships'] > 0:
                         quality_block += f"  Invalid relationships: {qs['invalid_relationships']} (fix these for better validity)\n"
-                except Exception:  # fabricated-values-ok — optional context enrichment
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — optional context enrichment
                     logger.exception("Failed to operation")
                     pass
 
@@ -5264,7 +5747,7 @@ Use enterprise architecture terminology appropriate for this role."""
                                 rel_lines.append(f"  {src.name} ({src.type}) --{r.type}--> {tgt.name} ({tgt.type})")
                         if rel_lines:
                             relationship_block = "\nRELATIONSHIP CHAIN (what connects to what):\n" + "\n".join(rel_lines) + "\n"
-                except Exception:  # fabricated-values-ok — optional context enrichment
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — optional context enrichment
                     logger.exception("Failed to operation")
                     pass
 
@@ -5320,7 +5803,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "architecture",
-                "response": f"I encountered an error processing your architecture question. Please try again or rephrase your question.",
+                "response": "I encountered an error processing your architecture question. Please try again or rephrase your question.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("architecture_elements", []),
@@ -5391,7 +5874,7 @@ Response should be practical, actionable, and based on current industry standard
             return {
                 "success": False,
                 "domain": "technology",
-                "response": f"I encountered an error processing your technology question. Please try again.",
+                "response": "I encountered an error processing your technology question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("technology_stacks", []),
@@ -5491,7 +5974,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "business_capability",
-                "response": f"I encountered an error processing your capability question. Please try again.",
+                "response": "I encountered an error processing your capability question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("business_capabilities", []),
@@ -5539,12 +6022,12 @@ Instructions:
                     step_data: Dict = {}
                     try:
                         if next_step == "SURFACE_APPS":
-                            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-values-ok: preview cap
+                            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-ok: query threshold and slice of real rows
                         elif next_step == "SUGGEST_VENDORS":
-                            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-values-ok: preview cap
+                            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-ok: slice of real query rows
                         elif next_step == "GENERATE_RECOMMENDATIONS":
                             step_data["summary"] = svc.get_comprehensive_gap_summary()
-                    except Exception as _wf_svc_err:  # fabricated-values-ok: graceful degradation
+                    except Exception as _wf_svc_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         self.logger.warning("Gap workflow service step skipped: %s", _wf_svc_err)
                     wf_state["results"][next_step] = step_data
                     flask_session["_gap_workflow_state"] = wf_state
@@ -5626,7 +6109,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "gap_analysis",
-                "response": f"I encountered an error processing your gap analysis question. Please try again.",
+                "response": "I encountered an error processing your gap analysis question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("capability_gaps", []),
@@ -5732,7 +6215,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "vendor_intelligence",
-                "response": f"I encountered an error processing your vendor question. Please try again.",
+                "response": "I encountered an error processing your vendor question. Please try again.",
                 "error": str(e),
                 "insights": [],
                 "context_used": context.get("vendor_organizations", []),
@@ -5798,7 +6281,7 @@ Instructions:
                     f"{portfolio.get('total_vendors', 0)} vendors\n"
                 )
 
-            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (A.R.C.H.I.E.).
+            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (Entelim).
 The user is searching for information across the organisation's architecture portfolio.
 
 USER SEARCH QUERY: {message}
@@ -5897,7 +6380,7 @@ Instructions:
 
             # Build a system instruction mentioning the attached diagram
             system_instruction = (
-                "You are A.R.C.H.I.E., an AI Architecture Assistant specialising in "
+                "You are Entelim, an AI Architecture Assistant specialising in "
                 "enterprise architecture (TOGAF 9.2, ArchiMate 3.2). "
                 "The user has attached an architecture diagram for analysis. "
                 "Describe the diagram contents, identify architectural elements, "
@@ -6126,7 +6609,7 @@ Instructions:
                     if _apps:
                         blast_radius_block = self._compute_capability_blast_radius(_apps[0])
 
-            prompt = f"""You are A.R.C.H.I.E., an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
+            prompt = f"""You are Entelim, an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
 
 USER QUESTION: {message}
 
@@ -6173,7 +6656,7 @@ Instructions:
             return {
                 "success": False,
                 "domain": "general",
-                "response": f"I encountered an error processing your question. Please try again or rephrase.",
+                "response": "I encountered an error processing your question. Please try again or rephrase.",
                 "error": str(e),
                 "insights": [],
                 "context_used": list(context.keys()) if context else [],
@@ -6334,7 +6817,7 @@ Instructions:
         """Build a side-by-side vendor comparison from DB data."""
         try:
             from sqlalchemy import text, func
-            from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+            from app.models.vendor.vendor_organization import VendorProduct
 
             lines = [f"VENDOR COMPARISON: {vendor_a['name']} vs {vendor_b['name']}"]
             for v_info in [vendor_a, vendor_b]:
@@ -6348,15 +6831,20 @@ Instructions:
                     VendorProduct.vendor_organization_id == vid
                 ).scalar() or 0
 
-                # App coverage via direct FK
-                # tenant-filtered: scoped via parent FK (application_components + vendor_products)
-                app_count = db.session.execute(text(  # tenant-filtered: scoped via parent FK (application_components + vendor_products)
+                # App coverage via direct FK.
+                # This carried "tenant-filtered: scoped via parent FK
+                # (application_components + vendor_products)". That was false -
+                # vendor_products has no organization_id - so it counted EVERY
+                # tenant's applications and handed the total to the assistant as
+                # this organisation's vendor coverage.
+                _org_clause, _org_params = org_scope("ac.")
+                app_count = db.session.execute(text(
                     """
                     SELECT COUNT(DISTINCT ac.id)
                     FROM application_components ac
                     JOIN vendor_products vp ON ac.vendor_product_id = vp.id
                     WHERE vp.vendor_organization_id = :vid
-                """), {"vid": vid}).scalar() or 0
+                """ + _org_clause), {"vid": vid, **_org_params}).scalar() or 0
 
                 # Capability coverage
                 # tenant-filtered: scoped via parent FK (vendor_product_capabilities)
@@ -6413,7 +6901,6 @@ Instructions:
 
             # Create or find a solution to anchor the workflow
             solution_id = (context or {}).get("solution_id")
-            solution_name = target
 
             # Load current state data for the target area
             resolved = self._resolve_entities_from_message(message)
@@ -6717,7 +7204,7 @@ End with: "Type **'next'** to proceed to Step 4: Solution Options."
                     if v:
                         vendor_names.append(f"{v.name} ({count} products)")
                 vendor_data = f"\nAvailable vendors in portfolio: {', '.join(vendor_names)}\n"
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -6868,9 +7355,12 @@ End with: "Type **'next'** to complete the design workflow."
             if not app_id:
                 return ""
 
-            # Find capabilities this app supports
-            # tenant-filtered: scoped via parent FK (business_capability + application_capability_mapping)
-            cap_rows = db.session.execute(text(  # tenant-filtered: scoped via parent FK (business_capability + application_capability_mapping)
+            # Find capabilities this app supports.
+            # tenancy-ok: app_id comes from _resolve_entities_from_message(),
+            # which reads ApplicationComponent.query — a TenantMixin model, so
+            # the do_orm_execute listener has already org-filtered it. Only
+            # capabilities mapped to this org's application are reachable.
+            cap_rows = db.session.execute(text(
                 """
                 SELECT bc.id, bc.name, bc.level, bc.category
                 FROM business_capability bc
@@ -6904,7 +7394,7 @@ End with: "Type **'next'** to complete the design workflow."
                 lines.append("  All supported capabilities have alternative supporting applications.")
 
             # List all supported capabilities
-            lines.append(f"  All supported capabilities:")
+            lines.append("  All supported capabilities:")
             for _, cap_name, cap_level, _ in cap_rows[:15]:
                 lines.append(f"    - {cap_name} (L{cap_level})")
 
@@ -7003,7 +7493,7 @@ End with: "Type **'next'** to complete the design workflow."
             }
         except Exception as e:
             logger.debug("get_usage_analytics failed: %s", e)
-            return {"total_conversations": 0, "total_messages": 0, "active_days": 0, "avg_messages_per_session": 0}
+            raise  # do not fabricate zero analytics; let the route return an honest 500
 
     def get_domain_analytics(self) -> dict:
         """Return message counts grouped by domain from LLMInteraction prompts."""
@@ -7027,7 +7517,7 @@ End with: "Type **'next'** to complete the design workflow."
             }
         except Exception as e:
             logger.debug("get_domain_analytics failed: %s", e)
-            return {"domains": [], "total_domains": 0, "total_messages": 0}
+            raise  # do not fabricate zero analytics; let the route return an honest 500
 
     def get_quality_metrics(self) -> dict:
         """Return AI response quality metrics from LLMInteraction data."""
@@ -7050,10 +7540,21 @@ End with: "Type **'next'** to complete the design workflow."
             feedback_count = 0
             try:
                 from sqlalchemy import text
-                feedback_count = db.session.execute(  # tenant-filtered: scoped via parent FK (ai_chat_feedback)
-                    text("SELECT COUNT(*) FROM ai_chat_feedback")  # tenant-filtered
-                ).scalar() or 0
-            except Exception:  # fabricated-values-ok
+                # Was a bare COUNT(*) over the whole table, marked
+                # "scoped via parent FK" — there is no parent FK. Every tenant
+                # saw the global count. It read as harmless while the table was
+                # empty; the write path is fixed now, so it would not have been.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                if _org is None:
+                    feedback_count = None   # unknown, not zero — see CLAUDE.md
+                else:
+                    feedback_count = db.session.execute(
+                        text("SELECT COUNT(*) FROM ai_chat_feedback "
+                             "WHERE organization_id = :org"),
+                        {"org": _org},
+                    ).scalar() or 0
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
 
@@ -7151,7 +7652,7 @@ End with: "Type **'next'** to complete the design workflow."
             pct_matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', response_text)
             if pct_matches and not contextual_questions:
                 contextual_questions.append("How can we improve these scores? What are the quick wins?")
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -7389,7 +7890,7 @@ End with: "Type **'next'** to complete the design workflow."
             from app.models.models import Principle  # dead-code-ok: conditional import
             from app.models.models import ApplicationComponent  # dead-code-ok: conditional import
 
-            principles = Principle.query.filter_by(enforcement_level="MUST").limit(20).all()  # fabricated-values-ok: top-20 mandatory
+            principles = Principle.query.filter_by(enforcement_level="MUST").limit(20).all()  # fabricated-ok: query row limit on real data
             principles_str = json.dumps(
                 [{"name": p.name, "statement": p.statement, "category": p.category} for p in principles],
                 indent=2,
@@ -7401,7 +7902,7 @@ End with: "Type **'next'** to complete the design workflow."
                     app_obj = ApplicationComponent.query.get(element_id)
                     if app_obj:
                         subject_str = f"NAME: {app_obj.name}\nDESCRIPTION: {app_obj.description or 'n/a'}"
-                except Exception:  # fabricated-values-ok: non-critical element lookup fallback
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to database query")
                     pass
 
@@ -7647,7 +8148,7 @@ End with: "Type **'next'** to complete the design workflow."
         return any(re.search(p, msg_lower) for p in patterns)
 
     def _handle_arb_submission(self, message: str, context: dict = None) -> dict:
-        """Handle ARB submission intent — create ARBReviewItem record for the solution."""
+        """Handle ARB submission intent through the canonical service."""
         import re
         from flask_login import current_user
 
@@ -7662,75 +8163,57 @@ End with: "Type **'next'** to complete the design workflow."
                 "error": "missing_solution_id",
             }
 
-        try:
-            from app import db
-            from app.models.solution_models import Solution
-            from app.models.architecture_review_board import ARBReviewItem
-
-            solution = Solution.query.get(solution_id)
-            if not solution:
-                return {
-                    "success": False,
-                    "response": f"Solution {solution_id} not found.",
-                    "error": "solution_not_found",
-                }
-
-            # Check if already submitted
-            existing = ARBReviewItem.query.filter_by(solution_id=solution_id).first()
-            if existing:
-                return {
-                    "success": True,
-                    "response": (
-                        f"Solution **{solution.name}** is already in ARB review "
-                        f"({existing.review_number})."
-                    ),
-                    "arb_id": existing.id,
-                    "already_submitted": True,
-                }
-
-            # Resolve submitter_id — required column
-            submitter_id = None
-            try:
-                submitter_id = current_user.id if current_user.is_authenticated else None
-            except Exception as _ex:
-                logger.debug(f"_handle_arb_submission: could not read current_user: {_ex}")
-            if submitter_id is None:
-                return {
-                    "success": False,
-                    "response": "You must be logged in to submit a solution to ARB.",
-                    "error": "unauthenticated",
-                }
-
-            review_number = ARBReviewItem.generate_review_number()
-            arb_item = ARBReviewItem(
-                review_number=review_number,
-                title=f"ARB Review — {solution.name}",
-                review_type="solution_design",
-                solution_id=solution_id,
-                submitter_id=submitter_id,
-                status="submitted",
-                submitted_at=datetime.utcnow(),
-            )
-            db.session.add(arb_item)
-            db.session.commit()
-
-            review_url = f"/arb/reviews/{arb_item.id}"
-            return {
-                "success": True,
-                "response": (
-                    f"Solution **{solution.name}** submitted to ARB for review.\n\n"
-                    f"ARB record created: [{review_number}]({review_url})"
-                ),
-                "arb_id": arb_item.id,
-                "review_url": review_url,
-            }
-        except Exception as e:
-            logger.error(f"_handle_arb_submission error: {e}", exc_info=True)
+        if not current_user.is_authenticated:
             return {
                 "success": False,
-                "response": f"Failed to submit to ARB: {str(e)}",
-                "error": str(e),
+                "response": "You must be logged in to submit a solution to ARB.",
+                "error": "unauthenticated",
             }
+
+        workspace_id = (context or {}).get("_trusted_workspace_id")
+        if not workspace_id:
+            return {
+                "success": False,
+                "response": "Open the solution workbench before submitting to ARB.",
+                "error": "trusted_workspace_required",
+                "reason_codes": ["trusted_workspace_required"],
+                "missing_evidence": [{
+                    "code": "trusted_workspace_required",
+                    "action": "Open the solution workbench",
+                }],
+            }
+
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
+
+        result = TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=current_user.id,
+            solution_id=solution_id,
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=False,
+        )
+        if not result.success:
+            return {
+                "success": False,
+                "response": "The solution could not be submitted to ARB. Complete the listed evidence and retry.",
+                "error": result.reason_codes[0] if result.reason_codes else "submission_blocked",
+                "reason_codes": result.reason_codes,
+                "missing_evidence": result.missing_evidence,
+            }
+        review_url = f"/arb/reviews/{result.review_item_id}"
+        return {
+            "success": True,
+            "response": f"ARB submission recorded as **{result.review_number}**.",
+            "arb_id": result.review_item_id,
+            "review_number": result.review_number,
+            "snapshot_id": result.snapshot_id,
+            "review_url": review_url,
+            "already_submitted": result.idempotent,
+            "idempotent": result.idempotent,
+            "review_cycle_id": result.review_cycle_id,
+            "canonical_url": result.canonical_url,
+        }
 
     # ------------------------------------------------------------------
     # A95-036: Capability-driven design intent detection & orchestration
@@ -7784,7 +8267,7 @@ End with: "Type **'next'** to complete the design workflow."
                 try:
                     from app import db as _db
                     _db.session.rollback()
-                except Exception:  # fabricated-values-ok: rollback guard
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to operation")
                     pass
 
@@ -7829,7 +8312,7 @@ End with: "Type **'next'** to complete the design workflow."
             try:
                 from app import db as _db
                 _db.session.rollback()
-            except Exception:  # fabricated-values-ok: rollback guard
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
 
@@ -7878,7 +8361,7 @@ End with: "Type **'next'** to complete the design workflow."
                     ],
                     "accepted_ids": [],
                 }
-        except Exception:  # fabricated-values-ok: session guard
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.exception("Failed to operation")
             pass
 
@@ -7967,7 +8450,7 @@ End with: "Type **'next'** to complete the design workflow."
         elif step == "GENERATE":
             if msg_lower in ("generate", "yes", "proceed", "go"):
                 solution_id = wf.get("solution_id")
-                accepted_ids = wf.get("accepted_ids", [])
+                wf.get("accepted_ids", [])
                 solution_name = wf.get("solution_name", "the solution")
 
                 # Call generation
@@ -8103,7 +8586,7 @@ End with: "Type **'next'** to complete the design workflow."
                     if has_request_context():
                         _wb = flask_session.get("_workbench_workflow_state", {})
                         workspace_id = _wb.get("workspace_id")
-                except Exception:  # fabricated-values-ok: session fallback
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to operation")
                     pass
 
@@ -8147,8 +8630,8 @@ End with: "Type **'next'** to complete the design workflow."
             if "generate roadmap" in msg_lower or "generate plateaus" in msg_lower:
                 if workspace_id:
                     planner = DeliveryPlanningService(kernel, user_id=self.user_id)
-                    wp_result = planner.generate_work_packages(workspace_id, solution_id)
-                    pl_result = planner.generate_plateaus(workspace_id, solution_id)
+                    planner.generate_work_packages(workspace_id, solution_id)
+                    planner.generate_plateaus(workspace_id, solution_id)
                     summary = planner.generate_planner_summary(workspace_id)
                     return {"success": True, "response": summary.get("message", "Roadmap generated.")}
                 return None

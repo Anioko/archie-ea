@@ -11,16 +11,13 @@ Ensures that adversarial review is performed by a SEPARATE agent with:
 This prevents the fundamental bypass: an LLM critiquing its own work.
 """
 
-import json
 import secrets
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Callable
 from datetime import datetime
-from pathlib import Path
 
 from app.services.critique_verification_service import (
     CritiqueVerificationService, 
-    CritiqueSession,
     CritiqueFinding,
     get_critique_service
 )

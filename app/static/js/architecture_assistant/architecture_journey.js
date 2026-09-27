@@ -10,32 +10,28 @@
      * - Always returns parsed JSON
      */
     function _fetch(url, opts) {
-        opts = opts || {};
-        opts.credentials = 'same-origin';
-        if (!opts.headers) opts.headers = {};
-        let csrf = document.querySelector('meta[name=csrf-token]');
-        if (csrf) opts.headers['X-CSRFToken'] = csrf.content;
-        return fetch(url, opts).then(function (r) {
-            if (!r.ok) {
-                return r.json().catch(function () { return {}; }).then(function (body) {
-                    let err = new Error(body.error || ('HTTP ' + r.status));
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                });
+        // Platform.fetch already handles CSRF, JSON serialization, and error throwing.
+        // We preserve the same envelope unwrapping behavior.
+        return Platform.fetch(url, opts).then(function (body) {
+            // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
+            // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
+            if (body && body.success === false) {
+                let err = new Error(body.error || 'Request failed');
+                err.status = 200; // Platform.fetch throws on non-2xx, so this is a 200 response
+                err.body = body;
+                throw err;
             }
-            return r.json().then(function (body) {
-                // Explicit failure envelope: {success: false, error: "..."} with HTTP 200
-                // Treat as a thrown error so callers' .catch() fires — prevents silent empty results.
-                if (body && body.success === false) {
-                    let err = new Error(body.error || 'Request failed');
-                    err.status = r.status;
-                    err.body = body;
-                    throw err;
-                }
-                // Unwrap api_success envelope: {success: true, data: {...}} → inner data
-                return (body && body.data !== undefined) ? body.data : body;
-            });
+            // Unwrap api_success envelope: {success: true, data: {...}} → inner data
+            return (body && body.data !== undefined) ? body.data : body;
+        }).catch(function (e) {
+            // Platform.fetch already threw a structured PlatformError.
+            // We need to preserve the existing error shape for backward compatibility.
+            // The original _fetch attached status and body to the error.
+            // PlatformError has e.status and e.data.
+            const err = new Error(e.message || 'Request failed');
+            err.status = e.status || 0;
+            err.body = e.data || null;
+            throw err;
         });
     }
 
@@ -46,7 +42,9 @@
                 vendorMixins = vendorSuggestionsMixin();
             }
         } catch (e) {
-            console.warn('[Journey] vendorSuggestionsMixin unavailable:', e);
+            // Optional feature probe: vendor_suggestions.js may not be loaded on every
+            // page that includes this journey. Degrading to {} is deliberate — the
+            // journey works fully without vendor suggestions.
         }
         return Object.assign({}, vendorMixins, {
             solutionId: solutionId,
@@ -115,6 +113,12 @@
 
             // Step 8b: Rules (properties referenced by _step8b_rules.html)
             ruleSuggestions: [],
+            // The panel had no way to distinguish "still fetching" from "none
+            // exist" from "the fetch failed" — all three rendered the literal
+            // string "Loading suggestions...", so a hard failure looked like a
+            // request permanently in flight. These two make the states distinct.
+            ruleSuggestionsLoading: false,
+            ruleSuggestionsError: null,
             activeRules: [],
             nlRuleInput: '',
             nlRuleLoading: false,
@@ -332,19 +336,88 @@
 
                 // Check if code has already been generated for this solution
                 // (enables skipping to Step 7 and showing deploy panel)
-                _fetch(API_BASE + '/' + self.solutionId + '/codegen/file-list')
+                // `silent: true` because 404 IS this endpoint's "nothing generated
+                // yet" answer, and Platform.fetch's default handler toasted a bare
+                // "NOT FOUND" at the user before the 404-tolerant .catch() below
+                // ever ran — so every freshly created solution opened its journey
+                // behind two error toasts describing a state that is not an error.
+                // The genuine failures are still reported, by the .catch().
+                _fetch(API_BASE + '/' + self.solutionId + '/codegen/file-list', { silent: true })
                     .then(function (data) {
                         if (data && data.files && data.files.length > 0) {
                             self.hasGeneratedFiles = true;
                             self.codegenResult = { files: data.files, file_count: data.files.length, source: 'prior' };
                         }
-                    }).catch(function () { /* ignore — codegen may not exist yet */ });
+                    }).catch(function (e) {
+                        // 404 IS the "nothing generated yet" answer from this endpoint,
+                        // so that one really is nothing to report. Any other status means
+                        // we could not tell — and hasGeneratedFiles stays false, hiding the
+                        // Step 7 deploy panel exactly as if no code existed.
+                        if (e && e.status === 404) return;
+                        Platform.toast.error(
+                            'Could not check whether code was already generated for this solution. ' +
+                            'The deploy panel stays hidden even if generated code exists — reload to retry.'
+                        );
+                    });
 
                 // Load any existing structured intake data
                 self.loadStructuredIntake();
             },
 
             // ── Step navigation ─────────────────────────────────────────
+
+            /* Are the code-generation steps (7 Generate, 8 Load Data) open?
+             *
+             * journey_v3.html calls this in two places — the stepper's
+             * `locked_steps_expr` and the "Submit to ARB above to unlock code
+             * generation" hint — but nothing ever defined it, so every render of
+             * the journey threw `TypeError: codegenUnlocked is not a function`.
+             * The stepper then received no locked list at all, which is the
+             * opposite of the intended default: an ungoverned solution could walk
+             * straight into Generate.
+             *
+             * The gate is governance, matching the on-screen copy: a solution is
+             * unlocked once it has actually been put in front of the ARB. The
+             * statuses below are exactly those written after a submission
+             * (arb_submission_service, arb_routes, arb_workflow_routes,
+             * architecture_assistant_routes); `draft`/`proposed`/`in_progress`
+             * are the pre-submission states journey_v2_routes treats as active
+             * work. A live submission result in this session counts too, since
+             * the hidden governance-status input was rendered before it happened.
+             *
+             * Already-generated code also unlocks, so returning to a finished
+             * solution does not hide its own output behind a re-submission.
+             */
+            codegenUnlocked: function () {
+                if (this.arbSubmitResult) return true;
+                if (this.codegenResult) return true;
+                if (window.__codegenInit && window.__codegenInit.hasFiles) return true;
+                return [
+                    'arb_review', 'arb_submitted', 'under_review',
+                    'approved', 'conditionally_approved', 'rejected', 'withdrawn',
+                ].indexOf(this.governanceStatus) !== -1;
+            },
+
+            /* The decision points Step 4's card list can actually render.
+             *
+             * `decisionPoints` is written from two sources with two different
+             * shapes: the domain-mode `/reasoning/decisions` payload, whose items
+             * carry an `elements` array, and (in the autopilot chain) the
+             * `/reasoning/detect-gaps` payload, which is aliased straight onto the
+             * same variable and has no `elements` at all. The card template reads
+             * `dp.elements.length` and `dp.elements.map(...)`, so a gap-shaped item
+             * raised `TypeError: map is not a function` — an *uncaught* throw, which
+             * aborts Alpine's render of the whole subtree rather than degrading one
+             * card. Reasoning gaps have their own list higher up the page, so the
+             * honest answer here is to render the items this block is written for
+             * and count only those, never to coerce a missing array to [] and print
+             * a confident "0 elements" for a record that was never measured.
+             */
+            decisionPointCards: function () {
+                return (this.decisionPoints || []).filter(function (d) {
+                    return d && Array.isArray(d.elements);
+                });
+            },
 
             canProceed: function () {
                 // If code has already been generated, allow skipping to any step.
@@ -875,12 +948,23 @@
                 let self = this;
                 return self._ensureWorkbenchUml()
                     .then(function () {
-                        // Best-effort: apply confirmed specs if present; ignore "none confirmed" errors.
+                        // "No confirmed field specs" is a 400 and a perfectly normal
+                        // state — there is nothing to apply, so generation proceeds.
+                        // Every OTHER failure means the architect's confirmed fields
+                        // were NOT written into the UML snapshot, and the code about to
+                        // be generated silently falls back to LLM-invented fields.
                         return _fetch('/solutions/' + self.solutionId + '/codegen/apply-specs', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({})
-                        }).catch(function () { return null; });
+                        }).catch(function (e) {
+                            if (!e || e.status !== 400) {
+                                Platform.toast.error('Could not apply your confirmed field specs: '
+                                    + ((e && e.message) || 'request failed')
+                                    + '. Generation continues, but the generated code uses the inferred fields, not your confirmed ones.');
+                            }
+                            return null;
+                        });
                     })
                     .then(function () {
                         let payload = {
@@ -967,8 +1051,8 @@
                         input.value = value;
                         form.appendChild(input);
                     };
-                    addField('project[title]', data.title || 'A.R.C.H.I.E. Generated App');
-                    addField('project[description]', 'Generated by A.R.C.H.I.E.');
+                    addField('project[title]', data.title || 'Entelim Generated App');
+                    addField('project[description]', 'Generated by Entelim');
                     addField('project[template]', 'node');
                     Object.keys(files).forEach(function(path) {
                         addField('project[files][' + path + ']', files[path]);
@@ -1017,7 +1101,13 @@
                             return !self.structuredIntake.in_scope_apps.some(function (a) { return a.id === app.id; });
                         });
                     })
-                    .catch(function () { self.appSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave appSearchResults empty.
+                        self.appSearchResults = [];
+                        // The existing inline error state is already handled by _fetch's error path.
+                        // We must not swallow the error; rethrow to maintain the rule.
+                        throw e;
+                    });
             },
             addScopeApp: function (app) {
                 this.structuredIntake.in_scope_apps.push({ id: app.id, name: app.name, lifecycle_status: app.lifecycle_status || '' });
@@ -1038,7 +1128,12 @@
                             return !self.structuredIntake.integration_systems.some(function (s) { return s.id === sys.id; });
                         });
                     })
-                    .catch(function () { self.integrationSearchResults = []; });
+                    .catch(function (e) {
+                        // Do NOT invent data; leave integrationSearchResults empty.
+                        self.integrationSearchResults = [];
+                        // Rethrow to avoid swallowing error.
+                        throw e;
+                    });
             },
             addIntegration: function (sys) {
                 this.structuredIntake.integration_systems.push({ id: sys.id, name: sys.name });
@@ -1098,7 +1193,15 @@
                             self.structuredIntakeSaved = true;
                         }
                     })
-                    .catch(function () { /* No existing intake — that's fine */ });
+                    .catch(function (e) {
+                        // "No existing intake" is not this branch — the endpoint answers
+                        // 200 with an empty structure the first time through. A throw means
+                        // the saved intake could not be read, and the blank form the user is
+                        // looking at will overwrite it the moment they save.
+                        self.error = 'Could not load your saved requirements intake: '
+                            + ((e && e.message) || 'request failed')
+                            + '. The form below is blank because it could not be read, not because it is empty — reload before saving.';
+                    });
             },
 
             // ── Step 1: Clarify ─────────────────────────────────────────
@@ -1132,13 +1235,8 @@
                     ps.loading = true;
                     const endpoint = self.entityEndpoints[ps.entityType];
                     if (!endpoint) { ps.loading = false; ps.searchError = 'No search endpoint for this entity type'; return; }
-                    fetch(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', {
-                        credentials: 'same-origin'
-                    })
-                        .then(function (r) {
-                            if (!r.ok) throw new Error('HTTP ' + r.status);
-                            return r.json();
-                        })
+                    // Use Platform.fetch with silent:true to avoid duplicate toasts (inline error is shown via searchError)
+                    Platform.fetch.get(endpoint + encodeURIComponent(ps.query.trim()) + '&limit=10', null, { silent: true })
                         .then(function (data) {
                             // Handle different response formats from various API endpoints
                             let items = [];
@@ -1158,9 +1256,11 @@
                             ps.searchError = '';
                         })
                         .catch(function (e) {
-                            console.error('[Journey] Entity search failed for', endpoint, e);
+                            // Do NOT use console.error. Surface error via searchError.
                             ps.results = [];
                             ps.searchError = 'Search unavailable for this entity type';
+                            // Rethrow to avoid swallowing error.
+                            throw e;
                         })
                         .then(function () { ps.loading = false; });
                 }, 300);
@@ -1225,7 +1325,6 @@
 
                 self.briefUploading = true;
                 self.briefIngestionNotice = '';
-                let csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
                 const briefs = [];
                 let anyIngestionStarted = false;
                 const errors = [];
@@ -1268,19 +1367,20 @@
 
                     const fd = new FormData();
                     fd.append('file', file);
-                    fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
+                    // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
+                    Platform.fetch(API_BASE + '/' + self.solutionId + '/extract-brief', {
                         method: 'POST',
-                        headers: { 'X-CSRFToken': csrf },
-                        body: fd
-                    }).then(function(r) { return r.json(); }).then(function(body) {
+                        body: fd,
+                        silent: true // We handle errors inline via errors array
+                    }).then(function(body) {
                         if (body.success && body.data && body.data.brief) {
                             briefs.push({ name: file.name, text: body.data.brief });
                             if (body.data.ingestion_started) anyIngestionStarted = true;
                         } else {
                             errors.push(file.name + ': ' + ((body.error || body.message) || 'extraction failed'));
                         }
-                    }).catch(function() {
-                        errors.push(file.name + ': network error');
+                    }).catch(function(e) {
+                        errors.push(file.name + ': ' + (e.message || 'network error'));
                     }).finally(function() {
                         processNext();
                     });
@@ -1332,7 +1432,6 @@
                         self.copilotMessage = self.clarifyQuestions.length + ' questions generated. Answer what you can, skip the rest.';
                     }
                 }).catch(function (e) {
-                    console.error('Clarify failed:', e);
                     self.error = 'Failed to get clarifying questions: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Clarification failed. You can retry or skip to generation.';
                 }).then(function () {
@@ -1404,10 +1503,11 @@
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({entities: selectedEntities})
-                        }).catch(function (e) { console.warn('Entity linking failed:', e); });
+                        }).catch(function (e) {
+                            Platform.toast.error('Some selected items could not be linked to this solution.');
+                        });
                     }
                 }).catch(function (e) {
-                    console.error('Clarify answers failed:', e);
                     self.error = 'Failed to enrich brief: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Enrichment failed. You can retry or proceed with the original statement.';
                 }).then(function () {
@@ -1456,7 +1556,6 @@
                     self.computeAcmCoverage();
                     self.copilotMessage = self.capabilities.length + ' capabilities derived. Review the three-track hierarchy for each.';
                 }).catch(function (e) {
-                    console.error('Derive capabilities failed:', e);
                     self.error = 'Failed to derive capabilities: ' + (e.message || 'Unknown error');
                     self.copilotMessage = 'Capability derivation failed. Check your API configuration and retry.';
                 }).then(function () {
@@ -1499,7 +1598,6 @@
                         self.capabilityDetails[idx] = data;
                     })
                     .catch(function (e) {
-                        console.error('Failed to load capability details:', e);
                         self.capabilityDetails[idx] = { error: e.message || 'Failed to load' };
                     });
             },
@@ -1588,7 +1686,6 @@
                 function _onError(msg) {
                     clearInterval(progressTimer);
                     clearInterval(pollTimer);
-                    console.error('Architecture generation failed:', msg);
                     self.llmDegraded.step3 = true;
                     self.error = 'Failed to generate architecture: ' + msg;
                     self.copilotMessage = 'Architecture generation failed. Check API configuration and retry.';
@@ -1675,7 +1772,6 @@
                         self.copilotMessage = 'Relationships updated. ' + _rels.length + ' relationships loaded.';
                     }
                 }).catch(function (e) {
-                    console.error('Rebuild relationships failed:', e);
                     self.copilotMessage = 'Rebuild failed: ' + (e.message || 'Unknown error');
                 }).then(function () {
                     self.rebuildingRelationships = false;
@@ -1756,7 +1852,9 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: proposalIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-reject failed:', e); });
+                    }).catch(function (e) {
+                        Platform.toast.error('Rejecting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1775,7 +1873,9 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-accept all failed:', e); });
+                    }).catch(function (e) {
+                        Platform.toast.error('Accepting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1795,7 +1895,9 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ proposal_ids: allIds })
-                    }).catch(function (e) { console.warn('[Journey] batch-reject failed:', e); });
+                    }).catch(function (e) {
+                        Platform.toast.error('Rejecting these elements did not save — please retry.');
+                    });
                 }
             },
 
@@ -1921,8 +2023,10 @@
                 }).catch(function (e) { self.error = 'Reject failed: ' + (e.message || 'Unknown'); });
             },
 
-            waiveDomainElement: function (code, elementId) {
-                const reason = prompt('Justification for waiving this baseline element:');
+            waiveDomainElement: async function (code, elementId) {
+                const reason = await Platform.modal.promptText('Justification for waiving this baseline element:', {
+                    title: 'Waive baseline element', multiline: true, confirmLabel: 'Waive'
+                });
                 if (!reason) return;
                 let self = this;
                 _fetch(API_BASE + '/' + self.solutionId + '/proposals/' + elementId + '/reject', {
@@ -1974,7 +2078,11 @@
                             if (fresh && fresh.domains && fresh.domains[code]) {
                                 self.domainsData[code] = fresh.domains[code];
                             }
-                        }).catch(function () {});
+                        }).catch(function () {
+                            // The properties were saved above — this only refreshes the
+                            // local view, so a failure here just leaves it stale.
+                            self.copilotMessage += ' (Could not refresh the view — reload the page to see the new values.)';
+                        });
                 }).catch(function (e) {
                     self._domainPropGenerating[code] = false;
                     self.copilotMessage = 'Property generation failed: ' + (e.message || 'Unknown');
@@ -2006,7 +2114,11 @@
                             if (fresh && fresh.domains && fresh.domains[code]) {
                                 self.domainsData[code] = fresh.domains[code];
                             }
-                        }).catch(function () {});
+                        }).catch(function () {
+                            // The defaults were saved above — this only refreshes the
+                            // local view, so a failure here just leaves it stale.
+                            self.copilotMessage += ' (Could not refresh the view — reload the page to see the new values.)';
+                        });
                 }).catch(function (e) {
                     self._domainDefaultApplying[code] = false;
                     self.copilotMessage = 'Fill defaults failed: ' + (e.message || 'Unknown');
@@ -2099,8 +2211,10 @@
                 });
             },
 
-            markDomainNA: function (code) {
-                const justification = prompt('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:');
+            markDomainNA: async function (code) {
+                const justification = await Platform.modal.promptText('Justification for marking ' + this.getDomainName(code) + ' as Not Applicable:', {
+                    title: 'Mark not applicable', multiline: true
+                });
                 if (!justification) return;
                 let self = this;
 
@@ -2145,7 +2259,9 @@
                         updated[archimateType] = data.properties || [];
                         self.propertyTemplates = updated;
                     })
-                    .catch(function (e) { console.error('Failed to load property templates:', e); });
+                    .catch(function (e) {
+                        Platform.toast.error('Could not load property templates for this element.');
+                    });
             },
 
             getElementProperties: function (code, elementId) {
@@ -2250,7 +2366,9 @@
                             return b;
                         });
                     })
-                    .catch(function () {});
+                    .catch(function (e) {
+                        Platform.toast.error('Could not refresh completeness status — try reloading the page.');
+                    });
             },
 
             // ── Step 6: Validate ────────────────────────────────────────
@@ -2270,7 +2388,6 @@
                         self.copilotMessage = 'Validation complete. Overall completeness: ' + overall + '%.';
                     })
                     .catch(function (e) {
-                        console.error('Validation failed:', e);
                         self.error = 'Validation failed: ' + (e.message || 'Unknown error');
                         self.copilotMessage = 'Validation failed. Try again.';
                     })
@@ -2303,8 +2420,15 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(state)
+                    }).then(function () {
+                        self._autosaveFailWarned = false;
                     }).catch(function (e) {
-                        console.error('Auto-save failed:', e);
+                        // Debounced and called on every state change — toast once until
+                        // a save succeeds again, rather than spamming on every keystroke.
+                        if (!self._autosaveFailWarned) {
+                            self._autosaveFailWarned = true;
+                            Platform.toast.error('Your progress could not be auto-saved. Changes may be lost if you leave this page.');
+                        }
                     });
                 }, 500);
             },
@@ -2318,7 +2442,7 @@
                         let state = JSON.parse(stateJson);
                         self._applyState(state);
                     } catch (e) {
-                        console.error('Failed to parse inline state:', e);
+                        Platform.toast.error('Could not restore your previous progress on this page.');
                     }
                 }
                 // Load architecture + proposals from DB
@@ -2367,7 +2491,6 @@
                         self.updateCopilot();
                     })
                     .catch(function (e) {
-                        console.error('State restore failed:', e);
                         self.error = 'Could not restore your previous session. Your work may need to be re-entered. (' + (e.message || 'network error') + ')';
                     });
             },
@@ -2423,7 +2546,7 @@
                         self._refreshCompleteness();
                     })
                     .catch(function (e) {
-                        console.error('Failed to load domains from DB:', e);
+                        Platform.toast.error('Could not load domain data — try reloading the page.');
                     });
             },
 
@@ -2446,7 +2569,7 @@
                         self.copilotMessage = total + ' elements loaded from confirmed domains. Review elements by layer.';
                     })
                     .catch(function (e) {
-                        console.error('Failed to load promoted elements:', e);
+                        Platform.toast.error('Could not load elements for this solution.');
                     })
                     .then(function () {
                         self.architectureLoading = false;
@@ -2473,10 +2596,16 @@
                             headers: { 'Content-Type': 'application/json' }
                         }).then(function (costData) {
                             self.reasoningCostSummary = costData;
-                        }).catch(function () { /* cost estimation is non-fatal */ });
+                        }).catch(function () {
+                            // reasoningCostSummary stays null, so Step 3 and the Step 6
+                            // review render "—" for annual operating cost and 5-year TCO.
+                            // That is the right glyph, but it reads as "no cost data on
+                            // these applications" rather than "we could not work it out".
+                            Platform.toast.error('Cost estimation failed — the cost figures on this step show "—" because they could not be calculated, not because the applications have no cost data.');
+                        });
                     }
                 }).catch(function (e) {
-                    console.warn('[Journey] Landscape mapping unavailable:', e.message || e);
+                    Platform.toast.warning('Portfolio landscape mapping failed — the application landscape on this step is missing because it could not be loaded, not because there are no applications.');
                     // Non-fatal — Step 3 can still show ArchiMate elements without portfolio apps
                 });
             },
@@ -2625,6 +2754,9 @@
 
             // ── Cross-Domain Chain Check ──────────────────────────────────
 
+            // Advisory only — surfaces an informational copilot message when the backend
+            // finds cross-domain dependencies. Nothing depends on this succeeding, so a
+            // failure is deliberately silent rather than interrupting element entry.
             checkCrossDomainForElement: function (domain, archimateType, elementName) {
                 let self = this;
                 _fetch(API_BASE + '/' + self.solutionId + '/cross-domain-check', {
@@ -2642,7 +2774,7 @@
                         const recommended = deps.filter(function (d) { return d.severity === 'recommended'; });
                         self.copilotMessage = deps.length + ' cross-domain dependencies found (' + required.length + ' required, ' + recommended.length + ' recommended).';
                     }
-                }).catch(function () {});
+                }).catch(function () { /* swallow-ok: advisory copilot hint fired on every element the user types; nothing is written and nothing downstream reads it, so a toast per keystroke would be noise with no action behind it */ });
             },
 
             // ── Element name lookup (for relationship display) ──────────
@@ -2671,18 +2803,16 @@
                 let self = this;
                 const sid = this.solutionId;
                 if (!sid) return;
-                fetch('/architecture-journey/' + sid + '/validate-step/' + step, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': window._csrfToken || '' },
-                })
-                .then(function (r) { return r.ok ? r.json() : null; })
+                // Use Platform.fetch with silent:true to avoid duplicate toasts (this is a fire-and-forget probe).
+                Platform.fetch.post('/architecture-journey/' + sid + '/validate-step/' + step, null, { silent: true })
+                .then(function (r) { return r.ok ? r.json() : null; /* swallow-ok: TRAC-001 probe fired automatically on every step transition; a null here adds no warning banner and removes none, so nothing on the step changes, and a toast on each navigation would train the user to ignore toasts */ })
                 .then(function (data) {
                     if (data && data.data && data.data.warnings && data.data.warnings.length > 0) {
                         self.stepWarnings[step] = data.data.warnings;
                         self.stepWarningsDismissed[step] = false;
                     }
                 })
-                .catch(function () { /* non-fatal */ });
+                .catch(function () { /* swallow-ok: TRAC-001 chain-health probe fires on every step transition and only ever adds an advisory amber banner; it writes nothing, and an error toast on each navigation would train the user to ignore toasts */ });
             },
 
             _autoLoadStepData: function (step) {
@@ -2942,7 +3072,7 @@
                 }).then(function () {
                     self.solutionNameSaving = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveSolutionName failed:', e);
+                    Platform.toast.error('The solution name did not save — please retry.');
                     self.solutionNameSaving = false;
                 });
             },
@@ -2956,8 +3086,10 @@
                     self.genomeTemplates = data.templates || [];
                     self.loadingTemplates = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] loadGenomeTemplates failed:', e);
+                    // Do NOT use console.warn. Surface error via existing error state.
                     self.loadingTemplates = false;
+                    // Rethrow to avoid swallowing error.
+                    throw e;
                 });
             },
 
@@ -3000,8 +3132,13 @@
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ codegenCaps: self.codegenCaps })
+                }).then(function () {
+                    self._saveCapsFailWarned = false;
                 }).catch(function (e) {
-                    console.warn('[Journey] saveCapabilities failed:', e);
+                    if (!self._saveCapsFailWarned) {
+                        self._saveCapsFailWarned = true;
+                        Platform.toast.error('Your capability settings did not save — please retry.');
+                    }
                 });
             },
 
@@ -3026,8 +3163,15 @@
                         method: 'PATCH',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ properties: props })
+                    }).then(function () {
+                        self._saveRoadmapPropFailWarned = false;
                     }).catch(function (e) {
-                        console.warn('[Journey] saveRoadmapProp failed:', e);
+                        // Debounced per-field, can fire often while a user edits several
+                        // properties in a row — toast once until a save succeeds again.
+                        if (!self._saveRoadmapPropFailWarned) {
+                            self._saveRoadmapPropFailWarned = true;
+                            Platform.toast.error('This property did not save — please retry.');
+                        }
                     });
                 }, 400);
             },
@@ -3150,12 +3294,24 @@
                         self.critiqueStatus = status;
                         if (status === 'done') {
                             self.critiqueFlags = flags;
-                        } else if (status === 'running' && pollCount < maxPolls) {
-                            pollCount++;
-                            setTimeout(_poll, 8000);
+                        } else if (status === 'running') {
+                            if (pollCount < maxPolls) {
+                                pollCount++;
+                                setTimeout(_poll, 8000);
+                            } else {
+                                // Poll budget exhausted. Without this the status stays
+                                // 'running' and the "Running semantic review..." spinner
+                                // never stops — a timeout rendered as work in progress.
+                                self.critiqueStatus = 'error';
+                                Platform.toast.warning('Semantic review did not finish in time — the architecture is unaffected.');
+                            }
                         }
                     }).catch(function () {
-                        // Non-blocking — fail silently
+                        // The review request failed. Leaving the status at 'running'
+                        // would spin the reviewer panel forever, so a failure would be
+                        // indistinguishable from work still in progress.
+                        self.critiqueStatus = 'error';
+                        Platform.toast.warning('Semantic review could not be completed — the architecture itself is unaffected.');
                     });
                 }
 
@@ -3178,7 +3334,7 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Component spec inference failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate component specs — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3208,7 +3364,7 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Integration contract suggestion failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate integration contracts — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3233,7 +3389,7 @@
                     }
                 })
                 .catch(function (e) {
-                    console.warn('Deployment spec suggestion failed (non-blocking):', e.message || e);
+                    Platform.toast.error('Could not auto-generate deployment specs — you can add them manually.');
                 })
                 .then(function () {
                     self.specInferenceLoading = false;
@@ -3327,7 +3483,6 @@
                     body: JSON.stringify({ problem_text: brief, structured_context: structuredCtx })
                 }).catch(function (err) {
                     // Reasoning endpoint failed — fall back to LLM-based derive
-                    console.warn('[Journey] Reasoning discover failed, falling back to derive:', err);
                     self.copilotMessage = 'Catalog search unavailable. Generating capabilities via AI...';
                     return _fetch(API_BASE + '/' + self.solutionId + '/derive-capabilities', {
                         method: 'POST',
@@ -3421,24 +3576,44 @@
                     _fetch(API_BASE + '/' + self.solutionId + '/reasoning/run-inference', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
-                    }).catch(function () { /* non-fatal */ });
+                    }).catch(function (e) {
+                        // This PERSISTS inferred ArchiMate relationships. Swallowed, the
+                        // architecture the user reviews on the next step is simply missing
+                        // them, with nothing to distinguish that from "none were inferred".
+                        Platform.toast.error('Relationship inference failed: '
+                            + ((e && e.message) || 'request failed')
+                            + '. Inferred relationships are missing from your architecture — re-run this step.');
+                    });
 
-                    // Cost estimation — non-fatal: if it fails the pipeline continues without cost data
+                    // Cost estimation — non-fatal: if it fails the pipeline continues,
+                    // but it continues with NO cost figures, not with zero cost. Returning
+                    // {} here made `|| 0` produce a $0 annual operating cost and a "No cost
+                    // data available for linked applications" message — a statement about
+                    // the portfolio that the failed request had no right to make.
                     return _fetch(API_BASE + '/' + self.solutionId + '/reasoning/estimate-costs', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' }
-                    }).catch(function () { return {}; });  // Spec 3: cost failure must not abort pipeline
+                    }).catch(function (e) {
+                        Platform.toast.error('Cost estimation failed: '
+                            + ((e && e.message) || 'request failed')
+                            + '. The cost figures on this step show "—" because they could not be calculated, not because these applications have no cost data.');
+                        return null;   // Spec 3: cost failure must not abort the pipeline
+                    });
                 }).then(function (costData) {
-                    self.reasoningCostSummary = costData || {};
-                    const annual = (costData && costData.total_annual_operating) || 0;
-                    const tco = (costData && costData.tco_5_year) || 0;
-                    let coverage = (costData && costData.cost_coverage_pct) || 0;
+                    // null, not {}: the templates test `reasoningCostSummary && ...` and
+                    // render an em dash, which is the honest glyph for "not computed".
+                    self.reasoningCostSummary = costData || null;
+                    const annual = costData ? costData.total_annual_operating : null;
+                    const tco = costData ? costData.tco_5_year : null;
+                    const coverage = costData ? costData.cost_coverage_pct : null;
                     if (annual > 0) {
                         self.copilotMessage = 'Cost estimate: $' + Math.round(annual).toLocaleString() +
-                            '/year operating, $' + Math.round(tco).toLocaleString() +
-                            ' 5-year TCO (' + coverage + '% coverage). Detecting gaps...';
-                    } else {
+                            '/year operating, $' + Math.round(tco || 0).toLocaleString() +
+                            ' 5-year TCO (' + (coverage || 0) + '% coverage). Detecting gaps...';
+                    } else if (costData) {
                         self.copilotMessage = 'No cost data available for linked applications. Detecting gaps...';
+                    } else {
+                        self.copilotMessage = 'Cost estimate unavailable — the calculation failed. Detecting gaps...';
                     }
 
                     // Step 3 -> 4: Detect gaps
@@ -3517,7 +3692,6 @@
                         else if (self.currentStep === 5) stepName = 'generate-options / select-recommendation';
                         else if (self.currentStep === 6) stepName = 'populate-blueprint';
                         self.error = 'Pipeline stopped at "' + stepName + '": ' + (e.message || 'Unknown error');
-                        console.error('[Journey] Pipeline error at', stepName, e);
                         self.copilotMessage = 'Pipeline stopped at "' + stepName + '". You can continue manually from the current step.';
                     }
                 });
@@ -3581,17 +3755,12 @@
                 let formData = new FormData();
                 formData.append('file', this.uploadFile);
 
-                let csrf = document.querySelector('meta[name=csrf-token]');
-                let headers = {};
-                if (csrf) headers['X-CSRFToken'] = csrf.content;
-
-                fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
+                // raw-fetch-ok: FormData upload with file requires multipart/form-data, which Platform.fetch cannot handle automatically.
+                Platform.fetch('/solutions/' + this.solutionId + '/codegen/data/upload', {
                     method: 'POST',
                     body: formData,
-                    credentials: 'same-origin',
-                    headers: headers
-                }).then(function (r) { return r.json(); })
-                .then(function (data) {
+                    silent: true // We handle errors inline via uploadError
+                }).then(function (data) {
                     self.uploadLoading = false;
                     if (!data.success) {
                         self.uploadError = data.error || 'Upload failed';
@@ -3706,12 +3875,25 @@
 
             loadRuleSuggestions: function () {
                 let self = this;
+                self.ruleSuggestionsLoading = true;
+                self.ruleSuggestionsError = null;
                 _fetch('/solutions/' + this.solutionId + '/codegen/rules/suggest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 }).then(function (data) {
                     self.ruleSuggestions = data.suggestions || [];
-                }).catch(function () { /* non-critical */ });
+                    self.ruleSuggestionsLoading = false;
+                }).catch(function (e) {
+                    // Leave the list empty rather than inventing a suggestion, and
+                    // record WHY it is empty so the panel can say so. Previously the
+                    // only empty state was the string "Loading suggestions...", so a
+                    // hard failure read as a request still in flight, forever.
+                    self.ruleSuggestions = [];
+                    self.ruleSuggestionsLoading = false;
+                    self.ruleSuggestionsError = (e && e.message) || 'request failed';
+                    Platform.toast.error('Could not load rule suggestions: '
+                        + self.ruleSuggestionsError);
+                });
             },
 
             applyRuleTemplate: function (suggestion) {
@@ -3783,6 +3965,7 @@
 
             recordVerdict: function (scenario, verdict) {
                 let self = this;
+                const previousVerdict = scenario.verdict;
                 scenario.verdict = verdict;
 
                 _fetch('/solutions/' + this.solutionId + '/codegen/test/record-result', {
@@ -3802,7 +3985,15 @@
                         else if (s.verdict === 'partial') partial++;
                     });
                     self.testSummary = { total: self.testScenarios.length, pass: pass, fail: fail, partial: partial };
-                }).catch(function () { /* verdict saved locally even if API fails */ });
+                }).catch(function (e) {
+                    // The verdict badge was flipped optimistically above. Leaving it
+                    // flipped after the write failed is the bug: the user saw the
+                    // scenario marked pass/fail and had no way to know the test result
+                    // was never recorded. Put it back and say so.
+                    scenario.verdict = previousVerdict;
+                    Platform.toast.error('Could not record the "' + verdict + '" verdict for this scenario: '
+                        + ((e && e.message) || 'request failed') + '. Nothing was saved — try again.');
+                });
             },
 
             autoFix: function (scenario) {

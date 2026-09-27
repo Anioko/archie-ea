@@ -1,6 +1,6 @@
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
-from datetime import datetime  # dead-code-ok
 from flask import jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
@@ -37,7 +37,7 @@ def _compute_architecture_completeness(solution_id):
         from app.models.solution_archimate_element import SolutionArchiMateElement
         if SolutionArchiMateElement.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     try:
@@ -48,7 +48,7 @@ def _compute_architecture_completeness(solution_id):
             ).first()
             if row:
                 score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to compute tbl")
         pass
     try:
@@ -59,21 +59,21 @@ def _compute_architecture_completeness(solution_id):
             ).first()
             if row:
                 score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to compute tbl")
         pass
     try:
         from app.models.solution_architect_models import SolutionRequirement
         if SolutionRequirement.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     try:
         from app.models.solution_models import SolutionCapabilityMapping
         if SolutionCapabilityMapping.query.filter_by(solution_id=solution_id).first():
             score += 20
-    except Exception:  # fabricated-values-ok: graceful degradation for completeness scoring
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to operation")
         pass
     return score
@@ -220,7 +220,6 @@ def _match_against_catalog(suggestions, catalog_caps, problem_brief=""):
         dict with 'suggestions' (enriched list) and 'gap_summary' counts
     """
     cap_by_name = {c.name.lower(): c for c in catalog_caps}
-    catalog_names = [c.name for c in catalog_caps]
 
     seen_names = set()
     enriched = []
@@ -920,7 +919,6 @@ def generate_blueprint_section(solution_id, section_id):
 
     try:
         from app.modules.solutions_strategic.v2.services.solution_ai_orchestrator import SolutionAIOrchestrator
-        from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import BlueprintCompletenessService
 
         orch = SolutionAIOrchestrator()
         if section_id in _STRATEGY_SECTIONS:
@@ -1156,7 +1154,7 @@ def recalculate_impact(solution_id: int):
     if solution.created_by_id != current_user.id and not current_user.is_admin:
         return api_error("Forbidden", 403)
     try:
-        from app.models.solution_lifecycle_models import SolutionRisk, SolutionMetric, SolutionTCOItem, SolutionPlateau
+        from app.models.solution_lifecycle_models import SolutionRisk, SolutionMetric, SolutionPlateau
         from app.models.solution_architect_models import SolutionDriver, SolutionGoal, SolutionConstraint, SolutionRequirement
         from app.models.solution_architect_models import SolutionRecommendation
         from app.models.solution_architect_models import SolutionAnalysisSession
@@ -1303,7 +1301,7 @@ def accept_archimate_suggestion(solution_id: int):
     and links it to the solution via SolutionArchiMateElement with
     element_role='ai_derived'.
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
 
     name = (data.get("name") or "").strip()
@@ -1411,6 +1409,7 @@ def accept_archimate_suggestion(solution_id: int):
                     status="open",
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 db.session.flush()
                 auto_linked["requirement"] = {"id": req.id, "name": req.name}
             except Exception as req_err:
@@ -1559,7 +1558,7 @@ def bulk_accept_archimate_suggestions(solution_id: int):
 
     Body: {"suggestions": [{"name":"...", "type":"...", "layer":"...", ...}, ...]}
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
     suggestions = data.get("suggestions", [])
 

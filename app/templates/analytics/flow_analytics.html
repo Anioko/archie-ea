@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Flow Analytics — Throughput &amp; Cycle Time{% endblock %}
@@ -21,12 +22,8 @@
     {% endcall %}
 
     <!-- Page Header + Board Selector -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-3xl font-bold tracking-tight">Flow Analytics</h1>
-            <p class="text-muted-foreground mt-1">Throughput, cycle time, and WIP metrics from Kanban card flow.</p>
-        </div>
-        <div>
+    {% macro _ps_actions() %}
+<div>
             {% if boards %}
             <label for="board-selector" class="sr-only">Select Board</label>
             <select id="board-selector"
@@ -35,7 +32,7 @@
                     @change="loadAll()">
                 {% for board in boards %}
                 <option value="{{ board.id }}"
-                        {% if board.id == selected_board_id %}selected{% endif %}>
+                        {% if selected_board_id is not none and board.id|string == selected_board_id|string %}selected{% endif %}>
                     {{ board.name }}
                 </option>
                 {% endfor %}
@@ -44,7 +41,8 @@
             <span class="text-sm text-muted-foreground">No boards found</span>
             {% endif %}
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Flow Analytics', breadcrumb=[('Home', '/'), ('Flow Analytics', none)], subtitle='Throughput, cycle time, and WIP metrics from Kanban card flow.', actions_caller=_ps_actions) }}
 
     <!-- Metric Summary Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -61,7 +59,7 @@
         <!-- Avg Throughput -->
         <div class="bg-background rounded-lg border shadow-sm p-5">
             <p class="text-sm text-muted-foreground">Avg Throughput / Week</p>
-            <p class="text-3xl font-bold text-emerald-600 mt-1"
+            <p class="text-3xl font-bold text-success mt-1"
                x-text="throughputData ? throughputData.average_throughput : '—'"></p>
             <p class="text-xs text-muted-foreground mt-1">cards / period</p>
         </div>
@@ -69,7 +67,7 @@
         <!-- Avg Lead Time -->
         <div class="bg-background rounded-lg border shadow-sm p-5">
             <p class="text-sm text-muted-foreground">Avg Lead Time</p>
-            <p class="text-3xl font-bold text-amber-600 mt-1"
+            <p class="text-3xl font-bold text-warning mt-1"
                x-text="leadData ? leadData.average_lead_time_days + 'd' : '—'"></p>
             <p class="text-xs text-muted-foreground mt-1">creation → done</p>
         </div>
@@ -94,8 +92,22 @@
         </div>
     </template>
 
+    <!-- Load Failure — a dashed "no data yet" panel and a failed request must
+         not look alike; the cards above already read as em dashes, not zeros. -->
+    <template x-if="loadError">
+        <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-12 text-center">
+            <i data-lucide="alert-triangle" class="h-12 w-12 mx-auto text-destructive mb-4"></i>
+            <h2 class="text-lg font-semibold text-destructive-emphasis">Flow metrics could not be loaded</h2>
+            <p class="text-muted-foreground mt-1 text-sm" x-text="loadError"></p>
+            <button type="button" @click="loadAll()"
+                    class="mt-4 inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                Retry
+            </button>
+        </div>
+    </template>
+
     <!-- Charts Row -->
-    <template x-if="!noData">
+    <template x-if="!noData && !loadError">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
             <!-- Cycle Time Chart -->
@@ -134,7 +146,7 @@
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b">
-                            <th class="text-left py-2 pr-4 font-medium text-muted-foreground">Column</th>
+                            <th class="text-left py-2 pr-4 font-medium text-muted-foreground">Board column</th>
                             <th class="text-right py-2 font-medium text-muted-foreground">Cards</th>
                         </tr>
                     </thead>
@@ -153,7 +165,7 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 function flowAnalytics(initialBoardId) {
     return {
@@ -163,9 +175,11 @@ function flowAnalytics(initialBoardId) {
         leadData: null,
         wipData: null,
         loading: false,
+        loadError: null,
         get noData() {
             return (
                 !this.loading &&
+                !this.loadError &&
                 this.boardId &&
                 this.cycleData !== null &&
                 this.cycleData.data_points.length === 0 &&
@@ -187,22 +201,55 @@ function flowAnalytics(initialBoardId) {
             if (this.boardId) await this.loadAll();
         },
 
+        // `fetch` resolves on 4xx/5xx, so every leg needs its own .ok check —
+        // without one, an error body parses fine and Promise.all "succeeds".
+        // Platform.fetch throws on non‑ok, so we catch and re‑throw with the same
+        // user‑visible message the previous inline .ok check produced.
+        _leg(url, what) {
+            return Platform.fetch(url, { silent: true })
+                .then(d => {
+                    if (d && d.error) throw new Error('Could not load ' + what + ': ' + d.error);
+                    return d;
+                })
+                .catch(error => {
+                    // Platform.fetch throws on non‑ok responses; preserve the
+                    // exact error wording the UI already expects.
+                    if (error.status) {
+                        throw new Error('Could not load ' + what + ' (HTTP ' + error.status + ')');
+                    }
+                    // Network errors etc. keep their original message.
+                    throw error;
+                });
+        },
+
         async loadAll() {
             if (!this.boardId) return;
             this.loading = true;
+            this.loadError = null;
             try {
                 const [cycle, throughput, lead, wip] = await Promise.all([
-                    fetch(`/api/analytics/cycle-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
-                    fetch(`/api/analytics/throughput?board_id=${this.boardId}&granularity=week`).then(r => r.json()),
-                    fetch(`/api/analytics/lead-time?board_id=${this.boardId}&days=90`).then(r => r.json()),
-                    fetch(`/api/analytics/wip?board_id=${this.boardId}`).then(r => r.json()),
+                    this._leg(`/api/analytics/cycle-time?board_id=${this.boardId}&days=90`, 'cycle time'),
+                    this._leg(`/api/analytics/throughput?board_id=${this.boardId}&granularity=week`, 'throughput'),
+                    this._leg(`/api/analytics/lead-time?board_id=${this.boardId}&days=90`, 'lead time'),
+                    this._leg(`/api/analytics/wip?board_id=${this.boardId}`, 'WIP'),
                 ]);
-                this.cycleData = cycle.error ? { average_cycle_time_days: 0, percentile_85: 0, data_points: [] } : cycle;
-                this.throughputData = throughput.error ? { periods: [], average_throughput: 0 } : throughput;
-                this.leadData = lead.error ? { average_lead_time_days: 0, data_points: [] } : lead;
-                this.wipData = wip.error ? { columns: [], total_wip: 0 } : wip;
+                this.cycleData = cycle;
+                this.throughputData = throughput;
+                this.leadData = lead;
+                this.wipData = wip;
                 await this.$nextTick();
                 this._renderCharts();
+            } catch (e) {
+                // null, never 0: a measured zero cycle time and a metric that
+                // failed to load must not render as the same number. null → —.
+                this.cycleData = null;
+                this.throughputData = null;
+                this.leadData = null;
+                this.wipData = null;
+                if (this._cycleChart) { this._cycleChart.destroy(); this._cycleChart = null; }
+                if (this._throughputChart) { this._throughputChart.destroy(); this._throughputChart = null; }
+                this.loadError = e.message || 'Flow metrics could not be loaded.';
+                Platform.toast.error(this.loadError);
             } finally {
                 this.loading = false;
             }

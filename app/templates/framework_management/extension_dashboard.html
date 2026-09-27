@@ -7,7 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title=extension_name|title ~ ' Extension',
+        title=extension_name|title ~ ' Extension', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': extension_name|title ~ ' Extension'}],
         description='Framework extension management and configuration',
         actions=[
             {'text': 'Activate Extension', 'icon': 'power', 'onclick': 'activateExtension()', 'variant': 'default'},
@@ -35,7 +35,7 @@
                     </div>
                     <div class="flex justify-between">
                         <span class="text-muted-foreground">Status:</span>
-                        <span class="px-2 py-1 text-xs rounded-full bg-warning/10 text-warning" id="extensionStatus">Inactive</span>
+                        <span class="px-2 py-1 text-xs rounded-full bg-warning/10 text-warning-emphasis" id="extensionStatus">Inactive</span>
                     </div>
                 </div>
             </div>
@@ -54,7 +54,7 @@
                     <div class="flex justify-between">
                         <span class="text-muted-foreground">User Rating:</span>
                         <div class="flex items-center">
-                            <div id="userRating" class="flex text-warning/80">
+                            <div id="userRating" class="flex text-warning-emphasis/80">
                                 <!-- Stars will be populated by JavaScript -->
                             </div>
                             <span class="text-foreground ml-1" id="ratingValue">Loading...</span>
@@ -104,7 +104,7 @@
         <h3 class="text-lg font-semibold text-foreground mb-4">Configuration</h3>
         <div class="space-y-4">
             <div>
-                <label class="block text-sm font-medium text-muted-foreground mb-1">Extension Mode</label>
+                <label for="extensionMode" class="block text-sm font-medium text-muted-foreground mb-1">Extension Mode</label>
                 <select id="extensionMode" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
                     <option value="basic">Basic Mode</option>
                     <option value="advanced">Advanced Mode</option>
@@ -121,7 +121,7 @@
             </div>
             
             <div>
-                <label class="block text-sm font-medium text-muted-foreground mb-1">Logging Level</label>
+                <label for="loggingLevel" class="block text-sm font-medium text-muted-foreground mb-1">Logging Level</label>
                 <select id="loggingLevel" class="w-full px-3 py-2 border border-border rounded-md bg-background text-foreground">
                     <option value="error">Error Only</option>
                     <option value="warning">Warning</option>
@@ -131,10 +131,10 @@
             </div>
             
             <div class="flex space-x-2">
-                <button @click="saveConfiguration()" class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors" aria-label="Save">
+                <button type="button" @click="saveConfiguration()" class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors" aria-label="Save">
                     <i data-lucide="save" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Save Configuration
                 </button>
-                <button @click="resetConfiguration()" class="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90 transition-colors" aria-label="Reset">
+                <button type="button" @click="resetConfiguration()" class="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90 transition-colors" aria-label="Reset">
                     <i data-lucide="rotate-ccw" class="inline h-4 w-4 mr-2" aria-hidden="true"></i>Reset to Default
                 </button>
             </div>
@@ -296,55 +296,44 @@ function renderFeatures(features) {
 }
 
 function loadActivityLog() {
-    const activities = [
-        { action: 'Extension downloaded', timestamp: '2024-01-13 10:30', user: 'System' },
-        { action: 'Configuration updated', timestamp: '2024-01-12 15:45', user: 'Admin' },
-        { action: 'Extension activated', timestamp: '2024-01-11 09:20', user: 'System' },
-        { action: 'Version checked', timestamp: '2024-01-10 14:15', user: 'System' }
-    ];
-    
+    // This rendered four hardcoded rows - 'Extension downloaded' / 'Admin' /
+    // '2024-01-13 10:30' - which read as a genuine audit trail. Nothing records
+    // extension activity: main.framework_management.extension_dashboard only
+    // renders this template, and no activity endpoint exists. In a governance
+    // product a fabricated audit log is the worst kind of placeholder, because a
+    // reader cannot distinguish it from a record and may cite it in a review.
+    // Show the absence instead, until something real is captured.
     const logContainer = document.getElementById('activityLog');
-    logContainer.innerHTML = '';
-    
-    activities.forEach(activity => {
-        const activityDiv = document.createElement('div');
-        activityDiv.className = 'flex items-center justify-between p-3 bg-muted rounded-md';
-        activityDiv.innerHTML = `
-            <div class="flex items-center space-x-3">
-                <div class="bg-primary/10 p-2 rounded-full">
-                    <i data-lucide="info" class="h-4 w-4 text-primary" aria-hidden="true"></i>
-                </div>
-                <div>
-                    <p class="font-medium text-foreground">${escapeHtml(activity.action)}</p>
-                    <p class="text-sm text-muted-foreground">${escapeHtml(activity.user)}</p>
-                </div>
-            </div>
-            <span class="text-sm text-muted-foreground">${escapeHtml(activity.timestamp)}</span>
-        `;
-        logContainer.appendChild(activityDiv);
-    });
+    if (!logContainer) return;
+    logContainer.innerHTML = `
+        <div class="flex flex-col items-center justify-center py-8 text-center">
+            <i data-lucide="inbox" class="h-10 w-10 text-muted-foreground mb-3" aria-hidden="true"></i>
+            <p class="text-sm font-medium text-foreground">No activity recorded</p>
+            <p class="text-sm text-muted-foreground">Extension activity is not tracked yet.</p>
+        </div>
+    `;
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
 }
 
-function activateExtension() {
+async function activateExtension() {
     // Activating extension
     // API call to activate extension
-    fetch('/framework-management/api/activate-extension', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/framework-management/api/activate-extension', {
             extension_name: extensionName
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            document.getElementById('extensionStatus').textContent = 'Active';
-            document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-success/10 text-success';
-            loadActivityLog();
-        }
-    });
+        }, { silent: true });
+        
+        if (!data.success) throw new Error(data.error || 'Could not activate the extension');
+        document.getElementById('extensionStatus').textContent = 'Active';
+        document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-success/10 text-success';
+        loadActivityLog();
+    } catch (err) {
+        // The badge is left as it was — claiming "Active" for a call that never
+        // landed is worse than the button appearing to do nothing.
+        Platform.toast.error(err.message);
+    }
 }
 
 function configureExtension() {

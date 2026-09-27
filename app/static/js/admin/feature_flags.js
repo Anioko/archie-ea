@@ -21,16 +21,11 @@ function featureFlagsManager() {
             this.toggleStates[id].toggling = true;
             
             try {
-                const response = await fetch(`/admin/feature-flags/${id}/toggle`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-                    }
-                });
+                // Use Platform.fetch.post which automatically injects CSRF token and serializes JSON
+                const data = await Platform.fetch.post(`/admin/feature-flags/${id}/toggle`, undefined, { silent: true });
 
-                const data = await response.json();
-
+                // Platform.fetch throws on non-ok responses, so if we reach here the request succeeded
+                // The response is already parsed JSON
                 if (data.success) {
                     // Update state
                     this.toggleStates[id].enabled = data.enabled;
@@ -44,11 +39,14 @@ function featureFlagsManager() {
                     // Show success message
                     this.showToast(`Feature ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
                 } else {
+                    // The server returned a 200 but with success:false
                     throw new Error(data.error || 'Unknown error');
                 }
             } catch (error) {
                 // Reset loading state
                 this.toggleStates[id].toggling = false;
+                // Platform.fetch already showed a toast unless silent:true, which we set.
+                // We still show our own toast to maintain existing behavior.
                 this.showToast('Error: ' + error.message, 'error');
             }
         },

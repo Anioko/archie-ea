@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% block title %}ArchiMate Model Viewer{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
 
@@ -14,11 +15,6 @@
         transform: translateY(-1px);
         box-shadow: 0 4px 8px rgba(0,0,0,0.1);
     }
-    .layer-business { border-left: 4px solid hsl(var(--primary)); }
-    .layer-application { border-left: 4px solid hsl(var(--success)); }
-    .layer-technology { border-left: 4px solid hsl(var(--warning)); }
-    .layer-motivation { border-left: 4px solid hsl(var(--destructive)); }
-    .layer-strategy { border-left: 4px solid #8b5cf6; }
     .relationship-line {
         stroke: hsl(var(--muted-foreground));
         stroke-width: 2;
@@ -160,8 +156,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const sel = document.getElementById('viewer-viewpoint-select');
         const rolesEl = document.getElementById('viewer-viewpoint-roles');
         if (!sel) return;
-        fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function(r) { return r.json(); })
+        Platform.fetch('/api/archimate/viewpoints', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function(vps) {
                 Object.keys(vps).forEach(function(key) {
                     if (key === 'basic') return;
@@ -182,14 +177,35 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (currentModel) renderElements(currentModel);
                 });
             })
-            .catch(function(e) { console.warn('Could not load viewpoints', e); });
+            .catch(function(e) {
+                // Say the filter is unavailable, next to the filter itself — an
+                // empty dropdown is otherwise indistinguishable from a model that
+                // genuinely has only the default viewpoint.
+                sel.disabled = true;
+                if (rolesEl) {
+                    rolesEl.textContent = 'Viewpoints unavailable';
+                    rolesEl.classList.remove('hidden', 'text-muted-foreground');
+                    rolesEl.classList.add('text-destructive');
+                }
+                // Platform.fetch already shows a toast; we keep the inline error state.
+                // Do not swallow the error; it has been surfaced to the user.
+                // No fallback value is provided.
+            });
     })();
 
     function getModelCache() {
         try {
             return JSON.parse(localStorage.getItem(MODEL_CACHE_KEY) || '{}');
         } catch (e) {
-            console.warn('Failed to read model cache', e);
+            // The stored cache is unreadable. Drop it rather than re-reading a
+            // corrupt value on every call, and say so — otherwise a lost cache
+            // is indistinguishable from never having generated a model.
+            try { localStorage.removeItem(MODEL_CACHE_KEY); } catch (_) { /* swallow-ok: storage is
+                already unreadable -- that is why we are in this catch -- so a failure to remove the
+                key changes nothing, and the warning below already told the user. */ }
+            if (window.Platform && Platform.toast) {
+                Platform.toast.warning('Your locally cached models could not be read and have been cleared.');
+            }
             return {};
         }
     }
@@ -248,9 +264,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Open in Composer
     document.getElementById('btn-open-composer').addEventListener('click', function() {
-        if (currentModel) {
-            openInComposer();
-        }
+        openInComposer();
     });
 
     // Close modal
@@ -268,19 +282,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            const response = await fetch('/api/architecture-assistant/generate-archimate-model', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    capability_id: assistantData.capability_id,
-                    solution_options: assistantData.solution_options,
-                    gap_analysis: assistantData.gap_analysis || {}
-                })
+            const result = await Platform.fetch.post('/api/architecture-assistant/generate-archimate-model', {
+                capability_id: assistantData.capability_id,
+                solution_options: assistantData.solution_options,
+                gap_analysis: assistantData.gap_analysis || {}
             });
-
-            const result = await response.json();
 
             if (result.success) {
                 currentModel = result.model;
@@ -290,7 +296,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 showError(result.error || 'Failed to generate model');
             }
         } catch (error) {
-            console.error('Error generating model:', error);
             showError('Failed to generate ArchiMate model');
         }
     }
@@ -440,23 +445,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
     async function exportModelAsXML() {
         try {
-            const response = await fetch(`/api/architecture-assistant/export-archimate-model/${currentModel.id}`);
-            if (response.ok) {
-                const xml = await response.text();
-                const blob = new Blob([xml], { type: 'application/xml' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${currentModel.name || 'archimate-model'}.xml`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            } else {
-                showError('Failed to export model');
-            }
+            const xml = await Platform.fetch(`/api/architecture-assistant/export-archimate-model/${currentModel.id}`);
+            // Platform.fetch returns parsed body; for a text/xml response it returns a string.
+            const blob = new Blob([xml], { type: 'application/xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentModel.name || 'archimate-model'}.xml`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (error) {
-            console.error('Error exporting model:', error);
             showError('Failed to export model');
         }
     }

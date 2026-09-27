@@ -10,7 +10,7 @@ Reference: ArchiMate 3.2 Specification, Appendix B: Derivation Rules
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # =============================================================================
 # Data Classes and Enumerations
@@ -271,6 +271,18 @@ IMPLEMENTATION_BEHAVIOR_ELEMENTS = ["WorkPackage", "ImplementationEvent"]
 IMPLEMENTATION_PASSIVE_ELEMENTS = ["Deliverable", "Plateau", "Gap"]
 IMPLEMENTATION_ELEMENTS = IMPLEMENTATION_BEHAVIOR_ELEMENTS + IMPLEMENTATION_PASSIVE_ELEMENTS
 
+# Other Elements (ArchiMate 3.2 §4.5)
+# These belong to no layer: they may be combined with elements from any of them.
+OTHER_ELEMENTS = ["Grouping", "Location"]
+
+# Junction (ArchiMate 3.2 §5.4) is a relationship CONNECTOR, not an element -
+# it joins several relationships of the same type. It is listed separately for
+# that reason, and folded into ALL_ELEMENTS only so that a model containing
+# junctions can be validated at all. Before this it was unknown to the matrix,
+# which meant every relationship touching a junction validated as "no valid
+# relationship exists" rather than being checked.
+CONNECTOR_ELEMENTS = ["Junction"]
+
 # All Elements
 ALL_ACTIVE_ELEMENTS = (
     BUSINESS_ACTIVE_ELEMENTS
@@ -299,6 +311,21 @@ ALL_PASSIVE_ELEMENTS = (
 )
 
 ALL_ELEMENTS = (
+    STRATEGY_ELEMENTS
+    + BUSINESS_ELEMENTS
+    + APPLICATION_ELEMENTS
+    + TECHNOLOGY_ELEMENTS
+    + PHYSICAL_ELEMENTS
+    + MOTIVATION_ELEMENTS
+    + IMPLEMENTATION_ELEMENTS
+    + OTHER_ELEMENTS
+    + CONNECTOR_ELEMENTS
+)
+
+# The layered elements only - useful when generating rules that should apply to
+# "every real element" without Grouping/Location/Junction recursing into
+# themselves.
+LAYERED_ELEMENTS = (
     STRATEGY_ELEMENTS
     + BUSINESS_ELEMENTS
     + APPLICATION_ELEMENTS
@@ -1288,6 +1315,113 @@ DERIVATION_STRENGTH_ORDER = [
     "association",
 ]
 
+# =============================================================================
+# Other Elements and Junction — generated rules
+# =============================================================================
+# Generated rather than enumerated: Grouping and Location relate to every one of
+# the ~58 layered element types, and hand-writing 350+ pairs would be unreadable
+# and would drift the moment an element is added. Written with setdefault so an
+# explicit rule above always wins.
+
+
+def _add_rule(source: str, target: str, types: List[str]) -> None:
+    """Register a pair without overwriting an explicitly declared rule."""
+    VALID_RELATIONSHIPS.setdefault((source, target), types)
+
+
+# Grouping (§4.5.1) and Location (§4.5.2) belong to no layer and are meant to be
+# combined freely with elements from all of them. They are encoded permissively
+# on purpose.
+#
+# The temptation is to allow Grouping only composition/aggregation/association,
+# which is what it is FOR. That would be tighter than the specification and
+# would turn a previously-tolerated model into a conformance error - exactly the
+# trade this codebase already rejected once, in the rule that an absent matrix
+# entry warns rather than rejects: "absence of a rule is not evidence of a
+# violation". Over-restricting these two produces false positives on real
+# models, and a validator that cries wolf gets switched off.
+#
+# Specialization is the exception. "This grouping is a kind of business process"
+# is not a statement anyone means, so it is permitted only between two elements
+# of the same other-type.
+_OTHER_ELEMENT_RELATIONSHIPS = [r for r in RELATIONSHIP_TYPES if r != "specialization"]
+
+for _element in LAYERED_ELEMENTS:
+    for _other in OTHER_ELEMENTS:
+        _add_rule(_other, _element, list(_OTHER_ELEMENT_RELATIONSHIPS))
+        _add_rule(_element, _other, list(_OTHER_ELEMENT_RELATIONSHIPS))
+
+# Between two of the same other-type, specialization does mean something.
+for _other in OTHER_ELEMENTS:
+    _add_rule(_other, _other, list(RELATIONSHIP_TYPES))
+_add_rule("Grouping", "Location", list(_OTHER_ELEMENT_RELATIONSHIPS))
+_add_rule("Location", "Grouping", list(_OTHER_ELEMENT_RELATIONSHIPS))
+
+# Junction (§5.4) joins relationships of the SAME type, so it inherits whichever
+# type it is joining. Specialization is excluded - a junction cannot express an
+# is-a. Encoded permissively on purpose: the junction itself carries no
+# semantics, and the relationships either side are validated on their own terms.
+_JUNCTION_RELATIONSHIPS = [r for r in RELATIONSHIP_TYPES if r != "specialization"]
+for _element in LAYERED_ELEMENTS + OTHER_ELEMENTS + CONNECTOR_ELEMENTS:
+    _add_rule("Junction", _element, list(_JUNCTION_RELATIONSHIPS))
+    _add_rule(_element, "Junction", list(_JUNCTION_RELATIONSHIPS))
+
+# Dynamic relationships between ACTIVE STRUCTURE elements.
+#
+# The matrix allowed triggering and flow between behaviour elements
+# (BusinessProcess → BusinessProcess had both) but not between active structure
+# elements: ApplicationComponent → ApplicationComponent offered composition,
+# aggregation, serving, specialization and association only. ArchiMate 3.2 §5.3
+# places no such restriction - a component sending a file to another component
+# is a flow, and it is how almost every real application landscape is drawn.
+#
+# Found by conformance-checking a production solution diagram on import: 33 of
+# its 103 relationships were reported as violations, every one of them an
+# ApplicationComponent --flow--> ApplicationComponent. A conformance report that
+# is wrong a third of the time is a report nobody reads.
+for _source in ALL_ACTIVE_ELEMENTS:
+    for _target in ALL_ACTIVE_ELEMENTS:
+        _allowed = VALID_RELATIONSHIPS.setdefault((_source, _target), [])
+        for _dynamic in ("triggering", "flow"):
+            if _dynamic not in _allowed:
+                _allowed.append(_dynamic)
+
+del _element, _other, _source, _target, _allowed, _dynamic
+
+# Realization may only point at a MORE ABSTRACT entity (ArchiMate 3.2 §5.1.3), so an
+# active structure element is never a valid TARGET. Enforced here as a derived pass over
+# the finished table rather than by editing the offending entries, because the entries
+# are the symptom: the table is authored per-direction, so a pair could be written
+# correctly one way round and wrongly the other. Twelve hand-authored pairs were wrong
+# this way, and every one of them was the reverse of a legitimate rule —
+# ApplicationComponent --realization--> Requirement is valid, Requirement -->
+# ApplicationComponent is not; likewise Capability, WorkPackage, Node and Equipment.
+#
+# Grouping, Location and Junction are exempt. They belong to no layer and are encoded
+# permissively on purpose (see the rationale above); narrowing them here would
+# re-litigate that decision as a side effect of a different fix.
+_CORE_ACTIVE_ELEMENTS = frozenset(
+    BUSINESS_ACTIVE_ELEMENTS
+    + APPLICATION_ACTIVE_ELEMENTS
+    + TECHNOLOGY_ACTIVE_ELEMENTS
+    + PHYSICAL_ACTIVE_ELEMENTS
+)
+
+for _pair, _types in VALID_RELATIONSHIPS.items():
+    if "realization" not in _types:
+        continue
+    _tgt = _pair[1]
+    if _tgt in OTHER_ELEMENTS or _tgt in CONNECTOR_ELEMENTS:
+        continue
+    # Only the four core layers. Strategy's Resource is a legitimate realization
+    # target (a Node realises a Resource) and motivation's Stakeholder is governed by
+    # the motivation rules, so neither is swept up by ALL_ACTIVE_ELEMENTS here.
+    if _tgt in _CORE_ACTIVE_ELEMENTS:
+        _types.remove("realization")
+
+del _pair, _types, _tgt
+
+
 # Relationships that can participate in derivation chains
 DERIVABLE_RELATIONSHIPS = {
     "composition",
@@ -1739,6 +1873,9 @@ __all__ = [
     "IMPLEMENTATION_ELEMENTS",
     "IMPLEMENTATION_BEHAVIOR_ELEMENTS",
     "IMPLEMENTATION_PASSIVE_ELEMENTS",
+    "OTHER_ELEMENTS",
+    "CONNECTOR_ELEMENTS",
+    "LAYERED_ELEMENTS",
     "ALL_ELEMENTS",
     "ALL_ACTIVE_ELEMENTS",
     "ALL_BEHAVIOR_ELEMENTS",

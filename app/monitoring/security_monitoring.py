@@ -5,16 +5,14 @@ Provides comprehensive security event monitoring and detection.
 """
 
 import logging
-import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
-import json
 import hashlib
 
-from flask import current_app, request, session
+from flask import request
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +178,7 @@ class SecurityMonitoringService:
         """Generate unique event ID."""
         timestamp = str(int(datetime.utcnow().timestamp()))
         data = f"{timestamp}_{threading.get_ident()}"
-        return hashlib.md5(data.encode()).hexdigest()[:16]
+        return hashlib.md5(data.encode(), usedforsecurity=False).hexdigest()[:16]
     
     def _check_security_rules(self, event: SecurityEvent):
         """Check security rules against the event."""

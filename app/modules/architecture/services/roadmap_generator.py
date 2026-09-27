@@ -11,21 +11,19 @@ Features:
 - Plateau generation for stable states
 - Progress tracking and reporting
 """
+from app.services.archimate_backbone import sync_archimate_element
 
-import json  # dead-code-ok
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from app import db
 from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable,
     Gap,
-    ImplementationEvent,
     Plateau,
     WorkPackage,
 )
-from app.models.relationship_tables import gap_work_packages, work_package_plateaus  # dead-code-ok
+from app.models.relationship_tables import work_package_plateaus  # dead-code-ok
 from app.services.archimate.gap_resolution_service import GapResolutionService
 from app.services.llm_service import LLMService
 
@@ -218,7 +216,13 @@ class RoadmapGenerator:
         priority_filter: Optional[str],
     ) -> List[Gap]:
         """Retrieve gaps based on filters."""
-        query = Gap.query.filter(Gap.resolution_status.in_(["identified", "planned"]))
+        # D3: exclude interface-register plateau-transition gaps -- they are
+        # not capability gaps and must not be swept into AI-generated
+        # capability roadmaps/work packages.
+        query = Gap.query.filter(
+            Gap.resolution_status.in_(["identified", "planned"]),
+            Gap.gap_kind != "plateau_transition",
+        )
 
         if gap_ids:
             query = query.filter(Gap.id.in_(gap_ids))
@@ -326,6 +330,7 @@ class RoadmapGenerator:
                 architecture_id=work_packages[0].architecture_id if work_packages else None,
             )
             db.session.add(plateau)
+            sync_archimate_element(plateau)
             db.session.flush()
 
             # Link work packages to plateau

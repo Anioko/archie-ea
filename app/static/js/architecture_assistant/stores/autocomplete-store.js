@@ -33,21 +33,12 @@ document.addEventListener('alpine:init', () => {
             this.error = null;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/autocomplete/step`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({
-                        step,
-                        step_data: stepData,
-                        fields_to_complete: fieldsToComplete || null,
-                    }),
-                });
-
-                const json = await resp.json();
-                const data = json.data || json;
+                const response = await Platform.fetch.post(`/api/wizard/${solutionId}/autocomplete/step`, {
+                    step,
+                    step_data: stepData,
+                    fields_to_complete: fieldsToComplete || null,
+                }, { silent: true });
+                const data = response.data || response;
 
                 this.completions = data.completions || [];
                 this.fieldsCompleted = data.fields_completed || 0;
@@ -67,7 +58,6 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Auto-complete failed:', e);
                 this.error = 'Auto-complete unavailable';
                 return null;
             } finally {
@@ -130,14 +120,10 @@ document.addEventListener('alpine:init', () => {
 
             this.loading = true;
             try {
-                await fetch(`/api/wizard/${this.solutionId}/autocomplete/apply`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ accepted_fields: accepted }),
-                });
+                // Platform.fetch throws on non-ok responses, so no explicit check needed.
+                await Platform.fetch.post(`/api/wizard/${this.solutionId}/autocomplete/apply`, {
+                    accepted_fields: accepted,
+                }, { silent: true });
 
                 // Dispatch event so journey component can refresh its state
                 window.dispatchEvent(new CustomEvent('autocomplete-applied', {
@@ -149,11 +135,16 @@ document.addEventListener('alpine:init', () => {
                 }));
 
             } catch (e) {
-                console.error('Failed to apply completions:', e);
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error('Your accepted completions could not be applied — please retry.');
+                } else {
+                    this.error = 'Your accepted completions could not be applied — please retry.';
+                }
+                return;
             } finally {
                 this.loading = false;
-                this.dismiss();
             }
+            this.dismiss();
         },
 
         /**

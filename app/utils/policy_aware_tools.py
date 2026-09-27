@@ -6,12 +6,10 @@ Wraps file operations with systematic policy enforcement
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from app.utils.policy_enforcer import (
     PolicySeverity,
-    PolicyViolation,
-    block_if_violation,
     validate_operation,
 )
 

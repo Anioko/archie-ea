@@ -24,7 +24,7 @@
   {% endcall %}
 
   <!-- Trigger (declarative — no JS required) -->
-  <button data-modal-open="confirm-delete" aria-label="Delete">Delete</button>
+  <button type="button" data-modal-open="confirm-delete" aria-label="Delete">Delete</button>
 
   <!-- Or from JS -->
   <script>Platform.modal.open('confirm-delete', { itemId: 42 });</script>

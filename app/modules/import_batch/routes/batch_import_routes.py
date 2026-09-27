@@ -12,7 +12,6 @@ Includes Server-Sent Events (SSE) for real-time progress streaming.
 import json
 import logging
 import time
-from functools import wraps  # dead-code-ok
 
 from flask import Blueprint, Response, jsonify, request, stream_with_context
 from flask_login import current_user, login_required
@@ -24,11 +23,11 @@ from app.models.audit_log import AuditLog
 from app.models.batch_import import BatchImportJob, BatchJobStatus
 from app.services.batch_approval_service import BatchApprovalService
 from app.services.batch_import_service import BatchImportService
-from app.services.import_audit_service import ImportAuditService, log_file_upload, log_batch_approval  # dead-code-ok
+from app.services.import_audit_service import log_batch_approval  # dead-code-ok
 from app.services.batch_processor_service import BatchProcessorService
 from app.utils.error_sanitizer import ErrorSanitizer, handle_import_error
 from app.utils.file_validation import validate_mime_type, InvalidFileTypeError, get_allowed_extensions_display
-from app.security.import_decorators import with_import_security  # dead-code-ok
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ batch_import_bp = Blueprint(
     "batch_import_api", __name__, url_prefix="/api/batch-import"
 )
 
-from app.utils.import_rate_limiter import import_rate_limit, add_rate_limit_headers  # dead-code-ok
+from app.utils.import_rate_limiter import import_rate_limit  # dead-code-ok
 from app.schemas.api_schemas import BatchImportOptionsSchema, _load_and_validate
 
 
@@ -68,10 +67,30 @@ def create_job():
     - auto_approve_high_confidence: (optional) Boolean
     """
     try:
-        if "file" not in request.files:
-            return jsonify({"success": False, "error": "No file provided"}), 400
+        # DEF-042, Capgemini dry-run: the "Paste Data" tab never sends a
+        # `file` part at all — it posts raw text as the `paste_data` form
+        # field (see app/templates/batch_import/new_import.html) — so this
+        # unconditionally required `file` and every paste-path submission
+        # failed with "No file provided" after the preview and cost estimate
+        # had already rendered (client-side, from the same pasted text).
+        # Build an in-memory file from the pasted text so the paste path
+        # reaches the same import pipeline as an uploaded file.
+        if "file" in request.files and request.files["file"].filename:
+            file = request.files["file"]
+        else:
+            paste_data = request.form.get("paste_data", "").strip()
+            if not paste_data:
+                return jsonify({"success": False, "error": "No file provided"}), 400
+            from io import BytesIO
 
-        file = request.files["file"]
+            from werkzeug.datastructures import FileStorage
+
+            file = FileStorage(
+                stream=BytesIO(paste_data.encode("utf-8")),
+                filename="pasted_data.csv",
+                content_type="text/csv",
+            )
+
         if file.filename == "":
             return jsonify({"success": False, "error": "No file selected"}), 400
 
@@ -95,7 +114,7 @@ def create_job():
         # Security: validate MIME type (IMP-001: File upload security)
         try:
             mime_type = validate_mime_type(file, file.filename)
-        except InvalidFileTypeError as e:
+        except InvalidFileTypeError:
             # IMP-002: Audit failed upload
             AuditLog.log_file_upload(
                 user_id=current_user.id,
@@ -152,6 +171,7 @@ def create_job():
             budget_limit_usd=budget,
             confidence_threshold=threshold,
             auto_approve_high_confidence=auto_approve,
+            name=request.form.get("name") or None,
         )
 
         # PROG-002: optional Transformation Programme target — committed apps
@@ -287,8 +307,8 @@ def list_jobs():
         from app import db
 
         status = request.args.get("status")
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         jobs, total = import_service.get_user_jobs(
             user_id=current_user.id,
@@ -479,9 +499,9 @@ def start_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -569,6 +589,11 @@ def stream_job_progress(job_id):
         BatchJobStatus,
         BatchStatus,
     )
+    from app.utils.route_guards import require_entity
+
+    # Refuse before the stream opens: a 200 text/event-stream for a job that does
+    # not exist is a stream of invented progress.
+    require_entity(BatchImportJob, job_id, description="Job not found")
 
     def generate():
         """Generator function for SSE events."""
@@ -735,7 +760,6 @@ def stream_job_progress(job_id):
         mimetype="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
         },
     )
@@ -825,7 +849,7 @@ def _process_batch_with_events(batch, job):
             start_time = time.time()
             
             # Create savepoint for this application processing
-            app_savepoint = db.session.begin_nested()
+            db.session.begin_nested()
             
             try:
                 # Set processing status
@@ -1087,9 +1111,9 @@ def pause_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1122,9 +1146,9 @@ def resume_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1160,9 +1184,9 @@ def cancel_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1194,7 +1218,7 @@ def delete_job(job_id):
             }
         )
 
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Access denied"}), 403
     except HTTPException:
         raise
@@ -1278,8 +1302,8 @@ def get_batch_elements(batch_id):
 
         status = request.args.get("status")
         layer = request.args.get("layer")
-        limit = request.args.get("limit", 100, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         elements, total = approval_service.get_batch_elements(
             batch_id=batch_id,
@@ -1349,7 +1373,7 @@ def approve_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1386,7 +1410,7 @@ def reject_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1419,7 +1443,7 @@ def commit_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1449,7 +1473,7 @@ def retry_batch(batch_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1585,7 +1609,7 @@ def approve_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise
@@ -1620,7 +1644,7 @@ def reject_element(element_id):
             }
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
     except HTTPException:
         raise

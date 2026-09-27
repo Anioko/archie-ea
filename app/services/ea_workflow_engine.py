@@ -29,13 +29,14 @@ Usage:
 """
 # mass-deletion-ok — cumulative DEMO-001 branch refactor; all deletions are restructured code replaced in-place
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 import traceback
 import uuid
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app
+from flask import current_app, g
 
 logger = logging.getLogger(__name__)
 
@@ -1058,6 +1059,7 @@ class EAWorkflowEngine:
         user_id: Optional[int] = None,
         scheduled_at: Optional[datetime] = None,
         parent_iteration_id: Optional[int] = None,
+        organization_id: Optional[int] = None,
     ) -> EAWorkflowInstance:
         """
         Start a new workflow instance.
@@ -1069,6 +1071,12 @@ class EAWorkflowEngine:
             user_id: ID of triggering user (for manual triggers)
             scheduled_at: Optional scheduled execution time
             parent_iteration_id: Optional ID of parent iteration for ADM cycle tracking
+            organization_id: WAVE4-P0 — explicit tenant to stamp on the created
+                instance. Callers running outside a request context (the
+                scheduler, CLI, or any background thread) have no
+                g.current_org_id for TenantMixin to auto-set, so they MUST pass
+                this. Callers inside a request may omit it — the mixin's
+                before_flush auto-set from g.current_org_id still applies.
 
         Returns:
             Created EAWorkflowInstance
@@ -1128,7 +1136,7 @@ class EAWorkflowEngine:
                     if scope_ids:
                         context["archimate_scope"] = scope_ids
                 except Exception as exc:
-                    logger.warning("EAW-003 motivation seeding skipped: %s", exc)  # fabricated-values-ok
+                    logger.warning("EAW-003 motivation seeding skipped: %s", exc)  # fabricated-ok: logs and skips optional seeding, produces no value
 
         # Generate unique instance code
         instance_code = f"{workflow_code}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -1152,6 +1160,12 @@ class EAWorkflowEngine:
             iteration_number=iteration_number,
             parent_iteration_id=parent_iteration_id,
         )
+        # WAVE4-P0: stamp organization_id explicitly when the caller supplied one
+        # (scheduler/CLI/background callers have no g.current_org_id for
+        # TenantMixin to auto-set from). Request-context callers that omit it
+        # still get the mixin's normal auto-set on flush.
+        if organization_id is not None:
+            instance.organization_id = organization_id
 
         db.session.add(instance)
         db.session.commit()
@@ -1694,7 +1708,21 @@ class EAWorkflowEngine:
             cap_app_mappings = 0
             try:
                 from app.models.application_capability import ApplicationCapabilityMapping
-                cap_app_mappings = ApplicationCapabilityMapping.query.count()
+                # tenant-scoping-ok: scoped via the TenantMixin FK parent
+                # BusinessCapability, not ACM.organization_id -- that column
+                # is NULL on every row in production, so a predicate on it
+                # would always report 0 mappings. Joining BusinessCapability
+                # lets do_orm_execute scope the join automatically. See
+                # e622d36 / rationalization_scoring_service.py.
+                cap_app_mappings = (
+                    # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+                    ApplicationCapabilityMapping.query
+                    .join(
+                        BusinessCapability,
+                        ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+                    )
+                    .count()
+                )
             except Exception as e:
                 logger.warning("Could not count capability-application mappings: %s", e)
 
@@ -1938,7 +1966,7 @@ class EAWorkflowEngine:
                 cls = getattr(mod, class_name, None)
                 if cls:
                     artifact_registry.append((cls, type_name, title_field))
-            except Exception:  # fabricated-values-ok optional model not present in this deployment
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value optional model not present in this deployment
                 pass
 
         refs = []
@@ -1974,8 +2002,16 @@ class EAWorkflowEngine:
             Step result dictionary
         """
         # Create step execution record
+        # WAVE4-P0: stamp organization_id explicitly from the parent instance.
+        # This runs inside _execute_workflow, which is invoked both synchronously
+        # (request context, where TenantMixin's before_flush auto-set would work)
+        # and from _run_workflow_in_background under a bare app_context (no
+        # g.current_org_id, so the auto-set is a no-op and the row would be born
+        # with a NULL organization_id, invisible to its owning org once
+        # TenantMixin filtering is active). Stamp explicitly so both paths agree.
         step_execution = EAWorkflowStepExecution(
             instance_id=instance.id,
+            organization_id=instance.organization_id,
             step_id=step_def["step_id"],
             step_index=step_index,
             step_name=step_def.get("step_name"),
@@ -1995,8 +2031,15 @@ class EAWorkflowEngine:
             )
             step_execution.input_data = input_data
 
-            # Check if approval is required
-            if step_def.get("step_type") == "approval" or step_def.get(
+            # Check if approval is required.
+            # F-17, Capgemini dry-run: "human_input" steps had no registered
+            # STEP_HANDLERS entry, so they fell through to
+            # _invoke_service(step_def, ...) with no service_class configured
+            # — a step meant to pause for a person instead executed as (and
+            # failed as) an automated step. A human-input step is, mechanically,
+            # the same "pause until a person acts" shape as approval — reuse
+            # that pause/resume machinery rather than build a second one.
+            if step_def.get("step_type") in ("approval", "human_input") or step_def.get(
                 "requires_approval"
             ):
                 step_execution.requires_approval = True
@@ -2413,7 +2456,11 @@ class EAWorkflowEngine:
             # Notify all admins as fallback
             try:
                 from app.models import User
-                admin_ids = [u.id for u in User.query.filter_by(is_admin=True).limit(3).all()]
+                org_id = getattr(g, "current_org_id", None)
+                _q = User.query.filter_by(is_admin=True)
+                if org_id is not None:
+                    _q = _q.filter_by(organization_id=org_id)
+                admin_ids = [u.id for u in _q.limit(3).all()]  # tenant-scoping-ok: scoped above when org_id known
                 recipients.extend(admin_ids)
             except Exception as e:
                 logger.debug("Could not fetch admin recipients: %s", e)
@@ -2423,8 +2470,14 @@ class EAWorkflowEngine:
 
         for user_id in set(recipients):
             # 1. Persist in-app notification
+            # WAVE4-P0: stamp organization_id explicitly from the parent instance —
+            # see comment on the EAWorkflowStepExecution creation above; this step
+            # handler runs in the same background app_context with no
+            # g.current_org_id, so TenantMixin's auto-set would otherwise leave
+            # this row with a NULL organization_id.
             notif = EAWorkflowNotification(
                 workflow_instance_id=instance.id,
+                organization_id=instance.organization_id,
                 recipient_id=user_id,
                 template=template,
                 subject=subject,
@@ -2573,6 +2626,7 @@ class EAWorkflowEngine:
                 context_id=instance.id,
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
             created_ids.append(wp.id)
 
@@ -2639,7 +2693,7 @@ class EAWorkflowEngine:
         from app.models.solution_models import Solution
         from app.models.architecture_review_board import ARBReviewItem
 
-        scope = input_data.get("scope", {})
+        input_data.get("scope", {})
         app_id = (instance.context or {}).get("application_component_id")
 
         stakeholders = []
@@ -2673,6 +2727,8 @@ class EAWorkflowEngine:
                         candidate_emails.append(field)
             user_by_email = {}
             if candidate_emails:
+                # tenant-scoping-ok: User.email is globally unique, so this
+                # cannot return another org's user for a given address.
                 users_batch = User.query.filter(User.email.in_(candidate_emails)).all()
                 user_by_email = {u.email: u for u in users_batch}
 
@@ -2704,7 +2760,11 @@ class EAWorkflowEngine:
 
         # Fallback: if we still have fewer than 2 stakeholders, query active users
         if len(stakeholders) < 2:
-            users = User.query.filter(User.is_active == True).limit(20).all()
+            org_id = getattr(g, "current_org_id", None)
+            _q = User.query.filter(User.is_active == True)
+            if org_id is not None:
+                _q = _q.filter(User.organization_id == org_id)
+            users = _q.limit(20).all()  # tenant-scoping-ok: scoped above when org_id known
             for user in users:
                 if user.email not in seen_emails:
                     category = self._categorize_stakeholder(user)
@@ -2887,9 +2947,24 @@ Return as JSON array of goal objects."""
 
         try:
             from app.models import BusinessCapability
-            low_maturity = BusinessCapability.query.filter(
-                BusinessCapability.maturity_level.in_(["low", "initial", "1"])
-            ).count()
+            from app.models.unified_capability import UnifiedCapability
+            # T-002: `maturity_level` never existed on BusinessCapability (the
+            # column is `current_maturity_level`, an Integer 1-5 — the string
+            # values below could never have matched it), so this always
+            # counted 0 and this constraint never surfaced. Maturity is now
+            # read through the single authority accessor rather than the
+            # superseded source column directly.
+            cap_ids = [cap_id for (cap_id,) in BusinessCapability.query.with_entities(
+                BusinessCapability.id
+            ).all()]
+            maturity_map = UnifiedCapability.maturity_for_sources(
+                "business_capability", cap_ids
+            )
+            low_maturity = sum(
+                1
+                for entry in maturity_map.values()
+                if entry["current_maturity_level"] == 1
+            )
             if low_maturity > 0:
                 business_constraints.append({
                     "type": "capability_maturity",
@@ -3082,7 +3157,7 @@ Return as JSON array of goal objects."""
                     ).on_conflict_do_nothing()
                     db.session.execute(stmt)  # tenant-filtered: scoped via parent FK (instance_id)
                 except Exception as exc:
-                    logger.warning("EAW-003 junction insert skipped for element %s: %s", eid, exc)  # fabricated-values-ok
+                    logger.warning("EAW-003 junction insert skipped for element %s: %s", eid, exc)  # fabricated-ok: logs and skips one insert, produces no value
             db.session.commit()
         return {
             "document_generated": True,
@@ -3288,6 +3363,9 @@ provides foundation for subsequent architecture development phases.
 
             org = org_by_name.get(name.lower())
             if org:
+                # Carried so the TCO table can link the row to the vendor record
+                # it was priced from; the shortlist only carries a name.
+                entry["vendor_id"] = org.id
                 fam_list = families_by_vendor.get(org.id, [])
                 best_fam = next(
                     (f for f in fam_list if detail_by_family.get(f.id)), None
@@ -3636,7 +3714,7 @@ provides foundation for subsequent architecture development phases.
 
         total = len(elements_detail)
         layers_present = sorted(layer_counts.keys())
-        layers_missing = [l for l in ALL_LAYERS if l not in layers_present]
+        layers_missing = [item for item in ALL_LAYERS if item not in layers_present]
         elements_with_issues = sum(1 for e in elements_detail if e["issues"])
         healthy = total - elements_with_issues
 
@@ -3810,9 +3888,14 @@ provides foundation for subsequent architecture development phases.
                             "source_id": src.id,
                             "source_name": src.name,
                             "source_type": src_type,
+                            # Layers are carried so the review report can link each
+                            # end of an invalid relationship to the element that
+                            # has to be fixed; the detail route is layer-scoped.
+                            "source_layer": getattr(src, "layer", None),
                             "target_id": tgt.id,
                             "target_name": tgt.name,
                             "target_type": tgt_type,
+                            "target_layer": getattr(tgt, "layer", None),
                             "relationship_type": rel_type,
                             "issue": (
                                 f"The ArchiMate 3.2 specification does not allow "
@@ -3975,7 +4058,7 @@ provides foundation for subsequent architecture development phases.
 
         if raw_text:
             lines = raw_text.split("\n")
-            extracted["application_name"] = next((l.strip() for l in lines if l.strip()), "Unknown Application")
+            extracted["application_name"] = next((item.strip() for item in lines if item.strip()), "Unknown Application")
             extracted["description"] = raw_text[:500]
             extracted["word_count"] = len(raw_text.split())
             extracted["extraction_method"] = "text_parsing"
@@ -4238,11 +4321,16 @@ provides foundation for subsequent architecture development phases.
         for schedule in due:
             try:
                 context = schedule.default_context or {}
-                instance = self.start_workflow(
+                # WAVE4-P0: this loop runs from the APScheduler background job
+                # (app_context only, no request → no g.current_org_id), so the
+                # instance's tenant must come from the schedule itself, not the
+                # TenantMixin auto-set.
+                (self.start_workflow(
                     workflow_code=schedule.definition.workflow_code,
                     context=context,
                     triggered_by="scheduled",
-                )
+                    organization_id=schedule.organization_id,
+                ))
                 # Update next_run_at based on schedule_type
                 now = datetime.utcnow()
                 schedule_type = getattr(schedule, "schedule_type", "daily")
@@ -4656,7 +4744,7 @@ provides foundation for subsequent architecture development phases.
             weights = context.get("strategic_weights_input") or {}
             gaps_data = context.get("capability_gaps") or {}
             options = context.get("investment_options") or {}
-            adjustments = context.get("roadmap_adjustments_input") or {}
+            context.get("roadmap_adjustments_input") or {}
 
             total_investment = options.get("estimated_total_3yr_usd", 0.0) if isinstance(options, dict) else 0.0
             caps_addressed = gaps_data.get("total_gaps", 0) if isinstance(gaps_data, dict) else 0
@@ -4837,7 +4925,7 @@ provides foundation for subsequent architecture development phases.
                 raw = []
 
         dependency_graph = input_data.get("dependency_graph") or {}
-        edges = dependency_graph.get("edges", [])
+        dependency_graph.get("edges", [])
         nodes = dependency_graph.get("nodes", [])
 
         # Build coupling score: number of inbound + outbound edges per app
@@ -4909,7 +4997,6 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_business_case_calc(self, instance, step_def, input_data) -> Dict:
         """APP_DISPOSITION step 6: estimate 3-year business case from dispositions."""
-        from app.models import ApplicationComponent
 
         dispositions_input = input_data.get("dispositions") or {}
         raw = dispositions_input.get("dispositions", []) if isinstance(dispositions_input, dict) else []
@@ -4924,10 +5011,10 @@ provides foundation for subsequent architecture development phases.
         replace_count = sum(1 for r in raw if r.get("disposition") in ("replace", "re-engineer"))
         consolidate_count = sum(1 for r in raw if r.get("disposition") == "consolidate")
 
-        # Conservative per-app estimates (USD/year) — industry benchmarks, not real finance data  # fabricated-values-ok
-        retire_saving_pa = retire_count * 120_000  # fabricated-values-ok
-        replace_cost_y1 = replace_count * 350_000  # fabricated-values-ok
-        consolidate_saving_pa = consolidate_count * 80_000  # fabricated-values-ok
+        # Conservative per-app estimates (USD/year) — industry benchmarks, not real finance data  # fabricated-ok: benchmark rates surfaced with an explicit "validate with finance" note, not as measured finance
+        retire_saving_pa = retire_count * 120_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
+        replace_cost_y1 = replace_count * 350_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
+        consolidate_saving_pa = consolidate_count * 80_000  # fabricated-ok: benchmark estimate, disclosed as estimate in the returned note
 
         year1_net = -replace_cost_y1 + retire_saving_pa + consolidate_saving_pa
         year2_net = retire_saving_pa * 2 + consolidate_saving_pa * 2 - replace_cost_y1 * 0.3
@@ -5133,8 +5220,8 @@ provides foundation for subsequent architecture development phases.
                     if wave_num == 1 else
                     "AT_RISK or BREAKING integrations where a fallback exists — migrate after Wave 1 is stable."
                     if wave_num == 2 else
-                    f"BREAKING dependencies with NO fallback coverage. "
-                    f"DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
+                    "BREAKING dependencies with NO fallback coverage. "
+                    "DO NOT PROCEED until Wave 2 is proven stable and each blocker has a remediation plan."
                 ),
             }
 
@@ -5144,7 +5231,7 @@ provides foundation for subsequent architecture development phases.
         if wave2:
             waves.append(_wave_summary(wave2, 2, "Core Migration — Moderate Risk", True))
         if wave3:
-            waves.append(_wave_summary(wave3, 3, f"Critical — Blockers Require Sign-Off", True))
+            waves.append(_wave_summary(wave3, 3, "Critical — Blockers Require Sign-Off", True))
 
         blocker_names = [a.get("app_name") for a in wave3]
         total_effort = sum(i.get("effort_days", 0) for i in integrations)
@@ -5211,7 +5298,7 @@ provides foundation for subsequent architecture development phases.
 
     def _handle_arb_impact_assessment(self, instance, step_def, input_data) -> Dict:
         """ARB_PACK_GENERATION step 4: derive impact assessment from proposed changes."""
-        current_state = input_data.get("current_state") or {}
+        input_data.get("current_state") or {}
         proposed_changes = input_data.get("proposed_changes") or {}
         if isinstance(proposed_changes, dict):
             changes_data = proposed_changes.get("proposed_changes", {})
@@ -5279,7 +5366,7 @@ provides foundation for subsequent architecture development phases.
         }
 
     def _handle_capability_baseline_generation(self, instance, step_def, input_data) -> Dict:
-        """CAPABILITY_INVESTMENT_PLANNING step 1: generate baseline from 516-capability register."""
+        """CAPABILITY_INVESTMENT_PLANNING step 1: generate baseline from the business capability register."""
         from app.models import Capability
         from app.models.application import ApplicationCapabilityLink
 
@@ -5384,7 +5471,6 @@ provides foundation for subsequent architecture development phases.
         No hardcoded costs — cost guidance derived from vendor tier in catalog.
         """
         from app.models.models import Vendor
-        from app.models.application import ApplicationCapabilityLink
         from app.models import ApplicationComponent
 
         capability_gaps = input_data.get("capability_gaps") or {}
@@ -5843,7 +5929,7 @@ provides foundation for subsequent architecture development phases.
         instance_id = instance.context.get("instance_id", 0)
         try:
             result = extract_motivation_model(brief, instance_id=instance_id)
-        except Exception:
+        except Exception:  # fabricated-ok: extraction failed, empty collections mean nothing extracted, no fabricated scalar
             result = {"drivers": [], "goals": [], "principles": []}
         instance.context["motivation_model"] = result
         drivers = result.get("drivers", [])
@@ -6272,7 +6358,7 @@ provides foundation for subsequent architecture development phases.
                     grouped["medium"].append(entry)
                 else:
                     grouped["low"].append(entry)
-        except Exception as exc:
+        except Exception as exc:  # fabricated-ok: empty gap buckets on query failure, no fabricated counts
             logger.warning("_handle_gap_consolidation: query failed: %s", exc)
             grouped = {"critical": [], "high": [], "medium": [], "low": []}
         instance.context["consolidated_solutions"] = grouped

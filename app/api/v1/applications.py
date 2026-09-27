@@ -9,7 +9,7 @@ from flask import Blueprint, request
 from flask_login import login_required
 
 from app.decorators import audit_log
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from app import db
 from app.models.application_layer import ApplicationProcess, ApplicationService
@@ -25,6 +25,14 @@ from app.utils.api_response import (
     success_response,
     validation_error_response,
 )
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+    find_similar_entities,
+    lock_name_for_write,
+)
+from app.utils.pagination import safe_int_arg
 
 applications_bp = Blueprint("applications_v1", __name__)
 
@@ -87,8 +95,8 @@ def get_applications():
                       type: integer
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         status = request.args.get("status", "", type=str)
 
@@ -147,7 +155,7 @@ def get_applications():
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve applications",
             code="APPLICATIONS_RETRIEVAL_ERROR",
@@ -229,7 +237,7 @@ def get_application(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve application",
             code="APPLICATION_RETRIEVAL_ERROR",
@@ -278,6 +286,12 @@ def create_application():
         description: Application created successfully
       400:
         description: Validation error
+      409:
+        description: >
+          An application with the same normalised name already exists in this
+          organisation. The body carries ``duplicate_of: {id, name}``. Resend
+          with ``allow_duplicate=true`` (body field, ``?allow_duplicate=true``,
+          or the ``X-Allow-Duplicate`` header) to create it anyway.
     """
     try:
         data = request.get_json()
@@ -289,14 +303,21 @@ def create_application():
         if not data.get("name"):
             return validation_error_response({"name": "Name is required"})
 
-        # Check for duplicate name
-        existing = ApplicationComponent.query.filter_by(name=data["name"]).first()
-        if existing:
-            return error_response(
-                message="Application with this name already exists",
-                code="DUPLICATE_APPLICATION",
-                status_code=409,
-            )
+        # ARCH-030: match case-insensitively and whitespace-normalised — an
+        # exact filter_by() let "HxGN EAM" and "hxgn  eam" both through.
+        # ApplicationComponent inherits TenantMixin, so the organisation
+        # predicate is injected; do not add one here.
+        if not allow_duplicate_requested(data):
+            # Serialise the check-then-insert against a concurrent identical
+            # request (see lock_name_for_write).
+            lock_name_for_write(ApplicationComponent, data["name"])
+            existing = find_duplicate_by_name(ApplicationComponent, data["name"])
+            if existing is not None:
+                return duplicate_conflict_response("An application", existing)
+
+        # S-06: near-duplicate advisory -- surfaced BEFORE the write commits,
+        # not just in the post-hoc rationalization sweep. Never blocks.
+        similar = find_similar_entities(ApplicationComponent, data["name"])
 
         # Create new application
         application = ApplicationComponent(
@@ -304,7 +325,9 @@ def create_application():
             description=data.get("description", ""),
             business_owner=data.get("business_owner"),
             technical_owner=data.get("technical_owner"),
-            lifecycle_status=data.get("status", "operational"),
+            # ARCH-031: no fabricated "operational" default -- an application
+            # created with only a name has an unassessed lifecycle, not a live one.
+            lifecycle_status=data.get("status"),
         )
 
         db.session.add(application)
@@ -317,6 +340,8 @@ def create_application():
                 "description": application.description,
                 "status": application.lifecycle_status,
                 "created_at": application.created_at.isoformat(),
+                "similar_entities": similar,
+                "similar_entities_count": len(similar),
             },
             status_code=201,
         )
@@ -325,7 +350,7 @@ def create_application():
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create application",
@@ -430,7 +455,7 @@ def update_application(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to update application",
@@ -477,22 +502,43 @@ def delete_application(application_id):
             application_component_id=application_id
         ).delete(synchronize_session=False)
 
+        element_id = application.archimate_element_id
+
         # Use bulk delete to avoid ORM cascade loading related objects
         # (some related tables have schema drift that breaks ORM SELECT during delete)
         ApplicationComponent.query.filter_by(id=application_id).delete(
             synchronize_session=False
         )
+        db.session.flush()
+
+        # The mirror ArchiMate element goes with the application (finding C-02):
+        # deleting the application alone left a permanent orphan in the repository.
+        from app.modules.applications.routes._helpers import (
+            _delete_mirror_archimate_element,
+        )
+
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
+        message = "Application deleted successfully"
+        if mirror["errors"]:
+            message += "; its ArchiMate element could not be removed"
         return success_response(
-            {"message": "Application deleted successfully", "id": str(application_id)}
+            {
+                "message": message,
+                "id": str(application_id),
+                "deleted": 1,
+                "elements_deleted": mirror["elements_deleted"],
+                "relationships_deleted": mirror["relationships_deleted"],
+                "errors": mirror["errors"],
+            }
         )
 
     except HTTPException:
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete application",
@@ -661,7 +707,7 @@ def get_application_acm(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve ACM data",
             code="ACM_RETRIEVAL_ERROR",
@@ -728,7 +774,7 @@ def delete_application_acm_mapping(application_id, mapping_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete ACM mapping",
@@ -843,7 +889,7 @@ def add_application_acm_mapping(application_id):
 
         raise
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create ACM mapping",

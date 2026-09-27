@@ -8,9 +8,8 @@ beyond simple string matching.
 import logging
 import re
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
-from app import db
 from app.models.archimate_core import ArchiMateElement
 
 logger = logging.getLogger(__name__)

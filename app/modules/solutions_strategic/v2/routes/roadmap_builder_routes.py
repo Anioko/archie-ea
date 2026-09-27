@@ -38,6 +38,7 @@ from flask_login import current_user, login_required
 from app.decorators import audit_log
 
 from ..services.roadmap_builder_service import RoadmapBuilderService
+from app.utils.pagination import safe_int_arg
 
 roadmap_builder_bp = Blueprint("roadmap_builder", __name__, url_prefix="/api/roadmap-builder")
 
@@ -69,8 +70,8 @@ def list_work_packages():
     """
     status_filter = request.args.get("status")
     priority_filter = request.args.get("priority")
-    limit = request.args.get("limit", 100, type=int)
-    offset = request.args.get("offset", 0, type=int)
+    limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+    offset = safe_int_arg('offset', 0, minimum=0)
 
     service = _get_service()
     result = service.list_work_packages(
@@ -114,10 +115,13 @@ def create_work_package():
     # Parse dates
     start_date = None
     end_date = None
-    if "start_date" in data and data["start_date"]:
-        start_date = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
-    if "end_date" in data and data["end_date"]:
-        end_date = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    try:
+        if "start_date" in data and data["start_date"]:
+            start_date = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
+        if "end_date" in data and data["end_date"]:
+            end_date = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "start_date and end_date must be in YYYY-MM-DD format"}), 400
 
     service = _get_service()
     result = service.create_work_package(
@@ -184,10 +188,13 @@ def update_work_package(work_package_id: int):
         return jsonify({"success": False, "error": "Request body is required"}), 400
 
     # Parse dates if present
-    if "start_date" in data and data["start_date"]:
-        data["start_date"] = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
-    if "end_date" in data and data["end_date"]:
-        data["end_date"] = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    try:
+        if "start_date" in data and data["start_date"]:
+            data["start_date"] = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
+        if "end_date" in data and data["end_date"]:
+            data["end_date"] = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "start_date and end_date must be in YYYY-MM-DD format"}), 400
 
     service = _get_service()
     result = service.update_work_package(work_package_id, data)
@@ -326,10 +333,13 @@ def create_plateau():
     # Parse dates
     start_date = None
     end_date = None
-    if "start_date" in data and data["start_date"]:
-        start_date = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
-    if "end_date" in data and data["end_date"]:
-        end_date = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    try:
+        if "start_date" in data and data["start_date"]:
+            start_date = datetime.strptime(data["start_date"], "%Y-%m-%d").date()
+        if "end_date" in data and data["end_date"]:
+            end_date = datetime.strptime(data["end_date"], "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "start_date and end_date must be in YYYY-MM-DD format"}), 400
 
     service = _get_service()
     result = service.create_plateau(

@@ -8,7 +8,7 @@ Generates 80 - 150 relationships across all layers using 3 - pass algorithm
 import json
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List
 
 from app.services.llm_service import LLMService
 

@@ -8,10 +8,8 @@
 
     const API_URL = '/capability-governance/api/capabilities-for-governance';
 
-    function getCSRF() {
-        const meta = document.querySelector('meta[name="csrf-token"]');
-        return meta ? meta.content : '';
-    }
+    // CSRF token is now automatically injected by Platform.fetch for mutating methods.
+    // No need for a manual getCSRF function.
 
     window.governanceDashboard = function () {
         return {
@@ -25,6 +23,21 @@
             totalCapabilities: 0,
             needsAttention: 0,
             governanceScore: '—',
+            // Numeric value backing governanceScore's display string, or null
+            // when there is nothing to measure. Found 14 Sep 2026: the
+            // Governance Score tile's icon was hardcoded to a green
+            // "shield-check" success color regardless of the actual score --
+            // a 0% score (every capability needing attention) still showed
+            // as green, contradicting the Need Attention tile right next to
+            // it. This value drives the icon's color band instead.
+            governanceScoreValue: null,
+
+            governanceScoreBadgeClass: function () {
+                if (this.governanceScoreValue === null) return 'bg-muted-foreground/40';
+                if (this.governanceScoreValue >= 80) return 'bg-success';
+                if (this.governanceScoreValue >= 50) return 'bg-warning';
+                return 'bg-destructive';
+            },
 
             // Pagination
             page: 1,
@@ -59,6 +72,8 @@
 
             // Bulk delete
             bulkDeleting: false,
+            deleteConfirmText: '',
+            deleteInProgress: false,
 
             init: function () {
                 this.loadData();
@@ -69,12 +84,11 @@
                 self.loading = true;
                 self.errorMsg = '';
 
-                fetch(API_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                    .then(function (r) {
-                        if (!r.ok) throw new Error('HTTP ' + r.status);
-                        return r.json();
-                    })
+                // Platform.fetch will throw on non-ok responses, which we catch to set errorMsg.
+                // We pass silent:true because we paint our own inline error state.
+                Platform.fetch(API_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, silent: true })
                     .then(function (data) {
+                        // Platform.fetch returns parsed JSON directly; no need to call .json().
                         if (!data.success) {
                             self.errorMsg = data.error || 'Failed to load capabilities.';
                             self.loading = false;
@@ -85,9 +99,13 @@
                         self.needsAttention = self._allItems.filter(function (c) { return c.needs_attention; }).length;
 
                         const governed = self._allItems.length - self.needsAttention;
-                        self.governanceScore = self._allItems.length > 0
-                            ? Math.round((governed / self._allItems.length) * 100) + '%'
-                            : '—';
+                        if (self._allItems.length > 0) {
+                            self.governanceScoreValue = Math.round((governed / self._allItems.length) * 100);
+                            self.governanceScore = self.governanceScoreValue + '%';
+                        } else {
+                            self.governanceScoreValue = null;
+                            self.governanceScore = '—';
+                        }
 
                         self.applyFilters();
                         self.loading = false;
@@ -95,7 +113,7 @@
                     .catch(function (err) {
                         self.errorMsg = 'Could not load capabilities. Please refresh.';
                         self.loading = false;
-                        console.error('Governance dashboard load error:', err);
+                        // Do NOT use console.error in shipped code; error is already surfaced via errorMsg.
                     });
             },
 
@@ -294,24 +312,17 @@
                 self.editSaving = true;
                 self.editError = '';
 
-                fetch('/capability-governance/api/update-governance/' + self.editForm.id, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': getCSRF(),
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: JSON.stringify({
-                        business_owner: self.editForm.business_owner,
-                        business_criticality: self.editForm.business_criticality,
-                        strategic_importance: self.editForm.strategic_importance,
-                        description: self.editForm.description,
-                        current_maturity_level: self.editForm.current_maturity_level ? parseInt(self.editForm.current_maturity_level) : null,
-                        target_maturity_level: self.editForm.target_maturity_level ? parseInt(self.editForm.target_maturity_level) : null,
-                        maturity_assessment_notes: self.editForm.maturity_assessment_notes
-                    })
-                })
-                .then(function (r) { return r.json(); })
+                // Platform.fetch.post automatically injects CSRF token and serializes plain object to JSON.
+                // We pass silent:true because we paint our own inline error state (editError).
+                Platform.fetch.post('/capability-governance/api/update-governance/' + self.editForm.id, {
+                    business_owner: self.editForm.business_owner,
+                    business_criticality: self.editForm.business_criticality,
+                    strategic_importance: self.editForm.strategic_importance,
+                    description: self.editForm.description,
+                    current_maturity_level: self.editForm.current_maturity_level ? parseInt(self.editForm.current_maturity_level) : null,
+                    target_maturity_level: self.editForm.target_maturity_level ? parseInt(self.editForm.target_maturity_level) : null,
+                    maturity_assessment_notes: self.editForm.maturity_assessment_notes
+                }, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, silent: true })
                 .then(function (data) {
                     self.editSaving = false;
                     if (data.success) {
@@ -329,15 +340,62 @@
                 .catch(function (err) {
                     self.editSaving = false;
                     self.editError = 'Network error. Please try again.';
-                    console.error('Save governance error:', err);
+                    // Do NOT use console.error in shipped code; error is already surfaced via editError.
                 });
             },
 
             // Bulk delete
             confirmBulkDelete: function () {
+                this.deleteConfirmText = '';
                 if (window.Platform && window.Platform.modal) {
                     Platform.modal.open('bulk-delete-confirm-modal');
                 }
+            },
+
+            executeBulkDelete: function () {
+                let self = this;
+                if (self.deleteConfirmText !== 'DELETE' || self.deleteInProgress) return;
+                let ids = self._selectedIds.slice();
+                if (ids.length === 0) return;
+                self.deleteInProgress = true;
+
+                let failures = 0;
+                let remaining = ids.length;
+                let finish = function () {
+                    self.deleteInProgress = false;
+                    self.deleteConfirmText = '';
+                    self.clearSelection();
+                    if (window.Platform && window.Platform.modal) {
+                        Platform.modal.close('bulk-delete-confirm-modal');
+                    }
+                    if (window.Platform && window.Platform.toast) {
+                        if (failures === 0) {
+                            Platform.toast.success('Capabilities deleted.');
+                        } else if (failures === ids.length) {
+                            Platform.toast.error('Delete failed.');
+                        } else {
+                            Platform.toast.warning((ids.length - failures) + ' deleted, ' + failures + ' failed.');
+                        }
+                    }
+                    self.loadData();
+                };
+
+                ids.forEach(function (id) {
+                    // Platform.fetch.delete automatically injects CSRF token.
+                    // We pass silent:true because we handle errors via the failures counter and final toast.
+                    Platform.fetch.delete('/enterprise/capabilities/' + id, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, silent: true })
+                    .then(function (data) {
+                        // Platform.fetch returns parsed JSON directly; success field indicates outcome.
+                        if (!data.success) failures++;
+                    })
+                    .catch(function () {
+                        failures++;
+                    })
+                    .finally(function () {
+                        remaining--;
+                        if (remaining === 0) finish();
+                    });
+                });
             }
         };
     };

@@ -4,9 +4,9 @@ API v1 Capabilities Endpoints
 Standardized capability management API endpoints following PRD - 003.
 """
 
-from flask import Blueprint, request
+from flask import Blueprint, g, request
 from flask_login import login_required
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 from app import db
 from app.models.manufacturing_capability import ManufacturingCapability
@@ -15,8 +15,8 @@ from app.utils.api_response import (
     error_response,
     not_found_response,
     success_response,
-    validation_error_response,
 )
+from app.utils.pagination import safe_int_arg
 
 capabilities_bp = Blueprint("capabilities_v1", __name__)
 
@@ -59,8 +59,8 @@ def get_capabilities():
         description: List of capabilities
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         domain = request.args.get("domain", "", type=str)
         level = request.args.get("level", "", type=str)
@@ -117,7 +117,7 @@ def get_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capabilities",
             code="CAPABILITIES_RETRIEVAL_ERROR",
@@ -163,7 +163,9 @@ def get_capability(capability_id):
         if not capability:
             try:
                 capability_id_int = int(capability_id)
-                capability = UnifiedCapability.query.get(capability_id_int)
+                capability = UnifiedCapability.visible_to_organization(
+                    capability_id_int, g.current_org_id
+                )
             except ValueError:
                 pass
 
@@ -188,7 +190,7 @@ def get_capability(capability_id):
 
         return success_response(capability_data)
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability",
             code="CAPABILITY_RETRIEVAL_ERROR",
@@ -223,8 +225,8 @@ def get_manufacturing_capabilities():
         description: List of manufacturing capabilities
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
 
         # Build query
         query = ManufacturingCapability.query
@@ -234,18 +236,23 @@ def get_manufacturing_capabilities():
 
         capabilities = []
         for cap in pagination.items:
+            # ManufacturingCapability only carries manufacturing-specific KPIs (OEE,
+            # FPY, etc.) — identity/ownership fields (name, description, domain,
+            # level, owner, status, priority, coverage) live on the UnifiedCapability
+            # it specializes, reached via the unified_capability relationship.
+            uc = cap.unified_capability
             capabilities.append(
                 {
                     "id": str(cap.id),
-                    "name": cap.name,
-                    "description": cap.description or "",
-                    "domain": cap.domain.name if cap.domain else None,
-                    "level": cap.level,
-                    "business_owner": cap.business_owner,
-                    "business_impact": getattr(cap, "business_criticality", None),
-                    "priority": getattr(cap, "roadmap_priority", None),
-                    "coverage": getattr(cap, "process_coverage", None),
-                    "status": cap.status,
+                    "name": uc.name if uc else None,
+                    "description": (uc.description if uc else None) or "",
+                    "domain": uc.domain.name if uc and uc.domain else None,
+                    "level": uc.level if uc else None,
+                    "business_owner": uc.business_owner if uc else None,
+                    "business_impact": getattr(uc, "business_criticality", None) if uc else None,
+                    "priority": getattr(uc, "roadmap_priority", None) if uc else None,
+                    "coverage": getattr(uc, "process_coverage", None) if uc else None,
+                    "status": uc.status if uc else None,
                     "unified_capability_id": str(cap.unified_capability_id)
                     if cap.unified_capability_id
                     else None,
@@ -266,7 +273,7 @@ def get_manufacturing_capabilities():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve manufacturing capabilities",
             code="MANUFACTURING_CAPABILITIES_RETRIEVAL_ERROR",
@@ -295,7 +302,7 @@ def get_capability_domains():
 
         return success_response({"domains": sorted(domain_list)})
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability domains",
             code="DOMAINS_RETRIEVAL_ERROR",
@@ -324,7 +331,7 @@ def get_capability_levels():
 
         return success_response({"levels": sorted(level_list)})
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve capability levels",
             code="LEVELS_RETRIEVAL_ERROR",

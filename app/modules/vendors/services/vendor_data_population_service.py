@@ -20,14 +20,12 @@ Key Features:
 - Real-time progress tracking
 """
 
-import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_, text
+from sqlalchemy import func, or_
 from sqlalchemy.orm import joinedload
 
 from app import db
@@ -305,6 +303,7 @@ class VendorDataPopulationService:
             return
 
         # Check if pricing exists
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         existing_pricing = VendorProductPricing.query.filter_by(
             vendor_product_id=product.id, tier_name=tier_name
         ).first()
@@ -337,6 +336,7 @@ class VendorDataPopulationService:
             vendor_count = VendorOrganization.query.count()
             product_count = VendorProduct.query.count()
             capability_mapping_count = VendorProductCapability.query.count()
+            # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
             pricing_count = VendorProductPricing.query.count()
 
             # Count by category

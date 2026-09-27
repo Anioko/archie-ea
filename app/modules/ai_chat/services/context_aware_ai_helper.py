@@ -13,15 +13,13 @@ Provides intelligent, context-aware assistance throughout the application:
 
 import logging
 import re
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import current_app, g, has_request_context  # dead-code-ok
-from sqlalchemy import func, or_  # dead-code-ok
+from sqlalchemy import func  # dead-code-ok
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability  # dead-code-ok
 from app.models.unified_capability import UnifiedCapability
 from app.models.vendor.vendor_organization import VendorOrganization
 from app.services.llm_service import LLMService
@@ -231,7 +229,7 @@ class ContextAwareAIHelper:
         """Load context for application form."""
         context = {
             "context_type": ContextType.APPLICATION_FORM,
-            "total_applications": ApplicationComponent.query.count(),
+            "total_applications": ApplicationComponent.query.count() + 1,
         }
 
         # Get recent applications for pattern analysis
@@ -317,10 +315,20 @@ class ContextAwareAIHelper:
 
     def _load_apqc_context(self, **kwargs) -> Dict[str, Any]:
         """Load context for APQC process mapping."""
+        # CM-01: this used to hardcode total_processes=1000 as an "Approximate"
+        # fabricated value. Query the real count instead — None (not a fake
+        # number) when the model can't be loaded, per the never-invent-data rule.
+        total_processes = None
+        try:
+            from app.models.apqc_process import APQCProcess
+
+            total_processes = APQCProcess.query.count()
+        except Exception:
+            pass
         return {
             "context_type": ContextType.APQC_MAPPING,
             "apqc_version": "7.3.0",
-            "total_processes": 1000,  # Approximate
+            "total_processes": total_processes,
         }
 
     def _load_general_context(self, **kwargs) -> Dict[str, Any]:

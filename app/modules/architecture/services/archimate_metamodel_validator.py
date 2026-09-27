@@ -8,7 +8,19 @@ Validates ArchiMate models against 3.2 metamodel rules
 import logging
 from typing import Any, Dict, List, Tuple
 
+from app.config.archimate_relationship_matrix import (
+    RELATIONSHIP_TYPES,
+    VALID_RELATIONSHIPS,
+    get_valid_relationships,
+    is_valid_relationship,
+)
+
 logger = logging.getLogger(__name__)
+
+# Element types the matrix can actually adjudicate. Types outside this set
+# (Junction, Grouping, Location) are reported as unvalidatable rather than
+# invalid — absence of a rule is not evidence of a violation.
+_MATRIX_ELEMENT_TYPES = {t for pair in VALID_RELATIONSHIPS for t in pair}
 
 
 class ArchiMateMetamodelValidator:
@@ -72,158 +84,6 @@ class ArchiMateMetamodelValidator:
         ],
         "physical": ["Equipment", "Facility", "DistributionNetwork", "Material"],
         "implementation": ["WorkPackage", "Deliverable", "ImplementationEvent", "Plateau", "Gap"],
-    }
-
-    # ArchiMate 3.2 relationship rules (source -> target constraints)
-    RELATIONSHIP_RULES = {
-        "Association": {
-            "description": "Models unspecified relationship",
-            "allowed_sources": ["*"],
-            "allowed_targets": ["*"],
-        },
-        "Access": {
-            "description": "Models data/object access",
-            "allowed_sources": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "BusinessInteraction",
-                "ApplicationComponent",
-                "ApplicationFunction",
-                "ApplicationProcess",
-                "ApplicationInteraction",
-            ],
-            "allowed_targets": ["BusinessObject", "DataObject", "Representation"],
-        },
-        "Aggregation": {
-            "description": "Groups elements of same type",
-            "allowed_sources": ["*"],
-            "allowed_targets": ["*"],
-            "constraint": "same_type",
-        },
-        "Assignment": {
-            "description": "Allocates responsibility or resources",
-            "allowed_sources": [
-                "BusinessActor",
-                "BusinessRole",
-                "ApplicationComponent",
-                "Node",
-                "Device",
-            ],
-            "allowed_targets": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "ApplicationFunction",
-                "ApplicationService",
-                "TechnologyFunction",
-                "TechnologyService",
-            ],
-        },
-        "Composition": {
-            "description": "Part-of relationship",
-            "allowed_sources": ["*"],
-            "allowed_targets": ["*"],
-            "constraint": "hierarchical",
-        },
-        "Flow": {
-            "description": "Transfer of information or value",
-            "allowed_sources": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "ApplicationFunction",
-                "ApplicationProcess",
-            ],
-            "allowed_targets": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "ApplicationFunction",
-                "ApplicationProcess",
-            ],
-        },
-        "Influence": {
-            "description": "Impact or effect relationship",
-            "allowed_sources": [
-                "Driver",
-                "Assessment",
-                "Goal",
-                "Outcome",
-                "Principle",
-                "Requirement",
-                "Constraint",
-            ],
-            "allowed_targets": [
-                "Driver",
-                "Assessment",
-                "Goal",
-                "Outcome",
-                "Principle",
-                "Requirement",
-                "Constraint",
-                "Capability",
-                "CourseOfAction",
-            ],
-        },
-        "Realization": {
-            "description": "Implementation relationship",
-            "allowed_sources": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "ApplicationComponent",
-                "ApplicationService",
-                "Capability",
-                "CourseOfAction",
-            ],
-            "allowed_targets": [
-                "BusinessService",
-                "ApplicationService",
-                "TechnologyService",
-                "Goal",
-                "Outcome",
-                "Capability",
-            ],
-        },
-        "Serving": {
-            "description": "Provides functionality to",
-            "allowed_sources": [
-                "ApplicationComponent",
-                "ApplicationService",
-                "BusinessService",
-                "TechnologyService",
-                "Node",
-            ],
-            "allowed_targets": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "ApplicationComponent",
-                "ApplicationFunction",
-                "BusinessActor",
-                "BusinessRole",
-            ],
-        },
-        "Specialization": {
-            "description": "Is-a relationship",
-            "allowed_sources": ["*"],
-            "allowed_targets": ["*"],
-            "constraint": "same_type",
-        },
-        "Triggering": {
-            "description": "Temporal or causal dependency",
-            "allowed_sources": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "BusinessEvent",
-                "ApplicationService",
-                "ApplicationFunction",
-                "ApplicationProcess",
-            ],
-            "allowed_targets": [
-                "BusinessProcess",
-                "BusinessFunction",
-                "BusinessEvent",
-                "ApplicationService",
-                "ApplicationFunction",
-                "ApplicationProcess",
-            ],
-        },
     }
 
     def validate_model(self, elements: List[Dict], relationships: List[Dict]) -> Dict[str, Any]:
@@ -321,7 +181,7 @@ class ArchiMateMetamodelValidator:
                 continue
 
             if not source_name or not target_name:
-                errors.append(f"Relationship missing source or target")
+                errors.append("Relationship missing source or target")
                 continue
 
             # Check if source and target elements exist
@@ -336,34 +196,40 @@ class ArchiMateMetamodelValidator:
                 warnings.append(f"Relationship target '{target_name}' not found in elements")
                 continue
 
-            # Validate relationship type rules
-            if rel_type in self.RELATIONSHIP_RULES:
-                rule = self.RELATIONSHIP_RULES[rel_type]
-                source_type = source_elem.get("type")
-                target_type = target_elem.get("type")
+            source_type = source_elem.get("type")
+            target_type = target_elem.get("type")
 
-                # Check source type
-                allowed_sources = rule.get("allowed_sources", [])
-                if "*" not in allowed_sources and source_type not in allowed_sources:
-                    errors.append(
-                        f"Invalid relationship: {source_name} ({source_type}) --{rel_type}--> {target_name} (source type not allowed)"
-                    )
-
-                # Check target type
-                allowed_targets = rule.get("allowed_targets", [])
-                if "*" not in allowed_targets and target_type not in allowed_targets:
-                    errors.append(
-                        f"Invalid relationship: {source_name} --{rel_type}--> {target_name} ({target_type}) (target type not allowed)"
-                    )
-
-                # Check special constraints
-                constraint = rule.get("constraint")
-                if constraint == "same_type" and source_type != target_type:
-                    warnings.append(
-                        f"Relationship {rel_type} typically connects same types: {source_name} ({source_type}) -> {target_name} ({target_type})"
-                    )
-            else:
+            if rel_type.lower() not in RELATIONSHIP_TYPES:
                 warnings.append(f"Unknown relationship type: {rel_type}")
+                continue
+
+            # A pair the matrix has no opinion on cannot be judged. Junction,
+            # Grouping and Location are absent from it, and treating "no rule"
+            # as "forbidden" would reject correct models built from them.
+            if source_type not in _MATRIX_ELEMENT_TYPES:
+                warnings.append(
+                    f"Cannot validate {source_name} --{rel_type}--> {target_name}: "
+                    f"source type '{source_type}' is not in the ArchiMate relationship matrix"
+                )
+                continue
+            if target_type not in _MATRIX_ELEMENT_TYPES:
+                warnings.append(
+                    f"Cannot validate {source_name} --{rel_type}--> {target_name}: "
+                    f"target type '{target_type}' is not in the ArchiMate relationship matrix"
+                )
+                continue
+
+            if not is_valid_relationship(source_type, target_type, rel_type):
+                permitted = get_valid_relationships(source_type, target_type)
+                hint = (
+                    f" permitted between these types: {', '.join(sorted(permitted))}"
+                    if permitted
+                    else " no relationship is permitted between these types"
+                )
+                errors.append(
+                    f"Invalid relationship: {source_name} ({source_type}) "
+                    f"--{rel_type}--> {target_name} ({target_type}).{hint}"
+                )
 
         return errors, warnings
 

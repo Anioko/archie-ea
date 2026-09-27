@@ -7,51 +7,63 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6"
-     x-data="{
+     x-data='{
         assessLoading: false,
         dispositionLoading: false,
         noticeLoading: false,
-        selectedDisposition: '',
-        noticeText: '',
-        flashMessage: '',
-        flashType: '',
-        showFlash(msg, type) { this.flashMessage = msg; this.flashType = type; setTimeout(() => this.flashMessage = '', 4000); },
-        async postJson(url, body) {
-            const r = await fetch(url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.cookie.match(/csrf_token=([^;]+)/)?.[1] || ''},
-                credentials: 'include',
-                body: JSON.stringify(body)
-            });
-            return { status: r.status, body: await r.json() };
-        },
-        async assessImpact() {
+        selectedDisposition: {{ (cr.disposition or "") | tojson }},
+        noticeText: "",
+        flashMessage: "",
+        flashType: "",
+        showFlash(msg, type) { this.flashMessage = msg; this.flashType = type; setTimeout(() => this.flashMessage = "", 4000); },
+        /* .then()/.catch(), not async/await: Alpine attribute expressions here are
+           run by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+           which cannot await and rejects `async`. */
+        assessImpact() {
+            const self = this;
             this.assessLoading = true;
-            try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/assess-impact', {impact_level: 'medium'});
-                if (res.status === 200) { this.showFlash('Impact assessment complete — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Assessment failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.assessLoading = false; }
+            return Platform.fetch.post("/arb/api/arb/change-requests/{{ cr.id }}/assess-impact", {impact_level: "medium"}, { silent: true })
+                .then(function () {
+                    self.showFlash("Impact assessment complete — page will refresh.", "success");
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.assessLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash("Assessment failed: " + (error.data ? JSON.stringify(error.data) : error.message), "error");
+                    self.assessLoading = false;
+                });
         },
-        async setDisposition() {
-            if (!this.selectedDisposition) { this.showFlash('Select a disposition first.', 'error'); return; }
+        setDisposition() {
+            const self = this;
+            if (!this.selectedDisposition) { this.showFlash("Select a disposition first.", "error"); return Promise.resolve(); }
             this.dispositionLoading = true;
-            try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/set-disposition', {disposition: this.selectedDisposition});
-                if (res.status === 200) { this.showFlash('Disposition set — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.dispositionLoading = false; }
+            return Platform.fetch.post("/arb/api/arb/change-requests/{{ cr.id }}/set-disposition", {disposition: this.selectedDisposition}, { silent: true })
+                .then(function () {
+                    self.showFlash("Disposition set — page will refresh.", "success");
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.dispositionLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash("Failed: " + (error.data ? JSON.stringify(error.data) : error.message), "error");
+                    self.dispositionLoading = false;
+                });
         },
-        async issueNotice() {
-            if (!this.noticeText.trim()) { this.showFlash('Enter notice text first.', 'error'); return; }
+        issueNotice() {
+            const self = this;
+            if (!this.noticeText.trim()) { this.showFlash("Enter notice text first.", "error"); return Promise.resolve(); }
             this.noticeLoading = true;
-            try {
-                const res = await this.postJson('/arb/api/arb/change-requests/{{ cr.id }}/issue-notice', {notice_text: this.noticeText});
-                if (res.status === 201) { this.showFlash('Change notice issued — page will refresh.', 'success'); setTimeout(() => location.reload(), 1500); }
-                else { this.showFlash('Failed: ' + JSON.stringify(res.body), 'error'); }
-            } finally { this.noticeLoading = false; }
+            return Platform.fetch.post("/arb/api/arb/change-requests/{{ cr.id }}/issue-notice", {notice_text: this.noticeText}, { silent: true })
+                .then(function () {
+                    self.showFlash("Change notice issued — page will refresh.", "success");
+                    setTimeout(function () { location.reload(); }, 1500);
+                    self.noticeLoading = false;
+                })
+                .catch(function (error) {
+                    self.showFlash("Failed: " + (error.data ? JSON.stringify(error.data) : error.message), "error");
+                    self.noticeLoading = false;
+                });
         }
-     }">
+     }'>
 
     {{ page_header(
         title=cr.acr_reference ~ ' — ' ~ cr.title,
@@ -66,8 +78,7 @@
 
     <!-- Flash -->
     <div x-show="flashMessage" x-cloak
-         x-cloak
-         :class="flashType === 'success' ? 'bg-emerald-500/5 border-emerald-200 text-green-800' : 'bg-destructive/5 border-destructive/20 text-red-800'"
+         :class="flashType === 'success' ? 'bg-success/5 border-success/20 text-success-emphasis' : 'bg-destructive/5 border-destructive/20 text-destructive-emphasis'"
          class="border rounded-lg px-4 py-3 text-sm font-medium"
          x-text="flashMessage"></div>
 
@@ -150,7 +161,12 @@
                         {% for ia in impacts %}
                         <tr class="hover:bg-muted/30">
                             <td class="px-4 py-3 text-muted-foreground">
-                                {% if ia.affected_capability_id %}Cap #{{ ia.affected_capability_id }}{% else %}—{% endif %}
+                                {% if ia.affected_capability_id %}
+                                  {% if 'business_capability_management.capability_detail' in flask.current_app.view_functions %}
+                                  <a href="{{ url_for('business_capability_management.capability_detail', capability_id=ia.affected_capability_id) }}"
+                                     class="text-primary hover:underline">Cap #{{ ia.affected_capability_id }}</a>
+                                  {% else %}Cap #{{ ia.affected_capability_id }}{% endif %}
+                                {% else %}—{% endif %}
                             </td>
                             <td class="px-4 py-3">
                                 {% if ia.affected_decision %}
@@ -209,7 +225,7 @@
                     <h3 class="text-sm font-semibold text-foreground">Assess Impact</h3>
                 </div>
                 <p class="text-xs text-muted-foreground">Auto-query linked capabilities and decisions to build an impact assessment list.</p>
-                <button @click="assessImpact()"
+                <button type="button" @click="assessImpact()"
                         :disabled="assessLoading"
                         id="btn-assess-impact"
                         class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -221,22 +237,22 @@
             <!-- Step 2: Set Disposition -->
             <div class="bg-card border border-border rounded-lg p-5 space-y-3">
                 <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center text-xs font-bold">2</div>
+                    <div class="w-6 h-6 rounded-full bg-warning/10 text-warning-emphasis flex items-center justify-center text-xs font-bold">2</div>
                     <h3 class="text-sm font-semibold text-foreground">Set Disposition</h3>
                 </div>
                 <p class="text-xs text-muted-foreground">Decide how this change should be handled in the ADM.</p>
                 <select x-model="selectedDisposition"
                         id="select-disposition"
-                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Select disposition…">
                     <option value="">Select disposition…</option>
                     {% for d in valid_dispositions %}
                     <option value="{{ d }}" {% if cr.disposition == d %}selected{% endif %}>{{ d | replace('_', ' ') | title }}</option>
                     {% endfor %}
                 </select>
-                <button @click="setDisposition()"
+                <button type="button" @click="setDisposition()"
                         :disabled="dispositionLoading"
                         id="btn-set-disposition"
-                        class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-amber-600 px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-warning px-3 py-2 text-sm font-medium text-warning-foreground hover:bg-warning/90 disabled:opacity-50 transition-colors">
                     <span x-show="!dispositionLoading" x-cloak>Set Disposition</span>
                     <span x-show="dispositionLoading" x-cloak>Saving…</span>
                 </button>
@@ -245,7 +261,7 @@
             <!-- Step 3: Issue Change Notice -->
             <div class="bg-card border border-border rounded-lg p-5 space-y-3">
                 <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-700 flex items-center justify-center text-xs font-bold">3</div>
+                    <div class="w-6 h-6 rounded-full bg-success/10 text-success-emphasis flex items-center justify-center text-xs font-bold">3</div>
                     <h3 class="text-sm font-semibold text-foreground">Issue Change Notice</h3>
                 </div>
                 <p class="text-xs text-muted-foreground">Issue an Architecture Change Notice to close this request.</p>
@@ -253,11 +269,11 @@
                           id="input-notice-text"
                           placeholder="Describe the scope and outcome of this change…"
                           rows="4"
-                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"></textarea>
-                <button @click="issueNotice()"
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Describe the scope and outcome of this change…"></textarea>
+                <button type="button" @click="issueNotice()"
                         :disabled="noticeLoading"
                         id="btn-issue-notice"
-                        class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-md bg-success px-3 py-2 text-sm font-medium text-success-foreground hover:bg-success/90 disabled:opacity-50 transition-colors">
                     <span x-show="!noticeLoading" x-cloak>Issue Notice</span>
                     <span x-show="noticeLoading" x-cloak>Issuing…</span>
                 </button>

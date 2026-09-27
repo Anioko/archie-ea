@@ -11,7 +11,7 @@ import csv
 import io
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List
 
 try:
     import pandas as pd
@@ -23,7 +23,7 @@ except ImportError:
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, letter
+    from reportlab.lib.pagesizes import A4, letter  # noqa: F401 — availability probe: the import IS the test
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
@@ -33,7 +33,6 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
     logging.warning("ReportLab not available - PDF export functionality limited")
 
-from app import db
 from app.models.architecture_review_board import (
     ARBAuditLog,
     ARBException,
@@ -358,7 +357,6 @@ class ARBExportService:
                 df_summary.to_excel(writer, sheet_name="Summary", index=False)
 
             # Apply formatting
-            workbook = writer.book
             for sheet_name in writer.sheets:
                 worksheet = writer.sheets[sheet_name]
                 for column in worksheet.columns:
@@ -453,7 +451,6 @@ class ARBExportService:
                 df_agenda.to_excel(writer, sheet_name="Agenda", index=False)
 
             # Format worksheets
-            workbook = writer.book
             for sheet_name in writer.sheets:
                 worksheet = writer.sheets[sheet_name]
                 for column in worksheet.columns:

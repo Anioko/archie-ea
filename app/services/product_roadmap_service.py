@@ -82,9 +82,6 @@ def get_outcome_roadmap(solution_id: int = None, board_id: int = None) -> dict:
     next_sprints = active_and_future[2:4]
     later_sprints = active_and_future[4:]
 
-    now_ids = {s.id for s in now_sprints}
-    next_ids = {s.id for s in next_sprints}
-    later_ids = {s.id for s in later_sprints}
 
     # ------------------------------------------------------------------
     # 2. Load epics with aggregated story data
@@ -167,7 +164,9 @@ def get_outcome_roadmap(solution_id: int = None, board_id: int = None) -> dict:
         on_track = sum(1 for e in now_epics if e["pct_done"] > 50)
         on_track_pct = round(on_track / len(now_epics) * 100, 1)
     else:
-        on_track_pct = 100.0  # vacuously on track when nothing is scheduled
+        # M1: nothing scheduled in "Now" is unmeasured, not "100% on track" --
+        # a fabricated 100% is indistinguishable from a real on-track reading.
+        on_track_pct = None
 
     total_epics = sum(len(horizons[h]["epics"]) for h in _VALID_HORIZONS) + len(unscheduled)
 
@@ -206,5 +205,5 @@ def _empty_roadmap() -> dict:
         },
         "unscheduled": [],
         "total_epics": 0,
-        "on_track_pct": 100.0,
+        "on_track_pct": None,  # M1: no roadmap data at all is unmeasured, not "100%"
     }

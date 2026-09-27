@@ -13,7 +13,6 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from app import db
 from app.models.application_portfolio import VendorContract
 
 logger = logging.getLogger(__name__)

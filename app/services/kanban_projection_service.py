@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from flask import url_for
 
 from app import db
+from app.services.sap_activate_mapping import get_activate_stage
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,10 @@ ADM_PHASES = [
     {"code": "H", "label": "Change Management", "order": 8},
     {"code": "REQ", "label": "Requirements Mgmt", "order": 9},
 ]
+
+for _phase in ADM_PHASES:
+    _phase["activate_stage"] = get_activate_stage(_phase["code"])
+del _phase
 
 # Governance status -> kanban column
 _SOLUTION_COLUMN_MAP = {
@@ -118,6 +123,22 @@ _PRIMARY_DELIVERABLE_CODES = {
     "DEL-D-001", "DEL-E-001", "DEL-F-001", "DEL-G-001",
     "DEL-H-001", "DEL-REQ-001",
 }
+
+# H-03: valid ADM phase codes, for normalizing whatever a source entity happens
+# to store (wrong case, stale value, free text). Every projected card MUST end
+# up with a code in this set, or phase_counts silently undercounts relative to
+# column_counts (the divergence QA found: 27 vs 28 on the same card set).
+_VALID_PHASE_CODES = {p["code"] for p in ADM_PHASES}
+
+
+def _normalize_phase_code(raw: Optional[str]) -> str:
+    """Map any stored phase value onto a known ADM phase code, defaulting to 'A'."""
+    if not raw:
+        return "A"
+    candidate = str(raw).strip().upper()
+    if candidate in _VALID_PHASE_CODES:
+        return candidate
+    return "A"
 
 
 class KanbanProjectionService:
@@ -276,7 +297,9 @@ class KanbanProjectionService:
         from app.models.solution_models import Solution
 
         return (
-            ~Solution.name.like("J%-AutoTest-%"),
+            # AutoTest fixture-name exclusion removed; see
+            # scripts/check_test_data_in_queries.py for why hiding test rows
+            # from the product is the wrong half of the fix.
             ~Solution.name.like("ZZ %"),
             ~and_(
                 Solution.name.like("Untitled Solution%"),
@@ -492,7 +515,7 @@ class KanbanProjectionService:
             "entity_id": sol.id,
             "title": sol.name or "Untitled Solution",
             "subtitle": (sol.description or "")[:120],
-            "phase": sol.adm_phase or "A",
+            "phase": _normalize_phase_code(sol.adm_phase),
             "column": column,
             "priority": getattr(sol, "complexity_level", "medium") or "medium",
             "owner": sol.solution_owner,
@@ -616,7 +639,7 @@ class KanbanProjectionService:
 
     def _project_one_deliverable(self, deliv) -> Dict[str, Any]:
         """Project a single ADMDeliverable into a unified card dict."""
-        phase_code = getattr(deliv, "phase", None) or "A"
+        phase_code = _normalize_phase_code(getattr(deliv, "phase", None))
         doc_status = getattr(deliv, "document_status", None) or "draft"
         column = _DELIVERABLE_COLUMN_MAP.get(doc_status, "proposed")
 
@@ -736,13 +759,18 @@ class KanbanProjectionService:
                 )
         return cards
 
-    def _resolve_user_label(self, user_id) -> str:
-        """Return display name for a user ID stored in card.assignee."""
+    def _resolve_user_label(self, user_id, org_id=None) -> str:
+        """Return display name for a user ID stored in card.assignee.
+
+        ``card.assignee`` is set from the request, so the user is resolved only
+        inside the card's own organisation: another organisation's user is
+        never named, and a missing organisation names nobody.
+        """
         if not user_id:
             return ''
         try:
-            from app.models import User
-            u = db.session.get(User, int(user_id))
+            from app.utils.tenant_users import user_in_org
+            u = user_in_org(user_id, org_id)
             if u:
                 return ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
         except Exception as e:
@@ -751,15 +779,15 @@ class KanbanProjectionService:
 
     def _project_one_kanban_card(self, card, status_by_id: Optional[Dict] = None) -> Dict[str, Any]:
         """Project a single KanbanCard into a unified card dict."""
-        phase_code = card.adm_phase.code if card.adm_phase else "A"
+        phase_code = _normalize_phase_code(card.adm_phase.code if card.adm_phase else None)
         column = _TASK_COLUMN_MAP.get(card.status or "todo", "proposed")
 
         owner = None
-        if card.assigned_to:
-            try:
-                owner = card.assigned_to.full_name()
-            except Exception:
-                self.logger.debug(f"Could not resolve owner name for KanbanCard {card.id}", exc_info=True)
+        if card.assigned_to_id:
+            from app.utils.tenant_users import user_in_org
+            u = user_in_org(card.assigned_to_id, card.organization_id)
+            if u:
+                owner = ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
 
         # Blocker detection: count depends_on entries where the dependency is not done
         blockers = []
@@ -800,7 +828,7 @@ class KanbanProjectionService:
             "principle_ids": card.principle_ids or [],
             "issue_type": card.issue_type or 'Task',
             "assignee": card.assignee,
-            "assignee_label": self._resolve_user_label(card.assignee),
+            "assignee_label": self._resolve_user_label(card.assignee, card.organization_id),
             "story_points": card.story_points,
             "labels": card.labels or [],
             "acceptance_criteria": card.acceptance_criteria,

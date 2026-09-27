@@ -555,5 +555,14 @@ def archimate_element_correct(element_id):
             confidence_before=0.7,
         )
         return jsonify({"success": True, "feedback_id": feedback_id})
-    except Exception as exc:
-        return jsonify({"success": True, "feedback_id": None, "note": str(exc)})
+    except Exception:
+        # Recording the correction IS the endpoint's product (the learning
+        # flywheel); losing it is a failure even though the element edit above
+        # already committed. Re-submitting is idempotent, so a 500 that prompts
+        # a retry is both honest and safe.
+        current_app.logger.exception(
+            "Failed to record ArchiMate correction feedback for element %s", element_id
+        )
+        return jsonify(
+            {"success": False, "error": "Could not record the correction"}
+        ), 500

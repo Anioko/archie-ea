@@ -13,10 +13,11 @@ Routes:
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import csrf, db
+from app.decorators import admin_required
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ def _get_or_create_subscription(org):
 
 @billing_bp.route("/")
 @login_required
+@admin_required
 def billing_index():
     from app.models.user import User
 
@@ -68,10 +70,15 @@ def billing_index():
 
 @billing_bp.route("/upgrade", methods=["POST"])
 @login_required
+@admin_required
 def billing_upgrade():
     """Initiate a Stripe Checkout session for an upgrade."""
     plan = request.form.get("plan", "pro")
-    seats = int(request.form.get("seats", 5))
+    try:
+        seats = int(request.form.get("seats", 5))
+    except (ValueError, TypeError):
+        flash("Seats must be a whole number.", "error")
+        return redirect(url_for("billing.billing_index"))
 
     org = getattr(current_user, "organization", None)
     if org is None:
@@ -81,14 +88,17 @@ def billing_upgrade():
 
     sub_id = BillingService.create_subscription(org, plan, seats)
     if sub_id:
+        flash("Subscription updated.", "success")
         return redirect(url_for("billing.billing_index"))
 
-    # Stripe not configured or error — fall back gracefully
+    # A silent redirect here was indistinguishable from success — say it failed.
+    flash("The upgrade could not be started (billing is not configured or the request failed). No changes were made.", "error")
     return redirect(url_for("billing.billing_index"))
 
 
 @billing_bp.route("/portal")
 @login_required
+@admin_required
 def billing_portal():
     """Redirect to the Stripe customer portal for self-service billing."""
     org = getattr(current_user, "organization", None)

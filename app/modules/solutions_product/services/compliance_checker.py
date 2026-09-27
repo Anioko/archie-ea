@@ -115,7 +115,7 @@ class ComplianceChecker:
         else:
             # Check if service was reachable at all
             try:
-                requests.head(service_url, timeout=timeout, verify=False)
+                requests.head(service_url, timeout=timeout)
                 status = "drifted"
             except requests.RequestException:
                 status = "unreachable"
@@ -157,7 +157,6 @@ class ComplianceChecker:
                 resp = requests.get(
                     f"{service_url}{path}",
                     timeout=timeout,
-                    verify=False,
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -237,7 +236,6 @@ class ComplianceChecker:
             resp = requests.request(
                 use_method, url,
                 timeout=timeout,
-                verify=False,
                 allow_redirects=True,
             )
             latency_ms = int((time.time() - start) * 1000)
@@ -249,7 +247,7 @@ class ComplianceChecker:
                 # Method not allowed for HEAD — try GET as fallback for existence
                 try:
                     start2 = time.time()
-                    resp2 = requests.get(url, timeout=timeout, verify=False)
+                    resp2 = requests.get(url, timeout=timeout)
                     latency_ms = int((time.time() - start2) * 1000)
                     if resp2.status_code == 404:
                         return {"status": "missing", "reason": "404 Not Found", "latency_ms": latency_ms}

@@ -9,10 +9,9 @@ Phase 1.5 of the Blueprint-to-Code pipeline. Generates:
 - Developer onboarding bundle (examples, mock server script)
 
 Every generated artifact includes x-archimate-source traceability linking
-back to the governed architecture element in A.R.C.H.I.E.
+back to the governed architecture element in Entelim
 """
 import hashlib
-import json
 import logging
 import re
 from collections import OrderedDict
@@ -403,7 +402,7 @@ class SolutionSpecGenerator:
             return  # Already have explicit flows
 
         try:
-            from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+            from app.models.archimate_core import ArchiMateRelationship
 
             element_ids = {ae.element_id for ae in self._archimate_elements if ae.element_id}
             if len(element_ids) < 2:
@@ -551,7 +550,7 @@ class SolutionSpecGenerator:
     def _build_snapshot(self):
         """Capture current architecture state for future diff computation."""
         def _hash(text):
-            return hashlib.md5((text or "").encode()).hexdigest()[:8]
+            return hashlib.md5((text or "").encode(), usedforsecurity=False).hexdigest()[:8]
 
         return {
             "app_elements": [
@@ -582,7 +581,7 @@ class SolutionSpecGenerator:
             ("info", OrderedDict([
                 ("title", f"{sol.name} API"),
                 ("description", (
-                    f"Auto-generated API contract from A.R.C.H.I.E. solution blueprint.\n\n"
+                    f"Auto-generated API contract from Entelim solution blueprint.\n\n"
                     f"**Solution:** {sol.name}\n"
                     f"**ADM Phase:** {sol.adm_phase or 'A'}\n"
                     f"**Governance Status:** {sol.governance_status or 'draft'}\n"
@@ -679,7 +678,6 @@ class SolutionSpecGenerator:
 
     def _add_confirmed_api_paths(self, spec, app_elem, schema_name, api_contract):
         """Add paths from confirmed API contract instead of generic CRUD."""
-        schema_ref = f"#/components/schemas/{schema_name}"
         error_ref = "#/components/schemas/ErrorResponse"
         tag = app_elem.element_type or "resources"
 

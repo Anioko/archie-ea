@@ -1,0 +1,37 @@
+[Unit]
+Description=Archie synthetic user journey check
+Documentation=file:///usr/local/bin/archie-synthetic-monitor.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+
+# Runs from a stable path OUTSIDE the application checkout, on purpose. The
+# repo changes branches during a release, and a monitor that disappears
+# whenever the thing it watches is being changed is missing precisely the
+# window it exists for. Source of truth is deploy/synthetic_monitor.py; install
+# or update it with:
+#     install -m 755 deploy/synthetic_monitor.py \
+#         /usr/local/bin/archie-synthetic-monitor.py
+WorkingDirectory=/root
+
+# Credentials live in a root-only file, never in this unit and never in git.
+# Expects: SYNTHETIC_BASE_URL, SYNTHETIC_EMAIL, SYNTHETIC_PASSWORD,
+# and optionally SYNTHETIC_ALERT_WEBHOOK.
+EnvironmentFile=/etc/archie-synthetic.env
+
+ExecStart=/usr/bin/python3 /usr/local/bin/archie-synthetic-monitor.py
+
+# The check is a client, not a service: it must never compete with gunicorn for
+# memory on a box that has been OOM-killed before.
+MemoryMax=128M
+CPUQuota=25%
+TimeoutStartSec=180
+
+# Journal only - no log file to rotate.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=archie-synthetic
+
+[Install]
+WantedBy=multi-user.target

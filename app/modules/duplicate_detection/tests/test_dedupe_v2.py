@@ -9,7 +9,6 @@ Covers:
 - Route coverage (unified_duplicate, ai)
 - Compat wrapper infrastructure (stats tracking)
 """
-import pytest
 
 
 # ============================================================================
@@ -234,7 +233,6 @@ class TestDedupeCompatWrappers:
 
     def test_compat_module_imports(self):
         from app.compat.duplicate_detection import (
-            DedupeCompatStats,
             wrap_legacy_dedupe_bp,
         )
         assert callable(wrap_legacy_dedupe_bp)

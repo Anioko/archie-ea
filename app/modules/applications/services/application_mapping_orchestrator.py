@@ -96,10 +96,6 @@ class ApplicationMappingOrchestrator:
         """Execute atomic transaction - all operations committed together."""
         from app import db
         from app.models.application_portfolio import ApplicationComponent
-        from app.models.apqc_process import ProcessApplicationMapping
-        from app.models.unified_application_capability_mapping import (
-            UnifiedApplicationCapabilityMapping,
-        )
 
         try:
             name = app_data.get("name", "").strip()
@@ -169,7 +165,6 @@ class ApplicationMappingOrchestrator:
         result: MappingResult
     ) -> MappingResult:
         """Execute preview mode - analyze only, no persistence."""
-        from app import db
         from app.models.application_portfolio import ApplicationComponent
 
         try:

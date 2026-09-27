@@ -1,60 +1,68 @@
 {% from 'components/modal.html' import modal %}
 {% macro arb_submission_modal(capability={}) %}
 <!-- ARB Submission Modal — uses shared modal.html component -->
-<div x-data="{
+<div x-data='{
     loading: false,
     capability: {{ capability | tojson }},
     formData: {
-        justification: '',
-        priority_override: '',
-        estimated_timeline: ''
+        justification: "",
+        priority_override: "",
+        estimated_timeline: ""
     },
 
     resetForm() {
-        this.formData.justification = '';
-        this.formData.priority_override = '';
-        this.formData.estimated_timeline = '';
+        this.formData.justification = "";
+        this.formData.priority_override = "";
+        this.formData.estimated_timeline = "";
     },
 
-    async submitToARB() {
+    /* .then()/.catch(), not async/await: this body is an Alpine attribute
+       expression, run by the CSP-safe interpreter
+       (app/static/js/csp/csp-evaluator.js), which cannot await. */
+    submitToARB() {
+        const self = this;
         this.loading = true;
-        try {
-            const response = await fetch(`/strategic/api/arb/submit-capability/${this.capability.id}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name=&quot;csrf-token&quot;]')?.content ?? ''
-                },
-                body: JSON.stringify({
-                    justification: this.formData.justification,
-                    priority_override: this.formData.priority_override || null,
-                    estimated_timeline: this.formData.estimated_timeline || null,
-                    additional_context: {
-                        source_dashboard: 'investment_matrix',
-                        submitted_via: 'one_click_submission'
+        return Platform.fetch.post("/strategic/api/arb/submit-capability/" + this.capability.id, {
+                justification: this.formData.justification,
+                priority_override: this.formData.priority_override || null,
+                estimated_timeline: this.formData.estimated_timeline || null,
+                additional_context: {
+                    source_dashboard: "investment_matrix",
+                    submitted_via: "one_click_submission"
+                }
+            }, { silent: true })
+            .then(function (data) {
+                // Platform.fetch returns parsed data directly
+                if (data.success) {
+                    Platform.toast.success("ARB submission created: " + data.review_number);
+                    Platform.modal.close("arb-submission");
+                    setTimeout(function () {
+                        window.location.href = data.review_url;
+                    }, 1500);
+                } else {
+                    Platform.toast.error(data.error || "Submission failed");
+                }
+                self.loading = false;
+            })
+            .catch(function (error) {
+                // Platform.fetch throws for network errors and non-ok responses
+                // Check whether this is an HTTP error carrying data
+                if (error.type === "HttpError" && error.data) {
+                    // The server returned a non-ok response with JSON body
+                    if (error.data.success === false) {
+                        Platform.toast.error(error.data.error || "Submission failed");
+                    } else {
+                        // Use the error message from Platform.fetch
+                        Platform.toast.error(error.message);
                     }
-                })
+                } else {
+                    // Network error or other
+                    Platform.toast.error("Failed to submit to ARB");
+                }
+                self.loading = false;
             });
-
-            const data = await response.json();
-
-            if (data.success) {
-                Platform.toast.success(`ARB submission created: ${data.review_number}`);
-                Platform.modal.close('arb-submission');
-                setTimeout(() => {
-                    window.location.href = data.review_url;
-                }, 1500);
-            } else {
-                Platform.toast.error(data.error || 'Submission failed');
-            }
-        } catch (error) {
-            console.error('ARB submission error:', error);
-            Platform.toast.error('Failed to submit to ARB');
-        } finally {
-            this.loading = false;
-        }
     }
-}"
+}'
 @open-arb-submission-modal.window="capability = $event.detail; resetForm(); Platform.modal.open('arb-submission')"
 x-effect="document.getElementById('arb-submission') && document.getElementById('arb-submission').setAttribute('aria-busy', loading ? 'true' : 'false')"
 >
@@ -113,7 +121,7 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
                 rows="4"
                 class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm resize-none focus:ring-2 focus:ring-primary"
                 placeholder="Add any additional context or justification for this ARB submission..."
-            ></textarea>
+             aria-label="Additional Justification (optional)"></textarea>
             <p class="text-xs text-muted-foreground">
                 This will be appended to the auto-generated business case.
             </p>
@@ -130,7 +138,7 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
                 <select
                     x-model="formData.priority_override"
                     class="w-full rounded-lg border border-input bg-background px-4 py-2 text-sm"
-                >
+                 aria-label="Override Priority (optional)">
                     <option value="">Use capability priority</option>
                     <option value="critical">Critical</option>
                     <option value="high">High</option>
@@ -171,14 +179,14 @@ x-effect="document.getElementById('arb-submission') && document.getElementById('
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
-        <button
+        <button type="button"
             @click="Platform.modal.close('arb-submission')"
             :disabled="loading"
             class="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border border-input rounded-lg hover:bg-accent transition-colors disabled:opacity-50"
          aria-label="Close">
             Cancel
         </button>
-        <button
+        <button type="button"
             @click="submitToARB()"
             :disabled="loading"
             class="px-6 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-2"

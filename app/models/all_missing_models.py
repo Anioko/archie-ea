@@ -36,11 +36,13 @@ from sqlalchemy import (
 )
 
 from .. import db
+from .mixins import TenantMixin
 
 # Use db.relationship instead of importing relationship
 
 
-class ConceptualDataModel(db.Model):
+class ConceptualDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Conceptual Data Model.
 
@@ -95,7 +97,8 @@ class ConceptualDataModel(db.Model):
         return f"<ConceptualDataModel {self.name} ({self.business_domain})>"
 
 
-class LogicalDataModel(db.Model):
+class LogicalDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Logical Data Model.
 
@@ -151,7 +154,8 @@ class LogicalDataModel(db.Model):
         return f"<LogicalDataModel {self.name} ({self.normalization_level})>"
 
 
-class PhysicalDataModel(db.Model):
+class PhysicalDataModel(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     ArchiMate-inspired Physical Data Model.
 
@@ -227,7 +231,8 @@ class PhysicalDataModel(db.Model):
         return f"<PhysicalDataModel {self.name} ({self.database_type})>"
 
 
-class DataLineage(db.Model):
+class DataLineage(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Lineage tracking model.
 
@@ -245,8 +250,14 @@ class DataLineage(db.Model):
     name = Column(db.String(255), nullable=False, index=True)
     description = Column(db.Text)
 
-    # ArchiMate linkage
+    # ArchiMate linkage. archimate_element_id is the lineage flow's SOURCE
+    # DataObject; target_archimate_element_id (ARCH-123, added 18 Aug 2026)
+    # is its TARGET DataObject — both nullable, both FK-grounded in the real
+    # ArchiMateElement catalogue rather than the free-text source_system /
+    # target_system strings below, so a lineage row can be traced back to an
+    # actual modelled element instead of an unverifiable label.
     archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"))
+    target_archimate_element_id = Column(db.Integer, db.ForeignKey("archimate_elements.id"), nullable=True)
 
     # Lineage characteristics
     lineage_type = Column(db.String(50))  # ETL, ELT, Real-time, Batch
@@ -278,6 +289,9 @@ class DataLineage(db.Model):
 
     # Relationships
     archimate_element = db.relationship("ArchiMateElement", foreign_keys=[archimate_element_id])
+    target_archimate_element = db.relationship(
+        "ArchiMateElement", foreign_keys=[target_archimate_element_id]
+    )
     created_by = db.relationship("User", backref="created_data_lineage")
 
     # ArchiMate 3.2 Relationships
@@ -305,7 +319,8 @@ class DataLineage(db.Model):
         return f"<DataLineage {self.name} ({self.source_system} → {self.target_system})>"
 
 
-class DataTransformation(db.Model):
+class DataTransformation(TenantMixin, db.Model):
+    # ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
     """
     Data Transformation model for ETL/ELT processes.
 

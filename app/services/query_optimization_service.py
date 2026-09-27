@@ -12,9 +12,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Type
 
-from flask import current_app
-from sqlalchemy import event
-from sqlalchemy.orm import contains_eager, joinedload, selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 
 class QueryCache:
@@ -32,7 +30,7 @@ class QueryCache:
     def _make_key(self, prefix: str, *args, **kwargs) -> str:
         """Generate cache key from prefix and arguments."""
         key_data = json.dumps({"args": args, "kwargs": kwargs}, sort_keys=True, default=str)
-        key_hash = hashlib.md5(key_data.encode()).hexdigest()[:16]
+        key_hash = hashlib.md5(key_data.encode(), usedforsecurity=False).hexdigest()[:16]
         return f"{prefix}:{key_hash}"
 
     def get(self, key: str) -> Optional[Any]:
@@ -184,7 +182,7 @@ class BatchQueryExecutor:
                 # Execute query with filter
                 result = model.query.filter_by(**filters).all()
                 self._results[name] = result
-            except Exception as e:
+            except Exception:
                 self._results[query_def["name"]] = []
 
         return self._results

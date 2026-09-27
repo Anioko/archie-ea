@@ -7,11 +7,9 @@ to suggest new relationships.
 
 import logging
 from collections import Counter, defaultdict
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func
 
-from app import db
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
 logger = logging.getLogger(__name__)

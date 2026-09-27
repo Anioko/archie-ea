@@ -9,7 +9,7 @@
                 {# Header #}
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center gap-3">
-                        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-500 flex-shrink-0" x-show="isSectionCompleted('D')" x-cloak aria-hidden="true"></i>
+                        <i data-lucide="check-circle-2" class="w-4 h-4 text-success flex-shrink-0" x-show="isSectionCompleted('D')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle-dot" class="w-4 h-4 text-primary flex-shrink-0" x-show="isSectionActive('D')" x-cloak aria-hidden="true"></i>
                         <i data-lucide="circle" class="w-4 h-4 text-muted-foreground flex-shrink-0" x-show="isSectionFuture('D')" x-cloak aria-hidden="true"></i>
                         <h3 class="text-lg font-semibold text-foreground">Technology Architecture</h3>
@@ -20,22 +20,22 @@
                             class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                             <i data-lucide="plus" class="w-3 h-3" aria-hidden="true"></i> Link Element
                         </button>
-                        <button @click="generatePhase('D')"
+                        <button type="button" @click="generatePhase('D')"
                                 :disabled="generateLoading === 'D'"
-                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-500/30 text-amber-600 rounded-md hover:bg-amber-500/10 disabled:opacity-50"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-warning/30 text-warning-emphasis rounded-md hover:bg-warning/10 disabled:opacity-50"
                                 aria-label="Generate missing Phase D elements">
                             <i data-lucide="sparkles" class="h-3.5 w-3.5" :class="generateLoading === 'D' && 'animate-spin'" aria-hidden="true"></i>
                             <span x-text="generateLoading === 'D' ? 'Generating...' : 'Generate Missing'"></span>
                         </button>
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30">Phase D</span>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">Phase D</span>
                     </div>
                 </div>
 
                 {# Generate Missing Preview Panel (BPP-014) #}
                 <template x-if="generatePreview && generatePreview.phase === 'D'">
-                    <div class="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div class="mt-3 rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3">
                         <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-medium text-amber-700">
+                            <h4 class="text-sm font-medium text-warning-emphasis">
                                 Would create <span x-text="generatePreview.count"></span> elements
                             </h4>
                             <span class="text-xs text-muted-foreground"
@@ -45,7 +45,7 @@
                             <template x-for="item in (generatePreview.would_create || [])" :key="item.type + item.name">
                                 <div class="flex items-center gap-2 text-xs">
                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
-                                          :class="item.direction === 'upstream' ? 'bg-blue-500/10 text-blue-600' : 'bg-emerald-500/10 text-emerald-600'"
+                                          :class="item.direction === 'upstream' ? 'bg-info/10 text-info-emphasis' : 'bg-success/10 text-success-emphasis'"
                                           x-text="item.direction === 'upstream' ? 'up' : 'down'"></span>
                                     <span class="font-medium" x-text="item.type"></span>
                                     <span class="text-muted-foreground truncate" x-text="item.name"></span>
@@ -55,21 +55,21 @@
                         <template x-if="generatePreview.count === 0">
                             <p class="text-xs text-muted-foreground">All required elements already exist. Phase is complete.</p>
                         </template>
-                        <div class="flex gap-2 pt-2 border-t border-amber-500/20" x-show="generatePreview.count > 0">
-                            <button @click="confirmGenerate()" :disabled="generateLoading"
+                        <div class="flex gap-2 pt-2 border-t border-warning/20" x-show="generatePreview.count > 0">
+                            <button type="button" @click="confirmGenerate()" :disabled="generateLoading"
                                     class="px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50">
                                 <span x-text="generateLoading ? 'Creating...' : 'Confirm'"></span>
                             </button>
-                            <button @click="cancelGenerate()"
+                            <button type="button" @click="cancelGenerate()"
                                     class="px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-accent">Cancel</button>
                         </div>
                     </div>
                 </template>
                 <template x-if="generateError && !generateLoading">
-                    <div class="mt-2 text-xs text-destructive flex items-center gap-1">
+                    <div class="mt-2 text-xs text-destructive-emphasis flex items-center gap-1">
                         <i data-lucide="alert-circle" class="h-3 w-3" aria-hidden="true"></i>
                         <span x-text="generateError"></span>
-                        <button @click="generateError = null" class="ml-1 underline">dismiss</button>
+                        <button type="button" @click="generateError = null" class="ml-1 underline">dismiss</button>
                     </div>
                 </template>
 
@@ -88,9 +88,9 @@
                     <div class="mb-4">
                         <div class="flex flex-wrap gap-1.5">
                             <template x-for="typeGroup in technologyElementsByType" :key="typeGroup.type">
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30">
                                     <span x-text="typeGroup.type"></span>
-                                    <span class="bg-teal-500/20 px-1 rounded" x-text="typeGroup.count"></span>
+                                    <span class="bg-info/20 px-1 rounded" x-text="typeGroup.count"></span>
                                 </span>
                             </template>
                         </div>
@@ -119,19 +119,19 @@
                                             <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="el.description" x-show="el.description" x-cloak></p>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-500/10 text-teal-600 border border-teal-500/30"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                                   x-text="el.type"></span>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                                   :class="el.element_role === 'primary' ? 'bg-primary/10 text-primary border border-primary/30' :
-                                                           el.element_role === 'supporting' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
+                                                           el.element_role === 'supporting' ? 'bg-success/10 text-success-emphasis border border-success/30' :
                                                            'bg-muted text-muted-foreground border border-border'"
                                                   x-text="el.element_role || 'primary'"></span>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                                :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-sky-500/10 text-sky-600 border border-sky-500/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-orange-500/10 text-orange-600 border border-orange-500/20' : 'bg-muted text-muted-foreground border border-border'"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                                :class="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-info/10 text-info-emphasis border border-info/20' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'bg-warning/10 text-warning-emphasis border border-warning/20' : 'bg-muted text-muted-foreground border border-border'"
                                                 x-text="(/(cloud|saas|paas|iaas)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'Cloud' : (/(on.?prem|server|physical)/i.test((el.name||'') + ' ' + (el.description||''))) ? 'On-Prem' : 'TBD'">
                                             </span>
                                         </td>
@@ -140,7 +140,7 @@
                                         </td>
                                         <td class="px-3 py-2">
                                             <button type="button" @click="unlinkTechnologyElement(el.id)"
-                                                class="text-muted-foreground hover:text-destructive p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove technology element link">
+                                                class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity" title="Remove technology element link">
                                                 <i data-lucide="x" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                             </button>
                                         </td>
@@ -159,7 +159,7 @@
                         <p class="text-xs text-muted-foreground mt-1">Click <strong>Link Element</strong> to associate ArchiMate technology-layer elements (nodes, devices, services, software).</p>
                         <p class="text-xs text-muted-foreground mt-2 italic">
                             <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
-                            A.R.C.H.I.E. suggests: Add technology elements to show the infrastructure that will support this solution.
+                            Entelim suggests: Add technology elements to show the infrastructure that will support this solution.
                         </p>
                     </div>
                 </template>
@@ -179,42 +179,50 @@
                                  return window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
                              },
 
-                             async loadDeployments() {
-                                 if (!this.solId) return;
+                             /* Promise chains, not async/await: Alpine attribute
+                                expressions are evaluated by the CSP-safe interpreter in
+                                app/static/js/csp/csp-evaluator.js, which cannot await. */
+                             loadDeployments() {
+                                 const self = this;
+                                 if (!this.solId) return Promise.resolve();
                                  this.depLoading = true;
                                  this.depError = null;
-                                 try {
-                                     const res = await fetch('/api/solutions/' + this.solId + '/archimate-elements', {credentials:'same-origin'});
-                                     if (!res.ok) throw new Error('HTTP ' + res.status);
-                                     const data = await res.json();
-                                     const allEls = [];
-                                     for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
-                                         for (const el of items) allEls.push(el);
-                                     }
-                                     this.deployables = allEls.filter(e => {
-                                         const t = (e.type || '').toLowerCase();
-                                         return t.includes('applicationcomponent') || t.includes('applicationservice') || t.includes('artifact');
-                                     });
-                                     this.techNodes = allEls.filter(e => {
-                                         const t = (e.type || '').toLowerCase();
-                                         return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
-                                     });
-
-                                     const relRes = await fetch('/api/solutions/' + this.solId + '/relationships?type=assignment', {credentials:'same-origin'});
-                                     if (relRes.ok) {
-                                         const relData = await relRes.json();
+                                 // Platform.fetch returns parsed data directly; throws on non-ok.
+                                 return Platform.fetch('/api/solutions/' + this.solId + '/archimate-elements')
+                                     .then(function (data) {
+                                         const allEls = [];
+                                         for (const [layer, items] of Object.entries(data.elements_by_layer || {})) {
+                                             for (const el of items) allEls.push(el);
+                                         }
+                                         self.deployables = allEls.filter(e => {
+                                             const t = (e.type || '').toLowerCase();
+                                             return t.includes('applicationcomponent') || t.includes('applicationservice') || t.includes('artifact');
+                                         });
+                                         self.techNodes = allEls.filter(e => {
+                                             const t = (e.type || '').toLowerCase();
+                                             return t.includes('node') || t.includes('device') || t.includes('systemsoftware');
+                                         });
+                                         return Platform.fetch('/api/solutions/' + self.solId + '/relationships?type=assignment');
+                                     })
+                                     .then(function (relData) {
                                          for (const r of (relData.relationships || [])) {
                                              const srcId = r.source?.id || r.source_element_id;
                                              const tgtId = r.target?.id || r.target_element_id;
-                                             this.assignments[srcId] = { relId: r.id, nodeId: tgtId };
+                                             self.assignments[srcId] = { relId: r.id, nodeId: tgtId };
                                          }
-                                     }
-                                 } catch(e) {
-                                     this.depError = e.message;
-                                 } finally {
-                                     this.depLoading = false;
-                                     this.depLoaded = true;
-                                 }
+                                         self.depLoading = false;
+                                         self.depLoaded = true;
+                                     })
+                                     .catch(function (e) {
+                                         /* Nothing was measured — clear rather than render a
+                                            partial mapping that reads as "nothing deployed". */
+                                         self.deployables = [];
+                                         self.techNodes = [];
+                                         self.assignments = {};
+                                         self.depError = e && e.message ? e.message : 'Deployment mapping could not be loaded.';
+                                         self.depLoading = false;
+                                         self.depLoaded = true;
+                                     });
                              },
 
                              getAssignedNode(deployableId) {
@@ -223,34 +231,32 @@
                                  return this.techNodes.find(n => n.id === a.nodeId) || null;
                              },
 
-                             async assignNode(deployableId, nodeId) {
+                             assignNode(deployableId, nodeId) {
+                                 const self = this;
                                  const existing = this.assignments[deployableId];
-                                 try {
-                                     if (existing && existing.relId) {
-                                         await fetch('/api/solutions/' + this.solId + '/relationships/' + existing.relId, {
-                                             method: 'DELETE', credentials: 'same-origin'
+                                 const removal = (existing && existing.relId)
+                                     // Platform.fetch.delete returns null for 204 No Content.
+                                     ? Platform.fetch.delete('/api/solutions/' + this.solId + '/relationships/' + existing.relId)
+                                         .then(function () { delete self.assignments[deployableId]; })
+                                     : Promise.resolve();
+
+                                 return removal
+                                     .then(function () {
+                                         if (!nodeId) return null;
+                                         // Platform.fetch.post serialises plain-object body automatically.
+                                         // CSRF token is injected by Platform.fetch.
+                                         return Platform.fetch.post('/api/solutions/' + self.solId + '/relationships', {
+                                             source_element_id: parseInt(nodeId),
+                                             target_element_id: deployableId,
+                                             relationship_type: 'assignment'
+                                         }).then(function (data) {
+                                             self.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
                                          });
-                                         delete this.assignments[deployableId];
-                                     }
-                                     if (nodeId) {
-                                         const res = await fetch('/api/solutions/' + this.solId + '/relationships', {
-                                             method: 'POST',
-                                             headers: {'Content-Type': 'application/json'},
-                                             credentials: 'same-origin',
-                                             body: JSON.stringify({
-                                                 source_element_id: parseInt(nodeId),
-                                                 target_element_id: deployableId,
-                                                 relationship_type: 'assignment'
-                                             })
-                                         });
-                                         if (res.ok) {
-                                             const data = await res.json();
-                                             this.assignments[deployableId] = { relId: data.id, nodeId: parseInt(nodeId) };
-                                         }
-                                     }
-                                 } catch(e) {
-                                     this.depError = e.message;
-                                 }
+                                     })
+                                     .catch(function (e) {
+                                         // Surfaced inline via depError; not swallowed.
+                                         self.depError = e && e.message ? e.message : 'The deployment assignment could not be saved.';
+                                     });
                              }
                          }"
                          x-init="loadDeployments()">
@@ -270,7 +276,7 @@
                         </template>
 
                         <template x-if="depError">
-                            <div class="mb-3 p-2 rounded-md bg-destructive/10 text-destructive text-xs" x-text="depError"></div>
+                            <div class="mb-3 p-2 rounded-md bg-destructive/10 text-destructive-emphasis text-xs" x-text="depError"></div>
                         </template>
 
                         <template x-if="depLoaded && deployables.length > 0 && techNodes.length > 0">
@@ -288,11 +294,11 @@
                                             <tr class="hover:bg-muted/20 transition-colors">
                                                 <td class="px-3 py-2 font-medium text-foreground text-xs" x-text="dep.name"></td>
                                                 <td class="px-3 py-2">
-                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30"
+                                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                                           x-text="dep.type"></span>
                                                 </td>
                                                 <td class="px-3 py-2">
-                                                    <select
+                                                    <select aria-label="Assign to technology node"
                                                         @change="assignNode(dep.id, $event.target.value)"
                                                         class="text-xs rounded-md border border-input bg-background px-2 py-1 min-w-[160px]"
                                                     >

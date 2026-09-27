@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SDLC orchestration handoff record",
+  "description": "One JSON file per handoff between orchestration subagents, stored as docs/handoffs/<bucket-slug>-<from>-to-<to>.json",
+  "type": "object",
+  "required": ["from", "to", "artifact", "approval_status", "gate_conditions", "timestamp"],
+  "properties": {
+    "from": { "type": "string", "description": "Agent name handing off, e.g. business-analyst" },
+    "to": { "type": "string", "description": "Agent name receiving, e.g. solution-architect" },
+    "artifact": { "type": "string", "description": "Path to the artifact being handed off, e.g. docs/buckets/my-task/srs.md" },
+    "approval_status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+    "gate_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named conditions that must hold for approval_status to be approved, e.g. all_user_stories_have_acceptance_criteria"
+    },
+    "unmet_conditions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Subset of gate_conditions not yet satisfied; non-empty implies approval_status must not be approved"
+    },
+    "timestamp": { "type": "string", "format": "date-time" }
+  }
+}

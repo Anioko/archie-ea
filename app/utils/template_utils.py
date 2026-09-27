@@ -118,13 +118,99 @@ def _register(app):
         except (AttributeError, TypeError):
             return default
 
+    @app.template_filter("dash")
+    def dash_filter(value, suffix=""):
+        """Render a figure that could not be computed as an em dash.
+
+        DESIGN.md mandates the em dash for null display, and CLAUDE.md forbids
+        substituting a plausible number: a printed `0` is indistinguishable
+        from a measured zero, so a view whose query failed passes None and
+        lets this filter say so. Jinja's `|default` will not do - it only
+        fires on Undefined unless given a second argument.
+
+        `suffix` is appended only when there is a real value, so
+        `{{ coverage|dash('%') }}` renders an em dash rather than "-%".
+
+        Undefined is treated as None: a view that never passed the name did
+        not measure it either, and Jinja would render it as empty.
+        """
+        from jinja2 import Undefined
+
+        if value is None or isinstance(value, Undefined):
+            return "—"
+        return "%s%s" % (value, suffix)
+
+    @app.template_filter("safe_ratio_pct")
+    def safe_ratio_pct_filter(numerator, denominator, decimals=1):
+        """Render numerator/denominator as a percentage, or an em dash when
+        denominator is 0/None -- the M1 fix for zero-denominator screens
+        (policy-monitoring, rationalization scorecard, product-roadmap) that
+        previously rendered a misleading 0%/100% for "no records yet".
+
+        Usage: {{ passed|safe_ratio_pct(total) }}  -> "83.3%" or "—"
+        """
+        value = safe_ratio(numerator, denominator, decimals=decimals)
+        return "—" if value is None else f"{value}%"
+
+    def safe_ratio(numerator, denominator, decimals=1):
+        """Python-side counterpart of `safe_ratio_pct` for use outside
+        templates (route/service code building a context dict). Returns
+        None -- never 0 -- when denominator is falsy, so callers pass the
+        None straight to the template and let `dash`/`safe_ratio_pct` render
+        the em dash rather than inventing a percentage over zero records.
+        """
+        if not denominator:
+            return None
+        try:
+            return round((numerator / denominator) * 100, decimals)
+        except (TypeError, ZeroDivisionError):
+            return None
+
+    app.jinja_env.globals["safe_ratio"] = safe_ratio
+
+    # H4/L1: a shared enum-to-label mapping so a raw snake_case key (an ARB
+    # review's `reason`, a governance gate's `gate_name`, ...) never reaches
+    # the UI beside its own human label -- one helper instead of the
+    # `|replace('_',' ')|title` one-offs scattered through arb templates.
+    # Known codes get a hand-written label; anything else falls back to the
+    # same title-casing those one-offs already did, so this is a strict
+    # improvement, never a regression.
+    ENUM_LABEL_OVERRIDES = {
+        "arb_review_is_legacy_generic": "Legacy review (predates typed ARB submission)",
+        "arb_queue_empty": "No items in this queue",
+        "arb_submission": "Architecture Review Board submission",
+    }
+
+    @app.template_filter("humanize_key")
+    def humanize_key_filter(value):
+        """Turn a raw snake_case/enum key into a human label.
+
+        Usage: {{ review.reason|humanize_key }}
+               {{ gate_name|humanize_key }}
+        """
+        if value is None:
+            return None
+        text = str(value)
+        if text in ENUM_LABEL_OVERRIDES:
+            return ENUM_LABEL_OVERRIDES[text]
+        return text.replace("_", " ").replace("-", " ").strip().title()
+
+    app.jinja_env.globals["ENUM_LABEL_OVERRIDES"] = ENUM_LABEL_OVERRIDES
+
     def index_for_role(role):
         return url_for(role.index)
 
     app.add_template_global(index_for_role)
 
     # ── S2-01: i18n formatting filters ─────────────────────────────
-    @app.template_filter("format_currency")
+    # H-04: NOT registered as a Jinja filter. A second "format_currency"
+    # existed here and SHADOWED the org-aware one in
+    # _bootstrap/context_processors.py, silently defeating the single
+    # currency source of truth: this one falls back to a hardcoded "USD"
+    # and returns "" for a missing amount, which renders as a blank cell
+    # rather than the em dash the never-invent-data rule requires.
+    # Kept as a plain helper for any caller that passes an explicit
+    # currency; the registered filter is the org-aware one.
     def format_currency_filter(value, currency=None):
         """Format a number as locale-aware currency.
 

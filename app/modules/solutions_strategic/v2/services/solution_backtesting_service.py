@@ -19,7 +19,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import and_, func
 
 from app import db
 from app.models.solution_governance import SolutionAIBacktesting

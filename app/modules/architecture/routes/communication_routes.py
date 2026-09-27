@@ -66,6 +66,12 @@ def list_communications():
 @login_required
 def communication_log_view(solution_id: int):
     """GET /solutions/<id>/communications — render the communication timeline page."""
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    # An empty timeline for a solution that does not exist reads exactly like a
+    # real solution nobody has logged a communication against yet.
+    require_entity(Solution, solution_id, description="Solution not found")
     entries = communication_log_service.get_communication_log(solution_id)
     return render_template(
         "solutions/communication_log.html",

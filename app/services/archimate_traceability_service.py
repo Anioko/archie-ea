@@ -102,7 +102,7 @@ class ArchiMateTraceabilityService:
                 'type': el.type, 'hop': current_hop + 1,
                 'relationship_type': rel.type,
                 'access_modifier': access_modifier,
-                'plateau': getattr(el, 'plateau', None),
+                'plateau': getattr(el, 'togaf_plateau', None),
             }
             results.append(entry)
             self._traverse_all(next_id, results, visited, max_hops, current_hop + 1)
@@ -176,7 +176,7 @@ class ArchiMateTraceabilityService:
             ~ArchiMateElement.name.like('tmp-%'),
         )
         if plateau:
-            query = query.filter(db.func.lower(ArchiMateElement.plateau) == plateau.lower())
+            query = query.filter(db.func.lower(ArchiMateElement.togaf_plateau) == plateau.lower())
         if search:
             query = query.filter(ArchiMateElement.name.ilike(f'%{search}%'))
         if scope:
@@ -231,7 +231,7 @@ class ArchiMateTraceabilityService:
             ~ArchiMateElement.name.like('tmp-%'),
         )
         if plateau:
-            query = query.filter(db.func.lower(ArchiMateElement.plateau) == plateau.lower())
+            query = query.filter(db.func.lower(ArchiMateElement.togaf_plateau) == plateau.lower())
         if search:
             query = query.filter(ArchiMateElement.name.ilike(f'%{search}%'))
         if scope:
@@ -241,7 +241,7 @@ class ArchiMateTraceabilityService:
 
 # ── SA-002 — 8-layer traceability chain ─────────────────────────────────────
 
-def get_traceability_chain(solution_id=None):
+def get_traceability_chain(solution_id=None, include_bridge_links=False):
     """Build an 8-layer cross-layer traceability chain.
 
     TRC-001 / TRC-025: When solution_id is provided, filter layers to elements
@@ -249,6 +249,13 @@ def get_traceability_chain(solution_id=None):
     solution_apqc_processes, solution_applications, solution_archimate_elements).
     Stakeholders, drivers, goals, requirements remain global when no direct
     solution junction exists. Also builds relationship_maps dicts.
+
+    include_bridge_links (motivation bridge feature, additive & opt-in):
+    when True and solution_id is set, adds a 'bridged_motivation' key listing
+    the enterprise Driver/Goal/Outcome/Principle rows this solution's journey
+    motivation was promoted to via MotivationBridgeLink (see
+    app.services.motivation_bridge_service). Defaults to False so existing
+    callers are unaffected — no new key, no behavior change.
 
     Returns a dict with lists of plain dicts (JSON-serialisable) plus
     a relationship_maps dict with 4 chain keys.
@@ -453,7 +460,47 @@ def get_traceability_chain(solution_id=None):
     # TRC-001: Build relationship maps
     _build_relationship_maps(result, solution_id)
 
+    # Motivation bridge (additive, opt-in — see get_bridged_motivation_for_solution)
+    if include_bridge_links and solution_id is not None:
+        result["bridged_motivation"] = get_bridged_motivation_for_solution(solution_id)
+
     return result
+
+
+def get_bridged_motivation_for_solution(solution_id):
+    """Return enterprise motivation elements bridged from a solution's journey
+    motivation (SolutionDriver/SolutionGoal/SolutionOutcome/SolutionPrinciple)
+    via MotivationBridgeLink.
+
+    Additive helper for the motivation bridge feature (see
+    app.services.motivation_bridge_service.promote_solution_motivation). Does
+    not affect any existing traceability query — only used when explicitly
+    called or when get_traceability_chain(..., include_bridge_links=True) is
+    used. Returns [] on any error, missing table, or falsy solution_id.
+    """
+    if not solution_id:
+        return []
+    try:
+        from app.models.motivation import MotivationBridgeLink
+
+        links = MotivationBridgeLink.query.filter_by(solution_id=solution_id).all()
+        return [
+            {
+                "id": link.enterprise_element_id,
+                "type": link.enterprise_element_type,
+                "archimate_element_id": link.archimate_element_id,
+                "solution_element_type": link.solution_element_type,
+                "solution_element_id": link.solution_element_id,
+            }
+            for link in links
+        ]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("get_bridged_motivation_for_solution: %s", exc)
+        try:
+            db.session.rollback()
+        except Exception as rb_exc:  # noqa: BLE001
+            logger.debug("get_bridged_motivation_for_solution rollback: %s", rb_exc)
+        return []
 
 
 def _build_relationship_maps(result, solution_id=None):
@@ -467,6 +514,7 @@ def _build_relationship_maps(result, solution_id=None):
     from app.models.motivation import Goal
     from app.models.requirements import Requirement
     from app.models.application_capability import ApplicationCapabilityMapping
+    from app.models.business_capabilities import BusinessCapability
     from app.models.relationship_tables import ApplicationRequirementMapping
 
     maps = result["relationship_maps"]
@@ -520,10 +568,25 @@ def _build_relationship_maps(result, solution_id=None):
     # Requirement -> Capabilities (TRC-024): via ApplicationRequirementMapping (req -> app)
     # and ApplicationCapabilityMapping (app -> capability). Aggregate req_id -> [capability_id].
     try:
-        cap_mappings = ApplicationCapabilityMapping.query.filter(
-            ApplicationCapabilityMapping.business_capability_id.isnot(None),
-            ApplicationCapabilityMapping.application_component_id.isnot(None),
-        ).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would silently
+        # empty this traceability chain. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
+        cap_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .filter(
+                ApplicationCapabilityMapping.business_capability_id.isnot(None),
+                ApplicationCapabilityMapping.application_component_id.isnot(None),
+            )
+            .all()
+        )
         app_to_caps = {}
         for row in cap_mappings:
             app_id = int(row.application_component_id)
@@ -551,9 +614,18 @@ def _build_relationship_maps(result, solution_id=None):
         maps["requirement_to_capabilities"] = {}
 
     # Capability -> Applications (via application_capability_mapping)
+    # tenant-scoping-ok: scoped via the TenantMixin FK parent
+    # BusinessCapability in the join below, not ACM.organization_id -- see
+    # the requirement_to_capabilities block above for why.
     _safe_map(
         "capability_to_apps",
-        lambda: ApplicationCapabilityMapping.query.filter(
+        # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+        lambda: ApplicationCapabilityMapping.query
+        .join(
+            BusinessCapability,
+            ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+        )
+        .filter(
             ApplicationCapabilityMapping.business_capability_id.isnot(None),
             ApplicationCapabilityMapping.application_component_id.isnot(None),
         ).all(),
@@ -678,6 +750,130 @@ def get_gap_analysis(solution_id=None) -> dict:
     gap["total_capabilities"] = total_caps
     gap["unlinked_drivers"] = len(gap["orphaned_drivers"])
 
+    return gap
+
+
+def get_archimate_gap_analysis() -> dict:
+    """ADR-0008: coverage/orphan analysis read from the ArchiMate backbone.
+
+    Unlike ``get_gap_analysis`` (which counts the enterprise DOMAIN tables —
+    ``motivation.Driver``, ``requirements.Requirement`` etc.), this reads the
+    SAME store the cross-layer matrix and the pivot-type dropdown read:
+    ``archimate_elements`` + ``archimate_relationships``. It exists so the
+    ``/architecture/traceability`` page can show ONE consistent set of numbers.
+    A tenant whose motivation entities live only as ArchiMate elements (created
+    via the composer or the AI, with no domain row) previously saw the pivot
+    dropdown count 3 Drivers while the coverage tile read "0 of 0" — the two
+    surfaces were counting different stores. This closes that disagreement.
+
+    Returns the same dict shape as ``get_gap_analysis`` so the template is
+    unchanged; ``orphaned_*`` item ids here are ArchiMateElement ids.
+    """
+    from collections import defaultdict
+
+    gap = {
+        "orphaned_drivers": [],
+        "orphaned_goals": [],
+        "orphaned_requirements": [],
+        "orphaned_capabilities": [],
+        "coverage": {
+            "drivers_with_goals": {"count": 0, "total": 0},
+            "goals_with_requirements": {"count": 0, "total": 0},
+            "requirements_with_capabilities": {"count": 0, "total": 0},
+            "capabilities_with_apps": {"count": 0, "total": 0},
+        },
+        "total_drivers": 0,
+        "total_goals": 0,
+        "total_requirements": 0,
+        "total_capabilities": 0,
+        "unlinked_drivers": 0,
+        "coverage_pct": 0,
+    }
+
+    try:
+        elements = ArchiMateElement.query.with_entities(
+            ArchiMateElement.id,
+            ArchiMateElement.name,
+            ArchiMateElement.type,
+            ArchiMateElement.layer,
+        ).filter(
+            ArchiMateElement.type.isnot(None),
+            ~ArchiMateElement.name.like("tmp-%"),
+        ).all()
+
+        id_set = {e.id for e in elements}
+        type_by_id = {e.id: e.type for e in elements}
+        layer_by_id = {e.id: (e.layer or "") for e in elements}
+        name_by_id = {e.id: e.name for e in elements}
+
+        # Undirected neighbour map, restricted to in-tenant elements so it counts
+        # exactly the relationships the matrix traversal can see.
+        neighbours = defaultdict(set)
+        rels = ArchiMateRelationship.query.with_entities(
+            ArchiMateRelationship.source_id,
+            ArchiMateRelationship.target_id,
+        ).filter(ArchiMateRelationship.type.in_(TRACEABILITY_RELATIONSHIP_TYPES)).all()
+        for src, tgt in rels:
+            if src in id_set and tgt in id_set:
+                neighbours[src].add(tgt)
+                neighbours[tgt].add(src)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("get_archimate_gap_analysis failed: %s", exc)
+        try:
+            db.session.rollback()
+        except Exception as rb_exc:  # noqa: BLE001
+            logger.debug("get_archimate_gap_analysis rollback: %s", rb_exc)
+        return gap
+
+    def _neighbour_types(eid):
+        return {type_by_id.get(n) for n in neighbours.get(eid, ())}
+
+    def _neighbour_layers(eid):
+        return {(layer_by_id.get(n) or "").lower() for n in neighbours.get(eid, ())}
+
+    def _transition(source_types, target_test):
+        """Return (connected_list, orphaned_list) of {id,name} dicts."""
+        connected, orphaned = [], []
+        for eid, etype in type_by_id.items():
+            if etype not in source_types:
+                continue
+            item = {"id": int(eid), "name": name_by_id.get(eid) or f"Item {eid}"}
+            if target_test(eid):
+                connected.append(item)
+            else:
+                orphaned.append(item)
+        connected.sort(key=lambda i: (i["name"] or "").lower())
+        orphaned.sort(key=lambda i: (i["name"] or "").lower())
+        return connected, orphaned
+
+    driver_conn, driver_orph = _transition(
+        {"Driver"}, lambda eid: bool(_neighbour_types(eid) & {"Goal", "Outcome"}))
+    goal_conn, goal_orph = _transition(
+        {"Goal", "Outcome"}, lambda eid: "Requirement" in _neighbour_types(eid))
+    req_conn, req_orph = _transition(
+        {"Requirement"}, lambda eid: "Capability" in _neighbour_types(eid))
+    cap_conn, cap_orph = _transition(
+        {"Capability"}, lambda eid: "application" in _neighbour_layers(eid))
+
+    gap["orphaned_drivers"] = driver_orph[:100]
+    gap["orphaned_goals"] = goal_orph[:100]
+    gap["orphaned_requirements"] = req_orph[:100]
+    gap["orphaned_capabilities"] = cap_orph[:100]
+
+    def _cov(conn, orph):
+        total = len(conn) + len(orph)
+        return {"count": len(conn), "total": total}
+
+    gap["coverage"]["drivers_with_goals"] = _cov(driver_conn, driver_orph)
+    gap["coverage"]["goals_with_requirements"] = _cov(goal_conn, goal_orph)
+    gap["coverage"]["requirements_with_capabilities"] = _cov(req_conn, req_orph)
+    gap["coverage"]["capabilities_with_apps"] = _cov(cap_conn, cap_orph)
+
+    gap["total_drivers"] = len(driver_conn) + len(driver_orph)
+    gap["total_goals"] = len(goal_conn) + len(goal_orph)
+    gap["total_requirements"] = len(req_conn) + len(req_orph)
+    gap["total_capabilities"] = len(cap_conn) + len(cap_orph)
+    gap["unlinked_drivers"] = len(driver_orph)
     return gap
 
 

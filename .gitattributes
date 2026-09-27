@@ -1,2 +1,19 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Vendored assets are hash-pinned: never touch their bytes.
+#
+# `* text=auto` with core.autocrlf=true rewrites these to CRLF in a Windows
+# working tree. That changes their bytes, which changes their SHA-384, which
+# means the integrity="sha384-..." attributes stop matching and the browser
+# REFUSES TO EXECUTE THEM. On 2026-07-31 that presented as Alpine, DOMPurify,
+# Lucide and JointJS all failing to load on a Windows checkout - the whole front
+# end inert, every icon blank - while Linux and production were unaffected,
+# because there the checkout is LF and the hashes match.
+#
+# The trap is that the obvious fix is the wrong one. Rehashing the templates
+# against the CRLF copies makes a Windows checkout work and breaks every Linux
+# deploy, production included. The bytes must simply never be rewritten.
+*.min.js   -text
+*.min.css  -text
+app/static/vendor/** -text

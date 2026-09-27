@@ -8,6 +8,7 @@ from datetime import datetime
 from .. import db
 from ..models.simple_duplicate_detection import SimpleDuplicateGroup, SimpleDetectionRun
 from ..models.application_portfolio import ApplicationComponent
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,6 @@ class SimpleDuplicateService:
         Clean up stale duplicate detection data
         """
         try:
-            from ..models.simple_duplicate_detection import SimpleDuplicateGroup, SimpleDetectionRun, simple_group_applications
             from .. import db
             
             # Delete all existing groups and runs to start fresh
@@ -330,7 +330,7 @@ class SimpleDuplicateService:
                 normalized = SimpleDuplicateService._normalize_name_for_hash(app.name)
                 if not normalized:
                     continue
-                name_hash = hashlib.md5(normalized.encode()).hexdigest()
+                name_hash = hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
                 
                 if name_hash in hash_groups:
                     hash_groups[name_hash].append(app)
@@ -470,7 +470,6 @@ class SimpleDuplicateService:
             dict with results including deleted apps count and any errors
         """
         try:
-            from ..models.application_layer import ApplicationComponent
             from .. import db
             
             # Validate inputs
@@ -481,7 +480,7 @@ class SimpleDuplicateService:
                 logger.error(f"Invalid group_id or keep_app_id: group_id={group_id}, keep_app_id={keep_app_id}, error={e}")
                 return {
                     'success': False,
-                    'error': f'Invalid group ID or application ID. Please refresh the page and try again.'
+                    'error': 'Invalid group ID or application ID. Please refresh the page and try again.'
                 }
             
             # Check if tables exist first
@@ -536,7 +535,27 @@ class SimpleDuplicateService:
             for app in apps_to_delete:
                 try:
                     app_id = app.id
-                    
+
+                    # Ownership gate, ahead of every cascade delete below.
+                    #
+                    # SimpleDuplicateGroup is not a TenantMixin model, so the
+                    # group lookup above is unfiltered. The delete of the
+                    # application itself already carries an org predicate, but it
+                    # runs LAST: without this check the child rows in
+                    # application_capability_mapping and application_data_objects
+                    # were already gone by the time that predicate declined to
+                    # delete another organisation's application. Neither child
+                    # table can be scoped on its own — application_data_objects
+                    # has an organization_id column that is NULL on every row,
+                    # and application_capability_mapping's is NULL too — so the
+                    # check has to happen here, on the parent.
+                    _org = current_org_id()
+                    if _org is not None and getattr(app, "organization_id", None) != _org:
+                        errors.append(
+                            f'Application {app.name} does not belong to this organization'
+                        )
+                        continue
+
                     # Clean the simple duplicate group junction table first (this is the main issue)
                     try:
                         db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
@@ -560,7 +579,11 @@ class SimpleDuplicateService:
                     
                     # 2. application_data_objects (we know this exists but has different column name)
                     try:
-                        db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
+                        # tenancy-ok: gated by the app.organization_id == current_org_id
+                        # check at the top of this loop. The table's own
+                        # organization_id is NULL on every row, so a predicate
+                        # here would delete nothing and leak the FK violation.
+                        db.session.execute(
                             db.text("DELETE FROM application_data_objects WHERE application_component_id = :app_id"),
                             {'app_id': app_id}
                         )
@@ -570,10 +593,16 @@ class SimpleDuplicateService:
                     
                     # Now try to delete the main application record
                     try:
-                        result = db.session.execute(  # tenant-filtered: scoped via parent FK (app_id)
-                            db.text("DELETE FROM application_components WHERE id = :app_id"),
-                            {'app_id': app_id}
-                        )
+                        # Tenant guard on the destructive delete: never remove an
+                        # app outside the caller's org (raw SQL bypasses the ORM filter).
+                        from flask import g as _g
+                        _org = getattr(_g, "current_org_id", None)
+                        _dq = "DELETE FROM application_components WHERE id = :app_id"
+                        _dp = {'app_id': app_id}
+                        if _org is not None:
+                            _dq += " AND organization_id = :org"
+                            _dp['org'] = _org
+                        result = db.session.execute(db.text(_dq), _dp)
                         
                         if result.rowcount > 0:
                             deleted_count += 1

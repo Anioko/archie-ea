@@ -1,4 +1,9 @@
 {# Unified Mapping Modal Component
+   smoke-coverage-ok: CSP inline style fix; the z-index scale is set by a
+   nonce'd <style> block (same mechanism as layouts/admin_base.html and
+   partials/_head.html) instead of a static style= attribute, so
+   style-src-elem stays satisfied; covered by tests/test_capability_map_a11y_csp.py
+   and tests/test_modal_shell_consistency.py
      Context modes: 'capability' (default), 'archimate', 'apqc', 'vendor'
      Supports two-step workflow:
        Step 1: Target Selection (browse/search vendors or APQC processes)
@@ -9,8 +14,16 @@
        - Discovery mode: openUnifiedMappingModalDiscovery({ context: 'vendor' })
 #}
 
-<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 overflow-y-auto" style="background:rgba(0,0,0,.5);z-index:1000;" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
-    <div class="relative top-10 mx-auto p-5 border border-border w-11/12 max-w-5xl shadow-lg rounded-md bg-card text-card-foreground">
+<style nonce="{{ csp_nonce }}">
+#unified-mapping-modal { z-index: var(--modal-z, 1000); }
+#unified-mapping-modal [data-modal-panel] { z-index: calc(var(--modal-z, 1000) + 1); }
+</style>
+<div id="unified-mapping-modal" hidden aria-hidden="true" class="modal-root fixed inset-0 items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="unified-modal-heading">
+    <!-- Backdrop -->
+    <div data-modal-backdrop="unified-mapping-modal" aria-hidden="true"
+         class="modal-backdrop absolute inset-0 bg-background/80 transition-opacity duration-200"></div>
+    <div data-modal-panel
+         class="modal-panel relative w-full max-w-5xl p-6 border border-border shadow-lg rounded-lg bg-card text-card-foreground max-h-[90vh] overflow-y-auto">
         <!-- Header -->
         <div class="flex justify-between items-center mb-4">
             <h3 id="unified-modal-heading" class="text-lg font-bold">
@@ -41,7 +54,7 @@
             <!-- Search for targets -->
             <div class="mb-4">
                 <div class="relative">
-                    <label for="unified-target-search">Field</label>
+                    <label for="unified-target-search" class="block text-sm font-medium text-muted-foreground mb-1">Search mapping targets</label>
     <input
                         type="text"
                         id="unified-target-search"
@@ -57,7 +70,7 @@
             <div id="unified-target-filters" class="mb-4 flex flex-wrap gap-3 items-center">
                 <!-- Vendor-specific filters -->
                 <div id="vendor-filters" class="hidden flex-1 flex gap-3">
-                    <select id="unified-vendor-category" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-vendor-category" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Category">
                         <option value="">All Categories</option>
                         <option value="ERP">ERP</option>
                         <option value="CRM">CRM</option>
@@ -68,7 +81,7 @@
                         <option value="Security">Security</option>
                         <option value="Cloud">Cloud Infrastructure</option>
                     </select>
-                    <select id="unified-vendor-tier" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-vendor-tier" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Tier">
                         <option value="">All Tiers</option>
                         <option value="enterprise">Enterprise</option>
                         <option value="mid-market">Mid-Market</option>
@@ -77,14 +90,14 @@
                 </div>
                 <!-- APQC-specific filters -->
                 <div id="apqc-filters" class="hidden flex-1 flex gap-3">
-                    <select id="unified-apqc-level" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-apqc-level" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Level">
                         <option value="">All Levels</option>
                         <option value="1">Level 1 - Category</option>
                         <option value="2">Level 2 - Process Group</option>
                         <option value="3">Level 3 - Process</option>
                         <option value="4">Level 4 - Activity</option>
                     </select>
-                    <select id="unified-apqc-category" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-apqc-category" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Category">
                         <option value="">All Categories</option>
                         <option value="1">1.0 - Develop Vision and Strategy</option>
                         <option value="2">2.0 - Develop and Manage Products</option>
@@ -102,16 +115,16 @@
                 </div>
                 <!-- ArchiMate-specific filters (ALL 6 LAYERS + ALL ELEMENT TYPES) -->
                 <div id="archimate-filters" class="hidden flex-1 flex gap-3">
-                    <select id="unified-archimate-layer" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-archimate-layer" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Layer">
                         <option value="">All Layers</option>
-                        <option value="motivation" style="background-color: #B3A2C7;">Motivation Layer</option>
-                        <option value="strategy" style="background-color: #F5D742;">Strategy Layer</option>
-                        <option value="business" style="background-color: #FFFFB5;">Business Layer</option>
-                        <option value="application" style="background-color: #B5E3FF;">Application Layer</option>
-                        <option value="technology" style="background-color: #C9E6B5;">Technology Layer</option>
-                        <option value="implementation" style="background-color: #FFB5B5;">Implementation & Migration</option>
+                        <option value="motivation" class="bg-[#B3A2C7]">Motivation Layer</option>
+                        <option value="strategy" class="bg-[#F5D742]">Strategy Layer</option>
+                        <option value="business" class="bg-[#FFFFB5]">Business Layer</option>
+                        <option value="application" class="bg-[#B5E3FF]">Application Layer</option>
+                        <option value="technology" class="bg-[#C9E6B5]">Technology Layer</option>
+                        <option value="implementation" class="bg-[#FFB5B5]">Implementation & Migration</option>
                     </select>
-                    <select id="unified-archimate-type" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()">
+                    <select id="unified-archimate-type" class="flex-1 px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedTargets()" aria-label="Filter by Element Type">
                         <option value="">All Element Types</option>
                         <optgroup label="Motivation Layer">
                             <option value="Stakeholder">Stakeholder</option>
@@ -189,7 +202,7 @@
 
             <!-- Target count -->
             <div class="mb-3 text-sm text-muted-foreground">
-                Showing <span id="unified-target-filtered-count">0</span> of <span id="unified-target-total-count">0</span>
+                Showing <span id="unified-target-filtered-count">—</span> of <span id="unified-target-total-count">—</span>
                 <span id="unified-target-type-label">items</span>
             </div>
 
@@ -226,7 +239,7 @@
                     Cancel
                 </button>
                 <!-- Save button for reverse mode (Application -> Capabilities) -->
-                <button type="button" id="unified-reverse-save-btn" @click="saveUnifiedMappings()" class="hidden px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Save mappings">
+                <button type="button" id="unified-reverse-save-btn" @click="saveUnifiedMappings()" class="hidden px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:opacity-50 disabled:pointer-events-none" aria-label="Save mappings">
                     Save Mappings
                 </button>
             </div>
@@ -247,7 +260,7 @@
             <!-- Search and Filter Bar -->
             <div class="mb-4 space-y-3">
                 <div class="relative">
-                    <label for="unified-search">Field</label>
+                    <label for="unified-search" class="block text-sm font-medium text-muted-foreground mb-1">Search applications</label>
     <input
                         type="text"
                         id="unified-search"
@@ -261,24 +274,24 @@
                 <!-- Filter Row -->
                 <div class="flex flex-wrap gap-3 items-center">
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-filter-type" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-filter-type" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()" aria-label="Filter by Type">
                             <option value="">All Types</option>
                         </select>
                     </div>
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-filter-domain" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-filter-domain" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()" aria-label="Filter by Domain">
                             <option value="">All Domains</option>
                         </select>
                     </div>
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-filter-status" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-filter-status" aria-label="Filter applications by status" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
                             <option value="all">All Applications</option>
                             <option value="mapped">Mapped Only</option>
                             <option value="unmapped">Unmapped Only</option>
                         </select>
                     </div>
                     <div class="flex-1 min-w-[150px]">
-                        <select id="unified-sort" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
+                        <select id="unified-sort" aria-label="Sort applications" class="w-full px-3 py-2 text-sm border border-border rounded-md" @change="filterUnifiedApplications()">
                             <option value="name-asc">Name (A-Z)</option>
                             <option value="name-desc">Name (Z-A)</option>
                             <option value="type-asc">Type (A-Z)</option>
@@ -302,7 +315,7 @@
                         </span>
                     </div>
                     <div class="text-sm text-muted-foreground">
-                        Showing <span id="unified-filtered-count">0</span> of <span id="unified-total-count">0</span> applications
+                        Showing <span id="unified-filtered-count">—</span> of <span id="unified-total-count">—</span> applications
                     </div>
                 </div>
             </div>
@@ -341,7 +354,7 @@
                     <button type="button" @click="Platform.modal.close('unified-mapping-modal')" class="px-4 py-2 bg-muted text-foreground/80 rounded-md hover:bg-muted-foreground/40" aria-label="Cancel mapping">
                         Cancel
                     </button>
-                    <button type="button" @click="saveUnifiedMappings()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary" aria-label="Save mappings">
+                    <button type="button" id="unified-save-btn" @click="saveUnifiedMappings()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:opacity-50 disabled:pointer-events-none" aria-label="Save mappings">
                         Save Mappings
                     </button>
                 </div>

@@ -205,6 +205,16 @@ class CapabilityGapDetail(db.Model):
     current_applications = Column(db.Text)  # JSON array of supporting applications
     current_coverage_quality = Column(db.Integer, default=1)  # 1 - 5 quality scale
     current_integration_level = Column(db.String(20))  # low, medium, high
+    # T-002 (ADR 0008 rule 3): superseded by the single maturity authority
+    # (`UnifiedCapability.current_maturity_level` / `.target_maturity_level`,
+    # reached via `capability_id` above). `current_maturity` /
+    # `required_maturity_level` are NOT the current-value read path — their
+    # `default=1` / `default=3` used to reach `to_dict()` as a plausible score
+    # for a capability nobody had assessed, exactly the fabrication
+    # CLAUDE.md's "never invent data" rule forbids. `to_dict()` below reads
+    # the authority through `UnifiedCapability.maturity_for_source` instead;
+    # these two columns are retained (not dropped) but are dead storage after
+    # this change — nothing writes a real value into them.
     current_maturity = Column(db.Integer, default=1)  # 1 - 5 maturity scale
 
     # Target state requirements
@@ -288,6 +298,25 @@ class CapabilityGapDetail(db.Model):
 
     def to_dict(self):
         """Convert to dictionary for API responses"""
+        # T-002: `self.capability` (UnifiedCapability, via capability_id) IS
+        # the single maturity authority row — read its own
+        # current_maturity_level / target_maturity_level directly rather than
+        # this model's `current_maturity` / `required_maturity_level`, whose
+        # `default=1` / `default=3` fabricated a plausible score for every
+        # capability nobody had assessed. `no_maturity_recorded` (T-001) is
+        # returned instead of a manufactured number when the authority has
+        # none yet.
+        from app.modules.intelligence.services.reason_codes import validate_reason_code
+
+        if self.capability is not None and self.capability.current_maturity_level is not None:
+            current_maturity = self.capability.current_maturity_level
+            required_maturity_level = self.capability.target_maturity_level
+            maturity_reason_code = None
+        else:
+            current_maturity = None
+            required_maturity_level = None
+            maturity_reason_code = validate_reason_code("no_maturity_recorded")
+
         return {
             "id": self.id,
             "analysis_id": self.analysis_id,
@@ -302,10 +331,11 @@ class CapabilityGapDetail(db.Model):
             "business_impact": self.business_impact,
             "current_coverage_quality": self.current_coverage_quality,
             "current_integration_level": self.current_integration_level,
-            "current_maturity": self.current_maturity,
+            "current_maturity": current_maturity,
             "required_coverage_percentage": self.required_coverage_percentage,
             "required_quality_level": self.required_quality_level,
-            "required_maturity_level": self.required_maturity_level,
+            "required_maturity_level": required_maturity_level,
+            "maturity_reason_code": maturity_reason_code,
             "target_integration_level": self.target_integration_level,
             "business_impact_score": self.business_impact_score,
             "operational_impact_score": self.operational_impact_score,

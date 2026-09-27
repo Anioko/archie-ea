@@ -18,6 +18,7 @@ Endpoints:
 - POST /api/architecture-assistant/analyze-gap - Analyze gap and suggest solutions
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 from collections import OrderedDict
@@ -28,7 +29,6 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from flask_login import current_user, login_required
 
 from app.decorators import require_roles
-from app.models.archimate import ArchitectureElement  # dead-code-ok
 from app.models.archimate_motivation import (
     MotivationAssessment,
     MotivationConstraint,
@@ -46,6 +46,7 @@ from app.services.rate_limiter import rate_limit
 from app.utils.validators import validate_integer, validate_string, validation_error_response
 
 from app import db
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +241,7 @@ def _append_property_xml(lines, properties, indent):
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
         lines.append(
-            f'{indent}<property key="{_xml_attr(key)}" value="{_xml_attr(value)}" />'
+            f'{indent}<property key="{_xml_attr(key)}" value="{_xml_attr(value)}" />'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         )
 
 
@@ -253,9 +254,9 @@ def _build_archimate_model_xml(model):
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         (
-            f'<archimate_model id="{_xml_attr(model.get("id"))}" '
-            f'name="{_xml_attr(model.get("name", "ArchiMate Model"))}" '
-            f'version="{_xml_attr(model.get("version", "3.2"))}">'
+            f'<archimate_model id="{_xml_attr(model.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+            f'name="{_xml_attr(model.get("name", "ArchiMate Model"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+            f'version="{_xml_attr(model.get("version", "3.2"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         ),
         "  <metadata>",
     ]
@@ -263,66 +264,66 @@ def _build_archimate_model_xml(model):
     for key, value in metadata.items():
         if isinstance(value, (dict, list)):
             value = json.dumps(value)
-        lines.append(f'    <entry key="{_xml_attr(key)}">{_xml_text(value)}</entry>')
+        lines.append(f'    <entry key="{_xml_attr(key)}">{_xml_text(value)}</entry>')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
     lines.append("  </metadata>")
 
-    lines.append(f'  <elements count="{len(elements)}">')
+    lines.append(f'  <elements count="{len(elements)}">')  # raw-html-ok: len(...) is always an int
     for element in elements:
         lines.append(
             (
-                f'    <element id="{_xml_attr(element.get("id"))}" '
-                f'type="{_xml_attr(element.get("type"))}" '
-                f'layer="{_xml_attr(element.get("layer"))}" '
-                f'name="{_xml_attr(element.get("name"))}">'
+                f'    <element id="{_xml_attr(element.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'type="{_xml_attr(element.get("type"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'layer="{_xml_attr(element.get("layer"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'name="{_xml_attr(element.get("name"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if element.get("description"):
-            lines.append(f"      <description>{_xml_text(element.get('description'))}</description>")
+            lines.append(f"      <description>{_xml_text(element.get('description'))}</description>")  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         _append_property_xml(lines, element.get("properties"), "      ")
         lines.append("    </element>")
     lines.append("  </elements>")
 
-    lines.append(f'  <relationships count="{len(relationships)}">')
+    lines.append(f'  <relationships count="{len(relationships)}">')  # raw-html-ok: len(...) is always an int
     for relationship in relationships:
         lines.append(
             (
-                f'    <relationship id="{_xml_attr(relationship.get("id"))}" '
-                f'type="{_xml_attr(relationship.get("type"))}" '
-                f'source="{_xml_attr(relationship.get("source"))}" '
-                f'target="{_xml_attr(relationship.get("target"))}">'
+                f'    <relationship id="{_xml_attr(relationship.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'type="{_xml_attr(relationship.get("type"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'source="{_xml_attr(relationship.get("source"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'target="{_xml_attr(relationship.get("target"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if relationship.get("description"):
             lines.append(
-                f"      <description>{_xml_text(relationship.get('description'))}</description>"
+                f"      <description>{_xml_text(relationship.get('description'))}</description>"  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         _append_property_xml(lines, relationship.get("properties"), "      ")
         lines.append("    </relationship>")
     lines.append("  </relationships>")
 
-    lines.append(f'  <viewpoints count="{len(viewpoints)}">')
+    lines.append(f'  <viewpoints count="{len(viewpoints)}">')  # raw-html-ok: len(...) is always an int
     for viewpoint in viewpoints:
         viewpoint_elements = viewpoint.get("elements") or []
         viewpoint_relationships = viewpoint.get("relationships") or []
         lines.append(
             (
-                f'    <viewpoint id="{_xml_attr(viewpoint.get("id"))}" '
-                f'name="{_xml_attr(viewpoint.get("name"))}">'
+                f'    <viewpoint id="{_xml_attr(viewpoint.get("id"))}" '  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
+                f'name="{_xml_attr(viewpoint.get("name"))}">'  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
             )
         )
         if viewpoint.get("description"):
-            lines.append(f"      <description>{_xml_text(viewpoint.get('description'))}</description>")
+            lines.append(f"      <description>{_xml_text(viewpoint.get('description'))}</description>")  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      <elements>")
         for element_id in viewpoint_elements:
             if isinstance(element_id, dict):
                 element_id = element_id.get("id")
-            lines.append(f'        <element_ref id="{_xml_attr(element_id)}" />')
+            lines.append(f'        <element_ref id="{_xml_attr(element_id)}" />')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      </elements>")
         lines.append("      <relationships>")
         for relationship_id in viewpoint_relationships:
             if isinstance(relationship_id, dict):
                 relationship_id = relationship_id.get("id")
-            lines.append(f'        <relationship_ref id="{_xml_attr(relationship_id)}" />')
+            lines.append(f'        <relationship_ref id="{_xml_attr(relationship_id)}" />')  # raw-html-ok: _xml_attr/_xml_text (defined above in this file) are escape() wrappers -- already safe
         lines.append("      </relationships>")
         lines.append("    </viewpoint>")
     lines.append("  </viewpoints>")
@@ -340,8 +341,8 @@ def capability_sets():
         user_id = current_user.id
         if request.method == "GET":
             # ENH-011: Optional pagination via page & per_page query params
-            page = request.args.get("page", type=int)
-            per_page = request.args.get("per_page", 50, type=int)
+            page = safe_int_arg('page', None, minimum=1)
+            per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
             per_page = min(per_page, 200)  # cap
 
             query = CapabilitySet.query.filter(
@@ -596,8 +597,10 @@ def design_solution():
         constraints = data.get("constraints")
         include_vendor_analysis = data.get("include_vendor_analysis", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
+        _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -605,7 +608,7 @@ def design_solution():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=[validated_id],
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in design-solution: %s", e)
 
@@ -616,8 +619,24 @@ def design_solution():
             requirements=requirements,
             constraints=constraints,
             include_vendor_analysis=include_vendor_analysis,
-            rag_context=rag_context,
+            # The structured dict, not the formatted string: the ranker matches
+            # option text against individual principles and prior decisions, and
+            # needs them as rows to name which one matched.
+            rag_context=rag_ctx,
         )
+        # design_solution() cannot consume rag_context: it is deterministic — it
+        # ranks vendor/build/hybrid options from the capability, vendors and
+        # constraints — with no LLM prompt for a text blob to enter. Passing it
+        # raised TypeError, which is why it was dropped.
+        #
+        # But get_context_for_solution() runs four SQL queries (principles, prior
+        # ARB decisions, reference architectures, solution patterns) on every
+        # request, and formatting then discarding the result made all four pure
+        # waste. Returning it alongside the design costs nothing further and gives
+        # the caller the governance context the retrieval was written to surface.
+        # Purely additive: no existing field changes.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="design_solution",
@@ -1052,7 +1071,7 @@ def _build_arb_draft_from_solution(solution):
     cost = qb.get("cost_sustainability", {})
 
     # ── Business Justification ────────────────────────────────────────────────
-    bj = f"## Business Justification\n\n"
+    bj = "## Business Justification\n\n"
     bj += f"**Solution:** {solution.name}\n"
     if solution.business_domain:
         bj += f"**Domain:** {solution.business_domain}\n"
@@ -1812,8 +1831,10 @@ def analyze_gap():
         target_coverage = data.get("target_coverage", 100.0)
         include_solutions = data.get("include_solutions", True)
 
-        # Gather RAG context (best-effort — never crashes the endpoint)
-        rag_context = ""
+        # Gather RAG context (best-effort — never crashes the endpoint).
+        # Bound before the try: retrieval failure must leave these defined.
+        _rag_context = ""
+        rag_ctx = None
         try:
             from app.services.architecture_rag_service import ArchitectureRAGService
             rag_svc = ArchitectureRAGService()
@@ -1821,7 +1842,7 @@ def analyze_gap():
                 business_domain=data.get("business_domain", ""),
                 capability_ids=capability_ids,
             )
-            rag_context = rag_svc.format_context(rag_ctx)
+            _rag_context = rag_svc.format_context(rag_ctx)
         except Exception as e:
             logger.warning("RAG context retrieval failed in analyze-gap: %s", e)
 
@@ -1830,8 +1851,12 @@ def analyze_gap():
             capability_ids=capability_ids,
             target_coverage=target_coverage,
             include_solutions=include_solutions,
-            rag_context=rag_context,
         )
+        # Same as design-solution: analyze_gap() is deterministic and cannot take a
+        # text blob, but the four queries behind _rag_context have already run, so
+        # the result is returned rather than discarded. Purely additive.
+        if isinstance(result, dict) and _rag_context:
+            result.setdefault("rag_context", _rag_context)
 
         _log_ai_call(
             action="analyze_gap",
@@ -2358,7 +2383,7 @@ def add_business_driver(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business driver: {e}")
@@ -2475,7 +2500,7 @@ def add_strategic_objective(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding strategic objective: {e}")
@@ -2613,7 +2638,7 @@ def add_business_capability(context_id):
             201,
         )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error adding business capability: {e}")
@@ -2654,7 +2679,7 @@ def generate_capability_heatmap(context_id):
 
         return jsonify({"success": True, "data": heatmap}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating capability heatmap: {e}")
@@ -2696,7 +2721,7 @@ def generate_problem_statement(context_id):
 
         return jsonify({"success": True, "data": {"problem_statement": problem_statement}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating problem statement: {e}")
@@ -2737,7 +2762,7 @@ def generate_scope_definition(context_id):
 
         return jsonify({"success": True, "data": {"scope_definition": scope_definition}}), 200
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Resource not found"}), 404
     except Exception as e:
         logger.error(f"Error generating scope definition: {e}")
@@ -3310,8 +3335,8 @@ def motivation_elements_typeahead():
         query = query.filter(db.func.lower(ArchiMateElement.layer) == layer.lower())
 
     # ENH-011: Optional page/per_page for pagination; default still limited to 15
-    page = request.args.get("page", type=int)
-    per_page = min(request.args.get("per_page", 15, type=int), 100)
+    page = safe_int_arg('page', None, minimum=1)
+    per_page = min(safe_int_arg('per_page', 15, minimum=1, maximum=500), 100)
 
     # ENH-010: Cache typeahead results by query params for 5 minutes
     cache_key = f"motivation_typeahead:{q}:{type_}:{layer}:{page}:{per_page}"
@@ -3491,8 +3516,8 @@ def get_archimate_model():
         )
         return jsonify(model)
     except Exception as e:
-        logger.error(f"get_archimate_model error for cap {capability_id}: {e}")
-        return jsonify({"elements": [], "relationships": [], "error": str(e)}), 200
+        logger.exception(f"get_archimate_model error for cap {capability_id}: {e}")
+        return jsonify({"error": "Could not build the ArchiMate model"}), 500
 
 
 # ---------------------------------------------------------------------------
@@ -3506,7 +3531,10 @@ def create_roadmap_elements():
     data = request.get_json() or {}
     gap_elements = data.get("gap_elements") or []
     solution_option = data.get("solution_option") or {}
-    wks = max(6, int(solution_option.get("implementation_weeks") or 24))
+    try:
+        wks = max(6, int(solution_option.get("implementation_weeks") or 24))
+    except (ValueError, TypeError):
+        return jsonify({"error": "solution_option.implementation_weeks must be a number"}), 400
 
     phases = [
         ("Discovery & Design", 1, 4, "Requirements, architecture blueprint, stakeholder alignment"),
@@ -3525,6 +3553,7 @@ def create_roadmap_elements():
                 summary=f"Weeks {sw}–{ew}",
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
 
             if i == 2 and gap_elements:
@@ -3565,7 +3594,6 @@ def export_arb_document(solution_id):
     """Export ARB submission as a printable HTML document."""
     from app.models.solution_models import Solution
     from app.models.solution_element import SolutionElement
-    from app.models.archimate_core import ArchiMateElement
 
     solution = Solution.query.get(solution_id)
     if not solution:
@@ -3587,7 +3615,7 @@ def export_arb_document(solution_id):
             ae = se.archimate_element
             if ae:
                 elements.append({"name": ae.name, "type": ae.type, "layer": ae.layer})
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.exception("Failed to database query")
         pass
 
@@ -3601,7 +3629,7 @@ def export_arb_document(solution_id):
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>ARB Submission — {solution.name}</title>
+<title>ARB Submission — {escape(solution.name)}</title>
 <style>
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }}
   h1 {{ border-bottom: 2px solid #2563eb; padding-bottom: 8px; }}
@@ -3618,36 +3646,41 @@ def export_arb_document(solution_id):
 <body>
 <h1>Architecture Review Board Submission</h1>
 <div class="meta">
-  <strong>Solution:</strong> {solution.name}<br>
-  <strong>Domain:</strong> {solution.business_domain or 'N/A'}<br>
-  <strong>Status:</strong> {solution.governance_status or 'draft'}<br>
+  <strong>Solution:</strong> {escape(solution.name)}<br>
+  <strong>Domain:</strong> {escape(solution.business_domain or 'N/A')}<br>
+  <strong>Status:</strong> {escape(solution.governance_status or 'draft')}<br>
   <strong>Generated:</strong> {__import__('datetime').datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
 </div>
 """
+    # arb_draft is LLM-generated (AI-drafted ARB submission) and elements/
+    # roadmap entries carry architect-authored freeform text -- escape() every
+    # one of them before they reach this HTML response (same class of bug as
+    # the 10 Sep 2026 digest-email incident, here reaching a browser directly
+    # via Response(html, mimetype="text/html")).
     if arb_draft.get("business_justification"):
-        html += f'<div class="section"><h2>Business Justification</h2><p>{arb_draft["business_justification"]}</p></div>\n'
+        html += f'<div class="section"><h2>Business Justification</h2><p>{escape(str(arb_draft["business_justification"]))}</p></div>\n'
     if arb_draft.get("technical_assessment"):
-        html += f'<div class="section"><h2>Technical Assessment</h2><p>{arb_draft["technical_assessment"]}</p></div>\n'
+        html += f'<div class="section"><h2>Technical Assessment</h2><p>{escape(str(arb_draft["technical_assessment"]))}</p></div>\n'
     if arb_draft.get("risk_analysis"):
-        html += f'<div class="section"><h2>Risk Analysis</h2><p>{arb_draft["risk_analysis"]}</p></div>\n'
+        html += f'<div class="section"><h2>Risk Analysis</h2><p>{escape(str(arb_draft["risk_analysis"]))}</p></div>\n'
     if arb_draft.get("implementation_approach"):
-        html += f'<div class="section"><h2>Implementation Approach</h2><p>{arb_draft["implementation_approach"]}</p></div>\n'
+        html += f'<div class="section"><h2>Implementation Approach</h2><p>{escape(str(arb_draft["implementation_approach"]))}</p></div>\n'
     if arb_draft.get("cost_summary"):
-        html += f'<div class="section"><h2>Cost Summary</h2><p>{arb_draft["cost_summary"]}</p></div>\n'
+        html += f'<div class="section"><h2>Cost Summary</h2><p>{escape(str(arb_draft["cost_summary"]))}</p></div>\n'
 
     if selected_option:
-        html += f'<div class="section"><h2>Selected Option</h2><p><strong>{selected_option.get("name", "N/A")}</strong>: {selected_option.get("description", "")}</p></div>\n'
+        html += f'<div class="section"><h2>Selected Option</h2><p><strong>{escape(str(selected_option.get("name", "N/A")))}</strong>: {escape(str(selected_option.get("description", "")))}</p></div>\n'
 
     if elements:
         html += '<div class="section"><h2>ArchiMate Elements</h2><table><tr><th>Name</th><th>Type</th><th>Layer</th></tr>\n'
         for el in elements:
-            html += f'<tr><td>{el["name"]}</td><td>{el["type"]}</td><td>{el["layer"]}</td></tr>\n'
+            html += f'<tr><td>{escape(str(el["name"]))}</td><td>{escape(str(el["type"]))}</td><td>{escape(str(el["layer"]))}</td></tr>\n'
         html += '</table></div>\n'
 
     if roadmap.get("plateaus"):
         html += '<div class="section"><h2>Implementation Roadmap</h2><table><tr><th>Plateau</th><th>Duration</th></tr>\n'
         for p in roadmap["plateaus"]:
-            html += f'<tr><td>{p.get("name", "")}</td><td>{p.get("duration", "")}</td></tr>\n'
+            html += f'<tr><td>{escape(str(p.get("name", "")))}</td><td>{escape(str(p.get("duration", "")))}</td></tr>\n'
         html += '</table></div>\n'
 
     html += '</body></html>'
@@ -3857,25 +3890,45 @@ def _wizard_save_step_1(data, solution_id):
         if driver.get("id"):
             _link_existing_element(solution.id, driver["id"])
         else:
-            _sync_archimate_element(solution.id, "Driver", "Motivation", driver["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Driver",
+                ae_layer="Motivation",
+                name=driver["name"],
+            )
 
     for goal in scope.get("goals", []):
         if goal.get("id"):
             _link_existing_element(solution.id, goal["id"])
         else:
-            _sync_archimate_element(solution.id, "Goal", "Motivation", goal["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Goal",
+                ae_layer="Motivation",
+                name=goal["name"],
+            )
 
     for constraint in scope.get("constraints", []):
         if constraint.get("id"):
             _link_existing_element(solution.id, constraint["id"])
         else:
-            _sync_archimate_element(solution.id, "Constraint", "Motivation", constraint["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Constraint",
+                ae_layer="Motivation",
+                name=constraint["name"],
+            )
 
     for stakeholder in scope.get("stakeholders", []):
         if stakeholder.get("id"):
             _link_existing_element(solution.id, stakeholder["id"])
         else:
-            _sync_archimate_element(solution.id, "Stakeholder", "Motivation", stakeholder["name"])
+            _sync_archimate_element(
+                solution.id,
+                ae_type="Stakeholder",
+                ae_layer="Motivation",
+                name=stakeholder["name"],
+            )
 
     # Link general ArchiMate elements (any layer) selected via the element search
     for ae in scope.get("archimate_elements", []):
@@ -3934,8 +3987,10 @@ def _wizard_save_step_3(data, solution_id):
         if gap.get("recommendation"):
             desc += f"\nRecommendation: {gap['recommendation']}"
         _sync_archimate_element(
-            solution.id, "Gap", "Implementation_and_Migration",
-            f"Gap: {gap.get('capability_name', 'Unknown')}",
+            solution.id,
+            ae_type="Gap",
+            ae_layer="Implementation_and_Migration",
+            name=f"Gap: {gap.get('capability_name', 'Unknown')}",
             description=desc,
         )
 
@@ -4002,14 +4057,18 @@ def _wizard_save_step_5(data, solution_id):
     roadmap = data.get("roadmap", {})
     for plateau in roadmap.get("plateaus", []):
         _sync_archimate_element(
-            solution.id, "Plateau", "Implementation_and_Migration",
-            plateau.get("name", "Unnamed Plateau"),
+            solution.id,
+            ae_type="Plateau",
+            ae_layer="Implementation_and_Migration",
+            name=plateau.get("name", "Unnamed Plateau"),
         )
 
     for wp in roadmap.get("workPackages", []):
         _sync_archimate_element(
-            solution.id, "WorkPackage", "Implementation_and_Migration",
-            wp.get("name", "Unnamed Work Package"),
+            solution.id,
+            ae_type="WorkPackage",
+            ae_layer="Implementation_and_Migration",
+            name=wp.get("name", "Unnamed Work Package"),
         )
 
     # Store structured roadmap in arb_snapshot for resume hydration
@@ -4338,6 +4397,12 @@ def get_ai_reasoning(solution_id):
     model_name, and approval_status for each AI invocation on this solution.
     """
     from app.models.ai_audit_log import AIAuditLog
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    # Zero audit entries for a solution that does not exist would read as
+    # "this solution had no AI involvement".
+    require_entity(Solution, solution_id, description="Solution not found")
 
     logs = AIAuditLog.query.filter_by(solution_id=solution_id).order_by(
         AIAuditLog.created_at.desc()
@@ -4407,8 +4472,8 @@ def paginated_capabilities():
     """
     from app.models.unified_capability import UnifiedCapability
 
-    page = max(1, request.args.get("page", 1, type=int))
-    per_page = min(200, max(1, request.args.get("per_page", 50, type=int)))
+    page = max(1, safe_int_arg('page', 1, minimum=1))
+    per_page = min(200, max(1, safe_int_arg('per_page', 50, minimum=1, maximum=500)))
     search = request.args.get("search", "").strip()
 
     cache_key = f"aa_capabilities:p{page}:pp{per_page}:s{search}"

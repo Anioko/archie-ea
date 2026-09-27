@@ -175,12 +175,6 @@ class VendorProductDetail(db.Model):
     aliases = db.relationship(
         "VendorProductAlias", back_populates="product", cascade="all, delete-orphan", lazy="select"
     )
-    application_mappings = db.relationship(
-        "app.models.vendor.vendor_product.ApplicationVendorProductMapping",
-        back_populates="vendor_product",
-        cascade="all, delete-orphan",
-        lazy="select",
-    )
     created_by = db.relationship("User", backref="created_vendor_products")
 
     def __repr__(self):
@@ -278,70 +272,8 @@ class VendorProductAlias(db.Model):
         return f'<VendorProductAlias {self.alias} -> {self.product.product_name if self.product else "Unknown"}>'
 
 
-class ApplicationVendorProductMapping(db.Model):
-    """Link applications to specific vendor products with deployment tracking."""
-
-    __mapper_args__ = {
-        "polymorphic_identity": "app.models.vendor.vendor_product.ApplicationVendorProductMapping"
-    }
-
-    __tablename__ = "application_vendor_product_mappings"
-    __table_args__ = {"extend_existing": True}
-
-    id = db.Column(db.BigInteger, primary_key=True)
-    application_id = db.Column(
-        db.BigInteger, db.ForeignKey("archimate_elements.id"), nullable=False
-    )
-    vendor_product_id = db.Column(
-        db.BigInteger, db.ForeignKey("vendor_product_details.id"), nullable=False
-    )
-
-    # Deployment details
-    deployment_type = db.Column(db.String(50))  # "Production", "Development", "Testing", "Staging"
-    version_deployed = db.Column(db.String(50))  # Specific version deployed
-    license_type = db.Column(db.String(100))  # "enterprise", "professional", "standard", "free"
-    license_count = db.Column(db.Integer)  # Number of licenses
-    contract_end_date = db.Column(db.Date)
-
-    # Integration details
-    integration_method = db.Column(
-        db.String(50)
-    )  # "direct_api", "middleware", "file_based", "manual"
-    integration_complexity = db.Column(db.Integer)  # 1 - 10 scale
-    customizations = db.Column(db.Text)  # JSON array of customizations
-    data_volume = db.Column(db.String(50))  # "low", "medium", "high", "very_high"
-
-    # Usage metrics
-    user_count = db.Column(db.Integer)
-    transaction_volume = db.Column(db.String(50))  # "low", "medium", "high", "very_high"
-    performance_satisfaction = db.Column(db.Integer)  # 1 - 5 scale
-    business_criticality = db.Column(
-        db.String(30)
-    )  # "mission_critical", "business_critical", "important", "supporting"
-
-    # AI mapping metadata
-    confidence_score = db.Column(db.Numeric(3, 2))  # 0.0 - 1.0 confidence in this mapping
-    mapping_method = db.Column(
-        db.String(50)
-    )  # "ai_extracted", "manual", "inferred", "vendor_confirmed"
-    ai_extraction_rationale = db.Column(db.Text)  # AI reasoning for this mapping
-    last_verified_at = db.Column(db.DateTime)
-    verification_status = db.Column(db.String(30))  # "verified", "pending", "rejected"
-
-    # Status
-    status = db.Column(
-        db.String(30), default="active"
-    )  # "active", "deprecated", "planned", "retired"
-
-    # Metadata
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
-
-    # Relationships
-    application = db.relationship("ArchiMateElement", backref="vendor_product_mappings")
-    vendor_product = db.relationship("VendorProductDetail", back_populates="application_mappings")
-    created_by = db.relationship("User", backref="created_application_mappings")
-
-    def __repr__(self):
-        return f'<ApplicationVendorProductMapping {self.application.name if self.application else "Unknown"} -> {self.vendor_product.product_name if self.vendor_product else "Unknown"}>'
+# Compatibility export for callers that historically imported the mapping from
+# this module.  There is one canonical application-to-product aggregate and one
+# table mapping; the former duplicate declared different foreign keys and could
+# invalidate every mapper in a worker once this catalogue was imported.
+from ..capability_to_vendor_mapping import ApplicationVendorProductMapping  # noqa: E402,F401

@@ -19,10 +19,9 @@ Category: services/navigation
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from flask import current_app, request, url_for
+from flask import url_for
 
 
 @dataclass
@@ -353,7 +352,6 @@ class RouteDiscoveryService:
             "Metrics": "Metrics",
             "Health": "Health",
             "Status": "Status",
-            "Info": "Information",
             "Help": "Help",
             "About": "About",
             "Contact": "Contact",
@@ -364,7 +362,6 @@ class RouteDiscoveryService:
             "Example": "Example",
             "Demo": "Demo",
             "Test": "Test",
-            "Debug": "Debug",
             "Dev": "Development",
             "Prod": "Production",
             "Staging": "Staging",

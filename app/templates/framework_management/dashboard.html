@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Framework Management{% endblock %}
 
 {% block breadcrumb %}
@@ -10,31 +11,26 @@
 {% endblock %}
 {% block content %}
 <div class="space-y-6 p-6">
-  <div>
-    <h1 class="text-2xl font-semibold text-foreground">Framework Management</h1>
-    <p class="text-muted-foreground mt-1">Manage capability frameworks, extensions, and deployment templates.</p>
-  </div>
+  {{ page_shell(title='Framework Management', subtitle='Manage capability frameworks, extensions, and deployment templates.') }}
 
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% if has_manufacturing %}
     <a href="{{ url_for('main.framework_management.framework_dashboard') }}"
        class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
       <div class="text-sm font-medium text-foreground">Manufacturing Dashboard</div>
       <div class="text-xs text-muted-foreground">View manufacturing excellence framework instances and maturity levels.</div>
     </a>
+    {% endif %}
     <a href="{{ url_for('main.framework_management.framework_table') }}"
        class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
       <div class="text-sm font-medium text-foreground">Framework Instances</div>
       <div class="text-xs text-muted-foreground">Browse all framework instances and their implementation status.</div>
     </a>
-    <a href="{{ url_for('dashboard.overview') }}"
-       class="flex flex-col gap-2 rounded-lg border border-border bg-card p-5 hover:bg-accent transition-colors">
-      <div class="text-sm font-medium text-foreground">Back to Dashboard</div>
-      <div class="text-xs text-muted-foreground">Return to the main architecture dashboard.</div>
-    </a>
   </div>
 
   <div class="rounded-lg border border-border bg-card p-6" x-data="frameworkStats()" x-init="load()">
     <h2 class="text-base font-semibold text-foreground mb-4">Overview</h2>
+    <div x-show="error" x-cloak class="mb-4 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
       <div class="text-center">
         <div class="text-2xl font-bold text-foreground" x-text="stats.total_configurations ?? '—'"></div>
@@ -59,11 +55,19 @@
 function frameworkStats() {
   return {
     stats: {},
+    error: '',
     load() {
-      fetch('/framework-management/api/statistics')
-        .then(r => r.json())
+      this.error = '';
+      Platform.fetch.get('/framework-management/api/statistics')
         .then(d => { this.stats = d; })
-        .catch(() => {});
+        .catch((err) => {
+          // Leave stats empty so every tile renders an em dash — an unloaded
+          // count must not be shown as a number of any kind.
+          this.stats = {};
+          this.error = 'Could not load framework statistics.';
+          // The error toast is already shown by Platform.fetch (unless silent:true).
+          // We still set the inline error state for the UI.
+        });
     }
   }
 }

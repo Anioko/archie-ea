@@ -15,22 +15,15 @@ Helpers:
 import csv
 import json
 from datetime import datetime
-from io import BytesIO, StringIO
+from io import StringIO
 
 from flask import Response, current_app, jsonify, request
 from flask_login import login_required
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload, selectinload  # dead-code-ok
 
-from app import db  # dead-code-ok
 from app.exceptions import (  # dead-code-ok
     BusinessRuleError,
     DatabaseError,
-    ExternalServiceError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 
 from . import capability_map
@@ -41,12 +34,7 @@ from . import capability_map
 def api_export_mappings():
     """Export capability mappings and gap analysis to multiple formats"""
     try:
-        import csv
-        import json
-        from datetime import datetime
-        from io import StringIO
 
-        from flask import Response
 
         # Get format parameter
         export_format = request.args.get("format", "csv").lower()
@@ -127,9 +115,6 @@ def api_export_mappings():
 
 def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
     """Export to CSV format"""
-    import csv
-    from datetime import datetime
-    from io import StringIO
 
     from flask import Response
 
@@ -182,8 +167,15 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
                     app.name,
                     mapping.support_level,
                     mapping.coverage_percentage,
-                    mapping.gap_status,
-                    mapping.assessment_notes,
+                    # ApplicationCapabilityCoverage has no gap_status/assessment_notes
+                    # columns; derive the gap status from real coverage_percentage
+                    # and use the real notes column.
+                    (
+                        "Covered" if (mapping.coverage_percentage or 0) >= 80
+                        else "Partial" if (mapping.coverage_percentage or 0) >= 40
+                        else "Gap"
+                    ),
+                    mapping.notes,
                     "High" if (capability.level or 1) == 1 else "Medium",
                 ]
             )
@@ -230,10 +222,7 @@ def _export_csv(capabilities, mappings, mapped_capability_ids, applications):
 
 def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     """Export to JSON format"""
-    import json
-    from datetime import datetime
 
-    from flask import Response
 
     from app.models.application_layer import ApplicationComponent
     from app.models.business_capabilities import BusinessCapability
@@ -263,7 +252,7 @@ def _export_json(capabilities, mappings, mapped_capability_ids, applications):
     # Add mappings
     for mapping in mappings:
         app = json_apps_by_id.get(mapping.application_component_id)
-        capability = json_caps_by_id.get(mapping.unified_capability_id)
+        capability = json_caps_by_id.get(mapping.capability_id)
 
         if app and capability:
             export_data["mappings"].append(
@@ -381,7 +370,7 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
                 break
 
             app = img_apps_by_id.get(mapping.application_component_id)
-            capability = img_caps_by_id.get(mapping.unified_capability_id)
+            capability = img_caps_by_id.get(mapping.capability_id)
 
             if app and capability:
                 draw.text(
@@ -447,9 +436,12 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
                     y_position += 18
                     gap_count += 1
 
-        # Save image to BytesIO
+        # Save image to BytesIO. PIL's format key for JPEG is "JPEG", not "JPG",
+        # so format_type.upper() == "JPG" raised (and the broad except below then
+        # mislabeled it as a missing-Pillow error).
         img_buffer = BytesIO()
-        img.save(img_buffer, format=format_type.upper())
+        _pil_format = "JPEG" if format_type.lower() in ("jpg", "jpeg") else format_type.upper()
+        img.save(img_buffer, format=_pil_format)
         img_buffer.seek(0)
 
         # Create response
@@ -460,13 +452,22 @@ def _export_image(capabilities, mappings, mapped_capability_ids, format_type, ap
 
         return response
 
-    except Exception as e:
-        # Fallback to error response if PIL is not available
+    except ImportError:
         return (
             jsonify(
                 {
-                    "error": "Image export requires PIL/Pillow library. Please install it with: pip install Pillow",
-                    "details": "See server logs for details",
+                    "error": "Image export requires the Pillow library (pip install Pillow).",
+                }
+            ),
+            500,
+        )
+    except Exception as e:
+        current_app.logger.error("Capability image export failed: %s", e, exc_info=True)
+        return (
+            jsonify(
+                {
+                    "error": "Image export failed while rendering the report.",
+                    "details": str(e),
                 }
             ),
             500,

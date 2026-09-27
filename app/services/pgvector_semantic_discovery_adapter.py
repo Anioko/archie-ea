@@ -9,13 +9,13 @@ This adapter allows existing code to work with pgvector seamlessly.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+from app.models.vendor.vendor_organization import VendorProduct
 from app.services.pgvector_embedding_service import get_pgvector_service
 
 logger = logging.getLogger(__name__)

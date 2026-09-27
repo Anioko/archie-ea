@@ -411,7 +411,7 @@
 {% endblock %}
 
 {% block content %}
-{% from 'components/drawer.html' import drawer %}
+{% from 'components/drawer.html' import drawer with context %}
 <script>
   document.addEventListener('alpine:init', () => {
     if (!Alpine.store('chat')) {
@@ -429,9 +429,9 @@
       <div class="flex items-center gap-3">
         <i data-lucide="brain" class="w-5 h-5" aria-hidden="true"></i>
         <div>
-          <h2 class="text-lg font-semibold">Entity Matching Assistant</h2>
+          <h1 class="text-lg font-semibold">Entity Matching Assistant</h1>
           <p class="text-sm text-muted-foreground">
-            <span x-text="currentPersona.replace('_', ' ').title()"></span> • 
+            <span x-text="currentPersona.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())"></span> •
             <span x-text="currentDomain"></span> Domain
           </p>
         </div>
@@ -592,7 +592,7 @@
           class="chat-input"
           rows="1"
           x-ref="chatInput"
-        ></textarea>
+         aria-label="Type your message or paste document text here..."></textarea>
         <button type="button"
           @click="sendMessage()"
           :disabled="!currentMessage.trim() || isProcessing"
@@ -693,13 +693,13 @@
             <!-- Entity Status -->
             <div class="mt-2 flex items-center gap-2">
               <template x-if="entity.status === 'matched'">
-                <span class="text-xs text-success">✓ Matched</span>
+                <span class="text-xs text-success-emphasis">✓ Matched</span>
               </template>
               <template x-if="entity.status === 'new'">
                 <span class="text-xs text-primary">+ New</span>
               </template>
               <template x-if="entity.status === 'duplicate'">
-                <span class="text-xs text-warning">⚠ Duplicate</span>
+                <span class="text-xs text-warning-emphasis">⚠ Duplicate</span>
               </template>
               <template x-if="entity.status === 'pending'">
                 <span class="text-xs text-muted-foreground">⏳ Pending</span>
@@ -823,23 +823,17 @@ function entityMatchingChat() {
       this.isTyping = true;
       
       try {
-        // Call entity matching API
-        const response = await fetch('/ai-chat/entity-matching', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content,
-          },
-          body: JSON.stringify({
-            document_text: message,
-            user_persona: this.currentPersona,
-            domain: this.currentDomain,
-            chat_history: this.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
-          })
+        // Call entity matching API using Platform.fetch
+        // Platform.fetch.post automatically handles CSRF token and JSON serialization
+        const result = await Platform.fetch.post('/ai-chat/entity-matching', {
+          document_text: message,
+          user_persona: this.currentPersona,
+          domain: this.currentDomain,
+          chat_history: this.messages.slice(-5).map(m => ({ role: m.role, content: m.content }))
         });
         
-        const result = await response.json();
-        
+        // Platform.fetch throws on non-ok responses, so if we reach here the request succeeded
+        // However, the API may still return a success:false result, which we need to handle
         if (result.success) {
           // Process results and update entities
           this.processMatchingResults(result);
@@ -847,12 +841,18 @@ function entityMatchingChat() {
           // Add assistant response
           this.addAssistantMessage(result);
         } else {
+          // The request succeeded (HTTP 200) but the API returned an error
+          // We should show this to the user without a global toast (silent:true not needed here)
           this.addMessage('assistant', `I encountered an error: ${result.error}`);
         }
         
       } catch (error) {
-        console.error('Error sending message:', error);
-        this.addMessage('assistant', 'Sorry, I encountered an error while processing your request. Please try again.');
+        // Platform.fetch throws on network errors or non-ok HTTP responses
+        // We need to show this error to the user
+        // The global toast will be shown by Platform.fetch, but we also want to show it in the chat
+        // We'll add a message to the chat, but we don't need to show another toast
+        // The error message from Platform.fetch is in error.message
+        this.addMessage('assistant', `Sorry, I encountered an error while processing your request: ${error.message}`);
       } finally {
         this.isTyping = false;
         this.isProcessing = false;

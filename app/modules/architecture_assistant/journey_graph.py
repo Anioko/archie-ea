@@ -162,7 +162,7 @@ class JourneyGraph:
             diag = self.engine.diagnose_architecture()
         except Exception as e:
             logger.warning("diagnose_architecture failed: %s", e)
-            return {"issues": [], "completeness": {}, "overall": 0}
+            return {"issues": [], "completeness": {}, "overall": None}  # honest: completeness score not computed on diagnostic failure
 
         # diagnose_architecture() iterates all elements in the same order as find_nodes()
         all_nodes = self.facade.find_nodes(element_type=None, filters={})

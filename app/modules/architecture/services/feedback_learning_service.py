@@ -9,12 +9,10 @@ Features:
 - Adaptive prompt refinement
 """
 
-import json
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON
 
 from app import db
@@ -333,8 +331,10 @@ class FeedbackLearningService:
             }
 
         except Exception as e:
+            # Do not fabricate a zero-feedback stat on failure; return None so
+            # the caller can render an em dash instead of an invented count.
             logger.error(f"Error getting feedback statistics: {e}")
-            return {"total_feedback": 0, "corrections_by_type": {}}
+            return None
 
     # ------------------------------------------------------------------ #
     # Adaptive prompt refinement                                           #

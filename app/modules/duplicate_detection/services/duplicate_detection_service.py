@@ -17,26 +17,21 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, text
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy import or_
+from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.application_duplicate_detection import (
     ApplicationProcessMapping,
-    BusinessProcess,
     ConsolidationRecommendation,
     DuplicateAnalysis,
     DuplicateDetectionRun,
     DuplicateGroup,
     DuplicateType,
-    ProcessLevel,
 )
 from app.models.application_layer import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability
-from app.models.missing_capability_models import ApplicationCapability
 
 logger = logging.getLogger(__name__)
 

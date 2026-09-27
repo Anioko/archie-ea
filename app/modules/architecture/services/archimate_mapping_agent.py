@@ -8,10 +8,8 @@ and validating against ArchiMate 3.2 metamodel.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app import db
 from app.models.archimate_core import ArchiMateElement
 from app.models.archimate_element_types import ArchiMateElementTypes
 from app.models.constants import ArchiMateLayer, ArchiMateRelationshipType

@@ -12,8 +12,14 @@ URL Structure:
 /enterprise/implementation/* - Implementation Planning
 """
 
+# Side-effect import, NOT dead code: this is the only module that imports
+# app/models/metrics.py, and that import is what registers the
+# `application_metrics_snapshots` table on db.metadata. Removing it (as
+# `ruff --fix --select F401` did) silently drops the table from the ORM —
+# caught by comparing db.metadata.tables before and after.
+from app.services.archimate_backbone import sync_archimate_element
+from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import logging
-from datetime import datetime  # dead-code-ok
 
 from flask import (
     Blueprint,
@@ -26,26 +32,18 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import func, or_, select, text  # dead-code-ok
-from sqlalchemy.exc import IntegrityError as SQLIntegrityError  # dead-code-ok
+from sqlalchemy import or_  # dead-code-ok
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from .. import db
 from ..security.audit import audit_logger, AuditEventType, AuditEventSeverity
 from ..exceptions import (  # dead-code-ok
-    BusinessRuleError,
     DatabaseError,
-    IntegrityError,
-    NotFoundError,
-    ValidationError,
 )
 from ..utils.api_helpers import api_error
 from ..models import (  # dead-code-ok
     ConceptualDataModel,
     Contract,
-    DataLineage,
-    DataTransformation,
     DesignPattern,
     LogicalDataModel,
     PhysicalDataModel,
@@ -56,14 +54,12 @@ from ..models import (  # dead-code-ok
 )
 from ..models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
-    BusinessFunction,
-    Capability,
 )
 from ..models.archimate_core import ArchiMateElement
 from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
-from ..models.metrics import ApplicationMetricsSnapshot  # dead-code-ok
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +101,22 @@ def data_architecture_dashboard():
 @enterprise_bp.route("/data/models")
 @login_required
 def data_models():
-    """Data Models Overview - renders existing data architecture dashboard"""
-    try:
-        conceptual_models = ConceptualDataModel.query.limit(500).all()
-        logical_models = LogicalDataModel.query.limit(500).all()
-        physical_models = PhysicalDataModel.query.limit(500).all()
+    """Data Models Overview - renders existing data architecture dashboard.
 
+    Passes the same counts as `data_architecture_dashboard`, because both render
+    `enterprise/data_architecture_dashboard.html` and its metric tiles read
+    `conceptual_count` / `logical_count` / `physical_count`. This route used to
+    pass three *lists* under different names; the template never read them, so
+    every tile fell through `value=... or 0` and displayed 0 whatever the real
+    count was — a fabricated zero indistinguishable from a measured one. The
+    lists were also never rendered, so fetching up to 1500 rows was pure waste.
+    """
+    try:
         return render_template(
             "enterprise/data_architecture_dashboard.html",
-            conceptual_models=conceptual_models,
-            logical_models=logical_models,
-            physical_models=physical_models,
+            conceptual_count=ConceptualDataModel.query.count(),
+            logical_count=LogicalDataModel.query.count(),
+            physical_count=PhysicalDataModel.query.count(),
         )
     except SQLAlchemyError as e:
         current_app.logger.error(f"Database error loading data models: {e}")
@@ -393,7 +394,7 @@ def strategic_planning_dashboard():
     """Strategic Planning Dashboard"""
     try:
         # Get strategic metrics with ArchiMate fallback for empty tables
-        gap_count = Gap.query.count()
+        gap_count = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
         if gap_count == 0:
             gap_count = ArchiMateElement.query.filter(
                 ArchiMateElement.type.in_(["Gap", "GAP"])
@@ -442,8 +443,8 @@ def strategic_planning_dashboard():
 def capability_health():
     """Capability Health Assessment — paginated to keep response times under 3 s."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
         # Guard against absurdly large page sizes
         per_page = min(per_page, 200)
 
@@ -486,7 +487,7 @@ def investment_matrix():
 def risk_assessment():
     """Risk Assessment"""
     try:
-        gaps = Gap.query.limit(500).all()
+        gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition").limit(500).all()
 
         return render_template("enterprise/risk_assessment.html", gaps=gaps)
     except SQLAlchemyError as e:
@@ -528,16 +529,23 @@ def technology_roadmap():
 @enterprise_bp.route("/implementation/work-packages")
 @login_required
 def work_packages():
-    """Work Packages Management"""
-    return render_template("enterprise/work_packages.html", workpackages=[])
+    """Work Packages Management.
+
+    The page is an Alpine table (`workPackagesTable()` in
+    static/js/enterprise/work_packages_table.js) that loads rows from
+    `/enterprise/api/work-packages` below. It never read a server-rendered
+    `workpackages` variable, so the hardcoded `workpackages=[]` that used to
+    be passed here was dead — and read as a permanently-empty page (S-11).
+    """
+    return render_template("enterprise/work_packages.html")
 
 
 @enterprise_bp.route("/api/work-packages", methods=["GET"])
 @login_required
 def api_list_work_packages():
     """Paginated work packages API."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     status_filter = request.args.get("status", "")
     sort_by = request.args.get("sort", "created_at")
@@ -586,7 +594,150 @@ def api_list_work_packages():
     })
 
 
+def _milestones_for(wp):
+    """Delivery milestones for a work package, via the projects that deliver it.
+
+    Returns [] rather than raising if the project models are unavailable — the
+    Gantt degrades to bars without markers, which is honest; it must never
+    invent a milestone.
+    """
+    try:
+        out = []
+        for project in getattr(wp, "projects", None) or []:
+            for ms in project.milestones:
+                target = ms.actual_date or ms.target_date
+                if not target:
+                    continue
+                out.append({
+                    "id": str(ms.id),
+                    "name": ms.name,
+                    "date": target.isoformat(),
+                    "status": ms.status,
+                    "project": project.name,
+                })
+        return sorted(out, key=lambda m: m["date"])
+    except Exception:
+        logger.exception("Could not resolve milestones for work package %s", getattr(wp, "id", "?"))
+        return []
+
+
+@enterprise_bp.route("/api/work-packages/gantt", methods=["GET"])
+@login_required
+def api_work_packages_gantt():
+    """Work packages in the shape the Gantt component consumes.
+
+    Separate from api_list_work_packages because that endpoint is a paginated
+    table feed (row_number, summary, percent_complete) while the Gantt needs a
+    full unpaginated timeline (start/end dates, progress, cost, owner).
+
+    The Gantt previously called `/implementation/api/work-packages`. That route
+    does resolve — despite a stale comment in _bootstrap/blueprints.py claiming
+    the blueprint was deregistered — but it serves WorkPackage.to_dict(), whose
+    field names do not match what the component reads: it emits `target_date` and
+    `percent_complete` where the Gantt expects `end_date` and
+    `progress_percentage`, and omits assigned_to / business_capability / layer /
+    milestones entirely. The chart therefore drew bars with undefined dates and
+    progress. This endpoint serves the component's actual contract.
+
+    Tenant scoping is implicit — WorkPackage carries TenantMixin.
+    """
+    try:
+        q = WorkPackage.query
+        status_filter = request.args.get("status", "")
+        if status_filter:
+            q = q.filter(WorkPackage.status == status_filter)
+
+        # Undated packages cannot be placed on a timeline; excluding them keeps the
+        # chart honest rather than inventing a start date. They remain visible in
+        # the table feed above.
+        q = q.filter(WorkPackage.start_date.isnot(None))
+        work_packages = q.order_by(
+            WorkPackage.start_date.asc(), WorkPackage.sequence_order.asc()
+        ).all()
+
+        items = []
+        for wp in work_packages:
+            items.append({
+                "id": wp.id,
+                "name": wp.name or "",
+                "description": wp.description or wp.summary or "",
+                "assigned_to": (wp.owner.email if wp.owner else None),
+                "business_capability": (wp.capability.name if wp.capability else None),
+                "status": wp.status or "planned",
+                "start_date": wp.start_date.isoformat() if wp.start_date else None,
+                # The Gantt's x-axis field is end_date; the model calls it target_date.
+                "end_date": (
+                    wp.completed_date.isoformat() if wp.completed_date
+                    else (wp.target_date.isoformat() if wp.target_date else None)
+                ),
+                "progress_percentage": (
+                    wp.percent_complete
+                    if wp.percent_complete is not None
+                    else (100 if wp.completed_date else 0)
+                ),
+                "estimated_cost": wp.estimated_cost,
+                "layer": wp.element_type or "implementation",
+                # Milestone hangs off Project. Project now carries a real
+                # work_package_id FK, so the delivery milestones of a work package
+                # are reachable: work_package -> projects -> milestones. Before that
+                # FK existed there was no path and this was necessarily [].
+                "milestones": _milestones_for(wp),
+            })
+
+        return jsonify({"work_packages": items, "total": len(items)})
+    except Exception:
+        logger.exception("Failed to build Gantt work-package feed")
+        return jsonify({"error": "Failed to load work packages"}), 500
+
+
 # CSRF: Protected via X-CSRFToken header sent by Platform.fetch
+# Work-package fields whose DB columns are Date / Integer / Float. The Create and
+# Edit forms serialise empty inputs as "" (empty string), which Postgres rejects
+# with `invalid input syntax for type date: ""` (and for integer/float) — that was
+# the 500 on "New Work Package -> Create" with only a Name filled in. Normalise ""
+# (and whitespace) to NULL, and parse the values that are present.
+_WP_DATE_FIELDS = {"start_date", "target_date", "completed_date"}
+_WP_INT_FIELDS = {
+    "estimated_effort_hours", "actual_effort_hours", "percent_complete", "level",
+    "sequence_order", "plateau_id", "architecture_id", "owner_id", "capability_id",
+    "parent_id",
+}
+_WP_FLOAT_FIELDS = {"estimated_cost", "actual_cost"}
+
+
+def _normalise_wp_payload(data):
+    """Coerce empty strings to None and parse date/number fields in-place.
+
+    Raises ValueError with a user-facing message on a malformed value so the
+    caller can return a 400 rather than letting it 500 at flush time.
+    """
+    from datetime import datetime as _dt
+
+    for key in list(data.keys()):
+        value = data[key]
+        if isinstance(value, str) and value.strip() == "":
+            data[key] = None
+            value = None
+        if value is None:
+            continue
+        if key in _WP_DATE_FIELDS and isinstance(value, str):
+            try:
+                data[key] = _dt.strptime(value.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                raise ValueError(f"{key} must be a valid date (YYYY-MM-DD)")
+        elif key in _WP_INT_FIELDS and isinstance(value, str):
+            try:
+                data[key] = int(value.strip())
+            except ValueError:
+                raise ValueError(f"{key} must be a whole number")
+        elif key in _WP_FLOAT_FIELDS and isinstance(value, str):
+            try:
+                data[key] = float(value.strip())
+            except ValueError:
+                raise ValueError(f"{key} must be a number")
+    return data
+
+
 @enterprise_bp.route("/api/work-packages", methods=["POST"])
 @login_required
 def api_create_work_package():
@@ -595,6 +746,11 @@ def api_create_work_package():
 
     if not data.get("name", "").strip():
         return api_error("name is required", "MISSING_NAME")
+
+    try:
+        _normalise_wp_payload(data)
+    except ValueError as ve:
+        return api_error(str(ve), "INVALID_FIELD")
 
     wp = WorkPackage(
         name=data["name"].strip(),
@@ -615,6 +771,7 @@ def api_create_work_package():
         color=data.get("color"),
     )
     db.session.add(wp)
+    sync_archimate_element(wp)
     db.session.commit()
     try:
         audit_logger.log_event(
@@ -639,6 +796,11 @@ def api_update_work_package(wp_id):
     """Update a work package. PROD-008"""
     wp = WorkPackage.query.get_or_404(wp_id)
     data = request.get_json(force=True) or {}
+
+    try:
+        _normalise_wp_payload(data)
+    except ValueError as ve:
+        return api_error(str(ve), "INVALID_FIELD")
 
     allowed = {
         "name", "summary", "description", "status", "priority", "togaf_phase",
@@ -701,6 +863,36 @@ def api_bulk_delete_work_packages():
     return jsonify({"deleted": deleted})
 
 
+@enterprise_bp.route("/api/work-packages/<int:wp_id>", methods=["DELETE"])
+@login_required
+def api_delete_work_package(wp_id):
+    """Delete one work package. The 2 Sep 2026 audit (F-06) found rows had no
+    delete at all — only the bulk path existed. Mirrors the bulk handler: the
+    WorkPackage query is tenant-scoped by TenantMixin, and the deletion is
+    audit-logged with the same SOC2 flag."""
+    wp = WorkPackage.query.filter_by(id=wp_id).first()
+    if wp is None:
+        return api_error("Work package not found", "NOT_FOUND", 404)
+    wp_name = wp.name
+    db.session.delete(wp)
+    db.session.flush()
+    try:
+        audit_logger.log_event(
+            AuditEventType.DATA_MODIFICATION,
+            AuditEventSeverity.HIGH,
+            "delete",
+            resource_type="work_package",
+            resource_id=str(wp_id),
+            details={"name": wp_name,
+                     "user_id": current_user.id if current_user.is_authenticated else None},
+            compliance_flags=["SOC2"],
+        )
+    except Exception as _exc:
+        logger.warning("audit log failed for delete wp %s: %s", wp_id, _exc)
+    db.session.commit()
+    return jsonify({"deleted": 1, "id": wp_id})
+
+
 @enterprise_bp.route("/implementation/plateaus")
 @login_required
 def plateaus():
@@ -717,14 +909,46 @@ def plateaus():
         )
 
 
+_GAP_SORT_COLUMNS = {
+    "name": Gap.name,
+    "gap_type": Gap.gap_type,
+    "priority": Gap.priority,
+    "resolution_status": Gap.resolution_status,
+    "impact": Gap.impact,
+}
+
+
 @enterprise_bp.route("/implementation/gap-analysis")
 @login_required
 def gap_analysis():
-    """Gap Analysis"""
-    try:
-        gaps = Gap.query.limit(500).all()
+    """Gap Analysis — the enterprise Gap register (canonical, S-11).
 
-        return render_template("enterprise/gap_analysis.html", gaps=gaps)
+    `adm_kanban_view.gap_analysis` is a *different* view over different rows
+    (KanbanCard rows with arch_element_type='Gap', plus the cards that close
+    them) and is reached from the ADM Kanban board itself, so it is not
+    redirected here. This one lists the ArchiMate Implementation & Migration
+    `Gap` model and is the one linked from navigation.
+    """
+    # T-14 (2 Sep 2026 audit): one of six tables with no sort at all. Same
+    # server-side, query-param pattern as /risks/ — the columns are real,
+    # indexed String fields, so this is a cheap, safe sort.
+    sort_key = request.args.get("sort", "name")
+    direction = request.args.get("dir", "asc")
+    column = _GAP_SORT_COLUMNS.get(sort_key, Gap.name)
+    order = column.desc() if direction == "desc" else column.asc()
+    try:
+        gaps = (
+            Gap.query.filter(Gap.gap_kind != "plateau_transition")
+            .order_by(order, Gap.id)
+            .limit(500)
+            .all()
+        )
+
+        return render_template(
+            "enterprise/gap_analysis.html", gaps=gaps,
+            current_sort=sort_key if sort_key in _GAP_SORT_COLUMNS else "name",
+            current_dir=direction if direction in ("asc", "desc") else "asc",
+        )
     except SQLAlchemyError as e:
         current_app.logger.error(f"Database error loading gap analysis: {e}")
         raise DatabaseError(
@@ -747,7 +971,6 @@ def ai_architecture_analysis():
         from app.models.ai_recommendations import AIRecommendation
         from app.models.implementation_migration import Gap
         from app.models.application_portfolio import ApplicationComponent
-        from sqlalchemy import func
 
         # Fetch recent AI recommendations
         ai_recommendations = (
@@ -757,11 +980,12 @@ def ai_architecture_analysis():
         )
 
         # Count gaps by severity
+        _cap_gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition")
         gaps_by_severity = {
-            "critical": Gap.query.filter_by(severity="critical").count(),
-            "high": Gap.query.filter_by(severity="high").count(),
-            "medium": Gap.query.filter_by(severity="medium").count(),
-            "low": Gap.query.filter_by(severity="low").count(),
+            "critical": _cap_gaps.filter_by(severity="critical").count(),
+            "high": _cap_gaps.filter_by(severity="high").count(),
+            "medium": _cap_gaps.filter_by(severity="medium").count(),
+            "low": _cap_gaps.filter_by(severity="low").count(),
         }
 
         # Fetch applications needing review
@@ -774,7 +998,7 @@ def ai_architecture_analysis():
 
         # Total counts
         total_recommendations = AIRecommendation.query.count()
-        total_gaps = Gap.query.count()
+        total_gaps = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
 
         return render_template(
             "enterprise/ai_architecture_analysis.html",
@@ -825,9 +1049,15 @@ def impact_analysis():
             .all()
         )
 
+        # Impact analyses have no organisation column: they belong to the
+        # organisation of the user who ran them, so every read below starts
+        # from the organisation-scoped query.
+        organization_id = current_user.organization_id
+
         # Fetch recent impact analyses (last 20)
         recent_analyses = (
-            ImpactAnalysisResult.query.order_by(ImpactAnalysisResult.created_at.desc())
+            ImpactAnalysisResult.for_organization(organization_id)
+            .order_by(ImpactAnalysisResult.created_at.desc())
             .limit(20)
             .all()
         )
@@ -836,7 +1066,8 @@ def impact_analysis():
         filtered_analyses = None
         if selected_element_type and selected_element_id:
             filtered_analyses = (
-                ImpactAnalysisResult.query.filter_by(
+                ImpactAnalysisResult.for_organization(organization_id)
+                .filter_by(
                     trigger_element_type=selected_element_type,
                     trigger_element_id=selected_element_id,
                 )
@@ -845,18 +1076,24 @@ def impact_analysis():
             )
 
         # Calculate summary metrics
-        total_analyses = ImpactAnalysisResult.query.count()
-        critical_count = ImpactAnalysisResult.query.filter_by(
-            overall_severity="critical"
-        ).count()
-        high_count = ImpactAnalysisResult.query.filter_by(
-            overall_severity="high"
-        ).count()
+        total_analyses = ImpactAnalysisResult.for_organization(organization_id).count()
+        critical_count = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .filter_by(overall_severity="critical")
+            .count()
+        )
+        high_count = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .filter_by(overall_severity="high")
+            .count()
+        )
 
         # Calculate average affected applications
-        avg_result = db.session.query(
-            func.avg(ImpactAnalysisResult.affected_applications_count)
-        ).scalar()
+        avg_result = (
+            ImpactAnalysisResult.for_organization(organization_id)
+            .with_entities(func.avg(ImpactAnalysisResult.affected_applications_count))
+            .scalar()
+        )
         avg_affected_applications = round(avg_result, 1) if avg_result else 0
 
         return render_template(
@@ -888,7 +1125,6 @@ def process_optimization():
     try:
         from app.models.process_data import BusinessProcess
         from app.models.industry_apqc import IndustryProcessRecommendation
-        from app.models.business_capabilities import BusinessCapability
         from sqlalchemy import func
 
         # Total process count
@@ -998,7 +1234,7 @@ def enterprise_dashboard():
         software_modules_count = SoftwareModule.query.count()
 
         # Gaps with ArchiMate fallback for empty tables
-        gaps_count = Gap.query.count()
+        gaps_count = Gap.query.filter(Gap.gap_kind != "plateau_transition").count()
         if gaps_count == 0:
             gaps_count = ArchiMateElement.query.filter(
                 ArchiMateElement.type.in_(["Gap", "GAP"])
@@ -1012,12 +1248,15 @@ def enterprise_dashboard():
             gaps_count=gaps_count,
         )
     except Exception as e:
+        db.session.rollback()
         logger.error(f"Enterprise dashboard stats error: {e}", exc_info=True)
         flash("Error loading dashboard", "error")
+        # None, not 0. "0 gaps" on this page is read as an all-clear.
         return render_template(
             "enterprise/enterprise_dashboard.html",
-            data_models_count=0,
-            solutions_count=0,
-            software_modules_count=0,
-            gaps_count=0,
+            data_models_count=None,
+            solutions_count=None,
+            software_modules_count=None,
+            gaps_count=None,
+            load_error="Enterprise dashboard counts could not be read.",
         )

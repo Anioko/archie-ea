@@ -3,7 +3,7 @@
 import logging
 import json
 from datetime import datetime
-from flask import request, current_app
+from flask import request
 from flask_login import current_user
 
 logger = logging.getLogger(__name__)

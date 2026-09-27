@@ -18,10 +18,9 @@ Usage::
 
 import logging
 import time
-import traceback
 from typing import Tuple
 
-from flask import Flask, Request, jsonify, request
+from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)

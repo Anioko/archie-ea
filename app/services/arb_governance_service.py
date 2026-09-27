@@ -19,10 +19,9 @@ TOGAF ADM Integration:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.architecture_review_board import (
@@ -30,15 +29,71 @@ from app.models.architecture_review_board import (
     ARBBoardMember,
     ARBCapabilityImpact,
     ARBGovernanceStandard,
-    ARBReviewComment,
     ARBReviewItem,
-    ARBReviewStatus,
     ArchitectureReviewBoard,
-    ReviewType,
-    TOGAFPhase,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ARBDecisionError(ValueError):
+    """Base class for a decision that record_decision refuses to persist.
+
+    Mirrors the pattern f147872 established for the AI approval queue
+    (ARCH-022): refuse rather than write a decision that violates a
+    governance invariant, and audit-log the refusal itself.
+    """
+
+
+class MissingApproverError(ARBDecisionError):
+    """No resolvable approver identity was supplied (M-06)."""
+
+
+class SelfApprovalError(ARBDecisionError):
+    """The submitter attempted to decide their own review (M-05)."""
+
+
+class InvalidDecisionError(ARBDecisionError):
+    """The decision value is not one the ARB can record."""
+
+
+class InvalidStateTransitionError(ARBDecisionError):
+    """The item is not in a state where a decision can be recorded."""
+
+
+# The only outcomes an ARB can record. Anything else is refused rather than
+# stored: an unrecognised value used to be written straight through, leaving the
+# row with a decision its status did not reflect, and the UI rendering
+# "Outcome: Banana".
+VALID_DECISIONS = frozenset({
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "deferred",
+})
+
+# States from which a decision may be recorded.
+#
+# `deferred` is deliberately included: deferral means "decide later", so a
+# deferred item MUST be able to come back for a decision. The terminal outcomes
+# are not here, which is what makes a decision final.
+#
+# `draft` is deliberately excluded: an item that was never submitted has not
+# been through review, and approving one bypasses the entire governance
+# workflow. That was possible until 31 Aug 2026.
+DECIDABLE_STATUSES = frozenset({"submitted", "under_review", "deferred"})
+
+# Once an item reaches one of these, the decision stands. Re-deciding is not a
+# correction mechanism -- it silently rewrites the record of truth, and the
+# audit log then holds two contradictory entries with no indication which is
+# authoritative. Reopening is a separate, deliberate action that must leave its
+# own trail.
+TERMINAL_STATUSES = frozenset({
+    "approved",
+    "approved_with_conditions",
+    "rejected",
+    "completed",
+})
 
 
 class ARBGovernanceService:
@@ -210,6 +265,10 @@ class ARBGovernanceService:
         business_impact: str = "medium",
         estimated_effort: str = "medium",
         capability_ids: List[int] = None,
+        decision_sought: str = None,
+        alternatives_considered: str = None,
+        application_ids: List[int] = None,
+        capability_impacts: List[Dict[str, Any]] = None,
     ) -> ARBReviewItem:
         """
         Submit an item for ARB review.
@@ -237,6 +296,15 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
+        if solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
+        if adr_id is not None or architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
+            )
         review_number = ARBReviewItem.generate_review_number()
 
         # Auto-determine ArchiMate layer from TOGAF phase if not provided
@@ -261,19 +329,47 @@ class ARBGovernanceService:
             status="draft",
         )
 
+        # Store submission context (decision sought, alternatives considered,
+        # affected applications, and the structured per-capability impacts) on the
+        # capability_impacts JSON column, which the review detail view reads back as
+        # a mapping. The route already validates decision_sought as required.
+        submission_context = {}
+        if decision_sought:
+            submission_context["decision_sought"] = decision_sought
+        if alternatives_considered:
+            submission_context["alternatives_considered"] = alternatives_considered
+        if application_ids:
+            submission_context["application_ids"] = [int(a) for a in application_ids]
+        if capability_impacts:
+            submission_context["impacts"] = capability_impacts
+        if submission_context:
+            item.capability_impacts = submission_context
+
         db.session.add(item)
         db.session.flush()  # Get ID for capability links
 
-        # Link capabilities
-        if capability_ids:
-            for cap_id in capability_ids:
-                impact = ARBCapabilityImpact(
+        # Link capabilities — prefer the structured impacts (with per-capability
+        # impact_type/impact_level), fall back to the legacy flat capability_ids.
+        capability_links = []
+        if capability_impacts:
+            for imp in capability_impacts:
+                cap_id = imp.get("capability_id")
+                if cap_id:
+                    capability_links.append(
+                        (int(cap_id), imp.get("impact_type") or "modifies", imp.get("impact_level") or "medium")
+                    )
+        elif capability_ids:
+            capability_links = [(cap_id, "modifies", "medium") for cap_id in capability_ids]
+
+        for cap_id, impact_type, impact_level in capability_links:
+            db.session.add(
+                ARBCapabilityImpact(
                     review_item_id=item.id,
                     capability_id=cap_id,
-                    impact_type="modifies",
-                    impact_level="medium",
+                    impact_type=impact_type,
+                    impact_level=impact_level,
                 )
-                db.session.add(impact)
+            )
 
         # Initialize governance checklist based on review type
         item.governance_checklist = self._get_governance_checklist(review_type, togaf_phase)
@@ -288,9 +384,18 @@ class ARBGovernanceService:
         item = db.session.get(ARBReviewItem, review_item_id)
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
+        if item.solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
+        if item.adr_id is not None or item.architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
+            )
 
         if item.status != "draft":
-            raise ValueError(f"Item must be in draft status to submit")
+            raise ValueError("Item must be in draft status to submit")
 
         item.status = "submitted"
         item.submitted_at = datetime.utcnow()
@@ -336,6 +441,114 @@ class ARBGovernanceService:
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
 
+        # The decision must be one the ARB can actually record. Until 31 Aug
+        # 2026 any string was written straight through, so `decision=banana`
+        # persisted and the review page rendered "Outcome: Banana" over a status
+        # that had not moved.
+        if decision not in VALID_DECISIONS:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"unrecognised decision {decision!r}",
+                actor_id=decided_by_id,
+            )
+            raise InvalidDecisionError(
+                "%r is not a decision the ARB can record. Valid outcomes: %s"
+                % (decision, ", ".join(sorted(VALID_DECISIONS)))
+            )
+
+        # The item must be in a state where a decision is meaningful. Two
+        # distinct failures, reported distinctly because they mean different
+        # things to whoever hit them.
+        if item.status in TERMINAL_STATUSES:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"already decided ({item.status})",
+                actor_id=decided_by_id,
+            )
+            raise InvalidStateTransitionError(
+                "This review is already %s. A recorded decision is final; "
+                "reopen the review if it genuinely needs to change."
+                % item.status
+            )
+
+        if item.status not in DECIDABLE_STATUSES:
+            self._audit_decision_refusal(
+                item,
+                event="decision_refused",
+                reason=f"not submitted for review (status {item.status})",
+                actor_id=decided_by_id,
+            )
+            raise InvalidStateTransitionError(
+                "This review is %s and has not been submitted, so there is "
+                "nothing to decide. Submit it for review first."
+                % (item.status or "in no state")
+            )
+
+        # M-06 (S1): the schema has no decided_by field with no enforcement.
+        # decided_by_id stays NULLABLE in the database on purpose — deploys do
+        # not run Alembic and reconcile-schema is add-column-nullable-only
+        # (ADR-0002) — so the invariant is enforced here in application code,
+        # exactly as f147872 did for the AI approval queue's approved_by_id.
+        if not decided_by_id:
+            self._audit_decision_refusal(
+                item, event="decision_refused", reason="no resolvable approver id"
+            )
+            raise MissingApproverError(
+                "Cannot record a decision without a resolvable approver identity"
+            )
+
+        # M-05 (S1): separation of duties — the submitter cannot also be the
+        # decision-maker on their own review. This is a server-side block,
+        # not a UI hint: the check runs regardless of what the caller sends.
+        if item.submitter_id and item.submitter_id == decided_by_id:
+            self._audit_decision_refusal(
+                item,
+                event="self_approval_refused",
+                reason=f"user {decided_by_id} is the submitter",
+                actor_id=decided_by_id,
+            )
+            raise SelfApprovalError(
+                "The submitter of a review cannot also record its decision "
+                "(separation of duties)"
+            )
+
+        # Capgemini dry-run DEF-037: this used to check only
+        # `decider.can(Permission.GENERAL)` — the bar every non-read-only
+        # account clears, including a solution architect with no board seat —
+        # so any authenticated user could record (and re-record — see the
+        # already-decided check above, which this bug bypassed the same way)
+        # a decision on a review they had no governance role over. Governance
+        # decisions require an enterprise_role this codebase already treats as
+        # ARB-decision-eligible (see ROLE_SECTION_ACCESS in
+        # app/utils/role_access.py: arb_member/cto/enterprise_architect/
+        # platform_admin are the roles with a "governance" section).
+        ARB_DECISION_ELIGIBLE_ROLES = {
+            "arb_member", "cto", "enterprise_architect", "platform_admin",
+        }
+        try:
+            from app.models.user import User
+
+            decider = db.session.get(User, decided_by_id)
+            if decider is not None and (decider.enterprise_role or "") not in ARB_DECISION_ELIGIBLE_ROLES:
+                self._audit_decision_refusal(
+                    item,
+                    event="decision_refused",
+                    reason=f"role '{decider.enterprise_role}' is not ARB-decision-eligible",
+                    actor_id=decided_by_id,
+                )
+                raise ARBDecisionError(
+                    "This account's role does not permit recording ARB decisions"
+                )
+        except ARBDecisionError:
+            raise
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value — never let a lookup failure block a valid decision path silently succeed with bad data
+            logger.exception("ARB decision role check failed for user %s", decided_by_id)
+
+        previous_status = item.status
+        previous_decision = item.decision
+
         item.decision = decision
         item.decision_rationale = rationale
         item.decided_by_id = decided_by_id
@@ -357,7 +570,123 @@ class ARBGovernanceService:
             item.status = "deferred"
 
         db.session.commit()
+
+        # ARCH-092: an immutable audit record of the transition — who, when,
+        # previous and new state. Reuses the existing ARBAuditLog/
+        # ARBAuditService rather than inventing a second model: it is
+        # already tenant-scoped, append-only (no update/delete path exists
+        # anywhere in the service), and already had a ready-made
+        # log_decision() helper that was simply never called from here.
+        try:
+            from app.services.arb_audit_service import ARBAuditService
+
+            ARBAuditService().log_action(
+                entity_type="review_item",
+                entity_id=item.id,
+                action="decision",
+                user_id=decided_by_id,
+                entity_reference=item.review_number,
+                old_value={"status": previous_status, "decision": previous_decision},
+                new_value={"status": item.status, "decision": item.decision},
+                changed_fields=["status", "decision", "decision_rationale", "decided_by_id"],
+                description=f"Decision recorded: {decision}",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to write ARB decision audit log for review %s", review_item_id
+            )
+
+        self._project_decision_to_register(item)
+
         return item
+
+    def _project_decision_to_register(self, item) -> None:
+        """Project a recorded ARB decision into the architecture decision register.
+
+        The register at /architecture/decisions/ and /arb/decisions reads
+        ``architecture_decisions``. Recording an ARB decision wrote only to
+        ``arb_review_items``, so nothing the board actually decided ever reached
+        the register: production held three recorded ARB decisions and both
+        register screens read "Total Decisions 0".
+
+        Per ADR-0008 the fix is the missing PRODUCER, not repointing the
+        register's readers at ``arb_review_items``. The projected row declares
+        its provenance (``source_table`` / ``source_id``), which also makes this
+        idempotent -- re-deciding a reopened review updates the same row instead
+        of accumulating duplicates.
+
+        Best-effort: the decision itself is already committed and must not be
+        rolled back because a derived row failed to write.
+        """
+        from app.models.architecture_decision import ArchitectureDecision
+
+        _STATUS_FOR_DECISION = {
+            "approved": "accepted",
+            "approved_with_conditions": "accepted",
+            "rejected": "rejected",
+            # A deferral is explicitly NOT a decision on the substance: the
+            # register must not show it as accepted or rejected.
+            "deferred": "proposed",
+        }
+
+        try:
+            record = ArchitectureDecision.query.filter_by(
+                source_table="arb_review_items", source_id=item.id
+            ).first()
+            if record is None:
+                record = ArchitectureDecision(
+                    decision_id=ArchitectureDecision.next_decision_id(),
+                    source_table="arb_review_items",
+                    source_id=item.id,
+                    organization_id=item.organization_id,
+                    created_by_id=item.decided_by_id,
+                )
+                db.session.add(record)
+
+            record.title = item.title
+            record.status = _STATUS_FOR_DECISION.get(item.decision, "proposed")
+            record.context = item.description
+            # The outcome, verbatim -- not a restatement. "Approved with
+            # conditions" and "approved" are different decisions.
+            record.decision = (item.decision or "").replace("_", " ").capitalize()
+            record.rationale = item.decision_rationale
+            record.consequences = None
+            record.decided_by_id = item.decided_by_id
+            record.decided_at = item.decision_date
+            record.enterprise_level = True
+            record.authority_level = "enterprise_arb"
+            if item.arb_session_id:
+                record.arb_session_id = item.arb_session_id
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception(
+                "Failed to project ARB decision for review %s into the decision register",
+                item.id,
+            )
+
+    def _audit_decision_refusal(self, item, *, event, reason, actor_id=None):
+        """Record that a decision write was refused, and why.
+
+        A refusal is itself a governance-relevant event — mirrors
+        AIChatApprovalAuditLog's "execution_refused" event from f147872.
+        """
+        try:
+            from app.services.arb_audit_service import ARBAuditService
+
+            ARBAuditService().log_action(
+                entity_type="review_item",
+                entity_id=item.id,
+                action=event,
+                user_id=actor_id,
+                entity_reference=item.review_number,
+                old_value={"status": item.status, "decision": item.decision},
+                new_value=None,
+                description=f"Decision write refused: {reason}",
+            )
+        except Exception:
+            logger.exception("Failed to write ARB decision-refusal audit log for review %s", item.id)
 
     # =========================================================================
     # GOVERNANCE ASSESSMENT
@@ -584,30 +913,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.truly_missing_models import Solution
-
-        solution = db.session.get(Solution, solution_id)
-        if not solution:
-            raise ValueError(f"Solution {solution_id} not found")
-
-        # Determine review type based on solution characteristics
-        review_type = "solution_design"
-        togaf_phase = "phase_e_opportunities"  # Solutions typically align with Phase E
-
-        # Get capability mappings
-        capability_ids = []
-        if hasattr(solution, "capability_mappings"):
-            capability_ids = [cm.capability_id for cm in solution.capability_mappings]
-
-        return self.submit_for_review(
-            title=f"Solution Review: {solution.name}",
-            description=f"Architecture review for solution: {solution.description or 'No description'}",
-            review_type=review_type,
-            submitter_id=submitter_id,
-            togaf_phase=togaf_phase,
-            solution_id=solution_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_solution(solution),
+        raise ValueError(
+            "Automatic solution review is disabled; use the canonical "
+            "evidence-gated submission service"
         )
 
     def auto_submit_adr_for_review(self, adr_id: int, submitter_id: int) -> ARBReviewItem:
@@ -626,32 +934,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.adr import ArchitectureDecisionRecord
-
-        adr = db.session.get(ArchitectureDecisionRecord, adr_id)
-        if not adr:
-            raise ValueError(f"ADR {adr_id} not found")
-
-        # Determine if ADR needs ARB review
-        if not self._adr_needs_arb_review(adr):
-            return None
-
-        # Get linked capabilities
-        capability_ids = []
-        from app.models.unified_capability import UnifiedCapability
-
-        if adr.linked_capabilities:
-            capability_ids = [cap.id for cap in adr.linked_capabilities]
-
-        return self.submit_for_review(
-            title=f"ADR Review: {adr.title}",
-            description=f"Architecture Decision Record review: {adr.context}",
-            review_type="architecture_change",
-            submitter_id=submitter_id,
-            togaf_phase=self._map_adr_to_togaf_phase(adr),
-            adr_id=adr_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_adr(adr),
+        raise ValueError(
+            "Automatic ADR review is disabled; use the canonical typed ARB "
+            "submission service"
         )
 
     def get_pending_reviews_by_capability(self, capability_id: int) -> List[ARBReviewItem]:
@@ -688,7 +973,12 @@ class ARBGovernanceService:
         pending_items = ARBReviewItem.query.filter(
             ARBReviewItem.status.in_(["submitted", "under_review", "pending_info"])
         ).count()
-        approved_items = ARBReviewItem.query.filter(ARBReviewItem.status == "approved").count()
+        # approved_with_conditions IS an approval -- the list badge already said
+        # "Approved" for those rows while this count excluded them, so recording
+        # one made the approval rate FALL. Both surfaces now mean the same thing.
+        approved_items = ARBReviewItem.query.filter(
+            ARBReviewItem.status.in_(["approved", "approved_with_conditions"])
+        ).count()
         rejected_items = ARBReviewItem.query.filter(ARBReviewItem.status == "rejected").count()
 
         # Recent activity
@@ -750,7 +1040,6 @@ class ARBGovernanceService:
         """Get governance standards applicable to a review type."""
         query = ARBGovernanceStandard.query.filter(
             ARBGovernanceStandard.status == "active",
-            ARBGovernanceStandard.applies_to_review_types.contains([review_type]),
         )
 
         if togaf_phase:
@@ -761,7 +1050,16 @@ class ARBGovernanceService:
                 )
             )
 
-        return query.all()
+        # applies_to_review_types is a db.JSON column holding a list. SQLAlchemy's
+        # .contains() compiles to a SQL LIKE, which Postgres rejects on the json
+        # type ("operator does not exist: json ~~ text"). This is a small config
+        # table, so filter membership in Python — DB-agnostic and correct.
+        return [
+            s
+            for s in query.all()
+            if isinstance(s.applies_to_review_types, (list, tuple))
+            and review_type in s.applies_to_review_types
+        ]
 
     def _determine_priority_from_solution(self, solution) -> str:
         """Determine review priority from solution characteristics."""

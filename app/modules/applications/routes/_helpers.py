@@ -6,7 +6,6 @@ from collections import defaultdict
 from flask import render_template
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement
 
 logger = logging.getLogger(__name__)
@@ -271,6 +270,115 @@ def _cleanup_application_relationships(app_id):
     _cascade_delete_application(app_id)
 
 
+def _delete_mirror_archimate_element(element_id):
+    """Delete the ArchiMateElement that mirrors a deleted application.
+
+    Every ApplicationComponent gets an ArchiMateElement created for it by the
+    ``before_insert`` listener in ``app.models.application_portfolio``. Deleting
+    the application without deleting that element left a permanent orphan in the
+    architecture repository (finding C-02): the palette, relationship matrix and
+    OEF export kept showing applications the user had already removed.
+
+    Deliberately narrow: only the element the application itself points at, and
+    only the ArchiMate relationships in which that element is an endpoint (those
+    relationships describe the deleted application, so they cannot survive it).
+    Nothing else that references the element is touched — if some other row
+    (a diagram node, a parent link) still holds a foreign key, the delete fails
+    inside its SAVEPOINT and is *reported* rather than cascaded through.
+
+    Returns ``{"elements_deleted": int, "relationships_deleted": int,
+    "errors": [str]}``. Never raises.
+    """
+    result = {"elements_deleted": 0, "relationships_deleted": 0, "errors": []}
+    if not element_id:
+        return result
+
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+
+    _sp = db.session.begin_nested()
+    try:
+        # ORM bulk delete: tenant-filtered by do_orm_execute inside a request.
+        result["relationships_deleted"] = ArchiMateRelationship.query.filter(
+            db.or_(
+                ArchiMateRelationship.source_id == element_id,
+                ArchiMateRelationship.target_id == element_id,
+            )
+        ).delete(synchronize_session=False)
+        result["elements_deleted"] = ArchiMateElement.query.filter(
+            ArchiMateElement.id == element_id
+        ).delete(synchronize_session=False)
+        _sp.commit()
+    except Exception as exc:
+        _sp.rollback()
+        result["relationships_deleted"] = 0
+        result["elements_deleted"] = 0
+        result["errors"].append(
+            f"ArchiMate element {element_id} could not be removed "
+            f"({exc.__class__.__name__}); it is still referenced elsewhere"
+        )
+        logger.warning(
+            "Mirror ArchiMate element %s not deleted", element_id, exc_info=True
+        )
+    return result
+
+
+def _soft_delete_mirror_archimate_element(element_id, deleted_by=None):
+    """Soft-delete the ArchiMateElement mirroring a soft-deleted application.
+
+    Companion to ``_delete_mirror_archimate_element`` for the bulk-delete path
+    (finding C-02 reopened by 9cda379): bulk-delete soft-deletes the
+    ApplicationComponent for recoverability, but originally left the mirror
+    element live, so it stayed visible in the composer palette, relationship
+    matrix, OEF export and AI context after the user believed it was gone.
+
+    Sets ``deleted_at``/``deleted_by`` rather than deleting the row, so the
+    element (and, unlike the hard-delete path, its relationships) survive
+    for a restore — the same recoverability 9cda379 bought for the
+    application row. The unconditional soft-delete filter in
+    ``app/middleware/tenant_isolation.py`` then hides it from every ORM read
+    exactly the way a soft-deleted ApplicationComponent is hidden.
+
+    Returns ``{"elements_deleted": int, "relationships_deleted": int,
+    "errors": [str]}`` — ``elements_deleted``/``relationships_deleted`` here
+    mean "hidden by this call", matching the vocabulary the hard-delete
+    paths already report. Never raises.
+    """
+    from datetime import datetime
+
+    result = {"elements_deleted": 0, "relationships_deleted": 0, "errors": []}
+    if not element_id:
+        return result
+
+    from app.models.archimate_core import ArchiMateElement
+
+    _sp = db.session.begin_nested()
+    try:
+        updated = (
+            ArchiMateElement.query.filter(
+                ArchiMateElement.id == element_id,
+                ArchiMateElement.deleted_at.is_(None),
+            ).update(
+                {
+                    ArchiMateElement.deleted_at: datetime.utcnow(),
+                    ArchiMateElement.deleted_by: deleted_by,
+                },
+                synchronize_session=False,
+            )
+        )
+        result["elements_deleted"] = updated
+        _sp.commit()
+    except Exception as exc:
+        _sp.rollback()
+        result["errors"].append(
+            f"ArchiMate element {element_id} could not be hidden "
+            f"({exc.__class__.__name__})"
+        )
+        logger.warning(
+            "Mirror ArchiMate element %s not soft-deleted", element_id, exc_info=True
+        )
+    return result
+
+
 def _vendors_impl(
     joinedload,
     VendorOrganization,
@@ -410,21 +518,32 @@ def _vendors_impl(
         now = datetime.utcnow()
         ninety_days = now + timedelta(days=90)
 
+        # DEF-050, Capgemini dry-run: this summed
+        # VendorOrganization.contract_value_annual / read
+        # VendorOrganization.contract_status/contract_end_date — fields
+        # nothing writes to. The real "Add Contract" flow
+        # (app/modules/procurement) creates a VendorContract row (vendor_id
+        # FK, annual_cost, status, end_date), a completely different table.
+        # So "Portfolio ACV" stayed "—" no matter how many real, active
+        # contracts existed. Sum from VendorContract instead.
+        from app.models.application_portfolio import VendorContract
+
         acv_row = db.session.query(
-            db.func.sum(VendorOrganization.contract_value_annual).label("total_acv"),
+            db.func.sum(VendorContract.annual_cost).label("total_acv"),
             db.func.count(
                 db.case(
                     (
                         and_(
-                            VendorOrganization.contract_end_date >= now,
-                            VendorOrganization.contract_end_date <= ninety_days,
+                            VendorContract.end_date >= now,
+                            VendorContract.end_date <= ninety_days,
                         ),
-                        VendorOrganization.id,
+                        VendorContract.id,
                     )
                 )
             ).label("renewals_due"),
         ).filter(
-            VendorOrganization.contract_status.in_(["contracted", "deployed"])
+            VendorContract.status == "active",
+            VendorContract.vendor_id.isnot(None),
         ).one()
 
         total_acv = float(acv_row.total_acv or 0)
@@ -443,10 +562,30 @@ def _vendors_impl(
         "renewals_due": renewals_due,
     }
 
+    # Populate the Type filter from the vendor types actually stored, so the
+    # dropdown offers values that match rows (D12: it used to hard-code
+    # Cloud/Enterprise/Hybrid, none of which are real vendor_type values).
+    vendor_type_options = [
+        r[0]
+        for r in db.session.query(VendorOrganization.vendor_type)
+        .filter(
+            VendorOrganization.vendor_type.isnot(None),
+            VendorOrganization.vendor_type != "",
+        )
+        .distinct()
+        .order_by(VendorOrganization.vendor_type)
+        .all()
+    ]
+
+    vendor_type_filter_options = [
+        {"value": vt, "label": vt} for vt in vendor_type_options
+    ]
+
     return render_template(
         "vendors/list.html",
         vendors=vendors,
         stats=stats,
+        vendor_type_filter_options=vendor_type_filter_options,
         vendor_type_filter=vendor_type_filter,
         domain_filter=domain_filter,
         contract_status_filter=contract_status_filter,
@@ -572,9 +711,9 @@ def get_matching_reason(application, vendor_product, method):
             return f"Name similarity between '{app_name}' and '{vendor_name}'"
 
     elif method == "capability":
-        return f"Capability overlap between application and vendor product offerings"
+        return "Capability overlap between application and vendor product offerings"
 
     elif method == "ai":
-        return f"AI-powered semantic analysis indicates strong relationship"
+        return "AI-powered semantic analysis indicates strong relationship"
 
     return "Matching based on available data"

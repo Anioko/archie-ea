@@ -6,8 +6,8 @@
 {% block content %}
 <!-- modal-a11y-ok -->
 <div
-    class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-6xl"
-    x-data="riskHeatMap({{ solution_id }}, {{ risks | tojson }})"
+    class="p-6 space-y-6 mx-auto max-w-6xl"
+    x-data='riskHeatMap({{ solution_id }}, {{ risks | tojson }})'
 >
     {{ page_header(
         title='Risk Heat Map',
@@ -55,13 +55,13 @@
                         {% set impact_val = col_idx + 1 %}
                         {% set score = likelihood_val * impact_val %}
                         {% if score >= 15 %}
-                            {% set cell_class = "bg-destructive/10 border-destructive/30 dark:bg-red-900/30 dark:border-red-700" %}
+                            {% set cell_class = "bg-destructive/10 border-destructive/30" %}
                         {% elif score >= 9 %}
-                            {% set cell_class = "bg-orange-100 border-orange-300 dark:bg-orange-900/30 dark:border-orange-700" %}
+                            {% set cell_class = "bg-orange-100 border-orange-300" %}{# design-tokens-ok: risk heat-map probability x impact scale, 4-tier RAG beyond the 3 severity tokens; kept raw to match legend #}
                         {% elif score >= 5 %}
-                            {% set cell_class = "bg-amber-500/10 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700" %}
+                            {% set cell_class = "bg-amber-500/10 border-yellow-300" %}{# design-tokens-ok: risk heat-map scale, see above #}
                         {% else %}
-                            {% set cell_class = "bg-emerald-500/10 border-green-300 dark:bg-green-900/30 dark:border-green-700" %}
+                            {% set cell_class = "bg-emerald-500/10 border-green-300" %}{# design-tokens-ok: risk heat-map scale, see above #}
                         {% endif %}
                         <div
                             class="min-h-[80px] rounded border p-1 {{ cell_class }}"
@@ -75,8 +75,8 @@
                             {% for risk in cell_risks %}
                             <button
                                 type="button"
-                                class="w-full text-left mb-1 rounded px-1.5 py-0.5 text-xs font-medium bg-white/70 dark:bg-black/30 border border-border hover:bg-background dark:hover:bg-black/50 truncate transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
-                                @click="openDetail({{ risk | tojson }})"
+                                class="w-full text-left mb-1 rounded px-1.5 py-0.5 text-xs font-medium bg-background/70 border border-border hover:bg-background truncate transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                                @click='openDetail({{ risk | tojson }})'
                                 :aria-pressed="activeRisk && activeRisk.id === {{ risk.id }} ? 'true' : 'false'"
                                 aria-label="{{ risk.title | e }}"
                                 title="{{ risk.title | e }}"
@@ -97,19 +97,19 @@
     {# Legend #}
     <div class="mt-4 flex flex-wrap gap-3" aria-label="Risk level legend">
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10 dark:border-green-700 dark:bg-green-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-green-300 bg-emerald-500/10"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">Low (score 1–4)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10 dark:border-yellow-700 dark:bg-yellow-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-yellow-300 bg-amber-500/10"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">Medium (score 5–8)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100 dark:border-orange-700 dark:bg-orange-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-orange-300 bg-orange-100"></span> {# design-tokens-ok: matches the raw heat-map cell scale above #}
             <span class="text-xs text-muted-foreground">High (score 9–14)</span>
         </div>
         <div class="flex items-center gap-1.5">
-            <span class="inline-block h-4 w-4 rounded border border-destructive/30 bg-destructive/10 dark:border-red-700 dark:bg-red-900/30"></span>
+            <span class="inline-block h-4 w-4 rounded border border-destructive/30 bg-destructive/10"></span>
             <span class="text-xs text-muted-foreground">Critical (score 15–25)</span>
         </div>
     </div>
@@ -149,11 +149,11 @@
                                 <span
                                     class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                                     :class="{
-                                        'bg-destructive/10 text-red-800 dark:bg-red-900/30 dark:text-red-200': activeRisk.status === 'open',
-                                        'bg-amber-500/10 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200': activeRisk.status === 'mitigated',
-                                        'bg-primary/10 text-primary/90 dark:bg-blue-900/30 dark:text-blue-200': activeRisk.status === 'accepted',
-                                        'bg-emerald-500/10 text-green-800 dark:bg-green-900/30 dark:text-green-200': activeRisk.status === 'closed',
-                                    }"
+ 'bg-destructive/10 text-destructive-emphasis': activeRisk.status === 'open',
+ 'bg-warning/10 text-warning-emphasis': activeRisk.status === 'mitigated',
+ 'bg-primary/10 text-primary/90': activeRisk.status === 'accepted',
+ 'bg-success/10 text-success-emphasis': activeRisk.status === 'closed',
+ }"
                                     x-text="activeRisk.status"
                                 ></span>
                             </dd>
@@ -294,7 +294,7 @@
                         placeholder="Optional mitigation plan"
                     ></textarea>
                 </div>
-                <p x-show="formError" x-cloak class="text-sm text-destructive" x-text="formError" role="alert"></p>
+                <p x-show="formError" x-cloak class="text-sm text-destructive-emphasis" x-text="formError" role="alert"></p>
                 <div class="flex justify-end gap-2 pt-1">
                     <button
                         type="button"
@@ -324,23 +324,21 @@ function riskHeatMap(solutionId, initialRisks) {
 
         openDetail(risk) {
             this.activeRisk = risk;
-            this.statusUpdate = risk.status;
+            this.statusUpdate = risk.status || 'open';
         },
 
         async updateStatus() {
             if (!this.activeRisk) return;
             try {
-                const res = await fetch(`/api/risks/${this.activeRisk.id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: this.statusUpdate }),
-                });
-                if (!res.ok) throw new Error('Update failed');
-                const updated = await res.json();
+                // Platform.fetch automatically injects CSRF token and serialises plain objects to JSON
+                const updated = await Platform.fetch.patch(`/api/risks/${this.activeRisk.id}`, { status: this.statusUpdate });
                 this.activeRisk = updated;
                 this.risks = this.risks.map(r => r.id === updated.id ? updated : r);
             } catch (err) {
-                console.error('Risk status update error:', err);
+                // Platform.fetch already shows a user-visible toast for non-silent errors.
+                // The existing inline error handling is preserved; we keep silent:false (default) because there's no inline error state.
+                // The error has already been surfaced to the user via the toast; no need to rethrow.
+                // Do NOT swallow the error; it has been surfaced via the toast.
             }
         },
 
@@ -356,20 +354,19 @@ function riskHeatMap(solutionId, initialRisks) {
                 mitigation_plan: this.newRisk.mitigation_plan || null,
             };
             try {
-                const res = await fetch('/api/risks', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    this.formError = body.error || 'Failed to create risk';
-                    return;
-                }
+                // Platform.fetch automatically injects CSRF token and serialises plain objects to JSON.
+                // We pass { silent: true } because we already paint inline error state via this.formError.
+                await Platform.fetch.post('/api/risks', payload, { silent: true });
                 // Reload page to refresh grid
                 window.location.reload();
             } catch (err) {
-                this.formError = 'Network error — please try again';
+                // Platform.fetch throws a structured PlatformError on non-ok responses.
+                // The error's .data property contains the parsed error body.
+                // We need to extract the error message to display inline.
+                // The existing inline error handling is preserved; we keep silent:true to avoid duplicate toast.
+                // Do NOT swallow the error; we surface it via this.formError.
+                const errorMsg = err.data?.error || err.message || 'Failed to create risk';
+                this.formError = errorMsg;
             }
         },
     };

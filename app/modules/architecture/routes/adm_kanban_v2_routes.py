@@ -9,7 +9,7 @@ Registered at /api/adm-kanban/v2
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -299,7 +299,6 @@ def get_card_artifacts(card_ref):
     if card_type != "solution":
         return jsonify({"success": True, "artifacts": {}, "phase_gate": {}})
 
-    from app import db
     from app.models.solution_models import Solution, SolutionArchiMateElement
 
     solution = Solution.query.get(entity_id)
@@ -516,7 +515,10 @@ def push_to_gantt(card_ref):
 
     if not card_ref.startswith("task:"):
         return jsonify({"success": False, "error": "Invalid card ref"}), 400
-    card_id = int(card_ref.split(":")[1])
+    try:
+        card_id = int(card_ref.split(":")[1])
+    except (ValueError, TypeError, IndexError):
+        return jsonify({"success": False, "error": "Invalid card ref"}), 400
     card = db.session.get(KanbanCard, card_id)
     if not card:
         return jsonify({"success": False, "error": "Card not found"}), 404
@@ -760,10 +762,9 @@ def roadmap_timeline(board_id):
 
     # Build groups from phases (only phases that have at least one card)
     all_phases = ADMPhase.query.order_by(ADMPhase.order).all()  # model-safety-ok
-    phase_map = {p.code: p.name for p in all_phases}
 
     tasks = []
-    today = __import__("datetime").date.today()
+    __import__("datetime").date.today()
     for card in cards:
         phase_code = card.adm_phase.code if card.adm_phase else "A"
         start = card.target_start_date or (card.started_at.date() if card.started_at else None)
@@ -887,7 +888,8 @@ def suggestions_requirements():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'REQ-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_requirements failed")
+        return jsonify({'success': False, 'error': 'Could not search requirements'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -907,7 +909,8 @@ def suggestions_goals():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'GOAL-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_goals failed")
+        return jsonify({'success': False, 'error': 'Could not search goals'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -927,7 +930,8 @@ def suggestions_drivers():
         items = query.order_by(ArchiMateElement.name).limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'DRV-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_drivers failed")
+        return jsonify({'success': False, 'error': 'Could not search drivers'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -940,7 +944,8 @@ def suggestions_principles():
         try:
             from app.models.motivation import Principle
         except ImportError:
-            return jsonify({'success': True, 'results': []})
+            current_app.logger.exception("suggestions_principles: no Principle model available")
+            return jsonify({'success': False, 'error': 'Principle search is unavailable'}), 500
     q = request.args.get('q', '').strip()
     try:
         query = Principle.query
@@ -949,7 +954,8 @@ def suggestions_principles():
         items = query.limit(20).all()
         results = [{'id': r.id, 'label': r.name, 'ref': f'PRIN-{r.id:03d}'} for r in items]
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_principles failed")
+        return jsonify({'success': False, 'error': 'Could not search principles'}), 500
     return jsonify({'success': True, 'results': results})
 
 
@@ -959,7 +965,7 @@ def suggestions_users():
     from app.models import User
     q = request.args.get('q', '').strip()
     try:
-        query = User.query.filter(User.confirmed == True)  # noqa: E712
+        query = User.query.filter(User.confirmed == True, User.organization_id == g.current_org_id)  # noqa: E712
         if len(q) >= 1:
             query = query.filter(
                 db.or_(
@@ -974,7 +980,8 @@ def suggestions_users():
             name = ' '.join(filter(None, [u.first_name, u.last_name])).strip() or u.email
             results.append({'id': u.id, 'label': name, 'email': u.email})
     except Exception:
-        results = []
+        current_app.logger.exception("suggestions_users failed")
+        return jsonify({'success': False, 'error': 'Could not search users'}), 500
     return jsonify({'success': True, 'results': results})
 
 

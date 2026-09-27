@@ -13,15 +13,16 @@ _BASE_URL = "http://127.0.0.1"
 
 
 def create_diagram(element_ids: List[int], name: str,
-                   created_by=None, solution_id: Optional[int] = None) -> Optional[str]:
+                   created_by=None, solution_id: Optional[int] = None,
+                   viewpoint_type: Optional[str] = None) -> Optional[str]:
     """Create a SavedDiagram from ArchiMate element IDs and return its composer URL.
 
     Uses the same auto-layout algorithm as the HTTP route
     POST /archimate/api/create-diagram-from-elements but callable from any
     service without an active request context.
 
-    Returns the composer URL (e.g. '/archimate/composer?viewpoint=42') or None
-    if no matching elements are found.
+    Returns the composer URL (e.g. '/archimate/composer?viewpoint_id=42') or
+    None if no matching elements are found.
     """
     if not element_ids:
         return None
@@ -51,6 +52,7 @@ def create_diagram(element_ids: List[int], name: str,
             description=f"Auto-generated from {len(elements)} elements",
             created_by=created_by,
             solution_id=solution_id,
+            viewpoint_type=viewpoint_type,
         )
         db.session.add(diagram)
         db.session.flush()
@@ -93,7 +95,7 @@ def create_diagram(element_ids: List[int], name: str,
             y_offset += rows * (elem_h + gap_y) + layer_gap
 
         db.session.commit()
-        url = f"/archimate/composer?viewpoint={diagram.id}"
+        url = f"/archimate/composer?viewpoint_id={diagram.id}"
         logger.info("composer: created diagram %d ('%s') with %d elements",
                     diagram.id, diagram.name, len(elements))
         return url

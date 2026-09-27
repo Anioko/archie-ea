@@ -9,11 +9,12 @@ import io
 import json
 from datetime import datetime
 
-from flask import current_app, jsonify, render_template, request, send_file
+from flask import abort, current_app, jsonify, render_template, request, send_file
 from flask_login import current_user, login_required
 
 from .. import db
 from . import application_mgmt
+from app.utils.pagination import safe_int_arg
 
 
 VALID_WEIGHT_KEYS = frozenset(
@@ -123,6 +124,19 @@ def vendor_analysis_new():
 @login_required
 def vendor_analysis_detail(analysis_id):
     """Vendor analysis detail / comparison workbench page."""
+    from app.models.vendor_analysis import OptionsAnalysis
+    from app.utils.route_guards import load_entity
+
+    # The page used to render for any id, so a nonexistent analysis produced a
+    # workbench titled with an id that is not a record. Match the JSON detail
+    # endpoint's contract: 404 when absent, 403 when it is someone else's.
+    analysis = load_entity(OptionsAnalysis, analysis_id)
+    if analysis is None:
+        abort(404, description="Analysis not found")
+    if analysis.created_by_id != current_user.id and not (
+        hasattr(current_user, "is_admin") and current_user.is_admin()
+    ):
+        abort(403)
     return render_template(
         "application_mgmt/vendor_analysis_detail.html", analysis_id=analysis_id
     )
@@ -138,8 +152,8 @@ def api_list_vendor_analyses():
     try:
         from app.models.vendor_analysis import OptionsAnalysis
 
-        page = request.args.get("page", 1, type=int)
-        per_page = min(max(request.args.get("per_page", 20, type=int), 1), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(max(safe_int_arg('per_page', 20, minimum=1, maximum=500), 1), 100)
         status_filter = request.args.get("status")
         search = request.args.get("search", "").strip()
         sort_by = request.args.get("sort_by", "created_at")
@@ -156,7 +170,6 @@ def api_list_vendor_analyses():
         if search:
             query = query.filter(OptionsAnalysis.name.ilike(f"%{search}%"))
 
-        from sqlalchemy import func
 
         total_count = query.count()
         approved_count = OptionsAnalysis.query.filter_by(
@@ -1315,7 +1328,7 @@ def api_export_vendor_analysis(analysis_id):
         denied = _check_analysis_access(analysis)
         if denied:
             return denied
-        export_service = ExportService()
+        ExportService()
 
         if format_type == "csv":
             # CSV Export
@@ -1390,6 +1403,12 @@ def api_export_vendor_analysis(analysis_id):
 def api_get_export_history(analysis_id):
     """Get export history for an analysis."""
     try:
+        from app.models.vendor_analysis import OptionsAnalysis
+        from app.utils.route_guards import load_entity
+
+        denied = _check_analysis_access(load_entity(OptionsAnalysis, analysis_id))
+        if denied:
+            return denied
         # For now, return empty array (can be enhanced with export tracking table)
         return jsonify([])
     except HTTPException:
@@ -1633,6 +1652,16 @@ def api_get_value_streams():
             f"Value streams requested - domain_id: {domain_id}, domain_code: {domain_code}"
         )
 
+        if not domain_id and not domain_code:
+            # No domain filter chosen yet (e.g. the page's initial load,
+            # before the caller narrows by domain) — this is the honest
+            # empty state, not a lookup failure. It used to fall through to
+            # the "domain not found" branch below and answer 404 for a
+            # request that named no domain at all, which is what every one
+            # of this page's own initial loads did.
+            current_app.logger.info("Value streams requested with no domain filter — returning []")
+            return jsonify([])
+
         from app.models.unified_capability import BusinessDomain
 
         # Try to find domain by ID first, then by code
@@ -1828,7 +1857,7 @@ def api_get_unified_capabilities():
     try:
         from sqlalchemy.orm import joinedload
 
-        from app.models.unified_capability import BusinessDomain, UnifiedCapability
+        from app.models.unified_capability import UnifiedCapability
 
         # Get level filter from query parameter
         level_filter = request.args.get("level", type=int)

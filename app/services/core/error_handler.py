@@ -7,7 +7,7 @@ Provides consistent error handling, logging, and recovery across all services.
 import logging
 from enum import Enum
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 

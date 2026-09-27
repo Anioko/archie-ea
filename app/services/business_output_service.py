@@ -7,7 +7,7 @@ specific enterprise architecture roles and personas.
 
 import logging
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -424,7 +424,7 @@ class BusinessOutputService:
 
     def _format_response(self, response: str, role: StakeholderRole, config: Dict[str, Any]) -> str:
         """Format the response according to role preferences."""
-        terminology_level = config.get("terminology_level", "technical")
+        config.get("terminology_level", "technical")
         output_format = config.get("output_format", "general")
 
         # Add role-specific header

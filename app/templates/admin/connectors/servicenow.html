@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}ServiceNow CMDB Connector{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 
 {% block content %}
@@ -18,7 +19,7 @@
                 {% for category, message in messages %}
                     <div class="rounded-md border p-4
                         {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground
-                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive
+                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis
                         {% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
@@ -43,7 +44,7 @@
             </div>
             <span id="status-badge"
                 class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-                {% if sn_config and sn_config.enabled %}bg-emerald-500/10 text-green-800{% else %}bg-muted text-muted-foreground{% endif %}">
+                {% if sn_config and sn_config.enabled %}bg-success/10 text-success-emphasis{% else %}bg-muted text-muted-foreground{% endif %}">
                 {% if sn_config and sn_config.enabled %}Enabled{% else %}Disabled{% endif %}
             </span>
         </div>
@@ -97,7 +98,7 @@
                     </label>
                     <input type="password" id="client_secret" name="client_secret"
                         placeholder="••••••••••••"
-                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono">
+                        class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono" autocomplete="new-password">
                     <p class="mt-1 text-xs text-muted-foreground">
                         Stored encrypted with Fernet (AES-128-CBC). Never logged or returned in API responses.
                     </p>
@@ -149,7 +150,7 @@
                     <input type="checkbox" id="enabled" name="enabled" class="sr-only peer"
                         {% if sn_config and sn_config.enabled %}checked{% endif %}>
                     <div class="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer
-                        peer-checked:after:translate-x-full peer-checked:after:border-white
+                        peer-checked:after:translate-x-full peer-checked:after:border-background
                         after:content-[''] after:absolute after:top-[2px] after:left-[2px]
                         after:bg-background after:border-border after:border after:rounded-full
                         after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
@@ -176,8 +177,7 @@ document.getElementById('btn-test').addEventListener('click', function () {
     const msg = document.getElementById('sync-msg');
     btn.disabled = true;
     btn.textContent = 'Testing…';
-    fetch('{{ url_for("m365_connector.servicenow_status") }}', {method: 'GET'})
-        .then(r => r.json())
+    Platform.fetch.get('{{ url_for("m365_connector.servicenow_status") }}', null, { silent: true })
         .then(data => {
             msg.textContent = data.status === 'not_configured'
                 ? 'Not configured — save credentials first.'
@@ -193,11 +193,7 @@ document.getElementById('btn-sync').addEventListener('click', function () {
     const msg = document.getElementById('sync-msg');
     btn.disabled = true;
     btn.textContent = 'Starting…';
-    fetch('{{ url_for("m365_connector.servicenow_sync") }}', {
-        method: 'POST',
-        headers: {'X-CSRFToken': '{{ csrf_token() }}', 'Content-Type': 'application/json'}
-    })
-        .then(r => r.json())
+    Platform.fetch.post('{{ url_for("m365_connector.servicenow_sync") }}', undefined, { silent: true })
         .then(data => {
             msg.textContent = data.message || 'Sync started.';
             msg.classList.remove('hidden');

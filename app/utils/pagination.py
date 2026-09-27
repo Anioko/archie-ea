@@ -30,7 +30,7 @@ def get_pagination_params(
     """
     try:
         # Get page number (must be >= 1)
-        page = int(request.args.get("page", 1))
+        page = safe_int_arg('page', 1, minimum=1)
         page = max(1, page)  # Ensure page is at least 1
 
         # Get per_page with bounds checking
@@ -65,3 +65,66 @@ def get_pagination_dict(page: int, per_page: int, total: int, pages: int) -> dic
         "has_next": page < pages,
         "has_prev": page > 1,
     }
+
+
+# Hard ceiling for any page-size parameter parsed by ``safe_int_arg``.
+#
+# Rationale: the largest default page size in the codebase is 1000 (bulk
+# export endpoints), and a single page above a few hundred rows is already a
+# latency problem rather than a useful response. 500 sits above every
+# interactive default in the app while still bounding the worst case a hostile
+# caller can ask for. Call sites whose own default exceeds this pass an
+# explicit, higher ``maximum`` so the cap never silently shrinks an existing
+# contract.
+MAX_PAGE_SIZE = 500
+
+
+def safe_int_arg(name, default, minimum=None, maximum=None, args=None):
+    """Read an integer query-string parameter without ever raising.
+
+    Hostile or malformed input (``?page=abc``, ``?limit=``, ``?limit=-1``,
+    a repeated or absurdly large value) must produce an honest, in-range
+    number, not a 500. Anything that does not parse as an integer falls back
+    to ``default``; anything that parses is then clamped into
+    ``[minimum, maximum]``.
+
+    Args:
+        name: query-string parameter name.
+        default: value used when the parameter is absent or unparseable.
+        minimum: inclusive lower bound (e.g. 1 for ``page``, 0 for ``offset``).
+        maximum: inclusive upper bound (e.g. ``MAX_PAGE_SIZE`` for page sizes).
+        args: mapping to read from; defaults to ``flask.request.args``.
+
+    Returns:
+        int: a value guaranteed to satisfy the supplied bounds.
+    """
+    source = args if args is not None else getattr(request, "args", None)
+    raw = None
+    if source is not None:
+        try:
+            raw = source.get(name)
+        except Exception:  # pragma: no cover - defensive, non-mapping source
+            raw = None
+
+    if raw is None or str(raw).strip() == "":
+        value = default
+    else:
+        try:
+            value = int(str(raw).strip())
+        except (TypeError, ValueError):
+            value = default
+
+    if value is None:
+        # The call site's own default was None (meaning "unset"); preserve that
+        # rather than inventing a number it never asked for.
+        return None
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value

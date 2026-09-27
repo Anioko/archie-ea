@@ -10,7 +10,7 @@ Phase 2c: Updated to support BusinessCapability fallback for heatmap profiling (
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.decorators import audit_log
@@ -21,6 +21,7 @@ from app.services.application_consolidation_service import (
 from app.services.capability_heatmap_service import CapabilityHeatmapService
 # GovernanceService import removed — governance routes deleted
 from app.services.rationalization_scoring_service import RationalizationScoringService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,6 @@ def import_history():
 def rationalization_dashboard():
     """Application Rationalization Dashboard - TIME Framework."""
     from app.models import ApplicationComponent
-    from app.models.unified_duplicate_detection import UnifiedDuplicateGroup
     from app.services.unified_duplicate_detection_service import (
         UnifiedDuplicateDetectionService,
     )
@@ -144,23 +144,20 @@ def rationalization_dashboard():
             currency_symbol=currency_symbol,
         )
     except Exception as e:
-        logger.warning(f"Could not load rationalization stats: {e}")
+        from app import db
+
+        db.session.rollback()
+        logger.exception("Could not load rationalization stats: %s", e)
+        flash("Error loading rationalization data. Please try again.", "error")
+        # stats=None rather than a zeroed dict. "0 duplicate groups, 0 estimated
+        # savings" is a conclusion about the portfolio; nothing was counted here.
         return render_template(
             "applications/rationalization.html",
-            stats={
-                "total_applications": 0,
-                "duplicate_groups": 0,
-                "total_groups": 0,
-                "pending_groups": 0,
-                "resolved_groups": 0,
-                "estimated_savings": 0,
-                "time_scored_count": 0,
-                "consolidation_count": 0,
-                "roadmap_count": 0,
-            },
+            stats=None,
             groups=[],
             runs=[],
             currency_symbol=currency_symbol,
+            load_error="Rationalization statistics could not be read.",
         )
 
 
@@ -284,9 +281,14 @@ def analyze_migration_options(app_id):
 def calculate_portfolio_scores():
     """Calculate rationalization scores for entire portfolio."""
     try:
-        force_recalc = (
-            request.json.get("force_recalculate", False) if request.json else False
-        )
+        # request.json raises UnsupportedMediaType (a plain Exception) when the
+        # caller sends no body/Content-Type — which is exactly what the scorecard
+        # pages do (Platform.fetch.post(url, null) omits both). The blanket
+        # `except Exception` below then turned that into a 500 and the page
+        # showed "Unhandled promise rejection: An internal error occurred".
+        # get_json(silent=True) returns None instead of raising.
+        payload = request.get_json(silent=True) or {}
+        force_recalc = bool(payload.get("force_recalculate", False))
         results = RationalizationScoringService.calculate_portfolio_scores(force_recalc)
         # Add flat keys expected by scorecard JS (updateMetrics function)
         avg = results.get("average_scores", {})
@@ -307,7 +309,7 @@ def calculate_portfolio_scores():
 def get_elimination_candidates():
     """Get top candidates for elimination."""
     try:
-        limit = request.args.get("limit", 20, type=int)
+        limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
         candidates = RationalizationScoringService.get_elimination_candidates(
             limit=limit
         )
@@ -402,7 +404,7 @@ def get_consolidation_opportunities():
     """Get top consolidation opportunities."""
     try:
         service = ApplicationConsolidationService()
-        limit = request.args.get("limit", 10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         opportunities = service.get_consolidation_opportunities(limit)
         return jsonify({"success": True, "data": opportunities})
     except Exception as e:

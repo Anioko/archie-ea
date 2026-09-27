@@ -1,6 +1,5 @@
 import time
 import threading
-from flask import request
 
 class SecurityMiddleware:
     _rate_limit_store = {}

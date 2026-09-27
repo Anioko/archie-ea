@@ -1,0 +1,450 @@
+{
+  "observed_at_utc": "2026-09-05T15:26:41.399635+00:00",
+  "environment": "Production PostgreSQL archie on app host 10.106.0.6",
+  "method": "Explicit REPEATABLE READ READ ONLY transaction; aggregate SELECTs only; ROLLBACK. Executed query in 2026-09-05-backbone-ownership-readonly.sql.",
+  "schema_missing_columns": [],
+  "transaction_read_only": "on",
+  "scope": "37 repaired owner-bearing source tables plus six source models with no owner column. No record IDs, names, descriptions or owner IDs retained. This is not a global source/tenancy audit.",
+  "results": [
+    {
+      "source_table": "technology_nodes",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_devices",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_system_software",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_interfaces",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_paths",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_communication_networks",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_services",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_artifacts",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_collaborations",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_interfaces",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_events",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_functions",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_processes",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_data_objects",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_collaborations",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_interfaces",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "archimate_contracts",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "archimate_representations",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "missing_business_collaborations",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "missing_business_interfaces",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "missing_business_interactions",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "products",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_collaborations_full",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_functions",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_processes",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_interactions",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "technology_events",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_actors",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_roles",
+      "source_owner_state": "model_column_present",
+      "source_rows": 6,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_services",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_objects",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_events",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "physical_equipment",
+      "source_owner_state": "model_column_present",
+      "source_rows": 1,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "physical_facilities",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "physical_distribution_networks",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "physical_materials",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "business_processes",
+      "source_owner_state": "model_column_present",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": 0,
+      "conflicting_owner": 0
+    },
+    {
+      "source_table": "application_collaborations",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    },
+    {
+      "source_table": "application_interactions",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    },
+    {
+      "source_table": "application_services",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 1,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    },
+    {
+      "source_table": "business_interactions",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    },
+    {
+      "source_table": "archimate_resources",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 0,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    },
+    {
+      "source_table": "stakeholders",
+      "source_owner_state": "absent_model_column",
+      "source_rows": 1,
+      "missing_link": 0,
+      "dangling_link": 0,
+      "null_element_owner": 0,
+      "null_source_owner": null,
+      "conflicting_owner": null
+    }
+  ],
+  "claims": {
+    "scope": "43 listed tables only; not global uniqueness",
+    "claimed_element_ids": 9,
+    "multiple_source_claims": 0,
+    "cross_table_claims": 0,
+    "conflicting_source_owners": 0,
+    "multiple_claims_with_unknown_owner": 0,
+    "multiple_claims_including_ownerless_model": 0
+  },
+  "interpretation": "No missing or conflicting ownership found among seven owner-bearing source rows. Two rows in ownerless source models have linked elements, but source-owner comparisons are unmeasurable, not zero. No ambiguous multiple claims in these tables. No repair performed or justified by this measurement."
+}

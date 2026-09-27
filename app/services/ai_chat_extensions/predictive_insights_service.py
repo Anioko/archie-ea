@@ -332,7 +332,7 @@ class PredictiveInsightsService:
         Returns:
             Adoption curve predictions
         """
-        adoption_signals = self._gather_adoption_signals(technology)
+        self._gather_adoption_signals(technology)
 
         return {
             "prediction_date": datetime.utcnow().isoformat(),

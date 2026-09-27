@@ -20,15 +20,22 @@
 <script>
 function userSearchWidget(getVal, setVal) {
     return {
-        ures: [], ushow: false,
+        ures: [], ushow: false, uErrorShown: false,
         async usearch() {
             const q = getVal();
             if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
             try {
-                const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
-                const d = await r.json();
+                const d = await Platform.fetch.get('/api/users', {}, { silent: true });
+                // The response body is already parsed; assume it has `success` and `users`.
                 if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-            } catch (e) {}
+                this.uErrorShown = false;
+            } catch (e) {
+                // Debounced on every keystroke — toast once per outage, not on every retry.
+                if (!this.uErrorShown) {
+                    this.uErrorShown = true;
+                    if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+                }
+            }
         },
         uselect(u) { setVal(u.name); this.ushow = false; this.ures = []; }
     };
@@ -41,11 +48,7 @@ function userSearchWidget(getVal, setVal) {
 
     {{ page_header(
         title='Capability Governance Dashboard',
-        description='Manage capability ownership, maturity levels, and governance health.',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Capability Governance'}
-        ]
+        description='Manage capability ownership, maturity levels, and governance health.'
     ) }}
 
     {# ── Metrics Cards ── #}
@@ -64,7 +67,7 @@ function userSearchWidget(getVal, setVal) {
         </div>
         <div class="rounded-xl border-2 border-input bg-background p-5">
             <div class="flex items-start gap-4">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-amber-500">
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-warning">
                     <i data-lucide="alert-triangle" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                 </div>
                 <div class="flex-1">
@@ -76,7 +79,12 @@ function userSearchWidget(getVal, setVal) {
         </div>
         <div class="rounded-xl border-2 border-input bg-background p-5">
             <div class="flex items-start gap-4">
-                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-500">
+                {# Found 14 Sep 2026: this icon's bg-success was hardcoded
+                   regardless of the actual score, so a 0% governance score
+                   (every capability needing attention) still showed a green
+                   "all good" badge -- directly contradicting the Need
+                   Attention tile right next to it. #}
+                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg" :class="governanceScoreBadgeClass()">
                     <i data-lucide="shield-check" class="h-5 w-5 text-primary-foreground" aria-hidden="true"></i>
                 </div>
                 <div class="flex-1">
@@ -128,7 +136,7 @@ function userSearchWidget(getVal, setVal) {
             <div class="h-4 w-px bg-border"></div>
             <button type="button"
                     @click="confirmBulkDelete()"
-                    class="inline-flex items-center gap-1.5 text-destructive hover:text-destructive/80 font-medium transition-colors"
+                    class="inline-flex items-center gap-1.5 text-destructive-emphasis hover:text-destructive-emphasis/80 font-medium transition-colors"
                     aria-label="Delete selected capabilities">
                 <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
                 Delete selected
@@ -170,31 +178,31 @@ function userSearchWidget(getVal, setVal) {
                         <th class="w-12 h-12 px-3 text-left align-middle font-medium text-muted-foreground tabular-nums" scope="col">#</th>
                         {# Sortable columns #}
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-                            <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('name')">
                                 Capability
                                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </button>
                         </th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-16" scope="col">
-                            <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('level')">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('level')">
                                 Lvl
                                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </button>
                         </th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-                            <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('business_owner')">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('business_owner')">
                                 Owner
                                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </button>
                         </th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-                            <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('business_criticality')">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('business_criticality')">
                                 Criticality
                                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </button>
                         </th>
                         <th class="h-12 px-4 text-left align-middle font-medium text-muted-foreground" scope="col">
-                            <button class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('current_maturity_level')">
+                            <button type="button" class="inline-flex items-center gap-1 hover:text-foreground transition-colors" @click="setSort('current_maturity_level')">
                                 Maturity
                                 <i data-lucide="arrow-up-down" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </button>
@@ -215,7 +223,7 @@ function userSearchWidget(getVal, setVal) {
                     </tr>
                     {# Error state #}
                     <tr x-show="!loading && errorMsg" x-cloak>
-                        <td colspan="9" class="px-4 py-12 text-center text-destructive text-sm" x-text="errorMsg"></td>
+                        <td colspan="9" class="px-4 py-12 text-center text-destructive-emphasis text-sm" x-text="errorMsg"></td>
                     </tr>
                     {# Empty state #}
                     <tr x-show="!loading && !errorMsg && items.length === 0" x-cloak>
@@ -253,7 +261,7 @@ function userSearchWidget(getVal, setVal) {
                             </td>
                             <td class="px-4 py-3 align-middle text-sm">
                                 <template x-if="row.business_owner">
-                                    <span class="text-emerald-600 dark:text-emerald-400" x-text="row.business_owner"></span>
+                                    <span class="text-success-emphasis" x-text="row.business_owner"></span>
                                 </template>
                                 <template x-if="!row.business_owner">
                                     <span class="italic text-muted-foreground">Not assigned</span>
@@ -274,17 +282,17 @@ function userSearchWidget(getVal, setVal) {
                                     <span class="text-sm" x-text="maturityDisplay(row)"></span>
                                 </template>
                                 <template x-if="!maturityDisplay(row)">
-                                    <span class="italic text-amber-600 dark:text-amber-400 text-xs">Not assessed</span>
+                                    <span class="italic text-warning-emphasis text-xs">Not assessed</span>
                                 </template>
                             </td>
                             <td class="px-4 py-3 align-middle">
                                 <template x-if="row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis">
                                         Needs attention
                                     </span>
                                 </template>
                                 <template x-if="!row.needs_attention">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success-emphasis">
                                         Governed
                                     </span>
                                 </template>
@@ -310,21 +318,22 @@ function userSearchWidget(getVal, setVal) {
                 Showing <span class="font-medium text-foreground" x-text="pageStart"></span>–<span class="font-medium text-foreground" x-text="pageEnd"></span>
                 of <span class="font-medium text-foreground" x-text="totalItems"></span> capabilities
             </p>
+            {# duplicate-breadcrumb-ok: table-pagination nav, not a breadcrumb -- flagged only because its Prev/Next buttons use chevron icons, the same shape heuristic keys on; real breadcrumb is the block above. #}
             <nav class="flex items-center gap-1" aria-label="Pagination">
-                <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
                     <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <template x-for="(pg, idx) in getVisiblePages()" :key="'pg-' + idx">
                     <span>
-                        <button x-show="pg !== '...'" x-cloak
+                        <button type="button" x-show="pg !== '...'" x-cloak
                                 class="min-w-[2rem] h-8 rounded-md text-sm font-medium transition-colors"
                                 :class="pg === page ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-muted-foreground'"
                                 @click="goToPage(pg)" x-text="pg"></button>
                         <span x-show="pg === '...'" x-cloak class="min-w-[2rem] h-8 inline-flex items-center justify-center text-sm text-muted-foreground">&hellip;</span>
                     </span>
                 </template>
-                <button class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         :disabled="!hasNext" @click="nextPage()" aria-label="Next page">
                     <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
@@ -431,7 +440,7 @@ function userSearchWidget(getVal, setVal) {
             </div>
 
             <div x-show="editError" x-cloak
-                 class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive"
+                 class="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive-emphasis"
                  x-text="editError"></div>
         </div>
 

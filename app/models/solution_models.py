@@ -175,7 +175,18 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
     # rollups (clean-core score, ARB pipeline, risk, wave timeline).
     initiative_id = Column(
         Integer,
-        ForeignKey("strategic_initiatives.id", use_alter=True, name="fk_solutions_initiative_id"),
+        ForeignKey(
+            "strategic_initiatives.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_solutions_initiative_id",
+        ),
+        nullable=True,
+        index=True,
+    )
+    workstream_id = Column(
+        Integer,
+        ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
         nullable=True,
         index=True,
     )
@@ -202,6 +213,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
         foreign_keys=[initiative_id],
         backref=db.backref("member_solutions", lazy="dynamic"),
     )
+    workstream = db.relationship("ProgrammeWorkstream", foreign_keys=[workstream_id])
 
     # Avoid declaring inverse relationship to ARBReviewItem here to prevent circular mapper initialization.
     # ARBReviewItem already declares solution relationship; access via ARBReviewItem.solution or ARBReviewItem.solutions backref.
@@ -350,7 +362,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         warnings.append(
                             "Phase H recommends at least 1 success metric for value realization"
                         )
-                except Exception:  # fabricated-values-ok: validation error in optional metric check
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
         return {
             "valid": len(errors) == 0,
@@ -431,7 +443,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 has_recommendations = SolutionRecommendation.query.filter_by(
                     session_id=self.analysis_session_id
                 ).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
                 import logging
                 logging.getLogger(__name__).debug("Could not check analysis data for readiness")
 
@@ -448,21 +460,21 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                     has_capabilities = SolutionCapabilityMapping.query.filter_by(
                         solution_id=self.id
                     ).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
                 import logging
                 logging.getLogger(__name__).debug("Could not check capabilities for readiness")
 
         try:
             from app.models.solution_lifecycle_models import SolutionRisk
             has_risks = SolutionRisk.query.filter_by(solution_id=self.id).count() > 0
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
             import logging
             logging.getLogger(__name__).debug("Could not check risks for readiness")
 
         has_architecture = False
         try:
             has_architecture = self.archimate_elements.count() > 0
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the readiness flag stays False, rendering the check as not-passed; invents no value
             import logging
             logging.getLogger(__name__).debug("Could not check architecture elements for readiness")
 
@@ -519,7 +531,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         ).all()
                         for m in problem_maps:
                             all_cap_ids_domain.add(m.capability_id)
-                except Exception:  # fabricated-values-ok: graceful degradation
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
 
             if all_cap_ids_domain and self.business_domain:
@@ -543,7 +555,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 capability_domain_msg = (
                     "Solution has no business domain set."
                 )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the check is marked not-passed with an explicit 'could not evaluate' message; invents no value
             import logging
             logging.getLogger(__name__).debug(
                 "Could not check capability domain coverage for readiness"
@@ -580,7 +592,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         ).all()
                         for m in problem_mappings:
                             all_cap_ids.add(m.capability_id)
-                except Exception:  # fabricated-values-ok: graceful degradation
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     pass
 
             if all_cap_ids:
@@ -600,12 +612,13 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                     no_critical_gaps_msg = (
                         f"{gap_count} critical capabilities have unresolved maturity gaps."
                     )
-        except Exception:  # fabricated-values-ok: graceful degradation
+        except Exception:  # fabricated-ok: on error the check is marked not-passed with an explicit message; a pass is never shown unverified
             import logging
             logging.getLogger(__name__).debug(
                 "Could not check critical capability gaps for readiness"
             )
-            no_critical_gaps_passed = True  # Graceful degradation: don't block on error
+            no_critical_gaps_passed = False
+            no_critical_gaps_msg = "Could not evaluate critical capability gaps."
 
         checks.append({
             "label": "No critical capability gaps",
@@ -686,7 +699,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                 sess = self.analysis_session
                 if sess and sess.problem_definition:
                     problem_id = sess.problem_definition.id
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("Could not resolve analysis session for completeness score")
 
         for name, model, fk_field in junction_checks:
@@ -704,7 +717,7 @@ class Solution(TenantMixin, db.Model, OptimisticLockMixin):
                         has_rows = model.query.filter_by(session_id=session_id).count() > 0
                 elif model:
                     has_rows = model.query.filter_by(solution_id=self.id).count() > 0
-            except Exception:  # fabricated-values-ok: graceful degradation
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("Could not check junction %s for completeness", name)
 
             if has_rows:

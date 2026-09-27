@@ -2,7 +2,6 @@
 Guardrail CLI Commands
 Flask CLI commands for guardrail validation and enforcement
 """
-import glob
 import os
 import re
 import sys

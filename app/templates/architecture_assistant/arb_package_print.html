@@ -59,6 +59,7 @@
     <tr><th>Domain</th><th>Status</th><th>Elements</th><th>Property Coverage</th><th>NFRs</th><th>Waivers</th></tr>
   </thead>
   <tbody>
+  {# actionable-rows-ok: a printed ARB pack, rendered standalone for PDF; a link on paper is not a control. The interactive equivalent of this domain readiness table, with the drill-down into each domain, is the solution's ARB readiness page. #}
   {% for code in ['UX','APP','DATA','SEC','DEV','AI','COM'] %}
     {% if package.domains and package.domains[code] %}
     {% set d = package.domains[code] %}
@@ -119,6 +120,7 @@
 <table>
   <thead><tr><th>Name</th><th>Type</th><th>Layer</th><th>Build/Buy</th><th>Deployment</th><th>Availability</th></tr></thead>
   <tbody>
+  {# actionable-rows-ok: a printed ARB pack, rendered standalone for PDF; a link on paper is not a control. Each element listed here is opened from the solution's architecture page in the app. #}
   {% for el in elements %}
   <tr>
     <td>{{ el.name }}</td>
@@ -139,6 +141,7 @@
 <table>
   <thead><tr><th>Type</th><th>Target</th><th>Priority</th><th>Domain</th></tr></thead>
   <tbody>
+  {# actionable-rows-ok: a printed ARB pack, rendered standalone for PDF; a link on paper is not a control. NFRs are edited on the solution's requirements page in the app. #}
   {% for nfr in package.nfrs %}
   <tr>
     <td>{{ nfr.type }}</td>

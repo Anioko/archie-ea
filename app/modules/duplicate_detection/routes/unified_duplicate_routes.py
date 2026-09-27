@@ -25,7 +25,6 @@ from datetime import datetime
 from flask import (  # dead-code-ok
     Blueprint,
     current_app,
-    flash,
     jsonify,
     redirect,
     render_template,
@@ -36,7 +35,6 @@ from flask_login import login_required
 
 from .. import db
 from ..models.application_duplicate_detection import (  # dead-code-ok
-    DuplicateAnalysis,
     DuplicateDetectionRun,
     DuplicateGroup,
 )
@@ -49,6 +47,8 @@ from ..services.unified_duplicate_detection_service import (
     UnifiedDuplicateDetectionService,
 )
 from ..services.unified_duplicate_service import UnifiedDuplicateService
+from app.utils.api_response import error_response
+from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
 # Create unified blueprint
@@ -264,7 +264,7 @@ def get_simple_groups():
 def get_simple_runs():
     """Get simple detection runs with full details for dashboard display."""
     try:
-        limit = min(request.args.get("limit", 10, type=int), 100)
+        limit = min(safe_int_arg('limit', 10, minimum=1, maximum=500), 100)
         runs = (
             UnifiedDetectionRun.query.order_by(UnifiedDetectionRun.created_at.desc())
             .limit(limit)
@@ -517,6 +517,33 @@ def get_simple_groups_api():
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+@unified_duplicate_bp.route("/simple/api/element-groups")
+@login_required
+def get_element_duplicate_groups_api():
+    """H-01: ArchiMate element duplicate groups (exact-name, per layer/type).
+
+    Computed live on every call — unlike application detection, this needs no
+    stored 'run' because it's a cheap exact-match scan over the ArchiMate
+    catalogue, so there is no latest_run/never-run state for it to get stuck in.
+    """
+    try:
+        groups = unified_service.get_archimate_element_duplicate_groups()
+        total_elements = sum(g["element_count"] for g in groups)
+        return jsonify(
+            {
+                "success": True,
+                "groups": groups,
+                "total_groups": len(groups),
+                "total_duplicated_elements": total_elements,
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        current_app.logger.error(f"Element duplicate groups route error: {str(e)}")
+        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+
+
 @unified_duplicate_bp.route("/simple/api/run-detection", methods=["POST"])
 @login_required
 def run_simple_detection_api():
@@ -612,12 +639,19 @@ def run_simple_detection_api():
                 raise
             except Exception as e:
                 db.session.rollback()  # Ensure session is clean
-                current_app.logger.error(f"Hybrid detection failed: {e}")
-                import traceback
-
-                traceback.print_exc()
+                current_app.logger.exception(f"Hybrid detection failed: {e}")
                 # Fall back to simple
                 run = unified_service.run_detection(threshold)
+                if not run.get("success"):
+                    # Both methods failed — there is no result to report.
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": run.get("message")
+                            or "Duplicate detection failed for both the hybrid and simple methods",
+                        }
+                    ), 500
+                # error-signalling-ok: the simple method ran and produced real results; the warning below tells the caller the hybrid method was not used
                 return jsonify(
                     {
                         "success": run.get("success", False),
@@ -798,9 +832,17 @@ def simple_group_detail(group_id):
             "applications": [],
         }
 
-        app_rows = db.session.execute(  # tenant-filtered: scoped via parent FK (group_id)
-            db.text(  # tenant-filtered
-                """
+        # UnifiedDuplicateGroup is a plain db.Model (no TenantMixin) and
+        # unified_duplicate_groups/unified_group_members have no
+        # organization_id, so get_or_404(group_id) is NOT org-filtered and
+        # group_id does not scope this join. application_components does carry
+        # organization_id — put the predicate there.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND ac.organization_id = :org" if _org is not None else ""
+        app_rows = db.session.execute(
+            db.text(
+                f"""
                 SELECT
                     ac.id,
                     ac.name,
@@ -810,12 +852,12 @@ def simple_group_detail(group_id):
                     ac.technology_stack
                 FROM unified_group_members ugm
                 JOIN application_components ac ON ac.id = ugm.application_id
-                WHERE ugm.group_id = :group_id
+                WHERE ugm.group_id = :group_id{_org_and}
                 ORDER BY ac.name
                 LIMIT 500
                 """
             ),
-            {"group_id": group.id},
+            {"group_id": group.id, **({"org": _org} if _org is not None else {})},
         ).mappings()
 
         for app in app_rows:
@@ -1063,7 +1105,10 @@ def duplicate_dashboard():
                 {"status": "error", "message": "An internal error occurred"}
             ), 500
         else:
-            return render_template("duplicate_detection/dashboard.html")
+            return render_template(
+                "duplicate_detection/dashboard.html",
+                load_error="Duplicate detection results could not be read.",
+            )
 
 
 # === AI DETECTION ROUTES (from ai_dedupe_routes.py) ===
@@ -1111,15 +1156,20 @@ def ai_dashboard():
         raise
     except Exception as e:
         current_app.logger.error(f"Error loading AI dashboard: {e}")
+        # No zeroed ai_stats: "0 detections, 0s average processing time" is a
+        # measurement, and this path measured nothing.
         return render_template(
             "dedupe/ai_insights.html",
-            ai_stats={"detections_count": 0, "average_processing_time": 0},
+            ai_stats=None,
+            ai_insights=[],
+            run=None,
             recent_runs=[],
-            global_stats={},
+            global_stats=None,
             ai_strategies=["ai_enhanced", "semantic_only", "business_aware"],
-            performance_metrics={},
+            performance_metrics=None,
             ai_unavailable=True,
             error="An error occurred loading the AI dashboard.",
+            load_error="AI deduplication insights could not be read.",
         )
 
 
@@ -1290,6 +1340,18 @@ def api_ai_detect():
             strategy=strategy, threshold=threshold, config=config
         )
 
+        if not result.get("success"):
+            # A failed run is not a 200. The service has already logged the
+            # internal detail; the client gets a product-level message only.
+            current_app.logger.error(
+                "AI duplicate detection reported failure: %s", result.get("error")
+            )
+            return error_response(
+                "Duplicate detection could not be completed.",
+                code="DUPLICATE_DETECTION_FAILED",
+                status_code=502,
+            )
+
         return jsonify(result)
 
     except ValueError as e:
@@ -1326,7 +1388,7 @@ def api_feedback():
         duplicate_id = data.get("duplicate_id")
         action = data.get("action")
         confidence = data.get("confidence")
-        notes = data.get("notes", "")
+        data.get("notes", "")
 
         if not duplicate_id or not action or confidence is None:
             return (
@@ -1423,7 +1485,7 @@ def api_compare_strategies():
                     strategy=strategy, threshold=threshold
                 )
 
-                if result["success"]:
+                if result.get("success"):
                     comparison_results[strategy] = {
                         "duplicates_found": result["statistics"]["total_duplicates"],
                         "high_confidence": result["statistics"]["high_confidence"],
@@ -1437,7 +1499,12 @@ def api_compare_strategies():
                         "quality_score": result["ai_insights"]["quality_score"],
                     }
                 else:
-                    comparison_results[strategy] = {"error": result["error"]}
+                    current_app.logger.error(
+                        "Strategy %s failed: %s", strategy, result.get("error")
+                    )
+                    comparison_results[strategy] = {
+                        "error": "Strategy could not be evaluated."
+                    }
 
             except HTTPException:
 
@@ -1446,6 +1513,16 @@ def api_compare_strategies():
             except Exception as e:
                 current_app.logger.error(f"Strategy {strategy} comparison failed: {e}")
                 comparison_results[strategy] = {"error": "Strategy comparison failed"}
+
+        if comparison_results and all(
+            "error" in r for r in comparison_results.values()
+        ):
+            # Every strategy failed - that is a server-side failure, not a 200.
+            return error_response(
+                "Strategy comparison could not be completed.",
+                code="STRATEGY_COMPARISON_FAILED",
+                status_code=502,
+            )
 
         return jsonify(
             {"success": True, "threshold": threshold, "comparison": comparison_results}
@@ -2048,15 +2125,8 @@ def api_statistics_summary():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Stats summary error: {e}")
-        return jsonify(
-            {
-                "total_groups": 0,
-                "total_estimated_savings": 0,
-                "groups_by_priority": [],
-                "latest_run": None,
-            }
-        )
+        current_app.logger.exception(f"Stats summary error: {e}")
+        return jsonify({"error": "Could not load duplicate detection statistics"}), 500
 
 
 @unified_duplicate_bp.route("/api/duplicate-groups")
@@ -2064,8 +2134,8 @@ def api_statistics_summary():
 def api_duplicate_groups():
     """Paginated duplicate groups for the enterprise dashboard."""
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 10, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
         priority = request.args.get("priority", "")
         min_similarity = request.args.get("min_similarity", 0.0, type=float)
 
@@ -2123,20 +2193,8 @@ def api_duplicate_groups():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Duplicate groups API error: {e}")
-        return jsonify(
-            {
-                "groups": [],
-                "pagination": {
-                    "page": 1,
-                    "per_page": 10,
-                    "total": 0,
-                    "pages": 0,
-                    "has_next": False,
-                    "has_prev": False,
-                },
-            }
-        )
+        current_app.logger.exception(f"Duplicate groups API error: {e}")
+        return jsonify({"error": "Could not load duplicate groups"}), 500
 
 
 @unified_duplicate_bp.route("/api/detection-runs")
@@ -2175,8 +2233,8 @@ def api_detection_runs():
         raise
 
     except Exception as e:
-        current_app.logger.error(f"Detection runs API error: {e}")
-        return jsonify({"runs": []})
+        current_app.logger.exception(f"Detection runs API error: {e}")
+        return jsonify({"error": "Could not load detection runs"}), 500
 
 
 @unified_duplicate_bp.route("/run-detection", methods=["POST"])
@@ -2185,7 +2243,7 @@ def run_detection():
     """Run duplicate detection from the enterprise dashboard."""
     try:
         data = request.get_json() or {}
-        similarity_threshold = data.get("similarity_threshold", 0.70)
+        data.get("similarity_threshold", 0.70)
 
         result = unified_service.run_duplicate_detection()
 

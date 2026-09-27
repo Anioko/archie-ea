@@ -26,7 +26,15 @@ All routes maintain backward compatibility and include proper error handling.
 import logging
 from datetime import datetime
 
-from flask import flash, g, redirect, render_template, request, url_for  # dead-code-ok
+from flask import (  # dead-code-ok
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from flask_login import login_required
 from sqlalchemy import text
 
@@ -34,9 +42,16 @@ from app import db
 
 # Import main blueprint
 from app.main.views import main
-from app.models.implementation_migration import Gap
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
+
+# NOTE: this module is not imported by anything — no `import
+# app.main.unified_main_routes` exists in the tree, and none of its @main.route
+# decorators appear in app.view_functions at boot. It is dead code that shadows
+# live twins in routes_hybrid_mapping.py and routes_vendor_analysis.py. It is
+# left in place and scoped rather than trusted-because-unreachable: reachability
+# is a property of one missing import line.
 
 
 # =============================================================================
@@ -263,9 +278,11 @@ def _archimate_roadmap_legacy():
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading ArchiMate roadmap")
         flash("Error loading ArchiMate roadmap. Please try again.", "error")
-        # Provide default timeline dates even in error case
+        # The timeline axis is a display range, not a measurement, so it stays.
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2028, 12, 31)
         return render_template(
@@ -278,6 +295,8 @@ def _archimate_roadmap_legacy():
             months=[],
             start_date=start_date,
             end_date=end_date,
+            gaps_summary=None,
+            load_error="The ArchiMate roadmap could not be read.",
         )
 
 
@@ -357,7 +376,7 @@ def get_archimate_work_packages():
             },
         ]
         return jsonify({"work_packages": work_packages})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -401,7 +420,7 @@ def create_archimate_work_package():
 
         return jsonify({"success": True, "work_package": new_wp})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -431,7 +450,7 @@ def update_archimate_work_package(wp_id):
 
         return jsonify({"success": True, "work_package": updated_wp})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -444,7 +463,7 @@ def delete_archimate_work_package(wp_id):
             {"success": True, "message": f"ArchiMate work package {wp_id} deleted"}
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -478,7 +497,7 @@ def get_archimate_gaps():
             },
         ]
         return jsonify({"gaps": gaps})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -595,17 +614,22 @@ def unmapped_capabilities():
             priority_breakdown=priority_breakdown,
         )
 
-    except Exception as e:
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading unmapped capabilities")
         flash("Error loading unmapped capabilities. Please try again.", "error")
+        # None, not 0: "0 capabilities, 0% coverage" is a claim about the
+        # user's portfolio, and here nothing was measured at all.
         return render_template(
             "capability_analysis/unmapped_capabilities.html",
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            unmapped_count=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            unmapped_count=None,
+            mapping_coverage=None,
             domain_stats=[],
             priority_breakdown=[],
+            load_error="Capability mapping coverage could not be calculated.",
         )
 
 
@@ -801,9 +825,12 @@ def _capability_roadmap_legacy():
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading capability roadmap")
         flash("Error loading capability roadmap. Please try again.", "error")
-        # Provide default data even in error case
+        # The timeline axis is a display range, not a measurement, so it stays;
+        # every counted figure becomes None.
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2026, 12, 31)
         return render_template(
@@ -812,12 +839,13 @@ def _capability_roadmap_legacy():
             capabilities=[],
             unmapped_capabilities=[],
             work_packages=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            mapping_coverage=None,
             start_date=start_date,
             end_date=end_date,
             months=[],
+            load_error="The capability roadmap could not be read.",
         )
 
 
@@ -852,7 +880,7 @@ def get_capability_work_packages():
             },
         ]
         return jsonify({"work_packages": work_packages})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -939,17 +967,23 @@ def hybrid_mapping_dashboard():
             unmapped_archimate=unmapped_archimate,
         )
 
-    except Exception as e:
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading hybrid mapping dashboard")
         flash("Error loading hybrid mapping dashboard. Please try again.", "error")
+        # stats=None rather than {}: an empty dict left every stats lookup
+        # Undefined, and "%.1f"|format(Undefined) is a TypeError, so this
+        # handler used to 500 on its way to rendering the page.
         return render_template(
             "hybrid_mapping/dashboard.html",
-            stats={},
+            stats=None,
             app_mappings=[],
             product_mappings=[],
             archimate_mappings=[],
             unmapped_caps=[],
             unmapped_products=[],
             unmapped_archimate=[],
+            load_error="Hybrid mapping coverage could not be calculated.",
         )
 
 
@@ -959,19 +993,26 @@ def get_mapping_statistics():
     """API endpoint for mapping statistics"""
 
     try:
-        # Application-Centric Coverage
-        app_result = db.session.execute(  # tenant-filtered: scoped via parent FK (unified_capabilities + junction tables)
+        # Application-Centric Coverage.
+        # See the module note above: this file is not imported anywhere, so these
+        # queries do not run today. They are scoped anyway — the twin that IS
+        # registered (app/main/routes_hybrid_mapping.py) served every
+        # organisation's rows for exactly this reason, and an unscoped statement
+        # sitting here is one blueprint registration away from doing the same.
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="AND")
+        app_result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 COUNT(DISTINCT uc.id) as total_capabilities,
-                COUNT(DISTINCT uacm.unified_capability_id) as capabilities_with_apps,
-                COUNT(DISTINCT CASE WHEN uacm.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL THEN uacm.unified_capability_id END) as capabilities_with_apps,
+                COUNT(DISTINCT CASE WHEN ac.id IS NOT NULL AND uacm.archimate_element_id IS NOT NULL THEN uacm.unified_capability_id END) as apps_with_archimate
             FROM unified_capabilities uc
             LEFT JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
-            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id
+            LEFT JOIN application_components ac ON uacm.application_component_id = ac.id{_org_ac}
         """
-            )
+            ),
+            _org_params,
         ).fetchone()
 
         # Product-Centric Coverage
@@ -1054,9 +1095,12 @@ def get_mapping_statistics():
 def get_application_mappings():
     """Get application-capability mappings"""
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (unified_capabilities + application_components)
+        # ac is inner-joined and projected, so an unscoped form lists every
+        # organisation's applications by name.
+        _org_ac, _org_params = org_scope(prefix="ac.", keyword="WHERE")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 uc.id as capability_id,
                 uc.name as capability_name,
@@ -1071,9 +1115,11 @@ def get_application_mappings():
             JOIN unified_application_capability_mapping uacm ON uc.id = uacm.unified_capability_id
             JOIN application_components ac ON uacm.application_component_id = ac.id
             LEFT JOIN business_domains bd ON uc.domain_id = bd.id
+            {_org_ac}
             ORDER BY bd.strategic_weight DESC, uc.strategic_importance DESC, ac.name
         """
-            )
+            ),
+            _org_params,
         )
         return [dict(row) for row in result]
     except Exception as e:
@@ -1095,7 +1141,11 @@ def get_product_mappings():
                 uc.strategic_importance,
                 vp.id as product_id,
                 vp.name as product_name,
-                vp.product_category,
+                -- product_type ('suite' | 'platform' | 'application' | 'service')
+                -- is the product's category; vendor_products has no
+                -- product_category column, so this query raised UndefinedColumn
+                -- and the endpoint returned []. Aliased to keep the JSON key.
+                vp.product_type as product_category,
                 vo.name as vendor_name,
                 bd.name as domain_name,
                 cvpm.mapping_confidence,
@@ -1194,7 +1244,9 @@ def get_unmapped_vendor_products():
             SELECT
                 vp.id,
                 vp.name,
-                vp.product_category,
+                -- product_type is the real category column on vendor_products;
+                -- product_category does not exist. Aliased to keep the JSON key.
+                vp.product_type as product_category,
                 vp.description,
                 vo.name as vendor_name
             FROM vendor_products vp
@@ -1217,9 +1269,12 @@ def get_unmapped_vendor_products():
 def get_unmapped_archimate_elements():
     """Get ArchiMate elements with no capability mappings"""
     try:
-        result = db.session.execute(  # tenant-filtered: scoped via parent FK (archimate_elements)
+        # archimate_elements is the driving table: unscoped, this listed every
+        # organisation's element catalogue.
+        _org_ae, _org_params = org_scope(prefix="ae.", keyword="AND")
+        result = db.session.execute(
             text(
-                """
+                f"""
             SELECT
                 ae.id,
                 ae.name,
@@ -1229,10 +1284,11 @@ def get_unmapped_archimate_elements():
             FROM archimate_elements ae
             WHERE NOT EXISTS (
                 SELECT 1 FROM unified_capability_archimate_mapping ucam WHERE ucam.archimate_element_id = ae.id
-            )
+            ){_org_ae}
             ORDER BY ae.layer, ae.element_type, ae.name
         """
-            )
+            ),
+            _org_params,
         )
         return [dict(row) for row in result]
     except Exception as e:

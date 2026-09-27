@@ -11,9 +11,9 @@ Generates visual representations from AI Chat queries including:
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from html import escape
+from typing import Any, Dict, List
 
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,7 @@ class VisualGenerationService:
         self, elements: List[Dict], relationships: List[Dict], title: str
     ) -> str:
         """Convert ArchiMate elements to Mermaid flowchart."""
-        lines = [f"flowchart TB"]
+        lines = ["flowchart TB"]
         lines.append(f'    subgraph {title.replace(" ", "_")}["{title}"]')
 
         # Group by layer
@@ -172,9 +172,15 @@ class VisualGenerationService:
                 lines.append(f'        subgraph {layer_name}Layer["{layer_name} Layer"]')
                 for el in layer_elements:
                     el_id = f"el_{el.get('id', 'unknown')}"
-                    el_name = el.get("name", "Unknown").replace('"', "'")
-                    el_type = el.get("type", "Component")
-                    lines.append(f'            {el_id}["{el_name}<br/><small>{el_type}</small>"]')
+                    # Mermaid renders HTML inside node labels by default
+                    # (that's why <br/>/<small> below work at all) -- so
+                    # el_name/el_type (architect-authored, from an
+                    # AI-chat-reachable diagram request) must be escaped or
+                    # they inject live HTML into whatever renders this
+                    # Mermaid diagram client-side.
+                    el_name = escape(el.get("name", "Unknown"))
+                    el_type = escape(el.get("type", "Component"))
+                    lines.append(f'            {el_id}["{el_name}<br/><small>{el_type}</small>"]')  # raw-html-ok: el_name/el_type are escape()'d 3 lines above
                 lines.append("        end")
 
         lines.append("    end")
@@ -211,9 +217,16 @@ class VisualGenerationService:
 
         for el in elements:
             el_id = f"el_{el.get('id', 'unknown')}"
-            el_name = el.get("name", "Unknown")
-            el_type = el.get("type", "Component")
-            lines.append(f'rectangle "{el_name}\\n<size:10>{el_type}</size>" as {el_id}')
+            # PlantUML source text sent to an external rendering server, not
+            # HTML a browser interprets -- <size:10>...</size> here is
+            # PlantUML's own creole markup, not an HTML tag, so html.escape()
+            # would corrupt the diagram rather than protect anything. The
+            # real risk in this format is a literal '"' in the name breaking
+            # out of the quoted rectangle label and corrupting the diagram
+            # syntax -- close that instead.
+            el_name = el.get("name", "Unknown").replace('"', "'")
+            el_type = el.get("type", "Component").replace('"', "'")
+            lines.append(f'rectangle "{el_name}\\n<size:10>{el_type}</size>" as {el_id}')  # raw-html-ok: PlantUML source for an external renderer, not browser HTML; el_name/el_type quote-sanitized above (see comment)
 
         lines.append("")
 
@@ -308,19 +321,30 @@ class VisualGenerationService:
         return []
 
     def _generate_heatmap_html(self, data: List[Dict], title: str, metric: str) -> str:
-        """Generate HTML grid for heat map."""
+        """Generate HTML grid for heat map. title/metric/item['name']/
+        item['level']/item['value'] are all AI-chat-reachable freeform
+        text -- escape() every one before it reaches this browser-rendered
+        HTML fragment. item['color'] is exempt: it's always a fixed hex
+        string from _get_heatmap_color(), never free text."""
+        safe_title = escape(str(title))
+        safe_metric = escape(str(metric))
         html = (
-            f'<div class="heatmap-container"><h3 class="text-lg font-semibold mb - 4">{title}</h3>'
+            f'<div class="heatmap-container"><h3 class="text-lg font-semibold mb - 4">{safe_title}</h3>'  # raw-html-ok: safe_title is escape()'d above
         )
         html += '<div class="grid grid-cols - 4 gap - 2">'
 
         for item in data:
+            safe_value = escape(str(item['value']))
+            safe_name = escape(str(item['name']))
+            safe_level = escape(str(item['level']))
             html += f"""
             <div class="p - 3 rounded-lg text-center text-white text-sm font-medium"
                  style="background-color: {item['color']}"
-                 title="{metric}: {item['value']}">
-                <div class="truncate">{item['name']}</div>
-                <div class="text-xs opacity - 75">{item['level']}</div>
+                 title="{safe_metric}: {safe_value}">
+                <div class="truncate">
+{safe_name}</div>
+                <div class="text-xs opacity - 75">
+{safe_level}</div>
             </div>
             """
 
@@ -455,7 +479,7 @@ class VisualGenerationService:
         lines = ["gantt"]
         lines.append(f"    title {title}")
         lines.append("    dateFormat YYYY-MM-DD")
-        lines.append(f"    axisFormat %b %Y")
+        lines.append("    axisFormat %b %Y")
         lines.append("")
 
         # Add sections for phases

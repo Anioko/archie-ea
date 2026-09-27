@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       identifier="id-model-archiet-fixture"
+       version="3.0">
+  <name xml:lang="en">Archiet Dogfood Fixture</name>
+
+  <propertyDefinitions>
+    <propertyDefinition identifier="pd-status" type="string">
+      <name xml:lang="en">status</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="pd-source" type="string">
+      <name xml:lang="en">source</name>
+    </propertyDefinition>
+    <propertyDefinition identifier="pd-layer" type="string">
+      <name xml:lang="en">layer</name>
+    </propertyDefinition>
+  </propertyDefinitions>
+
+  <elements>
+    <element identifier="id-elem-1" xsi:type="BusinessActor">
+      <name xml:lang="en">Sales Team</name>
+    </element>
+    <element identifier="id-elem-2" xsi:type="BusinessProcess">
+      <name xml:lang="en">Order Processing</name>
+    </element>
+    <element identifier="id-elem-3" xsi:type="BusinessService">
+      <name xml:lang="en">Order Fulfillment Service</name>
+    </element>
+    <element identifier="id-elem-4" xsi:type="ApplicationComponent">
+      <name xml:lang="en">CRM System</name>
+    </element>
+    <element identifier="id-elem-5" xsi:type="ApplicationService">
+      <name xml:lang="en">Customer Data Service</name>
+    </element>
+    <element identifier="id-elem-6" xsi:type="DataObject">
+      <name xml:lang="en">Customer Record</name>
+    </element>
+    <element identifier="id-elem-7" xsi:type="Node">
+      <name xml:lang="en">App Server</name>
+    </element>
+    <element identifier="id-elem-8" xsi:type="TechnologyService">
+      <name xml:lang="en">Hosting Service</name>
+    </element>
+    <element identifier="id-elem-9" xsi:type="Capability">
+      <name xml:lang="en">Digital Sales</name>
+    </element>
+    <element identifier="id-elem-10" xsi:type="Resource">
+      <name xml:lang="en">Sales Data</name>
+    </element>
+    <element identifier="id-elem-11" xsi:type="Driver">
+      <name xml:lang="en">Market Pressure</name>
+    </element>
+    <element identifier="id-elem-12" xsi:type="Goal">
+      <name xml:lang="en">Increase Online Revenue</name>
+    </element>
+    <element identifier="id-elem-13" xsi:type="Constraint">
+      <name xml:lang="en">M-CON-10G-FREE-PILOTS</name>
+      <properties>
+        <property propertyDefinitionRef="pd-status">
+          <value xml:lang="en">RULED</value>
+        </property>
+        <property propertyDefinitionRef="pd-source">
+          <value xml:lang="en">founder ruling 2026-07-19 -- strategy/10G-ASSESSMENT-OFFER.md</value>
+        </property>
+        <property propertyDefinitionRef="pd-layer">
+          <value xml:lang="en">Motivation</value>
+        </property>
+      </properties>
+    </element>
+    <element identifier="id-elem-14" xsi:type="Requirement">
+      <name xml:lang="en">10G Free Pilot Requirement</name>
+    </element>
+    <element identifier="id-elem-15" xsi:type="WorkPackage">
+      <name xml:lang="en">10G Rollout Programme</name>
+    </element>
+  </elements>
+
+  <relationships>
+    <!-- Valid relationships (12) -->
+    <relationship identifier="id-rel-1" xsi:type="Assignment" source="id-elem-1" target="id-elem-2"/>
+    <relationship identifier="id-rel-2" xsi:type="Serving" source="id-elem-3" target="id-elem-1"/>
+    <relationship identifier="id-rel-3" xsi:type="Realization" source="id-elem-2" target="id-elem-3"/>
+    <relationship identifier="id-rel-4" xsi:type="Serving" source="id-elem-5" target="id-elem-2"/>
+    <relationship identifier="id-rel-5" xsi:type="Realization" source="id-elem-4" target="id-elem-5"/>
+    <relationship identifier="id-rel-6" xsi:type="Access" source="id-elem-4" target="id-elem-6"/>
+    <relationship identifier="id-rel-7" xsi:type="Serving" source="id-elem-8" target="id-elem-4"/>
+    <relationship identifier="id-rel-8" xsi:type="Realization" source="id-elem-7" target="id-elem-8"/>
+    <relationship identifier="id-rel-9" xsi:type="Assignment" source="id-elem-10" target="id-elem-9"/>
+    <relationship identifier="id-rel-10" xsi:type="Influence" source="id-elem-11" target="id-elem-12"/>
+    <relationship identifier="id-rel-11" xsi:type="Influence" source="id-elem-12" target="id-elem-13"/>
+    <relationship identifier="id-rel-12" xsi:type="Realization" source="id-elem-15" target="id-elem-2"/>
+
+    <!-- Invalid relationship (1): Composition is a whole-part structural
+         relationship and is not permitted across an Application element and
+         a Business element in this pairing; must land in
+         relationships_failed, not silently drop or silently pass. -->
+    <relationship identifier="id-rel-13" xsi:type="Composition" source="id-elem-4" target="id-elem-1"/>
+  </relationships>
+</model>

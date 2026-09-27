@@ -24,13 +24,11 @@ async function loadImportFields() {
   if (fieldsLoaded) return;
 
   try {
-    const response = await fetch('/applications/import-fields');
-    if (response.ok) {
-      const data = await response.json();
-      TARGET_FIELDS = data.fields || TARGET_FIELDS;
-      COLUMN_ALIASES = data.aliases || {};
-      fieldsLoaded = true;
-    }
+    const data = await Platform.fetch('/applications/import-fields');
+    TARGET_FIELDS = data.fields || TARGET_FIELDS;
+    COLUMN_ALIASES = data.aliases || {};
+    fieldsLoaded = true;
+  // fabricated-ok: falls back to form field definitions/labels, not to invented records
   } catch (error) {
     // Fall back to minimal defaults if API fails
     TARGET_FIELDS = [
@@ -91,6 +89,16 @@ function handleDrop(event) {
   }
 }
 
+// Native inline ondrag* attributes are blocked by the strict CSP (Firefox
+// reports each blocked handler as a page error). Bind them from this trusted
+// external script so drag-and-drop behaves consistently in every browser.
+const applicationImportDropZone = document.getElementById('drop-zone');
+if (applicationImportDropZone) {
+  applicationImportDropZone.addEventListener('dragover', handleDragOver);
+  applicationImportDropZone.addEventListener('dragleave', handleDragLeave);
+  applicationImportDropZone.addEventListener('drop', handleDrop);
+}
+
 // Auto-detect field mapping based on column header
 // Uses exact match only to avoid false positives (e.g., "Application Status" matching "name")
 function autoDetectMapping(header) {
@@ -133,22 +141,13 @@ async function handleExcelFileSelect(event) {
   previewExcelFile(file);
 }
 
-function previewExcelFile(file) {
+async function previewExcelFile(file) {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('preview_only', 'true');
 
-  fetch('/applications/preview-excel', {
-    method: 'POST',
-    body: formData
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`Server error: ${response.status} ${response.statusText}`);
-    }
-    return response.json();
-  })
-  .then(data => {
+  try {
+    const data = await Platform.fetch.post('/applications/preview-excel', formData, { silent: true });
     if (data.error) {
       Platform.toast.error('Error: ' + data.error);
       return;
@@ -157,10 +156,9 @@ function previewExcelFile(file) {
     excelPreviewData = data.rows;
     displayExcelPreview(data.headers, data.rows.slice(0, 10));
     document.getElementById('excel-preview').classList.remove('hidden');
-  })
-  .catch(error => {
+  } catch (error) {
     Platform.toast.error('Error previewing file: ' + (error.message || 'Unknown error'));
-  });
+  }
 }
 
 function displayExcelPreview(headers, rows) {
@@ -306,14 +304,13 @@ function toggleArchimateMode() {
   }
 }
 
-// Run comprehensive auto-mapping after import
+// Run comprehensive auto-mapping and return its outcome without hiding it by navigating.
 // suffix: '' for Excel tab, '-manual' for Manual tab
-function runPostImportAutoMap(importedCount, suffix) {
+async function runPostImportAutoMap(importedCount, suffix) {
   if (suffix === undefined) suffix = '';
   const autoMapCheckbox = document.getElementById('auto-map-after-import' + suffix);
   if (!autoMapCheckbox || !autoMapCheckbox.checked) {
-    window.location.reload();
-    return;
+    return ['Auto-mapping was not requested.'];
   }
 
   // Get options based on which tab
@@ -329,41 +326,45 @@ function runPostImportAutoMap(importedCount, suffix) {
     importBtn.disabled = true;
   }
 
-  fetch('/applications/api/comprehensive-auto-map', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-    },
-    body: JSON.stringify({
+  try {
+    const data = await Platform.fetch.post('/applications/api/comprehensive-auto-map', {
       max_applications: importedCount || 100,
       map_capabilities: mapCapabilities,
       map_processes: mapProcesses,
       generate_archimate: generateArchimate,
       clone_vendor_archimate: cloneVendor,
       auto_create: true
-    })
-  })
-  .then(response => response.json())
-  .then(data => {
-    let mapMessage = 'Auto-mapping complete!\n';
-    if (data.process_mappings_created > 0) mapMessage += `APQC Processes mapped: ${data.process_mappings_created}\n`;
-    if (data.archimate_elements_created > 0) mapMessage += `ArchiMate elements: ${data.archimate_elements_created}\n`;
-    if (data.vendor_archimate_cloned > 0) mapMessage += `Vendor elements cloned: ${data.vendor_archimate_cloned}\n`;
-    if (data.vendor_matches_found > 0) mapMessage += `Vendor matches: ${data.vendor_matches_found}\n`;
-    Platform.toast.info(mapMessage);
-    window.location.reload();
-  })
-  .catch(error => {
-    Platform.toast.error('Import succeeded but auto-mapping failed: ' + error.message);
-    window.location.reload();
-  });
+    }, { silent: true });
+    if (data && (data.success === false || data.error)) {
+      const details = [data.message, data.error].filter(value => typeof value === 'string' && value.trim());
+      return ['Auto-mapping failed: ' + (details.join(': ') || 'The mapping request was rejected.')];
+    }
+    const counters = [
+      ['process_mappings_created', 'APQC processes mapped'],
+      ['archimate_elements_created', 'ArchiMate elements'],
+      ['vendor_archimate_cloned', 'Vendor elements cloned'],
+      ['vendor_matches_found', 'Vendor matches']
+    ];
+    const supplied = data && counters.filter(([field]) => Object.hasOwn(data, field));
+    if (!data || data.success !== true || !supplied.length ||
+        supplied.some(([field]) => !Number.isInteger(data[field]) || data[field] < 0) ||
+        (data.creation_errors !== undefined && (!Array.isArray(data.creation_errors) ||
+          data.creation_errors.some(error => typeof error !== 'string' || !error.trim())))) {
+      return ['Auto-mapping outcome could not be confirmed: invalid server response.'];
+    }
+    const errors = data.creation_errors || [];
+    return [errors.length ? 'Auto-mapping reported errors; some or all mappings may not have been saved.'
+                          : 'Auto-mapping completed.',
+      ...supplied.map(([field, label]) => `${label}: ${data[field]}`), ...errors];
+  } catch (error) {
+    return ['Auto-mapping failed: ' + error.message];
+  }
 }
 
 // AUDIT-IMP-005: Guard flag to prevent concurrent import submissions
 let _importInProgress = false;
 
-function processExcelImport() {
+async function processExcelImport() {
   if (!selectedExcelFile) {
     Platform.toast.warning('Please select a file first');
     return;
@@ -371,7 +372,8 @@ function processExcelImport() {
 
   // AUDIT-IMP-005: Block concurrent submissions (race condition prevention)
   if (_importInProgress) {
-    console.warn('Import already in progress, ignoring duplicate click');
+    // Silently ignoring the click made the button look broken.
+    Platform.toast.info('An import is already running — please wait for it to finish.');
     return;
   }
   _importInProgress = true;
@@ -424,27 +426,17 @@ function processExcelImport() {
   importBtn.disabled = true;
   importBtn.textContent = 'Importing...';
 
-  fetch('/applications/import', {
-    method: 'POST',
-    body: formData
-  })
-  .then(response => {
-    if (!response.ok) {
-      throw new Error(`Server error: ${response.status}`);
-    }
-    // Check if response is JSON or redirect
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      return response.json();
-    } else {
-      // Server redirected, reload page
-      window.location.reload();
-      return null;
-    }
-  })
-  .then(async (data) => {
-    if (!data) return; // Redirect happened
-
+  try {
+    // Platform.fetch.post will throw on non-ok responses, and automatically inject CSRF token.
+    // It returns parsed JSON or null (204). Since we need to handle redirects (non-JSON responses),
+    // we cannot rely solely on Platform.fetch because it expects JSON or text.
+    // However, the server may return a redirect (HTML) which would cause Platform.fetch to throw.
+    // We'll use Platform.fetch with { silent: true } and catch any error to treat it as a redirect.
+    // If the error is a PlatformError with status 200? Actually, redirects are 302/303 etc.
+    // The current code treats any non-JSON response as a redirect and reloads.
+    // We'll mimic that by catching the error and checking if it's a redirect.
+    const data = await Platform.fetch.post('/applications/import', formData, { silent: true });
+    // If we reach here, the response was JSON (success or error).
     if (data.error) {
       importBtn.disabled = false;
       importBtn.textContent = originalText;
@@ -459,13 +451,24 @@ function processExcelImport() {
 
     // Import succeeded, reload to see flash messages
     window.location.reload();
-  })
-  .catch(error => {
+  } catch (error) {
+    // Platform.fetch throws on non-ok responses, but also on network errors.
+    // The original code treated a redirect (non-JSON) as success and reloaded.
+    // We'll assume any error here is a redirect (or network error).
+    // For safety, we'll reload only if the error is likely a redirect (status 3xx).
+    // However, we cannot access error.status because PlatformError may not expose it.
+    // The original code reloaded on any non-JSON response, even if it's a redirect.
+    // We'll mimic that by reloading on any error, but keep the error toast for network errors.
+    if (error.type === 'HttpError' && error.status >= 300 && error.status < 400) {
+      // It's a redirect, reload without showing an error toast.
+      window.location.reload();
+      return;
+    }
     importBtn.disabled = false;
     importBtn.textContent = originalText;
     _importInProgress = false;  // AUDIT-IMP-005: Reset guard on failure
     Platform.toast.error('Error importing: ' + error.message);
-  });
+  }
 }
 
 // Manual entry functions
@@ -480,7 +483,7 @@ function addManualEntryRow() {
       <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="app_id" placeholder="APP ID">
     </td>
     <td class="px-3 py-2">
-      <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="name" required placeholder="Application Name *">
+      <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" data-field="name" required placeholder="Application Name *">
     </td>
     <td class="px-3 py-2">
       <input type="text" class="w-full border border-input rounded px-2 py-1 text-sm" name="component_type" placeholder="Type">
@@ -500,6 +503,9 @@ function addManualEntryRow() {
       </button>
     </td>
   `);
+  row.querySelector('[data-action="removeManualEntryRow"]').addEventListener('click', () => {
+    removeManualEntryRow(row.id);
+  });
   tbody.appendChild(row);
   manualEntryRowCount++;
 }
@@ -508,134 +514,148 @@ function removeManualEntryRow(rowId) {
   document.getElementById(rowId).remove();
 }
 
-async function processManualImport() {
-  const tbody = document.getElementById('manual-entry-tbody');
-  const rows = tbody.querySelectorAll('tr');
-
-  if (rows.length === 0) {
-    Platform.toast.warning('Please add at least one application');
-    return;
-  }
-
-  const applications = [];
-  let hasErrors = false;
-
-  rows.forEach((row, index) => {
-    const inputs = row.querySelectorAll('input, select');
-    const appData = {};
-
-    inputs.forEach(input => {
-      if (input.name && input.value) {
-        appData[input.name] = input.value.trim();
-      }
-    });
-
-    if (appData.name) {
-      applications.push(appData);
-    } else if (inputs.length > 0) {
-      hasErrors = true;
-    }
-  });
-
-  if (hasErrors) {
-    if (!(await Platform.modal.confirm('Some rows are missing required fields. Continue with valid rows only?'))) {
-      return;
-    }
-  }
-
-  if (applications.length === 0) {
-    Platform.toast.error('No valid applications to import');
-    return;
-  }
-
-  const duplicateMode = document.getElementById('duplicate-mode-manual')?.value || 'update';
-
-  // Show loading
-  const importBtn = event.target;
+async function processManualImport(submitEvent) {
+  // Capture the original control before a confirmation changes the active event.
+  const importBtn = submitEvent.currentTarget;
+  if (importBtn.disabled) return;
   const originalText = importBtn.textContent;
   importBtn.disabled = true;
   importBtn.textContent = 'Importing...';
+  let importSaved = false;
 
-  fetch('/applications/import-manual', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || APPLICATION_IMPORT_CONFIG.csrfToken
-    },
-    body: JSON.stringify({
-      applications: applications,
-      duplicate_mode: duplicateMode
-    })
-  })
-  .then(response => response.json())
-  .then(async (data) => {
-    if (data.error) {
-      importBtn.disabled = false;
-      importBtn.textContent = originalText;
-      Platform.toast.error('Error: ' + data.error);
+  try {
+    const tbody = document.getElementById('manual-entry-tbody');
+    const rows = tbody.querySelectorAll('tr');
+
+    if (rows.length === 0) {
+      Platform.toast.warning('Please add at least one application');
       return;
     }
 
-    let message = `Import complete!\nCreated: ${data.created}\nUpdated: ${data.updated}\nSkipped: ${data.skipped}\nFailed: ${data.failed}`;
-    if (data.errors && data.errors.length > 0) {
-      message += '\n\nErrors:\n' + data.errors.slice(0, 5).join('\n');
+    const applications = [];
+    let hasErrors = false;
+
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll('input, select');
+      const appData = {};
+
+      inputs.forEach(input => {
+        const field = input.dataset.field || input.name;
+        if (field && input.value) {
+          appData[field] = input.value.trim();
+        }
+      });
+
+      if (appData.name) {
+        applications.push(appData);
+      } else if (inputs.length > 0) {
+        hasErrors = true;
+      }
+    });
+
+    if (hasErrors) {
+      if (!(await Platform.modal.confirm('Some rows are missing required fields. Continue with valid rows only?'))) {
+        return;
+      }
     }
 
-    // Run auto-mapping if enabled, then reload
+    if (applications.length === 0) {
+      Platform.toast.error('No valid applications to import');
+      return;
+    }
+
+    const duplicateMode = document.getElementById('duplicate-mode-manual')?.value || 'update';
+
+    const data = await Platform.fetch.post('/applications/import-manual', {
+      applications: applications,
+      duplicate_mode: duplicateMode
+    }, { silent: true });
+    if (data && (data.error || data.success === false)) {
+      Platform.toast.error('Error: ' + (data.error || 'Import failed'));
+      return;
+    }
+    if (!data || data.success !== true ||
+        !['created', 'updated', 'skipped', 'failed'].every(field =>
+          Number.isInteger(data[field]) && data[field] >= 0)) {
+      throw new Error('Import failed: invalid server response');
+    }
+
+    importSaved = true;
+    const resultLines = [`Created: ${data.created}`, `Updated: ${data.updated}`,
+      `Skipped: ${data.skipped}`, `Failed: ${data.failed}`];
+    if (data.errors && data.errors.length > 0) {
+      resultLines.push('Import errors:', ...data.errors.slice(0, 5));
+    }
+
+    // The import is saved even if the optional mapping step fails.
     const importedCount = (data.created || 0) + (data.updated || 0);
-    runPostImportAutoMap(importedCount, '-manual');
-
-    importBtn.disabled = false;
-    importBtn.textContent = originalText;
-    Platform.toast.info(message);
-
+    importBtn.textContent = 'Import saved — processing result...';
+    const mappingLines = await runPostImportAutoMap(importedCount, '-manual');
+    const resultId = Platform.modal.create({
+      title: 'Import saved',
+      size: 'md',
+      backdrop: false,
+      keyboard: false,
+      content: [...resultLines, ...mappingLines].map(line =>
+        `<p class="text-sm text-foreground">${escapeHtml(String(line))}</p>`).join(''),
+      buttons: [{ label: 'Done — refresh applications', variant: 'primary', resolve: true }]
+    });
+    await Platform.modal.prompt(resultId);
+    Platform.modal.destroy(resultId);
+    tbody.replaceChildren();
     window.location.reload();
-  })
-  .catch(error => {
-    importBtn.disabled = false;
-    importBtn.textContent = originalText;
-    Platform.toast.error('Error importing: ' + error.message);
-  });
+  } catch (error) {
+    Platform.toast.error((importSaved ? 'Import saved, but its result could not be displayed: ' : 'Error importing: ') + error.message);
+  } finally {
+    // Never offer to replay a saved batch, including during the pending reload.
+    importBtn.disabled = importSaved;
+    importBtn.textContent = importSaved ? 'Import saved' : originalText;
+  }
 }
 
 // Import history
-function loadImportHistory() {
-  fetch('/applications/import-history')
-    .then(response => response.json())
-    .then(data => {
-      const tbody = document.getElementById('import-history-tbody');
-      safeHTML(tbody, '');
+async function loadImportHistory() {
+  try {
+    const data = await Platform.fetch.get('/applications/import-history', null, { silent: true });
+    const tbody = document.getElementById('import-history-tbody');
+    safeHTML(tbody, '');
 
-      if (data.history && data.history.length > 0) {
-        data.history.forEach(record => {
-          const row = document.createElement('tr');
-          const date = new Date(record.imported_at);
-          safeHTML(row, `
-            <td class="px-4 py-3 text-sm">${escapeHtml(date.toLocaleString())}</td>
-            <td class="px-4 py-3 text-sm font-medium">${escapeHtml(record.imported_by_name || 'Unknown')}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(record.import_source)}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(record.file_name || '-')}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(record.records_created)}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(record.records_updated)}</td>
-            <td class="px-4 py-3 text-sm">${escapeHtml(record.records_failed)}</td>
-            <td class="px-4 py-3 text-sm">
-              <span class="px-2 py-1 rounded text-xs ${
-                record.status === 'completed' ? 'bg-emerald-500/10 text-green-800' :
-                record.status === 'failed' ? 'bg-destructive/10 text-red-800' :
-                'bg-amber-500/10 text-yellow-800'
-              }">
-                ${escapeHtml(record.status)}
-              </span>
-            </td>
-          `);
-          tbody.appendChild(row);
-        });
-      } else {
-        safeHTML(tbody, '<tr><td colspan="8" class="px-4 py-3 text-sm text-muted-foreground text-center">No import history</td></tr>');
-      }
-    })
-    .catch(error => {
-    });
+    if (data.history && data.history.length > 0) {
+      data.history.forEach(record => {
+        const row = document.createElement('tr');
+        const date = new Date(record.imported_at);
+        safeHTML(row, `
+          <td class="px-4 py-3 text-sm">${escapeHtml(date.toLocaleString())}</td>
+          <td class="px-4 py-3 text-sm font-medium">${escapeHtml(record.imported_by_name || 'Unknown')}</td>
+          <td class="px-4 py-3 text-sm">${escapeHtml(record.import_source)}</td>
+          <td class="px-4 py-3 text-sm">${escapeHtml(record.file_name || '-')}</td>
+          <td class="px-4 py-3 text-sm">${escapeHtml(record.records_created)}</td>
+          <td class="px-4 py-3 text-sm">${escapeHtml(record.records_updated)}</td>
+          <td class="px-4 py-3 text-sm">${escapeHtml(record.records_failed)}</td>
+          <td class="px-4 py-3 text-sm">
+            <span class="px-2 py-1 rounded text-xs ${
+              record.status === 'completed' ? 'bg-emerald-500/10 text-green-800' :
+              record.status === 'failed' ? 'bg-destructive/10 text-red-800' :
+              'bg-amber-500/10 text-yellow-800'
+            }">
+              ${escapeHtml(record.status)}
+            </span>
+          </td>
+        `);
+        tbody.appendChild(row);
+      });
+    } else {
+      safeHTML(tbody, '<tr><td colspan="8" class="px-4 py-3 text-sm text-muted-foreground text-center">No import history</td></tr>');
+    }
+  } catch (error) {
+    // Distinct from the "No import history" empty state above: no rows are
+    // invented, but the user must not read a failed load as an empty log.
+    const tbody = document.getElementById('import-history-tbody');
+    if (tbody) {
+      safeHTML(tbody, '<tr><td colspan="8" class="px-4 py-3 text-sm text-destructive text-center">Import history could not be loaded. This is not an empty history.</td></tr>');
+    }
+    Platform.toast.error('Could not load the import history: ' + (error.message || 'request failed') + '.');
+  }
 }
 
 // Import Analyzer Function with Real-time Progress

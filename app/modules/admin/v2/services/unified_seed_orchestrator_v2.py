@@ -9,7 +9,6 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List
 
-from app import db
 from app.modules.capabilities.services.business_capability_seeder import BusinessCapabilitySeeder
 from app.modules.capabilities.services.technical_capability_seeder import TechnicalCapabilitySeeder
 from app.modules.vendors.services.vendor_organization_seeder import VendorOrganizationSeeder

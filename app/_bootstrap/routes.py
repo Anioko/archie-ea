@@ -51,10 +51,15 @@ def init_inline_routes(app: Flask, config_name: str):
 # ---------------------------------------------------------------------------
 
 
+# Cache for health check results — avoids repeated slow probes within 30s.
+# Module-level rather than a closure local so a test can assert a FRESH probe
+# instead of silently asserting against a 30-second-old answer, which is the
+# one thing a health-check test must not do.
+_health_cache = {"result": None, "timestamp": 0.0}
+_CACHE_TTL_SECONDS = 30
+
+
 def _register_health_check(app, config_name, csrf, db):
-    # Cache for health check results — avoids repeated slow probes within 30s
-    _health_cache = {"result": None, "timestamp": 0.0}
-    _CACHE_TTL_SECONDS = 30
 
     def _probe_with_timeout(fn, timeout_seconds=1.0):
         """Run a probe function with a thread-based timeout.
@@ -240,15 +245,42 @@ def _register_health_check(app, config_name, csrf, db):
         try:
             def _llm_probe():
                 with app.app_context():
-                    from app.models.models import APISettings
+                    # Same source of truth as /ai-chat/token-usage and every
+                    # AI call: the resolver that actually picks the provider.
+                    # This used to count enabled api_settings rows, which
+                    # reported "No LLM providers enabled" on a process that was
+                    # serving AI requests from an environment-configured
+                    # provider — see LLMService.configuration_status.
+                    from app.modules.ai_chat.services.llm_service_impl import (
+                        LLMService,
+                    )
 
-                    api_count = APISettings.query.filter_by(enabled=True).count()
+                    status = LLMService.configuration_status()
+                    configured = status.get("configured")
+                    if configured is None:
+                        message = status.get(
+                            "reason", "Could not determine LLM configuration."
+                        )
+                        health = "unknown"
+                    elif configured:
+                        message = (
+                            f"LLM provider configured: {status['provider']} "
+                            f"(source: {status['source']})"
+                        )
+                        health = "healthy"
+                    else:
+                        message = "No LLM provider is configured"
+                        health = "warning"
                     return {
-                        "status": "healthy" if api_count > 0 else "warning",
-                        "enabled_providers": api_count,
-                        "message": "LLM providers configured"
-                        if api_count > 0
-                        else "No LLM providers enabled",
+                        "status": health,
+                        "configured": configured,
+                        "provider": status.get("provider"),
+                        # The count of enabled api_settings rows. NOT the
+                        # verdict: a provider configured by environment
+                        # variable has no row, so this can legitimately be 0
+                        # while the AI works.
+                        "db_enabled_providers": status.get("db_enabled_providers"),
+                        "message": message,
                     }
 
             health_status["checks"]["llm_providers"] = _probe_with_timeout(_llm_probe, timeout_seconds=1.0)
@@ -298,6 +330,36 @@ def _register_health_check(app, config_name, csrf, db):
 
     # csrf.exempt: health check endpoint — monitoring systems poll this without browser sessions
     csrf.exempt(global_health_check)
+
+    @app.route("/version", methods=["GET"])
+    def version_endpoint():
+        """
+        Build identity
+        ---
+        tags:
+          - Health
+        summary: Report the single build identifier this process is running (ARCH-062)
+        description: >
+          Every cache-busting `?v=` on a static asset, and this endpoint, are stamped
+          from the same value (`app._bootstrap.build_info.get_build_id()`) so a bug
+          report or a rollback can be tied to exactly one build.
+        responses:
+          200:
+            description: Build identifier
+            schema:
+              type: object
+              properties:
+                build_id:
+                  type: string
+                  example: "a1b2c3d4"
+        """
+        from flask import jsonify
+
+        from app._bootstrap.build_info import get_build_id
+
+        return jsonify({"build_id": get_build_id()}), 200
+
+    csrf.exempt(version_endpoint)
 
 
 # ---------------------------------------------------------------------------
@@ -384,10 +446,10 @@ def _register_api_auth(app, csrf):
           400:
             description: Bad request - missing email or password
         """
-        from flask import jsonify, request, session
-        from flask_login import login_user
+        from flask import jsonify, request
 
         from app.models import User
+        from app.services import session_registry
 
         data = request.get_json()
         if not data:
@@ -414,10 +476,7 @@ def _register_api_auth(app, csrf):
             ), 401
 
         # Fix Session Fixation: Regenerate session ID after successful authentication
-        session.clear()
-        session.modified = True
-        login_user(user, remember_me)
-        session.permanent = True
+        session_registry.login_and_register(user, remember=remember_me)
 
         return (
             jsonify(
@@ -462,9 +521,10 @@ def _register_api_auth(app, csrf):
                   example: "Logged out successfully"
         """
         from flask import jsonify
-        from flask_login import logout_user
 
-        logout_user()
+        from app.modules.account.services.account_service import AccountService
+
+        AccountService.logout()
         return jsonify({"success": True, "message": "Logged out successfully"}), 200
 
     # csrf.exempt: API logout — token-based authentication endpoint, no browser session or CSRF token expected
@@ -674,7 +734,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_requests_total{{endpoint="{safe_name}"}} {data["requests"]}'
+                f'app_endpoint_requests_total{{endpoint="{safe_name}"}} {data["requests"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -683,7 +743,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_errors_total{{endpoint="{safe_name}"}} {data["errors"]}'
+                f'app_endpoint_errors_total{{endpoint="{safe_name}"}} {data["errors"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -692,7 +752,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_latency_p50_ms{{endpoint="{safe_name}"}} {data["p50_ms"]}'
+                f'app_endpoint_latency_p50_ms{{endpoint="{safe_name}"}} {data["p50_ms"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -701,7 +761,7 @@ def _register_metrics(app, csrf):
         for endpoint, data in summary.get("endpoints", {}).items():
             safe_name = endpoint.replace('"', '\\"') if endpoint else "unknown"
             lines.append(
-                f'app_endpoint_latency_p95_ms{{endpoint="{safe_name}"}} {data["p95_ms"]}'
+                f'app_endpoint_latency_p95_ms{{endpoint="{safe_name}"}} {data["p95_ms"]}'  # raw-html-ok: Prometheus text exposition format (text/plain), not HTML; safe_name already has its own quote-escaping for this format
             )
         lines.append("")
 
@@ -744,7 +804,9 @@ def _register_notifications(app, csrf):
             gen_items = []
 
         try:
-            from app import db as _db
+            # `db` was imported here only for the or_()/and_() that wrapped the
+            # removed fixture-name filter. Dropped with it rather than left as an
+            # unused import (ruff F401, and lint-core is gated at zero).
             from app.models.solution_governance import SolutionNotification
             from app.models.solution_models import Solution
 
@@ -752,16 +814,18 @@ def _register_notifications(app, csrf):
                 SolutionNotification.query
                 .filter_by(user_id=current_user.id)
                 .outerjoin(Solution, SolutionNotification.solution_id == Solution.id)
-                .filter(
-                    _db.or_(
-                        SolutionNotification.solution_id.is_(None),
-                        _db.and_(
-                            ~Solution.name.ilike("J1-AutoTest-%"),
-                            ~Solution.name.ilike("J7-E2E-Test%"),
-                            ~Solution.name.ilike("%-AutoTest-%"),
-                        ),
-                    )
-                )
+                # The three ~ilike exclusions removed here filtered solutions
+                # named 'J1-AutoTest-%', 'J7-E2E-Test%' and '%-AutoTest-%'.
+                # Those are this repository's own fixture names, hidden from
+                # what a real user sees. A customer who names a solution
+                # "Migration-AutoTest-Rig" lost it from their own screen with
+                # no explanation, and the filter made leaked test rows
+                # invisible, so the leak never got fixed. Purge the rows;
+                # do not hide them.
+                # The or_() wrapper existed only to let notifications with no
+                # solution survive that filter. With the filter gone it admits
+                # every row, so it is removed rather than left as a no-op that
+                # reads like a deliberate condition.
                 .order_by(SolutionNotification.created_at.desc())
                 .limit(20)
                 .all()

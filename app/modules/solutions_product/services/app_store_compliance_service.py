@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
 
 
 @dataclass
@@ -96,10 +95,23 @@ class AppStoreComplianceService:
         files = {f.path: f.content for f in bundle.files}
         app_json_content = files.get("mobile/app.json") or files.get("app.json", "")
         eas_json_content = files.get("mobile/eas.json") or files.get("eas.json", "")
-        package_json_content = files.get("mobile/package.json") or files.get("package.json", "")
+        files.get("mobile/package.json") or files.get("package.json", "")
 
         app_config = self._parse_json_safe(app_json_content)
         eas_config = self._parse_json_safe(eas_json_content)
+
+        # A file that will not parse is its own finding, and a far more useful
+        # one than the cascade of "field is required" errors that checking an
+        # empty dict produces.
+        for label, parsed in (("app.json", app_config), ("eas.json", eas_config)):
+            if parsed is None:
+                findings.append(ComplianceFinding(
+                    severity="error", store="both", rule="CONFIG_NOT_VALID_JSON",
+                    message="%s is not valid JSON, so none of its rules could be checked" % label,
+                    fix="Correct the JSON syntax in %s and re-run the compliance check" % label,
+                ))
+        app_config = app_config or {}
+        eas_config = eas_config or {}
         expo = app_config.get("expo", app_config)
 
         self._check_common(expo, findings)
@@ -278,7 +290,7 @@ class AppStoreComplianceService:
             ))
         else:
             prod = builds["production"]
-            ios_prod = prod.get("ios", {})
+            prod.get("ios", {})
             android_prod = prod.get("android", {})
             if android_prod.get("buildType") not in ("app-bundle", "apk", None):
                 findings.append(ComplianceFinding(
@@ -348,11 +360,19 @@ class AppStoreComplianceService:
         return False
 
     @staticmethod
-    def _parse_json_safe(content: str) -> dict:
+    def _parse_json_safe(content: str):
+        """Return {} for absent, None for UNPARSEABLE. The two are not the same.
+
+        Both used to return {}, so a malformed app.json was checked as though it
+        were an empty one and the report came back "expo.name is required,
+        expo.slug is required, ..." - a list of fields the developer had very
+        likely filled in. The actionable answer is that the file is not valid
+        JSON, and that answer was being discarded here.
+        """
         if not content:
             return {}
         try:
             import json
             return json.loads(content)
         except Exception:
-            return {}
+            return None

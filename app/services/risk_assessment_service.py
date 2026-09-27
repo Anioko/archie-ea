@@ -92,6 +92,7 @@ class RiskAssessmentService:
 
         if not app_mappings:
             from app.models.application_capability import ApplicationCapabilityMapping
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             app_mappings = ApplicationCapabilityMapping.query.filter_by(
                 business_capability_id=capability.id
             ).all()
@@ -344,10 +345,10 @@ class RiskAssessmentService:
         compliance_count = len(
             [c for c in capability_risks if "COMPLIANCE_RISK" in c["risk_factors"]]
         )
-        dependency_count = len(
+        (len(
             [c for c in capability_risks if "DEPENDENCY_RISK" in c["risk_factors"]]
-        )
-        skill_gap_count = len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
+        ))
+        len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
 
         # Average risk scores
         avg_spof_risk = (

@@ -1,16 +1,12 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Connector Health Dashboard{% endblock %}
 
 {% block content %}
 <div class="mx-auto px-4 py-6" x-data="connectorDashboard()">
   <!-- Header -->
-  <div class="mb-4">
-    <h1 class="text-2xl font-semibold text-foreground">Connector Health Dashboard</h1>
-    <p class="text-sm text-muted-foreground mt-1">
-      Monitor external system integrations (Datadog, Jira, ServiceNow, Salesforce)
-    </p>
-  </div>
+  {{ page_shell(title='Connector Health Dashboard', breadcrumb=[('Home', '/'), ('Connector Health Dashboard', none)], subtitle='Monitor external system integrations (Datadog, Jira, ServiceNow, Salesforce)') }}
 
   <!-- Loading State -->
   <div x-show="loading" x-cloak class="flex items-center justify-center py-12">
@@ -22,7 +18,7 @@
 
   <!-- Error State -->
   <div x-show="errorMsg && !loading" x-cloak class="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-4">
-    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+    <p class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
   </div>
 
   <!-- Connector Cards Grid -->
@@ -37,7 +33,8 @@
     <i data-lucide="zap" class="mx-auto h-12 w-12 text-muted-foreground mb-2" aria-hidden="true"></i>
     <h3 class="mt-2 text-sm font-medium text-foreground">No connectors configured</h3>
     <p class="mt-1 text-sm text-muted-foreground">
-      Configure connectors in connector_framework.py to start monitoring
+      Connectors are provisioned by your platform administrator during setup —
+      there is no self-serve configuration on this page yet.
     </p>
   </div>
 
@@ -59,7 +56,7 @@
             <h2 class="text-lg font-semibold text-card-foreground" x-text="selectedConnector?.name"></h2>
             <p class="text-sm text-muted-foreground" x-text="selectedConnector?.connector_type"></p>
           </div>
-          <button @click="selectedConnector = null" class="text-muted-foreground hover:text-foreground" aria-label="Action">
+          <button type="button" @click="selectedConnector = null" class="text-muted-foreground hover:text-foreground" aria-label="Action">
             <i data-lucide="x" class="h-6 w-6" aria-hidden="true"></i>
           </button>
         </div>
@@ -76,8 +73,8 @@
                   <span class="text-xs px-2 py-1 rounded-full"
                         :class="{
                           'bg-primary/10 text-primary': sync.status === 'success',
-                          'bg-destructive/10 text-destructive': sync.status === 'error',
-                          'bg-warning/10 text-warning': sync.status === 'partial'
+                          'bg-destructive/10 text-destructive-emphasis': sync.status === 'error',
+                          'bg-warning/10 text-warning-emphasis': sync.status === 'partial'
                         }"
                         x-text="sync.status"></span>
                 </div>
@@ -93,18 +90,18 @@
                     (<span x-text="sync.duration_seconds"></span>s)
                   </span>
                 </div>
-                <div x-show="sync.error_message" x-cloak class="mt-2 text-xs text-destructive" x-text="sync.error_message"></div>
+                <div x-show="sync.error_message" x-cloak class="mt-2 text-xs text-destructive-emphasis" x-text="sync.error_message"></div>
               </div>
             </template>
           </div>
 
           <!-- Actions -->
           <div class="mt-6 flex gap-2">
-            <button @click="testConnection(selectedConnector.id)"
+            <button type="button" @click="testConnection(selectedConnector.id)"
                     class="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Action">
               Test Connection
             </button>
-            <button @click="triggerSync(selectedConnector.id)"
+            <button type="button" @click="triggerSync(selectedConnector.id)"
                     class="px-4 py-2 bg-accent text-accent-foreground rounded-md text-sm hover:bg-accent/90" aria-label="Action">
               Trigger Sync
             </button>
@@ -133,10 +130,7 @@ function connectorDashboard() {
         this.loading = true;
         this.error = null;
 
-        const response = await fetch('/integrations/api/connectors');
-        if (!response.ok) throw new Error('Failed to load connectors');
-
-        const data = await response.json();
+        const data = await Platform.fetch('/integrations/api/connectors', { silent: true });
         this.connectors = data.connectors;
       } catch (err) {
         this.error = err.message;
@@ -147,10 +141,7 @@ function connectorDashboard() {
 
     async viewDetails(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}`);
-        if (!response.ok) throw new Error('Failed to load connector details');
-
-        const data = await response.json();
+        const data = await Platform.fetch(`/integrations/api/connectors/${connectorId}`, { silent: true });
         this.selectedConnector = data.connector;
         this.selectedConnectorSyncs = data.recent_syncs;
       } catch (err) {
@@ -160,11 +151,7 @@ function connectorDashboard() {
 
     async testConnection(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}/test`, {
-          method: 'POST'
-        });
-        const data = await response.json();
-
+        const data = await Platform.fetch.post(`/integrations/api/connectors/${connectorId}/test`, null, { silent: true });
         if (data.success) {
           Platform.toast.success('Connection test successful!');
         } else {
@@ -177,11 +164,7 @@ function connectorDashboard() {
 
     async triggerSync(connectorId) {
       try {
-        const response = await fetch(`/integrations/api/connectors/${connectorId}/sync`, {
-          method: 'POST'
-        });
-        const data = await response.json();
-
+        const data = await Platform.fetch.post(`/integrations/api/connectors/${connectorId}/sync`, null, { silent: true });
         if (data.success) {
           Platform.toast.info('Sync triggered successfully!');
           await this.loadConnectors();

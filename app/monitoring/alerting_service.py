@@ -11,7 +11,6 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 from enum import Enum
 import threading
-import json
 
 from flask import current_app
 
@@ -382,7 +381,7 @@ Message: {alert.message}
 Source: {alert.source}
 Time: {alert.timestamp.isoformat()}
 
-This is an automated alert from the A.R.C.H.I.E. platform.
+This is an automated alert from the Entelim platform.
             """.strip()
             
             # Create email message
@@ -414,7 +413,7 @@ This is an automated alert from the A.R.C.H.I.E. platform.
             
             payload = {
                 'channel': config['channel'],
-                'username': 'ARCHIE Alerts',
+                'username': 'Entelim Alerts',
                 'icon_emoji': ':warning:',
                 'attachments': [{
                     'color': color,
@@ -425,7 +424,7 @@ This is an automated alert from the A.R.C.H.I.E. platform.
                         {'title': 'Source', 'value': alert.source, 'short': True},
                         {'title': 'Time', 'value': alert.timestamp.isoformat(), 'short': True}
                     ],
-                    'footer': 'A.R.C.H.I.E. Platform',
+                    'footer': 'Entelim Platform',
                     'ts': int(alert.timestamp.timestamp())
                 }]
             }

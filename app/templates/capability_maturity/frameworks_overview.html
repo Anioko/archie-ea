@@ -1,5 +1,6 @@
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 
 {% block title %}Frameworks Overview{% endblock %}
 
@@ -34,12 +35,33 @@
         ]
     ) }}
 
-    <!-- Framework Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {% for framework_key, framework_data in all_frameworks.items() %}
-        {% set stats = framework_stats[framework_key] %}
-        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+    {# Partition BEFORE laying out. Filtering inside the loop left the grid at
+       lg:grid-cols-4 regardless of how many cards survived, so a single
+       populated framework rendered as one quarter-width card marooned in three
+       columns of white space — the page looked broken rather than sparse. #}
+    {% set populated = [] %}
+    {% set unpopulated = [] %}
+    {% for framework_key, framework_data in all_frameworks.items() %}
+        {% set stats = framework_stats.get(framework_key) %}
         {% if stats and stats[0] > 0 %}
+            {% set _ = populated.append((framework_key, framework_data, stats)) %}
+        {% else %}
+            {% set _ = unpopulated.append((framework_key, framework_data)) %}
+        {% endif %}
+    {% endfor %}
+    {# Literal class strings, never 'lg:grid-cols-' ~ n. tailwind-output.css is
+       committed pre-built, so a class assembled at render time is not in the
+       stylesheet and silently does nothing — the same trap the color_map above
+       exists to avoid. #}
+    {% set _cols_map = {1: 'lg:grid-cols-1', 2: 'lg:grid-cols-2', 3: 'lg:grid-cols-3'} %}
+    {% set cols = _cols_map.get(populated|length, 'lg:grid-cols-4') %}
+
+    {% if populated %}
+    <!-- Framework Grid — column count follows the number of populated frameworks -->
+    <div class="grid grid-cols-1 md:grid-cols-2 {{ cols }} gap-6 mb-8">
+        {% for framework_key, framework_data, stats in populated %}
+        {% set colors = color_map.get(framework_data.color, color_map['blue']) %}
+        {% if True %}
         <a href="{{ url_for('maturity_management.framework_dashboard', framework_key=framework_key) }}"
            class="block bg-card rounded-lg shadow hover:shadow-lg transition-shadow duration-200 border border-border">
             <div class="p-6">
@@ -61,8 +83,11 @@
                         <p class="text-xs text-muted-foreground">Capabilities</p>
                     </div>
                     <div>
-                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4] or 0) }}</p>
-                        <p class="text-xs text-muted-foreground">Avg Current</p>
+                        {# AVG() over unassessed capabilities is NULL. "or 0" printed that
+                           as 0.0 — not a valid level on a 1-5 scale, and indistinguishable
+                           from a measured score. Unassessed reads as an em dash. #}
+                        <p class="text-2xl font-bold {{ colors.icon_text }}">{{ "%.1f"|format(stats[4]) if stats[4] is not none else "—" }}</p>
+                        <p class="text-xs text-muted-foreground">{{ "Avg Current" if stats[4] is not none else "Not assessed" }}</p>
                     </div>
                 </div>
 
@@ -88,6 +113,38 @@
         {% endif %}
         {% endfor %}
     </div>
+    {% else %}
+    <div class="mb-8">
+        {{ empty_state(
+            icon='layers',
+            title='No capabilities are mapped to a framework yet',
+            description='Frameworks group capabilities by business domain. Give your capabilities a category and they appear here with their maturity coverage.',
+            cta_text='Categorise your capabilities',
+            cta_href=url_for('unified_low_priority.capability_map_capabilities'),
+            cta_icon='layers'
+        ) }}
+    </div>
+    {% endif %}
+
+    {# Frameworks with nothing mapped are listed rather than hidden. Hiding them
+       made "this framework has no capabilities" indistinguishable from "this
+       framework does not exist", which is the question a business architect
+       defining their framework is actually asking. #}
+    {% if unpopulated %}
+    <div class="bg-card rounded-lg border border-border p-4 mb-8">
+        <p class="text-sm font-medium text-foreground mb-1">Not yet mapped</p>
+        <p class="text-xs text-muted-foreground mb-3">
+            These frameworks exist but no capability currently carries a category in them.
+        </p>
+        <div class="flex flex-wrap gap-2">
+            {% for framework_key, framework_data in unpopulated %}
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs bg-muted text-muted-foreground">
+                {{ framework_data.name }}
+            </span>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Framework Comparison -->
     <div class="bg-card rounded-lg shadow border border-border">
@@ -130,12 +187,12 @@
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-foreground">{{ stats[2] }}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-                                    {{ "%.1f"|format(stats[4] or 0) }}
+                                    {{ "%.1f"|format(stats[4]) if stats[4] is not none else "—" }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
-                                    {{ "%.1f"|format(stats[5] or 0) }}
+                                    {{ "%.1f"|format(stats[5]) if stats[5] is not none else "—" }}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
@@ -146,7 +203,7 @@
                                                  style="width: {{ ((stats[4] or 0) / 5 * 100)|round }}%"></div>
                                         </div>
                                     </div>
-                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] or 0) / 5 * 100)|round }}%</span>
+                                    <span class="text-xs text-muted-foreground">{{ ((stats[4] / 5 * 100)|round ~ "%") if stats[4] is not none else "—" }}</span>
                                 </div>
                             </td>
                         </tr>
@@ -162,7 +219,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive-emphasis{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
                     {{ message }}
                 </div>
             {% endfor %}

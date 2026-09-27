@@ -19,7 +19,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -46,7 +46,7 @@
                                     <span class="font-medium text-foreground">Connected</span>
                                 {% elif abacus_config.connection_status == 'error' %}
                                     <div class="h-3 w-3 rounded-full bg-destructive"></div>
-                                    <span class="font-medium text-destructive">Error</span>
+                                    <span class="font-medium text-destructive-emphasis">Error</span>
                                 {% else %}
                                     <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
                                     <span class="font-medium text-muted-foreground">Not Tested</span>
@@ -97,8 +97,8 @@
                         <!-- Error Message -->
                         {% if abacus_config and abacus_config.last_error %}
                             <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
-                                <p class="text-xs text-destructive/80">{{ abacus_config.last_error }}</p>
+                                <p class="text-sm text-destructive-emphasis font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive-emphasis/80">{{ abacus_config.last_error }}</p>
                             </div>
                         {% endif %}
 
@@ -123,7 +123,7 @@
                             </form>
 
                             <!-- Cancel Button — visibility managed by syncStatusPanel Alpine component -->
-                            <button id="cancel-job-btn"
+                            <button type="button" id="cancel-job-btn"
                                     class="w-full inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90 h-10 px-4 py-2 hidden" aria-label="Stop running sync job">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
                                 Stop Running Job
@@ -139,8 +139,8 @@
             <div data-slot="card" class="mt-6 rounded-xl border-2 border-input bg-card" x-data="syncStatusPanel()">
                 <div class="p-4 sm:p-6 border-b flex items-center justify-between">
                     <h3 class="text-lg font-semibold">Sync Job Status</h3>
-                    <button x-show="isStale" @click="clearStaleJobs()" x-cloak
-                            class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 font-medium">
+                    <button type="button" x-show="isStale" @click="clearStaleJobs()" x-cloak
+                            class="text-xs px-2.5 py-1 rounded-md bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 font-medium">
                         Clear Stale Job
                     </button>
                 </div>
@@ -159,7 +159,7 @@
                     </div>
                     <div class="text-xs text-muted-foreground" x-text="details"></div>
                     <!-- Stale job warning -->
-                    <div x-show="isStale" x-cloak class="p-2 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-700">
+                    <div x-show="isStale" x-cloak class="p-2 bg-warning/10 border border-warning/30 rounded text-xs text-warning-emphasis">
                         This job has been running for over 1 hour without completing. It's likely stuck. Click "Clear Stale Job" above to reset.
                     </div>
                 </div>
@@ -228,7 +228,7 @@
                             <div class="space-y-4">
                                 <div>
                                     <label for="base_url" class="block text-sm font-medium mb-2">
-                                        Base URL <span class="text-destructive">*</span>
+                                        Base URL <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="url"
                                            id="base_url"
@@ -242,7 +242,7 @@
 
                                 <div>
                                     <label for="client_id" class="block text-sm font-medium mb-2">
-                                        Client ID <span class="text-destructive">*</span>
+                                        Client ID <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="client_id"
@@ -256,7 +256,7 @@
 
                                 <div>
                                     <label for="client_secret" class="block text-sm font-medium mb-2">
-                                        Client Secret {% if not env_config %}<span class="text-destructive">*</span>{% endif %}
+                                        Client Secret {% if not env_config %}<span class="text-destructive-emphasis">*</span>{% endif %}
                                     </label>
                                     <input type="password"
                                            id="client_secret"
@@ -264,7 +264,7 @@
                                            value="{{ form.client_secret.data or '' }}"
                                            placeholder="{% if abacus_config or env_config %}••••••••••••{% else %}your-client-secret{% endif %}"
                                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                           {% if not abacus_config and not env_config %}required{% endif %}>
+                                           {% if not abacus_config and not env_config %}required{% endif %} autocomplete="new-password">
                                     <p class="text-xs text-muted-foreground mt-1">
                                         {% if env_config %}
                                             Using secret from .env file (leave blank to keep it)
@@ -382,7 +382,7 @@
                                     </div>
                                     <p class="text-xs text-muted-foreground mt-2" x-text="selectedTypes.length + ' of ' + availableTypes.length + ' types selected for sync'"></p>
                                 </div>
-                                <div x-show="typesError" x-cloak class="p-2 bg-destructive/10 rounded text-xs text-destructive" x-text="typesError"></div>
+                                <div x-show="typesError" x-cloak class="p-2 bg-destructive/10 rounded text-xs text-destructive-emphasis" x-text="typesError"></div>
                             </div>
                         </div>
 
@@ -411,7 +411,7 @@
                                         <button type="button" @click="addCountry('Spain')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Spain to filter">+ Spain</button>
                                         <button type="button" @click="addCountry('Italy')" class="text-xs px-2 py-1 rounded bg-accent text-accent-foreground hover:bg-accent/80" aria-label="Add Italy to filter">+ Italy</button>
                                         <button type="button" @click="document.getElementById('filter_countries').value='all'" class="text-xs px-2 py-1 rounded bg-muted text-muted-foreground hover:bg-muted/80" aria-label="Import all countries">All Countries</button>
-                                        <button type="button" @click="document.getElementById('filter_countries').value=''" class="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20" aria-label="Clear country filter">Clear</button>
+                                        <button type="button" @click="document.getElementById('filter_countries').value=''" class="text-xs px-2 py-1 rounded bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20" aria-label="Clear country filter">Clear</button>
                                     </div>
                                 </div>
                                 {# Dynamic filter discovery from Abacus API #}
@@ -419,7 +419,7 @@
                                 <input type="hidden" id="active-filters-data" value="{{ abacus_config.config_json|default('{}', true)|e if abacus_config else '{}' }}">
                                 <input type="hidden" id="dynamic_filters" name="dynamic_filters" value="">
                                 {% if not filter_dimensions %}
-                                <div class="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-700 dark:text-amber-400">
+                                <div class="p-3 bg-warning/10 border border-warning/30 rounded-md text-sm text-warning-emphasis">
                                     <p class="font-medium">No filter dimensions available yet</p>
                                     <p class="text-xs mt-1">Click the button below to discover filter options from Abacus. They'll be saved and available on next page load.</p>
                                     <button type="button" id="btn-discover-now"
@@ -524,7 +524,7 @@
     <div class="mt-8">
         <div data-slot="card" class="rounded-xl border-2 border-input bg-card p-4 sm:p-6">
             <h3 class="text-lg font-semibold mb-4">Setup Instructions</h3>
-            <div class="prose prose-sm dark:prose-invert max-w-none">
+            <div class="prose prose-sm max-w-none">
                 <ol class="space-y-2">
                     <li>Log in to your Abacus instance as an administrator</li>
                     <li>Navigate to <strong>Settings → API → OAuth Applications</strong></li>
@@ -563,7 +563,10 @@
             <template x-if="loading">
                 <div class="text-center py-8 text-muted-foreground">Loading mappings...</div>
             </template>
-            <template x-if="!loading && Object.keys(mappings).length > 0">
+            <template x-if="!loading && loadError">
+                <div class="text-center py-8 text-destructive-emphasis">Could not load relationship mappings. Please try again.</div>
+            </template>
+            <template x-if="!loading && !loadError && Object.keys(mappings).length > 0">
                 <div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
@@ -626,19 +629,19 @@
                         </table>
                     </div>
                     <div class="flex items-center gap-3 mt-4 pt-4 border-t">
-                        <button @click="saveMappings()"
+                        <button type="button" @click="saveMappings()"
                                 :disabled="saving"
                                 class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                             <span x-show="!saving">Save Mappings</span>
                             <span x-show="saving">Saving...</span>
                         </button>
                         <span x-show="saveMessage" x-text="saveMessage"
-                              class="text-sm" :class="saveError ? 'text-destructive' : 'text-primary'"></span>
+                              class="text-sm" :class="saveError ? 'text-destructive-emphasis' : 'text-primary'"></span>
                         <span class="text-xs text-muted-foreground ml-auto" x-text="Object.keys(mappings).length + ' mappings configured'"></span>
                     </div>
                 </div>
             </template>
-            <template x-if="!loading && Object.keys(mappings).length === 0">
+            <template x-if="!loading && !loadError && Object.keys(mappings).length === 0">
                 <div class="text-center py-8 text-muted-foreground">
                     No relationship mappings configured. Check Abacus integration setup.
                 </div>
@@ -651,13 +654,13 @@
 <script>
     lucide.createIcons();
 
-    const csrfToken = document.querySelector('meta[name=csrf-token]')?.content || '';
 
     // ── Relationship mapping Alpine component ────────────────────────
     function relationshipMappings() {
         return {
             expanded: false,
             loading: false,
+            loadError: false,
             saving: false,
             saveMessage: '',
             saveError: false,
@@ -669,25 +672,28 @@
             },
             async loadMappings() {
                 this.loading = true;
+                this.loadError = false;
                 try {
-                    const resp = await fetch('/admin/abacus-settings/relationship-mappings');
-                    const data = await resp.json();
+                    const data = await Platform.fetch('/admin/abacus-settings/relationship-mappings', { silent: true });
                     this.mappings = data.mappings || {};
-                } catch (e) { console.error('Failed to load mappings:', e); }
+                } catch (e) {
+                    // silent: loadError paints an inline banner in the panel.
+                    this.loadError = true;
+                }
                 finally { this.loading = false; }
             },
             async saveMappings() {
                 this.saving = true; this.saveMessage = '';
                 try {
-                    const resp = await fetch('/admin/abacus-settings/save-relationship-mappings', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                        body: JSON.stringify({mappings: this.mappings})
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch.post('/admin/abacus-settings/save-relationship-mappings',
+                        {mappings: this.mappings}, { silent: true });
                     this.saveMessage = data.success ? `Saved ${data.saved_count} mappings` : (data.error || 'Save failed');
                     this.saveError = !data.success;
-                } catch (e) { this.saveMessage = 'Network error'; this.saveError = true; }
+                } catch (e) {
+                    // Covers transport failures and non-ok responses alike now that the wrapper throws on both.
+                    this.saveMessage = e.message || 'Save failed';
+                    this.saveError = true;
+                }
                 finally { this.saving = false; setTimeout(() => this.saveMessage = '', 5000); }
             }
         };
@@ -698,9 +704,11 @@
         // Pre-load selected types from config_json
         let initial = [];
         try {
+            // Best-effort: config_json is server-stored optional JSON; if it's malformed
+            // or absent, initial just stays [] and discoverTypes() below repopulates it.
             const cfg = JSON.parse('{{ abacus_config.config_json|default("{}", true)|e if abacus_config else "{}" }}');
             initial = cfg.sync_entity_types || [];
-        } catch(e) {}
+        } catch(e) { /* swallow-ok: defensive parse of our own server-rendered config_json; discoverTypes() repopulates the list, so a malformed blob must not block panel init or nag the user */ }
         return {
             availableTypes: [],
             selectedTypes: initial,
@@ -710,10 +718,7 @@
             async discoverTypes() {
                 this.typesLoading = true; this.typesError = '';
                 try {
-                    const resp = await fetch('/admin/abacus-settings/discover-types', {
-                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
-                    });
-                    const data = await resp.json();
+                    const data = await Platform.fetch.post('/admin/abacus-settings/discover-types', undefined, { silent: true });
                     if (data.success) {
                         this.availableTypes = data.types;
                         this.typesLoaded = true;
@@ -758,8 +763,7 @@
             },
             async poll() {
                 try {
-                    const resp = await fetch('{{ url_for("admin.abacus_sync_status") }}');
-                    const data = await resp.json();
+                    const data = await Platform.fetch('{{ url_for("admin.abacus_sync_status") }}', { silent: true });
                     this.jobId = data.job_id;
                     this.status = data.status;
 
@@ -768,9 +772,9 @@
 
                     const map = {
                         no_jobs:     ['No sync jobs',  'bg-muted-foreground', 'text-muted-foreground'],
-                        pending:     ['Queued',        'bg-amber-500',        'text-foreground'],
+                        pending:     ['Queued',        'bg-warning',        'text-foreground'],
                         in_progress: ['Running',       'bg-primary animate-pulse', 'text-foreground'],
-                        completed:   ['Completed',     'bg-emerald-500',      'text-foreground'],
+                        completed:   ['Completed',     'bg-success',      'text-foreground'],
                         failed:      ['Failed',        'bg-destructive',      'text-destructive'],
                         cancelled:   ['Cancelled',     'bg-muted-foreground', 'text-muted-foreground'],
                     };
@@ -817,15 +821,13 @@
             },
             async clearStaleJobs() {
                 try {
-                    const resp = await fetch('/admin/abacus-settings/clear-stale-jobs', {
-                        method: 'POST', headers: {'X-CSRFToken': csrfToken}
-                    });
-                    const data = await resp.json();
-                    if (data.success) {
-                        this.isStale = false;
-                        this.poll();
-                    }
-                } catch(e) { console.error('Failed to clear stale jobs:', e); }
+                    const data = await Platform.fetch.post('/admin/abacus-settings/clear-stale-jobs', undefined, { silent: true });
+                    if (!data.success) throw new Error(data.error || data.message || 'Could not clear stale jobs.');
+                    this.isStale = false;
+                    this.poll();
+                } catch(e) {
+                    if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Could not clear stale jobs.');
+                }
             }
         };
     }
@@ -839,12 +841,7 @@
         if (!jobId) { Platform.toast.info('No job to cancel'); return; }
         if (!(await Platform.modal.confirm('Cancel job #' + jobId + '?'))) return;
 
-        fetch('/admin/abacus-settings/cancel-job/' + jobId, {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrfToken, 'Content-Type': 'application/json'},
-            credentials: 'same-origin'
-        })
-        .then(r => r.json())
+        Platform.fetch.post('/admin/abacus-settings/cancel-job/' + jobId, undefined, { silent: true })
         .then(data => {
             if (data.success) location.reload();
             else Platform.toast.error('Failed: ' + data.message);
@@ -853,21 +850,42 @@
     }
 
     // ── Imported data count updater ──────────────────────────────────
+    // These counts are how an admin decides whether an Abacus import worked.
+    // A failed poll must never leave a number on screen: a stale or invented
+    // count is indistinguishable from a measured one.
+    let importedCountsFailing = false;
     function updateImportedDataCounts() {
-        fetch('/admin/abacus-settings/stats')
-        .then(r => r.json())
+        const counts = () => ({
+            appsEl: document.getElementById('imported-apps-count'),
+            capsEl: document.getElementById('imported-caps-count'),
+            appsProg: document.getElementById('apps-progress'),
+            capsProg: document.getElementById('caps-progress'),
+        });
+        // Platform.fetch throws on 4xx/5xx, so an error page can no longer fall
+        // through to the success handler as unparsable JSON.
+        // silent: the catch below already toasts once per outage, not once per tick.
+        Platform.fetch('/admin/abacus-settings/stats', { silent: true })
         .then(data => {
-            if (!data.success) return;
-            const appsEl = document.getElementById('imported-apps-count');
-            const capsEl = document.getElementById('imported-caps-count');
-            const appsProg = document.getElementById('apps-progress');
-            const capsProg = document.getElementById('caps-progress');
-            if (appsEl) appsEl.textContent = data.applications || 0;
-            if (capsEl) capsEl.textContent = data.capabilities || 0;
+            if (!data.success) throw new Error(data.message || 'stats unavailable');
+            const { appsEl, capsEl, appsProg, capsProg } = counts();
+            if (appsEl) appsEl.textContent = data.applications ?? '—';
+            if (capsEl) capsEl.textContent = data.capabilities ?? '—';
             if (appsProg) appsProg.style.width = Math.min(100, (data.applications || 0) / 10) + '%';
             if (capsProg) capsProg.style.width = Math.min(100, (data.capabilities || 0) * 2) + '%';
+            importedCountsFailing = false;
         })
-        .catch(() => {});
+        .catch(() => {
+            const { appsEl, capsEl, appsProg, capsProg } = counts();
+            if (appsEl) appsEl.textContent = '—';
+            if (capsEl) capsEl.textContent = '—';
+            if (appsProg) appsProg.style.width = '0%';
+            if (capsProg) capsProg.style.width = '0%';
+            // Polls every 10s: one toast per outage, not one per tick.
+            if (!importedCountsFailing) {
+                importedCountsFailing = true;
+                Platform.toast.error('Could not load imported data counts — the figures shown are unknown, not zero.');
+            }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -887,11 +905,7 @@
                 try {
                     const urlEl = document.getElementById('discover-filters-url');
                     if (!urlEl) { discoverBtn.textContent = 'Config error'; discoverBtn.disabled = false; return; }
-                    const r = await fetch(urlEl.value, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrfToken }
-                    });
-                    const d = await r.json();
+                    const d = await Platform.fetch.post(urlEl.value, undefined, { silent: true });
                     if (d.success) {
                         const count = Object.keys(d.dimensions || {}).length;
                         discoverBtn.textContent = 'Discovered ' + count + ' dimensions! Reloading...';

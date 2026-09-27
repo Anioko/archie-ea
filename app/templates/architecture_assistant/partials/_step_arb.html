@@ -36,15 +36,15 @@
 
   {# ENH-005: Approval banner — shown when AI-generated draft needs approval before submission #}
   <div x-show="arbDraft && arbDraft.ai_generated && arbDraft.approval_status === 'pending_review' && !arbLoading" x-cloak
-    class="rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+    class="rounded-md border border-warning/30 bg-warning/5 p-3">
     <div class="flex items-start gap-2">
-      <i data-lucide="shield-alert" class="h-4 w-4 text-amber-600 mt-0.5 shrink-0"></i>
+      <i data-lucide="shield-alert" class="h-4 w-4 text-warning mt-0.5 shrink-0"></i>
       <div class="flex-1">
-        <p class="text-sm font-medium text-amber-700">AI-generated draft requires approval before ARB submission</p>
-        <p class="text-xs text-amber-600 mt-1">Review all sections below. Edit if needed, then approve the draft to enable submission.</p>
+        <p class="text-sm font-medium text-warning-emphasis">AI-generated draft requires approval before ARB submission</p>
+        <p class="text-xs text-warning-emphasis mt-1">Review all sections below. Edit if needed, then approve the draft to enable submission.</p>
       </div>
       <button @click="approveARBDraft()" type="button"
-        class="inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-medium bg-emerald-600 text-primary-foreground hover:bg-emerald-700 shrink-0">
+        class="inline-flex items-center gap-1 h-8 px-3 rounded-md text-xs font-medium bg-success text-primary-foreground hover:bg-success/90 shrink-0">
         <i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i>
         Approve Draft
       </button>
@@ -53,10 +53,10 @@
 
   {# ENH-005: Approved badge #}
   <div x-show="arbDraft && arbDraft.approval_status === 'approved' && arbDraft.ai_generated && !arbLoading" x-cloak
-    class="rounded-md border border-emerald-500/30 bg-emerald-500/5 p-3">
+    class="rounded-md border border-success/30 bg-success/5 p-3">
     <div class="flex items-center gap-2">
-      <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
-      <p class="text-sm font-medium text-emerald-700">Draft approved — ready for ARB submission</p>
+      <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
+      <p class="text-sm font-medium text-success-emphasis">Draft approved — ready for ARB submission</p>
     </div>
   </div>
 
@@ -70,19 +70,19 @@
         <h3 class="text-sm font-medium text-foreground">Business Justification</h3>
         <div class="flex items-center gap-1.5">
           <span x-show="isArbSectionEdited('business_justification')" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">
             <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
           </span>
           {# ENH-006: AI Generated badge with contextual label #}
           <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
             <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
           </span>
         </div>
       </div>
       <textarea x-model="arbDraft.business_justification" rows="4"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Business justification for this solution..."></textarea>
+        placeholder="Business justification for this solution..." aria-label="Business justification for this solution..."></textarea>
     </div>
 
     {# Technical Assessment #}
@@ -91,18 +91,18 @@
         <h3 class="text-sm font-medium text-foreground">Technical Assessment</h3>
         <div class="flex items-center gap-1.5">
           <span x-show="isArbSectionEdited('technical_assessment')" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">
             <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
           </span>
           <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
             <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
           </span>
         </div>
       </div>
       <textarea x-model="arbDraft.technical_assessment" rows="4"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Technical architecture assessment..."></textarea>
+        placeholder="Technical architecture assessment..." aria-label="Technical architecture assessment..."></textarea>
     </div>
 
     {# Risk Analysis #}
@@ -111,18 +111,18 @@
         <h3 class="text-sm font-medium text-foreground">Risk Analysis</h3>
         <div class="flex items-center gap-1.5">
           <span x-show="isArbSectionEdited('risk_analysis')" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">
             <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
           </span>
           <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
             <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
           </span>
         </div>
       </div>
       <textarea x-model="arbDraft.risk_analysis" rows="3"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Risk factors and mitigation strategies..."></textarea>
+        placeholder="Risk factors and mitigation strategies..." aria-label="Risk factors and mitigation strategies..."></textarea>
     </div>
 
     {# Implementation Approach #}
@@ -131,18 +131,18 @@
         <h3 class="text-sm font-medium text-foreground">Implementation Approach</h3>
         <div class="flex items-center gap-1.5">
           <span x-show="isArbSectionEdited('implementation_approach')" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">
             <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
           </span>
           <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
             <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
           </span>
         </div>
       </div>
       <textarea x-model="arbDraft.implementation_approach" rows="3"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Implementation strategy, phases, and deployment approach..."></textarea>
+        placeholder="Implementation strategy, phases, and deployment approach..." aria-label="Implementation strategy, phases, and deployment approach..."></textarea>
     </div>
 
     {# Cost Summary #}
@@ -151,18 +151,18 @@
         <h3 class="text-sm font-medium text-foreground">Cost Summary</h3>
         <div class="flex items-center gap-1.5">
           <span x-show="isArbSectionEdited('cost_summary')" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary border border-info/30">
             <i data-lucide="pencil" class="h-3 w-3 mr-0.5"></i> Edited
           </span>
           <span x-show="arbDraft && arbDraft.ai_generated" x-cloak
-            class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/10 text-primary border border-purple-500/30">
+            class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-primary border border-purple-500/30"> {# design-tokens-ok: AI-generated indicator colour #}
             <i data-lucide="sparkles" class="h-3 w-3 mr-0.5"></i> AI Generated
           </span>
         </div>
       </div>
       <textarea x-model="arbDraft.cost_summary" rows="2"
         class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        placeholder="Total cost of ownership summary..."></textarea>
+        placeholder="Total cost of ownership summary..." aria-label="Total cost of ownership summary..."></textarea>
     </div>
 
     {# Capability Impact #}
@@ -175,8 +175,8 @@
             <div class="flex-1 flex items-center gap-2">
               <span class="text-xs text-muted-foreground w-4" x-text="gap.maturity_current"></span>
               <div class="flex-1 h-2 rounded-full bg-muted relative">
-                <div class="absolute h-2 rounded-full bg-amber-500" :style="'width:' + (gap.maturity_current * 20) + '%'"></div>
-                <div class="absolute h-2 rounded-full bg-emerald-500 opacity-50" :style="'width:' + (gap.maturity_target * 20) + '%'"></div>
+                <div class="absolute h-2 rounded-full bg-warning" :style="'width:' + (gap.maturity_current * 20) + '%'"></div>
+                <div class="absolute h-2 rounded-full bg-success opacity-50" :style="'width:' + (gap.maturity_target * 20) + '%'"></div>
               </div>
               <span class="text-xs font-medium w-4" x-text="gap.maturity_target"></span>
             </div>

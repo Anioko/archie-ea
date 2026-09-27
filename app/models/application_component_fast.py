@@ -16,6 +16,7 @@ from datetime import datetime
 from sqlalchemy.orm import relationship
 
 from app import db
+from app.models.mixins import TenantMixin
 
 # Check if we're in fast-init mode
 _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
@@ -23,7 +24,13 @@ _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
 # Only define the fast-init model if we're not using the full model
 if _FAST_INIT:
 
-    class ApplicationComponent(db.Model):
+    class ApplicationComponent(TenantMixin, db.Model):
+        # Fast-init twin of application_portfolio.py:80 -- that class carries
+        # TenantMixin (no nullable override; application_components already
+        # requires organization_id NOT NULL in production). Scope here is
+        # tenancy only: OptimisticLockMixin's locking-behavior divergence
+        # (investigation.md Task 3 note) is a separate, larger concern and is
+        # deliberately not addressed by this change.
         __tablename__ = "application_components"
         __table_args__ = {"extend_existing": True}  # Allow table reuse
 

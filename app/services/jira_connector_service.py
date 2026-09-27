@@ -9,6 +9,7 @@ All HTTP calls use timeout=10. Methods are no-ops when the connector config
 is absent, disabled, or missing instance_url.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import base64
 import logging
 from typing import Any, Dict, List, Optional
@@ -221,11 +222,6 @@ class JiraConnectorService:
         jql = f"project={jira_project_key} AND labels=archie-import"
         url = f"{self._instance_url(config)}/rest/api/3/search"
         headers = self._get_headers(config)
-        params_payload = {
-            "jql": jql,
-            "maxResults": 100,
-            "fields": "summary,description,status,priority,issuetype",
-        }
 
         try:
             result = self._handle_request(
@@ -263,6 +259,7 @@ class JiraConnectorService:
                 context="jira",
             )
             db.session.add(wp)
+            sync_archimate_element(wp)
             db.session.flush()
             imported.append({"jira_key": key, "work_package_id": wp.id, "created": True})
 
@@ -321,7 +318,7 @@ def _build_epic_description(item: Any, solution: Any) -> str:
         parts.append(f"ARB status: {item.status}")
     if item.decision_date:
         parts.append(f"Decided: {item.decision_date.strftime('%Y-%m-%d')}")
-    parts.append("Source: A.R.C.H.I.E. ARB governance platform")
+    parts.append("Source: Entelim ARB governance platform")
     return "\n".join(parts)
 
 

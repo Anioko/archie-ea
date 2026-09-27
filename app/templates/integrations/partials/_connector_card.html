@@ -25,9 +25,9 @@
     <!-- Status Badge -->
     <span class="px-2 py-1 text-xs rounded-full font-medium"
           :class="{
-            'bg-success/10 text-success': connector.status === 'active',
+            'bg-success/10 text-success-emphasis': connector.status === 'active',
             'bg-muted text-muted-foreground': connector.status === 'inactive',
-            'bg-destructive/10 text-destructive': connector.status === 'error'
+            'bg-destructive/10 text-destructive-emphasis': connector.status === 'error'
           }"
           x-text="connector.status"></span>
   </div>
@@ -48,9 +48,9 @@
     <div x-show="connector.last_sync_status" x-cloak class="mt-1">
       <span class="text-xs px-2 py-0.5 rounded-full"
             :class="{
-              'bg-success/10 text-success': connector.last_sync_status === 'success',
-              'bg-destructive/10 text-destructive': connector.last_sync_status === 'error',
-              'bg-warning/10 text-warning': connector.last_sync_status === 'partial'
+              'bg-success/10 text-success-emphasis': connector.last_sync_status === 'success',
+              'bg-destructive/10 text-destructive-emphasis': connector.last_sync_status === 'error',
+              'bg-warning/10 text-warning-emphasis': connector.last_sync_status === 'partial'
             }"
             x-text="connector.last_sync_status"></span>
     </div>
@@ -58,11 +58,11 @@
 
   <!-- Actions -->
   <div class="flex gap-2 pt-3 border-t border-border">
-    <button @click.stop="testConnection(connector.id)"
-            class="flex-1 px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground rounded text-xs font-medium transition-colors" aria-label="Action">
+    <button type="button" @click.stop="testConnection(connector.id)"
+            class="flex-1 px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground rounded text-xs font-medium transition-colors" aria-label="Test connection">  {# placeholder-copy-ok: "Test" is the verb on a connector action button; the accessible name carries the full phrase #}
       Test
     </button>
-    <button @click.stop="triggerSync(connector.id)"
+    <button type="button" @click.stop="triggerSync(connector.id)"
             class="flex-1 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded text-xs font-medium transition-colors" aria-label="Action">
       Sync
     </button>

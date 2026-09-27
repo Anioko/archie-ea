@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   shadcn-components.css — Global component normalization for A.R.C.H.I.E.
+   shadcn-components.css — Global component normalization for Entelim
 
    - Scoped to #main-content for tables (avoids sidebar/header conflicts)
    - Uses only CSS custom properties from shadcn_tokens.css (never raw colours)
@@ -8,13 +8,99 @@
 
 /* ── 1. Data Table ──────────────────────────────────────────────────────── */
 
-/* Give .overflow-x-auto containers that wrap a table card-like treatment */
+/* Give .overflow-x-auto containers that wrap a table card-like treatment.
+   T-01 (2 Sep 2026 browser audit): this rule used to set `overflow: hidden`
+   to clip the rounded corners around the table's straight edges. `overflow`
+   is a shorthand for BOTH overflow-x and overflow-y, so it silently
+   overwrote the `overflow-x: auto` these divs get from the Tailwind
+   `.overflow-x-auto` utility class -- the class stayed in the DOM (so it
+   looked correct in devtools) but the computed style was `overflow-x:
+   hidden`. That still lets `scrollLeft` move the content programmatically
+   (hidden containers remain scrollable via script) but kills the
+   scrollbar, wheel-scroll and drag a user actually has -- exactly the "no
+   scrollbar, scrollLeft works" symptom the audit reported on Capability
+   Map, Risk Register and Admin > Organization Users. Fix: only clip
+   vertically (`overflow-y: hidden`, enough to hide the straight corners
+   poking out top/bottom) and force horizontal scroll to stay enabled
+   (`overflow-x: auto`) rather than trusting the shorthand. */
 #main-content .overflow-x-auto:has(> table),
 #main-content .overflow-x-auto:has(> div > table),
 #main-content .table-responsive {
     border-radius: var(--radius);
     border: 1px solid hsl(var(--border));
-    overflow: hidden; /* clip border-radius on child rows */
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+/* Sticky first + last column on any scrollable table (T-01 requirement 2):
+   keeps row identity (first column) and the Actions column (last column)
+   visible while the middle of a wide table scrolls underneath. Harmless on
+   tables that never overflow -- position: sticky is a no-op with nothing to
+   scroll. Backgrounds are set explicitly so scrolled-under cell content
+   doesn't show through the sticky column.
+
+   Found 13 Sep 2026 (Vendor Catalogue, full-app design pass): the header's
+   background was hsl(var(--muted) / 0.5) -- semi-transparent -- so on any
+   table wide enough to actually need the sticky freeze, the scrolled-under
+   header text (Status/Contract on Vendors) showed through and visually
+   overlapped the sticky "Actions" label, reading as garbled/broken text.
+   The body-cell rule below already used a fully opaque hsl(var(--card));
+   the header needs the same property, not merely a lower-alpha echo of
+   thead's own bg-muted/40. */
+#main-content .overflow-x-auto table thead th:first-child,
+#main-content .overflow-x-auto table thead th:last-child {
+    position: sticky;
+    z-index: 2;
+    background-color: hsl(var(--muted));
+}
+
+#main-content .overflow-x-auto table tbody td:first-child,
+#main-content .overflow-x-auto table tbody td:last-child {
+    position: sticky;
+    z-index: 1;
+    background-color: hsl(var(--card));
+}
+
+#main-content .overflow-x-auto table thead th:first-child,
+#main-content .overflow-x-auto table tbody td:first-child {
+    left: 0;
+}
+
+#main-content .overflow-x-auto table thead th:last-child,
+#main-content .overflow-x-auto table tbody td:last-child {
+    right: 0;
+}
+
+/* Sticky last-column edge: left border + shadow so the scrolled boundary is
+   visible rather than cutting mid-word with no cue. Scoped to .solutions-table
+   so other tables in the product are unaffected. */
+#main-content .overflow-x-auto table.solutions-table thead th:last-child {
+    border-left: 1px solid hsl(var(--border));
+    box-shadow: -4px 0 8px -4px hsl(var(--foreground) / 0.12);
+}
+
+#main-content .overflow-x-auto table.solutions-table tbody td:last-child {
+    border-left: 1px solid hsl(var(--border));
+    box-shadow: -4px 0 8px -4px hsl(var(--foreground) / 0.08);
+}
+
+/* H3 (2 Sep 2026 UI/UX audit): when a table's own overflow-x-auto container sits
+   inside a flex child with no min-width:0, the flex child can't shrink below the
+   table's intrinsic width, so the browser can't compute a correct scroll boundary --
+   the sticky last-column's right:0 anchor then lands mid-table instead of at the real
+   scrolled edge, visually overlapping the columns before it. Fixed at the call sites
+   (min-w-0 added to the flex wrappers). This scroll-shadow affordance is the other
+   half of H3's fix: a visible cue that a table has more columns than fit the
+   viewport, since a plain scrollbar alone reads as decoration until dragged. */
+#main-content .overflow-x-auto {
+    background:
+        linear-gradient(to right, hsl(var(--card)) 30%, transparent) 0 0,
+        linear-gradient(to left, hsl(var(--card)) 30%, transparent) 100% 0,
+        linear-gradient(to right, hsl(var(--foreground) / 0.08), transparent 30%) 0 0,
+        linear-gradient(to left, hsl(var(--foreground) / 0.08), transparent 30%) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 24px 100%, 24px 100%, 12px 100%, 12px 100%;
+    background-attachment: local, local, scroll, scroll;
 }
 
 /* Don't double-border containers that already have border classes */
@@ -178,7 +264,7 @@
     width: 2.5rem;
     height: 2.5rem;
     border-radius: 50%;
-    background-color: hsl(var(--muted));
+    background-color: hsl(var(--muted) / 0.5);
     display: flex;
     align-items: center;
     justify-content: center;

@@ -3,7 +3,6 @@ Detail overview/governance/roadmap routes for Application Management.
 """
 # mass-deletion-ok — BE-179 removes 16 manual CSRF blocks replaced by global CSRFProtect
 
-import json
 import logging
 from datetime import datetime
 
@@ -406,7 +405,7 @@ def update_overview(id):
                     db.session.add(comp)
                     updated_components.append(comp.name)
                     changed_fields.append(f"vendorClass_{comp_id}")
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             # Fallback: no vendor component updates
             logger.debug(f"Vendor component update error: {e}")
 

@@ -1,17 +1,21 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'components/page_header.html' import page_header %}
+{% from 'components/empty_state.html' import empty_state %}
 {% block title %}Spend Analytics{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">Spend Analytics</h1>
-            <p class="text-muted-foreground">Vendor spend analysis and cost breakdown</p>
-        </div>
-    </div>
+<div class="p-6 space-y-6">
+    {{ page_header(
+        title='Spend Analytics',
+        description='Vendor spend analysis and cost breakdown',
+        breadcrumbs=[
+            {'label': 'Home', 'href': url_for('main.index')},
+            {'label': 'Spend Analytics'}
+        ]
+    ) }}
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
                 <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -23,21 +27,83 @@
         </div>
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="dollar-sign" class="w-5 h-5 text-green-600"></i>
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="dollar-sign" class="w-5 h-5 text-success-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Total Contract Value</div>
             </div>
-            <div class="text-3xl font-bold">${{ "{:,.0f}".format(summary.total_value) }}</div>
+            <div class="text-3xl font-bold">{{ summary.total_value|format_currency(show_code=True) if summary.total_value is not none else '—' }}</div>
+            {% if summary.contracts_without_value %}
+            <p class="mt-1 text-sm text-muted-foreground">excludes {{ summary.contracts_without_value }} contract{{ '' if summary.contracts_without_value == 1 else 's' }} without a contract value</p>
+            {% endif %}
         </div>
         <div class="bg-card border border-border rounded-lg p-6">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-blue-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="calendar" class="w-5 h-5 text-blue-600"></i>
+                <div class="w-10 h-10 bg-info/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="calendar" class="w-5 h-5 text-info-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Annual Recurring Cost</div>
             </div>
-            <div class="text-3xl font-bold">${{ "{:,.0f}".format(summary.total_annual_cost) }}</div>
+            <div class="text-3xl font-bold">{{ summary.total_annual_cost|format_currency(show_code=True) if summary.total_annual_cost is not none else '—' }}</div>
+            {% if summary.contracts_without_annual_cost %}
+            <p class="mt-1 text-sm text-muted-foreground">excludes {{ summary.contracts_without_annual_cost }} contract{{ '' if summary.contracts_without_annual_cost == 1 else 's' }} without an annual cost</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4"
+         x-data="{
+            open: false,
+            loading: false,
+            error: null,
+            result: null,
+            generate() {
+                const self = this;
+                this.loading = true;
+                this.error = null;
+                return Platform.fetch.post('{{ url_for('procurement.spend_ai_recommendations') }}', null, { silent: true })
+                    .then(function (data) {
+                        self.result = data;
+                        self.loading = false;
+                    })
+                    .catch(function (e) {
+                        self.result = null;
+                        self.error = e.message || 'AI spend recommendations failed - check your connection and try again.';
+                        self.loading = false;
+                    });
+            }
+         }">
+        <div class="flex items-center justify-between">
+            <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Spend Recommendations (AI)</h2>
+            <button type="button" @click="open = !open; if (open && !result && !loading) generate()"
+                    class="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span x-text="open ? 'Hide' : 'Generate recommendations'"></span>
+            </button>
+        </div>
+
+        <div x-show="open" x-cloak class="space-y-3">
+            <div x-show="loading" class="flex items-center gap-2 text-sm text-muted-foreground">
+                <span class="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full inline-block"></span>
+                Generating recommendations…
+            </div>
+            <div x-show="error" x-cloak class="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive-emphasis" x-text="error"></div>
+            <template x-if="result">
+                <div class="space-y-3 text-sm">
+                    <p x-text="result.summary"></p>
+                    <div class="space-y-2">
+                        <template x-for="rec in result.recommendations" :key="rec.title">
+                            <div class="border border-border rounded-md p-3">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="font-medium" x-text="rec.title"></span>
+                                    <span class="text-xs text-muted-foreground uppercase tracking-wide" x-text="rec.category"></span>
+                                </div>
+                                <p class="text-muted-foreground mt-1" x-text="rec.detail"></p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -54,7 +120,7 @@
                         <span class="capitalize">{{ type.replace('_', ' ') }}</span>
                         <span class="text-sm text-muted-foreground">({{ data.count }} contracts)</span>
                     </div>
-                    <span class="font-medium">${{ "{:,.0f}".format(data.annual_cost) }}/yr</span>
+                    <span class="font-medium">{% if data.annual_cost is not none %}{{ data.annual_cost|format_currency }}/yr{% else %}—{% endif %}</span>
                 </div>
                 {% endfor %}
             </div>
@@ -72,15 +138,17 @@
                 <div>
                     <div class="flex items-center justify-between mb-1">
                         <span class="font-medium">{{ vendor_name }}</span>
-                        <span class="text-sm">${{ "{:,.0f}".format(data.annual_cost) }}/yr</span>
+                        <span class="text-sm">{% if data.annual_cost is not none %}{{ data.annual_cost|format_currency }}/yr{% else %}—{% endif %}</span>
                     </div>
+                    {% if data.annual_cost is not none %}
                     <div class="flex items-center gap-2">
                         <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                            {% set pct = (data.annual_cost / summary.total_annual_cost * 100) if summary.total_annual_cost > 0 else 0 %}
+                            {% set pct = (data.annual_cost / summary.total_annual_cost * 100) if (summary.total_annual_cost or 0) > 0 else 0 %}
                             <div class="h-full bg-primary rounded-full" style="width: {{ pct }}%"></div>
                         </div>
                         <span class="text-xs text-muted-foreground w-12 text-right">{{ "{:.1f}".format(pct) }}%</span>
                     </div>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -91,21 +159,14 @@
     </div>
 
     {% if summary.total_contracts == 0 %}
-    <!-- Empty State -->
-    <div class="bg-card border border-border rounded-lg p-12 text-center mt-6">
-        <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-            <i data-lucide="pie-chart" class="w-8 h-8 text-muted-foreground"></i>
-        </div>
-        <h3 class="text-lg font-medium mb-2">No spend data available</h3>
-        <p class="text-muted-foreground">
-            Spend analytics will appear once vendor contracts are added to the system.
-        </p>
-        <a href="{{ url_for('procurement.contracts_list') }}"
-           class="inline-flex items-center gap-2 mt-4 text-primary hover:underline">
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
-            View Contracts
-        </a>
-    </div>
+    {{ empty_state(
+        icon='pie-chart',
+        title='No spend data available',
+        description='Spend analytics will appear once vendor contracts are added to the system.',
+        cta_text='View Contracts',
+        cta_href=url_for('procurement.contracts_list'),
+        cta_icon='arrow-right'
+    ) }}
     {% endif %}
 </div>
 

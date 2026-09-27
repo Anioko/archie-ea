@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/metrics_card.html' import metrics_card %}
 
 {% block title %}Data Validation - Response Comparison{% endblock %}
@@ -22,30 +23,20 @@
 <div class="space-y-6">
   <!-- Header -->
   <div class="mb-8">
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-      <a href="{{ url_for('main.index') }}" class="hover:text-foreground">Dashboard</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <a href="{{ url_for('dashboard_pages.rationalization_scorecard') }}" class="hover:text-foreground">Rationalization</a>
-      <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-      <span class="text-foreground font-medium">Data Validation</span>
-    </nav>
-    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div>
-        <h1 class="text-3xl font-bold">Response Validation</h1>
-        <p class="text-muted-foreground mt-1">Compare and resolve data discrepancies between sources</p>
-      </div>
-      <div class="flex gap-3">
-        <select id="app-selector" class="px-3 py-2 border rounded-lg" @change="loadComparison()">
+    {% macro _ps_actions() %}
+<div class="flex gap-3">
+        <select id="app-selector" class="px-3 py-2 border rounded-lg" @change="loadComparison()" aria-label="Select Application...">
           <option value="">Select Application...</option>
           {% for app in applications %}
           <option value="{{ app.id }}">{{ app.name }}</option>
           {% endfor %}
         </select>
-        <button @click="resolveAllConflicts()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" id="resolve-all-btn" disabled aria-label="Action">
+        <button type="button" @click="resolveAllConflicts()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" id="resolve-all-btn" disabled aria-label="Action">
           Resolve All
         </button>
       </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Response Validation', breadcrumb=[('Home', '/'), ('Rationalization', url_for('dashboard_pages.rationalization_scorecard')), ('Response Validation', none)], subtitle='Compare and resolve data discrepancies between sources', actions_caller=_ps_actions) }}
   </div>
 
   <!-- Summary Stats -->
@@ -97,7 +88,7 @@
       <h2 class="text-lg font-semibold mb-4">Resolve Conflict</h2>
       <div class="space-y-4">
         <div>
-          <label class="text-sm text-muted-foreground">Field</label>
+          <label class="text-sm text-muted-foreground">Conflicting field</label>
           <div id="modal-field-name" class="font-medium"></div>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -106,7 +97,7 @@
             <div id="modal-abacus-value" class="font-medium"></div>
           </div>
           <div class="p-3 bg-warning/5 rounded-lg">
-            <div class="text-xs text-warning mb-1">Manual/Assessment</div>
+            <div class="text-xs text-warning-emphasis mb-1">Manual/Assessment</div>
             <div id="modal-manual-value" class="font-medium"></div>
           </div>
         </div>
@@ -121,7 +112,7 @@
               <input type="radio" name="resolution" value="manual" class="w-4 h-4" aria-label="Resolution">
               <span>Use Manual/Assessment value</span>
             </label>
-            <label class="flex items-center gap-2 p-3 border rounded-md cursor-pointer hover:bg-accent">
+            <label for="custom-value" class="flex items-center gap-2 p-3 border rounded-md cursor-pointer hover:bg-accent">
               <input type="radio" name="resolution" value="custom" class="w-4 h-4" aria-label="Resolution">
               <span>Enter custom value:</span>
             </label>
@@ -129,13 +120,13 @@
           </div>
         </div>
         <div>
-          <label class="block text-sm font-medium mb-2">Resolution Notes (optional)</label>
+          <label for="resolution-notes" class="block text-sm font-medium mb-2">Resolution Notes (optional)</label>
           <textarea id="resolution-notes" rows="2" class="w-full rounded border px-3 py-2" placeholder="Why this value was chosen..."></textarea>
         </div>
       </div>
       <div class="flex justify-end gap-3 mt-6">
-        <button @click="closeResolutionModal()" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Close">Cancel</button>
-        <button @click="confirmResolution()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Confirm">Confirm</button>
+        <button type="button" @click="closeResolutionModal()" class="px-4 py-2 border rounded-md hover:bg-accent" aria-label="Close">Cancel</button>
+        <button type="button" @click="confirmResolution()" class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90" aria-label="Confirm">Confirm</button>
       </div>
     </div>
   </div>
@@ -169,17 +160,18 @@ async function loadComparison() {
   currentAppId = appId;
 
   try {
-    const res = await fetch(`/dashboard/api/rationalization/validate/${appId}`);
-    const data = await res.json();
+    const data = await Platform.fetch(`/dashboard/api/rationalization/validate/${appId}`, { silent: true });
 
     if (data.success) {
       comparisonData = data.data.comparisons;
       renderComparison(comparisonData);
       updateStats(data.data.stats);
       document.getElementById('resolve-all-btn').disabled = data.data.stats.conflicts === 0;
+    } else {
+      Platform.toast.error(data.error || 'Could not load the data comparison.');
     }
   } catch (err) {
-    console.error('Failed to load comparison:', err);
+    Platform.toast.error('Could not load the data comparison.');
   }
 }
 
@@ -211,7 +203,7 @@ function renderComparison(comparisons) {
         <td class="py-3 px-4 text-center">${statusIcon}</td>
         <td class="py-3 px-4 text-center">
           ${item.status === 'conflict' ?
-            `<button data-action="openResolutionModal" data-id="${idx}" class="text-primary hover:underline text-sm" aria-label="Action">Resolve</button>` :
+            `<button type="button" data-action="openResolutionModal" data-id="${idx}" class="text-primary hover:underline text-sm" aria-label="Action">Resolve</button>` :
             '<span class="text-muted-foreground text-sm">-</span>'
           }
         </td>
@@ -284,27 +276,24 @@ async function confirmResolution() {
   }
 
   try {
-    const res = await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        field: item.field,
-        value: finalValue,
-        source: resolution === 'custom' ? 'manual' : resolution,
-        notes: document.getElementById('resolution-notes').value
-      })
-    });
+    const result = await Platform.fetch.post(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+      field: item.field,
+      value: finalValue,
+      source: resolution === 'custom' ? 'manual' : resolution,
+      notes: document.getElementById('resolution-notes').value
+    }, { silent: true });
 
-    const result = await res.json();
     if (result.success) {
       // Update local data
       comparisonData[currentConflict].status = 'resolved';
       comparisonData[currentConflict].resolved_value = finalValue;
       renderComparison(comparisonData);
       closeResolutionModal();
+    } else {
+      Platform.toast.error(result.error || 'Could not save the resolution.');
     }
   } catch (err) {
-    console.error('Failed to resolve:', err);
+    Platform.toast.error('Could not save the resolution. Please try again.');
   }
 }
 
@@ -316,23 +305,22 @@ async function resolveAllConflicts() {
     return;
   }
 
+  let failedCount = 0;
   for (const conflict of conflicts) {
     try {
-      await fetch(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          field: conflict.field,
-          value: conflict.abacus_value,
-          source: 'abacus',
-          notes: 'Bulk resolution - Abacus as system of record'
-        })
-      });
+      const result = await Platform.fetch.post(`/dashboard/api/rationalization/validate/${currentAppId}/resolve`, {
+        field: conflict.field,
+        value: conflict.abacus_value,
+        source: 'abacus',
+        notes: 'Bulk resolution - Abacus as system of record'
+      }, { silent: true });
+      if (!result.success) throw new Error(result.error || 'Request failed');
 
       conflict.status = 'resolved';
       conflict.resolved_value = conflict.abacus_value;
     } catch (err) {
-      console.error(`Failed to resolve ${conflict.field}:`, err);
+      failedCount += 1;
+      // conflict.status stays 'conflict' — do NOT mark it resolved when the write failed.
     }
   }
 
@@ -340,9 +328,14 @@ async function resolveAllConflicts() {
   updateStats({
     total: comparisonData.length,
     matched: comparisonData.filter(c => c.status === 'match' || c.status === 'resolved').length,
-    conflicts: 0,
+    conflicts: comparisonData.filter(c => c.status === 'conflict').length,
     missing: comparisonData.filter(c => c.status === 'missing').length
   });
+  if (failedCount > 0) {
+    Platform.toast.error(failedCount + ' of ' + conflicts.length + ' conflicts could not be resolved. Please retry those.');
+  } else {
+    Platform.toast.success('All conflicts resolved.');
+  }
 }
 
 // Close modal on backdrop click

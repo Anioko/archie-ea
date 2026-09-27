@@ -26,18 +26,26 @@ function loadReviewQueue(previewData) {
         updateReviewCounts();
         return Promise.resolve();
     } else {
-        return fetch('/api/review-queue')
-            .then(function(response) { return response.json(); })
+        // Platform.fetch throws on non-ok responses, and returns parsed data directly.
+        // We catch to paint an inline error state, so we pass silent:true to avoid duplicate toast.
+        return Platform.fetch('/api/review-queue', { silent: true })
             .then(function(data) {
+                // The API returns { success: true, items: [...] } on success.
                 if (data.success) {
                     reviewQueueItems = data.items || [];
                     renderReviewQueue(reviewQueueItems);
+                } else {
+                    safeHTML(document.getElementById('review-queue-content'),
+                        '<div class="text-destructive text-center py-8">Failed to load review queue: ' + (data.error || 'unknown error') + '</div>');
                 }
                 updateReviewCounts();
             })
             .catch(function(error) {
+                // Paint inline error state; error.message is already user‑readable.
                 safeHTML(document.getElementById('review-queue-content'),
                     '<div class="text-destructive text-center py-8">Failed to load review queue: ' + error.message + '</div>');
+                // Re‑throw to preserve existing error propagation.
+                throw error;
             });
     }
 }
@@ -48,7 +56,6 @@ function buildReviewItemsFromPreview(previewData) {
     let LOW_CONFIDENCE_THRESHOLD = 0.70;
 
     if (!previewData.applications || previewData.applications.length === 0) {
-        console.warn('No applications found in preview data');
         return items;
     }
 
@@ -158,7 +165,8 @@ function renderReviewQueue(items) {
             '<div class="flex items-start gap-4">' +
                 '<input type="checkbox"' +
                        ' class="mt-1 w-5 h-5 text-primary border-border rounded focus:ring-primary"' +
-                       ' onchange="toggleReviewItem(' + item.id + ', this.checked)">' +
+                       ' data-rqp-toggle="' + Number(item.id) + '"' +
+                       ' aria-label="Select this mapping for bulk approval">' +
                 '<div class="flex-1">' +
                     '<div class="flex items-center gap-3 mb-2">' +
                         '<span class="text-2xl">' + (typeIcons[item.type] || '') + '</span>' +
@@ -181,11 +189,11 @@ function renderReviewQueue(items) {
                     '</div>' +
                 '</div>' +
                 '<div class="flex gap-2">' +
-                    '<button onclick="approveReviewItem(' + item.id + ')"' +
+                    '<button type="button" data-rqp-action="approve" data-rqp-id="' + Number(item.id) + '"' +
                             ' class="px-4 py-2 bg-emerald-600 text-primary-foreground rounded-lg hover:bg-emerald-700 text-sm font-medium">' +
                         '&#10003; Approve' +
                     '</button>' +
-                    '<button onclick="rejectReviewItem(' + item.id + ')"' +
+                    '<button type="button" data-rqp-action="reject" data-rqp-id="' + Number(item.id) + '"' +
                             ' class="px-4 py-2 bg-destructive text-primary-foreground rounded-lg hover:bg-destructive/90 text-sm font-medium">' +
                         '&#10007; Reject' +
                     '</button>' +
@@ -196,6 +204,24 @@ function renderReviewQueue(items) {
 
     safeHTML(document.getElementById('review-queue-content'), html);
 }
+
+// Delegated listeners -- the CSP (no 'unsafe-inline') refuses on*= attributes
+// however they reach the DOM, so the per-item checkbox and the Approve/Reject
+// buttons above never fired. Bound once at document level so they survive
+// renderReviewQueue() rebuilding the list.
+document.addEventListener('change', function (event) {
+    var box = event.target.closest('[data-rqp-toggle]');
+    if (!box) return;
+    toggleReviewItem(Number(box.getAttribute('data-rqp-toggle')), box.checked);
+});
+
+document.addEventListener('click', function (event) {
+    var el = event.target.closest('#review-queue-content [data-rqp-action]');
+    if (!el) return;
+    var itemId = Number(el.getAttribute('data-rqp-id'));
+    if (el.getAttribute('data-rqp-action') === 'approve') approveReviewItem(itemId);
+    else if (el.getAttribute('data-rqp-action') === 'reject') rejectReviewItem(itemId);
+});
 
 function toggleReviewItem(itemId, checked) {
     if (checked) {

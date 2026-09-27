@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Business Capabilities{% endblock %}
 
@@ -27,12 +28,8 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Business Capabilities</h1>
-                <p class="text-muted-foreground">Manage and organize business capability taxonomy</p>
-            </div>
-            <div class="flex space-x-3">
+        {% macro _ps_actions() %}
+<div class="flex space-x-3">
                 <a href="{{ url_for('capability_map.simple_view') }}"
                    class="inline-flex items-center px-4 py-2 border border-input text-sm font-medium rounded-md text-foreground bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
                     <i data-lucide="layers" class="w-4 h-4 mr-2" aria-hidden="true"></i>
@@ -49,7 +46,8 @@
                     Analytics
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Business Capabilities', subtitle='Manage and organize business capability taxonomy', actions_caller=_ps_actions) }}
     </div>
 
     <!-- Quick Actions -->
@@ -108,7 +106,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Total Capabilities</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities or 0 }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ total_capabilities|dash }}</p>
                 </div>
             </div>
         </div>
@@ -120,7 +118,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Business Groupings</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ classified_capabilities|length }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{% if classified_capabilities is not none %}{{ classified_capabilities|length }}{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -132,7 +130,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Classified</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ classified_count or 0 }}</p>
+                    <p class="text-2xl font-semibold text-foreground">{{ classified_count|dash }}</p>
                 </div>
             </div>
         </div>
@@ -144,7 +142,7 @@
                 </div>
                 <div class="ml-4">
                     <p class="text-sm font-medium text-muted-foreground">Coverage</p>
-                    <p class="text-2xl font-semibold text-foreground">{{ "%.1f"|format((classified_count or 0) / (total_capabilities or 1) * 100) }}%</p>
+                    <p class="text-2xl font-semibold text-foreground">{% if classified_count is not none and total_capabilities %}{{ "%.1f"|format(classified_count / total_capabilities * 100) }}%{% else %}&mdash;{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -161,8 +159,9 @@
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {% for grouping_key, grouping_data in classified_capabilities.items() %}
                 {% set gc = color_map.get(grouping_data.info.color, color_map['blue']) %}
-                <a href="#"
-                   class="block">
+                {# Was <a href="#"> wrapping the whole card: there is no
+                   per-grouping page to open, so the card is not a link. #}
+                <div class="block">
                     <div class="border border-border rounded-lg p-6 hover:shadow-lg transition-shadow duration-200 hover:bg-accent/20">
                         <div class="flex items-center mb-4">
                             <div class="flex-shrink-0 w-10 h-10 rounded-lg {{ gc.icon_bg }} flex items-center justify-center">
@@ -204,7 +203,7 @@
                             </div>
                         </div>
                     </div>
-                </a>
+                </div>
                 {% endfor %}
             </div>
         </div>
@@ -230,7 +229,9 @@
                     </tr>
                 </thead>
                 <tbody class="bg-card divide-y divide-border">
-                    {% for grouping_key, grouping_data in classified_capabilities.items() %}
+                    {# classified_capabilities is None when the view's query failed;
+                       .items() on that is a hard 500. #}
+                    {% for grouping_key, grouping_data in (classified_capabilities or {}).items() %}
                         {% set gc = color_map.get(grouping_data.info.color, color_map['blue']) %}
                         {% for cap_data in grouping_data.capabilities[:5] %}
                         <tr class="hover:bg-accent/50">
@@ -250,8 +251,8 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                    {% if cap_data.capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
-                                    {% elif cap_data.capability.strategic_importance == 'high' %}bg-warning/10 text-warning
+                                    {% if cap_data.capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
+                                    {% elif cap_data.capability.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
                                     {% elif cap_data.capability.strategic_importance == 'medium' %}bg-primary/10 text-primary
                                     {% else %}bg-muted text-foreground{% endif %}">
                                     {{ cap_data.capability.strategic_importance or 'Not Set' }}
@@ -261,8 +262,15 @@
                                 <div class="text-sm text-muted-foreground">{{ cap_data.capability.business_owner or 'Unassigned' }}</div>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <a href="#"
+                                {# business_capability_management registers non-fatally,
+                                   so the detail endpoint is guarded per CLAUDE.md. No
+                                   endpoint, no link — this was href="#" before. #}
+                                {% if 'business_capability_management.capability_detail' in flask.current_app.view_functions %}
+                                <a href="{{ url_for('business_capability_management.capability_detail', capability_id=cap_data.capability.id) }}"
                                    class="text-primary hover:text-primary/80 transition-colors">View</a>
+                                {% else %}
+                                <span class="text-muted-foreground">&mdash;</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -280,7 +288,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                <div class="mt-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive-emphasis{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
                     {{ message }}
                 </div>
             {% endfor %}

@@ -2,7 +2,6 @@ from app import db
 from app.models.organization import Organization
 from app.models.user import User
 from sqlalchemy.exc import IntegrityError
-from flask import current_app
 
 class OrgService:
     @staticmethod
@@ -45,7 +44,6 @@ class OrgService:
     def invite_member(org_id, email, inviter_id):
         from app.models.user import Role
         from app.models.user import Permission
-        from werkzeug.security import generate_password_hash
         member_role = Role.query.filter_by(name="User").first()
         if not member_role:
             member_role = Role(name="User", permissions=Permission.GENERAL)

@@ -16,7 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import current_app
 from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload, selectinload  # dead-code-ok
 
 from app import db
 from app.models.technical_capability import (
@@ -191,7 +190,6 @@ class ACMTechnicalCapabilityService:
         technical_capability_id: int,
     ) -> List[Dict[str, Any]]:
         """Get all business capabilities mapped to a technical capability."""
-        from app.models.business_capabilities import BusinessCapability
 
         tech_cap = TechnicalCapability.query.get(technical_capability_id)
         if not tech_cap:

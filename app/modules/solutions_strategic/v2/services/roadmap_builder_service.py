@@ -20,18 +20,16 @@ Reuses:
 - capability_roadmap_dashboard_service.py patterns
 """
 
-import json  # dead-code-ok
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field  # dead-code-ok
+from dataclasses import dataclass  # dead-code-ok
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sqlalchemy import and_, func, or_  # dead-code-ok
+from sqlalchemy import or_  # dead-code-ok
 
 from app import db
 from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable as PlanningDeliverable,
     Gap as ImplementationGap,
     WorkPackage as ImplementationWorkPackage,
 )
@@ -123,23 +121,24 @@ class RoadmapBuilderService:
             Dict with created work package details
         """
         try:
+            # WorkPackage columns are target_date/dependencies/owner_id — the old
+            # kwargs end_date/work_dependencies/created_by don't exist, and
+            # assigned_to (a free-text name) can't map to the integer owner_id FK,
+            # so it's dropped rather than mis-typed.
             work_package = ImplementationWorkPackage(
                 name=name,
                 description=description,
                 start_date=start_date,
-                end_date=end_date,
+                target_date=end_date,
                 priority=priority,
                 status=status,
-                assigned_to=assigned_to,
                 estimated_cost=estimated_cost,
-                work_dependencies=dependencies or [],
-                created_by=created_by,
+                dependencies=dependencies or [],
                 created_at=datetime.utcnow(),
             )
 
-            if start_date and end_date:
-                work_package.duration_days = (end_date - start_date).days
-
+            # duration_days is a read-only computed property (derived from
+            # start_date/target_date) — do not assign it.
             db.session.add(work_package)
             db.session.commit()
 
@@ -225,10 +224,17 @@ class RoadmapBuilderService:
             if not work_package:
                 return {"success": False, "error": "Work package not found"}
 
-            # Remove this work package from dependencies of other work packages
-            dependent_packages = ImplementationWorkPackage.query.filter(
-                ImplementationWorkPackage.dependencies.contains([work_package_id])
-            ).all()
+            # Remove this work package from dependencies of other work packages.
+            # dependencies is a db.JSON column; .contains() compiles to a SQL LIKE
+            # that Postgres rejects on json ("operator does not exist: json ~~ text"),
+            # so filter membership in Python.
+            dependent_packages = [
+                p
+                for p in ImplementationWorkPackage.query.filter(
+                    ImplementationWorkPackage.dependencies.isnot(None)
+                ).all()
+                if isinstance(p.dependencies, (list, tuple)) and work_package_id in p.dependencies
+            ]
 
             for dep_pkg in dependent_packages:
                 if dep_pkg.dependencies:
@@ -463,16 +469,21 @@ class RoadmapBuilderService:
             level = levels.get(wp.id, 0)
             y_offset = level_counts[level] * 150
 
+            # The work package's own roadmap serialiser is the one mapping of
+            # its fields (percent_complete, target_date, owner) to roadmap
+            # names; reuse it here instead of reading attribute names the
+            # model does not have.
+            row = wp.to_roadmap_dict()
             node_data = {
                 "label": wp.name,
                 "status": wp.status,
                 "priority": wp.priority,
-                "progress": wp.progress_percentage or 0,
-                "startDate": wp.start_date.isoformat() if wp.start_date else None,
-                "endDate": wp.end_date.isoformat() if wp.end_date else None,
-                "assignedTo": wp.assigned_to,
+                "progress": row["percent_complete"],
+                "startDate": row["start_date"],
+                "endDate": row["end_date"],
+                "assignedTo": row["owner_name"],
                 "estimatedCost": float(wp.estimated_cost) if wp.estimated_cost else 0,
-                "isOverdue": wp.is_overdue(),
+                "isOverdue": row["is_overdue"],
                 "workPackageId": wp.id,
             }
 
@@ -627,8 +638,11 @@ class RoadmapBuilderService:
             node_data = {
                 "label": gap.name,
                 "gapType": gap.gap_type,
-                "impactLevel": gap.impact_level,
-                "urgency": gap.urgency,
+                # Gap has no impact_level or urgency column; impact and
+                # severity are the real fields (priority when severity is
+                # unset), the same fix as the work package fields above.
+                "impactLevel": gap.impact,
+                "urgency": gap.severity or gap.priority,
                 "status": gap.resolution_status,
                 "gapId": gap.id,
             }
@@ -930,34 +944,50 @@ class RoadmapBuilderService:
             query = query.filter(
                 or_(
                     ImplementationWorkPackage.start_date >= start_date,
-                    ImplementationWorkPackage.end_date >= start_date,
+                    ImplementationWorkPackage.target_date >= start_date,
                 )
             )
         if end_date:
             query = query.filter(
                 or_(
                     ImplementationWorkPackage.start_date <= end_date,
-                    ImplementationWorkPackage.end_date <= end_date,
+                    ImplementationWorkPackage.target_date <= end_date,
                 )
             )
 
         work_packages = query.order_by(ImplementationWorkPackage.start_date.asc()).all()
 
+        # A fixed set rather than getattr on a query-string attribute name:
+        # an unrecognised value (or a bound method like "to_dict") falls back
+        # to "status" instead of grouping by it or failing in jsonify.
+        allowed_group_by = {"status", "priority", "assigned_to"}
+        effective_group_by = group_by if group_by in allowed_group_by else "status"
+
         # Group work packages
         groups = defaultdict(list)
         for wp in work_packages:
-            group_key = getattr(wp, group_by, "ungrouped") or "ungrouped"
+            # The work package's own roadmap serialiser is the one mapping of
+            # its fields (percent_complete, target_date, owner, dependencies)
+            # to roadmap names; reuse it here instead of reading attribute
+            # names the model does not have.
+            row = wp.to_roadmap_dict()
+            if effective_group_by == "assigned_to":
+                group_key = row["owner_name"] or "unassigned"
+            elif effective_group_by == "priority":
+                group_key = wp.priority or "ungrouped"
+            else:
+                group_key = wp.status or "ungrouped"
             groups[group_key].append(
                 {
                     "id": wp.id,
                     "name": wp.name,
-                    "start": wp.start_date.isoformat() if wp.start_date else None,
-                    "end": wp.end_date.isoformat() if wp.end_date else None,
-                    "progress": wp.progress_percentage or 0,
+                    "start": row["start_date"],
+                    "end": row["end_date"],
+                    "progress": row["percent_complete"],
                     "status": wp.status,
                     "priority": wp.priority,
-                    "dependencies": wp.dependencies or [],
-                    "isOverdue": wp.is_overdue(),
+                    "dependencies": row["dependencies"],
+                    "isOverdue": row["is_overdue"],
                 }
             )
 
@@ -971,7 +1001,7 @@ class RoadmapBuilderService:
                 "id": p.id,
                 "name": p.name,
                 "type": p.plateau_type,
-                "start": p.target_date.isoformat() if p.target_date else None,
+                "start": p.start_date.isoformat() if p.start_date else None,
                 "end": p.end_date.isoformat() if p.end_date else None,
             }
             for p in plateaus
@@ -983,14 +1013,16 @@ class RoadmapBuilderService:
         return {
             "success": True,
             "groups": groups_array,
-            "group_by": group_by,
+            "group_by": effective_group_by,
             "total_work_packages": len(work_packages),
             "plateau_markers": plateau_markers,
             "date_range": {
                 "start": min(
                     (wp.start_date for wp in work_packages if wp.start_date), default=None
                 ),
-                "end": max((wp.end_date for wp in work_packages if wp.end_date), default=None),
+                "end": max(
+                    (wp.target_date for wp in work_packages if wp.target_date), default=None
+                ),
             },
         }
 

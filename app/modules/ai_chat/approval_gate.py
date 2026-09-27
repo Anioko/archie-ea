@@ -1,16 +1,49 @@
 """
 Approval gate for AI-originated CRUD operations (A95-008).
 
-When REQUIRE_AI_APPROVAL=true, any endpoint decorated with @require_ai_approval
-returns HTTP 202 Accepted with a pending_approval payload instead of executing
-the write immediately.  A human operator must then approve/reject via the
-/approvals/ dashboard (approval_routes.py / AIChatApprovalService).
+When REQUIRE_AI_APPROVAL=true, a gated write does NOT execute immediately.
+Instead `queue_ai_write()` creates a real, executable AIChatCRUDApproval row
+via AIChatApprovalService.create_pending_approval and returns an HTTP 202
+response carrying that row's real id. The row appears in
+GET /ai-chat/approvals/pending, and POST /ai-chat/approvals/<id>/approve
+calls AIChatApprovalService.approve_and_execute, which performs the actual
+write through AIDataInteractionService -- the same service method the route
+calls directly when the gate is off.
+
+This used to be a bare decorator (`@require_ai_approval`) that returned the
+202/pending_approval shape without creating any approval record at all:
+nothing appeared in the pending list, there was no approval_id, and the
+write was silently dropped forever -- fabricated progress. It is now a
+function, `queue_ai_write(operation_type, entity_type, payload, summary,
+entity_id=None)`, called *inline* from inside the view body rather than as a
+decorator wrapping the whole function. That placement matters: several of
+these routes validate and sanitize `request.get_json()` (HTML-escaping,
+enum checks, length limits) before handing the result to the
+AIDataInteractionService call. A decorator wrapping the entire view sees
+only the raw, unvalidated body and would queue *that* -- so approving it
+later would run unsanitized input through the same write path the direct
+route deliberately protects. Calling queue_ai_write() after validation, with
+the already-validated `data` dict as `payload`, means the approval record
+(and what approve_and_execute eventually writes) is byte-for-byte what the
+route would have written itself.
+
+operation_type/entity_type are not free-form labels: they must be one of
+the pairs AIChatApprovalService.approve_and_execute's dispatch actually
+executes ("create"/capability|application|vendor|capability_mapping|
+work_package, "update"/capability|application|vendor, "link"/
+application_capability_mapping, "delete"/capability|application|vendor --
+see that file). A write that cannot be expressed in that vocabulary must
+not call queue_ai_write() at all -- see the routes in workflow_routes.py
+that execute immediately with a comment explaining why (add-compliance-
+requirement, create-requirement, apply-archimate, apply-apqc): an honest
+immediate write beats queuing something the approval step could never
+actually execute.
 """
 
 import logging
-from functools import wraps
 
 from flask import current_app, jsonify, request
+from flask_login import current_user
 
 _ai_action_logger = logging.getLogger('ai_originated_actions')
 _ai_action_count = 0  # incremented by tag_ai_action
@@ -37,42 +70,64 @@ def get_ai_action_count():
     return _ai_action_count
 
 
-def require_ai_approval(f):
-    """Decorator: gate AI-originated CRUD behind human approval.
+def queue_ai_write(operation_type: str, entity_type: str, payload: dict, summary: str, entity_id=None):
+    """Queue (or clear the way for) an AI-originated write.
 
-    When ``REQUIRE_AI_APPROVAL`` is ``True`` in the Flask config the decorated
-    view is *not* executed.  Instead a 202 response is returned containing the
-    ``pending_approval`` payload so the UI can surface it in the approval
-    dashboard.  When the flag is ``False`` (the default) the view runs normally.
+    Call this from inside a view, after any input validation/sanitization,
+    with the fully-validated payload that would be passed to the
+    AIDataInteractionService method the route would otherwise call directly.
 
-    Either way, the action is tagged via ``tag_ai_action`` for the
-    'routine decisions automated' metric (A95-009).
+    Returns:
+        A Flask response tuple `(body, 202)` to return immediately from the
+        view if REQUIRE_AI_APPROVAL is enabled (the write has been queued,
+        not executed) -- or `None` if the gate is disabled and the caller
+        should proceed to execute the write itself. `None` also tags the
+        action via tag_ai_action for the 'routine decisions automated'
+        metric, mirroring the old decorator's disabled-gate behaviour.
     """
-
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if current_app.config.get("REQUIRE_AI_APPROVAL", False):
-            payload = request.get_json(silent=True) or {}
-            return (
-                jsonify(
-                    {
-                        "status": "pending_approval",
-                        "message": (
-                            "AI-originated action requires human approval "
-                            "before execution."
-                        ),
-                        "action": request.endpoint,
-                        "payload": payload,
-                        "ai_originated": True,
-                    }
-                ),
-                202,
-            )
+    if not current_app.config.get("REQUIRE_AI_APPROVAL", False):
         tag_ai_action(
             action_type=request.endpoint,
-            entity_type='unknown',
+            entity_type=entity_type,
+            entity_id=entity_id,
             metadata={'method': request.method, 'path': request.path},
         )
-        return f(*args, **kwargs)
+        return None
 
-    return decorated
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    svc = AIChatApprovalService(user_id=current_user.id)
+    queued = svc.create_pending_approval(
+        operation_type=operation_type,
+        entity_type=entity_type,
+        original_command=f"{request.method} {request.path}",
+        operation_payload=payload,
+        summary=summary,
+        entity_id=entity_id,
+    )
+
+    if not queued.get("success"):
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "error": queued.get("error", "Failed to queue approval"),
+                    "ai_originated": True,
+                }
+            ),
+            500,
+        )
+
+    return (
+        jsonify(
+            {
+                "status": "pending_approval",
+                "message": queued["message"],
+                "approval_id": queued["approval_id"],
+                "action": request.endpoint,
+                "payload": payload,
+                "ai_originated": True,
+            }
+        ),
+        202,
+    )

@@ -5,7 +5,7 @@
       <h2 class="text-lg font-semibold">Execution Tracking</h2>
       <p class="text-sm text-muted-foreground">Track work package progress post-ARB approval</p>
     </div>
-    <button @click="addExecutionItem()"
+    <button type="button" @click="addExecutionItem()"
       class="inline-flex items-center gap-2 h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent">
       <i data-lucide="plus" class="h-4 w-4"></i> Add Work Package
     </button>
@@ -35,11 +35,11 @@
               <td class="p-3">
                 <input type="text" x-model="item.work_package_name"
                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                  placeholder="Work package name">
+                  placeholder="Work package name" aria-label="Work package name">
               </td>
               <td class="p-3 text-center">
                 <select x-model="item.status"
-                  class="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
+                  class="rounded-md border border-input bg-background px-2 py-1.5 text-sm" aria-label="Status">
                   <option value="planned">Planned</option>
                   <option value="in_progress">In Progress</option>
                   <option value="completed">Completed</option>
@@ -54,8 +54,8 @@
                 </div>
               </td>
               <td class="p-3 text-center">
-                <button @click="executionItems.splice(idx, 1)"
-                  class="text-destructive hover:text-destructive/80" aria-label="Remove work package">
+                <button type="button" @click="executionItems.splice(idx, 1)"
+                  class="text-destructive-emphasis hover:text-destructive-emphasis/80" aria-label="Remove work package">
                   <i data-lucide="trash-2" class="h-4 w-4"></i>
                 </button>
               </td>

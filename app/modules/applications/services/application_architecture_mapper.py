@@ -1240,7 +1240,6 @@ RESPOND WITH VALID JSON:
         # meaningless elements like "SAP - Manage". Removed per adversarial review.
 
         # Create BusinessProcess elements from mapped APQC PCF processes (idempotent)
-        from app.models.apqc_process import ProcessApplicationMapping
 
         process_mappings = db.session.execute(  # tenant-filtered: scoped via parent FK (application_id)
             text(
@@ -1571,22 +1570,24 @@ RESPOND WITH VALID JSON:
             # Normalize vendor name for matching
             normalized_name = vendor_name.strip().lower()
 
-            # Helper to check if a VendorProduct has ArchiMate elements
+            # Helper to check if a VendorProduct has ArchiMate elements.
+            # Deliberately unguarded: a query failure must not be reported as a
+            # count of 0, which would demote a fully mapped product to the
+            # "no ArchiMate elements" fallback and publish
+            # archimate_element_count: 0 as a measured figure. The caller's
+            # handler below logs the failure and returns "no match".
             def get_product_element_count(product_id: int) -> int:
-                try:
-                    result = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor_product_id)
-                        text(
-                            """
-                        SELECT COUNT(*) FROM application_vendor_products
-                        WHERE vendor_product_id = :product_id
-                    """
-                        ),
-                        {"product_id": product_id},
-                    )
-                    row = result.fetchone()
-                    return row[0] if row else 0
-                except Exception:
-                    return 0
+                result = db.session.execute(  # tenant-filtered: scoped via parent FK (vendor_product_id)
+                    text(
+                        """
+                    SELECT COUNT(*) FROM application_vendor_products
+                    WHERE vendor_product_id = :product_id
+                """
+                    ),
+                    {"product_id": product_id},
+                )
+                row = result.fetchone()
+                return row[0] if row else 0
 
             # ========== FIRST: Try VendorOrganization -> VendorProduct WITH elements ==========
             vendor_org = VendorOrganization.query.filter(
@@ -2141,7 +2142,7 @@ RESPOND WITH VALID JSON:
         """
         from sqlalchemy import text
 
-        from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+        from app.models.vendor.vendor_organization import VendorProduct
 
         product = db.session.get(VendorProduct, vendor_product_id)
         if not product:

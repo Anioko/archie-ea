@@ -31,6 +31,7 @@ def register(app: Flask) -> None:
     )
     from app.modules.capabilities.routes.maturity_routes import maturity_management
     from app.modules.capabilities.api.acm_routes import acm_bp
+    from app.modules.capabilities.routes.value_stream_routes import value_stream
 
     # Mark all blueprints as guardrailed BEFORE registration
     blueprints = [
@@ -40,6 +41,7 @@ def register(app: Flask) -> None:
         abacus_consolidation_bp,
         maturity_management,
         acm_bp,
+        value_stream,
     ]
 
     for bp in blueprints:
@@ -52,6 +54,7 @@ def register(app: Flask) -> None:
     app.register_blueprint(abacus_consolidation_bp)
     app.register_blueprint(maturity_management)
     app.register_blueprint(acm_bp)
+    app.register_blueprint(value_stream)
 
     # Register function-based routes
     from app.modules.capabilities.api.capability_taxonomy_routes import (
@@ -61,5 +64,5 @@ def register(app: Flask) -> None:
     register_capability_taxonomy_routes(app)
 
     app.logger.info(
-        "[MODULE-V2] capabilities v2 registered (guardrail-enabled, 141 routes, 7 blueprints)"
+        "[MODULE-V2] capabilities v2 registered (guardrail-enabled, value streams incl., 8 blueprints)"
     )

@@ -25,6 +25,16 @@ class Risk(TenantMixin, db.Model):
     status = db.Column(db.Enum(RiskStatus), default=RiskStatus.OPEN, nullable=False)
     owner = db.Column(db.String(128), nullable=True)
     mitigation_plan = db.Column(db.Text, nullable=True)
+    # The ArchiMate mirror of this row. Added 31 Aug 2026: CLAUDE.md requires
+    # every motivation entity to have a matching ArchiMateElement, but this
+    # model had nowhere to record one, so its creation paths could never
+    # comply. Nullable and SET NULL so reconcile-schema can add it to
+    # existing databases; populated automatically by
+    # app/services/archimate_backbone.py.
+    archimate_element_id = db.Column(
+        db.Integer, db.ForeignKey("archimate_elements.id", ondelete="SET NULL"),
+        index=True, nullable=True,
+    )
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

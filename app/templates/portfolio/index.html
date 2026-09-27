@@ -1,0 +1,139 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+
+{% block title %}Portfolio{% endblock %}
+
+{% block breadcrumb %}
+{% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
+{{ breadcrumb_nav(items=[
+    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
+    {'text': 'Portfolio', 'current': true}
+]) }}
+{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 mx-auto">
+
+  {{ page_shell(title='Portfolio', subtitle='Transformation initiatives — budget, health and benefits') }}
+
+  {# Summary. Every figure is either real or an em dash; none default to zero. #}
+  <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Initiatives</p>
+      <p class="text-2xl font-bold mt-3">{{ summary.count }}</p>
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Approved budget</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if summary.total_budget is not none %}{{ '{:,.0f}'.format(summary.total_budget) }}
+        {% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+      </p>
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Spent to date</p>
+      <p class="text-2xl font-bold mt-3">
+        {% if summary.total_spent is not none %}{{ '{:,.0f}'.format(summary.total_spent) }}
+        {% else %}<span class="text-muted-foreground" title="No initiative carries a recorded spend">&mdash;</span>{% endif %}
+      </p>
+    </div>
+    <div class="rounded-lg border bg-card p-6">
+      <p class="text-sm font-medium text-muted-foreground">Health</p>
+      <div class="flex items-center gap-3 mt-3">
+        {% if not summary.count %}
+        {# With no initiatives, "0 red 0 amber 0 green" reads as a RAG
+           assertion about a portfolio that does not exist. #}
+        <span class="text-muted-foreground" title="No initiatives to rate">&mdash;</span>
+        {% else %}
+        <span class="text-sm font-semibold text-destructive-emphasis">{{ summary.red }} red</span>
+        <span class="text-sm font-semibold text-warning-emphasis">{{ summary.amber }} amber</span>
+        <span class="text-sm font-semibold text-success-emphasis">{{ summary.green }} green</span>
+        {% if summary.unrated %}
+        <span class="text-sm text-muted-foreground">{{ summary.unrated }} unrated</span>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded-lg border bg-card overflow-x-auto">
+    {# An empty table with nine column headers under it told a reader nothing
+       about what this module is or how it gets populated, which is how a
+       complete-but-unpopulated module gets mis-assessed as absent. Render the
+       grid only when there is something in it. #}
+    {% if initiatives %}
+    <table class="w-full text-sm">
+      <thead class="border-b bg-muted/40">
+        <tr class="text-left">
+          <th class="px-4 py-3 font-medium">Initiative</th>
+          <th class="px-4 py-3 font-medium">Phase</th>
+          <th class="px-4 py-3 font-medium">Health</th>
+          <th class="px-4 py-3 font-medium text-right">Budget</th>
+          <th class="px-4 py-3 font-medium text-right">Spent</th>
+          <th class="px-4 py-3 font-medium text-right">Variance</th>
+          <th class="px-4 py-3 font-medium text-right">Complete</th>
+          <th class="px-4 py-3 font-medium text-right">Benefits</th>
+          <th class="px-4 py-3 font-medium">Sponsor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for i in initiatives %}
+        <tr class="border-b last:border-0 hover:bg-accent/40">
+          <td class="px-4 py-3">
+            <a href="{{ url_for('portfolio.detail', initiative_id=i.id) }}"
+               class="font-medium text-primary hover:underline">{{ i.name }}</a>
+            {% if i.code %}<div class="text-xs text-muted-foreground">{{ i.code }}</div>{% endif %}
+          </td>
+          <td class="px-4 py-3">{{ i.current_phase or '—' }}</td>
+          <td class="px-4 py-3">
+            {% set h = (i.health_status or '')|lower %}
+            {% if h == 'red' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-destructive/10 text-destructive-emphasis">Red</span>
+            {% elif h in ('amber', 'yellow') %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/10 text-warning-emphasis">Amber</span>
+            {% elif h == 'green' %}<span class="inline-flex rounded-full px-2 py-0.5 text-xs font-semibold bg-success/10 text-success-emphasis">Green</span>
+            {% else %}<span class="text-muted-foreground" title="No health status recorded">&mdash;</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums">
+            {% if i.approved_budget is not none %}{{ '{:,.0f}'.format(i.approved_budget) }}{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums">
+            {% if i.spent_to_date is not none %}{{ '{:,.0f}'.format(i.spent_to_date) }}{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums">
+            {% if i.variance_pct is not none %}
+              <span class="{% if i.variance_pct > 10 %}text-destructive{% elif i.variance_pct > 0 %}text-warning{% else %}text-success{% endif %} font-medium">
+                {{ '%+.1f' | format(i.variance_pct) }}%
+              </span>
+            {% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums">
+            {% if i.completion_percentage is not none %}{{ i.completion_percentage }}%{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 text-right tabular-nums">{{ i.benefit_count or '—' }}</td>
+          <td class="px-4 py-3">{{ i.executive_sponsor or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% else %}
+    <div class="py-16 px-6 text-center">
+      <div class="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+        <i data-lucide="briefcase" class="h-5 w-5 text-muted-foreground" aria-hidden="true"></i>
+      </div>
+      <p class="text-base font-semibold text-foreground">No initiatives recorded yet</p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        This is the transformation portfolio: each initiative tracks its phase,
+        RAG health, approved budget against spend, completion and the benefits
+        it is expected to deliver. Once initiatives exist here you can record
+        demand against them, log benefit measurements and track assumptions.
+      </p>
+      <p class="mx-auto mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
+        Initiatives are not created from this screen — they arrive with your
+        portfolio data load (import or seed). Ask your administrator to load
+        them, or use the enterprise-initiative import.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

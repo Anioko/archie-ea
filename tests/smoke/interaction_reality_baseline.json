@@ -1,0 +1,46 @@
+{
+  "application_manager": {
+    "dead": 0,
+    "junk": 0
+  },
+  "arb_member": {
+    "dead": 0,
+    "junk": 0
+  },
+  "business_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "cto": {
+    "dead": 0,
+    "junk": 0
+  },
+  "data_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "enterprise_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "platform_admin": {
+    "dead": 0,
+    "junk": 0
+  },
+  "portfolio_manager": {
+    "dead": 0,
+    "junk": 0
+  },
+  "procurement": {
+    "dead": 0,
+    "junk": 0
+  },
+  "solution_architect": {
+    "dead": 0,
+    "junk": 0
+  },
+  "security_architect": {
+    "dead": 0,
+    "junk": 0
+  }
+}

@@ -1,4 +1,4 @@
-"""QA-CMP-004: Seed the 14 standard + 2 custom ArchiMate 3.2 viewpoints.
+"""QA-CMP-004: Seed the 25 standard ArchiMate 3.2 viewpoints.
 
 Run via Flask CLI:
     flask seed-viewpoints
@@ -16,7 +16,7 @@ from app import db
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# 14 standard ArchiMate 3.2 viewpoints + 2 custom (Security, Requirements Realization)
+# 25 standard ArchiMate 3.2 viewpoints
 # Reference: The Open Group ArchiMate 3.2 Specification, Chapter 14
 # ---------------------------------------------------------------------------
 _STANDARD_VIEWPOINTS = [
@@ -1062,6 +1062,255 @@ _STANDARD_VIEWPOINTS = [
             "Implementation and Deployment",
         ],
     },
+    # Additional standard viewpoints from ArchiMate 3.2 specification
+    {
+        "standard_number": 17,
+        "name": "Introductory",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows a general, high-level overview of the enterprise architecture, "
+            "suitable for introducing the architecture to new stakeholders."
+        ),
+        "purpose": (
+            "Providing an accessible introduction to the enterprise architecture "
+            "for stakeholders unfamiliar with ArchiMate modeling."
+        ),
+        "concerns": [
+            "Architecture overview",
+            "Stakeholder communication",
+            "High-level understanding",
+        ],
+        "typical_stakeholders": [
+            "Business Executive",
+            "Board Member",
+            "New Team Member",
+            "External Stakeholder",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": True,
+        "includes_application_layer": True,
+        "includes_technology_layer": True,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": False,
+        "allowed_element_types": [
+            "BusinessActor",
+            "BusinessProcess",
+            "BusinessService",
+            "ApplicationComponent",
+            "ApplicationService",
+            "Node",
+            "Goal",
+            "Driver",
+            "Capability",
+        ],
+        "allowed_relationship_types": [
+            "serving",
+            "realization",
+            "assignment",
+            "association",
+            "composition",
+            "aggregation",
+        ],
+        "typical_usage_scenario": (
+            "Use when presenting architecture to executives or new stakeholders "
+            "who need a simplified, high-level view."
+        ),
+        "example_questions": [
+            "What does our architecture look like at a high level?",
+            "How do our main systems support business goals?",
+        ],
+        "related_viewpoints": [
+            "Layered",
+            "Motivation",
+        ],
+    },
+    {
+        "standard_number": 18,
+        "name": "Goal Realization",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows how goals are realized by outcomes, and how outcomes "
+            "are achieved through principles, requirements, and constraints."
+        ),
+        "purpose": (
+            "Designing, deciding, and informing about goal achievement "
+            "and the means to realize strategic objectives."
+        ),
+        "concerns": [
+            "Goal achievement",
+            "Strategic alignment",
+            "Outcome delivery",
+            "Success measurement",
+        ],
+        "typical_stakeholders": [
+            "Strategy Manager",
+            "Enterprise Architect",
+            "Program Manager",
+            "Business Executive",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": False,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": False,
+        "allowed_element_types": [
+            "Goal",
+            "Outcome",
+            "Principle",
+            "Requirement",
+            "Constraint",
+            "Driver",
+            "Assessment",
+            "Value",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "influence",
+            "association",
+            "aggregation",
+            "composition",
+        ],
+        "typical_usage_scenario": (
+            "Use when planning how to achieve strategic goals and "
+            "measuring progress towards desired outcomes."
+        ),
+        "example_questions": [
+            "How will we achieve this strategic goal?",
+            "What outcomes indicate goal success?",
+            "Which principles guide goal realization?",
+        ],
+        "related_viewpoints": [
+            "Motivation",
+            "Strategy",
+        ],
+    },
+    {
+        "standard_number": 19,
+        "name": "Course of Action",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows courses of action and how they contribute to the "
+            "realization of goals through work packages and deliverables."
+        ),
+        "purpose": (
+            "Planning and tracking strategic initiatives and their "
+            "contribution to organizational goals."
+        ),
+        "concerns": [
+            "Strategic initiatives",
+            "Action planning",
+            "Goal contribution",
+            "Initiative coordination",
+        ],
+        "typical_stakeholders": [
+            "Strategy Manager",
+            "Program Manager",
+            "Enterprise Architect",
+            "Portfolio Manager",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": False,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": True,
+        "allowed_element_types": [
+            "CourseOfAction",
+            "Goal",
+            "Outcome",
+            "WorkPackage",
+            "Deliverable",
+            "Capability",
+            "Resource",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "association",
+            "assignment",
+            "triggering",
+            "composition",
+            "aggregation",
+        ],
+        "typical_usage_scenario": (
+            "Use when planning strategic initiatives and tracking "
+            "their progress towards goal achievement."
+        ),
+        "example_questions": [
+            "Which initiatives support this goal?",
+            "What work packages deliver this course of action?",
+            "How do initiatives coordinate with each other?",
+        ],
+        "related_viewpoints": [
+            "Strategy",
+            "Project",
+        ],
+    },
+    {
+        "standard_number": 20,
+        "name": "Program & Portfolio Management",
+        "viewpoint_type": "stakeholder",
+        "description": (
+            "Shows programs, projects, and their relationships to "
+            "strategic goals and business capabilities."
+        ),
+        "purpose": (
+            "Managing portfolios of projects and programs to ensure "
+            "strategic alignment and resource optimization."
+        ),
+        "concerns": [
+            "Portfolio alignment",
+            "Program coordination",
+            "Resource allocation",
+            "Strategic delivery",
+        ],
+        "typical_stakeholders": [
+            "Portfolio Manager",
+            "Program Manager",
+            "PMO",
+            "Enterprise Architect",
+        ],
+        "includes_strategy_layer": True,
+        "includes_business_layer": True,
+        "includes_application_layer": False,
+        "includes_technology_layer": False,
+        "includes_physical_layer": False,
+        "includes_motivation_layer": True,
+        "includes_implementation_layer": True,
+        "allowed_element_types": [
+            "WorkPackage",
+            "Deliverable",
+            "Goal",
+            "Outcome",
+            "Capability",
+            "BusinessFunction",
+            "CourseOfAction",
+        ],
+        "allowed_relationship_types": [
+            "realization",
+            "assignment",
+            "association",
+            "composition",
+            "aggregation",
+            "triggering",
+        ],
+        "typical_usage_scenario": (
+            "Use when managing project portfolios and ensuring "
+            "programs deliver strategic value."
+        ),
+        "example_questions": [
+            "Which projects support which capabilities?",
+            "How do programs align with strategic goals?",
+            "What is the portfolio's strategic impact?",
+        ],
+        "related_viewpoints": [
+            "Project",
+            "Strategy",
+        ],
+    },
 ]
 
 
@@ -1090,7 +1339,7 @@ def _apply_viewpoint_fields(target, vp_data):
 
 
 def seed_viewpoints():
-    """Upsert the 16 ArchiMate viewpoints (14 standard + 2 custom). Returns (created, updated) counts."""
+    """Upsert the 20 ArchiMate viewpoints (18 standard + 2 custom). Returns (created, updated) counts."""
     try:
         from app.models.archimate_viewpoint import ArchiMateViewpoint
     except ImportError:
@@ -1112,14 +1361,113 @@ def seed_viewpoints():
             created += 1
 
     db.session.commit()
-    logger.info("QA-CMP-004: Seeded viewpoints - created=%d, updated=%d", created, updated)
+    logger.info("QA-CMP-004: Seeded viewpoints - created=%d, updated=%d (total: %d)", created, updated, len(_STANDARD_VIEWPOINTS))
+
+    seed_canvas_templates()
+
     return created, updated
+
+
+def _canvas_viewpoint_row_data(tpl):
+    """Shape one CANVAS_TEMPLATES entry into the fields _apply_viewpoint_fields
+    expects."""
+    from app.config.archimate_viewpoints import VIEWPOINTS
+
+    element_types = sorted({t for zone in tpl["zones"] for t in zone["element_types"]})
+    layers_included = {
+        VIEWPOINTS[vp_key].layer for vp_key in tpl["projects"] if vp_key in VIEWPOINTS
+    }
+    return {
+        "standard_number": None,
+        "viewpoint_type": "canvas",
+        "description": (
+            f"Business-language viewpoint over the one model: {tpl['name']}, "
+            "pre-populated from the tenant's existing elements."
+        ),
+        "purpose": f"Show the tenant's model as a {tpl['name']} without a notation lesson.",
+        "concerns": [zone["label"] for zone in tpl["zones"]],
+        "typical_stakeholders": ["Founder", "Sponsor"],
+        "allowed_element_types": element_types,
+        "allowed_relationship_types": [],
+        "includes_strategy_layer": "strategy" in layers_included,
+        "includes_business_layer": "business" in layers_included,
+        "includes_application_layer": "application" in layers_included,
+        "includes_technology_layer": "technology" in layers_included,
+        "includes_physical_layer": "physical" in layers_included,
+        "includes_motivation_layer": "motivation" in layers_included,
+        "includes_implementation_layer": "implementation" in layers_included,
+        "typical_usage_scenario": None,
+        "example_questions": None,
+        "related_viewpoints": None,
+    }
+
+
+def seed_canvas_templates():
+    """Upsert (a) one ArchiMateViewpoint catalogue row per CANVAS_TEMPLATES
+    entry — ``viewpoint_type="canvas"``, ``is_standard=False`` — so the
+    Composer catalogue lists Lean Canvas, Business Model Canvas and business
+    case without a fourth catalogue, and (b) one ``profile`` AcmPropertyTemplate
+    row per element type the templates use, with ``enum_options`` set to every
+    profile value that type takes across the three templates
+    (CANVAS_PROFILE_OPTIONS_BY_TYPE). Idempotent — upsert by name for (a), by
+    ``(archimate_type, property_key)`` for (b); running twice changes neither.
+    Returns
+    ``(viewpoints_created, viewpoints_updated, profiles_created, profiles_updated)``.
+    """
+    from app.config.archimate_viewpoints import CANVAS_PROFILE_OPTIONS_BY_TYPE, CANVAS_TEMPLATES
+    from app.models.acm_property_template import AcmPropertyTemplate
+    from app.models.archimate_viewpoint import ArchiMateViewpoint
+
+    vp_created = 0
+    vp_updated = 0
+    for tpl in CANVAS_TEMPLATES.values():
+        data = _canvas_viewpoint_row_data(tpl)
+        existing = ArchiMateViewpoint.query.filter_by(name=tpl["name"]).first()
+        if existing:
+            _apply_viewpoint_fields(existing, data)
+            existing.is_standard = False  # canvas rows are not standard viewpoints
+            vp_updated += 1
+        else:
+            vp = ArchiMateViewpoint(name=tpl["name"])
+            _apply_viewpoint_fields(vp, data)
+            vp.is_standard = False
+            db.session.add(vp)
+            vp_created += 1
+
+    profile_created = 0
+    profile_updated = 0
+    for archimate_type, options in sorted(CANVAS_PROFILE_OPTIONS_BY_TYPE.items()):
+        existing = AcmPropertyTemplate.query.filter_by(
+            archimate_type=archimate_type, property_key="profile",
+        ).first()
+        if existing:
+            existing.display_name = "Profile"
+            existing.property_type = "enum"
+            existing.enum_options = options
+            existing.required_for_tier = "standard"
+            profile_updated += 1
+        else:
+            db.session.add(AcmPropertyTemplate(
+                archimate_type=archimate_type, property_key="profile",
+                display_name="Profile", property_type="enum",
+                enum_options=options, required_for_tier="standard",
+            ))
+            profile_created += 1
+
+    db.session.commit()
+    logger.info(
+        "Canvas templates seeded - viewpoints created=%d updated=%d; "
+        "profile templates created=%d updated=%d",
+        vp_created, vp_updated, profile_created, profile_updated,
+    )
+    return vp_created, vp_updated, profile_created, profile_updated
 
 
 @click.command("seed-viewpoints")
 @with_appcontext
 def seed_viewpoints_command():
-    """Seed the 16 ArchiMate viewpoints (14 standard + 2 custom, idempotent)."""
+    """Seed the 25 ArchiMate viewpoints (all standard, idempotent), the
+    business-language canvas templates and their `profile` property rows."""
     created, updated = seed_viewpoints()
     click.echo(f"Viewpoints seeded: {created} created, {updated} updated.")
 

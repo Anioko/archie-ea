@@ -52,6 +52,30 @@ from .relationship_tables import (
 # 'application_requirement_mapping', 'application_technology_mapping', 'application_process_support',
 # 'application_component_vendor_products'
 
+# The TOGAF-decommission-phase vocabulary this app actually uses for
+# lifecycle_status (rendered by list_simple.html's STATUS_MAP badge lookup,
+# which is case-sensitive on these exact lowercase strings). Any write path
+# that sets lifecycle_status — not just the create/edit form — must validate
+# against this set, not app.models.constants.LifecycleStatus (a different,
+# unrelated generic vocabulary; a bulk-update route validating against that
+# one rejected every value this UI actually sends — see api_bulk_lifecycle).
+APPLICATION_LIFECYCLE_STAGES = [
+    "1. undetermined",
+    "2.1 strategic",
+    "2.2 tactical",
+    "3. sunset",
+    "4.1 decom decided",
+    "4.2 decom planned",
+    "4.3 read-only",
+    "4.4 stopped",
+    "5. decommissioned",
+]
+
+# Canonical assessed-value vocabularies. Null and any value outside these sets
+# mean "not assessed"; consumers must not present arbitrary strings as facts.
+APPLICATION_RISK_LEVELS = frozenset({"low", "medium", "high", "critical"})
+APPLICATION_HEALTH_STATUSES = frozenset({"healthy", "at_risk", "critical"})
+
 
 class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     """
@@ -64,9 +88,24 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     __tablename__ = "application_components"
     __table_args__ = {"extend_existing": True}
 
-    # Override OptimisticLockMixin's version_id_col — this model uses 'version'
-    # as a String field for application version (e.g. "2.1.0"), not for ORM locking.
-    __mapper_args__ = {}
+    # 'version' on this model is the application's own release number ("2.1.0"),
+    # a String the user edits — not a lock counter. It collides by name with
+    # OptimisticLockMixin's integer column, so the lock gets its own name here.
+    #
+    # This previously read `__mapper_args__ = {}`, which resolved the collision
+    # by switching optimistic locking off altogether. Nothing failed visibly:
+    # two architects editing the same application both saved, and the second
+    # silently overwrote the first. ApplicationComponent is the most-edited
+    # entity in the product, so it is the row where that matters most.
+    #
+    # Nullable on purpose — reconcile-schema cannot add a NOT NULL column to a
+    # table that already has rows. The server_default is what matters: it makes
+    # reconcile-schema emit ADD COLUMN ... DEFAULT 1, so existing applications
+    # arrive at version 1 rather than NULL. A NULL here would be worse than the
+    # bug being fixed — SQLAlchemy would compare `lock_version = NULL`, match no
+    # row, and refuse every save on that application.
+    lock_version = Column(db.Integer, nullable=True, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": lock_version}
 
     id = Column(db.Integer, primary_key=True)
 
@@ -86,8 +125,16 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
         db.String(50)
     )  # erp, crm, scm, hcm, bi, custom, legacy
     deployment_model = Column(db.String(30))  # on_premise, cloud, saas, hybrid, mobile
+    # No default. It used to default to "development", which meant every
+    # application whose deployment status had never been recorded was DISPLAYED
+    # as "Development" -- a warning badge and a "Lifecycle Stage: Development"
+    # tile on the detail page, sitting directly above an "Application Identity /
+    # Lifecycle Status: Production" row read from lifecycle_status. The user
+    # cannot tell that invented value from one somebody entered, which is
+    # exactly the failure CLAUDE.md's "never invent data" rule names. Unrecorded
+    # is NULL, and NULL renders as an em dash / no badge.
     deployment_status = Column(
-        db.String(50), default="development"
+        db.String(50)
     )  # development, testing, staging, production, done
     criticality = Column(
         db.String(20)
@@ -184,9 +231,20 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     )
 
     # Lifecycle management
+    # ARCH-031: was default="operational", which meant an application created
+    # with only a name silently claimed to be live in production and rendered
+    # a green "Operational" badge — fabricated data per CLAUDE.md. Null now
+    # means "not assessed"; list_simple.html's STATUS_MAP renders that as a
+    # neutral "Not set" badge, never a green one.
     lifecycle_status = Column(
-        db.String(20), default="operational"
+        db.String(20), default=None
     )  # planning, development, testing, operational, deprecated, retired
+    # healthy, at_risk, critical. my_applications' dashboard and health overview
+    # both read app.health_status, but no such column existed on this model - so
+    # every owned application reported "unknown" and the health page could never
+    # show anything else. Nullable, because reconcile-schema only adds nullable
+    # columns; None keeps meaning "not assessed".
+    health_status = Column(db.String(20))
     implementation_date = Column(db.Date)
     go_live_date = Column(db.Date)  # Date the application went live
     last_major_upgrade = Column(db.Date)
@@ -312,24 +370,31 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
     application_services = Column(
         db.Text
     )  # JSON: [{name, type, description, endpoints}]
-    application_functions_text = Column(db.Text)  # Comma-separated text of functions
+    application_functions_text = Column(db.Text)  # unrendered-field-ok: legacy comma-separated mirror of business_functions (JSON array), which is what fact_sheet.html/edit.html render
     imported_apqc_codes = Column(db.Text)  # JSON: [process_codes]
 
     # Abacus integration fields
     external_id = Column(db.String(255), unique=True, index=True)  # External system ID
     abacus_source = Column(db.Boolean, default=False)  # Whether sourced from Abacus
     last_sync_from_abacus = Column(db.DateTime)  # Last sync timestamp
-    abacus_properties = Column(db.JSON)  # Additional properties from Abacus
+    abacus_properties = Column(db.JSON)  # unrendered-field-ok: raw unstructured sync payload, not a business-user-facing field; abacus_source/last_sync_from_abacus already show the sync state that matters to a reader
     confidence_score = Column(db.Float)  # AI confidence in mapping
 
     # Power Platform CoE integration
     data_source = Column(db.String(50), nullable=True)        # 'power_platform_coe', 'abacus', 'manual'
     source_identifier = Column(db.String(255), nullable=True)  # external GUID for dedup (Power App GUID)
-    provenance = Column(db.JSON, nullable=True)                # API response snapshot for audit trail
+    provenance = Column(db.JSON, nullable=True)                # unrendered-field-ok: raw API response snapshot for audit/debugging, not a business-user-facing field; data_source/source_identifier already show what matters to a reader
 
     # Timestamps
     created_at = Column(db.DateTime, default=datetime.utcnow)
     updated_at = Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Soft-delete recovery window (finding A-04/ARCH-051/C-10). Nullable —
+    # reconcile-schema only adds nullable columns; NULL means "not deleted".
+    # Only the bulk-delete endpoint uses this path today; the single-record
+    # delete route still hard-deletes.
+    deleted_at = Column(db.DateTime, nullable=True)
+    deleted_by = Column(db.Integer, nullable=True)
 
     # Data quality indicators
     @property
@@ -351,39 +416,27 @@ class ApplicationComponent(TenantMixin, db.Model, OptimisticLockMixin):
             return "stale"
         return "outdated"
 
-    # Data completeness indicators
-    COMPLETENESS_FIELDS = {
-        "identity": ["name", "description", "business_domain"],
-        "ownership": ["application_owner", "business_owner", "technical_owner"],
-        "technical": ["architecture_style", "deployment_model", "primary_database", "integration_pattern"],
-        "governance": ["lifecycle_status", "criticality", "data_classification", "compliance_requirements"],
-        "integrations": ["vendor_product_id"],
-    }
-
+    # M3: this used to carry its own unweighted 5-category/15-field rubric,
+    # completely independent of app/services/application_fact_sheet.py's
+    # weighted 11-field one -- so /applications/<id> (this property, via
+    # applications/dashboard.html) and /applications/<id>/fact-sheet (the
+    # service, which brands itself "the single source of truth") disagreed
+    # for the same record (20% vs 21%, and any other pair by coincidence).
+    # Both now delegate to the fact sheet's calculation -- lazy import to
+    # avoid a circular import (the service imports app.db at module load).
     @property
     def completeness_score(self):
-        """Data completeness percentage (0-100) across 5 categories, 15 fields."""
-        total = 0
-        populated = 0
-        for fields in self.COMPLETENESS_FIELDS.values():
-            for field_name in fields:
-                total += 1
-                value = self.__dict__.get(field_name)  # model-safety-ok
-                if value is not None and value != "" and value != []:
-                    populated += 1
-        return round((populated / total) * 100) if total > 0 else 0
+        """Data completeness percentage (0-100) -- see
+        app.services.application_fact_sheet.compute_completeness for the rubric."""
+        from app.services.application_fact_sheet import compute_completeness
+        return compute_completeness(self)["pct"]
 
     @property
     def completeness_gaps(self):
-        """List of category names where any field is empty."""
-        gaps = []
-        for category, fields in self.COMPLETENESS_FIELDS.items():
-            for field_name in fields:
-                value = self.__dict__.get(field_name)  # model-safety-ok
-                if value is None or value == "" or value == []:
-                    gaps.append(category)
-                    break
-        return gaps
+        """List of missing field labels -- see
+        app.services.application_fact_sheet.compute_completeness for the rubric."""
+        from app.services.application_fact_sheet import compute_completeness
+        return compute_completeness(self)["missing"]
 
     # Relationships
     capability_mappings = relationship(
@@ -688,12 +741,17 @@ class ApplicationTechnologyInstance(db.Model):
         return f"<ApplicationTechnologyInstance {self.instance_name}>"
 
 
-class VendorContract(db.Model):
+class VendorContract(TenantMixin, db.Model):
     """
     Vendor Contract Model
 
     Manages vendor contracts and agreements for applications.
     Supports contract lifecycle management and compliance.
+
+    Tenant-scoped: inherits TenantMixin so the automatic org filter applies.
+    The explicit organization_id column + organization relationship below
+    override the mixin's declared_attr versions (same definition), so this is
+    a behavioural change only — VendorContract SELECTs are now org-filtered.
     """
 
     __tablename__ = "vendor_contracts"

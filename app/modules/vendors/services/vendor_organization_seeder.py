@@ -8,7 +8,7 @@ Loads 33 vendors from vendor_catalogue.py with COBIT, ITIL, and capability mappi
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from app.models.vendor.vendor_organization import VendorOrganization
 from app.modules.vendors.v2.services import BaseSeeder

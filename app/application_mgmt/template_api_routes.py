@@ -14,6 +14,7 @@ SECURITY:
 """
 
 from flask import current_app, flash, jsonify, redirect, request, url_for
+from werkzeug.exceptions import HTTPException
 from flask_login import current_user, login_required
 from marshmallow import ValidationError
 from sqlalchemy import func
@@ -38,6 +39,7 @@ from app.services.archimate_validation_service import ArchiMateValidationService
 from app.services.rate_limiter import RateLimitExceeded, rate_limit
 from app.services.template_instantiation_service import TemplateInstantiationService
 from app.services.template_performance_optimizer import template_optimizer
+from app.utils.pagination import safe_int_arg
 
 # ============================================================================
 # SECURITY CONFIGURATION
@@ -92,21 +94,11 @@ def get_frameworks():
     Get list of available frameworks.
 
     Returns:
-        JSON array of framework names (or object with 'frameworks' key for backward compatibility)
+        JSON array of active framework names, including [] for an empty catalog.
     """
     frameworks = ElementTemplate.get_frameworks()
 
-    # VALIDATION: Warn if no frameworks in database
-    if not frameworks:
-        current_app.logger.warning("No frameworks found in database. Seed data may be missing.")
-        return (
-            jsonify(
-                {"error": "No frameworks available. Please seed framework data.", "frameworks": []}
-            ),
-            503,
-        )
-
-    # Return as array for direct consumption
+    # Match the applications API: an empty collection is a successful query.
     return jsonify(frameworks)
 
 
@@ -169,10 +161,15 @@ def search_templates_advanced():
         for tag in tags:
             base_query = base_query.filter(ElementTemplate.tags.contains([tag]))
 
+    # Imported here rather than inside the `if` below: or_ is used by BOTH
+    # branches, but the import only ran in the fuzzy one, so the else branch -
+    # which is the DEFAULT, since fuzzy defaults to False - raised
+    # NameError: name 'or_' is not defined and returned a 500.
+    from sqlalchemy import func, or_  # noqa: F401  (func used by the fuzzy branch)
+
     # Fuzzy search across multiple fields
     if data.get("fuzzy", False):
         # PostgreSQL-compatible fuzzy search using similarity
-        from sqlalchemy import func, or_
 
         search_pattern = f"%{query}%"
         base_query = base_query.filter(
@@ -193,7 +190,10 @@ def search_templates_advanced():
         )
 
     # Execute query
-    limit = min(int(data.get("limit", 20)), 100)
+    try:
+        limit = min(int(data.get("limit", 20)), 100)
+    except (ValueError, TypeError):
+        return jsonify({"error": "limit must be an integer"}), 400
     results = base_query.limit(limit).all()
 
     # Calculate relevance scores
@@ -216,7 +216,7 @@ def search_templates_advanced():
         # Boost recent templates (if requested)
         if data.get("boost_recent", False) and hasattr(template, "last_used_at"):
             if template.last_used_at:
-                from datetime import datetime, timedelta
+                from datetime import datetime
 
                 days_old = (datetime.utcnow() - template.last_used_at).days
                 if days_old < 30:
@@ -247,7 +247,6 @@ def get_all_tags():
     if not hasattr(ElementTemplate, "tags"):
         return jsonify([])
 
-    from sqlalchemy import func
 
     # Get all unique tags with counts
     # Note: This assumes tags are stored as JSON array or comma-separated
@@ -331,7 +330,7 @@ def get_template_recommendations(app_id):
     Returns:
         JSON array of recommended template objects
     """
-    limit = int(request.args.get("limit", 20))
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
 
     # Instantiate service with dependencies
     template_repo = ElementTemplateRepository()
@@ -568,7 +567,7 @@ def instantiate_template(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database error: {str(e)}")
         return jsonify({"error": "Database error occurred"}), 500
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error instantiating template")
         return jsonify({"error": "Internal server error"}), 500
@@ -807,7 +806,7 @@ def link_template_elements(app_id):
         db.session.rollback()
         current_app.logger.error(f"Database operational error in link operation: {str(e)}")
         return jsonify({"error": "Database operation failed. Please try again."}), 503
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Unexpected error linking templates")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -867,7 +866,7 @@ def remove_template(app_id, template_id):
 
         return jsonify({"success": True, "message": "Successfully removed template usage"})
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"error": "Resource not found"}), 404
     except Exception as e:
         current_app.logger.error(f"Error removing template: {str(e)}")
@@ -910,7 +909,7 @@ def add_from_template_page(app_id):
         else:
             flash("No templates were instantiated", "warning")
 
-    except Exception as e:
+    except Exception:
         flash("Error adding templates. Please try again.", "error")
 
     return redirect(url_for("unified_applications.application_detail", id=app_id))
@@ -1048,7 +1047,10 @@ def instantiate_bulk_enterprise(app_id):
 
     template_ids = data["template_ids"]
     create_relationships = data.get("create_relationships", True)
-    batch_size = int(data.get("batch_size", 10))
+    try:
+        batch_size = int(data.get("batch_size", 10))
+    except (ValueError, TypeError):
+        return jsonify({"error": "batch_size must be an integer"}), 400
     dry_run = data.get("dry_run", False)
 
     if not isinstance(template_ids, list):
@@ -1102,7 +1104,7 @@ def instantiate_bulk_enterprise(app_id):
 
     except RateLimitExceeded as e:
         return jsonify({"error": "Rate limit exceeded", "retry_after": e.retry_after}), 429
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Error in bulk instantiation")
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1129,7 +1131,7 @@ def get_session_history(app_id):
     """
     from app.services.session_rollback_service import SessionRollbackService
 
-    limit = int(request.args.get("limit", 10))
+    limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
     include_rolled_back = request.args.get("include_rolled_back", "true").lower() == "true"
 
     service = SessionRollbackService()
@@ -1175,13 +1177,13 @@ def rollback_session(session_id):
 
         return jsonify(result)
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-    except PermissionError as e:
+    except PermissionError:
         return jsonify({"success": False, "error": "Forbidden"}), 403
-    except RuntimeError as e:
+    except RuntimeError:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
-    except Exception as e:
+    except Exception:
         current_app.logger.exception("Unexpected error in rollback")
         return jsonify({"success": False, "error": "Internal server error"}), 500
 
@@ -1220,13 +1222,20 @@ def check_can_rollback(session_id):
     Returns:
         JSON with can_rollback flag and reason
     """
+    from app.models.architecture_session import ArchitectureSession
     from app.services.session_rollback_service import SessionRollbackService
+    from app.utils.route_guards import require_entity
+
+    # A rollback verdict for a session that does not exist is invented data.
+    require_entity(ArchitectureSession, session_id, description="Session not found")
 
     service = SessionRollbackService()
 
     try:
         result = service.can_rollback_session(session_id)
         return jsonify(result)
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Error checking rollback capability: {str(e)}")
         return jsonify({"error": "Failed to check rollback capability"}), 500
@@ -1266,7 +1275,7 @@ def preview_template_instantiation(template_id):
         return jsonify({"error": "application_id required"}), 400
 
     template = ElementTemplate.query.get_or_404(template_id)
-    application = ApplicationComponent.query.get_or_404(app_id)
+    ApplicationComponent.query.get_or_404(app_id)
 
     # Build preview
     preview = {
@@ -1883,8 +1892,8 @@ def get_templates_by_level():
         query = query.filter(ElementTemplate.element_type == element_type)
 
     # Pagination
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
+    offset = safe_int_arg('offset', 0, minimum=0)
 
     total = query.count()
     templates = (
@@ -1932,10 +1941,13 @@ def instantiate_template_with_hierarchy(app_id):
     if not data or "template_id" not in data:
         return jsonify({"error": "template_id required"}), 400
 
-    template_id = int(data["template_id"])
+    try:
+        template_id = int(data["template_id"])
+        max_depth = min(int(data.get("max_depth", 2)), 5)
+    except (ValueError, TypeError):
+        return jsonify({"error": "template_id and max_depth must be integers"}), 400
     include_parents = data.get("include_parents", False)
     include_children = data.get("include_children", False)
-    max_depth = min(int(data.get("max_depth", 2)), 5)
     create_relationships = data.get("create_relationships", True)
 
     # Get the main template
@@ -2050,7 +2062,7 @@ def instantiate_template_with_hierarchy(app_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error instantiating hierarchy")
         return jsonify({"error": "An internal error occurred"}), 500

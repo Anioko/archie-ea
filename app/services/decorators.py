@@ -7,7 +7,6 @@ Common decorators used by service classes for transaction management and error h
 import logging
 from functools import wraps
 
-from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
 
 logger = logging.getLogger(__name__)

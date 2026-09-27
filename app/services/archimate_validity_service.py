@@ -148,6 +148,33 @@ def _aspect(element_type):
     return _TYPE_ASPECT.get(_normalize_type(element_type), "unknown")
 
 
+# ArchiMate 3.2 §5.1.3: Realization "represents that an entity plays a critical role
+# in the creation, achievement, sustenance, or operation of a MORE ABSTRACT entity".
+# Its permitted targets are therefore the abstract ones — services and other behaviour,
+# passive structure (objects, contracts, products, representations, artifacts,
+# deliverables) and the motivation / strategy / implementation elements. An ACTIVE
+# STRUCTURE element (Actor, Role, Collaboration, Interface, Component, Node, Device,
+# SystemSoftware, Path, CommunicationNetwork, Equipment, Facility, DistributionNetwork)
+# is a concrete performer, never "more abstract", so it can never be the TARGET of a
+# realization.
+#
+# This is enforced as one predicate applied to every rule's output rather than being
+# encoded per source→target pair, because the per-direction encoding is exactly how the
+# two directions drifted: the cross-layer rule granted realization on layer RANK alone,
+# so ApplicationComponent → BusinessActor was offered as valid while
+# BusinessActor → ApplicationComponent (correctly) was not. Deriving the constraint from
+# the target's aspect makes the answer the same however the pair is written down.
+_LAYERS_WITH_ACTIVE_STRUCTURE = ("business", "application", "technology", "physical")
+
+
+def permits_realization_target(target_type):
+    """True when ``target_type`` may be the TARGET of a realization relationship."""
+    return not (
+        _aspect(target_type) == "active"
+        and _layer(target_type) in _LAYERS_WITH_ACTIVE_STRUCTURE
+    )
+
+
 # QA-CMP-005: LAYER_ELEMENTS — inverse lookup: layer name → set of element types.
 # Physical is explicitly separated from Technology per ArchiMate 3.2 §9.5.
 LAYER_ELEMENTS = {
@@ -300,6 +327,13 @@ class ArchimateValidityService:
                 "tier": "fallback",
                 "description": "Generic association (consider a more specific type)",
             })
+
+        # Realization may only point at a more abstract entity — never at active
+        # structure. Applied once, over every rule's output, so the constraint cannot
+        # be granted by one branch and withheld by another (see the note on
+        # permits_realization_target).
+        if not permits_realization_target(target_type):
+            results = [r for r in results if r["type"] != "realization"]
 
         # Deduplicate
         seen = set()
@@ -668,18 +702,35 @@ class ArchimateValidityService:
                 "description": "Assessment leads to this Goal",
             })
 
-        # Goal -> Principle/Requirement
-        if source_type == "Goal" and target_type in ("Principle", "Requirement"):
-            results.append({
-                "type": "realization",
-                "tier": "standard",
-                "description": f"{target_type} realises this Goal",
-            })
+        # NOTE (O-01): a "Goal -> Principle/Requirement: realization" rule used to live
+        # here, granting the exact inverse of the `realization_pairs` set above (which
+        # correctly encodes Requirement -> Goal). Per ArchiMate 3.2 §5.1.3, realization
+        # points at the MORE ABSTRACT entity being realised — a Requirement realises a
+        # Goal, never the reverse — so this was the motivation-layer instance of the
+        # same per-direction drift C-01 fixed for the cross-layer matrix. It bypassed
+        # permits_realization_target() because the motivation branch returns before
+        # that check runs, so it was never caught by that guard. Removed rather than
+        # corrected-in-place because realization_pairs already states the right
+        # direction; keeping both was how the drift happened.
 
         return results
 
     def _strategy_rules(self, source_type, target_type, src_layer, tgt_layer):
-        """Strategy layer relationship patterns."""
+        """Strategy layer relationship patterns.
+
+        Canvas relationship keys ("aggregation","strategy","strategy") and
+        ("assignment","strategy","strategy") added to VALID_RELATIONSHIPS
+        (app/models/archimate_core.py) need no new rule here: the same-type
+        block below already grants aggregation between two elements of the
+        same strategy type (Capability/Capability, Resource/Resource — the
+        "hierarchies" ArchiMate 3.2 §5.1.2 describes), and the Resource ->
+        Capability assignment rule two lines down already grants assignment
+        for that pair (§7.4). The six new "association" keys (option ↔ plan
+        item, outcome ↔ work package, key partner ↔ resource/capability)
+        likewise need no rule here: ``is_valid`` treats association as
+        always valid (ArchiMate 3.2 §5.2.4: "association may connect any two
+        concepts"), unconditionally, before any layer rule runs.
+        """
         results = []
 
         # Within strategy layer

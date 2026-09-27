@@ -8,14 +8,11 @@ import logging
 import tempfile
 import os
 import zipfile
-import tarfile
-import gzip
 import shutil
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
-import hashlib
 import re
 
 from flask import current_app
@@ -509,7 +506,7 @@ class FileSanitizer:
             # In a real implementation, this would convert to PDF using libraries like
             # reportlab, pdfkit, or external tools
             
-            converted_filename = os.path.splitext(file_path)[0] + '.pdf'
+            os.path.splitext(file_path)[0] + '.pdf'
             converted_file = file_path + '_converted.pdf'
             
             # Simulate conversion

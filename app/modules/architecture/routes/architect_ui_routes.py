@@ -19,9 +19,10 @@ Pages:
 import logging
 
 from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, url_for  # noqa: F401
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
 # ArchiMateHealthService import removed — architecture_health route deleted
 
 architect_ui_bp = Blueprint("architect_ui", __name__)
@@ -219,6 +220,12 @@ def architecture_assistant_solution(solution_id):
     AI Architecture Assistant page pre-loaded with an existing solution context.
     Allows continuing design or regenerating ARB for the given solution.
     """
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    # Pre-loading "an existing solution context" that does not exist gives the
+    # assistant an id to reason about that is not a record.
+    require_entity(Solution, solution_id, description="Solution not found")
     return render_template(
         "architecture_assistant/index.html",
         solution_id=solution_id,
@@ -264,18 +271,44 @@ def export_oef():
     from app.services.archimate_oef_service import ArchiMateOEFService
 
     service = ArchiMateOEFService()
-    xml_str = service.export_model()
+    xml_str, validation_errors = service.export_model_validated()
+    headers = {"Content-Disposition": "attachment; filename=archimate-model.xml"}
+    if validation_errors:
+        # Never emit silently-invalid XML: every direction-corrected or
+        # dropped relationship is reported back to the caller.
+        headers["X-OEF-Validation-Errors"] = str(len(validation_errors))
+        for line in validation_errors:
+            current_app.logger.warning("OEF export: %s", line)
     return Response(
         xml_str,
         mimetype="application/xml",
-        headers={"Content-Disposition": "attachment; filename=archimate-model.xml"},
+        headers=headers,
     )
+
+
+def _oef_wants_json():
+    """O-03: an API caller posting to this endpoint must never get an HTML
+    200 back for a failed or malformed import — that is indistinguishable
+    from success. Callers that ask for JSON (Accept header, or no file
+    upload — i.e. a raw API POST, not a browser <form>) get JSON."""
+    best = request.accept_mimetypes.best_match(["application/json", "text/html"])
+    if best == "application/json":
+        return True
+    return request.accept_mimetypes["application/json"] >= request.accept_mimetypes["text/html"] \
+        and "text/html" not in request.accept_mimetypes
 
 
 @architect_ui_bp.route("/architecture/import/oef", methods=["GET", "POST"])
 @login_required
 def import_oef():
-    """Import OEF XML file using ArchiMateExchangeService (deduplication-aware)."""
+    """Import OEF XML file using ArchiMateExchangeService (deduplication-aware).
+
+    O-03: this used to accept any POST, and on a missing/wrong-named file
+    field silently `flash()`+redirect to the GET form — an HTTP 200 with an
+    HTML body that gave an API caller zero signal the import did nothing.
+    Malformed submissions now return 4xx, and a JSON-preferring caller gets
+    JSON with per-record counts and errors instead of an HTML page.
+    """
     from app.modules.architecture.services.archimate_exchange_service import (
         get_archimate_exchange_service,
     )
@@ -283,15 +316,39 @@ def import_oef():
     if request.method == "GET":
         return render_template("archimate_crud/import_oef.html")
 
-    file = request.files.get("oef_file")
-    if not file:
-        flash("No file uploaded", "error")
-        return redirect(request.url)
+    wants_json = _oef_wants_json()
 
-    xml_content = file.read().decode("utf-8")
+    file = request.files.get("oef_file")
+    if not file or not file.filename:
+        error = "No file uploaded. POST multipart/form-data with a field named 'oef_file'."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
+    try:
+        xml_content = file.read().decode("utf-8")
+    except UnicodeDecodeError:
+        error = "Uploaded file is not valid UTF-8 XML."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
+    if not xml_content.strip():
+        error = "Uploaded file is empty."
+        if wants_json:
+            return jsonify({"success": False, "errors": [error]}), 400
+        flash(error, "error")
+        return render_template("archimate_crud/import_oef.html"), 400
+
     service = get_archimate_exchange_service()
     result = service.import_archimate_xml(xml_content, current_user.id)
-    return render_template("archimate_crud/import_oef.html", result=result)
+
+    status_code = 200 if result.get("success") else 400
+    if wants_json:
+        return jsonify(result), status_code
+    return render_template("archimate_crud/import_oef.html", result=result), status_code
 
 
 # =============================================================================
@@ -302,10 +359,34 @@ def import_oef():
 @architect_ui_bp.route("/architecture/elements/new", methods=["GET"])
 @login_required
 def new_archimate_element():
-    """Redirect to archimate_crud create page with pre-filled layer/type params."""
-    element_type = request.args.get("type", "")
-    layer = request.args.get("layer", "")
-    return redirect(url_for("archimate_crud.create_element", layer=layer.lower(), element_type=element_type))
+    """Redirect to the archimate_crud create page for a known (layer, type) pair.
+
+    `archimate_crud.create_element` is bound to
+    `/<any(application, business, ...):layer>/<element_type>/new`, so the
+    `any` converter refuses to build a URL for a layer it does not know.
+    Reaching this route with no query string (the plain "New element" link)
+    passed `layer=""` straight into `url_for`, which raised
+    `ValueError: '' is not one of 'application', 'business', ...` and 500'd.
+    An unset or unrecognised layer is a legitimate state — the user has not
+    chosen yet — so it belongs on the dashboard picker, not on an exception.
+    """
+    from app.modules.architecture.routes.archimate_crud.routes import (
+        LAYER_CONFIG,
+        MODEL_REGISTRY,
+    )
+
+    element_type = request.args.get("type", "").strip()
+    layer = request.args.get("layer", "").strip().lower()
+
+    if layer in LAYER_CONFIG and element_type in MODEL_REGISTRY:
+        return redirect(
+            url_for("archimate_crud.create_element", layer=layer, element_type=element_type)
+        )
+
+    # Preselect the layer when it is the type that is missing or unknown.
+    if layer in LAYER_CONFIG:
+        return redirect(url_for("archimate_crud.dashboard", layer=layer))
+    return redirect(url_for("archimate_crud.dashboard"))
 
 
 # =============================================================================
@@ -375,7 +456,7 @@ def update_lifecycle(element_id):
 @login_required
 def traceability_matrix():
     """Cross-layer traceability matrix across Strategy/Business/Application/Technology."""
-    from app.services.archimate_traceability_service import ArchiMateTraceabilityService, get_gap_analysis
+    from app.services.archimate_traceability_service import ArchiMateTraceabilityService, get_archimate_gap_analysis
 
     service = ArchiMateTraceabilityService()
     direction = request.args.get('direction', 'forward')
@@ -385,7 +466,7 @@ def traceability_matrix():
     scope = request.args.get('scope', '').strip() or None
     page_size = 50
     try:
-        page = max(1, int(request.args.get('page', 1)))
+        page = max(1, safe_int_arg('page', 1, minimum=1))
     except (ValueError, TypeError):
         page = 1
     offset = (page - 1) * page_size
@@ -401,7 +482,10 @@ def traceability_matrix():
         service.get_full_matrix(pivot_type=pivot_type, pivot_layer=pivot_layer, plateau=plateau,
                                 limit=page_size, offset=offset, search=search, scope=scope)
     )
-    gap_analysis = get_gap_analysis()
+    # ADR-0008: read coverage/orphans from the SAME store the matrix and pivot
+    # dropdown read (archimate_elements + archimate_relationships), so the three
+    # surfaces on this page agree instead of counting three different stores.
+    gap_analysis = get_archimate_gap_analysis()
     if direction == 'forward' and pivot_type == "ApplicationComponent" and not plateau and not search and page == 1 and (
         not matrix or not _has_aligned_traceability_rows(matrix)
     ):
@@ -496,7 +580,11 @@ def element_traceability(element_id):
 @login_required
 def api_element_traceability(element_id):
     """JSON traceability chain for a single element."""
+    from app.models.archimate_core import ArchiMateElement
     from app.services.archimate_traceability_service import ArchiMateTraceabilityService
+    from app.utils.route_guards import require_entity
+
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
 
     service = ArchiMateTraceabilityService()
     chain = service.get_element_chain(element_id)
@@ -531,7 +619,11 @@ def impact_analysis(element_id):
 @login_required
 def api_impact_analysis(element_id):
     """JSON impact analysis for an ArchiMate element."""
+    from app.models.archimate_core import ArchiMateElement
     from app.services.archimate_impact_service import ArchiMateImpactService
+    from app.utils.route_guards import require_entity
+
+    require_entity(ArchiMateElement, element_id, description="ArchiMate element not found")
 
     service = ArchiMateImpactService()
     return jsonify(service.analyze_impact(element_id))
@@ -575,7 +667,7 @@ def elements_by_viewpoint(viewpoint_key):
     vp = service.get_viewpoint(viewpoint_key)
     query = ArchiMateElement.query
     if vp.get("layers"):
-        lower_layers = [l.lower() for l in vp["layers"]]
+        lower_layers = [item.lower() for item in vp["layers"]]
         query = query.filter(db.func.lower(ArchiMateElement.layer).in_(lower_layers))
     if vp.get("element_types"):
         query = query.filter(ArchiMateElement.type.in_(vp["element_types"]))
@@ -604,6 +696,22 @@ def viewpoint_diagram_data(viewpoint_key):
     Query params:
         limit: max elements (default 30, max 100)
         layer: optional extra layer filter
+        search: optional element-name filter (case-insensitive substring). When
+            given, the diagram is scoped to matching elements PLUS their real
+            one-hop relationship neighbors, so the elements shown are actually
+            connected to each other -- not an arbitrary unordered slice of the
+            viewpoint's element pool with a coincidental few relationships
+            among them. Without `search`, behavior is unchanged from before
+            except elements are now ordered by name for determinism (was:
+            no ORDER BY at all, so the "top N" was effectively DB-order-
+            dependent and arbitrary).
+
+    Bug fix (live-reported): "Diagram View" on the Architecture Elements page
+    ignored the page's own search box entirely -- clicking it always requested
+    this endpoint with only `limit`/`layer`, so searching for e.g. "Design
+    partners" and opening the diagram showed an unrelated random sample of
+    elements (including test/seed data) with almost no relationships among
+    them, not "Design partners" and what it actually connects to.
     """
     from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
     from app.modules.architecture.services.archimate_viewpoint_service import (
@@ -617,15 +725,49 @@ def viewpoint_diagram_data(viewpoint_key):
 
     allowed_types = vp_def.get("element_types")
     allowed_rel_types = vp_def.get("relationship_types")
-    max_elements = min(int(request.args.get("limit", 30)), 100)
+    max_elements = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 100)
     extra_layer = request.args.get("layer")
+    search_term = (request.args.get("search") or "").strip()
 
-    query = ArchiMateElement.query
+    base_query = ArchiMateElement.query
     if allowed_types:
-        query = query.filter(ArchiMateElement.type.in_(allowed_types))
+        base_query = base_query.filter(ArchiMateElement.type.in_(allowed_types))
     if extra_layer:
-        query = query.filter(db.func.lower(ArchiMateElement.layer) == extra_layer.lower())
-    elements = query.limit(max_elements).all()
+        base_query = base_query.filter(db.func.lower(ArchiMateElement.layer) == extra_layer.lower())
+
+    if search_term:
+        matched = (
+            base_query.filter(ArchiMateElement.name.ilike(f"%{search_term}%"))
+            .order_by(ArchiMateElement.name)
+            .limit(max_elements)
+            .all()
+        )
+        matched_ids = {e.id for e in matched}
+        if matched_ids:
+            neighbor_rel_q = ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(matched_ids),
+                    ArchiMateRelationship.target_id.in_(matched_ids),
+                )
+            )
+            if allowed_rel_types:
+                neighbor_rel_q = neighbor_rel_q.filter(ArchiMateRelationship.type.in_(allowed_rel_types))
+            neighbor_ids = set()
+            for r in neighbor_rel_q.all():
+                neighbor_ids.add(r.source_id)
+                neighbor_ids.add(r.target_id)
+            remaining_slots = max(0, max_elements - len(matched_ids))
+            extra_ids = list(neighbor_ids - matched_ids)[:remaining_slots]
+            all_ids = matched_ids | set(extra_ids)
+            elements = (
+                ArchiMateElement.query.filter(ArchiMateElement.id.in_(all_ids))
+                .order_by(ArchiMateElement.name)
+                .all()
+            ) if all_ids else []
+        else:
+            elements = []
+    else:
+        elements = base_query.order_by(ArchiMateElement.name).limit(max_elements).all()
 
     element_ids = {e.id for e in elements}
 

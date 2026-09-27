@@ -11,11 +11,10 @@ Maps applications to business capabilities using multiple analysis methods:
 4. AI-powered capability detection
 """
 
-import json
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_
 
 from app import db
 from app.models.application_layer import ApplicationComponent
@@ -56,8 +55,14 @@ class BusinessCapabilityMapper:
         # Get all business capabilities
         capabilities = BusinessCapability.query.all()
 
-        # Check existing mappings
-        existing_mappings = ApplicationCapabilityMapping.query.all()
+        # Check existing mappings. tenant-scoping-ok: scoped via FK parent
+        # BusinessCapability (capabilities, org-scoped above) -- not
+        # ACM.organization_id, NULL in prod. See e622d36.
+        existing_mappings = ApplicationCapabilityMapping.query.filter(
+            ApplicationCapabilityMapping.business_capability_id.in_(
+                [c.id for c in capabilities]
+            )
+        ).all()
 
         # Analyze coverage
         analysis = {
@@ -73,6 +78,7 @@ class BusinessCapabilityMapper:
 
         # Check each application for capability mapping
         for app in applications:
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             app_mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=app.id
             ).all()
@@ -215,7 +221,7 @@ class BusinessCapabilityMapper:
                         "capability_name": capability.name,
                         "mapping_method": "semantic_matching",
                         "confidence_score": similarity,
-                        "reasoning": f"Semantic similarity between application and capability names/descriptions",
+                        "reasoning": "Semantic similarity between application and capability names/descriptions",
                     }
                 )
 
@@ -363,6 +369,7 @@ class BusinessCapabilityMapper:
         """
         try:
             # Check if mapping already exists
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             existing = ApplicationCapabilityMapping.query.filter_by(
                 application_component_id=application_id, business_capability_id=capability_id
             ).first()

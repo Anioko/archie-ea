@@ -1,21 +1,35 @@
 {% extends "layouts/admin_base.html" %}
+{# smoke-coverage-ok: CSP inline style fix (removed style="width:0%"); covered by tests/test_capability_map_a11y_csp.py #}
 {% from 'components/data_card.html' import data_card %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/status_badge.html' import status_badge %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {% from 'components/dropdown_menu.html' import dropdown_menu %}
+{% from 'components/empty_state.html' import empty_state %}
+{% from 'components/skeleton.html' import skeleton_list %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {# Reusable filter bar macro for capability tables #}
 {% macro capability_filter_bar(context_id, filters=[], has_search=True, has_clear=True) %}
 <div class="bg-card rounded-lg shadow p-4 mb-6">
     <div class="flex flex-wrap gap-4 items-center">
         {% for filter in filters %}
+        {#- Pluralise properly. "All {{ label }}s" produced "All Statuss" and
+            "All Prioritys" on screen. -#}
+        {%- set _l = filter.label -%}
+        {%- if _l.endswith('y') -%}{% set _plural = _l[:-1] ~ 'ies' %}
+        {%- elif _l.endswith(('s', 'x', 'ch', 'sh')) -%}{% set _plural = _l ~ 'es' %}
+        {%- else -%}{% set _plural = _l ~ 's' %}{%- endif -%}
         <div class="flex items-center space-x-2">
-            <label class="text-sm font-medium text-muted-foreground">{{ filter.label }}:</label>
-            <select id="{{ context_id }}-{{ filter.id }}" 
+            {#- for= makes this existing visible label the select's accessible name
+                and restores click-the-label-to-focus. The id is computed, so the
+                label has to compute the same one; without it these selects were
+                the largest remaining block of unlabelled controls in the product. -#}
+            <label for="{{ context_id }}-{{ filter.id }}" class="text-sm font-medium text-muted-foreground">{{ filter.label }}:</label>
+            <select id="{{ context_id }}-{{ filter.id }}"
                     {% if filter.alpine %}@change="{{ filter.handler }}"{% else %}@change="{{ filter.handler }}"{% endif %}
-                    class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <option value="">All {{ filter.label }}s</option>
+                    class="px-3 py-2 border border-input rounded-md text-sm bg-background text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="">All {{ _plural }}</option>
                 {% for opt in filter.options %}
                 <option value="{{ opt.value }}">{{ opt.label }}</option>
                 {% endfor %}
@@ -30,7 +44,7 @@
                    id="{{ context_id }}-search-filter" 
                    {% if filters and filters[0].alpine %}@input="{{ filters[0].handler.replace('@change=', '').replace('filterTable', 'filterTable') }}"{% else %}@input="filterTable('{{ context_id }}')"{% endif %}
                    placeholder="Search capabilities..." 
-                   class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                   class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Search capabilities...">
         </div>
         {% endif %}
         
@@ -49,82 +63,42 @@
 
 {% block content %}
 <div id="app" x-data="capabilityMapTabs()">
-    <!-- Page Header with Breadcrumbs -->
-    <div class="mb-6">
-        <!-- Breadcrumbs -->
-        {{ breadcrumb_nav(items=[
-            {'text': 'Dashboard', 'href': url_for('main.index')},
-            {'text': 'Capability Framework'},
-            {'text': 'Capability Map', 'current': true}
-        ], class='mb-3') }}
-
-        <!-- Title Row with Custom Actions -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-                <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">Capability Map</h1>
-                <p class="mt-1 text-sm text-muted-foreground">Unified capability management across business domains and architecture layers.</p>
-            </div>
-            
-            <div class="flex flex-wrap items-center gap-2 shrink-0">
-                <!-- Export Dropdown -->
-                {{ dropdown_menu(
-                    trigger_text='Export',
-                    trigger_icon='download',
-                    trigger_variant='primary',
-                    items=[
-                        {'text': 'Export as CSV', 'icon': 'file-text', 'onclick': "exportData('csv')"},
-                        {'text': 'Export as JSON', 'icon': 'code', 'onclick': "exportData('json')"},
-                        {'text': 'Export as JPG', 'icon': 'image', 'onclick': "exportData('jpg')"},
-                        {'text': 'Export as PNG', 'icon': 'image', 'onclick': "exportData('png')"}
-                    ]
-                ) }}
-                
-                <!-- Hierarchy Link -->
-                <a href="{{ url_for('capability_map.hierarchy') }}"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="git-branch" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Hierarchy</span>
-                </a>
-                
-                <!-- Network Link -->
-                <a href="{{ url_for('capability_map.network') }}"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="share-2" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Network</span>
-                </a>
-
-                <!-- Simple View Link -->
-                <a href="{{ url_for('capability_map.simple_view') }}"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="layout-list" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Simple</span>
-                </a>
-
-                <!-- Capabilities Index Link -->
-                <a href="/capability-map"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="list" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Index</span>
-                </a>
-
-                <!-- Enterprise Sub-views -->
-                <a href="{{ url_for('unified_low_priority.capability_map_applications') }}"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="app-window" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Apps</span>
-                </a>
-                <a href="{{ url_for('unified_low_priority.capability_map_capabilities') }}"
-                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                    <i data-lucide="layers" class="w-4 h-4 mr-2" aria-hidden="true"></i>
-                    <span class="hidden sm:inline">Caps</span>
-                </a>
-            </div>
-        </div>
+    <!-- Page Header -->
+    {{ page_shell(
+        title='Capability Map',
+        subtitle='Unified capability management across business domains and architecture layers.',
+        breadcrumb=[('Home', url_for('main.index')), ('Capability Framework', None), ('Capability Map', None)]
+    ) }}
+    {# page_shell has no actions_caller slot usable from a {% call %} block for
+       a single dropdown macro, so the Export action renders just below it —
+       still inside the same header area, not competing with the view
+       switcher underneath. #}
+    <div class="flex justify-end mb-4">
+        {{ dropdown_menu(
+            trigger_text='Export',
+            trigger_icon='download',
+            trigger_variant='primary',
+            items=[
+                {'text': 'Export as CSV', 'icon': 'file-text', 'onclick': "exportData('csv')"},
+                {'text': 'Export as JSON', 'icon': 'code', 'onclick': "exportData('json')"},
+                {'text': 'Export as JPG', 'icon': 'image', 'onclick': "exportData('jpg')"},
+                {'text': 'Export as PNG', 'icon': 'image', 'onclick': "exportData('png')"}
+            ]
+        ) }}
     </div>
 
+    <!-- View switcher: ONE row, single segmented control. These are the
+         true view modes (each a distinct screen over the same capability
+         set) — replaces what used to be this same row of links PLUS a
+         second, competing row of 11 in-page tabs below (now a "Lens"
+         dropdown, see the Lens control further down). -->
+    {% with active_view = 'business' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
+
         <!-- ArchiMate Relationship Health Panel (BPP-012) -->
-        <div x-data="{ rhExpanded: false, rhLoaded: false, rhData: {total_elements:0,total_relationships:0,zero_relationship_count:0,average_per_element:0,by_layer:[]} }"
-             x-init="fetch('/capability-map/api/archimate/relationship-health').then(r=>r.json()).then(d=>{rhData=d;rhLoaded=true}).catch(()=>{})"
+        {# Counters start null, not 0: an unloaded figure renders as an em dash,
+           because a 0 here is indistinguishable from a measured zero. #}
+        <div x-data="{ rhExpanded: false, rhLoaded: false, rhError: '', rhData: {total_elements:null,total_relationships:null,zero_relationship_count:null,average_per_element:null,by_layer:[]} }"
+             x-init="Platform.fetch('/capability-map/api/archimate/relationship-health', { silent: true }).then(d=>{rhData=d;rhLoaded=true}).catch(err=>{rhError='Could not load ArchiMate relationship health.';Platform.toast.error(rhError)})"
              class="mb-4">
             <div class="rounded-lg border border-input bg-card">
                 <div class="p-3 flex items-center justify-between cursor-pointer" @click="rhExpanded=!rhExpanded">
@@ -132,9 +106,9 @@
                         <h3 class="text-sm font-semibold">ArchiMate Relationship Health</h3>  <!-- frontend-quality-ok -->
                         <template x-if="rhLoaded">
                             <div class="flex items-center gap-2 text-xs">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30" x-text="rhData.total_elements+' elements'"></span>
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium bg-green-500/10 text-green-600 border border-green-500/30" x-text="rhData.total_relationships+' relationships'"></span>
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'bg-destructive/10 text-destructive border border-destructive/30':'bg-amber-500/10 text-amber-600 border border-amber-500/30'" x-text="rhData.zero_relationship_count+' unconnected'"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium bg-info/5 text-info-emphasis border border-info/30" x-text="rhData.total_elements+(rhData.total_elements===1?' element':' elements')"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium bg-success/10 text-success-emphasis border border-success/30" x-text="rhData.total_relationships+(rhData.total_relationships===1?' relationship':' relationships')"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md font-medium" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'bg-destructive/10 text-destructive-emphasis border border-destructive/30':'bg-warning/10 text-warning-emphasis border border-warning/30'" x-text="rhData.zero_relationship_count+' unconnected'"></span>
                                 <span class="text-muted-foreground" x-text="rhData.average_per_element+' avg/el'"></span>
                             </div>
                         </template>
@@ -142,17 +116,18 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform" :class="rhExpanded?'rotate-180':''" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </div>
                 <div x-show="rhExpanded" x-cloak class="px-3 pb-3 border-t">
+                    <div x-show="rhError" x-cloak class="mt-3 rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="rhError"></div>
                     <div class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements"></div><div class="text-[10px] text-muted-foreground">Elements</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships"></div><div class="text-[10px] text-muted-foreground">Relationships</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-amber-600'" x-text="rhData.zero_relationship_count"></div><div class="text-[10px] text-muted-foreground">Unconnected</div></div>
-                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element"></div><div class="text-[10px] text-muted-foreground">Avg Rels/El</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_elements ?? '—'"></div><div class="text-xs text-muted-foreground">Elements</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.total_relationships ?? '—'"></div><div class="text-xs text-muted-foreground">Relationships</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" :class="rhData.zero_relationship_count>rhData.total_elements*0.5?'text-destructive':'text-warning'" x-text="rhData.zero_relationship_count ?? '—'"></div><div class="text-xs text-muted-foreground">Unconnected</div></div>
+                        <div class="text-center p-2 rounded-lg bg-muted/50"><div class="text-xl font-bold" x-text="rhData.average_per_element ?? '—'"></div><div class="text-xs text-muted-foreground">Avg Rels/El</div></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="l in rhData.by_layer" :key="l.layer">
                             <div class="flex items-center gap-2 text-xs">
                                 <span class="w-24 font-medium truncate" x-text="l.layer"></span>
-                                <div class="flex-1 bg-muted rounded-full h-1.5"><div class="h-full rounded-full" :class="{'bg-violet-500':l.layer?.toLowerCase()==='motivation','bg-indigo-500':l.layer?.toLowerCase()==='strategy','bg-amber-500':l.layer?.toLowerCase()==='business','bg-blue-500':l.layer?.toLowerCase()==='application','bg-green-500':l.layer?.toLowerCase()==='technology','bg-slate-500':l.layer?.toLowerCase()==='implementation'}" :style="'width:'+Math.min(100,(l.avg/Math.max(...rhData.by_layer.map(x=>x.avg||1)))*100)+'%'"></div></div>
+                                <div class="flex-1 bg-muted rounded-full h-1.5"><div class="h-full rounded-full" :class="{'bg-violet-500':l.layer?.toLowerCase()==='motivation','bg-indigo-500':l.layer?.toLowerCase()==='strategy','bg-amber-500':l.layer?.toLowerCase()==='business','bg-info':l.layer?.toLowerCase()==='application','bg-green-500':l.layer?.toLowerCase()==='technology','bg-muted-foreground':l.layer?.toLowerCase()==='implementation'}" :style="'width:'+Math.min(100,(l.avg/Math.max(...rhData.by_layer.map(x=>x.avg||1)))*100)+'%'"></div></div><!-- design-tokens-ok: 6-way ArchiMate layer legend (motivation/strategy/business/application/technology/implementation) — only 4 semantic tokens exist, and 'application' already occupies bg-info, so folding violet+indigo both into info would collapse two distinct layers onto one swatch colour -->
                                 <span class="w-10 text-right text-muted-foreground" x-text="l.element_count"></span>
                                 <span class="w-10 text-right text-muted-foreground" x-text="l.relationship_count"></span>
                                 <span class="w-10 text-right font-medium" x-text="l.avg+'/el'"></span>
@@ -163,117 +138,67 @@
             </div>
         </div>
 
-        <!-- Tab Navigation -->
-        <div class="bg-card border-b border-border rounded-t-lg">
-            <div class="px-4 sm:px-6">
-                <nav class="-mb-px flex space-x-8 overflow-x-auto" role="tablist" aria-label="Capability Map sections">
-                    <button type="button" @click="activeTab = 'unified'; loadBusinessDomainCards();"
-                            :class="activeTab === 'unified' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'unified'"
-                            role="tab" id="tab-unified" aria-controls="panel-unified"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Business Capabilities">
-                        <i data-lucide="briefcase" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Business
-                    </button>
-                    <button type="button" @click="activeTab = 'application'"
-                            :class="activeTab === 'application' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'application'"
-                            role="tab" id="tab-application" aria-controls="panel-application"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Application Capabilities">
-                        <i data-lucide="package" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Applications
-                    </button>
-                    <button type="button" @click="activeTab = 'technical'; loadTechnicalTab();"
-                            :class="activeTab === 'technical' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'technical'"
-                            role="tab" id="tab-technical" aria-controls="panel-technical"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Technical Capabilities (ACM)">
-                        <i data-lucide="cpu" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Technical (ACM)
-                    </button>
-                    <button type="button" @click="activeTab = 'manufacturing'; loadManufacturingDomainStats();"
-                            :class="activeTab === 'manufacturing' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'manufacturing'"
-                            role="tab" id="tab-manufacturing" aria-controls="panel-manufacturing"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Manufacturing Capabilities">
-                        <i data-lucide="factory" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Manufacturing
-                    </button>
-                    <button type="button" @click="activeTab = 'process-gaps'; loadProcessGapData(); loadProcessCategoryStats();"
-                            :class="activeTab === 'process-gaps' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'process-gaps'"
-                            role="tab" id="tab-process-gaps" aria-controls="panel-process-gaps"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Process Gaps">
-                        <i data-lucide="workflow" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Process
-                    </button>
-                    <button type="button" @click="activeTab = 'gaps'; loadACMGapAnalysis();"
-                            :class="activeTab === 'gaps' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'gaps'"
-                            role="tab" id="tab-gaps" aria-controls="panel-gaps"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Gap Analysis">
-                        <i data-lucide="alert-triangle" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Gap Analysis
-                    </button>
-                    <button type="button" @click="activeTab = 'flow'"
-                            :class="activeTab === 'flow' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'flow'"
-                            role="tab" id="tab-flow" aria-controls="panel-flow"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Capability Application Flow">
-                        <i data-lucide="git-branch" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Flow
-                    </button>
-                    <button type="button" @click="activeTab = 'heatmap'; loadHeatMap();"
-                            :class="activeTab === 'heatmap' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'heatmap'"
-                            role="tab" id="tab-heatmap" aria-controls="panel-heatmap"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Coverage Heat Map">
-                        <i data-lucide="grid-3x3" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Heat Map
-                    </button>
-                    <button type="button" @click="activeTab = 'roadmap'; initRoadmapTab();"
-                            :class="activeTab === 'roadmap' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'"
-                            :aria-selected="activeTab === 'roadmap'"
-                            role="tab" id="tab-roadmap" aria-controls="panel-roadmap"
-                            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors whitespace-nowrap" aria-label="View Gap Resolution Roadmap">
-                        <i data-lucide="gantt-chart" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
-                        Roadmap
-                    </button>
-                </nav>
-            </div>
+        <!-- Lens — secondary views within the Business screen. These 11 were
+             previously a second competing row of tab buttons sitting right
+             under the view-switcher row above; they are all "lenses" onto
+             the same capability set (not distinct screens), so they now
+             live in one dropdown that drives the same activeTab state and
+             the same per-lens load functions the old buttons called. -->
+        <div class="mb-4 flex items-center gap-2">
+            <label for="capability-lens" class="text-sm font-medium text-foreground">Lens:</label>
+            <select id="capability-lens" x-model="activeTab" @change="onLensChange($event.target.value)"
+                    class="px-3 py-2 border border-input rounded-md text-sm bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="unified">Business</option>
+                <option value="capability-model">Capability Model</option>
+                <option value="application">Applications</option>
+                <option value="technical">Technical (ACM)</option>
+                <option value="manufacturing">Manufacturing</option>
+                <option value="process-gaps">Process</option>
+                <option value="gaps">Gap Analysis</option>
+                <option value="flow">Flow</option>
+                <option value="heatmap">Heat Map</option>
+                <option value="maturity">Maturity</option>
+                <option value="roadmap">Roadmap</option>
+            </select>
         </div>
 
         <!-- Main Content -->
         <div class="py-6">
             <!-- Unified Capability Tab -->
-            <div x-cloak x-show="activeTab === 'unified'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-unified" aria-labelledby="tab-unified">
+            <div x-cloak x-show="activeTab === 'unified'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-unified" aria-labelledby="capability-lens">
                 <!-- Business Capability Statistics (FAR-011: server-rendered fallback) -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="unified-stats-grid">
                     {{ data_card(
                         icon='grid-3x3',
                         icon_color='blue',
-                        value='<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-domain-count">' ~ (domain_count|default(0)) ~ '</span>') | safe,
                         label='Total Domains',
                         subtitle='Business areas'
                     ) }}
+                    {#- total_capabilities is server-rendered from the single
+                        counting function shared with /capability-map/hierarchy
+                        (app/modules/capabilities/services/capability_count_service.py)
+                        so the two screens can't disagree; the JS fetch below
+                        may refresh the span's contents but starts from the
+                        same truthful number rather than a fabricated 0. #}
                     {{ data_card(
                         icon='boxes',
                         icon_color='green',
-                        value='<span id="unified-cap-count">' ~ (total_capabilities|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-cap-count">' ~ (total_capabilities|dash) ~ '</span>') | safe,
                         label='Total Capabilities',
                         subtitle='All types'
                     ) }}
                     {{ data_card(
                         icon='link',
                         icon_color='purple',
-                        value='<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>' | safe,
+                        value=('<span id="unified-mapped-count">' ~ (mapped_count|default(0)) ~ '</span>') | safe,
                         label='Mapped to Apps',
                         subtitle='Active mappings'
                     ) }}
                     {{ data_card(
                         icon='pie-chart',
                         icon_color='amber',
-                        value='<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>' | safe,
+                        value=('<span id="unified-coverage">' ~ (coverage|default(0)) ~ '%</span>') | safe,
                         label='Coverage',
                         subtitle='Application support'
                     ) }}
@@ -313,7 +238,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Unified Capability View (Application + Manufacturing)</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="unified-start-record">1</span>-<span id="unified-end-record">10</span> of <span id="unified-total-records">0</span> results
+                            Showing <span id="unified-start-record">1</span>-<span id="unified-end-record">10</span> of <span id="unified-total-records">—</span> results
                         </div>
                     </div>
 
@@ -383,7 +308,7 @@
                         </div>
                         <div class="flex items-center justify-between">
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm text-muted-foreground">Rows per page:</label>
+                                <label for="unified-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                                 <select id="unified-page-size" @change="changePageSize('unified')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="10">10</option>
                                     <option value="25">25</option>
@@ -408,8 +333,37 @@
                 </div>
             </div>
 
+            <!-- Capability Model Tab — nested-box BIZBOK view (Business Architect visual 1) -->
+            <div x-cloak x-show="activeTab === 'capability-model'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-capability-model" aria-labelledby="capability-lens">
+                <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-foreground">Capability Model</h2>
+                        <p class="text-sm text-muted-foreground">Nested capability containers grouped by Business Domain. Boxes are heat-shaded by maturity gap (target − current). Click a capability to open its drill-down detail.</p>
+                    </div>
+                    <div data-testid="capability-legend" class="flex items-center gap-3 text-xs flex-wrap">
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-success"></span> On Target (gap ≤ 0)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-warning"></span> Minor Gap (1)</span>
+                        <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-destructive"></span> Major Gap (2+)</span>
+                    </div>
+                </div>
+                <div id="capmodel-loading">
+                    {{ skeleton_list(rows=4) }}
+                </div>
+                <div id="capmodel-empty" class="hidden">
+                    {{ empty_state(
+                        icon='layout-grid',
+                        title='No capabilities found',
+                        description='The capability model is the backbone every other view here hangs off. Define your first capability and give it a category, and it will appear in this map.',
+                        cta_text='Define a capability',
+                        cta_href=url_for('unified_low_priority.capability_map_capabilities'),
+                        cta_icon='plus'
+                    ) }}
+                </div>
+                <div id="capmodel-container" class="hidden overflow-x-auto"></div>
+            </div>
+
             <!-- Manufacturing Capability Tab -->
-            <div x-cloak x-show="activeTab === 'manufacturing'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-manufacturing" aria-labelledby="tab-manufacturing">
+            <div x-cloak x-show="activeTab === 'manufacturing'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-manufacturing" aria-labelledby="capability-lens">
                 <!-- Manufacturing Statistics -->
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6" id="mfg-stats-grid">
                     {{ data_card(
@@ -458,18 +412,18 @@
                              @click="document.getElementById('manufacturing-domain-filter').value='production'; filterTable('manufacturing');">
                             <div class="flex items-start justify-between mb-3">
                                 <div class="p-2 rounded-lg bg-warning/10">
-                                    <i data-lucide="cog" class="w-6 h-6 text-warning" aria-hidden="true"></i>
+                                    <i data-lucide="cog" class="w-6 h-6 text-warning-emphasis" aria-hidden="true"></i>
                                 </div>
                                 <div class="w-3 h-3 rounded-full bg-muted-foreground/40" id="mfg-prod-status"></div>
                             </div>
-                            <h4 class="font-semibold text-warning mb-1">Production</h4>
+                            <h4 class="font-semibold text-warning-emphasis mb-1">Production</h4>
                             <p class="text-xs text-muted-foreground mb-3">Manufacturing execution, scheduling, work orders</p>
                             <div class="flex items-center justify-between text-sm">
                                 <span class="text-muted-foreground" id="mfg-prod-count">0 capabilities</span>
-                                <span class="text-warning font-medium" id="mfg-prod-pct">0%</span>
+                                <span class="text-warning-emphasis font-medium" id="mfg-prod-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
-                                <div class="bg-warning h-1.5 rounded-full transition-all" id="mfg-prod-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                <div class="bg-warning h-1.5 rounded-full transition-all" id="mfg-prod-bar"></div>  <!-- width set by JS -->
                             </div>
                         </div>
 
@@ -489,7 +443,7 @@
                                 <span class="text-primary font-medium" id="mfg-sc-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
-                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-sc-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-sc-bar"></div>  <!-- width set by JS -->
                             </div>
                         </div>
 
@@ -502,14 +456,14 @@
                                 </div>
                                 <div class="w-3 h-3 rounded-full bg-muted-foreground/40" id="mfg-qual-status"></div>
                             </div>
-                            <h4 class="font-semibold text-success mb-1">Quality</h4>
+                            <h4 class="font-semibold text-success-emphasis mb-1">Quality</h4>
                             <p class="text-xs text-muted-foreground mb-3">QA/QC, inspections, compliance, certifications</p>
                             <div class="flex items-center justify-between text-sm">
                                 <span class="text-muted-foreground" id="mfg-qual-count">0 capabilities</span>
-                                <span class="text-success font-medium" id="mfg-qual-pct">0%</span>
+                                <span class="text-success-emphasis font-medium" id="mfg-qual-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
-                                <div class="bg-success h-1.5 rounded-full transition-all" id="mfg-qual-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                <div class="bg-success h-1.5 rounded-full transition-all" id="mfg-qual-bar"></div>  <!-- width set by JS -->
                             </div>
                         </div>
 
@@ -529,7 +483,7 @@
                                 <span class="text-primary font-medium" id="mfg-maint-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
-                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-maint-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-maint-bar"></div>  <!-- width set by JS -->
                             </div>
                         </div>
 
@@ -549,7 +503,7 @@
                                 <span class="text-primary font-medium" id="mfg-eng-pct">0%</span>
                             </div>
                             <div class="mt-2 w-full bg-border rounded-full h-1.5">
-                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-eng-bar" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                <div class="bg-primary h-1.5 rounded-full transition-all" id="mfg-eng-bar"></div>  <!-- width set by JS -->
                             </div>
                         </div>
                     </div>
@@ -576,7 +530,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Manufacturing Capability Mappings</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="manufacturing-start-record">1</span>-<span id="manufacturing-end-record">10</span> of <span id="manufacturing-total-records">0</span> results
+                            Showing <span id="manufacturing-start-record">1</span>-<span id="manufacturing-end-record">10</span> of <span id="manufacturing-total-records">—</span> results
                         </div>
                     </div>
 
@@ -631,10 +585,21 @@
                         </table>
                     </div>
 
+                    <!-- Bulk Actions -->
+                    <div class="px-6 py-3 border-t border-border flex items-center space-x-4">
+                        <span id="manufacturing-selection-count" class="text-sm text-muted-foreground hidden"></span>
+                        <button type="button" id="manufacturing-bulk-add-btn" @click="bulkAddToRoadmap('manufacturing')"
+                                class="px-4 py-2 bg-primary text-primary-foreground text-sm rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled aria-label="Add selected capabilities to roadmap">
+                            <i data-lucide="map" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
+                            Add Selected to Roadmap
+                        </button>
+                    </div>
+
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="manufacturing-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="manufacturing-page-size" @change="changePageSize('manufacturing')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -659,15 +624,15 @@
             </div>
 
             <!-- Application Capability Tab -->
-            <div x-cloak x-show="activeTab === 'application'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-application" aria-labelledby="tab-application">
+            <div x-cloak x-show="activeTab === 'application'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-application" aria-labelledby="capability-lens">
                 <!-- Application Capability Statistics -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6" id="app-stats-grid">
                     {{ data_card(
                         icon='boxes',
                         icon_color='blue',
                         value='<span id="app-cap-count">0</span>' | safe,
-                        label='Total Capabilities',
-                        subtitle='Application capabilities'
+                        label='Application Capabilities',
+                        subtitle='Total in the application layer'
                     ) }}
                     {{ data_card(
                         icon='link',
@@ -718,7 +683,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Application Capability Mappings</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="application-start-record">1</span>-<span id="application-end-record">10</span> of <span id="application-total-records">0</span> results
+                            Showing <span id="application-start-record">1</span>-<span id="application-end-record">10</span> of <span id="application-total-records">—</span> results
                         </div>
                     </div>
 
@@ -773,10 +738,21 @@
                         </table>
                     </div>
 
+                    <!-- Bulk Actions -->
+                    <div class="px-6 py-3 border-t border-border flex items-center space-x-4">
+                        <span id="application-selection-count" class="text-sm text-muted-foreground hidden"></span>
+                        <button type="button" id="application-bulk-add-btn" @click="bulkAddToRoadmap('application')"
+                                class="px-4 py-2 bg-primary text-primary-foreground text-sm rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled aria-label="Add selected capabilities to roadmap">
+                            <i data-lucide="map" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
+                            Add Selected to Roadmap
+                        </button>
+                    </div>
+
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="application-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="application-page-size" @change="changePageSize('application')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -801,13 +777,13 @@
             </div>
 
             <!-- Gap Analysis Tab -->
-            <div x-cloak x-show="activeTab === 'gaps'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-gaps" aria-labelledby="tab-gaps">
+            <div x-cloak x-show="activeTab === 'gaps'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-gaps" aria-labelledby="capability-lens">
                 <!-- Gap Analysis Statistics -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     {{ data_card(
                         icon='alert-circle',
                         icon_color='red',
-                        value='<span id="gap-total-count">0</span>' | safe,
+                        value='<span id="gap-total-count">—</span>' | safe,
                         label='Total Gaps',
                         subtitle='All gaps'
                     ) }}
@@ -859,7 +835,7 @@
                     <div class="px-6 py-4 border-b border-border flex justify-between items-center">
                         <h2 class="text-lg font-medium text-foreground">Gap Analysis (Capabilities Without Applications)</h2>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="gap-start-record">1</span>-<span id="gap-end-record">10</span> of <span id="gap-total-records">0</span> results
+                            Showing <span id="gap-start-record">1</span>-<span id="gap-end-record">10</span> of <span id="gap-total-records">—</span> results
                         </div>
                     </div>
 
@@ -914,10 +890,21 @@
                         </table>
                     </div>
 
+                    <!-- Bulk Actions -->
+                    <div class="px-6 py-3 border-t border-border flex items-center space-x-4">
+                        <span id="gap-selection-count" class="text-sm text-muted-foreground hidden"></span>
+                        <button type="button" id="gap-bulk-add-btn" @click="bulkAddToRoadmap('gap')"
+                                class="px-4 py-2 bg-primary text-primary-foreground text-sm rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled aria-label="Add selected capabilities to roadmap">
+                            <i data-lucide="map" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
+                            Add Selected to Roadmap
+                        </button>
+                    </div>
+
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="gap-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="gap-page-size" @change="changePageSize('gap')" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -998,20 +985,20 @@
                     <div class="bg-card rounded-lg shadow p-4 mb-6">
                         <div class="flex flex-wrap gap-4 items-center">
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Domain:</label>
+                                <label for="acm-gap-domain-filter" class="text-sm font-medium text-muted-foreground">Domain:</label>
                                 <select id="acm-gap-domain-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Domains</option>
                                     <option value="USER-EXPERIENCE">User Experience</option>
                                     <option value="APPLICATION-SERVICES">Application Services</option>
                                     <option value="DATA-STORAGE">Data Storage</option>
-                                    <option value="SECURITY-IDENTITY">Security & Identity</option>
+                                    <option value="SECURITY-IDENTITY">Security &amp; Identity</option>
                                     <option value="DEVOPS-PLATFORM">DevOps Platform</option>
-                                    <option value="AI-ANALYTICS">AI & Analytics</option>
+                                    <option value="AI-ANALYTICS">AI &amp; Analytics</option>
                                     <option value="COMMUNICATION">Communication</option>
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Level:</label>
+                                <label for="acm-gap-level-filter" class="text-sm font-medium text-muted-foreground">Level:</label>
                                 <select id="acm-gap-level-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Levels</option>
                                     <option value="L1">L1 - Area</option>
@@ -1021,7 +1008,7 @@
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Status:</label>
+                                <label for="acm-gap-status-filter" class="text-sm font-medium text-muted-foreground">Status:</label>
                                 <select id="acm-gap-status-filter" @change="filterACMGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="">All Status</option>
                                     <option value="gap">Gap (No Apps)</option>
@@ -1030,9 +1017,8 @@
                                 </select>
                             </div>
                             <div class="flex items-center space-x-2">
-                                <label class="text-sm font-medium text-muted-foreground">Search:</label>
-                                <label for="acm-gap-search-filter">Field</label>
-    <input type="text" id="acm-gap-search-filter" @input="filterACMGapTable()" placeholder="Search capabilities..." class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-48">
+                                <label for="acm-gap-search-filter" class="block text-sm font-medium text-muted-foreground mb-1">Search capabilities</label>
+                                <input type="text" id="acm-gap-search-filter" @input="filterACMGapTable()" placeholder="Search capabilities..." class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring w-48">
                             </div>
                             <button type="button" @click="clearACMGapFilters()" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors text-sm" aria-label="Filter">
                                 <i data-lucide="x" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
@@ -1088,13 +1074,13 @@
             </div>
 
             <!-- Process Gaps Tab (6th Tab) - Process Classification Framework Gap Analysis -->
-            <div x-cloak x-show="activeTab === 'process-gaps'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-process-gaps" aria-labelledby="tab-process-gaps">
+            <div x-cloak x-show="activeTab === 'process-gaps'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-process-gaps" aria-labelledby="capability-lens">
                 <!-- Statistics Cards -->
                 <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
                     {{ data_card(
                         icon='workflow',
                         icon_color='purple',
-                        value='<span id="process-total-count">0</span>' | safe,
+                        value='<span id="process-total-count">—</span>' | safe,
                         label='Total Processes',
                         subtitle='APQC processes'
                     ) }}
@@ -1139,7 +1125,7 @@
                                 <span class="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">1.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-1-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-primary mb-1">Vision & Strategy</h4>
+                            <h4 class="text-sm font-semibold text-primary mb-1">Vision &amp; Strategy</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-1-count">0</span>
                                 <span class="font-medium text-primary" id="proc-cat-1-pct">0%</span>
@@ -1148,13 +1134,13 @@
                         <div class="bg-success/5 border-2 border-success/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('2.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-success bg-success/10 px-2 py-0.5 rounded">2.0</span>
+                                <span class="text-xs font-bold text-success-emphasis bg-success/10 px-2 py-0.5 rounded">2.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-2-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-success mb-1">Products & Services</h4>
+                            <h4 class="text-sm font-semibold text-success-emphasis mb-1">Products &amp; Services</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-2-count">0</span>
-                                <span class="font-medium text-success" id="proc-cat-2-pct">0%</span>
+                                <span class="font-medium text-success-emphasis" id="proc-cat-2-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-accent border-2 border-primary/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
@@ -1163,7 +1149,7 @@
                                 <span class="text-xs font-bold text-primary bg-accent px-2 py-0.5 rounded">3.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-3-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-primary mb-1">Marketing & Sales</h4>
+                            <h4 class="text-sm font-semibold text-primary mb-1">Marketing &amp; Sales</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-3-count">0</span>
                                 <span class="font-medium text-primary" id="proc-cat-3-pct">0%</span>
@@ -1172,19 +1158,19 @@
                         <div class="bg-warning/5 border-2 border-warning/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('4.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-warning bg-warning/10 px-2 py-0.5 rounded">4.0</span>
+                                <span class="text-xs font-bold text-warning-emphasis bg-warning/10 px-2 py-0.5 rounded">4.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-4-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-warning mb-1">Deliver Products</h4>
+                            <h4 class="text-sm font-semibold text-warning-emphasis mb-1">Deliver Products</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-4-count">0</span>
-                                <span class="font-medium text-warning" id="proc-cat-4-pct">0%</span>
+                                <span class="font-medium text-warning-emphasis" id="proc-cat-4-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-success/5 border-2 border-info/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('5.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-success bg-success/10 px-2 py-0.5 rounded">5.0</span>
+                                <span class="text-xs font-bold text-success-emphasis bg-success/10 px-2 py-0.5 rounded">5.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-5-status"></div>
                             </div>
                             <h4 class="text-sm font-semibold text-info mb-1">Deliver Services</h4>
@@ -1209,13 +1195,13 @@
                         <div class="bg-destructive/5 border-2 border-destructive/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('7.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded">7.0</span>
+                                <span class="text-xs font-bold text-destructive-emphasis bg-destructive/10 px-2 py-0.5 rounded">7.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-7-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-destructive mb-1">Human Capital</h4>
+                            <h4 class="text-sm font-semibold text-destructive-emphasis mb-1">Human Capital</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-7-count">0</span>
-                                <span class="font-medium text-destructive" id="proc-cat-7-pct">0%</span>
+                                <span class="font-medium text-destructive-emphasis" id="proc-cat-7-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-info/5 border-2 border-info/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
@@ -1233,37 +1219,37 @@
                         <div class="bg-warning/5 border-2 border-warning/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('9.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-warning bg-warning/10 px-2 py-0.5 rounded">9.0</span>
+                                <span class="text-xs font-bold text-warning-emphasis bg-warning/10 px-2 py-0.5 rounded">9.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-9-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-warning mb-1">Financial Mgmt</h4>
+                            <h4 class="text-sm font-semibold text-warning-emphasis mb-1">Financial Mgmt</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-9-count">0</span>
-                                <span class="font-medium text-warning" id="proc-cat-9-pct">0%</span>
+                                <span class="font-medium text-warning-emphasis" id="proc-cat-9-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-destructive/5 border-2 border-destructive/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('10.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded">10.0</span>
+                                <span class="text-xs font-bold text-destructive-emphasis bg-destructive/10 px-2 py-0.5 rounded">10.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-10-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-destructive mb-1">Property Mgmt</h4>
+                            <h4 class="text-sm font-semibold text-destructive-emphasis mb-1">Property Mgmt</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-10-count">0</span>
-                                <span class="font-medium text-destructive" id="proc-cat-10-pct">0%</span>
+                                <span class="font-medium text-destructive-emphasis" id="proc-cat-10-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-success/5 border-2 border-success/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('11.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-success bg-success/10 px-2 py-0.5 rounded">11.0</span>
+                                <span class="text-xs font-bold text-success-emphasis bg-success/10 px-2 py-0.5 rounded">11.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-11-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-success mb-1">EHS Mgmt</h4>
+                            <h4 class="text-sm font-semibold text-success-emphasis mb-1">EHS Mgmt</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-11-count">0</span>
-                                <span class="font-medium text-success" id="proc-cat-11-pct">0%</span>
+                                <span class="font-medium text-success-emphasis" id="proc-cat-11-pct">0%</span>
                             </div>
                         </div>
                         <div class="bg-muted border-2 border-border rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
@@ -1281,13 +1267,13 @@
                         <div class="bg-destructive/5 border-2 border-destructive/20 rounded-md p-3 hover:shadow-md transition-shadow cursor-pointer"
                              @click="filterProcessByCategory('13.0')">
                             <div class="flex items-start justify-between mb-2">
-                                <span class="text-xs font-bold text-destructive bg-destructive/10 px-2 py-0.5 rounded">13.0</span>
+                                <span class="text-xs font-bold text-destructive-emphasis bg-destructive/10 px-2 py-0.5 rounded">13.0</span>
                                 <div class="w-2 h-2 rounded-full bg-muted-foreground/40" id="proc-cat-13-status"></div>
                             </div>
-                            <h4 class="text-sm font-semibold text-destructive mb-1">Knowledge Mgmt</h4>
+                            <h4 class="text-sm font-semibold text-destructive-emphasis mb-1">Knowledge Mgmt</h4>
                             <div class="flex justify-between text-xs text-muted-foreground">
                                 <span id="proc-cat-13-count">0</span>
-                                <span class="font-medium text-destructive" id="proc-cat-13-pct">0%</span>
+                                <span class="font-medium text-destructive-emphasis" id="proc-cat-13-pct">0%</span>
                             </div>
                         </div>
                     </div>
@@ -1297,12 +1283,12 @@
                 <div class="bg-card rounded-lg shadow p-4 mb-6">
                     <div class="flex flex-wrap gap-4 items-center">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Category:</label>
+                            <label for="process-category-filter" class="text-sm font-medium text-muted-foreground">Category:</label>
                             <select id="process-category-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Categories</option>
-                                <option value="1.0">1.0 - Vision & Strategy</option>
-                                <option value="2.0">2.0 - Products & Services</option>
-                                <option value="3.0">3.0 - Marketing & Sales</option>
+                                <option value="1.0">1.0 - Vision &amp; Strategy</option>
+                                <option value="2.0">2.0 - Products &amp; Services</option>
+                                <option value="3.0">3.0 - Marketing &amp; Sales</option>
                                 <option value="4.0">4.0 - Deliver Products</option>
                                 <option value="5.0">5.0 - Deliver Services</option>
                                 <option value="6.0">6.0 - Customer Service</option>
@@ -1316,7 +1302,7 @@
                             </select>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Level:</label>
+                            <label for="process-level-filter" class="text-sm font-medium text-muted-foreground">Level:</label>
                             <select id="process-level-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Levels</option>
                                 <option value="0">L0 - Value Chain</option>
@@ -1327,7 +1313,7 @@
                             </select>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Gap Status:</label>
+                            <label for="process-gap-status-filter" class="text-sm font-medium text-muted-foreground">Gap Status:</label>
                             <select id="process-gap-status-filter" @change="filterProcessGapTable()" class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Statuses</option>
                                 <option value="no_coverage">No App Coverage</option>
@@ -1337,9 +1323,8 @@
                             </select>
                         </div>
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm font-medium text-muted-foreground">Search:</label>
-                            <label for="process-search-filter">Field</label>
-    <input type="text" id="process-search-filter" @input="filterProcessGapTable()" placeholder="Search processes..." class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                            <label for="process-search-filter" class="block text-sm font-medium text-muted-foreground mb-1">Search processes</label>
+                            <input type="text" id="process-search-filter" @input="filterProcessGapTable()" placeholder="Search processes..." class="px-3 py-2 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         </div>
                         <button type="button" @click="clearProcessGapFilters()" class="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/80 transition-colors text-sm" aria-label="Filter">
                             <i data-lucide="x" class="w-4 h-4 inline mr-2" aria-hidden="true"></i>
@@ -1356,7 +1341,7 @@
                             <p class="text-sm text-muted-foreground">Business processes lacking application support or automation</p>
                         </div>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="process-gap-start-record">1</span>-<span id="process-gap-end-record">10</span> of <span id="process-gap-total-records">0</span> results
+                            Showing <span id="process-gap-start-record">1</span>-<span id="process-gap-end-record">10</span> of <span id="process-gap-total-records">—</span> results
                         </div>
                     </div>
 
@@ -1410,7 +1395,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="process-gap-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="process-gap-page-size" @change="changeProcessGapPageSize()" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25">25</option>
@@ -1458,7 +1443,7 @@
             </div>
 
             <!-- Flow Tab — Capability → Application Sankey -->
-            <div x-cloak x-show="activeTab === 'flow'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-flow" aria-labelledby="tab-flow">
+            <div x-cloak x-show="activeTab === 'flow'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-flow" aria-labelledby="capability-lens">
                 <div class="mb-4">
                     <h2 class="text-lg font-bold text-foreground">Capability Application Flow</h2>
                     <p class="text-sm text-muted-foreground">Traceability from Business Domain through Capabilities to Applications. Each link represents an active capability-application mapping.</p>
@@ -1470,7 +1455,7 @@
 
             <!-- Roadmap Tab (6th Tab) -->
             {# CAP-003: Coverage Heat Map #}
-            <div x-cloak x-show="activeTab === 'heatmap'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-heatmap" aria-labelledby="tab-heatmap">
+            <div x-cloak x-show="activeTab === 'heatmap'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-heatmap" aria-labelledby="capability-lens">
                 <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
                     <div>
                         <h2 class="text-lg font-bold text-foreground">Coverage Heat Map</h2>
@@ -1483,7 +1468,7 @@
                             <button type="button" id="heatmap-view-matrix" @click="setHeatmapView('matrix')" class="px-2.5 py-1 rounded text-xs font-medium bg-secondary text-secondary-foreground hover:bg-secondary/80">Matrix</button>
                         </div>
                         <div class="flex items-center gap-2">
-                            <label class="text-xs font-medium text-muted-foreground">Show:</label>
+                            <label for="heatmap-coverage-filter" class="text-xs font-medium text-muted-foreground">Show:</label>
                             <select id="heatmap-coverage-filter" @change="filterHeatmapCoverage($event.target.value)" class="px-2 py-1 border border-input rounded text-xs">
                                 <option value="all">All</option>
                                 <option value="gaps">Gaps Only (0 apps)</option>
@@ -1492,8 +1477,8 @@
                             </select>
                         </div>
                         <div class="flex items-center gap-3 text-xs">
-                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> Covered (2+)</span>
-                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Partial (1)</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-success"></span> Covered (2+)</span>
+                            <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-warning"></span> Partial (1)</span>
                             <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-destructive"></span> Gap (0)</span>
                         </div>
                     </div>
@@ -1514,25 +1499,25 @@
                             <h3 id="heatmap-detail-name" class="text-base font-bold text-foreground"></h3>
                             <p id="heatmap-detail-domain" class="text-xs text-muted-foreground"></p>
                         </div>
-                        <button type="button" @click="document.getElementById('heatmap-detail').classList.add('hidden')" class="text-muted-foreground hover:text-foreground p-1">
+                        <button aria-label="Close capability details" type="button" @click="document.getElementById('heatmap-detail').classList.add('hidden')" class="text-muted-foreground hover:text-foreground p-1">
                             <i data-lucide="x" class="w-4 h-4"></i>
                         </button>
                     </div>
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Applications</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Applications</p>
                             <p id="heatmap-detail-apps" class="text-xl font-bold text-foreground">0</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Current Maturity</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Current Maturity</p>
                             <p id="heatmap-detail-maturity-current" class="text-xl font-bold text-foreground">0/5</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Target Maturity</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Target Maturity</p>
                             <p id="heatmap-detail-maturity-target" class="text-xl font-bold text-foreground">0/5</p>
                         </div>
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] text-muted-foreground uppercase tracking-wide">Gap</p>
+                            <p class="text-xs text-muted-foreground uppercase tracking-wide">Gap</p>
                             <p id="heatmap-detail-gap" class="text-xl font-bold"></p>
                         </div>
                     </div>
@@ -1540,8 +1525,54 @@
                 </div>
             </div>
 
-            <div x-cloak x-show="activeTab === 'roadmap'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-roadmap" aria-labelledby="tab-roadmap">
-                {% from 'components/roadmap_widget.html' import roadmap_widget %}
+            <!-- Maturity Radar Tab — Business Architect visual 2 -->
+            <div x-cloak x-show="activeTab === 'maturity'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-maturity" aria-labelledby="capability-lens">
+                <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-foreground">Maturity Radar</h2>
+                        <p class="text-sm text-muted-foreground">Current vs. target capability maturity (1–5 scale). Choose a domain to drill into its individual capabilities, or a level to filter which capabilities are averaged.</p>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <label for="maturity-domain-select" class="text-xs font-medium text-muted-foreground">Domain:</label>
+                            <select id="maturity-domain-select" @change="loadMaturityRadarTab(true)" class="px-2 py-1 border border-input rounded text-xs">
+                                <option value="">All Domains (aggregate)</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="maturity-level-select" class="text-xs font-medium text-muted-foreground">Level:</label>
+                            <select id="maturity-level-select" @change="loadMaturityRadarTab(true)" class="px-2 py-1 border border-input rounded text-xs">
+                                <option value="">All Levels</option>
+                                <option value="1">Level 1 (Strategic)</option>
+                                <option value="2">Level 2 (Business)</option>
+                                <option value="3">Level 3 (Operational)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div id="maturity-loading" class="text-center py-12 text-muted-foreground">
+                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2"></i>
+                    Loading maturity data...
+                </div>
+                <div id="maturity-empty" class="hidden">
+                    {{ empty_state(
+                        icon='radar',
+                        title='No maturity data found',
+                        description='The radar plots current against target maturity. Score your capabilities once and the gaps — and everything downstream that heat-shades by them — light up.',
+                        cta_text='Assess capability maturity',
+                        cta_href=url_for('maturity_management.batch_update_maturity'),
+                        cta_icon='gauge'
+                    ) }}
+                </div>
+                <div id="maturity-chart-container" class="hidden rounded-lg border border-border bg-card p-5">
+                    <div class="relative h-[420px]">
+                        <canvas id="maturity-radar-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div x-cloak x-show="activeTab === 'roadmap'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-roadmap" aria-labelledby="capability-lens">
+                {% from 'components/roadmap_widget.html' import roadmap_widget with context %}
                 {{ roadmap_widget(
                     data_endpoint=url_for('capability_map.api_roadmap_gaps'),
                     title='Gap Resolution Roadmap',
@@ -1555,7 +1586,7 @@
             </div>
 
             <!-- Technical (ACM) Tab (7th Tab) -->
-            <div x-cloak x-show="activeTab === 'technical'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-technical" aria-labelledby="tab-technical">
+            <div x-cloak x-show="activeTab === 'technical'" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" role="tabpanel" id="panel-technical" aria-labelledby="capability-lens">
                 <!-- ACM Statistics -->
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                     {{ data_card(
@@ -1615,23 +1646,23 @@
                             <p class="text-sm text-muted-foreground">L1-L4 capabilities with application mapping status</p>
                         </div>
                         <div class="flex items-center gap-4">
-                            <select id="acm-domain-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-domain-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Domain">
                                 <option value="">All Domains</option>
                                 <option value="USER-EXPERIENCE">User Experience</option>
                                 <option value="APPLICATION-SERVICES">Application Services</option>
                                 <option value="DATA-STORAGE">Data Storage</option>
-                                <option value="SECURITY-IDENTITY">Security & Identity</option>
+                                <option value="SECURITY-IDENTITY">Security &amp; Identity</option>
                                 <option value="DEVOPS-PLATFORM">DevOps Platform</option>
-                                <option value="AI-ANALYTICS">AI & Analytics</option>
+                                <option value="AI-ANALYTICS">AI &amp; Analytics</option>
                                 <option value="COMMUNICATION">Communication</option>
                             </select>
-                            <select id="acm-level-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-level-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Level">
                                 <option value="">All Levels</option>
                                 <option value="L1">L1 - Capability Area</option>
                                 <option value="L2">L2 - Capability Group</option>
                                 <option value="L3">L3 - Specific Capability</option>
                             </select>
-                            <select id="acm-status-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm">
+                            <select id="acm-status-filter" @change="filterACMCapabilities()" class="px-3 py-2 border border-input rounded-md text-sm" aria-label="Filter by Status">
                                 <option value="">All Statuses</option>
                                 <option value="mapped">Mapped</option>
                                 <option value="unmapped">Unmapped (Gap)</option>
@@ -1665,7 +1696,7 @@
                     <!-- Pagination -->
                     <div class="px-6 py-4 border-t border-border flex items-center justify-between">
                         <div class="flex items-center space-x-2">
-                            <label class="text-sm text-muted-foreground">Rows per page:</label>
+                            <label for="acm-page-size" class="text-sm text-muted-foreground">Rows per page:</label>
                             <select id="acm-page-size" @change="changeACMPageSize()" class="px-3 py-1 border border-input rounded-md text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="10">10</option>
                                 <option value="25" selected>25</option>
@@ -1674,7 +1705,7 @@
                             </select>
                         </div>
                         <div class="text-sm text-muted-foreground">
-                            Showing <span id="acm-start-record">1</span>-<span id="acm-end-record">10</span> of <span id="acm-total-records">0</span> results
+                            Showing <span id="acm-start-record">1</span>-<span id="acm-end-record">10</span> of <span id="acm-total-records">—</span> results
                         </div>
                         <div class="flex items-center space-x-2">
                             <button type="button" @click="previousACMPage()" class="px-3 py-1 border border-input rounded-md text-sm hover:bg-accent disabled:opacity-50" id="acm-prev-btn" disabled aria-label="Previous page">
@@ -1719,7 +1750,7 @@
                                 </div>
                                 <div>
                                     <p class="text-xs text-muted-foreground">Total Gaps</p>
-                                    <p class="text-sm font-semibold text-foreground" id="convert-total-count">0</p>
+                                    <p class="text-sm font-semibold text-foreground" id="convert-total-count">—</p>
                                 </div>
                             </div>
                             <div class="flex items-center space-x-3">
@@ -1769,8 +1800,7 @@
                                 <!-- Auto-create Work Packages -->
                                 <div class="bg-muted/50 rounded-lg p-4">
                                     <label class="flex items-start space-x-3 cursor-pointer">
-                                        <label for="convert-create-wps">Field</label>
-    <input type="checkbox" id="convert-create-wps" class="mt-1 rounded border-input text-primary focus:ring-ring" checked @change="toggleWPTemplateSection()">
+                                        <input type="checkbox" id="convert-create-wps" class="mt-1 rounded border-input text-primary focus:ring-ring" checked @change="toggleWPTemplateSection()">
                                         <div class="flex-1">
                                             <div class="flex items-center space-x-2">
                                                 <span class="text-sm font-medium text-foreground">Create Work Packages Automatically</span>
@@ -1785,7 +1815,7 @@
 
                                 <!-- Work Package Template -->
                                 <div id="convert-template-section">
-                                    <label class="block text-sm font-medium text-muted-foreground mb-2">Work Package Template</label>
+                                    <label for="convert-wp-template" class="block text-sm font-medium text-muted-foreground mb-2">Work Package Template</label>
                                     <select id="convert-wp-template" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                         <option value="auto">Auto-select based on gap type</option>
                                         <option value="default">Default (Requirements → Design → Implementation → Testing → Deploy)</option>
@@ -1860,18 +1890,16 @@
 
                     <!-- Body -->
                     <div class="p-6 max-h-[70vh] overflow-y-auto">
-                        <label for="edit-gap-id">Field</label>
-    <input type="hidden" id="edit-gap-id">
+                        <input type="hidden" id="edit-gap-id">
 
                         <!-- Basic Info -->
                         <div class="grid grid-cols-2 gap-4 mb-6">
                             <div class="col-span-2">
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Name</label>
-                                <label for="edit-gap-name">Field</label>
-    <input type="text" id="edit-gap-name" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <label for="edit-gap-name" class="block text-sm font-medium text-muted-foreground mb-1">Name</label>
+                                <input type="text" id="edit-gap-name" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             </div>
                             <div class="col-span-2">
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
+                                <label for="edit-gap-description" class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                                 <textarea id="edit-gap-description" rows="3" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"></textarea>
                             </div>
                         </div>
@@ -1879,7 +1907,7 @@
                         <!-- Classification -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
+                                <label for="edit-gap-type" class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
                                 <select id="edit-gap-type" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="coverage">Coverage</option>
                                     <option value="quality">Quality</option>
@@ -1889,7 +1917,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                                <label for="edit-gap-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                                 <select id="edit-gap-priority" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="critical">Critical</option>
                                     <option value="high">High</option>
@@ -1898,7 +1926,7 @@
                                 </select>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
+                                <label for="edit-gap-status" class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                                 <select id="edit-gap-status" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     <option value="identified">Identified</option>
                                     <option value="in_progress">In Progress</option>
@@ -1910,20 +1938,18 @@
                         <!-- Timeline & Color -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
-                                <label for="edit-gap-start-date">Field</label>
-    <input type="date" id="edit-gap-start-date" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <label for="edit-gap-start-date" class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
+                                <input type="date" id="edit-gap-start-date" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Target Resolution Date</label>
-                                <label for="edit-gap-end-date">Field</label>
-    <input type="date" id="edit-gap-end-date" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                <label for="edit-gap-end-date" class="block text-sm font-medium text-muted-foreground mb-1">Target Resolution Date</label>
+                                <input type="date" id="edit-gap-end-date" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-muted-foreground mb-1">Color</label>
                                 <div class="flex items-center space-x-2">
-                                    <label for="edit-gap-color">Field</label>
-    <input type="color" id="edit-gap-color" class="w-12 h-10 border border-input rounded cursor-pointer">
+                                    <label for="edit-gap-color" class="block text-sm font-medium text-muted-foreground mb-1">Gap color</label>
+                                    <input type="color" id="edit-gap-color" class="w-12 h-10 border border-input rounded cursor-pointer">
                                     <div id="edit-gap-color-presets" class="flex space-x-1">
                                         <button type="button" @click="setGapColor('#6B7280')" class="w-6 h-6 rounded bg-muted-foreground hover:ring-2 ring-offset-1 ring-muted-foreground" aria-label="Set gap color to gray"></button>
                                         <button type="button" @click="setGapColor('#EAB308')" class="w-6 h-6 rounded bg-warning hover:ring-2 ring-offset-1 ring-warning" aria-label="Set gap color to warning"></button>
@@ -1939,19 +1965,16 @@
                         <!-- Owner & Effort -->
                         <div class="grid grid-cols-3 gap-4 mb-6">
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Owner</label>
-                                <label for="edit-gap-owner">Field</label>
-    <input type="text" id="edit-gap-owner" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder="Responsible person">
+                                <label for="edit-gap-owner" class="block text-sm font-medium text-muted-foreground mb-1">Owner</label>
+                                <input type="text" id="edit-gap-owner" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder="Responsible person">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Est. Effort (days)</label>
-                                <label for="edit-gap-effort">Field</label>
-    <input type="number" id="edit-gap-effort" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
+                                <label for="edit-gap-effort" class="block text-sm font-medium text-muted-foreground mb-1">Est. Effort (days)</label>
+                                <input type="number" id="edit-gap-effort" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-muted-foreground mb-1">Est. Cost</label>
-                                <label for="edit-gap-cost">Field</label>
-    <input type="number" id="edit-gap-cost" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="1000" placeholder="{{ config.CURRENCY_SYMBOL|default('£') }}">
+                                <label for="edit-gap-cost" class="block text-sm font-medium text-muted-foreground mb-1">Est. Cost</label>
+                                <input type="number" id="edit-gap-cost" class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="1000" placeholder="{{ config.CURRENCY_SYMBOL|default('£') }}">
                             </div>
                         </div>
 
@@ -1972,7 +1995,7 @@
 
                     <!-- Footer -->
                     <div class="flex justify-between p-4 border-t border-border bg-muted/50 rounded-b-lg">
-                        <button type="button" @click="deleteCurrentGap()" class="px-4 py-2 text-destructive bg-destructive/5 rounded-md hover:bg-destructive/10 flex items-center" aria-label="Delete gap">
+                        <button type="button" @click="deleteCurrentGap()" class="px-4 py-2 text-destructive-emphasis bg-destructive/5 rounded-md hover:bg-destructive/10 flex items-center" aria-label="Delete gap">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-2" aria-hidden="true"></i>
                             Delete Gap
                         </button>
@@ -2008,10 +2031,8 @@
                         </button>
                     </div>
 
-                    <label for="edit-wp-id">Field</label>
-    <input type="hidden" id="edit-wp-id">
-                    <label for="edit-wp-parent-id">Field</label>
-    <input type="hidden" id="edit-wp-parent-id">
+                    <input type="hidden" id="edit-wp-id">
+                    <input type="hidden" id="edit-wp-parent-id">
 
                     <!-- Quick Stats Bar -->
                     <div class="bg-muted/50 border-b border-border px-6 py-4">
@@ -2045,7 +2066,7 @@
                             </div>
                             <div class="flex items-center space-x-3">
                                 <div class="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center">
-                                    <i data-lucide="layers" class="w-5 h-5 text-warning" aria-hidden="true"></i>
+                                    <i data-lucide="layers" class="w-5 h-5 text-warning-emphasis" aria-hidden="true"></i>
                                 </div>
                                 <div>
                                     <p class="text-xs text-muted-foreground">Children</p>
@@ -2089,12 +2110,11 @@
                                 </h4>
                                 <div class="space-y-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Name *</label>
-                                        <label for="edit-wp-name">Field</label>
-    <input type="text" id="edit-wp-name" placeholder="Enter work package name..." class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-transparent">
+                                        <label for="edit-wp-name" class="block text-sm font-medium text-muted-foreground mb-1">Name *</label>
+                                        <input type="text" id="edit-wp-name" placeholder="Enter work package name..." class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-transparent">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
+                                        <label for="edit-wp-description" class="block text-sm font-medium text-muted-foreground mb-1">Description</label>
                                         <textarea id="edit-wp-description" rows="3" placeholder="Describe the work package objectives and scope..." class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:border-transparent"></textarea>
                                     </div>
                                 </div>
@@ -2104,11 +2124,11 @@
                             <div class="bg-card border border-border rounded-lg p-5 mb-4">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
                                     <i data-lucide="activity" class="w-4 h-4 mr-2 text-success" aria-hidden="true"></i>
-                                    Status & Progress
+                                    Status &amp; Progress
                                 </h4>
                                 <div class="grid grid-cols-3 gap-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
+                                        <label for="edit-wp-status" class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                                         <select id="edit-wp-status" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                             <option value="planned">Planned</option>
                                             <option value="in_progress">In Progress</option>
@@ -2118,7 +2138,7 @@
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                                        <label for="edit-wp-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                                         <select id="edit-wp-priority" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                             <option value="critical">Critical</option>
                                             <option value="high">High</option>
@@ -2129,12 +2149,12 @@
                                     <div>
                                         <label class="block text-sm font-medium text-muted-foreground mb-1">Progress (%)</label>
                                         <div class="flex items-center space-x-3">
-                                            <label for="edit-wp-progress">Field</label>
-    <input type="range" id="edit-wp-progress" min="0" max="100" value="0" class="flex-1 h-2 bg-border rounded-md appearance-none cursor-pointer" @input="updateWPProgressDisplay(this.value)">
+                                            <label for="edit-wp-progress" class="block text-sm font-medium text-muted-foreground mb-1">Progress percentage</label>
+                                            <input type="range" id="edit-wp-progress" min="0" max="100" value="0" class="flex-1 h-2 bg-border rounded-md appearance-none cursor-pointer" @input="updateWPProgressDisplay(this.value)">
                                             <span id="edit-wp-progress-value" class="text-sm font-semibold text-foreground w-12 text-right">0%</span>
                                         </div>
                                         <div class="mt-2 w-full bg-border rounded-full h-2">
-                                            <div id="edit-wp-progress-bar" class="bg-primary h-2 rounded-full transition-all duration-300" style="width: 0%"></div>  <!-- inline-style-ok -->
+                                            <div id="edit-wp-progress-bar" class="bg-primary h-2 rounded-full transition-all duration-300"></div>  <!-- width set by JS -->
                                         </div>
                                     </div>
                                 </div>
@@ -2144,24 +2164,22 @@
                             <div class="bg-card border border-border rounded-lg p-5 mb-4">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
                                     <i data-lucide="calendar" class="w-4 h-4 mr-2 text-primary" aria-hidden="true"></i>
-                                    Timeline & Scheduling
+                                    Timeline &amp; Scheduling
                                 </h4>
                                 <div class="grid grid-cols-3 gap-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
-                                        <label for="edit-wp-start-date">Field</label>
-    <input type="date" id="edit-wp-start-date" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <label for="edit-wp-start-date" class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
+                                        <input type="date" id="edit-wp-start-date" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Target Date</label>
-                                        <label for="edit-wp-end-date">Field</label>
-    <input type="date" id="edit-wp-end-date" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                        <label for="edit-wp-end-date" class="block text-sm font-medium text-muted-foreground mb-1">Target Date</label>
+                                        <input type="date" id="edit-wp-end-date" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-muted-foreground mb-1">Color Theme</label>
                                         <div class="flex items-center space-x-2">
-                                            <label for="edit-wp-color">Field</label>
-    <input type="color" id="edit-wp-color" class="w-16 h-10 border border-input rounded cursor-pointer">
+                                            <label for="edit-wp-color" class="block text-sm font-medium text-muted-foreground mb-1">Timeline bar color</label>
+                                            <input type="color" id="edit-wp-color" class="w-16 h-10 border border-input rounded cursor-pointer">
                                             <span class="text-xs text-muted-foreground">Timeline bar color</span>
                                         </div>
                                     </div>
@@ -2171,29 +2189,25 @@
                             <!-- Resources Section -->
                             <div class="bg-card border border-border rounded-lg p-5">
                                 <h4 class="text-sm font-semibold text-foreground mb-4 flex items-center">
-                                    <i data-lucide="dollar-sign" class="w-4 h-4 mr-2 text-warning" aria-hidden="true"></i>
-                                    Resources & Budget
+                                    <i data-lucide="dollar-sign" class="w-4 h-4 mr-2 text-warning-emphasis" aria-hidden="true"></i>
+                                    Resources &amp; Budget
                                 </h4>
                                 <div class="grid grid-cols-4 gap-4">
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Est. Hours</label>
-                                        <label for="edit-wp-est-hours">Field</label>
-    <input type="number" id="edit-wp-est-hours" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
+                                        <label for="edit-wp-est-hours" class="block text-sm font-medium text-muted-foreground mb-1">Est. Hours</label>
+                                        <input type="number" id="edit-wp-est-hours" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Actual Hours</label>
-                                        <label for="edit-wp-act-hours">Field</label>
-    <input type="number" id="edit-wp-act-hours" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
+                                        <label for="edit-wp-act-hours" class="block text-sm font-medium text-muted-foreground mb-1">Actual Hours</label>
+                                        <input type="number" id="edit-wp-act-hours" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Est. Cost ({{ config.CURRENCY_SYMBOL|default('£') }})</label>
-                                        <label for="edit-wp-est-cost">Field</label>
-    <input type="number" id="edit-wp-est-cost" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="100">
+                                        <label for="edit-wp-est-cost" class="block text-sm font-medium text-muted-foreground mb-1">Est. Cost ({{ config.CURRENCY_SYMBOL|default('£') }})</label>
+                                        <input type="number" id="edit-wp-est-cost" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="100">
                                     </div>
                                     <div>
-                                        <label class="block text-sm font-medium text-muted-foreground mb-1">Actual Cost ({{ config.CURRENCY_SYMBOL|default('£') }})</label>
-                                        <label for="edit-wp-act-cost">Field</label>
-    <input type="number" id="edit-wp-act-cost" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="100">
+                                        <label for="edit-wp-act-cost" class="block text-sm font-medium text-muted-foreground mb-1">Actual Cost ({{ config.CURRENCY_SYMBOL|default('£') }})</label>
+                                        <input type="number" id="edit-wp-act-cost" placeholder="0" class="w-full px-4 py-2.5 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" min="0" step="100">
                                     </div>
                                 </div>
                             </div>
@@ -2206,26 +2220,26 @@
                                 <div class="mb-4">
                                     <div class="relative">
                                         <i data-lucide="search" class="absolute left-4 top-3.5 w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
-                                        <label for="wp-children-search">Field</label>
-    <input type="text" id="wp-children-search" placeholder="Search child work packages by name..." class="w-full pl-12 pr-4 py-3 border border-input rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" @input="filterWPChildren()">
+                                        <label for="wp-children-search" class="block text-sm font-medium text-muted-foreground mb-1">Search child work packages</label>
+                                        <input type="text" id="wp-children-search" placeholder="Search child work packages by name..." class="w-full pl-12 pr-4 py-3 border border-input rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" @input="filterWPChildren()">
                                     </div>
                                 </div>
                                 <div class="grid grid-cols-4 gap-3">
-                                    <select id="wp-children-filter-status" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-status" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Status">
                                         <option value="">All Statuses</option>
                                         <option value="planned">Planned</option>
                                         <option value="in_progress">In Progress</option>
                                         <option value="completed">Completed</option>
                                         <option value="blocked">Blocked</option>
                                     </select>
-                                    <select id="wp-children-filter-priority" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-priority" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Priority">
                                         <option value="">All Priorities</option>
                                         <option value="critical">Critical</option>
                                         <option value="high">High</option>
                                         <option value="medium">Medium</option>
                                         <option value="low">Low</option>
                                     </select>
-                                    <select id="wp-children-filter-level" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-filter-level" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Filter by Level">
                                         <option value="">All Levels</option>
                                         <option value="1">Level 1</option>
                                         <option value="2">Level 2</option>
@@ -2233,7 +2247,7 @@
                                         <option value="4">Level 4</option>
                                         <option value="5">Level 5</option>
                                     </select>
-                                    <select id="wp-children-sort" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                                    <select id="wp-children-sort" aria-label="Sort child capabilities" @change="filterWPChildren()" class="px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                         <option value="name-asc">Name (A-Z)</option>
                                         <option value="name-desc">Name (Z-A)</option>
                                         <option value="status-asc">Status</option>
@@ -2283,7 +2297,7 @@
 
                     <!-- Footer -->
                     <div class="flex justify-between items-center p-5 border-t border-border bg-muted/50 rounded-b-lg">
-                        <button type="button" @click="deleteCurrentWP()" class="px-5 py-2.5 text-destructive bg-destructive/5 border border-destructive/20 rounded-md hover:bg-destructive/10 flex items-center font-medium" aria-label="Delete work package">
+                        <button type="button" @click="deleteCurrentWP()" class="px-5 py-2.5 text-destructive-emphasis bg-destructive/5 border border-destructive/20 rounded-md hover:bg-destructive/10 flex items-center font-medium" aria-label="Delete work package">
                             <i data-lucide="trash-2" class="w-4 h-4 mr-2" aria-hidden="true"></i>
                             Delete Work Package
                         </button>
@@ -2318,10 +2332,8 @@
 
                     <!-- Body -->
                     <div class="p-6">
-                        <label for="delete-item-id">Field</label>
-    <input type="hidden" id="delete-item-id">
-                        <label for="delete-item-type">Field</label>
-    <input type="hidden" id="delete-item-type">
+                        <input type="hidden" id="delete-item-id">
+                        <input type="hidden" id="delete-item-type">
 
                         <div class="mb-4">
                             <p class="text-muted-foreground mb-2" id="delete-confirm-message">Are you sure you want to delete this item?</p>
@@ -2334,10 +2346,10 @@
                         <!-- Warning for items with children -->
                         <div id="delete-cascade-warning" class="hidden bg-warning/5 border border-warning/20 rounded-lg p-3 mb-4">
                             <div class="flex items-start">
-                                <i data-lucide="alert-triangle" class="w-5 h-5 text-warning mr-2 mt-0.5" aria-hidden="true"></i>
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-warning-emphasis mr-2 mt-0.5" aria-hidden="true"></i>
                                 <div class="text-sm">
-                                    <p class="font-medium text-warning mb-1">Warning: Cascade Delete</p>
-                                    <p class="text-warning" id="delete-cascade-message"></p>
+                                    <p class="font-medium text-warning-emphasis mb-1">Warning: Cascade Delete</p>
+                                    <p class="text-warning-emphasis" id="delete-cascade-message"></p>
                                 </div>
                             </div>
                         </div>
@@ -2382,17 +2394,14 @@
                     </div>
                 </div>
 
-                <label for="add-roadmap-cap-id">Field</label>
-    <input type="hidden" id="add-roadmap-cap-id">
-                <label for="add-roadmap-type">Field</label>
-    <input type="hidden" id="add-roadmap-type">
-                <label for="add-roadmap-level">Field</label>
-    <input type="hidden" id="add-roadmap-level">
+                <input type="hidden" id="add-roadmap-cap-id">
+                <input type="hidden" id="add-roadmap-type">
+                <input type="hidden" id="add-roadmap-level">
 
                 <!-- Gap Details -->
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
+                        <label for="add-roadmap-gap-type" class="block text-sm font-medium text-muted-foreground mb-1">Gap Type</label>
                         <select id="add-roadmap-gap-type" class="w-full px-3 py-2 border border-input rounded-md">
                             <option value="coverage">Coverage Gap</option>
                             <option value="quality">Quality Gap</option>
@@ -2402,7 +2411,7 @@
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
+                        <label for="add-roadmap-priority" class="block text-sm font-medium text-muted-foreground mb-1">Priority</label>
                         <select id="add-roadmap-priority" class="w-full px-3 py-2 border border-input rounded-md">
                             <option value="critical">Critical</option>
                             <option value="high">High</option>
@@ -2413,27 +2422,25 @@
 
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
-                            <label for="add-roadmap-start-date">Field</label>
-    <input type="date" id="add-roadmap-start-date" class="w-full px-3 py-2 border border-input rounded-md">
+                            <label for="add-roadmap-start-date" class="block text-sm font-medium text-muted-foreground mb-1">Start Date</label>
+                            <input type="date" id="add-roadmap-start-date" class="w-full px-3 py-2 border border-input rounded-md">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Target Date</label>
-                            <label for="add-roadmap-end-date">Field</label>
-    <input type="date" id="add-roadmap-end-date" class="w-full px-3 py-2 border border-input rounded-md">
+                            <label for="add-roadmap-end-date" class="block text-sm font-medium text-muted-foreground mb-1">Target Date</label>
+                            <input type="date" id="add-roadmap-end-date" class="w-full px-3 py-2 border border-input rounded-md">
                         </div>
                     </div>
 
                     <div>
                         <label class="block text-sm font-medium text-muted-foreground mb-1">Color</label>
                         <div class="flex items-center gap-2">
-                            <label for="add-roadmap-color">Field</label>
-    <input type="color" id="add-roadmap-color" value="#6B7280" class="w-10 h-10 rounded cursor-pointer">
+                            <label for="add-roadmap-color" class="block text-sm font-medium text-muted-foreground mb-1">Gap color</label>
+                            <input type="color" id="add-roadmap-color" value="#6B7280" class="w-10 h-10 rounded cursor-pointer">
                             <div class="flex gap-1">
-                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#6B7280'" class="w-6 h-6 rounded-full bg-muted-foreground hover:ring-2 ring-offset-1 ring-gray-500" aria-label="Set roadmap color to gray"></button>
+                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#6B7280'" class="w-6 h-6 rounded-full bg-muted-foreground hover:ring-2 ring-offset-1 ring-muted-foreground" aria-label="Set roadmap color to gray"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#EAB308'" class="w-6 h-6 rounded-full bg-warning hover:ring-2 ring-offset-1 ring-warning" aria-label="Set roadmap color to warning"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#EF4444'" class="w-6 h-6 rounded-full bg-destructive hover:ring-2 ring-offset-1 ring-destructive" aria-label="Set roadmap color to destructive"></button>
-                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#A855F7'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-purple-500" aria-label="Set roadmap color to purple"></button>
+                                <button type="button" @click="document.getElementById('add-roadmap-color').value='#A855F7'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-purple-500" aria-label="Set roadmap color to purple"></button><!-- design-tokens-ok: literal purple swatch in a 6-colour roadmap picker (gray/warning/destructive/purple/blue/success) — no semantic token renders true purple, and re-pointing the ring at info/primary would visually merge it with the adjacent blue swatch -->
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#3B82F6'" class="w-6 h-6 rounded-full bg-primary hover:ring-2 ring-offset-1 ring-primary" aria-label="Set roadmap color to blue"></button>
                                 <button type="button" @click="document.getElementById('add-roadmap-color').value='#22C55E'" class="w-6 h-6 rounded-full bg-success hover:ring-2 ring-offset-1 ring-success" aria-label="Set roadmap color to success"></button>
                             </div>
@@ -2442,8 +2449,7 @@
 
                     <div>
                         <label class="flex items-center">
-                            <label for="add-roadmap-create-wps">Field</label>
-    <input type="checkbox" id="add-roadmap-create-wps" class="rounded border-input text-primary mr-2">
+                            <input type="checkbox" id="add-roadmap-create-wps" class="rounded border-input text-primary mr-2">
                             <span class="text-sm text-muted-foreground">Create default work packages</span>
                         </label>
                     </div>
@@ -2478,14 +2484,14 @@
                 <!-- Search and Filters -->
                 <div class="mb-4 space-y-3">
                     <div>
-                        <label for="quick-add-search">Field</label>
-    <input type="text" id="quick-add-search" placeholder="Search capabilities..."
+                        <label for="quick-add-search" class="block text-sm font-medium text-muted-foreground mb-1">Search capabilities</label>
+                        <input type="text" id="quick-add-search" placeholder="Search capabilities..."
                                @input="loadQuickAddCapabilities()"
                                class="w-full px-4 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Type</label>
+                            <label for="quick-add-type-filter" class="block text-sm font-medium text-muted-foreground mb-1">Type</label>
                             <select id="quick-add-type-filter" @change="loadQuickAddCapabilities()"
                                     class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Types</option>
@@ -2495,7 +2501,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-muted-foreground mb-1">Level</label>
+                            <label for="quick-add-level-filter" class="block text-sm font-medium text-muted-foreground mb-1">Level</label>
                             <select id="quick-add-level-filter" @change="loadQuickAddCapabilities()"
                                     class="w-full px-3 py-2 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <option value="">All Levels</option>
@@ -2526,401 +2532,36 @@
             </div>
         </div>
 
-        <!-- ACM Technical Capability Mapping Modal (Same design as other tabs) -->
-        <div id="acm-mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="acm-mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-foreground">
-                        Map Applications to: <span id="acm-modal-capability-name" class="text-info"></span>
-                    </h3>
-                    <button type="button" @click="closeACMMappingModal()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close ACM mapping modal">
-                        <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                    </button>
-                </div>
-
-                <!-- Search and Filter Bar -->
-                <div class="mb-4 space-y-3">
-                    <!-- Search Input -->
-                    <div class="relative">
-                        <label for="acm-application-search">Field</label>
-    <input
-                            type="text"
-                            id="acm-application-search"
-                            placeholder="Search applications by name, type, or domain..."
-                            class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @input="filterACMApplications()"
-                        />
-                        <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-
-                    <!-- Filter Row -->
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <!-- Filter by Type -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-type"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="">All Types</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Domain -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-domain"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="">All Domains</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Status -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-filter-status"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="all">All Applications</option>
-                                <option value="mapped">Mapped Only</option>
-                                <option value="unmapped">Unmapped Only</option>
-                            </select>
-                        </div>
-
-                        <!-- Sort Options -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="acm-sort-applications"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterACMApplications()"
-                            >
-                                <option value="name-asc">Name (A-Z)</option>
-                                <option value="name-desc">Name (Z-A)</option>
-                                <option value="type-asc">Type (A-Z)</option>
-                                <option value="mapped-first">Mapped First</option>
-                                <option value="unmapped-first">Unmapped First</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Bulk Actions -->
-                    <div class="flex items-center justify-between pt-2 border-t border-border">
-                        <div class="flex items-center space-x-4">
-                            <button type="button"
-                                @click="selectAllACMFiltered()"
-                                class="text-sm text-info hover:text-info font-medium"
-                             aria-label="Select all visible applications">
-                                Select All Visible
-                            </button>
-                            <button type="button"
-                                @click="deselectAllACM()"
-                                class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                             aria-label="Deselect all applications">
-                                Deselect All
-                            </button>
-                            <span id="acm-selection-count" class="text-sm text-muted-foreground">
-                                <span id="acm-selected-count">0</span> selected
-                            </span>
-                        </div>
-                        <div class="text-sm text-muted-foreground">
-                            Showing <span id="acm-filtered-count">0</span> of <span id="acm-total-count">0</span> applications
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Applications List -->
-                <div id="acm-applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                    <!-- Applications will be rendered here -->
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-3 pt-4 border-t">
-                    <button type="button"
-                        @click="closeACMMappingModal()"
-                        class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                     aria-label="Cancel ACM mapping">
-                        Cancel
-                    </button>
-                    <button type="button"
-                        @click="saveACMMappings()"
-                        class="px-4 py-2 bg-info text-primary-foreground rounded-md hover:bg-info"
-                     aria-label="Save ACM mappings">
-                        Save Mappings
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
 
-        <!-- Process Mapping Modal (Same design as ACM modal) -->
-        <div id="process-mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="process-mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-            <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-foreground">
-                        Map Applications to: <span id="process-modal-process-name" class="text-primary"></span>
-                    </h3>
-                    <button type="button" @click="closeProcessMappingModal()" class="text-muted-foreground hover:text-muted-foreground" aria-label="Close process mapping modal">
-                        <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                    </button>
-                </div>
-
-                <!-- Search and Filter Bar -->
-                <div class="mb-4 space-y-3">
-                    <!-- Search Input -->
-                    <div class="relative">
-                        <label for="process-application-search">Field</label>
-    <input
-                            type="text"
-                            id="process-application-search"
-                            placeholder="Search applications by name, type, or domain..."
-                            class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @input="filterProcessApplications()"
-                        />
-                        <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                    </div>
-
-                    <!-- Filter Row -->
-                    <div class="flex flex-wrap gap-3 items-center">
-                        <!-- Filter by Type -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-type"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="">All Types</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Domain -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-domain"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="">All Domains</option>
-                            </select>
-                        </div>
-
-                        <!-- Filter by Status -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-filter-status"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="all">All Applications</option>
-                                <option value="mapped">Mapped Only</option>
-                                <option value="unmapped">Unmapped Only</option>
-                            </select>
-                        </div>
-
-                        <!-- Sort Options -->
-                        <div class="flex-1 min-w-[150px]">
-                            <select
-                                id="process-sort-applications"
-                                class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                @change="filterProcessApplications()"
-                            >
-                                <option value="name-asc">Name (A-Z)</option>
-                                <option value="name-desc">Name (Z-A)</option>
-                                <option value="type-asc">Type (A-Z)</option>
-                                <option value="mapped-first">Mapped First</option>
-                                <option value="unmapped-first">Unmapped First</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Bulk Actions -->
-                    <div class="flex items-center justify-between pt-2 border-t border-border">
-                        <div class="flex items-center space-x-4">
-                            <button type="button"
-                                @click="selectAllProcessFiltered()"
-                                class="text-sm text-primary hover:text-primary font-medium"
-                             aria-label="Select all visible applications">
-                                Select All Visible
-                            </button>
-                            <button type="button"
-                                @click="deselectAllProcess()"
-                                class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                             aria-label="Deselect all applications">
-                                Deselect All
-                            </button>
-                            <span id="process-selection-count" class="text-sm text-muted-foreground">
-                                <span id="process-selected-count">0</span> selected
-                            </span>
-                        </div>
-                        <div class="text-sm text-muted-foreground">
-                            Showing <span id="process-filtered-count">0</span> of <span id="process-total-count">0</span> applications
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Applications List -->
-                <div id="process-applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                    <!-- Applications will be rendered here -->
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-3 pt-4 border-t">
-                    <button type="button"
-                        @click="closeProcessMappingModal()"
-                        class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                     aria-label="Cancel process mapping">
-                        Cancel
-                    </button>
-                    <button type="button"
-                        @click="saveProcessMappings()"
-                        class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary"
-                     aria-label="Save process mappings">
-                        Save Mappings
-                    </button>
-                </div>
-            </div>
-        </div>
-
-    <!-- Include Mapping Modals -->
-    {% include 'components/apqc_mapping_modal.html' %}
-    {% include 'components/archimate_mapping_modal.html' %}
+    {# ARCH-064: only the unified mapping modal is still rendered up front —
+       it pulls in its own <script src=...>, which an injected fragment cannot
+       execute. The APQC and ArchiMate dialogs, like the three application
+       mapping dialogs below, are fetched on first open. #}
     {% include 'components/unified_mapping_modal.html' %}
 
-    <!-- Application Mapping Modal -->
-    <div id="mapping-modal" hidden role="dialog" aria-modal="true" aria-labelledby="mapping-modal-title" class="modal-root fixed inset-0 bg-black/80 overflow-y-auto z-50">
-        <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-card">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-foreground">
-                    Map Applications to: <span id="modal-capability-name" class="text-primary"></span>
-                </h3>
-                <button type="button" @click="closeMappingModal()" class="text-muted-foreground hover:text-foreground" aria-label="Close application mapping modal">
-                    <i data-lucide="x" class="w-6 h-6" aria-hidden="true"></i>
-                </button>
-            </div>
-
-            <!-- Search and Filter Bar -->
-            <div class="mb-4 space-y-3">
-                <!-- Search Input -->
-                <div class="relative">
-                    <label for="application-search">Field</label>
-    <input
-                        type="text"
-                        id="application-search"
-                        placeholder="Search applications by name, type, or domain..."
-                        class="w-full px-4 py-2 pl-10 border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        @input="filterApplications()"
-                    />
-                    <i data-lucide="search" class="absolute left-3 top-3 w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                </div>
-
-                <!-- Filter Row -->
-                <div class="flex flex-wrap gap-3 items-center">
-                    <!-- Filter by Type -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-type"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="">All Types</option>
-                        </select>
-                    </div>
-
-                    <!-- Filter by Domain -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-domain"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="">All Domains</option>
-                        </select>
-                    </div>
-
-                    <!-- Filter by Status -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="filter-status"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="all">All Applications</option>
-                            <option value="mapped">Mapped Only</option>
-                            <option value="unmapped">Unmapped Only</option>
-                        </select>
-                    </div>
-
-                    <!-- Sort Options -->
-                    <div class="flex-1 min-w-[150px]">
-                        <select
-                            id="sort-applications"
-                            class="w-full px-3 py-2 text-sm border border-input rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            @change="filterApplications()"
-                        >
-                            <option value="name-asc">Name (A-Z)</option>
-                            <option value="name-desc">Name (Z-A)</option>
-                            <option value="type-asc">Type (A-Z)</option>
-                            <option value="mapped-first">Mapped First</option>
-                            <option value="unmapped-first">Unmapped First</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Bulk Actions -->
-                <div class="flex items-center justify-between pt-2 border-t border-border">
-                    <div class="flex items-center space-x-4">
-                        <button type="button"
-                            @click="selectAllFiltered()"
-                            class="text-sm text-primary hover:text-primary font-medium"
-                         aria-label="Select all visible applications">
-                            Select All Visible
-                        </button>
-                        <button type="button"
-                            @click="deselectAll()"
-                            class="text-sm text-muted-foreground hover:text-foreground font-medium"
-                         aria-label="Deselect all applications">
-                            Deselect All
-                        </button>
-                        <span id="selection-count" class="text-sm text-muted-foreground">
-                            <span id="selected-count">0</span> selected
-                        </span>
-                    </div>
-                    <div class="text-sm text-muted-foreground">
-                        Showing <span id="filtered-count">0</span> of <span id="total-count">0</span> applications
-                    </div>
-                </div>
-            </div>
-
-            <!-- Applications List -->
-            <div id="applications-list" class="max-h-96 overflow-y-auto space-y-3 mb-4">
-                <!-- Applications will be rendered here -->
-            </div>
-
-            <!-- Action Buttons -->
-            <div class="flex justify-end space-x-3 pt-4 border-t">
-                <button type="button"
-                    @click="closeMappingModal()"
-                    class="px-4 py-2 bg-muted text-muted-foreground rounded-md hover:bg-muted-foreground/40"
-                 aria-label="Cancel mapping">
-                    Cancel
-                </button>
-                <button type="button"
-                    @click="saveMappings()"
-                    class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary"
-                 aria-label="Save mappings">
-                    Save Mappings
-                </button>
-            </div>
-        </div>
-    </div>
+    {# ARCH-064: mapping-modal, acm-mapping-modal, process-mapping-modal,
+       apqc-mapping-modal and archimate-mapping-modal all start closed, so none
+       of them are serialised into this page any more. They are fetched from
+       capability_map.mapping_modal_partial on first open and injected here —
+       inside #app, so their Alpine scope is unchanged. #}
+    <div id="lazy-modal-host"
+         data-partial-url="{{ url_for('capability_map.mapping_modal_partial', variant='__VARIANT__') }}"></div>
 
 </div>
 {% endblock %}
 
 {% block extra_js %}
 {# roadmap-utils.js is now loaded globally in admin_base.html #}
-<script src="{{ url_for('static', filename='js/capability_map/index.js') }}?v=2"></script>
+{# ARCH-064: must load before index.js / index_inline.js — they call
+   CapabilityMapModals.ensure() to hydrate a dialog before opening it. #}
+<script src="{{ url_for('static', filename='js/capability_map/lazy_modals.js') }}"></script>
+<script src="{{ url_for('static', filename='js/capability_map/index.js') }}"></script>
 <script src="{{ url_for('static', filename='js/capability_map/index_inline.js') }}"></script>
+{# Business Architect visuals: Chart.js — same CDN/version already used by arb/dashboard.html
+   and applications/rationalization/dashboard.html. No new external library is introduced. #}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/shared/css_color_tokens.js') }}"></script>
+<script src="{{ url_for('static', filename='js/capability_map/nested_map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/capability_map/maturity_radar.js') }}"></script>
 {% endblock %}

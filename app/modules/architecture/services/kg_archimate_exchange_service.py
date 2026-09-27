@@ -12,6 +12,7 @@ Key capabilities:
 - View and viewpoint preservation
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -69,7 +70,7 @@ class ArchiMateExchangeService:
             Dict with import statistics and node mappings
         """
         try:
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
         except ET.ParseError as e:
             raise ValueError(f"Invalid XML format: {e}")
 
@@ -143,7 +144,7 @@ class ArchiMateExchangeService:
         )
 
         # Map ArchiMate exchange type to our ElementType enum
-        kg_element_type = ArchiMateExchangeService._map_exchange_type_to_kg(element_type)
+        ArchiMateExchangeService._map_exchange_type_to_kg(element_type)
 
         properties = {
             "archimate_id": element_id,
@@ -269,7 +270,7 @@ class ArchiMateExchangeService:
                     relationship, element_mapping
                 )
                 relationships_container.append(xml_relationship)
-            except Exception as e:
+            except Exception:
                 # Skip relationships with missing mappings
                 continue
 
@@ -300,9 +301,9 @@ class ArchiMateExchangeService:
         for key, value in element.properties.items():
             if key.startswith("property_"):
                 prop_key = key[9:]  # Remove 'property_' prefix
-                prop_elem = ET.SubElement(
+                (ET.SubElement(
                     xml_element, "archimate:property", {"key": prop_key, "value": str(value)}
-                )
+                ))
 
         return xml_element
 
@@ -368,7 +369,6 @@ class ArchiMateExchangeService:
         """Map ArchiMate exchange relationship type to our KGRelationshipType enum."""
         # Simplified mapping
         type_mapping = {
-            "association": KGRelationshipType.DEPENDS_ON,
             "realization": KGRelationshipType.DEPENDS_ON,
             "serving": KGRelationshipType.PROVIDES,
             "assignment": KGRelationshipType.MAPS_TO,
@@ -382,7 +382,7 @@ class ArchiMateExchangeService:
     def validate_exchange_format(xml_content: str) -> Dict[str, Any]:
         """Validate ArchiMate exchange format XML."""
         try:
-            root = ET.fromstring(xml_content)
+            root = safe_xml.fromstring(xml_content)
         except ET.ParseError as e:
             return {"valid": False, "errors": [f"XML parsing error: {e}"]}
 
@@ -427,7 +427,7 @@ class ArchiMateExchangeService:
         # In production, this would do detailed structural comparison
 
         try:
-            orig_root = ET.fromstring(original_xml)
+            orig_root = safe_xml.fromstring(original_xml)
             export_root = ET.fromstring(exported_xml)
         except ET.ParseError:
             return {"score": 0.0, "errors": ["XML parsing failed"]}

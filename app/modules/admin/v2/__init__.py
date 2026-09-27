@@ -24,12 +24,19 @@ def register(app: Flask) -> None:
     """Register the admin v2 module (all 3 blueprints)."""
     from .routes import admin_bp_v2, sidebar_mgmt_bp_v2, deprecation_bp_v2
     from app.modules.admin.connector_routes import m365_connector_bp
+    # Registered here as well as in the v1 module because USE_ADMIN_GUARDRAILS
+    # defaults ON, so _register_admin returns after this tier and never reaches
+    # v1. user_role_bp had been defined and imported by nobody, so a platform
+    # admin could not assign an enterprise_role -- the column that drives the
+    # sidebar, the dashboard cards and every permission check.
+    from app.modules.admin.routes.user_role_routes import user_role_bp
 
     app.register_blueprint(admin_bp_v2, url_prefix="/admin")
     app.register_blueprint(sidebar_mgmt_bp_v2)
     app.register_blueprint(deprecation_bp_v2)
     app.register_blueprint(m365_connector_bp)
+    app.register_blueprint(user_role_bp, url_prefix="/admin")
 
     app.logger.info(
-        "[MODULE-V2] admin v2 registered (guardrail-enabled, 3 blueprints)"
+        "[MODULE-V2] admin v2 registered (guardrail-enabled, 5 blueprints)"
     )

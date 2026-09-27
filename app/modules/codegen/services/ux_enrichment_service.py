@@ -145,23 +145,35 @@ def _get_table_columns(table_name: str) -> list:
 def _rank_entities_for_navigation(solution_id: int) -> list:
     """Return entity names ordered by ArchiMate relationship count DESC."""
     try:
+        # solution_archimate_elements has no organization_id, so sae.solution_id
+        # is the only constraint and it is only as trustworthy as the caller.
+        # archimate_elements/archimate_relationships do carry organization_id:
+        # scoping the LEFT JOINs keeps every solution row (element_name still
+        # falls back) while refusing to read another tenant's element names or
+        # count its relationships.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_ae = " AND ae.organization_id = :org" if _org is not None else ""
+        _org_ar = " AND ar.organization_id = :org" if _org is not None else ""
         sql = text(
-            """
+            f"""
             SELECT
                 COALESCE(ae.name, sae.element_name) AS entity_name,
                 COUNT(ar.id) AS rel_count
             FROM solution_archimate_elements sae
-            LEFT JOIN archimate_elements ae ON ae.id = sae.element_id
+            LEFT JOIN archimate_elements ae ON ae.id = sae.element_id{_org_ae}
             LEFT JOIN archimate_relationships ar
-                ON ar.source_id = sae.element_id
-                OR ar.target_id = sae.element_id
+                ON (ar.source_id = sae.element_id
+                    OR ar.target_id = sae.element_id){_org_ar}
             WHERE sae.solution_id = :sid
             GROUP BY COALESCE(ae.name, sae.element_name)
             ORDER BY rel_count DESC, COALESCE(ae.name, sae.element_name)
             LIMIT 10
             """
         )
-        rows = db.session.execute(sql, {"sid": solution_id}).fetchall()
+        rows = db.session.execute(
+            sql, {"sid": solution_id, **({"org": _org} if _org is not None else {})}
+        ).fetchall()
         return [row[0] for row in rows]
     except Exception:
         logger.debug(

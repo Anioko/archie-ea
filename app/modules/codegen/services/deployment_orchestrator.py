@@ -1,4 +1,4 @@
-"""Deploy generated solutions via Docker on the ARCHIE server.
+"""Deploy generated solutions via Docker on the Entelim server.
 
 This is the ONLY file that knows about the deployment backend. If we swap to
 Coolify, CapRover, or Kubernetes later, only this file changes. The public API
@@ -262,7 +262,7 @@ class DeploymentOrchestrator:
         # G2: use a named Docker volume so SQLite survives container restarts and
         # redeploys. /tmp inside a container is ephemeral and destroyed on restart.
         volume_name = f"archie-sol-{solution_id}-data"
-        db_url = f"sqlite+aiosqlite:////app/data/solution.db"
+        db_url = "sqlite+aiosqlite:////app/data/solution.db"
 
         # G3: run Alembic migration to completion before starting the server.
         # The default CMD starts uvicorn immediately, so tables are never created

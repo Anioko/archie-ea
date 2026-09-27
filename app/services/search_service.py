@@ -216,7 +216,7 @@ class TemplateSearchService:
             # Log performance metrics
             elapsed = (datetime.utcnow() - start_time).total_seconds() * 1000
             logger.info(
-                f"Search completed: query='{query}', results={len(results)}, "
+                f"Search completed: query='{query}', results={len(results)}, "  # raw-html-ok: logger.info() call, never rendered as HTML/browser output
                 f"total={total}, elapsed={elapsed:.2f}ms"
             )
 
@@ -579,7 +579,14 @@ class TemplateSearchService:
 
         try:
             # Use raw SQL for performance
+            # raw-sql-columns-ok: search_vector is an optional tsvector column
+            # added only by the full-text-search migration; the base schema
+            # (create_all + reconcile-schema, which is ADD-only and nullable-only)
+            # does not carry it. The call is already guarded by
+            # _has_search_vector_column() above and returns 0 with an explicit
+            # error log when the column is absent, so this is dormant, not silent.
             result = self.session.execute(
+                # raw-sql-columns-ok: optional tsvector column, guarded above
                 text(
                     """
                 UPDATE element_templates

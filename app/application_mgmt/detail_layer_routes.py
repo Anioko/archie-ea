@@ -12,16 +12,6 @@ from flask_login import login_required
 from sqlalchemy import func, select
 
 from .. import db
-from ..models.application_layer import (
-    ApplicationCollaboration,
-    ApplicationEvent,
-    ApplicationFunction,
-    ApplicationInteraction,
-    ApplicationInterface,
-    ApplicationProcess,
-    ApplicationService,
-    DataObject,
-)
 from ..models.application_portfolio import ApplicationComponent
 from ..models.archimate_business import (
     BusinessCollaboration,
@@ -38,15 +28,11 @@ from ..models.archimate_technology import (
     TechnologyInteraction,
     TechnologyProcess,
 )
-from ..models.business_capabilities import BusinessCapability, BusinessFunction
+from ..models.business_capabilities import BusinessCapability
 from ..models.business_layer import (
-    BusinessActor,
     BusinessEvent,
-    BusinessObject,
-    BusinessRole,
-    BusinessService,
 )
-from ..models.motivation import Assessment, Driver, Goal, Meaning, Stakeholder, Value
+from ..models.motivation import Assessment, Meaning, Stakeholder, Value
 from ..models.technology_layer import (
     CommunicationNetwork,
     Device,
@@ -57,6 +43,7 @@ from ..models.technology_layer import (
     TechnologyService,
 )
 from ..models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+from ..models.unified_capability import UnifiedCapability
 from ..models.vendor.vendor_organization import VendorProduct, application_vendor_products
 from . import application_mgmt
 from .forms import (
@@ -91,7 +78,12 @@ def update_document_file(id, doc_id):
         # Find the document (assuming there's a document model)
         from app.models.application_layer import ApplicationDocument
 
-        doc = ApplicationDocument.query.get_or_404(doc_id)
+        # tenant-scoping-ok: doc_id alone is not org-scoped (ApplicationDocument
+        # has no TenantMixin) -- anchor to the org-scoped `app` loaded above to
+        # close a cross-org document-update IDOR.
+        doc = ApplicationDocument.query.filter_by(
+            id=doc_id, application_component_id=app.id
+        ).first_or_404()
 
         # Update document fields
         if request.form.get("description"):
@@ -315,8 +307,25 @@ def application_capability_mapping_create(id):
         flash("Selected capability was not found.", "error")
         return _redirect_to_detail(app.id, tab="capabilities")
 
+    # The picker posts a BusinessCapability.id, but UnifiedApplicationCapabilityMapping
+    # FKs to unified_capabilities.id — a different sequence (ADR-0008: unified_capabilities
+    # is the canonical, provenance-tracked projection of business_capability, kept in sync
+    # by `flask project-capabilities`). Resolve the real projected row rather than reusing
+    # the BusinessCapability id directly, which only worked by accident where the two
+    # sequences happened to collide and otherwise violated the FK.
+    unified_capability = UnifiedCapability.query.filter_by(
+        source_table="business_capability", source_id=str(capability_id)
+    ).first()
+    if not unified_capability:
+        flash(
+            f"{capability.name} has not finished syncing to the capability store yet — "
+            "try again shortly, or ask an administrator to run the capability projection.",
+            "error",
+        )
+        return _redirect_to_detail(app.id, tab="capabilities")
+
     existing = UnifiedApplicationCapabilityMapping.query.filter_by(
-        application_component_id=app.id, unified_capability_id=capability_id
+        application_component_id=app.id, unified_capability_id=unified_capability.id
     ).first()
     if existing:
         flash("Capability already linked to this application.", "info")
@@ -357,7 +366,7 @@ def application_capability_mapping_create(id):
 
     mapping = UnifiedApplicationCapabilityMapping(
         application_component_id=app.id,
-        unified_capability_id=capability_id,
+        unified_capability_id=unified_capability.id,
         support_level=support_level or None,
         coverage_percentage=coverage_value,
         maturity_level=maturity_value,
@@ -369,9 +378,14 @@ def application_capability_mapping_create(id):
         db.session.add(mapping)
         db.session.commit()
         flash(f"Linked {capability.name} to {app.name}.", "success")
-    except Exception as exc:
+    except Exception:
         db.session.rollback()
-        flash(f"Unable to link capability: {exc}", "error")
+        current_app.logger.exception(
+            "Failed to link capability %s to application %s", capability_id, app.id
+        )
+        # Never interpolate the raw exception into user-facing text — it leaked
+        # internal table names, the full INSERT and its parameter dictionary.
+        flash("Unable to link that capability. The team has been notified.", "error")
 
     return _redirect_to_detail(app.id, tab="capabilities")
 
@@ -417,7 +431,7 @@ def application_capability_mapping_delete(id, mapping_id):
 @login_required
 def update_motivation_layer(id):
     """Update Motivation Layer elements (Requirements, Stakeholders, Drivers, Goals)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -624,21 +638,24 @@ def update_motivation_layer(id):
                             changed_fields.append(f"outcome_{outcome_id}")
                             db.session.add(outcome_obj)
 
-        # Process constraint updates and deletions
-        # Note: Constraint model not yet created in the codebase
+        # Process constraint updates and deletions.
+        # The Constraint model does not exist yet, so this block is switched off at
+        # `if False:` and is unreachable. The noqa markers below record that the
+        # undefined name is a known consequence of that, not an unfixed defect —
+        # remove them (and the `if False:`) when the model lands.
         if False:  # Disabled until Constraint model is created
             for constraint_data in form.constraints.data:
                 constraint_id = constraint_data.get("id")
                 constraint_delete = constraint_data.get("_delete")
                 if constraint_id and constraint_delete:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         db.session.delete(constraint_obj)
                         changed_fields.append(f"constraint_{constraint_id}_deleted")
                 constraint_name = constraint_data.get("name")
                 constraint_description = constraint_data.get("description")
                 if constraint_id and constraint_name:
-                    constraint_obj = Constraint.query.get(int(constraint_id))
+                    constraint_obj = Constraint.query.get(int(constraint_id))  # noqa: F821 — model not yet created
                     if constraint_obj:
                         has_changed = False
                         if constraint_obj.name != constraint_name:
@@ -694,7 +711,7 @@ def update_motivation_layer(id):
         if changed_fields:
             try:
                 session["motivation_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
         return jsonify(
@@ -717,7 +734,7 @@ def update_motivation_layer(id):
 @login_required
 def update_strategy_layer(id):
     """Update Strategy Layer elements (Capabilities, Resources, Value Streams, Courses of Action)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
 
     # csrf-ok: global CSRFProtect active
 
@@ -822,7 +839,7 @@ def update_strategy_layer(id):
         if changed_fields:
             try:
                 session["strategy_changes"] = changed_fields
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
         return jsonify(
@@ -850,7 +867,7 @@ def update_strategy_layer(id):
 @login_required
 def update_business_layer(id):
     """Update Business Layer elements (Services, Processes, Actors, Roles)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = BusinessLayerForm(request.form)
@@ -1224,7 +1241,7 @@ def update_business_layer(id):
         if changed_fields:
             try:
                 session["business_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {
@@ -1245,7 +1262,7 @@ def update_business_layer(id):
 @login_required
 def update_application_layer(id):
     """Update Application Layer elements (Interfaces, Data Objects, Services)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = ApplicationLayerForm(request.form)
@@ -1517,7 +1534,7 @@ def update_application_layer(id):
         if changed_fields:
             try:
                 session["application_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {
@@ -1538,7 +1555,7 @@ def update_application_layer(id):
 @login_required
 def update_technology_layer(id):
     """Update Technology Layer elements (Nodes, SystemSoftware, TechnologyServices)"""
-    app = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     # csrf-ok: global CSRFProtect active
     try:
         form = TechnologyLayerForm(request.form)
@@ -1906,7 +1923,7 @@ def update_technology_layer(id):
         if changed_fields:
             try:
                 session["technology_changes"] = json.dumps(changed_fields)
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
         return jsonify(
             {

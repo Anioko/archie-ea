@@ -391,7 +391,6 @@ class UnifiedAPQCService:
         """Fallback regex-based classification."""
         import re
 
-        from app import db
         from app.models.apqc_process import APQCProcess
 
         # Extract PCF codes (e.g., 1.0, 1.1.1, 10.2.3.4)

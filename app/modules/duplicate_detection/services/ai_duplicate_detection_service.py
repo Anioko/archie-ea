@@ -12,7 +12,7 @@ Advanced AI/ML implementation for intelligent duplicate detection with:
 Phase 1: Foundation Intelligence Implementation
 """
 
-import json
+import numpy as np
 import logging
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -79,6 +79,8 @@ except ImportError:
 from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.unified_duplicate_detection import (
+    DetectionStrategy,
+    DuplicateType,
     GroupStatus,
     UnifiedDetectionRun,
     UnifiedDuplicateGroup,
@@ -86,6 +88,18 @@ from app.models.unified_duplicate_detection import (
 
 logger = logging.getLogger(__name__)
 
+
+
+def _persisted_strategy(strategy: str) -> str:
+    """A value the model's @validates will accept.
+
+    detect_duplicates() advertises "ai_enhanced", which is not a
+    DetectionStrategy and so raised ValueError on every run. The AI provenance
+    is not lost by mapping it -- algorithm_version records "ai_v1.0".
+    """
+    if strategy in {s.value for s in DetectionStrategy}:
+        return strategy
+    return DetectionStrategy.ENHANCED.value
 
 class SemanticDetectionEngine:
     """Advanced semantic similarity detection using transformer models"""
@@ -257,9 +271,6 @@ class AdaptiveLearningEngine:
         accepted_confidences = [
             f["original_confidence"] for f in feedback_data if f["action"] == "accept"
         ]
-        rejected_confidences = [
-            f["original_confidence"] for f in feedback_data if f["action"] == "reject"
-        ]
 
         if not accepted_confidences:
             return 0.65
@@ -317,6 +328,10 @@ class AIDuplicateDetectionService:
         start_time = datetime.utcnow()
 
         try:
+            # The engines are created lazily; without this the semantic engine is
+            # still None and every call raises AttributeError.
+            self._ensure_engines()
+
             # Get all applications
             applications = self._get_applications_data()
 
@@ -360,11 +375,12 @@ class AIDuplicateDetectionService:
                 "ai_insights": self._generate_global_insights(enhanced_duplicates),
             }
 
-        except Exception as e:
-            logger.error(f"AI duplicate detection failed: {e}")
+        except Exception:
+            # Log the internal detail server-side; never return it to the client.
+            logger.error("AI duplicate detection failed", exc_info=True)
             return {
                 "success": False,
-                "error": str(e),
+                "error": "Duplicate detection could not be completed.",
                 "processing_time": (datetime.utcnow() - start_time).total_seconds(),
             }
 
@@ -722,8 +738,8 @@ class AIDuplicateDetectionService:
         """Create detection run record"""
         run = UnifiedDetectionRun(
             run_name=f"AI Detection Run {datetime.now().strftime('%Y-%m-%d %H:%M')}",
-            strategy=strategy,
-            threshold=threshold,
+            strategy=_persisted_strategy(strategy),
+            similarity_threshold=threshold,
             status="completed",
             started_at=datetime.utcnow(),
             completed_at=datetime.utcnow(),
@@ -748,28 +764,38 @@ class AIDuplicateDetectionService:
         # Create duplicate groups
         for duplicate in duplicates:
             group = UnifiedDuplicateGroup(
-                run_id=run.id,
+                detection_run_id=run.id,
                 name=f"AI Duplicate Group: {duplicate['app1_name']} / {duplicate['app2_name']}",
                 description=duplicate.get("explanation", ""),
-                duplicate_type="ai_detected",
-                similarity_score=duplicate["confidence"],
-                status=GroupStatus.PENDING,
-                metadata=json.dumps(
-                    {
-                        "detection_algorithm": duplicate["detection_algorithm"],
-                        "similarity_scores": duplicate["similarity_scores"],
-                        "ai_insights": duplicate.get("ai_insights", {}),
-                        "business_impact": duplicate.get("business_impact", {}),
-                        "recommendations": duplicate.get("recommendations", []),
-                    }
+                duplicate_type=(
+                    DuplicateType.EXACT.value
+                    if duplicate["confidence"] > 0.9
+                    else DuplicateType.FUZZY.value
                 ),
+                similarity_score=duplicate["confidence"],
+                similarity_threshold=threshold,
+                status=GroupStatus.PENDING.value,
+                match_details={
+                    "detection_algorithm": duplicate["detection_algorithm"],
+                    "similarity_scores": duplicate["similarity_scores"],
+                    "ai_insights": duplicate.get("ai_insights", {}),
+                    "business_impact": duplicate.get("business_impact", {}),
+                    "recommendations": duplicate.get("recommendations", []),
+                },
             )
 
             db.session.add(group)
             db.session.flush()
 
-            # Add applications to group (simplified - would need proper relationship setup)
-            # This would require updating the model relationships
+            # Without members a group is not reviewable: the screen lists a pair
+            # and offers a merge, and both come from this relationship.
+            members = ApplicationComponent.query.filter(
+                ApplicationComponent.id.in_(
+                    [duplicate["app1_id"], duplicate["app2_id"]]
+                )
+            ).all()
+            for member in members:
+                group.applications.append(member)
 
         db.session.commit()
         return run
@@ -883,6 +909,7 @@ class AIDuplicateDetectionService:
             "timestamp": datetime.utcnow(),
         }
 
+        self._ensure_engines()
         self.learning_engine.process_feedback(feedback_data, user_action, confidence)
 
     def get_performance_metrics(self) -> Dict[str, Any]:

@@ -1,0 +1,83 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% from 'components/empty_state.html' import empty_state %}
+
+{% block title %}Errors{% endblock %}
+
+{% block content %}
+{{ page_shell(
+    'Errors',
+    subtitle='Deduplicated server + client errors, aggregated by fingerprint across every organization.',
+    breadcrumb=[('Home', url_for('dashboard.overview')), ('Errors', None)],
+    icon='alert-triangle'
+) }}
+
+<div class="space-y-4" data-testid="errors-dashboard-page">
+    <form method="get" class="flex flex-wrap items-center gap-3" data-testid="errors-filter-form">
+        <select name="source" class="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                aria-label="Filter by source" onchange="this.form.submit()">
+            <option value="" {% if not source_filter %}selected{% endif %}>All sources</option>
+            <option value="server" {% if source_filter == 'server' %}selected{% endif %}>Server</option>
+            <option value="client" {% if source_filter == 'client' %}selected{% endif %}>Client (browser)</option>
+        </select>
+        <label class="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <input type="checkbox" name="resolved" value="1" {% if show_resolved %}checked{% endif %}
+                   onchange="this.form.submit()">
+            Show resolved
+        </label>
+    </form>
+
+    {% if events %}
+    <div class="overflow-x-auto rounded-lg border border-border">
+        <table class="w-full text-sm" data-testid="errors-table">
+            <thead class="bg-muted/40 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <tr>
+                    <th class="px-4 py-2.5">Source</th>
+                    <th class="px-4 py-2.5">Message</th>
+                    <th class="px-4 py-2.5">Location</th>
+                    <th class="px-4 py-2.5">Count</th>
+                    <th class="px-4 py-2.5">Last seen</th>
+                    <th class="px-4 py-2.5"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for e in events %}
+                <tr data-testid="error-row-{{ e.id }}">
+                    <td class="px-4 py-2.5">
+                        <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium
+                            {% if e.source == 'client' %}bg-warning/10 text-warning{% else %}bg-destructive/10 text-destructive{% endif %}">
+                            {{ e.source }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-2.5 max-w-md truncate font-medium text-foreground" title="{{ e.message }}">{{ e.message }}</td>
+                    <td class="px-4 py-2.5 text-muted-foreground">{{ e.location or '—' }}</td>
+                    <td class="px-4 py-2.5 text-muted-foreground">{{ e.occurrence_count }}</td>
+                    <td class="px-4 py-2.5 text-muted-foreground">{{ e.last_seen_at.strftime('%Y-%m-%d %H:%M') if e.last_seen_at else '—' }}</td>
+                    <td class="px-4 py-2.5 text-right">
+                        {% if not e.resolved %}
+                        <form method="post" action="{{ url_for('error_events.resolve_error', event_id=e.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit"
+                                    class="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent"
+                                    data-testid="resolve-error-{{ e.id }}">
+                                <i data-lucide="check" class="h-3.5 w-3.5"></i> Resolve
+                            </button>
+                        </form>
+                        {% else %}
+                        <span class="text-xs text-muted-foreground">Resolved</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    {{ empty_state(
+        title='No errors recorded',
+        description='Nothing has been logged at WARNING level or above, and no client-side JS error has been reported yet.',
+        icon='shield-check'
+    ) }}
+    {% endif %}
+</div>
+{% endblock %}

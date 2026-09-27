@@ -8,12 +8,12 @@
         <div class="flex items-center gap-2">
             <button type="button" @click="toggleComments('risks')" class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Comments">
                 <i data-lucide="message-square" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                <span x-show="commentCount('risks') > 0" x-text="commentCount('risks')" class="text-[10px] bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
+                <span x-show="commentCount('risks') > 0" x-text="commentCount('risks')" class="text-xs bg-primary text-primary-foreground rounded-full px-1 min-w-[16px] text-center" x-cloak></span>
             </button>
         </div>
         <div class="flex items-center gap-1.5">
             <button type="button" @click="$dispatch('open-archimate-picker', {phase: 'E', elementType: 'Assessment', linkEndpoint: '/api/solutions/{{ solution.id }}/elements'})"
-                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-destructive hover:bg-red-500/10 border border-red-500/30 transition-colors"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-destructive-emphasis hover:bg-destructive/10 border border-destructive/30 transition-colors"
                 title="Link an existing ArchiMate Assessment element">
                 <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link ArchiMate
             </button>
@@ -31,7 +31,7 @@
         <div class="p-3 rounded-lg border bg-card/50">
             <h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Risk Heatmap</h4>
             <div class="overflow-x-auto">
-                <table class="text-[10px] border-collapse w-full max-w-xs">
+                <table class="text-xs border-collapse w-full max-w-xs">
                     <thead>
                         <tr>
                             <th class="text-right pr-2 pb-1 text-muted-foreground font-normal w-14"></th>
@@ -48,10 +48,10 @@
                                     <td class="text-center py-0.5 px-1">
                                         <div class="w-7 h-7 rounded flex items-center justify-center mx-auto font-medium text-xs transition-colors"
                                              :class="{
-                                                 'bg-red-500/80 text-primary-foreground': cell.count > 0 && (cell.impact === 'critical' || cell.impact === 'high') && (cell.probability === 'high' || cell.probability === 'critical'),
-                                                 'bg-orange-400/70 text-primary-foreground': cell.count > 0 && ((cell.impact === 'high' && cell.probability === 'medium') || (cell.impact === 'medium' && cell.probability === 'high')),
-                                                 'bg-amber-300/70 text-foreground': cell.count > 0 && cell.impact === 'medium' && cell.probability === 'medium',
-                                                 'bg-emerald-400/60 text-primary-foreground': cell.count > 0 && (cell.impact === 'low' || cell.probability === 'low'),
+                                                 'bg-destructive/80 text-primary-foreground': cell.count > 0 && (cell.impact === 'critical' || cell.impact === 'high') && (cell.probability === 'high' || cell.probability === 'critical'),
+                                                 'bg-orange-400/70 text-primary-foreground': cell.count > 0 && ((cell.impact === 'high' && cell.probability === 'medium') || (cell.impact === 'medium' && cell.probability === 'high')), {# design-tokens-ok: 4-tier risk heatmap scale, distinct tiers can't collapse onto one semantic token #}
+                                                 'bg-amber-300/70 text-foreground': cell.count > 0 && cell.impact === 'medium' && cell.probability === 'medium', {# design-tokens-ok: 4-tier risk heatmap scale #}
+                                                 'bg-emerald-400/60 text-primary-foreground': cell.count > 0 && (cell.impact === 'low' || cell.probability === 'low'), {# design-tokens-ok: 4-tier risk heatmap scale #}
                                                  'bg-muted/30': cell.count === 0
                                              }"
                                              x-text="cell.count || ''"></div>
@@ -61,7 +61,7 @@
                         </template>
                     </tbody>
                 </table>
-                <p class="text-[10px] text-muted-foreground mt-1">Rows: Impact · Cols: Probability</p>
+                <p class="text-xs text-muted-foreground mt-1">Rows: Impact · Cols: Probability</p>
             </div>
         </div>
     </template>
@@ -85,23 +85,23 @@
                         <tr class="border-b border-border/50">
                             <td class="py-2 text-foreground" x-text="risk.risk_description"></td>
                             <td class="py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="impactClass(risk.impact)" x-text="risk.impact"></span>
                             </td>
                             <td class="py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="probabilityClass(risk.probability)" x-text="risk.probability"></span>
                             </td>
                             <td class="py-2 text-muted-foreground text-xs" x-text="risk.mitigation || '\u2014'"></td>
                             <td class="py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
                                       :class="riskStatusClass(risk.status)" x-text="risk.status"></span>
                             </td>
                             <td class="py-2 text-right">
                                 <button type="button" @click="openEntityModal('risk', risk)" class="text-muted-foreground hover:text-foreground p-1" title="Edit">
                                     <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" @click="confirmDeleteEntity('risk', risk)" class="text-muted-foreground hover:text-destructive p-1 ml-1" title="Delete">
+                                <button type="button" @click="confirmDeleteEntity('risk', risk)" class="text-muted-foreground hover:text-destructive-emphasis p-1 ml-1" title="Delete">
                                     <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                 </button>
                             </td>

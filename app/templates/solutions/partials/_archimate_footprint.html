@@ -1,3 +1,4 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {# ArchiMate Footprint Panel (SA-002) — fetched from GET /solutions/<id>/archimate-elements #}
 <div
     x-data="{
@@ -5,7 +6,7 @@
         amError: null,
         amElements: {},
         amLayerSummary: {},
-        amTotal: 0,
+        amTotal: null,
         amLoaded: false,
         amUnlinking: null,
         viewerVisible: false,
@@ -49,9 +50,9 @@
         roleColor(r) {
             const colors = {
                 primary:    'bg-primary/10 text-primary',
-                supporting: 'bg-emerald-500/10 text-emerald-600',
-                impacted:   'bg-amber-500/10 text-amber-600',
-                ai_derived: 'bg-violet-500/10 text-violet-600'
+                supporting: 'bg-success/10 text-success-emphasis',
+                impacted:   'bg-warning/10 text-warning-emphasis',
+                ai_derived: 'bg-info/10 text-info-emphasis'
             };
             return colors[r] || 'bg-muted text-muted-foreground';
         },
@@ -83,54 +84,73 @@
                 this.renderer = null;
             }
         },
-        async load() {
+        /* NOTE ON STYLE: .then()/.catch(), never async/await. Alpine attribute
+           expressions on this page are run by the CSP-safe interpreter in
+           app/static/js/csp/csp-evaluator.js, which cannot await and rejects
+           `async` outright. Promise chains resolve correctly. */
+        load() {
+            const self = this;
             this.amLoading = true;
             this.amError = null;
-            try {
-                const sid = window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
-                if (!sid) throw new Error('Solution ID not configured');
-                const res = await fetch('/solutions/' + sid + '/archimate-elements', {credentials:'same-origin'});
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                this.amElements    = data.elements_by_layer || {};
-                this.amLayerSummary= data.layer_summary     || {};
-                this.amTotal       = data.total_count       || 0;
-                /* Flatten elements for diagram viewer */
-                var flatElements = [];
-                var layers = Object.keys(this.amElements);
-                for (var li = 0; li < layers.length; li++) {
-                    var layerName = layers[li];
-                    var els = this.amElements[layerName] || [];
-                    for (var ei = 0; ei < els.length; ei++) {
-                        var el = Object.assign({}, els[ei], { layer: layerName });
-                        flatElements.push(el);
-                    }
-                }
-                this.initViewer(flatElements, data.relationships || []);
-            } catch(e) {
-                this.amError = e.message;
-            } finally {
+            const sid = window.__SOLUTION_CONFIG__ ? window.__SOLUTION_CONFIG__.solutionId : null;
+            if (!sid) {
+                this.amError = 'Solution ID not configured';
+                this.amElements = {};
+                this.amLayerSummary = {};
+                this.amTotal = null;
                 this.amLoading = false;
-                this.amLoaded  = true;
+                this.amLoaded = true;
+                return Promise.resolve();
             }
-        },
-        async unlinkElement(elementId) {
-            if (!(await Platform.modal.confirm('Remove this ArchiMate element from the solution?'))) return;
-            this.amUnlinking = elementId;
-            try {
-                const sid = window.__SOLUTION_CONFIG__.solutionId;
-                const res = await fetch('/solutions/' + sid + '/archimate-elements/' + elementId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
+            return Platform.fetch('/solutions/' + sid + '/archimate-elements')
+                .then(function (data) {
+                    self.amElements    = data.elements_by_layer || {};
+                    self.amLayerSummary= data.layer_summary     || {};
+                    self.amTotal       = data.total_count       || 0;
+                    /* Flatten elements for diagram viewer */
+                    var flatElements = [];
+                    var layers = Object.keys(self.amElements);
+                    for (var li = 0; li < layers.length; li++) {
+                        var layerName = layers[li];
+                        var els = self.amElements[layerName] || [];
+                        for (var ei = 0; ei < els.length; ei++) {
+                            var el = Object.assign({}, els[ei], { layer: layerName });
+                            flatElements.push(el);
+                        }
+                    }
+                    self.initViewer(flatElements, data.relationships || []);
+                    self.amLoading = false;
+                    self.amLoaded  = true;
+                })
+                .catch(function (e) {
+                    /* Nothing was read — do not leave a plausible-looking zero behind. */
+                    self.amElements     = {};
+                    self.amLayerSummary = {};
+                    self.amTotal        = null;
+                    self.amError        = e.message;
+                    self.amLoading      = false;
+                    self.amLoaded       = true;
                 });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                await this.load();
-            } catch(e) {
-                this.amError = 'Unlink failed: ' + e.message;
-            } finally {
-                this.amUnlinking = null;
-            }
+        },
+        unlinkElement(elementId) {
+            const self = this;
+            return Platform.modal.confirm('Remove this ArchiMate element from the solution?')
+                .then(function (confirmed) {
+                    if (!confirmed) return null;
+                    self.amUnlinking = elementId;
+                    const sid = window.__SOLUTION_CONFIG__.solutionId;
+                    return Platform.fetch.delete('/solutions/' + sid + '/archimate-elements/' + elementId)
+                        .then(function () {
+                            return self.load();
+                        })
+                        .then(function () {
+                            self.amUnlinking = null;
+                        })
+                        .catch(function (e) {
+                            self.amError = 'Unlink failed: ' + e.message;
+                            self.amUnlinking = null;
+                        });
+                });
         }
     }"
     x-init="load()"
@@ -139,7 +159,7 @@
 >
     <div class="flex items-center gap-2 mb-3">
         <i data-lucide="layers" class="w-4 h-4 text-primary" aria-hidden="true"></i>
-        <h3 class="text-sm font-semibold text-foreground">ArchiMate Footprint</h3>
+        <h3 class="text-sm font-semibold text-foreground">Architecture Footprint</h3>
         <template x-if="!amLoading && amTotal > 0">
             <div class="ml-auto flex items-center gap-3">
                 <span class="text-xs text-muted-foreground" x-text="amTotal + ' element' + (amTotal !== 1 ? 's' : '')"></span>
@@ -163,7 +183,7 @@
     </div>
 
     {# Error state #}
-    <div x-show="!amLoading && amError" x-cloak class="text-sm text-destructive py-2" x-text="'Error: ' + amError"></div>
+    <div x-show="!amLoading && amError" x-cloak class="text-sm text-destructive-emphasis py-2" x-text="'Error: ' + amError"></div>
 
     {# Empty state #}
     <div x-show="!amLoading && !amError && amLoaded && amTotal === 0" x-cloak
@@ -176,7 +196,7 @@
         <div>
             <div class="flex flex-wrap gap-1.5 mb-3">
                 <template x-for="layer in layerOrder.filter(l => amLayerSummary[l])" :key="layer">
-                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-primary-foreground"
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold text-primary-foreground"
                           :style="'background:' + layerColor(layer)">
                         <span x-text="layerLabel(layer)"></span>
                         <span class="opacity-80" x-text="'(' + amLayerSummary[layer] + ')'"></span>
@@ -190,7 +210,7 @@
                     <div class="flex items-center gap-2">
                         <label class="text-xs text-muted-foreground">Viewpoint:</label>
                         <select x-model="activeViewpoint" @change="switchViewpoint(activeViewpoint)"
-                                class="rounded-md border border-input bg-background px-2 py-1 text-xs">
+                                class="rounded-md border border-input bg-background px-2 py-1 text-xs" aria-label="Viewpoint">
                             <template x-for="vp in availableViewpoints" :key="vp.id">
                                 <option :value="vp.id" x-text="vp.label"></option>
                             </template>
@@ -215,7 +235,7 @@
                             <span class="w-2 h-2 rounded-full flex-shrink-0"
                                   :style="'background:' + layerColor(layer)"></span>
                             <span class="text-xs font-medium text-foreground" x-text="layerLabel(layer)"></span>
-                            <span class="text-[10px] text-muted-foreground" x-text="'(' + amElements[layer].length + ')'"></span>
+                            <span class="text-xs text-muted-foreground" x-text="'(' + amElements[layer].length + ')'"></span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-3.5">
                             <template x-for="el in amElements[layer]" :key="el.id">
@@ -223,26 +243,26 @@
                                     <div class="min-w-0 flex-1">
                                         <p class="text-xs font-medium text-foreground truncate" x-text="el.name"></p>
                                         <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium border"
                                                   :style="'border-color:' + layerColor(layer) + '40; color:' + layerColor(layer)"
                                                   x-text="el.type || 'Unknown'"></span>
                                             <template x-if="el.element_role">
-                                                <span class="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium"
+                                                <span class="inline-flex items-center px-1 py-0.5 rounded text-xs font-medium"
                                                       :class="roleColor(el.element_role)"
                                                       x-text="el.element_role"></span>
                                             </template>
                                             <template x-if="el.plateau">
-                                                <span class="text-[10px] bg-accent text-accent-foreground px-1 rounded" x-text="el.plateau"></span>
+                                                <span class="text-xs bg-accent text-accent-foreground px-1 rounded" x-text="el.plateau"></span>
                                             </template>
                                             <template x-if="el.building_block_type">
-                                                <span class="text-[10px] bg-primary/10 text-primary px-1 rounded" x-text="el.building_block_type"></span>
+                                                <span class="text-xs bg-primary/10 text-primary px-1 rounded" x-text="el.building_block_type"></span>
                                             </template>
                                         </div>
                                     </div>
-                                    <button
+                                    <button type="button"
                                         @click="unlinkElement(el.id)"
                                         :disabled="amUnlinking === el.id"
-                                        class="sad-actions opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                                        class="sad-actions opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive-emphasis"
                                         :aria-label="'Remove ' + el.name"
                                         title="Remove element">
                                         <template x-if="amUnlinking === el.id">

@@ -7,7 +7,24 @@
 function blueprintChat() {
     return {
         open: false,
-        autoExecute: true,  // auto-tier tools execute immediately; approve-tier still requires confirmation
+        // ENFORCED (agent_runner.py AgentRunner._should_queue): mirrors the
+        // server-side session flag agent_auto_execute, which toggleAutoExecute()
+        // below flips via POST /ai-chat/session/toggle-auto-execute. Server
+        // default is OFF (false) for a fresh session, so this starts false too
+        // rather than assuming a state the backend has not granted yet. When
+        // false, every tool whose registry schema has mutates:true is queued
+        // for confirmation instead of executing immediately; approve-tier
+        // tools (update_application_status, submit_for_arb_review,
+        // generate_blueprint_narrative) always queue regardless of this flag.
+        // Read-only tools (mutates:false) always execute immediately.
+        //
+        // This starting value is only a placeholder until init() below
+        // overwrites it with the real session state via GET
+        // /ai-chat/session/auto-execute — the session flag can already be ON
+        // from an earlier page visit (Flask sessions outlive a page load), so
+        // hardcoding false here and never re-checking would show OFF in the
+        // UI while the server was actually queuing nothing.
+        autoExecute: false,
         messages: [],
         inputText: '',
         loading: false,
@@ -31,6 +48,24 @@ function blueprintChat() {
                     this.$refs.chatInput?.select();
                 });
             });
+
+            // Sync the placeholder above with the real session state. Read-only
+            // GET — never flips the flag, unlike toggleAutoExecute() below.
+            this.syncAutoExecute();
+        },
+
+        async syncAutoExecute() {
+            try {
+                const data = await Platform.fetch.get('/ai-chat/session/auto-execute');
+                this.autoExecute = !!data.auto_execute;
+            } catch (err) {
+                // Leave the placeholder value in place — a stale local guess
+                // is a smaller failure than blocking the panel on this call.
+                // Platform.fetch has already toasted the failure, so the stale value
+                // is visible as stale rather than presented as fresh truth.
+                // Suppressed here only to avoid a duplicate, because this is a
+                // background sync that failing should not block the UI.
+            }
         },
 
         toggle() {
@@ -40,14 +75,11 @@ function blueprintChat() {
 
         async toggleAutoExecute() {
             try {
-                const resp = await fetch('/ai-chat/session/toggle-auto-execute', {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': this.csrfToken },
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post('/ai-chat/session/toggle-auto-execute');
                 this.autoExecute = data.auto_execute;
             } catch (err) {
-                console.error('Failed to toggle auto-execute:', err);
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
@@ -65,7 +97,8 @@ function blueprintChat() {
             const streamIdx = this.messages.length - 1;
 
             try {
-                const resp = await fetch('/ai-chat/message/stream', {
+                // raw-fetch-ok: streaming response requires raw Response object to access body.getReader()
+                const resp = await fetch('/ai-chat/message/stream', {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -148,20 +181,37 @@ function blueprintChat() {
                         } else if (event.type === 'done') {
                             this.messages[streamIdx].streaming = false;
                             // Use buffered response if no tokens were streamed (non-streaming LLM path)
-                            if (event.response && !this.messages[streamIdx].text) {
+                            /* Order matters, and it used to be wrong. The
+                               AgentRunner fallback sends BOTH `response` (the
+                               "add an API key under Admin -> API Settings"
+                               text) and `error`. Assigning `response` first
+                               made the `event.error` branch unreachable — its
+                               own `!text` guard was already false — so an
+                               administrative "AI is not configured" notice was
+                               painted as an ordinary assistant answer,
+                               indistinguishable from real architecture advice.
+                               Entelim is a system of record: that is the exact
+                               confusion we must not create. Check `error`
+                               first, so a failed turn always reads as failed. */
+                            if (event.error) {
+                                this.messages[streamIdx].role = 'error';
+                                if (!this.messages[streamIdx].text) {
+                                    this.messages[streamIdx].text =
+                                        event.response || event.error;
+                                }
+                                this.$nextTick(() => this.scrollToBottom());
+                            } else if (event.response && !this.messages[streamIdx].text) {
                                 this.messages[streamIdx].text = event.response;
                                 this.$nextTick(() => this.scrollToBottom());
-                            }
-                            if (event.error && !this.messages[streamIdx].text) {
-                                this.messages[streamIdx].role = 'error';
-                                this.messages[streamIdx].text = event.error;
                             }
                         }
                     }
                 }
 
             } catch (err) {
-                console.error('Stream error:', err);
+                // Platform.fetch would have thrown a structured error for non‑streaming errors,
+                // but we keep raw fetch for streaming. The error is already surfaced to the user
+                // via the inline error message placed in the chat thread.
                 this.messages[streamIdx].streaming = false;
                 this.messages[streamIdx].role = 'error';
                 this.messages[streamIdx].text = 'Request failed. Please try again.';
@@ -190,32 +240,21 @@ function blueprintChat() {
             if (!url) return; // No undo for link operations
 
             try {
-                const resp = await fetch(url, {
-                    method: 'DELETE',
-                    headers: { 'X-CSRFToken': this.csrfToken },
-                });
-                if (resp.ok) {
-                    action.undone = true;
-                    clearTimeout(action.undoTimer);
-                    window.dispatchEvent(new CustomEvent('bp-agent-wrote', {
-                        detail: { entity_type: entityType, solution_id: this.solutionId },
-                    }));
-                }
+                await Platform.fetch.delete(url);
+                action.undone = true;
+                clearTimeout(action.undoTimer);
+                window.dispatchEvent(new CustomEvent('bp-agent-wrote', {
+                    detail: { entity_type: entityType, solution_id: this.solutionId },
+                }));
             } catch (err) {
-                console.error('Undo failed:', err);
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
         async approveAction(approval) {
             try {
-                const resp = await fetch(`/ai-chat/tools/approve/${approval.approval_id}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': this.csrfToken,
-                    },
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(`/ai-chat/tools/approve/${approval.approval_id}`);
                 if (data.success) {
                     approval.dismissed = true;
                     this.messages.push({
@@ -227,9 +266,15 @@ function blueprintChat() {
                             detail: { entity_type: data.result.entity_type, solution_id: this.solutionId },
                         }));
                     }
+                } else {
+                    // Platform.fetch would have thrown on non‑ok response, so this branch
+                    // only runs if the server returns a 200 with success:false.
+                    // We keep the existing inline error toast.
+                    Platform.toast.error('Approve failed: ' + (data.error || 'Unknown error'));
                 }
             } catch (err) {
-                console.error('Approve failed:', err);
+                // Platform.fetch has already toasted this failure; the catch only
+                // stops it becoming an unhandled rejection.
             }
         },
 
@@ -330,12 +375,12 @@ function copilotInsights(solutionId) {
 
         async load() {
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/copilot-insights`);
-                if (!resp.ok) return;
-                const data = await resp.json();
+                const data = await Platform.fetch.get(`/solutions/${this.solutionId}/copilot-insights`);
                 this.insights = data.insights || [];
             } catch (err) {
-                // Silent fail — proactive insights are non-critical
+                // Proactive insights are an enhancement, not a record: the panel simply
+                // stays empty. Platform.fetch has already toasted the failure, so the
+                // user is not left thinking there were no insights.
             }
         },
 
@@ -346,18 +391,17 @@ function copilotInsights(solutionId) {
         },
 
         async dismiss(insight) {
-            const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
             try {
-                await fetch(`/solutions/${this.solutionId}/copilot-insights/${insight.id}/dismiss`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': csrf },
-                });
-            } catch { /* silent */ }
+                await Platform.fetch.post(`/solutions/${this.solutionId}/copilot-insights/${insight.id}/dismiss`);
+            } catch {
+                // Silent fail — proactive insights are non‑critical.
+                // Platform.fetch may have shown a toast; we suppress duplicate user‑facing error.
+            }
             this.insights = this.insights.filter(i => i.id !== insight.id);
         },
 
         severityClasses(severity) {
-            if (severity === 'critical') return 'border-red-300 bg-red-50 text-red-700';
+            if (severity === 'critical') return 'border-destructive/30 bg-destructive/10 text-destructive-emphasis';
             if (severity === 'warning') return 'border-amber-300 bg-amber-50 text-amber-700';
             return 'border-violet-300 bg-violet-50 text-violet-700';
         },

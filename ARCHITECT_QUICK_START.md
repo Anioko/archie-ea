@@ -1,5 +1,27 @@
 # ARCHITECT'S QUICK START GUIDE
-## A.R.C.H.I.E. Platform - Get Up and Running
+## Entelim Platform - Get Up and Running
+
+> ## ⚠️ LEGACY DOCUMENT — SETUP STEPS ARE WRONG FOR THIS REPOSITORY
+>
+> The feature tour below is still broadly useful. **The setup, database and command
+> sections are not.** Specifically:
+>
+> - It describes Flask-Migrate (`flask db upgrade`, "18 migrations") and
+>   `python manage.py recreate_db|setup_dev|runserver`. The current path is
+>   `flask --app manage init-db` then `flask --app manage reconcile-schema`, and
+>   `recreate-db` is destructive and now requires `--force`. See
+>   [ADR 0002](docs/adr/0002-schema-management.md).
+> - It hardcodes PostgreSQL on **port 5439**; use whatever `DATABASE_URL` specifies.
+> - It prints default credentials (`admin@example.com` / `admin123`) — these come from
+>   `ADMIN_EMAIL` / `ADMIN_PASSWORD` in your `.env`.
+> - It references `SECURITY_REMEDIATION.md`, `KNOWN_ISSUES.md`,
+>   `DEPLOYMENT_READINESS_GOVERNANCE.md` and `docs/monitoring/grafana_dashboard.json`,
+>   none of which exist here.
+> - Support channels ("#archie-support", internal wiki) are placeholders. For this
+>   open-source project use `CONTRIBUTING.md` and `SECURITY.md`.
+>
+> **For setup follow [`README.md`](README.md); for working in the codebase follow
+> [`CLAUDE.md`](CLAUDE.md).**
 
 **Last Updated:** 2026-02-19  
 **Target Audience:** Enterprise Architects  
@@ -10,9 +32,9 @@
 
 ## OVERVIEW
 
-A.R.C.H.I.E. (Architecture Repository & Capability Hub with Integrated Expertise) is your enterprise architecture management platform. This guide gets you from zero to productive in 30 minutes.
+Entelim (formerly the Architecture Repository & Capability Hub with Integrated Expertise) is your enterprise architecture management platform. This guide gets you from zero to productive in 30 minutes.
 
-### What Can You Do With A.R.C.H.I.E.?
+### What Can You Do With Entelim?
 
 ✅ **Application Portfolio Management** - Track 1000+ enterprise applications  
 ✅ **Vendor & Technology Analysis** - Manage vendor relationships and licenses  
@@ -909,7 +931,7 @@ After completing this guide, you should be able to:
 - [✅] Troubleshoot common issues
 - [✅] Know where to get help
 
-**Congratulations! You're ready to use A.R.C.H.I.E. for enterprise architecture management.**
+**Congratulations! You're ready to use Entelim for enterprise architecture management.**
 
 ---
 
@@ -978,5 +1000,5 @@ After completing this guide, you should be able to:
 
 **Document Version:** 1.0  
 **Last Updated:** 2026-02-19  
-**Maintained By:** A.R.C.H.I.E. Development Team  
+**Maintained By:** Entelim Development Team  
 **Next Review:** 2026-03-01

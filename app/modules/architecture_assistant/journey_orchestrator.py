@@ -1480,6 +1480,13 @@ class JourneyOrchestrator:
 
     def regenerate_layer(self, layer: str, problem_summary: str, capabilities: list) -> dict:
         """Regenerate a single thin layer without re-running the full pipeline."""
+        # Traceability id stamped onto every element this call derives. It was
+        # referenced in spec_data below but never created in this method — only in
+        # the full-pipeline path — so regenerating a layer raised NameError. Mirrors
+        # the id generation used there.
+        import uuid
+
+        engine_run_id = str(uuid.uuid4())
         from app.modules.architecture_assistant.architecture_generation import (
             ALL_LAYERS,
             ArchitectureGenerationService,
@@ -1611,15 +1618,14 @@ class JourneyOrchestrator:
         svc = ValidationEngineService()
         return svc.full_validate(architecture_elements, capabilities, self.solution_id, migration_plan)
 
-    def submit_to_arb(self, validation_result) -> dict:
-        """Step 6: Submit to Architecture Review Board."""
-        from app.modules.architecture_assistant.validation_engine import ValidationEngineService
-        svc = ValidationEngineService()
-        return svc.submit_to_arb(
-            solution_id=self.solution_id,
-            validation_result=validation_result,
-            architecture_model_id=self.graph.architecture_id,
-        )
+    def submit_to_arb(self, _validation_result=None) -> dict:
+        """Fail closed; submission requires authenticated evidence attestations."""
+        return {
+            "success": False,
+            "error": "legacy_submission_disabled",
+            "reason_codes": ["canonical_submission_required"],
+            "solution_id": self.solution_id,
+        }
 
     def rebuild_relationships(self, problem_summary: str = "") -> dict:
         """Re-run Pass 2 relationship generation for existing elements without regenerating them.
@@ -1677,7 +1683,7 @@ class JourneyOrchestrator:
         }
 
         name_to_id = {}
-        elements_by_layer = {l: [] for l in ["motivation", "strategy", "business", "application", "technology", "implementation"]}
+        elements_by_layer = {item: [] for item in ["motivation", "strategy", "business", "application", "technology", "implementation"]}
 
         for j in junctions:
             el = ArchiMateElement.query.get(j.element_id)
@@ -1717,7 +1723,8 @@ class JourneyOrchestrator:
         # Parse the relationship response. _parse_json_response targets layer-keyed
         # responses; relationship responses use {"relationships": [...]}.
         # Try direct JSON parse first, then strip markdown fences + retry.
-        import json as _json, re as _re
+        import json as _json
+        import re as _re
         relationships_raw = []
         _text = raw_text.strip()
         _text = _re.sub(r'^```(?:json)?\s*', '', _text)
@@ -2250,8 +2257,8 @@ class JourneyOrchestrator:
             layer_counts[layer] = layer_counts.get(layer, 0) + 1
 
         required_layers = ("motivation", "strategy", "business", "application", "technology")
-        layers_covered = sum(1 for l in required_layers if layer_counts.get(l, 0) >= 1)
-        layers_with_depth = sum(1 for l in required_layers if layer_counts.get(l, 0) >= 3)
+        layers_covered = sum(1 for item in required_layers if layer_counts.get(item, 0) >= 1)
+        layers_with_depth = sum(1 for item in required_layers if layer_counts.get(item, 0) >= 3)
 
         return {
             "solution": {

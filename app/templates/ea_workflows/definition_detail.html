@@ -4,7 +4,13 @@
 {% block title %}{{ definition.workflow_name }}{% endblock %}
 
 {% block content %}
-{% set approval_steps = definition.steps|selectattr('requires_approval', 'defined')|selectattr('requires_approval')|list|length + definition.steps|selectattr('step_type', 'equalto', 'approval')|list|length %}
+{% set ns = namespace(count=0) %}
+{% for step in definition.steps %}
+  {% if (step.requires_approval is defined and step.requires_approval) or step.step_type in ('approval', 'human_input') %}
+    {% set ns.count = ns.count + 1 %}
+  {% endif %}
+{% endfor %}
+{% set approval_steps = ns.count %}
 {% set outputs_map = {
     'APP_ONBOARDING': ['Application Portfolio Entry', 'APQC Process Mappings', 'ArchiMate Elements', 'Gap Analysis Report'],
     'GAP_REMEDIATION': ['Gap Analysis Report', 'Remediation Roadmap', 'Task Assignments'],
@@ -24,7 +30,7 @@
 <div class="space-y-6">
     <!-- Breadcrumbs -->
     <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6" aria-label="Breadcrumb">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
+        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Home</a>
         <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
         <a href="{{ url_for('main.ea_workflows_dashboard') }}" class="hover:text-foreground transition-colors">EA Workflows</a>
         <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
@@ -68,15 +74,15 @@
                         {{ definition.steps|length }} steps
                     </span>
                     {% if approval_steps > 0 %}
-                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-warning/10 text-warning">
+                    <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-warning/10 text-warning-emphasis">
                         <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
                         {{ approval_steps }} approval{{ 's' if approval_steps > 1 else '' }} required
                     </span>
                     {% endif %}
                     <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium
-                        {% if definition.automation_level == 'automated' %}bg-success/10 text-success
-                        {% elif definition.automation_level == 'assisted' %}bg-primary/10 text-primary
-                        {% else %}bg-muted text-foreground/80{% endif %}">
+ {% if definition.automation_level == 'automated' %}bg-success/10 text-success-emphasis
+ {% elif definition.automation_level == 'assisted' %}bg-primary/10 text-primary
+ {% else %}bg-muted text-foreground/80{% endif %}">
                         <i data-lucide="{% if definition.automation_level == 'automated' %}bot{% elif definition.automation_level == 'assisted' %}sparkles{% else %}users{% endif %}" class="h-3 w-3" aria-hidden="true"></i>
                         {{ definition.automation_level|title }}
                     </span>
@@ -164,13 +170,13 @@
                     <div class="flex items-center gap-1 min-w-max">
                         <!-- Start node -->
                         <div class="flex flex-col items-center">
-                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-primary-foreground">
+                            <div class="flex h-8 w-8 items-center justify-center rounded-full bg-success text-success-foreground">
                                 <i data-lucide="play" class="h-3.5 w-3.5" aria-hidden="true"></i>
                             </div>
-                            <span class="text-[10px] text-muted-foreground mt-1">Start</span>
+                            <span class="text-xs text-muted-foreground mt-1">Start</span>
                         </div>
                         {% for step in definition.steps %}
-                        {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                        {% set is_approval = step.step_type in ('approval', 'human_input') or step.get('requires_approval', false) %}
                         <!-- Connector arrow -->
                         <div class="flex items-center h-8">
                             <div class="w-6 h-0.5 bg-border"></div>
@@ -179,28 +185,28 @@
                         <!-- Step node -->
                         <div class="flex flex-col items-center max-w-[140px]">
                             {% if is_approval %}
-                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-center px-2 py-1">
-                                <span class="text-[10px] font-semibold text-amber-700 dark:text-amber-400 line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                            <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-warning/40 bg-warning/10 text-center px-2 py-1">
+                                <span class="text-xs font-semibold text-warning-emphasis line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
-                                <i data-lucide="hand" class="h-2.5 w-2.5 text-amber-500" aria-hidden="true"></i>
-                                <span class="text-[9px] text-amber-600 font-medium">Review</span>
+                                <i data-lucide="hand" class="h-2.5 w-2.5 text-warning" aria-hidden="true"></i>
+                                <span class="text-2xs text-warning-emphasis font-medium">Review</span>
                             </div>
                             {% elif step.step_type == 'notification' %}
                             <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-primary/30 bg-primary/5 text-center px-2 py-1">
-                                <span class="text-[10px] font-semibold text-primary line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                                <span class="text-xs font-semibold text-primary line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
                                 <i data-lucide="bell" class="h-2.5 w-2.5 text-primary" aria-hidden="true"></i>
-                                <span class="text-[9px] text-primary font-medium">Notify</span>
+                                <span class="text-2xs text-primary font-medium">Notify</span>
                             </div>
                             {% else %}
                             <div class="flex h-10 w-28 items-center justify-center rounded-lg border-2 border-input bg-background text-center px-2 py-1 hover:border-primary/30 transition-colors">
-                                <span class="text-[10px] font-semibold line-clamp-2 leading-tight">{{ step.step_name }}</span>
+                                <span class="text-xs font-semibold line-clamp-2 leading-tight">{{ step.step_name }}</span>
                             </div>
                             <div class="flex items-center gap-0.5 mt-1">
-                                <i data-lucide="bot" class="h-2.5 w-2.5 text-emerald-500" aria-hidden="true"></i>
-                                <span class="text-[9px] text-emerald-600 font-medium">Auto</span>
+                                <i data-lucide="bot" class="h-2.5 w-2.5 text-success" aria-hidden="true"></i>
+                                <span class="text-2xs text-success-emphasis font-medium">Auto</span>
                             </div>
                             {% endif %}
                         </div>
@@ -215,7 +221,7 @@
                             <div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted border-2 border-input">
                                 <i data-lucide="flag" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
                             </div>
-                            <span class="text-[10px] text-muted-foreground mt-1">End</span>
+                            <span class="text-xs text-muted-foreground mt-1">End</span>
                         </div>
                     </div>
                 </div>
@@ -229,12 +235,12 @@
                 {% if definition.steps %}
                 <div class="relative">
                     {% for step in definition.steps %}
-                    {% set is_approval = step.step_type == 'approval' or step.get('requires_approval', false) %}
+                    {% set is_approval = step.step_type in ('approval', 'human_input') or step.get('requires_approval', false) %}
                     <div class="flex gap-4 {% if not loop.last %}pb-6{% endif %}">
                         <!-- Timeline connector -->
                         <div class="flex flex-col items-center">
                             <div class="flex h-9 w-9 items-center justify-center rounded-full font-bold text-sm shrink-0
-                                {% if is_approval %}bg-warning text-primary-foreground{% else %}bg-primary/10 text-primary{% endif %}">
+ {% if is_approval %}bg-warning text-primary-foreground{% else %}bg-primary/10 text-primary{% endif %}">
                                 {{ loop.index }}
                             </div>
                             {% if not loop.last %}
@@ -247,7 +253,7 @@
                                 <div class="flex items-start justify-between gap-2">
                                     <h3 class="font-semibold">{{ step.step_name }}</h3>
                                     {% if is_approval %}
-                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/15 text-warning shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold bg-warning/15 text-warning-emphasis shrink-0">
                                         <i data-lucide="hand" class="h-3 w-3" aria-hidden="true"></i>
                                         Your Review
                                     </span>
@@ -257,7 +263,7 @@
                                         Notification
                                     </span>
                                     {% else %}
-                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 shrink-0">
+                                    <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-success/10 text-success-emphasis shrink-0">
                                         <i data-lucide="bot" class="h-3 w-3" aria-hidden="true"></i>
                                         Automated
                                     </span>
@@ -275,7 +281,7 @@
                                 </p>
                                 {% endif %}
                                 {% if is_approval %}
-                                <p class="text-xs text-warning mt-2 flex items-center gap-1">
+                                <p class="text-xs text-warning-emphasis mt-2 flex items-center gap-1">
                                     <i data-lucide="pause-circle" class="h-3 w-3" aria-hidden="true"></i>
                                     The workflow will pause here until you review and approve.
                                 </p>
@@ -373,27 +379,37 @@
             set selectAll(v) { this.selected = v ? [...this.allIds] : []; },
             get cancelCount() { return this.selected.filter(id => this.cancelableIds.includes(id)).length; },
             get retryCount() { return this.selected.filter(id => this.retryableIds.includes(id)).length; },
-            async batchAction(action) {
+            /* Promise chain, not async/await: Alpine attribute expressions are
+               evaluated by the CSP-safe interpreter (app/static/js/csp/csp-evaluator.js),
+               which cannot parse `async` and throws on `await`. The per-id requests
+               stay strictly sequential, as the original for-await loop was. */
+            batchAction(action) {
+                const self = this;
                 const ids = this.selected.filter(id => action === 'cancel' ? this.cancelableIds.includes(id) : this.retryableIds.includes(id));
-                if (!ids.length) return;
+                if (!ids.length) return Promise.resolve();
                 const label = action === 'cancel' ? 'Cancel' : 'Retry';
-                if (!(await Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))) return;
-                this.processing = true;
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
-                let ok = 0, fail = 0;
-                for (const id of ids) {
-                    try {
-                        const r = await fetch('/api/ea-workflows/instances/' + id + '/' + action, {
-                            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                            body: JSON.stringify({ reason: 'Batch ' + action })
+                return Promise.resolve(Platform.modal.confirm(label + ' ' + ids.length + ' workflow(s)?'))
+                    .then(function (confirmed) {
+                        if (!confirmed) return null;
+                        self.processing = true;
+                        const counts = { ok: 0, fail: 0 };
+                        return ids.reduce(function (chain, id) {
+                            return chain.then(function () {
+                                return Platform.fetch.post('/api/ea-workflows/instances/' + id + '/' + action, { reason: 'Batch ' + action }, { silent: true })
+                                    .then(function (result) { result && result.success ? counts.ok++ : counts.fail++; })
+                                    .catch(function () { counts.fail++; });
+                            });
+                        }, Promise.resolve()).then(function () {
+                            self.processing = false;
+                            self.selected = [];
+                            Platform.toast.error(counts.ok + ' succeeded, ' + counts.fail + ' failed');
+                            location.reload();
                         });
-                        (await r.json()).success ? ok++ : fail++;
-                    } catch { fail++; }
-                }
-                this.processing = false;
-                this.selected = [];
-                Platform.toast.error(ok + ' succeeded, ' + fail + ' failed');
-                location.reload();
+                    })
+                    .catch(function (e) {
+                        self.processing = false;
+                        Platform.toast.error('Batch ' + action + ' failed: ' + (e && e.message ? e.message : 'unknown error'));
+                    });
             }
          }">
         <div class="flex items-center justify-between mb-4">
@@ -402,7 +418,7 @@
             <div x-show="selected.length > 0" x-cloak class="flex items-center gap-2" role="toolbar" aria-label="Batch actions">
                 <span class="text-sm text-muted-foreground" aria-live="polite" role="status" x-text="selected.length + ' selected'"></span>
                 <button type="button" @click="batchAction('cancel')" :disabled="!cancelCount || processing"
-                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border border-warning/50 text-warning hover:bg-warning/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    class="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium border border-warning/50 text-warning-emphasis hover:bg-warning/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     :aria-label="'Cancel ' + cancelCount + ' running workflow(s)'">
                     <i data-lucide="square" class="h-3 w-3" aria-hidden="true"></i>
                     Cancel (<span x-text="cancelCount"></span>)
@@ -443,11 +459,11 @@
                         </td>
                         <td class="text-center py-3 px-4">
                             <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
-                                {% if instance.status == 'completed' %}bg-success/10 text-success
-                                {% elif instance.status == 'running' %}bg-primary/10 text-primary
-                                {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning
-                                {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive
-                                {% else %}bg-muted text-foreground/80{% endif %}">
+ {% if instance.status == 'completed' %}bg-success/10 text-success-emphasis
+ {% elif instance.status == 'running' %}bg-primary/10 text-primary
+ {% elif instance.status == 'waiting_approval' %}bg-warning/10 text-warning-emphasis
+ {% elif instance.status == 'failed' %}bg-destructive/10 text-destructive-emphasis
+ {% else %}bg-muted text-foreground/80{% endif %}">
                                 {{ instance.status|replace('_', ' ')|title }}
                             </span>
                         </td>

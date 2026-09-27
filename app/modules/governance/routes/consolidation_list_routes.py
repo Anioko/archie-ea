@@ -26,6 +26,7 @@ from ..models.consolidation_list import (
     ConsolidationListEntry,
     CONSOLIDATION_STATUS_MAP,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +68,8 @@ def get_entries():
         search_query = (request.args.get("search") or "").strip()
         wave_filter = request.args.get("wave", type=int)
         missing_filter = (request.args.get("missing") or "").strip()
-        page = max(request.args.get("page", 1, type=int) or 1, 1)
-        per_page = request.args.get("per_page", 25, type=int) or 25
+        page = max(safe_int_arg('page', 1, minimum=1) or 1, 1)
+        per_page = safe_int_arg('per_page', 25, minimum=1, maximum=500) or 25
         per_page = max(10, min(per_page, 100))
 
         filtered_query = ConsolidationListEntry.query.join(
@@ -555,7 +556,6 @@ def update_entry(entry_id):
             entry.target_quarter = data["target_quarter"]
             if not entry.roadmap_item_id:
                 try:
-                    from app.models.application_rationalization import ApplicationRationalizationScore
                     # Create a lightweight roadmap reference
                     # (roadmap_item_id serves as a flag that a roadmap entry exists)
                     entry.roadmap_item_id = entry.id  # Self-reference as roadmap marker
@@ -790,7 +790,15 @@ def create_roadmap_task():
             )
 
         except ImportError:
-            # If RoadmapTask not available, just update the entry
+            # error-signalling-ok: this branch still commits the entry, so success is true and the message discloses that no roadmap task was created
+            #
+            # Note it is currently UNREACHABLE:
+            # app.modules.governance.models.roadmap.RoadmapTask exists and
+            # imports cleanly, so the ImportError never fires. Kept rather than
+            # deleted because the branch is honest if it ever does - unlike the
+            # three guarded imports found elsewhere in this audit, which named
+            # modules that have never existed and silently disabled a feature
+            # apiece.
             entry.recommended_action = "add_to_roadmap"
             entry.status = "approved"
             entry.target_date = end_date_str
@@ -798,6 +806,7 @@ def create_roadmap_task():
             entry.updated_at = datetime.utcnow()
             db.session.commit()
 
+            # error-signalling-ok: the entry above is committed, so success is true; the message discloses that no roadmap task was created
             return jsonify(
                 {
                     "success": True,
@@ -866,17 +875,24 @@ def recalculate_savings():
                     "license_savings": license_savings,
                 }
             else:
-                # Fallback: £10,000 baseline per redundant app
-                estimated_savings = 10000  # fabricated-values-ok: documented baseline for zero-cost apps
-                cost_source = "baseline_estimate"
-                cost_breakdown["baseline"] = 10000
+                # No cost data at all: savings cannot be estimated. Record it as
+                # unknown (None -> em dash) rather than inventing a plausible
+                # figure — a fabricated £10,000 is indistinguishable from a real
+                # estimate once persisted and shown.
+                estimated_savings = None
+                cost_source = "unknown"
 
-            if estimated_savings != float(entry.estimated_savings or 0):
+            if estimated_savings is None:
+                if entry.estimated_savings is not None:
+                    entry.estimated_savings = None
+                    entry.updated_at = datetime.utcnow()
+                    updated_count += 1
+            elif estimated_savings != float(entry.estimated_savings or 0):
                 entry.estimated_savings = estimated_savings
                 entry.updated_at = datetime.utcnow()
                 updated_count += 1
 
-            if cost_source == "baseline_estimate":
+            if cost_source == "unknown":
                 baseline_count += 1
             else:
                 real_data_count += 1

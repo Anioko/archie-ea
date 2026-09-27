@@ -4,14 +4,14 @@
 {% block title %}Executive Rationalization Scorecard{% endblock %}
 
 {% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
 <div class="space-y-6">
   <!-- Header -->
   {{ page_header(
-      title='Executive Rationalization Scorecard',
+      title='Executive Rationalization Scorecard', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Executive Rationalization Scorecard'}],
       description='Portfolio-wide application rationalization insights',
       actions=[
           {'text': 'New Assessment', 'icon': 'clipboard-list', 'href': url_for('dashboard_pages.rationalization_assessment'), 'variant': 'default'},
@@ -69,22 +69,22 @@
         <div class="p-3 bg-muted rounded-lg">
           <div class="text-sm font-medium text-muted-foreground">TOLERATE</div>
           <div class="text-xs text-muted-foreground">Maintain as-is</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-blue-600">Retain</span></div><!-- token-migration-ok -->
+          <div class="text-xs text-muted-foreground mt-1 font-medium">→ <span class="text-blue-600">Retain</span></div><!-- token-migration-ok -->
         </div>
         <div class="p-3 bg-success/5 rounded-lg">
-          <div class="text-sm font-medium text-success">INVEST</div>
-          <div class="text-xs text-success">Strategic enhancement</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-amber-600">Refactor</span></div>
+          <div class="text-sm font-medium text-success-emphasis">INVEST</div>
+          <div class="text-xs text-success-emphasis">Strategic enhancement</div>
+          <div class="text-xs text-muted-foreground mt-1 font-medium">→ <span class="text-amber-600">Refactor</span></div><!-- design-tokens-ok: 7R disposition legend, 7 distinct hues > available semantic tokens -->
         </div>
         <div class="p-3 bg-warning/5 rounded-lg">
-          <div class="text-sm font-medium text-warning">MIGRATE</div>
-          <div class="text-xs text-warning">Platform transition</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-sky-600">Rehost</span> / <span class="text-violet-600">Replatform</span> / <span class="text-orange-600">Replace</span></div>
+          <div class="text-sm font-medium text-warning-emphasis">MIGRATE</div>
+          <div class="text-xs text-warning-emphasis">Platform transition</div>
+          <div class="text-xs text-muted-foreground mt-1 font-medium">→ <span class="text-sky-600">Rehost</span> / <span class="text-violet-600">Replatform</span> / <span class="text-orange-600">Replace</span></div><!-- design-tokens-ok: 7R disposition legend, 7 distinct hues > available semantic tokens -->
         </div>
         <div class="p-3 bg-destructive/5 rounded-lg">
-          <div class="text-sm font-medium text-destructive">ELIMINATE</div>
-          <div class="text-xs text-destructive">Retire/consolidate</div>
-          <div class="text-[10px] text-muted-foreground mt-1 font-medium">→ <span class="text-purple-600">Consolidate</span> / <span class="text-red-600">Retire</span></div><!-- token-migration-ok -->
+          <div class="text-sm font-medium text-destructive-emphasis">ELIMINATE</div>
+          <div class="text-xs text-destructive-emphasis">Retire/consolidate</div>
+          <div class="text-xs text-muted-foreground mt-1 font-medium">→ <span class="text-purple-600">Consolidate</span> / <span class="text-red-600">Retire</span></div><!-- token-migration-ok -->
         </div>
       </div>
     </div>
@@ -112,7 +112,7 @@
   <div class="bg-card border rounded-lg p-6 mb-8">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-semibold">Scoring Dimension Breakdown</h2>
-      <select id="config-selector" class="text-sm border rounded px-2 py-1">
+      <select aria-label="Scoring configuration" id="config-selector" class="text-sm border rounded px-2 py-1">
         <option value="">Default Configuration</option>
       </select>
     </div>
@@ -177,36 +177,36 @@ let timeChart = null;
 async function loadScorecardData() {
   try {
     // Load portfolio scores
-    const portfolioRes = await fetch('/dashboard/api/rationalization/portfolio', { method: 'POST', headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''} });
-    const portfolioData = await portfolioRes.json();
-
+    const portfolioData = await Platform.fetch.post('/dashboard/api/rationalization/portfolio', null, { silent: true });
+    // Platform.fetch returns the parsed response body directly; success flag is inside the data
     if (portfolioData.success) {
       updateMetrics(portfolioData.data);
       updateTimeChart(portfolioData.data.time_distribution);
     }
 
     // Load cost tiers
-    const tiersRes = await fetch('/dashboard/api/tco/cost-tiers');
-    const tiersData = await tiersRes.json();
+    const tiersData = await Platform.fetch.get('/dashboard/api/tco/cost-tiers', null, { silent: true });
     if (tiersData.success) {
       renderCostTiers(tiersData.data);
     }
 
     // Load elimination candidates
-    const candidatesRes = await fetch('/dashboard/api/rationalization/elimination-candidates?limit=10');
-    const candidatesData = await candidatesRes.json();
+    const candidatesData = await Platform.fetch.get('/dashboard/api/rationalization/elimination-candidates', { limit: 10 }, { silent: true });
     if (candidatesData.success) {
       renderCandidates(candidatesData.data);
     }
 
     // Load scoring configurations
-    const configsRes = await fetch('/dashboard/api/scoring-configurations');
-    const configsData = await configsRes.json();
+    const configsData = await Platform.fetch.get('/dashboard/api/scoring-configurations', null, { silent: true });
     if (configsData.success) {
       populateConfigSelector(configsData.data);
     }
   } catch (err) {
-    console.error('Failed to load scorecard data:', err);
+    // Platform.fetch already shows a user-visible toast unless silent:true, but we still need to handle
+    // any other errors (e.g., network errors) that may have been thrown.
+    // The existing inline error state is painted by the catch block; we keep silent:true to avoid duplicate toast.
+    // Do not swallow the error; rethrow so the caller can handle it.
+    throw err;
   }
 }
 
@@ -263,10 +263,10 @@ function renderCostTiers(tiers) {
     <div class="flex items-center gap-3">
       <div class="w-24 text-sm">${escapeHtml(tier.name)}</div>
       <div class="flex-1 bg-muted rounded-full h-4 overflow-hidden">
-        <div class="transition-[width] duration-500 ease-out h-full bg-${tier.color}-500" style="width: ${(tier.application_count / maxCount) * 100}%"></div>  <!-- inline-style-ok -->
+        <div class="transition-[width] duration-500 ease-out h-full bg-${tier.color}-500" style="width: ${maxCount > 0 ? (tier.application_count / maxCount) * 100 : 0}%"></div>  <!-- inline-style-ok -->
       </div>
       <div class="w-16 text-right text-sm font-medium">${tier.application_count}</div>
-      <div class="w-12 text-right text-xs text-muted-foreground">${tier.percentage}%</div>
+      <div class="w-12 text-right text-xs text-muted-foreground">${tier.percentage == null ? '—' : tier.percentage + '%'}</div>
     </div>
   `).join('');
 }
@@ -287,12 +287,14 @@ function renderCandidates(candidates) {
   };
 
   // Canonical disposition → badge colour classes (7R action vocabulary)
+  // 7 distinct hues needed; more tiers than the semantic token set covers, so
+  // kept raw with markers rather than collapsing two dispositions onto one token.
   const dispositionColors = {
     'retain':      'bg-blue-500/10 text-blue-600 border border-blue-500/30', // token-migration-ok
-    'rehost':      'bg-sky-500/10 text-sky-600 border border-sky-500/30',
-    'replatform':  'bg-violet-500/10 text-violet-600 border border-violet-500/30',
-    'refactor':    'bg-amber-500/10 text-amber-600 border border-amber-500/30',
-    'replace':     'bg-orange-500/10 text-orange-600 border border-orange-500/30',
+    'rehost':      'bg-sky-500/10 text-sky-600 border border-sky-500/30', // design-tokens-ok: 7R legend
+    'replatform':  'bg-violet-500/10 text-violet-600 border border-violet-500/30', // design-tokens-ok: 7R legend
+    'refactor':    'bg-amber-500/10 text-amber-600 border border-amber-500/30', // design-tokens-ok: 7R legend
+    'replace':     'bg-orange-500/10 text-orange-600 border border-orange-500/30', // design-tokens-ok: 7R legend
     'consolidate': 'bg-purple-500/10 text-purple-600 border border-purple-500/30', // token-migration-ok
     'retire':      'bg-red-500/10 text-red-600 border border-red-500/30' // token-migration-ok
   };
@@ -300,7 +302,7 @@ function renderCandidates(candidates) {
   // Confidence level → badge colour classes and labels (RAT-105)
   const confidenceConfig = {
     'high':   { cls: 'bg-success/10 text-success border-success/30',              label: 'High Confidence' },
-    'medium': { cls: 'bg-amber-500/10 text-amber-700 border-amber-500/30',        label: 'Medium Confidence' },
+    'medium': { cls: 'bg-warning/10 text-warning-emphasis border-warning/30',     label: 'Medium Confidence' },
     'low':    { cls: 'bg-destructive/10 text-destructive border-destructive/30',   label: 'Low \u2014 Tentative' },
     'none':   { cls: 'bg-muted text-muted-foreground border-border',               label: 'Insufficient Evidence' },
   };

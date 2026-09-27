@@ -1,0 +1,1126 @@
+{
+  "schema_version": 1,
+  "candidate_base": "2f7fdc5c121890f3266d3e3ea6e55f6bdac89331",
+  "qualification_status": "in_progress",
+  "closure_authority": "qa_lead_independent_retest",
+  "findings": [
+    {
+      "id": "F500-001",
+      "area": "test_environment",
+      "severity": "high",
+      "title": "Browser tests can silently use the long-lived fallback database",
+      "status": "verified",
+      "original_evidence": "2026-09-03 browser run: 4 accessibility errors and 11 adversarial failures; server warned TEST_DATABASE_URL was unset; procurement login failed.",
+      "required_fix": "Make release and smoke entry points fail closed unless an explicit disposable PostgreSQL database is supplied.",
+      "verified_evidence": "2026-09-03: contract regression 3/3 passed; clean-database adversarial smoke cohort 11/11 passed; clean-database accessibility traversal passed.",
+      "closure_tests": [
+        "A smoke invocation without TEST_DATABASE_URL must fail before browser launch",
+        "The same smoke test must pass against an explicitly named clean database"
+      ]
+    },
+    {
+      "id": "F500-002",
+      "area": "frontend_security",
+      "severity": "high",
+      "title": "Security matrix template used a raw safe bypass",
+      "status": "verified_local",
+      "original_evidence": "tests/test_template_escaping.py detected rendered_matrix|safe",
+      "proposed_fix": "Return Markup only from the autoescaping emitter and render without a template-level safe filter.",
+      "retest_evidence": "3 Sep 2026, isolated worktree retest/f500-002 off origin/main@2f7fdc5c, commit c9e5997f: reproduced original defect first (test_template_escaping.py::test_no_template_renders_a_bare_variable_unescaped failed, 1 failed/4 passed, citing security_matrix.html:45 rendered_matrix|safe) before applying the fix, confirming the finding was live on the candidate. After the fix: tests/test_template_escaping.py 5/5 passed; tests/test_genome_emitter_xss.py::test_security_matrix_fragment_escapes_modelled_text 1/1 passed; python -m bandit app/modules/enterprise_genome/services/security_matrix_emitter.py -> 0 findings (the retained # nosec B704 marker is inert, cosmetic only, not a blocker); python scripts/verify.py --tag static -> 35 passed, 0 failed, 1 skipped (css-build skipped: no vendored Tailwind CLI binary in this worktree, unrelated to this fix, documented pre-existing local-environment gap). Final CI retest still required on the release SHA per this ledger's closure controls.",
+      "closure_tests": [
+        "tests/test_template_escaping.py",
+        "tests/test_genome_emitter_xss.py::test_security_matrix_fragment_escapes_modelled_text",
+        "Bandit B704 review",
+        "Full static verification"
+      ]
+    },
+    {
+      "id": "F500-003",
+      "area": "release_harness",
+      "severity": "medium",
+      "title": "Release test timeout was shorter than its one-hour contract",
+      "status": "verified_ci",
+      "original_evidence": "tests/test_verify_test_suite_timeout.py expected 3600 seconds and observed 1800",
+      "proposed_fix": "Use a 3600-second timeout per release suite.",
+      "retest_evidence": "The timeout regression test passed after restoring the one-hour contract. Final exact-SHA CI run 33854737201 then completed the database-backed backend job successfully in 37m54s: 4,003/4,003 tests passed with zero failed/skipped/xfail/xpass, proving the harness no longer aborts at the former 1,800-second limit.",
+      "closure_tests": [
+        "tests/test_verify_test_suite_timeout.py",
+        "Full database-backed verifier"
+      ]
+    },
+    {
+      "id": "F500-004",
+      "area": "browser_compatibility",
+      "severity": "high",
+      "title": "Release CI exercises Chromium only",
+      "status": "verified_ci",
+      "original_evidence": "Smoke fixture launches p.chromium and no Firefox/WebKit release job is defined.",
+      "required_fix": "Define and execute the supported browser matrix; retain per-browser evidence. Safari support requires WebKit plus final real-device/service evidence where contractually required.",
+      "retest_evidence": "Final exact-SHA CI run 33854737201 executed independent Linux browser jobs: Chromium archetype journeys 157/157 plus interaction census 9/9, Firefox 56/56 and WebKit 56/56, all with zero nonpasses. Real-device Edge and Safari evidence remains an external matrix item rather than an unimplemented CI job.",
+      "closure_tests": [
+        ".github/workflows/ci.yml browser-compatibility matrix",
+        "Firefox critical journeys pass in exact-SHA CI",
+        "WebKit critical journeys pass in exact-SHA CI"
+      ]
+    },
+    {
+      "id": "F500-005",
+      "area": "accessibility",
+      "severity": "high",
+      "title": "Manual WCAG 2.2 AA and assistive-technology evidence is absent",
+      "status": "blocked_external",
+      "original_evidence": "Repository contains axe and keyboard automation but no moderated NVDA, JAWS, or VoiceOver report.",
+      "required_fix": "Complete manual keyboard, zoom/reflow, NVDA/JAWS, and VoiceOver assessment of critical persona journeys and disposition all serious findings.",
+      "closure_tests": []
+    },
+    {
+      "id": "F500-006",
+      "area": "frontend_usability",
+      "severity": "medium",
+      "title": "Collapsed platform-admin sidebar uses ambiguous duplicate icons",
+      "status": "verified_ci",
+      "original_evidence": "Chromium smoke: test_the_collapsed_sidebar_stays_readable[platform_admin] found four icons each serving two destinations (layout-dashboard, gavel, shield-check, grid-3x3), baseline <= 1.",
+      "required_fix": "Assign semantically distinct icons so collapsed navigation remains identifiable without text.",
+      "retest_evidence": "The focused collapsed-sidebar assertion passed after icon differentiation. Final exact-SHA CI run 33854737201 passed the complete Chromium archetype suite 157/157, interaction census 9/9 and all static sidebar/navigation gates.",
+      "closure_tests": [
+        "tests/smoke/test_rendered_legibility.py::test_the_collapsed_sidebar_stays_readable[platform_admin]",
+        "Sidebar static and rendered tests",
+        "Full static verifier"
+      ]
+    },
+    {
+      "id": "F500-007",
+      "area": "frontend_interaction",
+      "severity": "high",
+      "title": "Transformation objective page renders ambiguous duplicate revision controls",
+      "status": "verified_ci",
+      "original_evidence": "Chromium smoke at 390px and 1024px: the test's page-wide input[name=expected_revision] locator resolved to two controls in separate, valid Programme context and Objective and scope forms.",
+      "required_fix": "Give the objective form a stable identity and scope the optimistic-lock probe to the revision control owned by that form; retain both valid form controls.",
+      "retest_evidence": "The scoped transformation objective journey passed at the affected responsive viewports after the form ownership correction. Final exact-SHA CI run 33854737201 passed Chromium 157/157 plus interaction census 9/9 and the complete 4,003-test backend suite with zero nonpasses.",
+      "closure_tests": [
+        "tests/smoke/test_transformation_room_journeys.py::test_transformation_create_to_objective_deep_link_is_accessible_and_honest",
+        "Transformation concurrency and form contract tests",
+        "Full static verifier"
+      ]
+    },
+    {
+      "id": "F500-008",
+      "area": "governance_gates",
+      "severity": "high",
+      "title": "Six documented governance/AI-safety gates exist as scripts but are never registered in build_gates(), so they never run",
+      "status": "verified_local",
+      "original_evidence": "3 Sep 2026, docs-audit worktree (branch docs/claude-md-drift-audit, base 2f7fdc5c): `grep -oE '^\\s*Gate\\(\"[a-z0-9-]+\"' scripts/verify.py | sort -u | wc -l` -> 44, not the 67 docs/DELIVERY_CONTRACT.md claimed. `grep -rn \"role-gate-coverage|ai-evidence-rules|ai-tool-guard|ai-untrusted-content|ai-approval-honoured|evidence-contract\" scripts/verify.py` -> no matches. The six scripts (scripts/check_evidence_contract.py, scripts/check_role_gate_coverage.py, scripts/check_ai_evidence_rules.py, scripts/check_ai_tool_guard.py, scripts/check_ai_untrusted_content.py, scripts/check_ai_approval_honoured.py) exist on disk and are not wrapped in a Gate(...) entry in build_gates(), so none run as part of `python scripts/verify.py`, CI, or anywhere else found in the repository. Re-deriving DELIVERY_CONTRACT.md's role-to-gate table from the 44 gates that actually exist found 12 of 15 roles measure 0 real gates (including AI/ML architect, product architect, business architect, service designer, data/evidence analyst, integration architect), not the 1-8 the table claimed - because those roles' tags (ai, architecture, process, product, journey, business, handoff, evidence, integration, rendered, wayfinding, content) are not carried by any currently-registered gate. CLAUDE.md separately claimed 88/98 units of ratchet debt for design_tokens/raw_sql_tenancy that both currently measure 0, and documented 19 gates against the real 44 - both were also corrected in the same pass (see branch docs/claude-md-drift-audit for the full diff, not yet merged).",
+      "required_fix": "Register the six scripts as Gate(...) entries in scripts/verify.py's build_gates(), each with a Proven-against: line per DELIVERY_CONTRACT.md Rule 2 (reintroduce the defect, confirm red, restore, confirm green) before trusting them in the release gate - do not wire them in unproven, per this same document's own account of a gate it built and deliberately did not ship because it had false positives. Re-derive and correct docs/DELIVERY_CONTRACT.md's role-to-gate table once the real tag set is known.",
+      "retest_evidence": "3 Sep 2026: registry contract passed; five root-aware seeded red/green proof cases plus checker-provenance test passed (6 tests); verifier gates passed evidence-contract 29<=29, role-gate-coverage 7<=7, and all four AI gates 0<=0. Final CI retest remains required on the release SHA.",
+      "closure_tests": [
+        "grep -oE '^\\s*Gate\\(\"(evidence-contract|role-gate-coverage|ai-evidence-rules|ai-tool-guard|ai-untrusted-content|ai-approval-honoured)\"' scripts/verify.py must match all six",
+        "Each of the six gates has a documented Proven-against case reproduced: reintroduce the named defect, gate goes red; restore, gate goes green",
+        "python scripts/verify.py includes all six in its run with zero unexpected new findings on the candidate SHA",
+        "docs/DELIVERY_CONTRACT.md's role-to-gate table matches a fresh run of scripts/check_role_gate_coverage.py --count against the corrected build_gates()"
+      ]
+    },
+    {
+      "id": "F500-010",
+      "area": "arb_governance",
+      "severity": "high",
+      "title": "Typed ARB browser qualification contains expected failures",
+      "status": "verified_local",
+      "original_evidence": "Main Chromium smoke run reported six xfailed typed-ARB cases. All were eliminated on 3 Sep: Architecture Model submission, Return for Evidence and cycle-2 resubmission, historical-unverified lock rendering, corrupt-evidence HTTP 503, normalized Solution submission, and a production-valid frozen Decision Brief submission now pass as real browser assertions. Final evidence: 26 passed, 0 failed, 0 skipped, 0 xfailed in the complete typed ARB Chromium suite; the independent typed ARB service/route/template regression set passed 439/439.",
+      "required_fix": "Replace every expected failure with deterministic passing end-to-end evidence or retain the associated behavior as an explicit release blocker; qualification cannot count xfail as green.",
+      "closure_tests": [
+        "tests/smoke/test_typed_arb_governance_journey.py with zero xfail/skip",
+        "Typed ARB service and route suites",
+        "Full Chromium qualification"
+      ]
+    },
+    {
+      "id": "F500-009",
+      "area": "browser_harness",
+      "severity": "medium",
+      "title": "Architecture Journey browser evidence skipped when seed had no journey",
+      "status": "verified_local",
+      "original_evidence": "Main Chromium run skipped the journey-home honesty check and two screenshot cases because the smoke tenant contained no ArchitectureJourney.",
+      "required_fix": "Seed one real business-architect-owned journey so home, honesty, and screenshot checks always execute.",
+      "retest_evidence": "3 Sep 2026: the complete corrected Chromium smoke suite passed 177/177 with zero skips or xfails, including journey home, honesty and screenshot cases.",
+      "closure_tests": [
+        "tests/smoke/test_architecture_journey_home_journey.py",
+        "tests/smoke/test_architecture_journey_screenshots.py",
+        "Main Chromium qualification with zero missing-journey skips"
+      ]
+    },
+    {
+      "id": "F500-011",
+      "area": "governance_gates",
+      "severity": "medium",
+      "title": ".gitignore blanket-ignores scripts/check_*.py, requiring a manual allowlist line per permanent gate - the likely root mechanism behind F500-008",
+      "status": "verified_local",
+      "original_evidence": "3 Sep 2026, worktree gov-gates (branch feat/docs-drift-and-check-registration, base e74bd8ec): creating two new checker scripts (scripts/check_docs_drift.py, scripts/check_unregistered_checks.py) and running `git add` showed 'The following paths are ignored by one of your .gitignore files'. `git check-ignore -v` traced both to .gitignore:196 `scripts/check_*.py`. The surrounding comment already documents one prior casualty: 'these globs are why DESIGN.md can reference a check_token_migration.py pre-commit hook that is absent from the repository - a permanent quality gate was named like a throwaway and got ignored out of existence.' Every one of the 70 check_*.py scripts currently tracked required its own `!scripts/check_X.py` negation line added by hand; the default is to silently drop a new one unless the author notices and force-adds it.",
+      "required_fix": "This finding was fixed rather than left open, since it was a one-line addition needed anyway to commit the two new gates: negation lines added for both new scripts. The systemic direction (default-ignore + manual allowlist for a class of file meant to be permanent) is unchanged and worth inverting - default-track scripts/check_*.py and ignore only files matching a genuinely-scratch naming convention (scripts/check_*_scratch.py, or similar) - but that broader change is out of scope of this fix and not attempted here.",
+      "retest_evidence": "3 Sep 2026: both new scripts committed successfully after the negation lines were added (commit 037490fc); `git ls-files scripts/check_*.py | wc -l` -> 72 (70 pre-existing + 2 new), confirming both are now tracked.",
+      "closure_tests": [
+        "git check-ignore -v scripts/check_docs_drift.py scripts/check_unregistered_checks.py must report no match",
+        "git ls-files scripts/check_*.py includes both new scripts"
+      ]
+    },
+    {
+      "id": "F500-012",
+      "area": "performance_harness",
+      "severity": "medium",
+      "title": "Documented scale benchmark could not import the Archie application",
+      "status": "verified_local",
+      "original_evidence": "3 Sep 2026: `python scripts/benchmark_scale.py --i-know-this-is-not-prod ...` exited before any writes with ModuleNotFoundError: No module named 'app' because direct script execution placed scripts/, not the repository root, on sys.path.",
+      "required_fix": "Add the repository root to the benchmark launcher's import path before importing app and prove the documented command reaches a real isolated benchmark run.",
+      "retest_evidence": "Launcher contract passed; isolated PostgreSQL benchmark seeded 10,000 applications, 50,000 ArchiMate elements, 500 solutions and 1,000 users. All three p95 budgets passed (17.4ms, 54.9ms, 4.3ms), cleanup left zero benchmark elements, and the scratch database was dropped.",
+      "closure_tests": [
+        "tests/test_benchmark_scale_launcher.py",
+        "python scripts/benchmark_scale.py --i-know-this-is-not-prod --applications 10000 --elements 50000 --solutions 500 --users 1000 --iterations 20 --cleanup"
+      ]
+    },
+    {
+      "id": "F500-013",
+      "area": "production_monitoring",
+      "severity": "high",
+      "title": "Production adversarial monitor invoked an unavailable pytest timeout plugin",
+      "status": "verified_ci",
+      "original_evidence": "GitHub production-watch run 33803348625 reached the adversarial test step but exited 4 before collection: pytest: error: unrecognized arguments: --timeout=2400.",
+      "required_fix": "Install the repository's pinned test requirements before invoking pytest and rerun the complete production-watch workflow on the final SHA.",
+      "retest_evidence": "Workflow contract test confirms the adversarial job installs requirements-test.txt; exact-SHA production-watch run 33804486375 completed green and its adversarial probes passed in 6m30s. Container-log inspection was skipped because the optional production SSH secret was absent, so that is not claimed as evidence.",
+      "closure_tests": [
+        "tests/test_production_watch_workflow.py",
+        "Production-watch adversarial job collects and passes on final SHA"
+      ]
+    },
+    {
+      "id": "F500-014",
+      "area": "accessibility",
+      "severity": "high",
+      "title": "Linux Chromium reports four serious AI-chat color-contrast failures",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA CI run 33804483255: main Chromium completed 155 tests but failed both accessibility ratchets because /ai-chat introduced color-contrast (serious) on four elements. The same eight-page axe audit passed locally on Windows Chromium, establishing a platform/font-rendering-sensitive result rather than a universally reproducible selector.",
+      "required_fix": "Capture the exact axe target selectors in CI, correct every affected AI-chat foreground/background token to meet WCAG 2.1 AA under Linux Chromium, and rerun the complete browser matrix on one final SHA.",
+      "retest_evidence": "Static source and token analysis identified the default enterprise architect's exactly four Expertise Areas chips as the four-for-four match: `bg-primary/10 text-primary` computes at approximately 4.26:1 in its nested tint on Linux, below WCAG AA. The implementation now uses DESIGN.md's required `bg-info/10 text-info-emphasis` pairing (approximately 6.14:1), protected by a failing-before/passing-after regression. The local eight-page Chromium audit passes. Exact-SHA Linux CI run 33808606132 at commit 774b47be8ac83f5ec7c02885fbd2478a50d31783 completed the main Chromium browser job green, including both accessibility ratchets; this closes the automated Linux contrast finding. Manual assistive-technology evidence remains separately open under F500-005.",
+      "closure_tests": [
+        "tests/test_smoke_console_diagnostics.py::test_accessibility_violation_preserves_affected_selectors",
+        "tests/smoke/test_accessibility_audit.py on Linux Chromium",
+        "Complete final Chromium browser job"
+      ]
+    },
+    {
+      "id": "F500-015",
+      "area": "browser_harness",
+      "severity": "medium",
+      "title": "Firefox console diagnostics collapsed structured errors to the word Object",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA Firefox job in CI run 33804483255 failed the 320px motivation repository check with only `Motivation repository raised JavaScript errors: ['Object']`. Diagnostic run 33807384189 reproduced the same opaque plain-object page error at 768px, proving it arrived through Playwright's pageerror channel rather than console and still lost the thrown object's fields.",
+      "required_fix": "Serialize every console argument with source location, preserve page-error stacks, and install a pre-page error/unhandled-rejection probe that copies every exception into a fresh serializable diagnostic record before Firefox discards its fields.",
+      "retest_evidence": "Exact-SHA run 33808606132 again failed Linux Firefox with three opaque Object page errors, while its Chromium and WebKit jobs passed. Run 33810262875 then passed 55/56: the failure moved to BusinessProcess while all motivation viewports passed, and every page/API request returned 200. The first enhanced probe emitted nothing because Playwright had been given an uninvoked arrow expression; a runtime contract reproduced that absence before the probe was corrected to an IIFE. The corrected probe reproduced the failure locally on Equipment and retained the exact object: `{isFromCancelledTransition: true}`, Alpine's documented internal sentinel when one visual transition supersedes another. Archie's production error handler already prevents and ignores that exact benign signal; Playwright Firefox surfaced it before the later handler could prevent the harness pageerror. A failing-before/passing-after browser contract now makes the earliest qualification listener prevent only that exact sentinel, while an independent contract proves other plain-object rejections remain serialized and release-blocking. Seven diagnostic contracts pass locally. The complete exact 56-case Firefox compatibility command then passed 56/56 in 392.93 seconds on the corrected branch, including Equipment, BusinessProcess and all motivation viewports. Final Linux Firefox CI remains authoritative.",
+      "closure_tests": [
+        "tests/test_smoke_console_diagnostics.py::test_console_object_is_serialized_with_source_location",
+        "Complete final Firefox compatibility job"
+      ]
+    },
+    {
+      "id": "F500-016",
+      "area": "authorization_and_test_integrity",
+      "severity": "high",
+      "title": "Full CI exposed broken persona authorization evidence and a navigation false positive",
+      "status": "verified_local",
+      "original_evidence": "Exact-SHA CI run 33804483255: two platform-admin journey tests could not build URLs without a request context; the security-architect journey expected Governance Gates but the admin-only route returned 403; and the API-settings navigation test matched a URL embedded in JavaScript rather than a rendered link.",
+      "required_fix": "Build journey URLs under a request context, give security architects explicit read-only Governance Gates page/list access while preserving administrator-only mutations, hide mutation controls from readers, and assert navigation against rendered href attributes.",
+      "retest_evidence": "3 Sep 2026: the combined root-owned qualification cohort passed 26/26, including both platform-admin tests, six security/data-architect journeys, five navigation authorization cases, and the new read-only/mutation-denial regression. Static verification passed 42/42 with zero skips. Exact-SHA CI run 33810262875 then collected 3,987 tests and passed 3,985 with zero skips; its only authorization failure was one older contradictory test that still asserted security architects must never see the now-explicit read-only Governance Gates link. That stale assertion has been aligned with the page/list-read, mutation-denied policy and passed in a 13/13 combined root retest. Final CI remains authoritative.",
+      "closure_tests": [
+        "tests/journeys/test_journey_platform_admin.py",
+        "tests/journeys/test_journey_security_and_data_architect.py",
+        "tests/test_admin_nav_offers_only_permitted_links.py",
+        "Full non-smoke CI suite on final SHA"
+      ]
+    },
+    {
+      "id": "F500-017",
+      "area": "test_environment",
+      "severity": "medium",
+      "title": "SSE production-header contract depended on an undeclared test server",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA CI run 33804483255: tests/test_sse_headers.py failed during collection because Waitress was not installed by the tests job.",
+      "required_fix": "Declare the server used by the cross-server WSGI header contract as a test-only dependency; keep the production runtime on Gunicorn.",
+      "retest_evidence": "3 Sep 2026: dependency resolution selected Waitress 3.0.2 and tests/test_sse_headers.py passed 2/2 inside the 26-test combined root retest. Exact-SHA PostgreSQL 16 CI run 33810262875 collected this module successfully and its complete 3,987-test run reported only two unrelated assertion failures, confirming the dependency gap is closed in CI.",
+      "closure_tests": [
+        "tests/test_sse_headers.py",
+        "Full non-smoke CI suite on final SHA"
+      ]
+    },
+    {
+      "id": "F500-018",
+      "area": "skip_hygiene",
+      "severity": "high",
+      "title": "Four applicable CSP browser tests skipped in the main CI suite",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA CI run 33804483255: all four tests/csp/test_csp_evaluator.py browser assertions skipped because the non-smoke tests job installed the Playwright package but no Chromium binary.",
+      "required_fix": "Install Chromium in the non-smoke tests job and retain a workflow contract proving that the collected CSP browser checks have their required runtime.",
+      "retest_evidence": "3 Sep 2026: tests/csp/test_csp_evaluator.py passed 4/4 against the explicit isolated PostgreSQL database; the CI workflow contract passed; combined root retest passed 26/26 with no skips; static verification passed 42/42 with no skips. Exact-SHA PostgreSQL 16 CI run 33810262875 collected 3,987 tests and reported zero skips, independently proving the four browser-backed CSP assertions executed rather than silently skipping.",
+      "closure_tests": [
+        "tests/csp/test_csp_evaluator.py with zero skips",
+        "tests/test_ci_browser_matrix.py::test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests",
+        "Full non-smoke CI suite on final SHA with zero applicable skips"
+      ]
+    },
+    {
+      "id": "F500-019",
+      "area": "test_determinism",
+      "severity": "medium",
+      "title": "Export-recovery contract raced a 150-millisecond database lease",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA PostgreSQL 16 CI run 33810262875: test_premature_export_recovery_remains_retryable_after_database_lease_expiry expected a pre-expiry RuntimeError, but setup and session work consumed its 150ms lease, so production correctly treated the already-expired lease as recoverable.",
+      "required_fix": "Use a comfortably long initial lease for the pre-expiry ownership assertion, then cross the durable boundary explicitly by updating dispatch_lease_expires_at relative to the database clock before testing recovery; do not use wall-clock sleeps.",
+      "retest_evidence": "4 Sep 2026: the corrected test passed inside a 13/13 combined root retest. The implementation uses a 30-second initial lease and an organization-scoped SQL update to set the persisted expiry to clock_timestamp() minus one second. No production code changed. Exact-SHA PostgreSQL 16 CI run 33831735604 then passed all 3,992 tests with zero skips or expected failures.",
+      "closure_tests": [
+        "tests/test_transformation_execution_service.py::test_premature_export_recovery_remains_retryable_after_database_lease_expiry",
+        "Full non-smoke CI suite on final SHA"
+      ]
+    },
+    {
+      "id": "F500-020",
+      "area": "frontend_runtime",
+      "severity": "high",
+      "title": "Default ArchiMate viewpoint performs a duplicate initial render",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA Linux Firefox run 33830528607 failed three motivation-responsive viewports with an opaque object exception. Prior diagnostic reproduction retained Alpine's `{isFromCancelledTransition: true}` sentinel, and request evidence repeatedly showed two identical initial layer-element calls. Source tracing found dashboard init loads elements immediately, then reloads after the default Basic/All Elements viewpoint resolves even though its intentionally empty element_types array adds no filter.",
+      "required_fix": "Do not repeat the initial element request when the resolved viewpoint has no type filter; retain the refresh when a non-empty viewpoint filter changes the requested data.",
+      "retest_evidence": "4 Sep 2026 strict runtime TDD: the real dashboard.js component factory produced two unfiltered requests before the fix (`[null, null]`, test red) while the non-empty viewpoint case produced the required filtered refresh. After requiring a non-empty element_types array, the runtime test observes one default request and two requests only for the filtered case. The focused dashboard/repository suite passed 11/11. Exact-SHA Linux CI run 33831735604 then passed all 56 Firefox checks, including all three formerly failing responsive viewports.",
+      "closure_tests": [
+        "tests/test_archimate_dashboard_init_runtime.py",
+        "tests/smoke/test_archetype_journeys.py::test_motivation_repository_shell_is_accessible_and_responsive on Firefox",
+        "Complete final Firefox compatibility job"
+      ]
+    },
+    {
+      "id": "F500-021",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "Immutable-image audit omitted the optional email worker from resolved Compose",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA CI run 33831735604 passed every application, browser, database, security and dependency job, then release job 100901957263 failed before image publication with KeyError: 'worker'. The worker is intentionally declared under the disabled-by-default email Compose profile, so an ordinary `compose config` omitted it while the audit still attempted to inspect it.",
+      "required_fix": "Resolve production Compose with the email profile enabled during the immutable-image audit. This must inspect both active and dormant application services without enabling the worker in production.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the release-artifact contract failed until the CI command explicitly included `--profile email`; the corrected contract passed 5/5, the merged main/release cohort passed 37/37, and the merged static verifier passed 44/44 with zero skips. Exact-SHA CI run 33835558111 passed the profile-aware Compose audit and built, pushed, registry-inspected and pulled OCI index sha256:80b5287c448d63d82f2c0dfd4223236d88fc4b1fab9015f530bf6a3717d2b25e before a separate label-template defect stopped manifest issuance.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "CI Build immutable release image job on final SHA",
+        "Published release.json digest and OCI revision verification"
+      ]
+    },
+    {
+      "id": "F500-022",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "First immutable production cutover had no automatic rollback target",
+      "status": "verified_production",
+      "original_evidence": "4 Sep 2026 read-only production preflight: the live service was healthy on legacy commit e74bd8ecd8db0e8c6430350b35f4ab1bce9c474b with a source bind mount and local image archie-ea-server, while /root/deploy-releases/release.env was absent. The digest deployer's failure path required a previously recorded digest and would otherwise terminate without restoring the legacy server.",
+      "required_fix": "Capture the healthy legacy commit before checkout and provide a first-cutover-only controller that restores that exact checkout, recreates the existing server without a build, and verifies health when the immutable deploy fails before any release record exists. Preserve digest-to-digest rollback after the first successful release.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three deployment contract assertions failed before the controller existed. After implementation, the combined deploy/release contract suite passed 8/8 and all three deploy scripts passed Bash syntax validation. In production, exact digest 8bb328c0 activated and passed health; an intentionally unreachable public check then failed, the controller restored exact legacy commit e74bd8ec without a build, verified HTTP health, preserved a nonzero deploy result and left no false release record.",
+      "closure_tests": [
+        "tests/test_deploy_script_contract.py::test_first_immutable_cutover_has_a_verified_legacy_rollback",
+        "tests/test_release_artifact_contract.py::test_operator_cutover_records_legacy_identity_before_checkout",
+        "Controlled first-cutover failure proves legacy identity and health are restored",
+        "Successful exact-digest production cutover records release.env"
+      ]
+    },
+    {
+      "id": "F500-023",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "OCI revision verification used an invalid escaped Docker template",
+      "status": "verified_ci",
+      "original_evidence": "Exact-SHA CI run 33835558111 passed all eleven prerequisite jobs and built/pushed/pulled OCI index sha256:80b5287c448d63d82f2c0dfd4223236d88fc4b1fab9015f530bf6a3717d2b25e, then job 100914170553 failed with `template parsing error: unexpected backslash in operand`. The single-quoted Go template unnecessarily escaped the label key's double quotes, making Docker receive literal backslashes.",
+      "required_fix": "Use an unescaped double-quoted label key inside the shell's single-quoted Docker Go template, and enforce the exact valid expression plus absence of the escaped form in the release workflow contract.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the strengthened release-artifact contract failed against the escaped template before correction, then passed in the 8/8 release/deploy cohort. Exact-SHA CI run 33838576771 passed all 12 jobs, verified the OCI revision/import and issued release.json for digest sha256:8bb328c022a156f8afad78fc9abb9e240f6ef29be0558babb3ec9905f4e4fd56.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "CI OCI revision equality assertion on final SHA",
+        "release.json artifact exists and names the verified digest"
+      ]
+    },
+    {
+      "id": "F500-024",
+      "area": "production_configuration",
+      "severity": "high",
+      "title": "Immutable production Compose booted the default configuration with a random session secret",
+      "status": "verified_production",
+      "original_evidence": "4 Sep 2026 post-deploy health for exact artifact 4ba005ef reported environment `default` instead of `production`; container inspection found no FLASK_CONFIG or SECRET_KEY. The explicit base+production Compose invocation intentionally excludes the host's untracked override, while the versioned base service did not forward those settings. Config.py therefore generated a random SECRET_KEY. The artifact was rejected and production was restored to legacy commit e74bd8ec, independently confirmed healthy in production mode; the active immutable release record was removed and preserved as rejected forensic evidence.",
+      "required_fix": "The production overlay must inject FLASK_CONFIG=production and require the host SECRET_KEY for every application-bearing service. CI must assert the resolved Compose environment, and deployment health must fail closed unless the service reports both healthy status and production environment.",
+      "retest_evidence": "4 Sep 2026 strict TDD: three release-contract assertions failed before the configuration controls existed. After implementation, the combined release/deploy contract cohort passed 8/8 and all deployment scripts passed Bash syntax validation. Host preflight resolved all five application services with FLASK_CONFIG=production, the same non-empty SECRET_KEY and inherited database settings. Exact-SHA CI run 33845512875 passed 12/12 jobs and published digest sha256:db9312fd2e3413c93481abfda5abf36650483384396dc4c72b772506e6ea3fb5. During production cutover the exact image passed local health with status=healthy and environment=production before a separate transient public-load-balancer 503 triggered the verified legacy rollback; this proves the production configuration defect itself is closed.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_production_override_uses_one_immutable_image_without_source_mounts",
+        "tests/test_release_artifact_contract.py::test_ci_builds_once_after_every_release_gate_and_exports_the_digest",
+        "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
+        "Production /health reports environment=production and exact OCI revision after restart"
+      ]
+    },
+    {
+      "id": "F500-025",
+      "area": "release_engineering",
+      "severity": "high",
+      "title": "Post-deploy verification raced external load-balancer health convergence",
+      "status": "verified_production",
+      "original_evidence": "4 Sep 2026 exact-digest cutover of 1b8fad54 passed local /health with status=healthy and environment=production, then the first public /health request immediately returned HTTP 503. Production logs show the external load balancer probing at approximately 15-second intervals; the backend had been unavailable during the long schema phase and needed new successful probes before routing resumed. The one-shot public verifier therefore rejected a locally healthy candidate. The first-cutover controller restored exact legacy commit e74bd8ec and independently verified healthy production service.",
+      "required_fix": "After local exact-image health succeeds, wait for a bounded external /health response that reports both healthy and production before running the broader public-page verifier. Retain rollback on timeout or any persistent application failure.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the deployment contract failed before a public readiness wait existed, then the complete six-test release-artifact contract passed after implementation; deploy/deploy.sh also passed Bash syntax validation. Exact-SHA CI run 33849959515 passed 12/12 jobs and published digest sha256:68ebd67cc97217846feaa1daa667d03303e433a9e214036c7edb8636d357127e. The protected production cutover of exact commit 0a17761d waited through external routing convergence, passed local and public production health, served all three anonymous product surfaces with no error copy, recorded the exact digest/revision only after checks passed, and retained backup db-20260904-082746.sql.gz.",
+      "closure_tests": [
+        "tests/test_release_artifact_contract.py::test_host_deployer_accepts_only_digest_and_full_commit_inputs",
+        "deploy/deploy.sh passes Bash syntax validation",
+        "Exact-digest production cutover waits through load-balancer convergence and all public product checks pass"
+      ]
+    },
+    {
+      "id": "F500-026",
+      "area": "ai_safety",
+      "severity": "high",
+      "title": "fence_untrusted() did not neutralize its own delimiter syntax inside untrusted content, allowing a forged fence-close/fence-open pair",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026, worktree security/ai-red-team, base 0a17761d: dynamic red-team pass against ToolExecutor/fence_untrusted (not the static ai-* gates, which check shape, not runtime escape resistance). Crafted body containing a literal \"=== END <label> ===\" line followed by forged instruction text and a fake \"=== BEGIN <label> ===\" round-tripped through fence_untrusted() byte-for-byte unchanged: python repro showed the output contained the exact forged end-marker string appearing before the real one, i.e. untrusted content could manufacture what looks like the end of its own fenced block followed by fresh apparently-trusted text - a delimiter/fence-escape prompt injection, same class as an un-escaped </script> breaking a fenced HTML context.",
+      "required_fix": "app/modules/ai_chat/services/architect_persona_charters.py: fence_untrusted() must neutralize byte-identical copies of its delimiter inside untrusted bodies without deleting the payload, while preserving fixed server-controlled labels and the no-fabrication preamble.",
+      "retest_evidence": "4 Sep 2026, commit a7b04f85: Claude's five focused adversarial tests passed. Codex independently inspected both production call sites (fixed server-controlled labels), reran the five tests, and passed the complete local static verifier 44/44 with zero skips. Final exact-SHA CI run 33854737201 passed all 12 jobs and 4,003/4,003 backend tests, including all five fence-escape regressions and AI boundary gates. Exact digest sha256:d9ff6c88089657551e225a4bc3f996bb644a8029f875f316a873c427c4bfaffa was then deployed; revision, production health and public checks passed. Broader live conversational/provider red-team evidence remains outstanding, so status stays verified_local rather than claiming full AI-red-team closure.",
+      "closure_tests": [
+        "tests/test_ai_red_team_fence_escape.py",
+        "Full static verification",
+        "A live conversational red-team pass through the actual chat endpoint (not yet attempted - see docs/qa/runs/2026-09-04-ai-red-team.md \"Not yet attempted\" section)"
+      ]
+    },
+    {
+      "id": "F500-027",
+      "area": "data_integrity",
+      "severity": "high",
+      "title": "CTO-tab hero Health Score and lazy-loaded Executive Summary fragment reported different values for the same metrics on the same page",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026: user-supplied screenshots of the CTO dashboard tab, same page load, taken moments apart. Hero panel: Health Score 48, Capability Coverage 100%. Executive Summary fragment (lazy-loaded via GET /dashboard/api/executive-summary): Health Score 14.3, Capability Coverage % 0. Traced: dashboard_views.py::overview computes capability coverage from ApplicationCapabilityMapping (L1 capabilities with >=1 mapped application, subtree-rolled-up); ExecutiveDashboardService._get_capability_coverage computed it from SolutionCapabilityMapping (capabilities with >=1 mapped solution - a much sparser relationship). Same label, same 20% weight in an identically-shaped 40/30/20/10 health-score composite, two different tables - an ADR-0008 violation for a computed metric rather than a stored one.",
+      "proposed_fix": "app/modules/dashboard/v2/services/capability_coverage.py: new compute_l1_capability_coverage(), the single shared computation (ports the hero panel exact logic). ExecutiveDashboardService._get_capability_coverage now calls it instead of reimplementing.",
+      "retest_evidence": "4 Sep 2026, commit c2c3867a (merged to main): pytest tests/test_dashboard_capability_coverage_agreement.py -> 1 passed (seeds a capability mapped to an application but not a solution; asserts the shared function and the service call return identical dicts, not just non-conflicting numbers). pytest tests/test_dashboard_health_score_honesty.py tests/test_executive_briefing_ai.py -> 17 passed, no regression. python scripts/verify.py --tag static -> 43 passed, 0 failed, 1 skipped (pre-existing, unrelated). NOT fully closed: phase_maturity and risk_posture sub-components remain genuinely different formulas between the hero and the fragment (Phase-C+ percentage vs persona avg-maturity; risk severity vs risk-documentation coverage) - flagged as remaining scope, not silently left.",
+      "closure_tests": [
+        "tests/test_dashboard_capability_coverage_agreement.py",
+        "Full static verification",
+        "tests/test_dashboard_health_agreement.py",
+        "tests/test_dashboard_health_integration.py",
+        "tests/smoke/test_dashboard_health_agreement.py",
+        "Deployed browser agreement across Overview and loaded CTO summary"
+      ],
+      "latest_retest_2026_09_05": "Live CTO page still shows 42.9 versus 48 on OCI revision 02bc01c5. Replaced Overview's independent formula with the executive service computation, preserving missing values and decimal precision. No ARB observations now produce unavailable governance rather than invented zero. Independent main-agent combined rerun passed all 16 dashboard regressions, including five for this repair and a Chromium missing-value rendering case. Database endpoint and full-application browser tab/reload cases are added but await CI; deployment and live closure remain outstanding."
+    },
+    {
+      "id": "F500-028",
+      "area": "frontend_interactions",
+      "severity": "critical",
+      "title": "Interaction census treated wired-looking controls and rendered pages as proof that user actions worked",
+      "status": "open",
+      "original_evidence": "4 Sep 2026: production /solutions/32 rendered successfully and its buttons carried click-like markup, yet Link Existing Elements and Codegen produced no usable dialog. The existing tests/smoke/test_interaction_reality.py checked structural wiring and successful navigation, not the promised outcome of each visible control, allowing broken modal targets, early listener binding, recursive Alpine getters, and silent export no-ops to pass. Measured scope exposes the systemic gap: the product defines 11 enterprise roles, but the archetype journey map and interaction baseline cover only 9 (security_architect and data_architect are absent), naming only 20 unique paths; the repository contains 564 templates, 476 of them containing button/link-like controls; and the separately named Level 10 walkthrough covers only four personas and a handful of destinations.",
+      "required_fix": "Place the entire authenticated product in active defect scope. Inventory every reachable visible interactive control for every supported role and verify the intended navigation, modal, download, mutation, feedback, persistence, authorization, accessibility, and failure behavior in a real browser. A handler attribute, DOM presence, HTTP 200, or developer claim is not closure evidence.",
+      "retest_evidence": "Not yet closed. The solution detail page has been added to the interaction census and a first outcome-based Playwright journey has been added; product-wide control/outcome coverage and Linux browser execution remain outstanding.",
+      "closure_tests": [
+        "tests/smoke/test_interaction_reality.py",
+        "Outcome-based browser journeys for every inventoried control and supported role",
+        "Complete Chromium and Firefox interaction census on the final exact release"
+      ]
+    },
+    {
+      "id": "F500-029",
+      "area": "solution_blueprint_frontend",
+      "severity": "high",
+      "title": "Solution blueprint shipped multiple visible controls whose promised outcomes did not occur",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 direct production reproduction on /solutions/32: Link Existing Elements and Codegen did not open dialogs; the phase-gate panel displayed `Error loading gate: Maximum call stack size exceeded`; Save as Template and Export OEF bound listeners before their buttons existed; modal footer Close/Done changed unused local state; PNG export silently did nothing when no renderer was available. Browser logs also reported missing modal roots and an unavailable loader-circle icon.",
+      "required_fix": "Give modal roots the IDs required by the modal registry, prevent phase-gate getters from recursively reading their own Alpine properties, bind header actions at interaction time, close modal-store state from footer actions, use a shipped icon, and provide visible failure feedback when PNG export is unavailable.",
+      "retest_evidence": "4 Sep 2026 strict local TDD: seven interaction-contract regressions failed against the defects and pass after repair. Template syntax, template references, and design-token gates pass. Linux CI browser run 33922010050 passed the corrected Playwright journey, which opens Deployment and clicks Link, Done, Codegen and Close while asserting modal transitions. Direct Chrome production retest on live build c913b7de then expanded Deployment and clicked Link and Codegen: both produced zero visible dialogs and no navigation, confirming production still serves the unfixed older build. Closure requires deployment of the new exact SHA followed by the same direct Chrome outcome checks.",
+      "closure_tests": [
+        "tests/test_solution_blueprint_interaction_contract.py",
+        "tests/smoke/test_solution_blueprint_controls.py",
+        "Production outcome retest of every visible /solutions/<id> control"
+      ]
+    },
+    {
+      "id": "F500-030",
+      "current_candidate": "Rendered review confirms eight further decorative card sites across six active journey/solution/composer templates. Candidate removes strips and uses neutral uniform card borders/backgrounds while preserving status labels/icons/actions. Root reviewed all six diffs, rebuilt CSS de5a7e07 and passed freshness check, then independently passed48actual-fragment style cases69.98s across three engines/light+dark. These are styling/conditional-rendering controls, not backend approval/Undo execution or whole-product visual closure.",
+      "latest_verification": "Scope includes the owner's whole-product neutral-card requirement, not only the original dashboard. Root real-template Chromium style regression reproduced business card blue4px left edge versus neutral1px other edges after adding required actual design-token CSS. Removed five layer-specific edge rules in model viewer; six Chromium/Firefox/WebKit navigation/style cases passed within ongoing combined modal run. Each style case clicks all five layers and compares rendered border widths/colors. Synthetic cached model input and shell/network boundaries; no real generation/persistence claim. Other active card/panel accents remain and this umbrella is in progress.",
+      "area": "visual_design",
+      "severity": "medium",
+      "title": "Neutral-card design remains inconsistent across dashboards and product panels",
+      "status": "in_progress",
+      "original_evidence": "4 Sep 2026 after main commit aa973d60 claimed the dashboard health cards matched the flat pattern, app/templates/dashboards/overview.html still contained fourteen border-l-4 colored card accents across Overview, CTO, and CFO panels, contrary to the owner's explicit no-colored-sides-or-corners requirement.",
+      "required_fix": "Remove decorative colored sides and corners from cards across Archie-EA, including dashboards and all role-specific panels; verify the rendered flat neutral card contract, not only color-token compliance.",
+      "retest_evidence": "4 Sep 2026: a regression assertion failed with fourteen occurrences before repair and now passes with zero border-l-4 occurrences in the dashboard template; design-token and template gates pass. First CI caught the required committed CSS rebuild; the rebuilt stylesheet now passes the css-build gate locally. Final rendered multi-role visual verification remains required.",
+      "closure_tests": [
+        "tests/test_solution_blueprint_interaction_contract.py::test_dashboard_cards_have_no_colored_side_accents",
+        "Rendered dashboard visual checks for every supported role"
+      ]
+    },
+    {
+      "id": "F500-031",
+      "area": "browser_persona_coverage",
+      "severity": "high",
+      "title": "Browser qualification omitted two supported enterprise roles",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 strict TDD: app/models/user.py defines 11 valid enterprise roles, while tests/smoke/conftest.py hardcoded nine. Security Architect and Data Architect were absent from archetype journeys, mobile checks, authorization browser probes, error-banner checks, rendered-legibility checks and the interaction-reality baseline. The new scope contract failed with both missing names before repair.",
+      "required_fix": "Make the browser archetype list equal the product's valid role list and give each role real signature destinations. Include both roles in the zero-debt interaction census so future role drift fails mechanically.",
+      "retest_evidence": "4 Sep 2026: the scope contract passes 2/2 after adding Security Architect risk/governance destinations and Data Architect data-architecture/lineage destinations. The expanded Chromium interaction and persona matrix remains to run in final CI.",
+      "closure_tests": [
+        "tests/test_smoke_persona_scope_contract.py",
+        "tests/smoke/test_archetype_journeys.py for all 11 roles",
+        "tests/smoke/test_interaction_reality.py for all 11 roles"
+      ]
+    },
+    {
+      "id": "F500-032",
+      "area": "settings_data_honesty",
+      "severity": "high",
+      "title": "Settings advertised fabricated backup archives and inert backup operations",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 source and rendered-contract audit: /settings hardcoded two dated ZIP archives with invented sizes and exposed Create, Download, Restore and Delete buttons despite having no backing archive service or routes. An administrator could reasonably believe recoverable backups existed when none had been created.",
+      "required_fix": "Remove fabricated archive records, schedules and unavailable actions. Render one explicit non-interactive unavailable state until a real repository-backed backup service exists.",
+      "retest_evidence": "4 Sep 2026: the template now states that backup/restore are unavailable and contains no sample archives or backup controls. The PostgreSQL-backed rendered regression is pending final CI.",
+      "closure_tests": [
+        "tests/test_settings_backup_reality.py",
+        "Final browser interaction census on /settings"
+      ]
+    },
+    {
+      "id": "F500-033",
+      "area": "governance_frontend",
+      "severity": "high",
+      "title": "Governance surfaces exposed dead shortcuts and row actions instead of canonical workflows",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 control audit: legacy governance ADR, ARB review and risk pages offered New/Schedule/Add actions with no implemented outcome; ARB decision titles were inert despite a canonical decision detail page; governance dashboard standards exposed an inert Edit button and recent reviews exposed an inert View button.",
+      "required_fix": "Redirect legacy shortcuts to canonical decision, ARB-review and risk workflows; link persisted decisions to their real detail page; expose a real solution destination for recent reviews; and present unavailable standard editing as text rather than a button.",
+      "retest_evidence": "4 Sep 2026: repository changes implement the canonical redirects and links and remove the false Edit affordance. PostgreSQL-backed outcome tests are pending final CI.",
+      "closure_tests": [
+        "tests/test_governance_control_outcomes.py",
+        "Final browser outcome checks on governance shortcuts, decisions and recent reviews"
+      ]
+    },
+    {
+      "id": "F500-034",
+      "area": "capability_enterprise_frontend",
+      "severity": "high",
+      "title": "Capability and plateau registers presented controls with no valid same-model workflow",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 strict TDD: the unmapped UnifiedCapability view rendered Map Application and View Details controls even though only BusinessCapability mapping/detail workflows exist, risking cross-model IDs or not-found outcomes. The enterprise plateau register rendered New Plateau and per-row arrow buttons with no matching enterprise create/detail route. It also rendered invented Draft, Unnamed Plateau, No description and TBD values when stored fields were null. All three regressions failed before repair.",
+      "required_fix": "Remove cross-model and unimplemented action affordances; retain honest register content and explain that roadmap-registered plateaus appear in the register.",
+      "retest_evidence": "4 Sep 2026: all three rendered contracts pass after removing the misleading controls and rendering missing plateau fields as an em dash; template syntax, references and design-token gates pass. Final browser census remains required.",
+      "closure_tests": [
+        "tests/test_capability_enterprise_actionability.py",
+        "Final browser interaction census on capability analysis and enterprise plateaus"
+      ]
+    },
+    {
+      "id": "F500-035",
+      "latest_coverage_review": "0521450e independent review: currentCI covers11roles/24journey paths,41census path templates and5role walkthrough, not whole product. Historical audit27075/27104loads,301369outcome records including193901reused,17886finding occurrences;13971no-outcome occurrences across410routes. Current browser probe wrongly labels operation-failed text as verified and omits newly revealed controls. Manifest/classification correction assigned; comprehensive qualification remains open.",
+      "area": "whole_product_audit_execution",
+      "severity": "critical",
+      "title": "Exhaustive eleven-role page auditor existed but was absent from the release workflow",
+      "status": "in_progress",
+      "original_evidence": "4 Sep 2026: scripts/production_readiness_audit.py can enumerate every registered GET surface for every role at desktop and mobile widths, but no CI workflow invoked it. The release evidence instead relied on a 20-path journey map, a nine-case structural interaction census and a four-persona walkthrough while describing the result as whole-product qualification. Independent review also established that advertised L8/L10 behavior was incomplete and L6 was narrower than its documentation, so page surveying must not be represented as outcome proof.",
+      "required_fix": "Provide a manually dispatchable, exact-SHA CI matrix over all valid roles. Each role must run every audit level at both viewports against its own PostgreSQL 16 environment and retain its complete JSON/server-log evidence even when findings fail the job. Execute the matrix, import every finding into the active ledger, repair, and repeat until clean.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the workflow contract failed because the workflow was absent, then passed after adding an eleven-role, two-viewport matrix with failure evidence retained for 30 days. The audit report inventories every visible link, button, input, select, textarea, summary and button/link role per successfully rendered page. A privacy regression then proved the first implementation captured textarea/contenteditable contents; the recorder was corrected to use associated labels and strip URL query strings. The platform-admin seed now carries real administrator permissions, expected denials are retained without failing the run, and basic admin-route allow/deny outcomes are evaluated. Six audit contract tests pass. The first exhaustive run has not yet executed, and page inventory still does not close F500-028's per-control outcome requirement.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py",
+        "Whole-product active defect audit workflow green for all 11 roles on the final SHA",
+        "All per-role JSON findings imported and dispositioned in this ledger"
+      ]
+    },
+    {
+      "id": "F500-036",
+      "area": "qa_evidence_privacy",
+      "severity": "high",
+      "title": "Whole-product control inventory leaked editable field contents into retained CI evidence",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 independent browser reproduction against the exact PAGE_PROBE: a textarea containing 'private field contents' was serialized with that content as its label, while a normal input's associated label was missed. Contenteditable values and URL query strings could likewise enter artifacts retained for 30 days despite the recorder's no-values claim.",
+      "required_fix": "Resolve accessible labels without using editable text, retain no input values, and remove URL queries/fragments from recorded destinations. Enforce the guarantee in a real browser regression.",
+      "retest_evidence": "4 Sep 2026: a Chromium regression proves input, textarea and contenteditable values are absent while aria-label and associated label text are retained. Recorded href/form actions are reduced to origin/path. Audit contract suite passes 6/6 locally.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py::test_control_inventory_never_serializes_editable_values",
+        "Final whole-product artifacts inspected for absence of field values and URL secrets"
+      ]
+    },
+    {
+      "id": "F500-037",
+      "area": "qa_authorization_evidence",
+      "severity": "high",
+      "title": "Whole-product matrix used a platform-admin label without administrator permissions and treated expected denials as defects",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 review of seed_personas and evaluate_findings: every seeded persona inherited the default Architect role and is_platform_admin=False, so the platform_admin matrix entry could not exercise admin pages. Every correct 401/403 was stored as an informational finding but still counted in the process exit status, making ordinary role isolation permanently fail the workflow.",
+      "required_fix": "Seed the platform administrator with the authoritative Administrator role and platform/org administrator flags; explicitly verify allow/deny outcomes; retain expected denial evidence without counting it as a release-blocking defect.",
+      "retest_evidence": "4 Sep 2026: platform-admin seeding now assigns the Administrator role and admin flags. Behavioral tests distinguish expected denial, unexpected administrator denial and unauthorized non-admin access; information-only evidence is excluded from the failure count. Audit contract suite passes 6/6 locally.",
+      "closure_tests": [
+        "tests/test_whole_product_audit_workflow.py::test_information_only_observations_do_not_fail_the_audit",
+        "tests/test_whole_product_audit_workflow.py::test_authorization_distinguishes_expected_and_unexpected_admin_access",
+        "First exhaustive 11-role artifact set"
+      ]
+    },
+    {
+      "id": "F500-038",
+      "area": "frontend_interaction_evidence",
+      "severity": "critical",
+      "title": "Whole-product auditor advertised journey logic without activating controls or proving outcomes",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 independent implementation review: L10 was selectable and included by default but evaluate_findings contained no L10 branch. The crawler inventoried handler attributes and successful page renders without clicking controls, reproducing the exact evidence gap behind F500-028.",
+      "required_fix": "For each safe visible control, start from a fresh authenticated page, activate the real control and accept only an observed navigation, popup, download, meaningful visibility/ARIA/scroll change, or successful request plus visible feedback. Block non-GET discovery traffic and explicitly defer mutation/persistence controls to seeded journeys; never credit handler presence.",
+      "retest_evidence": "4 Sep 2026 strict TDD: the L10 outcome layer records every classified control, activates safe controls on fresh pages, aborts runtime non-GET requests, emits control-no-outcome failures, sanitizes retained URLs, and incrementally flushes long-running evidence. A real Chromium test proves a handler-only button fails, a reveal succeeds, a meaningful fragment scroll succeeds and a missing fragment fails. Identical navigation destinations are deduplicated per role/viewport while page-local controls remain contextual. Focused audit suite passes 12/12 locally. The full matrix must be rerun on this implementation before closure.",
+      "closure_tests": [
+        "tests/test_production_readiness_control_outcomes.py",
+        "Whole-product L10 matrix completes for all roles/viewports",
+        "Every dedicated-seeded-journey classification is mapped to a persistence/authorization/error journey"
+      ]
+    },
+    {
+      "id": "F500-039",
+      "area": "solution_authorization_frontend",
+      "severity": "critical",
+      "title": "Solution page admitted users through a bound-method bug while its visible Code Workbench action rejected them",
+      "status": "verified_local",
+      "original_evidence": "4 Sep 2026 direct Chrome production test on /solutions/32, live build c913b7de: More actions opened, but clicking its visible Code Workbench menu item navigated to a 403 Forbidden page. Source trace found _check_solution_access used `if user.is_admin`, which treats the bound method itself as truthy and admits every authenticated same-tenant user, while codegen _check_access correctly called the method but recognized only creator/admin and omitted named stakeholders and the is_platform_admin flag. Smoke fixtures concealed this disagreement by assigning the Administrator role to all 11 personas.",
+      "required_fix": "Invoke is_admin rather than testing the method object, recognize the explicit platform-admin flag, and make blueprint and Code Workbench access agree for creators, administrators and named stakeholders. Give ordinary smoke personas Architect permissions and only the platform_admin persona Administrator permissions. Prove the visible menu destination in a real browser using a platform administrator who did not create the solution.",
+      "retest_evidence": "4 Sep 2026 strict TDD: focused tests failed because an outsider was admitted by the bound method and codegen accepted no explicit user. Both access checks now agree for denial, creator, named stakeholder and platform administrator; 9/9 access plus blueprint interaction contracts pass locally. A new Playwright journey clicks More actions then Code Workbench as a non-creator platform administrator and requires the real workbench heading rather than a 403. Linux CI, deployment and direct production Chrome retest remain required.",
+      "closure_tests": [
+        "tests/test_solution_codegen_access_agreement.py",
+        "tests/smoke/test_solution_blueprint_controls.py::test_platform_admin_can_open_foreign_solution_code_workbench",
+        "Direct production Chrome click from More actions to a rendered Code Workbench"
+      ]
+    },
+    {
+      "id": "F500-040",
+      "area": "qa_navigation_evidence",
+      "severity": "critical",
+      "title": "Click auditor marked navigation to HTTP error pages as verified",
+      "status": "verified_local",
+      "original_evidence": "Chromium regression against a local HTTP server proved that clicks to 403, 404 and 500 pages were all classified as verified navigation by the new L10 probe. Only the URL change was checked. This would conceal the same workbench failure observed directly in production.",
+      "required_fix": "Require a captured main-frame destination response and reject HTTP errors before accepting navigation evidence. Exercise successful and failed destinations in Chromium.",
+      "retest_evidence": "The regression first failed for all three error statuses while the 200 case passed. After the correction all four navigation cases and the complete focused audit suite passed, 16 tests total. CI and application-level outcome qualification remain outstanding.",
+      "closure_tests": ["tests/test_production_readiness_control_outcomes.py::test_navigation_requires_successful_destination_response"]
+    },
+    {
+      "id": "F500-041",
+      "latest_verification": "5 September root live Chrome ordinary brand click from /architecture/data-entities navigated to /admin/ and settled on403 Forbidden, confirming the survey lead even for the currently signed-in account named platform.admin. No record mutations. Candidate brand href now dashboard.overview; independent rendered Chromium2passed with explicit synthetic destination boundaries. Eleven real-role cases collected and added across CI browsers; deployment and live repaired-link check pending. Ten historical role reports now available, final platform-admin audit still live at14:06UTC.",
+      "area": "whole_product_browser_findings",
+      "severity": "high",
+      "title": "First completed role surveys report unresolved account, navigation, layout and authorization observations",
+      "status": "in_progress",
+      "original_evidence": "Run 33923515022 at 09c2c675 completed business_architect and solution_architect: each surveyed 1232 route candidates at two viewports, 2464 requests, 934 HTML inventory records, and 364 observations including 94 non-informational observations. All 728 observations are grouped with every role/viewport occurrence retained in docs/qa/runs/2026-09-04-whole-product-first-results.json. These numbers are survey coverage, not verified interaction coverage.",
+      "required_fix": "Triage every recorded observation, split validated defects into actionable fixes, and repeat the browser journeys on the repaired release. Investigate account toggle names, duplicate breadcrumbs, missing implementation destinations and administration access. TestingConfig disables CSRF, so absent token findings require production-equivalent configuration before drawing a conclusion. Redirected pages and synthetic IDs require explicit disposition.",
+      "retest_evidence": "Initial evidence imported and retained. Investigation confirmed billing handlers use only login_required and testing configuration disables CSRF; neither all route-based authorization flags nor token observations are yet independently validated. Remaining role jobs are still running.",
+      "closure_tests": ["All observations in docs/qa/runs/2026-09-04-whole-product-first-results.json dispositioned with evidence", "Full browser survey and control outcome rerun"]
+    },
+    {
+      "id": "F500-042",
+      "area": "billing_authorization",
+      "severity": "high",
+      "title": "Billing page, upgrade and customer portal required login but no administrator permission",
+      "status": "verified_local",
+      "original_evidence": "Browser survey 33923515022 found billing reachable by ordinary architects. Real route tests confirmed all three handlers admitted non-administrators: index returned 200, upgrade reached organization validation and portal redirected, instead of rejecting access before billing operations.",
+      "required_fix": "Apply the existing administrator permission guard to billing index, upgrade and portal. Preserve the separately authenticated Stripe webhook. Verify ordinary-user denial and administrator access with browser navigation.",
+      "retest_evidence": "Three unauthorized-request cases failed before the fix. All eight tests now pass, including Chromium clicks to the real billing route in an isolated Flask test application for ordinary and administrator accounts. Billing data rendering is stubbed in that test; complete application CI and production verification remain outstanding.",
+      "closure_tests": ["tests/test_billing_access_control.py", "Browser matrix billing authorization on the deployed revision"]
+    },
+    {
+      "id": "F500-043",
+      "area": "qa_accessible_name_detection",
+      "severity": "medium",
+      "title": "Browser audit falsely reported named account switches as unnamed",
+      "status": "verified_local",
+      "original_evidence": "The account template labels each notification switch using aria-labelledby. PAGE_PROBE ignored those references when inspecting buttons, yielding twenty false unnamed-button observations per completed role across two account routes and viewports.",
+      "required_fix": "Resolve aria-labelledby text when testing button names and continue reporting missing or empty references.",
+      "retest_evidence": "Chromium regression confirms a correctly referenced switch is accepted while a missing label reference remains a finding. Combined billing and audit suite passes 15 tests. Original observations remain retained for traceability.",
+      "closure_tests": ["tests/test_whole_product_audit_workflow.py::test_button_name_probe_resolves_label_references_in_chromium", "Repeat account page browser audit"]
+    },
+    {
+      "id": "F500-044",
+      "area": "administration_authorization",
+      "severity": "high",
+      "title": "Deprecation monitoring dashboard and APIs admitted ordinary users in both implementations",
+      "status": "verified_local",
+      "original_evidence": "The first browser surveys flagged /admin/deprecation/ for ordinary architect accounts. Actual route tests reproduced 200 responses in both legacy and v2 implementations. Five monitoring GET routes lacked administrator checks; the legacy alert-sending POST also lacked an administrator guard.",
+      "required_fix": "Require existing administrator permission before rendering monitoring pages, reading metrics or invoking alert delivery in both implementations.",
+      "retest_evidence": "Both dashboard denial regressions failed before repair. After repair, 16 deprecation tests pass, including Chromium clicks through the real registered routes for ordinary/admin accounts in both implementations, plus API tests proving denied requests do not call metrics services. Combined billing/deprecation suite passes 24 tests. Rendered data is stubbed in these isolated permission tests; full application CI and production verification remain outstanding.",
+      "closure_tests": ["tests/test_deprecation_access_control.py", "Full application role matrix and production administration access retest"]
+    },
+    {
+      "id": "F500-045",
+      "area": "navigation_design",
+      "severity": "medium",
+      "title": "Five rationalization and workflow pages render duplicate breadcrumb trails",
+      "status": "in_progress",
+      "original_evidence": "Browser survey 33923515022 recorded duplicate-breadcrumbs on rationalization enrich, tracking, workbench, workflow definitions and phase viewpoint pages in both desktop and mobile. Source confirms each template renders an explicit contextual trail plus a second trail through page_shell or page_header.",
+      "required_fix": "Render only the contextual trail and verify the visible parent link navigates successfully in the application browser.",
+      "retest_evidence": "Removed redundant breadcrumb arguments from the five header calls, preserving contextual parent navigation. Template syntax gate passes. Added five full-application Playwright cases requiring one visible breadcrumb and successful parent navigation; those browser cases still require CI execution. No browser-verified closure is claimed.",
+      "closure_tests": ["tests/smoke/test_breadcrumb_navigation.py", "Production visual and breadcrumb navigation checks"]
+    },
+    {
+      "id": "F500-046",
+      "area": "data_governance_application_shell",
+      "severity": "medium",
+      "title": "RoPA register uses public-site layout with dead navigation and no application main landmark",
+      "status": "in_progress",
+      "original_evidence": "Whole-product browser survey 33923515022 recorded missing main landmarks and dead About links on /genome/data/ropa. The template extends layouts/base.html instead of the authenticated application shell.",
+      "required_fix": "Use the application shell and verify a real browser can generate the register and display its result within the main landmark.",
+      "retest_evidence": "Changed the shell to layouts/admin_base.html. Template syntax and CSS freshness checks pass. Added a full-application browser journey that clicks Generate RoPA and checks the response and rendered register; execution is still pending. Not browser verified or deployed.",
+      "closure_tests": ["tests/smoke/test_ropa_generation.py", "Production RoPA generation and navigation retest"]
+    },
+    {
+      "id": "F500-047",
+      "area": "qa_control_evidence_integrity",
+      "severity": "high",
+      "title": "Whole-product auditor reused navigation success across different pages and link instances",
+      "status": "verified_local",
+      "original_evidence": "The L10 evidence fingerprint returned only the sanitized href for anchors. A successful link on one page could therefore qualify another page's broken link, or a different fragment/query link whose destination was sanitized to the same path. A regression requiring independent page/control identities failed against this implementation.",
+      "required_fix": "Keep navigation evidence specific to the source page and visible control ordinal, rather than transferring success by destination.",
+      "retest_evidence": "Fingerprint now includes page, ordinal, destination and control attributes. Eighteen focused audit tests pass, including a real Chromium case with two identical destination/label links: the first opens a panel and the second does nothing, and their evidence remains distinct. The running older audit does not contain this correction; a final-revision full audit is still required. Four completed older role surveys are summarized in docs/qa/runs/2026-09-04-four-role-survey-summary.json with their limitations explicit.",
+      "closure_tests": ["tests/test_production_readiness_control_outcomes.py::test_navigation_evidence_is_specific_to_its_page_and_control_instance", "tests/test_production_readiness_control_outcomes.py::test_identical_links_need_independent_browser_evidence", "Full product audit on final release revision"]
+    },
+    {
+      "id": "F500-048",
+      "area": "qa_browser_security_configuration",
+      "severity": "high",
+      "title": "Whole-product browser server disabled CSRF enforcement through TestingConfig",
+      "status": "verified_local",
+      "original_evidence": "Audit boot used manage with FLASK_CONFIG=testing; TestingConfig sets WTF_CSRF_ENABLED=False. The first four role surveys each contain twelve missing-token observations, but that configuration cannot prove production form behavior and bypasses protection on submitted forms.",
+      "required_fix": "Enable CSRF in the audit-only server entrypoint while retaining the isolated test database. Do not assert submission failure from hidden-token absence alone: JavaScript header handling requires actual submission verification.",
+      "retest_evidence": "Added scripts.audit_server:create_app and wired audit boot to it. Real Chromium regression against that factory with Flask-WTF accepts a valid-token form and rejects a missing-token form with HTTP 400. Twenty focused audit tests pass without skips. This tests audit configuration, not every application form; full application audit rerun with enforcement remains outstanding. Product production configuration is unchanged.",
+      "closure_tests": ["tests/test_audit_server_security.py", "Full application form submissions in the CSRF-enforcing audit environment"]
+    },
+    {
+      "id": "F500-049",
+      "latest_production_measurement": "2026-09-05T15:26:41Z read-only43-table aggregate:37owner-bearing tables contain7rows (6business_roles,1physical_equipment), no measured link/ownership defects. Six ownerless models contain2rows with source-owner comparison NULL/unmeasurable. Nine element claims, no multiple-source claims within scope only. See2026-09-05-production-backbone-ownership.json; no data writes or global tenancy qualification.",
+      "area": "technology_archimate_tenancy_and_radar",
+      "severity": "high",
+      "title": "Nine technology insert hooks omit organisation ownership from generated ArchiMate records",
+      "status": "in_progress",
+      "original_evidence": "While adding a real CTO classify/reclassify/persistence browser journey, source tracing showed technology Node and eight related model hooks insert ArchiMateElement rows through a raw connection without organization_id. All nine executed insert-statement regressions reproduced an absent organisation value for a tenant-owned source. The tenant-scoped radar reads ArchiMateElement, not the source technology table.",
+      "required_fix": "Copy source organisation into every generated technology ArchiMate insert. Verify database ownership, own-tenant radar visibility and other-tenant exclusion. Exercise classification and reclassification through actual browser controls, reload and a new session. Measure existing production ownership gaps before any narrowly scoped, reversible data repair; do not infer ownership where sources disagree.",
+      "retest_evidence": "All nine insert-hook tests failed before repair and pass after adding organization_id=target.organization_id. Added a shared-fixture database isolation regression and a full application browser journey moving an isolated node from unclassified to Trial to Hold, including reloads and a fresh session. Those database/browser cases remain pending CI. Production data measurement and deployed retest are outstanding; no closure claimed.",
+      "closure_tests": ["tests/test_technology_backbone_tenancy.py", "tests/smoke/test_radar_persistence.py", "Production ownership-gap before/after measurements and live radar persistence verification"]
+    },
+    {
+      "id": "F500-050",
+      "latest_production_measurement": "Fresh2026-09-05 artifact2026-09-05-production-backbone-ownership.json supersedes narrow technology_nodes-only ledger evidence. All37owner-bearing tables measured:7rows, zero ownership/link defects;35tables empty. Six additional ownerless models contain2rows whose source ownership is unmeasurable. No repair performed; clean existing rows do not prove creation/browser behavior.",
+      "area": "cross_domain_archimate_ownership",
+      "severity": "high",
+      "title": "Additional tenant-scoped application, business and physical model hooks omit backbone ownership",
+      "status": "in_progress",
+      "original_evidence": "Independent follow-up to F500-049 identified 25 raw insert sites serving 28 tenant-bearing model paths across application_layer, archimate_business, archimate_missing_elements, archimate_technology, business_layer, physical_layer and process_data. Fifty-two hook regressions failed on missing organisation ownership before repair.",
+      "required_fix": "Preserve source organisation on generated ArchiMate rows, validate source mappings and existing-link idempotence, qualify database and browser journeys, and measure existing records before attributable repair. Separately investigate raw-insert source models lacking organisation fields; copying a nonexistent attribute is not a valid fix.",
+      "retest_evidence": "Independent main-agent rerun: 61 hook tests pass across these repairs and F500-049; one database test deliberately deselected because no local PostgreSQL is available, so full verification remains pending CI. Read-only production check of technology_nodes found zero source rows and consequently zero missing/conflicting owners; this is not a measurement of the other model tables. No production data changed. Application/browser qualification and remaining production measurements outstanding.",
+      "closure_tests": ["tests/test_backbone_insert_ownership.py", "Database and browser verification of affected model creation paths", "Production source-to-element ownership measurements"]
+    },
+    {
+      "id": "F500-051",
+      "area": "ropa_data_labels_and_table_semantics",
+      "severity": "medium",
+      "title": "RoPA labels mixed business-process/application access endpoints as systems and omits explicit column scope",
+      "status": "verified_local",
+      "original_evidence": "Direct production browser click on Generate RoPA rendered eleven activities. The Systems / applications column included business-process names. Source tracing confirmed the builder retains archimate_type for every access endpoint but the emitter discarded it and applied a systems-only heading. A Chromium regression reproduced the misleading header; with the corrected wording alone its columnheader lookup still failed until column scope was explicit.",
+      "required_fix": "Use an accurate Accessing elements heading, display the modelled endpoint type, and declare table column headers explicitly. Preserve access mode, source provenance and escaping.",
+      "retest_evidence": "Changed the emitter label, displayed normalized modelled types and added scope=col to all six headers. Chromium rendered-table test plus six HTML injection regressions pass. This verifies the real emitter in a browser, not the deployed page. Full-page CI and production retest remain pending. The current live Generate RoPA action succeeds, while F500-046's old public layout remains visible.",
+      "closure_tests": ["tests/test_ropa_relationship_labels.py", "tests/test_genome_emitter_xss.py", "tests/smoke/test_ropa_generation.py", "Deployed RoPA table labels and generation verification"]
+    },
+    {
+      "id": "F500-052",
+      "area": "sso_configuration_validation",
+      "severity": "high",
+      "title": "Organisation federation settings can report save success for an unsupported enabled SAML protocol",
+      "status": "in_progress",
+      "original_evidence": "SSOConfig save accepted any protocol and enabled SAML although SSOService.initiate_saml_flow unconditionally raises unsupported. Seven route/browser regressions failed before validation. This is the organisation federation path, distinct from account-level SAML endpoints.",
+      "required_fix": "Reject unusable enabled protocols before mutating existing settings and retain truthful feedback. Qualify the full application save path and deployed behavior. Organisation SAML implementation and configured federation qualification remain outstanding enterprise scope; blocking invalid configuration does not implement SAML.",
+      "retest_evidence": "Main-agent independent rerun passed nine configuration tests, including real Chromium Save Configuration and reload with CSRF enabled, actual registered blueprint/form, and isolated storage boundary. Existing OIDC settings and secret are preserved on rejected saves; OIDC saves and disabled SAML drafts remain allowed. Full PostgreSQL, IdP and production verification are not claimed.",
+      "closure_tests": ["tests/test_sso_configuration_validation.py", "Full application and deployed SSO configuration regression", "Configured organisation federation qualification"]
+    },
+    {
+      "id": "F500-053",
+      "area": "adversarial_qualification_coverage",
+      "severity": "high",
+      "title": "CI excludes adversarial probes and those probes silently ignore request failures",
+      "status": "in_progress",
+      "original_evidence": "Main browser command deselects adversarial tests; CI had no subsequent adversarial step. Source review also found three exception handlers continuing silently and route traversal allowing logout/impersonation to invalidate later persona requests.",
+      "required_fix": "Run adversarial regressions against isolated test data with retained evidence; count request failures rather than ignoring them; keep traversal identity stable and test identity-changing routes separately. Inspect resulting failures rather than treating wiring as execution.",
+      "retest_evidence": "Added explicit CI adversarial step and JUnit artifact. Request exceptions now append failures. Identity-changing routes are excluded from these traversals and remain dedicated-journey scope. Three guard regressions pass. CI 33927686496 actually executed the adversarial suite: 12 failed, 1 passed. Failures include malformed ArchiMate limit (F500-060), three deliberate configuration-dependent 503 responses needing explicit configured/unconfigured contract coverage, and one unresolved relationship ConnectionError. Subsequent fedac94f CI did not reach this step because ordinary browser tests failed. No adversarial-green or whole-product coverage claim.",
+      "closure_tests": ["tests/test_adversarial_ci_execution.py", "tests/smoke/test_adversarial_probes.py", "Dedicated sign-out and tenant/identity transition browser journeys"]
+    },
+    {
+      "id": "F500-054",
+      "area": "dashboard_solution_pipeline",
+      "severity": "high",
+      "title": "Solution Pipeline falsely reports no solutions when existing solutions have no ADM phase",
+      "status": "in_progress",
+      "original_evidence": "5 September direct live browser on OCI revision 02bc01c55f76d9c179b46e64d640fe529ab8d5d9: Overview reports Solutions 4 but Solution Pipeline says No solutions yet. Read-only production aggregate confirms organisation 10 has four solutions with unassigned adm_phase. Source diagnosis shows only A-H groups contribute to the pipeline, dropping unassigned/unrecognised phases; errors can also become an empty list.",
+      "required_fix": "Preserve every tenant-visible solution in the pipeline, represent unassigned phases honestly, distinguish query errors from genuine absence, and verify populated, unclassified, empty and failure states. Do not assign a fabricated phase to existing records.",
+      "retest_evidence": "Retained unclassified counts and distinguished query failure from empty portfolio. Independent main-agent rerun: six focused tests passed, including three Chromium fragment renders; combined dashboard cohort 16 passed. Full-application test verifies actual dashboard, reload, health scorecard and pipeline navigation but awaits CI execution. Live evidence retained in docs/qa/runs/2026-09-05-live-release-check.md. No production records changed; fix not deployed.",
+      "closure_tests": ["Pipeline regression for unassigned and mixed phases", "Full application browser test of counts and nonempty state", "Deployed dashboard retest against existing unassigned solutions"]
+    },
+    {
+      "id": "F500-055",
+      "area": "health_scorecard_phase_honesty",
+      "severity": "high",
+      "title": "Health scorecard invents Vision phase and 12 percent maturity for solutions with no recorded phase",
+      "status": "in_progress",
+      "original_evidence": "5 September direct production browser on /dashboard/health shows Avg Solution Maturity 12%, A: Vision 4 and 100.0%. Independent read-only production query confirms all four solutions for organisation 10 have adm_phase IS NULL. Source diagnosis identifies fallback of unknown phase to A; this is separate from Overview pipeline dropping these rows (F500-054).",
+      "required_fix": "Represent unassigned phases explicitly, calculate maturity only from real recorded inputs and show unavailable values as em dashes. Keep a genuine measured zero distinct from missing data or query failure. Do not mutate records merely to make charts appear complete.",
+      "retest_evidence": "Replaced unknown-phase fallback with explicit Unclassified, excluded missing inputs from maturity calculation and rendered missing/error measurements honestly. Five regressions failed before repair; independent main-agent combined rerun passed all 16 dashboard cases, including these five and three Chromium scorecard renders. Full-application browser test extended for unclassified distribution, unavailable maturity and reload, pending CI. Production defect remains present until deployment and independent retest.",
+      "closure_tests": ["Scorecard unassigned/mixed/empty/error-state regressions", "Full application browser phase distribution and maturity verification", "Production retest against the four existing unassigned solutions"]
+    },
+    {
+      "id": "F500-056",
+      "area": "deployment_disk_capacity",
+      "severity": "high",
+      "title": "Image pull can exhaust production root volume before deployment detects insufficient capacity",
+      "status": "in_progress",
+      "original_evidence": "Interim c87d0d1f deployment pull failed extracting torch library with no space left on device. Free root space fell from 3.1 GB to 133 MB before activation; prior application stayed healthy. Four unused legacy local build images occupied substantial retained storage.",
+      "required_fix": "Reclaim only verified unused artifacts while preserving rollback and data; add a tested capacity preflight and controlled image-retention procedure so future pulls cannot unexpectedly fill the production volume. Do not remove database volumes or current/rollback images.",
+      "retest_evidence": "Verified container references and removed exactly four unused legacy build images without force. Free space recovered to 34 GB, usage 57%; current application and database remained healthy. No data or backups removed. Deployment retry underway. Preventive versioned guard/retention work remains outstanding and is not being mixed into the currently executing deployment script.",
+      "closure_tests": ["Low-disk deployment preflight regression", "Controlled retention preserves current and rollback releases", "Before/after production capacity and healthy service measurements"]
+    },
+    {
+      "id": "F500-057",
+      "area": "solution_blueprint_responsive_controls",
+      "severity": "high",
+      "title": "Blueprint More actions overflows beneath the governance sidebar and cannot be clicked",
+      "status": "in_progress",
+      "original_evidence": "Direct browser on c87d0d1f during interim deployment, viewport 1280x631, solution Legacy CRM Retirement (Lotus Notes → Sales Cloud): central column width 424.667px, governance sidebar starts x960.667. More actions button is x964.75 width28px; elementFromPoint at its centre returns an unrelated DIV, not the button. Repeated ordinary clicks leave aria-expanded=false and menu hidden. Exact geometry and screenshot distinguish occlusion from an absent handler.",
+      "required_fix": "Keep long-title header actions within available central-column width and independently click-test the menu and navigation at constrained widths. Do not rely on viewport-wide breakpoints when side panels consume the page width.",
+      "retest_evidence": "Reproduced exact live title and constrained column in actual Chromium with shipped CSS/fonts/Alpine. Additive stacked page-shell actions enabled for blueprint. Two responsive browser regressions passed independently at 1280 and 1100px, including ordinary More actions click and navigation to an explicitly stubbed destination. Two full-application real Code Workbench journeys added, pending CI. Not deployed. Interim deployment rolled back, so original observations identify the rejected candidate, not current production.",
+      "closure_tests": ["Long-title constrained-column browser hit testing", "Real More actions and Code Workbench navigation", "Deployed retest at 1280px and narrower supported widths"]
+    },
+    {
+      "id": "F500-058",
+      "area": "deployment_failure_evidence",
+      "severity": "medium",
+      "title": "Rollback destroys rejected container logs after reporting only an error count",
+      "status": "in_progress",
+      "original_evidence": "c87d0d1f interim deployment passed health/public checks but reported five production error signals and rolled back. The script printed only a count. It recreated the rejected container; Docker json-file logs had no persistent mount, leaving no captured error details for diagnosis.",
+      "required_fix": "Retain root-only candidate log evidence before rollback, report its path, count errors from that captured evidence and fail closed if retrieval fails. Keep the existing error gate; do not waive unknown errors to obtain a green deployment.",
+      "retest_evidence": "Implemented root-only candidate log capture before rollback, shared evidence for counting, and fail-closed retrieval handling. Independent deployment capacity/log rerun passed 21 tests, including four retained-log regressions. Earlier combined batch failed during local disk exhaustion and is not counted green. Updated script not deployed; root cause of the five candidate error signals remains unknown.",
+      "closure_tests": ["Failed deployment retains candidate logs across rollback", "Log capture errors cannot produce a passing release", "Production rejected-release evidence retained and inspected"]
+    },
+    {
+      "id": "F500-059",
+      "area": "watchdog_deployment_coordination",
+      "severity": "high",
+      "title": "Watchdog starts a created application container before deployment dependencies finish",
+      "status": "in_progress",
+      "original_evidence": "Production watchdog log records restart at 2026-09-04T23:21:10Z after three health failures. At that point schema-deploy was still running and application was created but not started by Compose. The application became healthy before schema/ACL completion. Watchdog checks StartedAt-based grace but does not coordinate with the deployment lock; a never-started container bypasses that grace.",
+      "required_fix": "Coordinate watchdog and deployment through a common lock, do not force-start created containers, preserve normal recovery of genuinely wedged running services and fail safely when coordination cannot be determined.",
+      "retest_evidence": "Temporarily stopped the live watchdog timer while directly supervising rollback, verified recovered production, then restored the timer and confirmed active. Common deployment-lock and created-container guards added. Independent main-agent run passed nine watchdog cases; two Linux-specific real-lock cases skipped on Windows and still require Linux CI. This proves a deployment race but does not prove it caused the five rejected-release error signals. Updated watchdog is not installed on production yet.",
+      "closure_tests": ["Locked deployment excludes watchdog restart", "Created application is not force-started", "Ordinary wedged running service remains recoverable", "Production timer restored and coordination verified"]
+    },
+    {
+      "id": "F500-060",
+      "area": "archimate_picker_pagination",
+      "severity": "high",
+      "title": "ArchiMate element picker accepts negative limits and returns a server error",
+      "status": "in_progress",
+      "original_evidence": "CI 33927686496 adversarial execution reports /api/archimate/elements?limit=-1 returning 500. Route passes negative integers through to query.limit and raises on malformed integer strings. The single-type branch also ignores the requested limit.",
+      "required_fix": "Validate and bound limits consistently across default, search, multi-type and single-type paths while preserving tenant and layer/type predicates. Verify malformed inputs through actual database and browser requests.",
+      "retest_evidence": "Implemented existing safe_int_arg convention: absent/malformed defaults to 25, integer bounds 1..100. Single-type service accepts an optional validated bound without changing other callers. Independent main-agent rerun passed all 28 route regressions. PostgreSQL and full-browser regressions added but not yet executed in CI. Not deployed or closed.",
+      "closure_tests": ["tests/test_archimate_element_limit.py", "tests/test_hostile_input_pagination.py", "tests/smoke/test_archimate_picker_limits.py", "Deployed picker search and malformed-input verification"]
+    },
+    {
+      "id": "F500-061",
+      "latest_verification": "64825fe5 CI 33966263332 retained chromium-main.xml confirms both populated CSV and JSON browser downloads passed, within 194 passing main browser cases. Prior CSV 400/missing created_at failure is repaired in this candidate; 22 local contract cases also passed. Backend database job remains pending; relationships, broader authorization and deployed verification remain open. Earlier incorrect test double is retained as a test-quality failure, not closure evidence.",
+      "area": "architecture_import_export",
+      "severity": "high",
+      "title": "Architecture CSV export reads obsolete element_type attribute and fails for populated portfolios",
+      "status": "in_progress",
+      "original_evidence": "Retained CI 33927686496 Chromium server log smoke-server-41399.log records Architecture export failed: ArchiMateElement object has no attribute element_type. Source inspection corrects earlier redirect wording: the handler returns JSON 400, which the generic 5xx probe did not flag. Service aliases the canonical ArchiMateElement model but CSV serialization reads the obsolete attribute. Import constructors also use the obsolete name and require round-trip qualification.",
+      "required_fix": "Use canonical model fields while preserving a documented interchange schema, validate CSV/JSON round trips and actual browser downloads with populated records, verify authorization and tenant isolation, and inspect downloaded content rather than treating redirects as successful exports.",
+      "retest_evidence": "Initial coordinator handoff and 13-case test double incorrectly assumed archimate_type was canonical, producing false confidence. Direct model inspection established type as the mapped column; strengthened tests reproduced nine failures before correction. Candidate e8e16687 corrects CSV/JSON imports and exports with missing/blank/conflicting type rejection. Independent local runs passed 17 serialization/import cases and four actual Flask response/content-type/stream-cleanup cases. Two PostgreSQL cases and two browser download cases are pending CI 33965073124. Relationship preservation, tenant authorization and deployed browser verification remain open. Aider proposal cost was $0.00089; no mistaken repair was deployed.",
+      "closure_tests": ["tests/test_architecture_export_contract.py", "Populated CSV/JSON import-export round trips", "Real browser download, content and tenant isolation verification"]
+    },
+    {
+      "id": "F500-062",
+      "latest_verification": "64825fe5 CI 33966263332 retained chromium-main.xml confirms all eight full-application governance cases passed: four open/cancel/focus and four real save/reload/persistence checks. Latest independent local composition integration rerun also passed all 13 governance partial Chromium cases. Four live controls remain broken on unchanged production. No deployed closure or broader role/tenant qualification claimed.",
+      "area": "blueprint_governance_entity_controls",
+      "severity": "high",
+      "title": "All four blueprint governance Add controls produce no visible editor",
+      "status": "in_progress",
+      "original_evidence": "5 September renewed direct Chrome test on live /solutions/32, signed-in platform-admin: clicked + Exception under Governance & Compliance; accessibility tree unchanged and no dialog appeared. No submission or record mutation. Source calls openEntityModal('governance_exception'); blueprint.js sets activeModal, but blueprint template has no activeModal editor markup. Compliance/Change/Review share the method and require independent outcome checks; not yet individually tested.",
+      "required_fix": "Provide the intended accessible entity editor for every exposed governance control, with appropriate fields, validation, save/cancel, persisted outcomes and authorization. Test actual first click and saved data after reload. Do not hide the controls or treat a changed JS property as a completed interaction.",
+      "retest_evidence": "Independent follow-up Chrome clicks reproduced unchanged page/no editor for + Compliance, + Change and + Review as well as + Exception. No records changed. Claude assigned four-editor implementation with exclusive file ownership and standard modal/design contract; Codex added four full-application first-click/cancel/Escape/focus browser tests pending execution. Candidate e8e16687 is still in CI and not deployed; it predates this new repair. Save/persistence, authorization and deployed retests remain pending.",
+      "closure_tests": ["Real browser governance editor open/cancel for each control", "Save/reload and validation for each governance entity", "Role and tenant authorization", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-063",
+      "area": "blueprint_motivation_entity_controls",
+      "severity": "high",
+      "title": "Withdrawn premature Add Driver failure report; settled editor opens",
+      "status": "false_positive",
+      "original_evidence": "5 September direct Chrome test on production /solutions/32 as signed-in platform-admin: clicked + Driver in Vision & Motivation. Accessibility tree remained unchanged, focus moved to the trigger, and no dialog appeared. No submission or data mutation. This is outside the four governance editors assigned under F500-062; sibling Goal and Constraint controls have not yet been independently retested.",
+      "required_fix": "No code repair justified by this observation. Fix the test procedure: separate click from settled-state observation. Creation/persistence, focus management and sibling outcomes remain part of whole-product qualification, not proven by merely opening an editor.",
+      "retest_evidence": "Independent settled-state Chrome check showed Add Driver editor with Name, Description, Type, Cancel and Add Driver controls. Add Goal likewise opened. The initial snapshot occurred before rendering; the failure report was withdrawn and correction communicated. No production data changed or repair deployed. Governance controls will also be rechecked after settling.",
+      "closure_tests": ["Real browser Add Driver and sibling control outcomes", "Persisted domain and ArchiMate rows", "Role and tenant authorization", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-064",
+      "latest_verification": "Coordinator reproduced four focused failures (three unavailable denominators and rendered false 0 percent), then changed the summary to None for non-positive entitlement and rendered an em dash with an unavailable notice instead of a utilization bar. Nine focused tests pass, including two actual Chromium rendered-template cases distinguishing unavailable from genuine zero usage. These use disclosed shell/URL and row boundaries, not full auth/database execution. Committed in 18d52beb; CI 33967077472 pending. Not deployed or closed.",
+      "area": "procurement_compliance_honesty",
+      "severity": "medium",
+      "title": "Empty licence portfolio reports measured zero-percent utilization",
+      "status": "in_progress",
+      "original_evidence": "Settled live Chrome navigation from licence register to /procurement/compliance showed No license data, Consumed 0 / 0 licenses, and Overall Utilization 0%. Source app/modules/procurement/routes.py line 51 substitutes 0.0 when total_entitled is zero; compliance_dashboard.html formats it as a measured percentage.",
+      "required_fix": "Represent utilization with no positive entitlement denominator as unavailable, render an em dash and an appropriate empty utilization graphic, and preserve real zero usage when entitlement is positive. Add boundary and rendered/browser tests. Do not fabricate a ratio or change the underlying licence counts.",
+      "retest_evidence": "Repair and nine local cases committed in 18d52beb. Real database route test and strengthened ordinary-click browser journeys are pending CI 33967077472. No production data written; not deployed.",
+      "closure_tests": ["Zero entitlement versus positive entitlement with zero consumption", "Rendered empty and populated utilization", "Deployed browser confirmation"]
+    },
+    {
+      "id": "F500-065",
+      "area": "blueprint_composition_controls",
+      "severity": "high",
+      "title": "Solution Composition Add Component opens no editor",
+      "status": "in_progress",
+      "original_evidence": "5 September direct live Chrome click on + Component under Solution Composition at /solutions/32, signed-in platform admin. Separate settled accessibility snapshot showed focus on the trigger with no editor. No record mutation. _solution_composition.html calls openEntityModal('composition'); blueprint.js only opens an editor for governance types.",
+      "required_fix": "Implement the composition add/edit editor with typed entity selection, validation, save/cancel and safe asynchronous behavior. Verify persisted actual backend outcomes and role/tenant access, then deploy and retest.",
+      "retest_evidence": "Worker implemented composition add/edit; coordinator independently ran 14 composition plus 13 governance Chromium cases: 27 passed. Includes keyboard picker, late search/save safety, preserved legacy values, failed save and malformed refresh. CSS check green and unchanged. Network boundaries doubled; two full-app real persistence cases collect but await CI. Delete, role/tenant authorization and deployed checks remain open.",
+      "closure_tests": ["Real browser composition add/edit/cancel", "Typed component selection and save/reload persistence", "Role and tenant authorization", "Deployed browser confirmation"]
+    },
+    {
+      "id": "F500-066",
+      "area": "qa_census_coverage_integrity",
+      "severity": "high",
+      "title": "Interaction census silently omits unavailable required screens and can report false green",
+      "status": "in_progress",
+      "original_evidence": "Actual census measurement loop catches navigation/evaluation exceptions and continues, and skips missing or error HTTP responses. Three real Chromium controlled-response regressions reproduced false-green results for required pages returning 403, 404 and 500. No database or production mutations.",
+      "required_fix": "Retain and fail unmeasured required paths; reject incomplete baseline generation; execute strengthened census in CI. Keep wiring classification distinct from actual business-outcome proof.",
+      "retest_evidence": "Coordinator repair records unmeasured navigation, HTTP, login redirect and evaluation failures; gate and baseline writer reject incomplete coverage. Four Chromium harness cases pass including the normal 200 positive control. Authentication and HTTP responses are doubled boundaries. Full CI pending; no release qualification or claim that every wired control works.",
+      "closure_tests": ["Required HTTP error pages fail the census", "Valid measured page positive control", "Full strengthened census on immutable release candidate"]
+    },
+    {
+      "id": "F500-067",
+      "area": "application_roadmap_modal_visibility",
+      "severity": "high",
+      "title": "Hidden roadmap dialog intercepts Add Work Package clicks",
+      "status": "in_progress",
+      "original_evidence": "CI 33967077472 at 18d52beb: Firefox job 101308980842 and WebKit job 101308980808 each 63 passed / 1 failed. Ordinary click on Add Work Package times out: div hidden id=roadmap-work-package-modal class=fixed inset-0 z-50 flex intercepts pointer events. Earlier synthetic dispatch bypassed the obstruction.",
+      "required_fix": "Correct roadmap dialog closed/open visibility while preserving accessible focus and real interaction behavior. Keep ordinary clicks; do not bypass overlays or weaken assertions.",
+      "retest_evidence": "Worker replaced handwritten hidden/flex wrapper with existing modal macro. All three local engines reproduced failure before repair. Coordinator independently ran nine tests across Chromium, Firefox and WebKit: nine passed, no skips; CSS check green and unchanged. Full-app CRUD CI and deployed retest still required.",
+      "closure_tests": ["Closed dialog cannot intercept pointer events", "Ordinary Add Work Package opens accessible editor", "Create/edit/delete persistence across supported browsers", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-068",
+      "area": "runtime_worker_recycling",
+      "severity": "high",
+      "title": "Gunicorn 22 drops accepted requests during gthread worker recycling",
+      "status": "in_progress",
+      "original_evidence": "Full-app CI server log correlates a ConnectionError with max_requests recycling. Independent loopback-only CI 33967911740 and 33967988526 reproduced seven failures out of 80 requests on both Gunicorn 22 and 23, across eight responding worker PIDs, without Archie or database imports and without retries.",
+      "required_fix": "Use a verified runtime that drains requests safely while retaining worker recycling. Run isolated recycling regression as a required CI gate plus full application/security/production checks. Do not mask failures with retries or disable memory controls.",
+      "retest_evidence": "CI 33967988526 Gunicorn 26.2.0 completed 80/80 requests across nine worker PIDs with zero failures or cleanup errors. Candidate requirement updated to >=26.2.0,<27 and regular CI now runs this regression. Full application compatibility/security and deployment remain pending. Earlier 26.2.1 comparison did not execute because the tagged release was not yet installable; this is not a passing result.",
+      "closure_tests": ["Zero dropped requests across real worker recycling", "Full application CI with resolved runtime version", "Dependency security audit", "Deployed runtime and live journeys"]
+    },
+    {
+      "id": "F500-069",
+      "area": "framework_catalog_empty_state",
+      "severity": "medium",
+      "title": "Legacy framework collection misreports a valid empty catalog as unavailable",
+      "status": "in_progress",
+      "original_evidence": "Adversarial CI returns503 for /dashboard/api/templates/frameworks when ElementTemplate has no active rows. Source comparison confirms /applications/api/templates/frameworks returns200[] from the same active catalog. Fresh-install instructions contain no mandatory catalog seed, and no repository-owned ElementTemplate seed was found.",
+      "required_fix": "Return the real empty collection successfully, preserve authentication and genuine query errors, and verify both actual database endpoints. Do not invent framework content or a nonexistent seed command.",
+      "retest_evidence": "Worker reproduced boundary failure before removing the legacy empty-to503 branch. Coordinator independently reran all13 availability cases:13 passed, six deprecation warnings; AI semantics unchanged. Six shared-transaction real-PG cases and two signed-in browser HTTP cases added but unexecuted. No exact frontend picker consumer identified; no picker coverage claimed. Pending immutable fullCI and deployment.",
+      "closure_tests": ["Authenticated empty/inactive/populated real-PG collection queries", "Database errors remain errors", "Browser HTTP empty-catalog response", "Immutable CI and deployed endpoint verification"]
+    },
+    {
+      "id": "F500-070",
+      "area": "blueprint_delete_confirmation",
+      "severity": "high",
+      "title": "Blueprint Delete control never opens a confirmation dialog",
+      "status": "in_progress",
+      "original_evidence": "Actual rendered composition-row Delete button invokes confirmDeleteEntity but the previous implementation only assigned activeModal=delete; no corresponding dialog existed. Worker reproduced the missing dialog with an ordinary Chromium click before repair.",
+      "required_fix": "Use the standard accessible confirmation with exact target name, Cancel and Delete. Preserve error feedback, prevent duplicate deletion, distinguish completed deletion from failed refresh, and protect newer editors from late responses.",
+      "retest_evidence": "Root independently ran ten rendered Chromium deletion regressions successfully; HTTP boundaries are doubled, not full backend authorization/persistence. Worker additionally reported all27 existing composition/governance regressions passing. Full-app composition smoke now asserts Cancel leaves the row and confirmed DELETE survives reload, but is collected-only pending CI. CSS check passes unchanged. Not deployed.",
+      "closure_tests": ["Ordinary Delete opens named confirmation and Cancel performs no write", "Exact-target delete, errors and concurrent lifecycle", "Real authenticated deletion and persisted absence after reload", "Authorization and deployed browser verification"]
+    },
+    {
+      "id": "F500-071",
+      "area": "dashboard_navigation_network_failure",
+      "severity": "high",
+      "title": "Firefox transformation journey records executive-summary network error",
+      "status": "in_progress",
+      "original_evidence": "CI33969038274 at db061b95, Firefox job101314172679:63passed/1failed. At390px transformation creation journey retained Platform fetch Network error /dashboard/api/executive-summary. Cause is unproven; console capture alone does not distinguish server failure from navigation cancellation.",
+      "required_fix": "Diagnose the request lifecycle and preserve genuine failure reporting. Eliminate artificial setup races without ignoring errors; qualify normal dashboard navigation separately. Do not treat a passing worker-recycling microtest as proof of every app request.",
+      "retest_evidence": "Root found transformation test used synthetic login click, immediate dashboard departure, and removed onboarding DOM. Replaced setup with ordinary login click and supported next=/solutions/new-programme return flow, removed DOM deletion and swallowed navigation exceptions; all console assertions retained. Two cases collect/lint only; no root-cause or remediation success claim. Failed run remains failed.",
+      "closure_tests": ["Actual Firefox transformation journey at390/1024", "Dashboard request and navigation lifecycle diagnosis", "Genuine network failures still fail qualification", "Current candidate full CI"]
+    },
+    {
+      "id": "F500-072",
+      "area": "model_viewer_navigation",
+      "severity": "high",
+      "title": "Model viewer Back does nothing without a loaded model",
+      "status": "in_progress",
+      "original_evidence": "Live authenticated Chrome /architecture-assistant/model-viewer showed no assistant data; ordinary Back click left URL and page unchanged. Active inline handler requires currentModel before calling a navigation function which already tolerates no model.",
+      "required_fix": "Allow Back with no model; preserve optional cache and qualify desktop/mobile real-app navigation.",
+      "retest_evidence": "Actual-template Chromium test reproduced unchanged destination before removing handler guard. Three rendered-template browser cases passed afterwards (Chromium, Firefox, WebKit;16.54s). Shell, session, viewpoints and destination are explicit HTTP doubles. Two full-app desktop/mobile cases collected only; CI and deployed repair pending.",
+      "closure_tests": ["Empty-state Back in three browsers", "Real authenticated desktop/mobile destination", "Current candidate gates and deployed browser retest"]
+    },
+    {
+      "id": "F500-073",
+      "latest_verification": "Root independently reviewed explicit-only modal diff and reran63 focused modal plus6 model-viewer browser cases:69passed in166.88s, no skips. Worker separately reported46 existing editor/roadmap regressions passing. Interactivity restored before focus; explicit invokers supported in data entity Delete and owned declarative/form-submit handlers. Global event/WeakRef inference rejected and removed. Other direct callers still need audit; full-app data deletion and deployed verification pending.",
+      "area": "standard_modal_focus_restoration",
+      "severity": "high",
+      "title": "Data entity Delete Cancel fails to restore focus in Firefox and WebKit",
+      "status": "in_progress",
+      "original_evidence": "CI33969670461 at2dbeb823:both compatibility reports79passed/1failed/0skips. Data lifecycle opens named delete confirmation and cancels, then fails focus-return assertion. Confirm/deletion assertions not reached; later cleanup request is not user-flow success. Modal source restores focus before releasing background inert.",
+      "required_fix": "Reproduce with real modal assets, correct focus and inert ordering while preserving nested dialog isolation, then rerun complete real-data lifecycle across browsers.",
+      "retest_evidence": "Bounded worker repair assigned; no passing repair evidence yet. Failed candidate remains unqualified.",
+      "closure_tests": ["Pointer and keyboard Cancel focus in three browsers", "Nested-modal background isolation", "Real data entity confirm/deletion persistence", "Deployed browser retest"]
+    },
+    {
+      "id": "F500-074",
+      "latest_verification": "b77 Firefox providerless journey passed read/clear/reload assertions but failed comparison-page navigation with403. Parent traced view_solution access: seeded solution belongs to solution_architect, while test selected enterprise_architect who is not a stakeholder. Swapped fixture owner/colleague personas to respect existing authorization while preserving both-user/other-scope assertions. No production access policy changed; corrected journey collected only, execution pending.",
+      "area": "page_guide_saved_history",
+      "severity": "high",
+      "title": "Saved guide history read and clear incorrectly require an inference provider",
+      "status": "in_progress",
+      "original_evidence": "History and clear routes share generation feature guard; with guide policy enabled and no provider they return503 before accessing saved records. Worker reproduced provider resolution in record-only routes using real Flask routes with explicit persistence doubles.",
+      "required_fix": "Separate explicit feature policy from provider readiness: saved records remain user/scope isolated and available without inference; generation still requires a configured provider. Preserve authentication, schema, registry, auditing and explicit disables.",
+      "retest_evidence": "Worker reported37 focused policy/availability tests passing and2 real database tests collected only. Root review and independent rerun underway; full-app providerless history browser journey being added. Not deployed or closed.",
+      "closure_tests": ["Explicit policy/provider matrix", "Real user and scope isolated read/clear", "Visible history and clear browser outcomes without provider", "Generation remains truthful and deployed verification"]
+    },
+    {
+      "id": "F500-075",
+      "latest_verification": "Root independently reviewed the three requestSubmit changes and full actual-template harness, then reran30cases:30passed in88.55s, no skips. Two loopback-server ConnectionResetError traces occurred while reading a subsequent keepalive request during browser closure; no test assertions failed, but this is not a clean-log claim. Tests use synthetic HTTP responses and shell, not real persistence. Additional integration-entrypoint and full-app three-browser persistence coverage pending; not deployed.",
+      "area": "ai_chat_keyboard_submission",
+      "severity": "high",
+      "title": "Firefox Enter submission navigates away instead of sending chat",
+      "status": "in_progress",
+      "original_evidence": "Worker isolated real rendered chat/JS against loopback HTTP boundary. Ordinary Send issued one stream POST and displayed answer without navigation; ordinary Enter navigated to /? with zero stream POSTs, then fallback failed. Firefox warned about an untrusted submit event. handleEnter dispatches a synthetic submit Event without cancelable:true, so preventDefault cannot cancel the legacy default navigation. Direct native fetch/Headers/AbortSignal and production transport positive controls succeeded.",
+      "required_fix": "Use normal form submission semantics for chat activation paths; preserve validation, one request, no navigation and error handling. Qualify Enter and Send independently across browsers, with actual persisted full-app outcomes.",
+      "retest_evidence": "Production repair authorized to bounded worker; passing repair not yet established. Root parameterized full-app protocol persistence journey for Enter and Send and added mandatory Firefox/WebKit enabled-AI stages plus providerless-history stages. No external inference or deployed qualification claimed.",
+      "closure_tests": ["Enter and Send three-browser outcomes", "Other chat activation paths and native validation", "Exactly-once response and persisted history reload", "Full candidate gates and deployed real-provider browser retest"]
+    },
+    {
+      "id": "F500-076",
+      "latest_verification": "Root reviewed fixture and both regression files, then independently passed2 real-library binding tests as part of14case run in51.07s. They use a minimal Flask-SQLAlchemy harness and disposable SQLite only to verify binding/transaction ownership, not Archie/PostgreSQL correctness. Mapped/unmapped/named bind, listener, nested context, commit/rollback and restoration checks passed. Two PostgreSQL lifecycle cases remain unexecuted locally and required in CI. No test database cleanup performed.",
+      "area": "qa_database_isolation",
+      "severity": "high",
+      "title": "Shared rollback fixture does not expose its intended connection binding",
+      "status": "in_progress",
+      "original_evidence": "CI33969038274 backend101314172585:4380passed/6setup errors in36m29s. Every framework catalog database case stops at db_session.get_bind().in_transaction(): get_bind returns Engine rather than rollback-owned Connection. Shared fixture sets session bind but Flask-SQLAlchemy session routing may prefer app engines. Actual write/commit isolation implications require diagnosis; do not assume rollback was effective.",
+      "required_fix": "Prove and repair actual mapped/unmapped session connection binding and rollback of committed test rows, preserve cleanup and engine restoration, then rerun affected database tests and full suite. Keep catalog safety assertion.",
+      "retest_evidence": "Dedicated bounded worker assigned fixture/library diagnosis and regression repair. No passing remediation evidence yet; older run terminal failed and newer candidate backend still running.",
+      "closure_tests": ["Actual library connection binding", "Committed test rows absent after outer rollback", "Mapped and unmapped connection consistency", "Framework/history database regressions and full CI"]
+    },
+    {
+      "id": "F500-077", "area": "batch_import_history_api", "severity": "high",
+      "title": "Batch history GET fails enum serialization and ignores date filters",
+      "status": "in_progress",
+      "original_evidence": "Real Flask route with query/record double containing real BatchJob enums returns500; rendered fixture/source trace confirms dates ignored and page length used as total. No PostgreSQL execution in this reproduction.",
+      "required_fix": "Serialize actual enum values, validate statuses/dates, filter before stable pagination, report matching total, preserve current-user ownership.",
+      "retest_evidence": "Root independently reviewed route diff and both test files, then reran17 focused cases:17passed,1 existing warning in6.99s.20 PostgreSQL cases collect cleanly but remain unexecuted locally. Separate from b77 core candidate; no CI or deployed closure."
+    },
+    {
+      "id": "F500-078", "area": "application_import_history", "severity": "high",
+      "latest_verification": "Parent baseline actual-template/native-loopback run108passed3failed316.62s exposed last-page-disappears Refresh in all three engines. After bounded filter-snapshot-preserving one-retry recovery, worker final117browser cases passed306.21s and parent independently reran all9recovery cases:9passed29.96s. Worker route/CSV20passed154.77s with7existing warnings. Synthetic network/query boundaries are not real database outcomes. Fullapp history/filter/CSV/rollback journey is mandatory for all engines but collected only; no deployed closure.",
+      "title": "Import history filters, displayed fields and row action IDs are inconsistent",
+      "status": "in_progress",
+      "original_evidence": "Actual rendered Chromium page with two fixture records reproduces missing status/date query parameters, invalid dates/missing names from mismatched BatchJob response, and duplicate manager hiding loading early. Export URL has no route; application history IDs must not be passed to batch retry/rollback APIs.",
+      "required_fix": "Use actual ApplicationImportHistory source with validated filters, honest fields and totals, one race-safe loader, scoped CSV and correctly mapped actions. Explicitly disclose unavailable retry where no verified persistent batch link exists; never invent ID correspondence or previous-value restoration.",
+      "retest_evidence": "Root live Chrome ordinary Export CSV click on /dashboard/import-history opened /applications/export-import-history?date_from=2026-08-06&date_to=2026-09-05 in a new tab displaying404 Page Not Found. No record mutation. Next-wave implementation underway; rollback wiring held pending safety review. No repaired production outcome or closure."
+    },
+    {
+      "id": "F500-079", "area": "application_import_rollback", "severity": "high",
+      "title": "Application rollback has broken tracking and unsafe ownership/deletion prerequisites",
+      "status": "in_progress",
+      "original_evidence": "Independent security source review plus root tracing: current writers store nested created/updated IDs, but rollback reads legacy application_ids; then references nonexistent capability-mapping application_id field, blocking deletion. is_admin bound method is treated as true without calling it. Raw stored IDs would reach unscoped mapping deletion before tenant-resolving targets if functionality blockers alone were fixed. Current cross-tenant destructive exploit is NOT demonstrated; existing400/AttributeError block that path.",
+      "required_fix": "Repair whole boundary before enabling action: actual admin/owner check, fresh tenant-scoped history, strict created-only metadata normalization, complete tenant target validation before deletes, correct mapping field, protected foreign/shared elements, enforced eligibility and truthful rollback semantics.",
+      "retest_evidence": "Parent reviewed full candidate diff and both new test files, then independently reran34 focused policy/actual-handler cases:34passed in6.92s. Query interactions are observable doubles and decorators are excluded from that harness;11 real PostgreSQL full-route cases remain unexecuted locally. Fresh candidate-review agent could not be created because of thread limit; separate parent review is required before acceptance. No production mutation or closure. Manual import mass assignment tracked separately as F500-080."
+    },
+    {
+      "id": "F500-080", "area": "manual_application_import_boundary", "severity": "high",
+      "latest_verification": "Parent candidate review discovered the actual manual UI posts /applications/import-manual, a second registered handler in import_sophisticated_routes.py. Its clean_import_data only enriches vendor text and preserves arbitrary keys; merge still accepts any attribute and create excludes only five system fields, not organization_id or archimate_element_id. The initial legacy-only candidate therefore does not close the finding. Authorized repair expanded to both manual endpoints with richer date/business-field compatibility preserved. Source-backed surviving path, not a runtime exploit claim. Parent also identified same-batch create/merge provenance overlap, which must not disable safe rollback.",
+      "title": "Manual application import accepts server-owned tenant, identity and mirror fields",
+      "status": "in_progress",
+      "original_evidence": "Fresh read-only investigator and parent independently traced authenticated POST /dashboard/applications/import-manual: request applications flow directly to arbitrary existing-attribute merge or mapped-column construction. organization_id and archimate_element_id are accepted on both paths; id is accepted on merge. Tenant before_flush fills only absent organizations on new rows and does not reject dirty ownership changes. Valid CSRF remains required. Static evidence supports cross-tenant creation/transfer and forged mirror association; no runtime exploit or production mutation has been performed. Foreign mirror deletion is NOT established because its ORM helper remains tenant filtered.",
+      "required_fix": "Enforce the manual import's legitimate editable-field contract before writes; keep tenant, primary key, mirror identity and internal metadata server controlled. Validate supported relationship references, reject unsafe input clearly, preserve legitimate create/merge/skip outcomes and add real database tenant/identity regression tests.",
+      "retest_evidence": "Independent investigation reconciled with parent source review; bounded implementer authorized only manual import and focused new tests/report. Runtime reproduction, candidate review, PostgreSQL verification and deployed acceptance remain pending.",
+      "closure_tests": ["Foreign-tenant create and merge cannot change ownership", "Primary key and same/foreign mirror assignment rejected", "Malformed input cannot partially mutate records", "Legitimate create and merge persist with correct owned mirror", "Full CI and deployed browser import workflow"]
+    },
+    {
+      "id": "F500-081", "area": "manual_import_audit_history", "severity": "high",
+      "latest_verification": "Candidate unified writer now commits application changes, ApplicationImportHistory and correctly constructed ImportSessionLog together; caught row/audit failures roll back. Created/updated provenance remains disjoint. Root independently passed211 focused shared/manual tests after final matching-order change (8warnings22.31s);129 PostgreSQL tests are unexecuted locally. Legacy handler still has per-row commits, so atomic database-failure behavior is NOT claimed for it. Actual fullapp browser journey collects only; no deployed qualification.",
+      "title": "User-facing manual import constructs an invalid audit record after committing applications",
+      "status": "in_progress",
+      "original_evidence": "Worker and parent source trace: unified manual handler constructs ImportSessionLog with nonexistent user_email/import_type/changes/errors fields and omits required session_id/operation_type/import_source. Constructor failure is caught after application commit, so success can lack its audit. Handler also does not write the ApplicationImportHistory consumed by the history page. No runtime reproduction yet.",
+      "required_fix": "Persist valid accountable audit and application history with exact disjoint created/updated IDs; integrate transaction/error behavior so successful imports do not silently lose history. Preserve legitimate manual input and scope.",
+      "retest_evidence": "Bounded manual worker authorized fix with PostgreSQL regressions. Parent added actual UI create/reload/merge journey and mandatory compatibility invocation; one case collects and lints but is not executed. Not deployed."
+    },
+    {
+      "id": "F500-082", "area": "ai_browser_runtime_errors", "severity": "high",
+      "candidate_verification": "Root independently ran final expanded actual-assets/native-loopback suite:45passed0skips123.27s. Default/null native cancellation rejects without false outage; real network/HTTP errors remain visible, loading/CSRF contracts preserved, startup deduplication and stale-response protection exercised. Generated core bundles rebuilt and freshness checked. Exact prior Firefox/opaque guide CI signatures still need next immutable full-app CI; no deployed closure.",
+      "latest_verification": "WebKit b77 compatibility report also has93ordinary passes0skips, but AI Enter teardown logs /ai-chat/context/architecture Load failed. Read-only source review found duplicate startup context requests and no cancellation-signal forwarding; server logs show200 responses, including delayed ones. Navigation/close cancellation remains a hypothesis pending controlled actual-assets reproduction. No runtime error waiver, retry or fix acceptance.",
+      "title": "Firefox enabled-AI journeys record context network failures and an opaque page error",
+      "status": "in_progress",
+      "original_evidence": "b77 CI33971927398 Firefox job101321850301: ordinary journeys93passed0failed0skipped. AI report3tests0failures2teardown errors: Send journey logs two /ai-chat/context/architecture Network errors; guide journey logs Object. Assertions reached persisted outcomes but strict error gate failed. Cause unproven; not assigned to prior worker-recycling or keyboard defect by assumption.",
+      "required_fix": "Diagnose request/navigation/teardown lifecycle and opaque error with precise evidence, correct actual cause and retain all strict console/page/HTTP assertions. No error suppression or retry-based masking.",
+      "retest_evidence": "Controlled actual-template/shipped-assets/native-fetch loopback replay reproduces exact WebKit pending-reload Network error with Load request cancelled; settled control clean. Firefox shows NS_BINDING_ABORTED without local console error, so exact Firefox attribution remains incomplete. Parent independently read caller/core fetch, authorized explicit signal forwarding and owned context cancellation/stale-response protection. Genuine network/HTTP errors must remain strict. Guide Object remains unclassified; no deployed closure."
+    },
+    {
+      "id": "F500-083", "area": "jira_connector_test_control", "severity": "high",
+      "latest_verification": "Parent independently reran actual-template/core-assets native-loopback browser matrix:36passed0skips110.49s. Three engines, desktop/mobile, single/double click, success/HTTP/logical failure, exact request and CSRF, pending/restored controls. No external Jira call, full-app database execution or deployed acceptance. Candidate remains in progress pending immutable CI and live verification.",
+      "title": "Jira Test Connection script cannot parse and button sends no request",
+      "status": "in_progress",
+      "original_evidence": "Historical platform-admin audit lead independently reproduced against current jira.html and actual core-admin.js in Chromium1440x1000 and390x844: Unexpected token '.', testJiraConnection undefined, ordinary button click sends0requests. Parent source confirms catch chain ends with semicolon before standalone .finally at template142. Synthetic base/config/network boundaries; no Jira requests or credentials.",
+      "required_fix": "Repair promise chain and verify ordinary test button request/feedback/pending/restore/error behavior across engines without contacting real Jira.",
+      "retest_evidence": "Bounded implementation authorized with red/green rendered-browser tests. No fixed or deployed claim."
+    },
+    {
+      "id": "F500-084", "area": "ai_context_response_contract", "severity": "high",
+      "title": "AI context panel reads collections outside the backend response envelope",
+      "status": "in_progress",
+      "original_evidence": "Parent and investigator source trace: multi_domain_chat_service.get_domain_context returns success/context, while panels.loadDomainContext reads data.elements/data.applications at the top level. Populated data can follow the empty/unrecognized branch. Runtime populated-control reproduction still required.",
+      "required_fix": "Honor actual response shape and display real context items, honest empty/error states and selected-item behavior; preserve lifecycle cancellation and stale-response protection.",
+      "retest_evidence": "Parent review rejected initial technology fixture as noncanonical: real backend returns technology_stacks, not applications. Worker reproduced populated canonical stack being shown as empty, repaired truthful read-only stack rendering, and is retesting canonical populated/empty/malformed responses across engines. No database/provider/deployed qualification."
+    },
+    {
+      "id": "F500-085", "area": "manual_import_browser_controls", "severity": "high",
+      "latest_verification": "After safe field mapping, browser tests exposed inert Remove, wrong submit control after confirmation, logical/malformed response treated as success, and duplicate helper/caller reload. Root reviewed candidate and independently reran final72cases:72passed0skips216.16s across three engines and two viewports. Actual assets/native synthetic endpoints exercise exact payload/CSRF, pending/double click, failure/retry, partial valid confirmation, removal, malformed200 and optional mapping; post-close errors checked. Fullapp PostgreSQL persistence/deployed acceptance still required.",
+      "title": "Manual-entry sanitizer strips the application-name field identity and blocks submission",
+      "status": "in_progress",
+      "original_evidence": "Worker actual-template/core-assets/native-loopback reproduction in Chromium, Firefox and WebKit: normal Add Row and filled Application Name yields input.name empty after safeHTML/DOMPurify, while app_id/type retain names. Ordinary Import then opens missing-required-fields confirmation and sends zero requests. Parent source independently traces safeHTML row generation to collector using input.name. No runtime API replacement, forced attribute restoration or production mutation.",
+      "required_fix": "Preserve safe field identity without disabling sanitizer protections; verify actual create/merge payloads, single submission, validation, errors and restored controls across engines, followed by full-app persistence and live acceptance.",
+      "retest_evidence": "Bounded browser repair assigned. Separate global event.target source concern remains masked by the name-field failure and is not yet dynamically confirmed. No fixed claim."
+    },
+    {
+      "id": "F500-086", "area": "organization_admin_provisioning", "severity": "high",
+      "latest_verification": "Parent reviewed new-owner-only role assignment before commit, unchanged existing-user no-op/guards, and independently passed11focused tests4.41s, including role-write and final-commit rollback/no-login. Real PostgreSQL10cases written but not executed locally. Existing-user remediation and full-app browser acceptance remain open.",
+      "title": "New organization administrators lack the role assignment required to manage their team",
+      "status": "in_progress",
+      "original_evidence": "Parent and independent investigator traced create_admin.py and AccountService.register_user: both set administrator flags but create no OrgRole. Team guard reads only same-org OrgRole and defaults missing assignment to viewer. Controlled authenticated Chromium actual-team-route request returned403 with all admin flags set and no assignment; real guard positive same-org org_admin returned200, foreign-only and architect remained403. OrgRole persistence reads were doubled; no actual database qualification. Only discovered assignment writers are themselves team-admin protected.",
+      "required_fix": "Persist the intended same-org administrator assignment atomically during new-owner provisioning, retain deny-by-default and existing explicit demotions, verify real database and browser outcomes. Existing-user remediation must be explicit and must not silently promote every missing assignment at request time.",
+      "retest_evidence": "Bounded new-provisioning implementation assigned. Existing-user repair and complete team UI/invite functionality remain unqualified; no authorization broadening or production role writes performed."
+    },
+    {
+      "id": "F500-087", "area": "qa_cli_fixture_integrity", "severity": "medium",
+      "title": "Layer backfill dry-run test depends on leaked noncanonical records",
+      "status": "in_progress",
+      "original_evidence": "Exact b77 backend report: CLI returned0 and correctly reported scanned35/no noncanonical values, but test required a dry-run update message without seeding an eligible row. Parent traced actual command: already-clean branch intentionally returns before update summary. This is a test-isolation assumption, not evidence of an incorrect production write.",
+      "required_fix": "Use isolated explicit dirty and clean fixtures, scoped CLI invocation and raw stored-value assertions proving no writes; do not change correct command behavior to satisfy data-dependent output expectations.",
+      "retest_evidence": "Root updated existing test with both scoped cases;14layer tests collect and focused lint passes. PostgreSQL execution remains required; no skip/pass substitution."
+    },
+    {
+      "id": "F500-088", "area": "qa_concurrency_fixture_integrity", "severity": "high",
+      "latest_verification": "Moved scenario into dedicated independent-transaction fixture with explicit matching PostgreSQL test URL, five distinct backend connections, captured thread failures, bounded joins and exact org/application/mirror cleanup. Parent reviewed source and independently passed actual pytest fixture-plan guard1case10.12s;27related tests collected. Real database race still requires CI; production guard unchanged.",
+      "title": "Concurrent-create regression shares a rollback connection across worker threads",
+      "status": "in_progress",
+      "original_evidence": "Exact b77 backend failure PendingRollbackError at parent count and cleanup. Independent investigator setup-plan and parent source review show module usefixtures(db_session) plus unused make_org argument activate one shared Connection/create_savepoint fixture for all thread sessions. That cannot exercise independent-transaction locking. Original worker exception is absent from artifact, so first driver failure remains unknown.",
+      "required_fix": "Run real isolated test-database thread sessions/connections without rollback-fixture coupling; assert distinct connection identities, surface worker errors, join all threads, preserve exactly-one-row assertion and remove only exact fixture data.",
+      "retest_evidence": "Bounded test-only repair assigned; no production locking change, no concurrency-product-fix claim, no real PostgreSQL rerun yet."
+    },
+    {
+      "id": "F500-089", "area": "manual_import_mapping_feedback", "severity": "high",
+      "title": "Mapping errors disappear on reload and logical failures are reported as complete",
+      "status": "fixed",
+      "original_evidence": "0521450e actual-assets/native-loopback browser replay in three engines: HTTP400 mapping failure disappears after automatic reload; HTTP200 success:false falsely says Auto-mapping complete. Chromium success:true with creation_errors also falsely completes. Exactly one import and mapping request each; no production writes.",
+      "required_fix": "Retain confirmed import counts and separate truthful mapping outcome until acknowledgment; prevent saved-row replay. Validate logical/error/malformed responses without inventing counters.",
+      "retest_evidence": "Fixed: the shared auto-map helper (app/static/js/application_mgmt/application_import.js) no longer navigates away before mapping completes. It returns outcome text instead of reloading; the manual caller shows it in a persistent 'Import saved' modal requiring explicit acknowledgment (Escape/backdrop dismissal disabled), and only reloads after that. HTTP failure, logical failure (success:false) and success-with-creation_errors are each reported distinctly; no counter is invented for a field the response did not supply. Verified: tests/test_manual_import_controls.py and tests/smoke/test_manual_application_import.py (real Chromium browser, real server, real request) both green in the full 299-test wave-2 regression sweep."
+    },
+    {
+      "id": "F500-090", "area": "auto_mapping_write_contract", "severity": "critical",
+      "evidence_correction": "Independent follow-up found active capability writer uses application_id/capability_id and extra fields absent from actual UnifiedApplicationCapabilityMapping (application_component_id/unified_capability_id). Initial permissive mapping doubles demonstrate write attempts/control flow and response arithmetic, not successful real capability persistence. Corrected constructor/query-boundary tests and PostgreSQL proof required. Nested commit calls remain source-confirmed; distinguish category-specific outcomes rather than assuming all writes succeed.",
+      "title": "Mapping ignores target scope and options, writes during preview and misstates persisted counts",
+      "status": "fixed",
+      "original_evidence": "Independent active-service investigation and parent route/bulk source review: application_ids/layer_targets discarded; bulk selects newest imported_capabilities records and commits mappings even with auto_create:false. Route repeats creation and assigns combined count to all three categories. Manual response lacks saved IDs, count zero falls back to100. Nested commits invalidate outer rollback. Accept target scoping is source-supported authorization concern, not demonstrated exploit. Confidence-review signature mismatch raises before insert; no queue-write claim.",
+      "required_fix": "Resolve committed import scope or validated explicit IDs; empty scope no-op. Preview must not write. Honor options, freshly validate all targets including shared-capability rules, establish explicit transaction ownership and truthful persisted counts/errors. Unsupported options cannot be silently ignored.",
+      "retest_evidence": "Fixed at the root: bulk_ai_analyze (app/services/ai_import_service.py) wrote high-confidence mappings to the database unconditionally during 'analysis', regardless of the route's own auto_create/preview_mode/category flags - those flags only ever gated a second, redundant write attempt. Writing is now opt-in via a write_immediately parameter (default False), and the route's explicit create step is the sole write path, gated by auto_create-and-not-preview_mode and the map_capabilities/map_processes/generate_archimate flags. Separately, create_ai_mappings used application_id/capability_id/process_id/confidence_score/mapping_method/rationale/created_by fields that do not exist on UnifiedApplicationCapabilityMapping or ProcessApplicationMapping, so every write it attempted raised TypeError, silently caught - no mapping this endpoint claimed to create had ever actually persisted. Rewritten against the real columns (application_component_id/unified_capability_id, application_id/apqc_process_id). application_ids scoping is now threaded through to source selection instead of being read and discarded. Response counts are per-category and truthful instead of one summed bucket reported as all three categories. Verified: tests/test_auto_mapping_write_contract.py (10 tests, including one against real PostgreSQL with real tenant scoping) and tests/test_reconcile_enum_members.py, both green in the full wave-2 regression sweep. Not yet browser-demonstrated end-to-end (needs a configured LLM provider, unavailable in this environment) - the fix is verified at the service/route boundary and via real ORM writes, not via a clicked-through AI mapping journey."
+    }
+  ]
+}

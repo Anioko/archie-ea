@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% import 'components/breadcrumb.html' as breadcrumb %}
 
 {% block title %}Network View - Capability Map{% endblock %}
@@ -14,7 +15,7 @@
 {% endblock %}
 
 {% block extra_css %}
-<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/d3.min.js') }}"></script>
 <style>
     .node circle {
         cursor: pointer;
@@ -57,34 +58,15 @@
 
 {% block content %}
 <div class="space-y-6" x-data="networkView()">
-    <!-- Breadcrumb -->
-    {% call breadcrumb.breadcrumb() %}
-        {% call breadcrumb.breadcrumb_item(href=url_for('admin.dashboard')) %}
-            <i data-lucide="home" class="h-4 w-4"></i>
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(href=url_for('capability_map.index')) %}
-            Capability Map
-        {% endcall %}
-        {{ breadcrumb.breadcrumb_separator() }}
-        {% call breadcrumb.breadcrumb_item(active=true) %}
-            Network View
-        {% endcall %}
-    {% endcall %}
-
     <!-- Page Header -->
-    <div class="flex items-center justify-between">
-        <div class="flex items-center space-x-3">
-            <i data-lucide="share-2" class="w-6 h-6 text-primary"></i>
-            <h1 class="text-3xl font-bold tracking-tight">Network View</h1>
-        </div>
-        <div class="flex items-center space-x-4">
-            <button @click="resetZoom()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
+    {% macro _ps_actions() %}
+            <button type="button" @click="resetZoom()" class="text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="maximize-2" class="w-4 h-4 inline mr-1"></i>
                 Reset Zoom
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Network View', icon='share-2', actions_caller=_ps_actions) }}
+    {% with active_view = 'network' %}{% include 'capability_map/_view_switcher.html' %}{% endwith %}
 
     <!-- Controls -->
     <div class="bg-card rounded-lg shadow border p-4">
@@ -100,14 +82,38 @@
                 </label>
             </div>
             <div class="text-sm text-muted-foreground">
-                <span x-text="nodeCount"></span> nodes, <span x-text="linkCount"></span> links
+                <span x-text="nodeCount ?? '—'"></span> nodes, <span x-text="linkCount ?? '—'"></span> links
             </div>
         </div>
     </div>
 
     <!-- Network Graph -->
     <div class="bg-card rounded-lg shadow border">
-        <div id="network-graph" class="w-full h-96 lg:h-[600px]"></div>
+        <div x-show="loadError" x-cloak class="p-12 text-center">
+            <p class="text-sm font-medium text-destructive-emphasis" x-text="loadError"></p>
+            <p class="mt-1 text-sm text-muted-foreground">The graph was never drawn — this is not an empty capability model.</p>
+            <button type="button" class="mt-3 text-sm text-primary underline" @click="loadData()">Retry</button>
+        </div>
+        <div x-show="!loadError && nodeCount === 0" x-cloak class="w-full">
+            <!-- Empty State: No Capabilities to Display -->
+            <div class="text-center py-12 px-4">
+                <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                    <i data-lucide="network" class="h-8 w-8 text-muted-foreground" aria-hidden="true"></i>
+                </div>
+                <h3 class="mt-4 text-lg font-medium text-foreground">No capabilities in network</h3>
+                <p class="mt-2 text-sm text-muted-foreground max-w-md mx-auto">
+                    To visualize capability relationships, capabilities must be mapped to applications and ArchiMate elements. Start by adding capabilities and creating mappings to see them appear here.
+                </p>
+                <div class="mt-6">
+                    <a href="{{ url_for('capability_map.hierarchy') }}"
+                       class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors">
+                        <i data-lucide="git-branch" class="w-4 h-4 mr-2" aria-hidden="true"></i>
+                        View Capability Hierarchy
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div id="network-graph" class="w-full h-96 lg:h-[600px]" x-show="!loadError && nodeCount > 0"></div>
     </div>
 
     <!-- Legend -->
@@ -132,9 +138,11 @@
             capabilities: null,
             showFunctions: true,
             showLabels: true,
-            nodeCount: 0,
-            linkCount: 0,
+            // Nothing counted until the graph renders; null shows as an em dash.
+            nodeCount: null,
+            linkCount: null,
             domains: [],
+            loadError: null,
 
             init() {
                 this.loadData();
@@ -145,13 +153,36 @@
 
             async loadData() {
                 try {
-                    const response = await fetch('/capability-map/api/capabilities');
-                    const data = await response.json();
-                    this.capabilities = data;
+                    // Use Platform.fetch.get to automatically handle errors and CSRF.
+                    // silent: true because we paint our own inline error state.
+                    const data = await Platform.fetch.get('/capability-map/api/capabilities', null, { silent: true });
+                    // The API returns {capabilities, statistics}; the renderer needs
+                    // {nodes, edges}. Without this transform the graph never drew.
+                    const caps = data.capabilities || [];
+                    const ids = new Set(caps.map(c => c.id));
+                    this.capabilities = {
+                        nodes: caps.map(c => ({
+                            id: c.id,
+                            name: c.name,
+                            category: (c.level || 1) >= 3 ? 'function' : 'capability',
+                            group: c.category || 'Other'
+                        })),
+                        edges: caps
+                            .filter(c => c.parent_id && ids.has(c.parent_id))
+                            .map(c => ({ source: c.parent_id, target: c.id }))
+                    };
                     this.domains = data.statistics.domains;
                     this.renderNetwork();
+                    this.loadError = null;
                 } catch (error) {
-                    console.error('Error loading capabilities:', error);
+                    // A blank canvas showing "0 nodes, 0 links" would read as a capability
+                    // model that has nothing in it. Say the graph was never drawn.
+                    this.capabilities = null;
+                    this.domains = [];
+                    this.nodeCount = null;
+                    this.linkCount = null;
+                    this.loadError = error.message || 'Could not load capability network data.';
+                    if (window.Platform && Platform.toast) Platform.toast.error(this.loadError);
                 }
             },
 
@@ -168,23 +199,27 @@
                     .attr('width', width)
                     .attr('height', height);
 
-                // Filter nodes based on showFunctions
+                // Filter nodes based on showFunctions — and edges with them, or
+                // d3.forceLink throws on an edge whose endpoint was filtered out.
                 const nodes = this.showFunctions ?
                     this.capabilities.nodes :
                     this.capabilities.nodes.filter(n => n.category !== 'function');
+                const visible = new Set(nodes.map(n => n.id));
+                const edges = this.capabilities.edges.filter(
+                    e => visible.has(e.source.id ?? e.source) && visible.has(e.target.id ?? e.target));
 
                 this.nodeCount = nodes.length;
-                this.linkCount = this.capabilities.edges.length;
+                this.linkCount = edges.length;
 
                 const simulation = d3.forceSimulation(nodes)
-                    .force('link', d3.forceLink(this.capabilities.edges).id(d => d.id).distance(100))
+                    .force('link', d3.forceLink(edges).id(d => d.id).distance(100))
                     .force('charge', d3.forceManyBody().strength(-300))
                     .force('center', d3.forceCenter(width / 2, height / 2))
                     .force('collision', d3.forceCollide().radius(30));
 
                 const link = svg.append('g')
                     .selectAll('line')
-                    .data(this.capabilities.edges)
+                    .data(edges)
                     .enter().append('line')
                     .attr('class', 'link')
                     .style('stroke', '#e5e7eb')

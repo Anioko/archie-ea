@@ -15,7 +15,7 @@ import json
 import logging
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +340,7 @@ Return ONLY valid JSON."""
 
             data_str = json.dumps(step_data, default=str)[:3000]
 
-            prompt = f"""You are a solution architecture quality coach reviewing wizard step {step} on A.R.C.H.I.E.
+            prompt = f"""You are a solution architecture quality coach reviewing wizard step {step} on Entelim.
 
 CONTEXT:
 - Problem: {context.get('problem_statement', '')[:400]}

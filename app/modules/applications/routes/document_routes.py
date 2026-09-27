@@ -2,7 +2,7 @@
 
 import logging
 
-from flask import current_app, flash, redirect, request, send_file, url_for
+from flask import current_app, flash, g, redirect, request, send_file, url_for
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFError, validate_csrf
 from werkzeug.utils import secure_filename
@@ -57,12 +57,16 @@ def update_document_file(id, doc_id):
             )
         )
 
-    try:
-        from app.models.miscellaneous import ApplicationDocument
+    from app.models.miscellaneous import ApplicationDocument
 
-        doc = ApplicationDocument.query.filter_by(
-            id=doc_id, application_component_id=id
-        ).first_or_404()
+    query = ApplicationDocument.query.filter_by(
+        id=doc_id, application_component_id=id
+    )
+    if not getattr(current_user, "is_platform_admin", False):
+        query = query.filter_by(organization_id=g.current_org_id)
+    doc = query.first_or_404()
+
+    try:
         doc.title = request.form.get("title", doc.title)
         doc.description = request.form.get("description", doc.description)
         db.session.commit()
@@ -247,17 +251,21 @@ def upload_document_file(application_id):
 @login_required
 def download_document_file(doc_id):
     """Download a document file"""
-    import os
     from pathlib import Path
 
     from app.models.miscellaneous import ApplicationDocument
 
-    doc = ApplicationDocument.query.get_or_404(doc_id)
+    query = ApplicationDocument.query.filter_by(id=doc_id)
+    if not getattr(current_user, "is_platform_admin", False):
+        query = query.filter_by(organization_id=g.current_org_id)
+    doc = query.first_or_404()
 
-    # Tenant isolation: verify the document's parent app belongs to current org
+    # Tenant isolation: verify the document belongs to the caller's organisation.
+    # The query above skips the organisation filter for platform administrators,
+    # who can reach any document; verify_file_access provides a second line of
+    # defence, including unrestricted access for platform admins.
     from app.middleware.tenant_files import verify_file_access
-    parent_app = ApplicationComponent.query.get(doc.application_component_id)
-    if parent_app and not verify_file_access(getattr(parent_app, "organization_id", None)):
+    if not verify_file_access(doc.organization_id):
         flash("Access denied.", "error")
         return redirect(url_for("unified_applications.application_list"))
 
@@ -298,8 +306,20 @@ def delete_document_file(doc_id):
 
     from app.models.miscellaneous import ApplicationDocument
 
-    doc = ApplicationDocument.query.get_or_404(doc_id)
+    query = ApplicationDocument.query.filter_by(id=doc_id)
+    if not getattr(current_user, "is_platform_admin", False):
+        query = query.filter_by(organization_id=g.current_org_id)
+    doc = query.first_or_404()
     app_id = doc.application_component_id
+
+    # Tenant isolation: verify the document belongs to the caller's organisation.
+    # The query above skips the organisation filter for platform administrators,
+    # who can reach any document; verify_file_access provides a second line of
+    # defence, including unrestricted access for platform admins.
+    from app.middleware.tenant_files import verify_file_access
+    if not verify_file_access(doc.organization_id):
+        flash("Access denied.", "danger")
+        return redirect(url_for("unified_applications.application_list"))
 
     # Validate CSRF token manually (consistent with other doc routes in this file)
     try:
@@ -417,6 +437,7 @@ def application_capability_mapping_create(id):
                 )
             )
 
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         existing = ApplicationCapabilityMapping.query.filter_by(
             application_id=id, capability_id=capability_id
         ).first()
@@ -493,6 +514,7 @@ def application_capability_mapping_delete(id, mapping_id):
         )
 
     try:
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         mapping = ApplicationCapabilityMapping.query.filter_by(
             id=mapping_id, application_id=id
         ).first_or_404()

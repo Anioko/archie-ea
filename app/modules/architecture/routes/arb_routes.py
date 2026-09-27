@@ -9,13 +9,19 @@ Flask routes for ARB web interface and API endpoints.
 Integrates with existing platform workflows and provides TOGAF-aligned governance.
 """
 
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import List
+import hashlib as _hashlib
+import json as _json
+import re as _re
+from typing import Any
+import uuid as _uuid
 
 from flask import (
     Blueprint,
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -39,11 +45,511 @@ from app.models.architecture_review_board import (
 from app.decorators import audit_log, require_roles
 from app.services.arb_analytics_service import ARBAnalyticsService
 from app.services.rate_limiter import rate_limit
-from app.services.arb_governance_service import ARBGovernanceService
+from app.services.arb_governance_service import (
+    ARBDecisionError,
+    ARBGovernanceService,
+    DECIDABLE_STATUSES,
+    MissingApproverError,
+    SelfApprovalError,
+)
+from app.modules.transformation_room.domain import (
+    ActorContext,
+    AuthenticationRequired,
+    BlockedByEvidence,
+    CommandConflict,
+    KnownPreCommitTransient,
+    NotAuthorised,
+    NotFound,
+    TransformationError,
+)
 
 arb_bp = Blueprint("arb", __name__, url_prefix="/arb")
 arb_service = ARBGovernanceService()
 arb_analytics = ARBAnalyticsService()
+
+
+# V-03 (S1, 17 Aug 2026 QA register): a Viewer created two ARB reviews
+# through two different creation endpoints (POST /arb/reviews/create and
+# POST /arb/api/reviews) -- neither checked permission. Same root cause as
+# V-02: protection here was route-by-route, not default. This hook is the
+# blueprint-wide floor for every write under /arb (session, review, decision,
+# comment, and every app/modules/architecture/routes/arb_*.py file, all of
+# which share this one Blueprint instance) -- consistent with the
+# blueprint-wide guard added to unified_applications_bp for the same finding
+# class. Permission.GENERAL is the same bitfield ARBGovernanceService.record_
+# decision already checks for the decider (85c2924); a Viewer (permissions=0)
+# fails it here before a request ever reaches a route function, so record_
+# decision's own check is now defence-in-depth rather than the only line.
+@arb_bp.before_request
+def _default_deny_unauthorized_arb_writes():
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    if not current_user.is_authenticated:
+        return None
+    from app.models.user import Permission
+
+    if current_user.can(Permission.GENERAL):
+        return None
+    return jsonify({
+        "success": False,
+        "error": "Your role does not have write access to ARB governance.",
+        "code": "PERMISSION_DENIED",
+    }), 403
+
+
+# =========================================================================
+# TYPED ARB DECISION BOUNDARY (Lane L1)
+#
+# Every terminal decision on a typed ARB review cycle is routed through
+# TypedARBDecisionService. This adapter is the only place a route builds the
+# trusted command inputs: the actor comes from the authenticated session user
+# and the resolved tenant, never from the request body, and cycle/review rows
+# are resolved with explicit (id, organization_id) predicates rather than
+# Query.get(), which is tenant-scoped only on an identity-map miss (AGENTS.md).
+# =========================================================================
+
+_COMMAND_KEY_PATTERN = _re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{7,199}\Z")
+
+# Reason codes safe to hand back to a caller: none names another tenant's row,
+# and none is raw exception text.
+_SAFE_DECISION_CONFLICT_REASONS = frozenset(
+    {
+        "arb_cycle_already_terminal",
+        "arb_cycle_review_projection_mismatch",
+        "historical_unverified_cycle_not_decidable",
+        "arb_decision_command_mismatch",
+    }
+)
+_SAFE_DECISION_AUTHZ_REASONS = frozenset(
+    {
+        "arb_decision_separation_of_duties",
+        "arb_decision_not_authorised",
+    }
+)
+
+# Legacy vocabulary -> canonical typed outcome.
+_TYPED_OUTCOME_ALIASES = {
+    "approve": "approved",
+    "approved": "approved",
+    "approve_with_conditions": "approved_with_conditions",
+    "approved_with_conditions": "approved_with_conditions",
+    "request_changes": "approved_with_conditions",
+    "request-changes": "approved_with_conditions",
+    "reject": "rejected",
+    "rejected": "rejected",
+    "return_for_evidence": "returned_for_evidence",
+    "returned_for_evidence": "returned_for_evidence",
+    "return_for_options": "returned_for_options",
+    "returned_for_options": "returned_for_options",
+}
+
+
+@dataclass
+class TypedARBDecisionOutcome:
+    """Route-facing result of a typed ARB decision command."""
+
+    success: bool
+    http_status: int = 200
+    reason_codes: list = field(default_factory=list)
+    missing_evidence: list = field(default_factory=list)
+    request_id: str = ""
+    review_cycle_id: Any = None
+    review_item_id: Any = None
+    decision_event_id: Any = None
+    condition_ids: list = field(default_factory=list)
+    conditions: Any = None
+    status: Any = None
+    outcome: Any = None
+    idempotent: bool = False
+    canonical_url: Any = None
+
+    def success_fields(self):
+        """Canonical identifiers added to every legacy success envelope."""
+        return {
+            "review_cycle_id": self.review_cycle_id,
+            "review_item_id": self.review_item_id,
+            "decision_event_id": self.decision_event_id,
+            "condition_ids": list(self.condition_ids or []),
+            "canonical_url": self.canonical_url,
+            "status": self.status,
+            "outcome": self.outcome,
+            "idempotent": self.idempotent,
+        }
+
+    def failure_payload(self):
+        return {
+            "success": False,
+            "reason_codes": list(self.reason_codes),
+            "missing_evidence": list(self.missing_evidence),
+            "request_id": self.request_id,
+        }
+
+
+class TypedARBDecisionAdapter:
+    """Trusted caller boundary for typed ARB terminal decisions."""
+
+    @staticmethod
+    def normalize_outcome(value):
+        if not isinstance(value, str):
+            raise ValueError("decision outcome is required")
+        outcome = _TYPED_OUTCOME_ALIASES.get(value.strip().lower())
+        if outcome is None:
+            raise ValueError("unsupported ARB decision outcome")
+        return outcome
+
+    @staticmethod
+    def canonical_conditions(lines):
+        """Turn legacy free-text condition lines into canonical objects.
+
+        No due date and no ``pending`` state is invented here: the previous
+        form parser manufactured ``utcnow() + 30 days``, which is fabricated
+        data the reader cannot distinguish from a real board-set date.
+        """
+        conditions = []
+        for ordinal, raw in enumerate(lines or (), start=1):
+            if isinstance(raw, dict):
+                description = (
+                    raw.get("description") or raw.get("text") or raw.get("condition")
+                )
+                number = raw.get("condition_number") or raw.get("code") or f"COND-{ordinal}"
+                category = raw.get("category")
+                due_date = raw.get("due_date")
+            else:
+                description = raw
+                number = f"COND-{ordinal}"
+                category = None
+                due_date = None
+            if isinstance(description, str):
+                description = description.strip()
+            if not description:
+                continue
+            conditions.append(
+                {
+                    "condition_number": number,
+                    "description": description,
+                    "category": category,
+                    "due_date": due_date,
+                }
+            )
+        return conditions
+
+    @staticmethod
+    def current_organization_id():
+        organization_id = getattr(g, "current_org_id", None)
+        if not isinstance(organization_id, int) or organization_id <= 0:
+            return None
+        return organization_id
+
+    @classmethod
+    def actor(cls):
+        """Build ActorContext from the session user and resolved tenant only.
+
+        No caller-supplied actor, role, ``decided_by_id`` or
+        ``organization_id`` is consulted here or anywhere downstream.
+        """
+        if not current_user.is_authenticated:
+            raise AuthenticationRequired("not_authenticated")
+        organization_id = cls.current_organization_id()
+        if organization_id is None:
+            raise NotAuthorised("arb_decision_not_authorised")
+        from app.models.user import User
+
+        user = db.session.execute(
+            db.select(User).where(
+                User.id == current_user.id,
+                User.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+        if user is None:
+            raise NotAuthorised("arb_decision_not_authorised")
+        roles = {
+            role
+            for role in (
+                user.enterprise_role,
+                "organization_admin" if user.is_org_admin else None,
+                "platform_admin" if user.is_platform_admin else None,
+            )
+            if role
+        }
+        return ActorContext(
+            user_id=user.id,
+            organization_id=organization_id,
+            roles=frozenset(roles),
+            request_id=request.headers.get("X-Request-ID") or str(_uuid.uuid4()),
+        )
+
+    @classmethod
+    def load_review(cls, review_item_id, *, organization_id=None):
+        """Resolve one review item with an explicit (id, organization_id) predicate."""
+        organization_id = (
+            organization_id
+            if organization_id is not None
+            else cls.current_organization_id()
+        )
+        if organization_id is None:
+            return None
+        return db.session.execute(
+            db.select(ARBReviewItem).where(
+                ARBReviewItem.id == review_item_id,
+                ARBReviewItem.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+
+    @classmethod
+    def typed_cycle_for_review(cls, review, *, organization_id=None):
+        """Return the typed cycle owning ``review``, or None for a legacy row.
+
+        The cycle is re-read by (id, organization_id): a review row is never
+        trusted to name a cycle belonging to another tenant.
+        """
+        if review is None or getattr(review, "review_cycle_id", None) is None:
+            return None
+        from app.models.architecture_review_board import ARBReviewCycle
+
+        organization_id = (
+            organization_id
+            if organization_id is not None
+            else cls.current_organization_id()
+        )
+        if organization_id is None:
+            return None
+        return db.session.execute(
+            db.select(ARBReviewCycle).where(
+                ARBReviewCycle.id == review.review_cycle_id,
+                ARBReviewCycle.organization_id == organization_id,
+            )
+        ).scalar_one_or_none()
+
+    @classmethod
+    def typed_cycles_for_solution(cls, solution_id, *, organization_id=None):
+        from app.models.architecture_review_board import ARBReviewCycle
+
+        organization_id = (
+            organization_id
+            if organization_id is not None
+            else cls.current_organization_id()
+        )
+        if organization_id is None:
+            return []
+        return list(
+            db.session.execute(
+                db.select(ARBReviewCycle)
+                .where(
+                    ARBReviewCycle.organization_id == organization_id,
+                    ARBReviewCycle.subject_type == "solution",
+                    ARBReviewCycle.subject_id == solution_id,
+                )
+                .order_by(ARBReviewCycle.cycle_number.desc(), ARBReviewCycle.id.desc())
+            ).scalars()
+        )
+
+    @classmethod
+    def open_typed_cycle_for_solution(cls, solution_id, *, organization_id=None):
+        for cycle in cls.typed_cycles_for_solution(
+            solution_id, organization_id=organization_id
+        ):
+            if cycle.closed_at is None:
+                return cycle
+        return None
+
+    @staticmethod
+    def canonical_url(cycle):
+        if cycle is None:
+            return None
+        subject_type = cycle.subject_type
+        subject_id = cycle.subject_id
+        if subject_type == "solution" and subject_id:
+            return f"/solutions/{subject_id}?tab=governance"
+        if subject_type == "adr" and subject_id:
+            # E2E-H: was /architecture/adrs/records/<id>, a JSON-only
+            # endpoint reading ArchitectureDecisionRecord (0 rows in
+            # production). The real page is arch_decisions.view_decision.
+            return f"/architecture/decisions/{subject_id}"
+        if subject_type == "architecture_model":
+            return "/architecture/models"
+        return None
+
+    @classmethod
+    def command_key(cls, supplied, *, actor, cycle_id, outcome, rationale, conditions):
+        if supplied is not None:
+            if not isinstance(supplied, str) or not _COMMAND_KEY_PATTERN.fullmatch(
+                supplied
+            ):
+                raise ValueError("invalid idempotency key")
+            return supplied
+        identity = _json.dumps(
+            {
+                "organization_id": actor.organization_id,
+                "user_id": actor.user_id,
+                "cycle_id": cycle_id,
+                "outcome": outcome,
+                "rationale": rationale,
+                "conditions": conditions,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+        return f"arb-decision-{_hashlib.sha256(identity).hexdigest()}"
+
+    @staticmethod
+    def supplied_command_key():
+        """A command key may arrive only by header or an explicit field.
+
+        A browser-selected ``review_item_id`` is never an idempotency token.
+        """
+        key = request.headers.get("Idempotency-Key")
+        if key:
+            return key
+        if request.is_json:
+            body = request.get_json(silent=True) or {}
+            if isinstance(body, dict) and body.get("idempotency_key"):
+                return body.get("idempotency_key")
+        return request.form.get("idempotency_key") or None
+
+    @classmethod
+    def decide(cls, *, cycle, outcome, rationale, conditions=None):
+        from app.modules.transformation_room.arb_decision_service import (
+            TypedARBDecisionService,
+        )
+
+        request_id = ""
+        try:
+            actor = cls.actor()
+            request_id = actor.request_id
+            canonical = cls.canonical_conditions(conditions)
+            command_key = cls.command_key(
+                cls.supplied_command_key(),
+                actor=actor,
+                cycle_id=cycle.id,
+                outcome=outcome,
+                rationale=rationale,
+                conditions=canonical,
+            )
+            result = TypedARBDecisionService.decide(
+                actor=actor,
+                command_key=command_key,
+                cycle_id=cycle.id,
+                outcome=outcome,
+                rationale=rationale,
+                conditions=canonical or None,
+            )
+        except ValueError as error:
+            reason = (
+                "invalid_idempotency_key"
+                if "idempotency" in str(error).lower()
+                else "invalid_decision_request"
+            )
+            return TypedARBDecisionOutcome(False, 400, [reason], request_id=request_id)
+        except TransformationError as error:
+            return cls._failure(error, request_id=request_id)
+        except Exception:
+            current_app.logger.exception(
+                "Typed ARB decision adapter failed for cycle %s",
+                getattr(cycle, "id", None),
+            )
+            return TypedARBDecisionOutcome(
+                False, 500, ["decision_failed"], request_id=request_id
+            )
+
+        response = dict(result.response)
+        object_ids = dict(result.object_ids)
+        return TypedARBDecisionOutcome(
+            True,
+            200,
+            request_id=request_id,
+            review_cycle_id=response.get("review_cycle_id")
+            or object_ids.get("review_cycle_id"),
+            review_item_id=response.get("review_item_id")
+            or object_ids.get("review_item_id"),
+            decision_event_id=response.get("decision_event_id")
+            or object_ids.get("decision_event_id"),
+            condition_ids=list(
+                response.get("condition_ids") or object_ids.get("condition_ids") or []
+            ),
+            conditions=response.get("conditions"),
+            status=response.get("status") or outcome,
+            outcome=response.get("outcome") or outcome,
+            idempotent=bool(result.idempotent),
+            canonical_url=cls.canonical_url(cycle),
+        )
+
+    @staticmethod
+    def _failure(error, *, request_id):
+        if isinstance(error, AuthenticationRequired):
+            return TypedARBDecisionOutcome(
+                False, 401, ["not_authenticated"], request_id=request_id
+            )
+        if isinstance(error, NotFound):
+            return TypedARBDecisionOutcome(
+                False, 404, ["arb_review_cycle_not_found"], request_id=request_id
+            )
+        if isinstance(error, NotAuthorised):
+            reason = (
+                error.reason
+                if error.reason in _SAFE_DECISION_AUTHZ_REASONS
+                else "actor_not_authorized"
+            )
+            return TypedARBDecisionOutcome(False, 403, [reason], request_id=request_id)
+        if isinstance(error, BlockedByEvidence):
+            reason_codes = error.details.get("reason_codes")
+            missing = error.details.get("missing_evidence")
+            return TypedARBDecisionOutcome(
+                False,
+                422,
+                list(reason_codes)
+                if isinstance(reason_codes, list)
+                else ["arb_subject_not_ready"],
+                list(missing) if isinstance(missing, list) else [],
+                request_id=request_id,
+            )
+        if isinstance(error, CommandConflict):
+            reason = (
+                error.reason
+                if error.reason in _SAFE_DECISION_CONFLICT_REASONS
+                else "decision_conflict"
+            )
+            return TypedARBDecisionOutcome(False, 409, [reason], request_id=request_id)
+        if isinstance(error, KnownPreCommitTransient):
+            return TypedARBDecisionOutcome(
+                False, 503, ["decision_unconfirmed"], request_id=request_id
+            )
+        return TypedARBDecisionOutcome(
+            False, 500, ["decision_failed"], request_id=request_id
+        )
+
+
+# Safe, status-specific copy for the HTML decision form. Exception text and
+# any other tenant's identity are never surfaced.
+_TYPED_DECISION_MESSAGES = {
+    400: "That decision request could not be read. Check the outcome and rationale.",
+    401: "Sign in again to record this decision.",
+    403: (
+        "You are not authorised to decide this review. A submitter cannot "
+        "decide their own review."
+    ),
+    404: "Review item not found.",
+    409: (
+        "This review changed before your action was recorded. Reload the "
+        "current review and try again."
+    ),
+    422: "This review is blocked by outstanding evidence and cannot be decided yet.",
+    500: "The decision was not recorded.",
+    503: "The command was not confirmed. Retry the decision.",
+}
+
+
+def _typed_operation_blocked(reason_code, message):
+    """Uniform refusal for an operation typed services deliberately omit."""
+    return jsonify(
+        {
+            "success": False,
+            "error": message,
+            "reason_codes": [reason_code],
+            "missing_evidence": [],
+            "request_id": str(_uuid.uuid4()),
+        }
+    ), 409
 
 
 # =========================================================================
@@ -51,10 +557,128 @@ arb_analytics = ARBAnalyticsService()
 # =========================================================================
 
 
+def _typed_decision_json(result, *, extra=None):
+    if not result.success:
+        return jsonify({
+            "success": False,
+            "reason_codes": result.reason_codes,
+            "missing_evidence": result.missing_evidence,
+            "request_id": request.headers.get("X-Request-ID") or str(_uuid.uuid4()),
+        }), result.http_status
+    payload = {
+        "success": True,
+        "item_id": result.review_item_id,
+        "redirect_url": url_for("arb.review_detail", id=result.review_item_id),
+        "review_item_id": result.review_item_id,
+        "review_cycle_id": result.review_cycle_id,
+        "decision_event_id": result.decision_event_id,
+        "condition_ids": result.condition_ids,
+        "status": result.status,
+        "outcome": result.outcome,
+        "conditions": result.conditions,
+        "idempotent": result.idempotent,
+        "canonical_url": result.canonical_url,
+    }
+    if extra:
+        payload.update(extra)
+    return jsonify(payload), 200
+
+
+# ── typed ARB governance workspace wiring ────────────────────────────────────
+# The typed read model, the typed partials and the Alpine component were each
+# landed correctly, but nothing joined them: no view called the read model and
+# no view passed `typed_queue`/`typed_review`, so arb/dashboard.html and
+# arb/review_detail.html always fell through to their legacy branch and the
+# whole typed workspace was unreachable in a browser. These two helpers are that
+# join. A typed read failure is an explicit failed state; silently rendering the
+# legacy body would make a broken release look healthy and expose stale actions.
+
+
+def _typed_actor():
+    """ActorContext from the session ONLY — never from the request.
+
+    Mirrors arb_condition_routes._actor. An authenticated principal with no
+    tenant cannot address a tenant row, so it gets no typed view at all.
+    """
+    from app.modules.transformation_room.domain import ActorContext
+
+    if not getattr(current_user, "is_authenticated", False):
+        return None
+    user_id = getattr(current_user, "id", None)
+    organization_id = getattr(current_user, "organization_id", None)
+    if not isinstance(user_id, int) or isinstance(user_id, bool) or user_id <= 0:
+        return None
+    if (
+        not isinstance(organization_id, int)
+        or isinstance(organization_id, bool)
+        or organization_id <= 0
+    ):
+        return None
+    role = getattr(current_user, "enterprise_role", None)
+    roles = frozenset({role}) if isinstance(role, str) and role else frozenset()
+    return ActorContext(user_id, organization_id, roles, _uuid.uuid4().hex)
+
+
+def _typed_queue_context():
+    actor = _typed_actor()
+    if actor is None:
+        return None
+    try:
+        from app.modules.transformation_room.arb_read_models import (
+            typed_arb_queue_view,
+        )
+
+        return typed_arb_queue_view(
+            actor=actor,
+            filters={
+                "state": request.args.get("state"),
+                "subject_type": request.args.get("subject_type"),
+                "q": request.args.get("q"),
+            },
+            page=request.args.get("page", 1, type=int) or 1,
+        )
+    except Exception:
+        current_app.logger.exception("typed ARB queue view failed")
+        return {
+            "state": "failed",
+            "reason": "arb_queue_unavailable",
+            "filters": {},
+            "filter_options": {},
+            "items": [],
+            "page": None,
+            "page_size": None,
+            "total_items": None,
+            "total_pages": None,
+        }
+
+
+def _typed_review_context(review_item_id):
+    actor = _typed_actor()
+    if actor is None:
+        return None
+    try:
+        from app.modules.transformation_room.arb_read_models import (
+            typed_arb_review_view,
+        )
+
+        return typed_arb_review_view(actor=actor, review_item_id=review_item_id)
+    except Exception:
+        current_app.logger.exception("typed ARB review view failed")
+        return None
+
+
 @arb_bp.route("/dashboard")
 @login_required
 def dashboard_redirect():
-    """Redirect /arb/dashboard to canonical /arb/ URL."""
+    """Redirect /arb/dashboard to canonical /arb/ URL.
+
+    The `@arb_bp.route("/dashboard")` decorator used to sit above the block
+    comment that introduces the typed-workspace helpers, so Flask bound the
+    URL to the *next* function definition — `_typed_actor` — and GET
+    /arb/dashboard returned an ActorContext instead of a response
+    ("view function did not return a valid response ... it was a
+    ActorContext"). The decorator belongs here, on the redirect it names.
+    """
     return redirect(url_for("arb.dashboard"))
 
 
@@ -332,8 +956,40 @@ def dashboard():
                 _txt = f"{abs(_days_left)}d overdue" if _days_left < 0 else f"{_days_left}d remaining"
             sla_data_by_review[_rev.id] = {"cls": _cls, "txt": _txt}
 
+    typed_queue = _typed_queue_context()
+
+    # ADR-0008 (store agreement). The KPI tiles above count arb_review_items
+    # while the queue below reads the typed ARBReviewCycle graph, so a tenant
+    # whose reviews predate typed submission saw "Total reviews 6 / Pending 2"
+    # printed directly above "No typed ARB reviews yet" -- two queries answering
+    # the same question with different answers on one screen.
+    #
+    # The tiles are not wrong: those rows exist. The queue is not wrong either:
+    # they are not typed. So the list renders the rows the tiles counted,
+    # labelled for what they are, instead of claiming there are none. Nothing is
+    # repointed and no count is invented.
+    generic_reviews = []
+    if typed_queue and typed_queue.get("state") == "empty":
+        try:
+            generic_reviews = (
+                ARBReviewItem.query.options(joinedload(ARBReviewItem.submitter))
+                .order_by(ARBReviewItem.created_at.desc())
+                .limit(15)
+                .all()
+            )
+        except Exception:
+            # Leave the list empty rather than fabricating rows; the tiles above
+            # still show the counts and the failure is logged.
+            db.session.rollback()
+            current_app.logger.exception("ARB dashboard generic review list failed")
+
+    response_status = 503 if typed_queue and typed_queue.get("state") == "failed" else 200
     return render_template(
         "arb/dashboard.html",
+        # The dispatcher renders the typed queue whenever an actor exists. A
+        # failed read remains typed and visible; it never resurrects legacy UI.
+        typed_queue=typed_queue,
+        generic_reviews=generic_reviews,
         sessions=recent_sessions,
         status=request.args.get("status", "all"),
         pending_reviews=pending_reviews,
@@ -349,7 +1005,7 @@ def dashboard():
         decisions=decisions,
         application_names_by_review=application_names_by_review,
         sla_data_by_review=sla_data_by_review,
-    )
+    ), response_status
 
 
 def _chair_candidates():
@@ -361,7 +1017,7 @@ def _chair_candidates():
     try:
         from app.models.user import User
         return (
-            User.query.filter_by(confirmed=True)
+            User.query.filter_by(confirmed=True, organization_id=g.current_org_id)
             .order_by(User.first_name, User.last_name)
             .limit(200)
             .all()
@@ -418,19 +1074,19 @@ def create_session():
 
             if not data.get("name"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"name": "Session name is required"}}), 400
+                    return jsonify({"success": False, "error": "Session name is required", "errors": {"name": "Session name is required"}}), 400
                 flash("Session name is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
             if not data.get("scheduled_date"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"scheduled_date": "Scheduled date is required"}}), 400
+                    return jsonify({"success": False, "error": "Scheduled date is required", "errors": {"scheduled_date": "Scheduled date is required"}}), 400
                 flash("Scheduled date is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
             if not data.get("chair_id"):
                 if is_json:
-                    return jsonify({"success": False, "errors": {"chair_id": "Chair is required"}}), 400
+                    return jsonify({"success": False, "error": "Chair is required", "errors": {"chair_id": "Chair is required"}}), 400
                 flash("Chair is required.", "error")
                 return redirect(url_for("arb.create_session"))
 
@@ -457,11 +1113,39 @@ def create_session():
             flash(f"ARB session {arb.board_number} created successfully", "success")
             return redirect(url_for("arb.session_detail", id=arb.id))
 
-        except Exception as e:
-            current_app.logger.error(f"Error creating ARB session: {e}")
+        except ValueError:
+            # The only user-correctable parse failure here is the date format.
+            db.session.rollback()
+            message = (
+                "Scheduled date must be a date and time, for example 2026-09-15 14:00."
+            )
             if is_json:
-                return jsonify({"success": False, "errors": {"general": str(e)}}), 500
-            flash("Error creating session. Please try again.", "error")
+                return jsonify(
+                    {"success": False, "error": message, "errors": {"scheduled_date": message}}
+                ), 400
+            flash(message, "error")
+            return redirect(url_for("arb.sessions"))
+
+        except Exception as e:
+            # A failure here used to reach the user as nothing at all: the JSON
+            # branch answered with an `errors` key the modal only read on a 400,
+            # and the HTML branch flashed a message and then fell through to the
+            # GET redirect below, which the browser followed away from the page
+            # before anything rendered. Both branches now carry the reason, and
+            # the HTML branch returns immediately so the flash survives as a
+            # toast on /arb/sessions.
+            current_app.logger.exception("Error creating ARB session")
+            db.session.rollback()
+            if is_json:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "The ARB session could not be created.",
+                        "errors": {"general": str(e)},
+                    }
+                ), 500
+            flash(f"The ARB session could not be created: {e}", "error")
+            return redirect(url_for("arb.sessions"))
 
     # GET — redirect to sessions list (modal handles creation inline)
     return redirect(url_for("arb.sessions"))
@@ -550,12 +1234,12 @@ def add_board_member(session_id):
     """Add a member to an ARB session."""
     try:
         data = request.form.to_dict()
-        member = arb_service.add_board_member(
+        (arb_service.add_board_member(
             arb_session_id=session_id,
             user_id=int(data.get("user_id")),
             role=data.get("role"),
             voting_member=data.get("voting_member") == "on",
-        )
+        ))
         flash("Board member added successfully", "success")
     except Exception as e:
         current_app.logger.error(f"Error adding board member: {e}")
@@ -609,6 +1293,159 @@ def review_new_redirect():
     return redirect(url_for("arb.create_review"))
 
 
+class _ReviewValidationError(ValueError):
+    """Raised by _create_arb_review_item for a 400-shaped validation failure."""
+
+    def __init__(self, field: str, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.field = field
+        self.message = message
+        self.code = code
+
+
+class _TypedSubmissionError(RuntimeError):
+    def __init__(self, result):
+        super().__init__("Typed ARB submission was rejected")
+        self.result = result
+
+
+def _typed_submission_payload(result):
+    return {
+        "review_id": result.review_item_id,
+        "review_item_id": result.review_item_id,
+        "review_number": result.review_number,
+        "snapshot_id": result.snapshot_id,
+        "review_cycle_id": result.review_cycle_id,
+        "canonical_url": result.canonical_url,
+        "idempotent": result.idempotent,
+    }
+
+
+def _typed_submission_error_payload(result):
+    return {
+        "success": False,
+        "reason_codes": result.reason_codes,
+        "missing_evidence": result.missing_evidence,
+    }
+
+
+# V-03: the single place review-creation payloads are parsed and validated.
+# POST /arb/reviews/create (create_review, the HTML/modal path) and
+# POST /arb/api/reviews (api_create_review, the JSON API path) used to each
+# hand-roll an ~80-line copy of this logic — two independently maintained
+# implementations of the same validation rules, which is how the two-different-
+# creation-endpoints finding could exist without anyone noticing they'd
+# drifted. Both routes now call this one function; they differ only in how
+# they format their own success/error responses (redirect+flash vs JSON),
+# which is a legitimate difference between an HTML-form endpoint and a JSON
+# API endpoint, not a reason to keep two copies of the business logic.
+def _create_arb_review_item(data: dict) -> ARBReviewItem:
+    # Solution reviews have a stronger evidence contract than generic ADR/model
+    # reviews.  This modal cannot collect or preserve that dossier, so it must
+    # never manufacture a solution-linked review item.
+    selected_subjects = [
+        (subject_type, field_name, data.get(field_name))
+        for subject_type, field_name in (
+            ("solution", "solution_id"),
+            ("adr", "adr_id"),
+            ("architecture_model", "architecture_model_id"),
+        )
+        if data.get(field_name) not in (None, "")
+    ]
+    if len(selected_subjects) > 1:
+        raise _ReviewValidationError(
+            "subject",
+            "Select exactly one governed subject for an ARB submission.",
+            code="exactly_one_subject_required",
+        )
+    if selected_subjects and selected_subjects[0][0] == "solution":
+        raise _ReviewValidationError(
+            "solution_id",
+            "Submit solutions through the canonical evidence-gated submission endpoint.",
+        )
+    if selected_subjects:
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
+
+        subject_type, _field_name, raw_subject_id = selected_subjects[0]
+        try:
+            subject_id = int(raw_subject_id)
+        except (TypeError, ValueError) as error:
+            raise _ReviewValidationError(
+                "subject", "Governed subject ID must be a positive integer."
+            ) from error
+        if subject_id <= 0:
+            raise _ReviewValidationError(
+                "subject", "Governed subject ID must be a positive integer."
+            )
+        result = TypedARBSubmissionAdapter.submit_subject_from_request(
+            subject_type=subject_type,
+            subject_id=subject_id,
+            payload=data,
+        )
+        if not result.success:
+            raise _TypedSubmissionError(result)
+        return result
+    review_type = data.get("review_type")
+    capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
+
+    decision_sought_val = (data.get("decision_sought") or "").strip()
+    if not decision_sought_val:
+        raise _ReviewValidationError("decision_sought", "Decision sought is required.")
+
+    capability_impacts = []
+    raw_impacts = data.get("capability_impacts")
+    if raw_impacts and isinstance(raw_impacts, list):
+        for imp in raw_impacts:
+            cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
+            if cap_id:
+                raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
+                capability_impacts.append({
+                    "capability_id": int(cap_id),
+                    "impact_type": _normalize_impact_type(raw_impact),
+                    "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
+                    "level": imp.get("level") if isinstance(imp, dict) else None,
+                })
+    if not capability_impacts and data.get("capability_ids"):
+        raw = data.get("capability_ids")
+        ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
+        default_impact = data.get("capability_impact_type") or "modifies"
+        for cap_id in ids:
+            capability_impacts.append({"capability_id": cap_id, "impact_type": _normalize_impact_type(default_impact), "impact_level": "medium"})
+
+    if review_type in capability_required_types and not capability_impacts:
+        raise _ReviewValidationError(
+            "capability_ids",
+            f"At least one capability is required for {review_type.replace('_', ' ')} reviews.",
+        )
+
+    application_ids = []
+    if data.get("application_ids"):
+        raw = data.get("application_ids")
+        application_ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
+
+    return arb_service.submit_for_review(
+        title=data.get("title"),
+        description=data.get("description"),
+        review_type=review_type,
+        submitter_id=current_user.id,
+        togaf_phase=data.get("togaf_phase") or None,
+        archimate_layer=data.get("archimate_layer") or None,
+        solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
+        adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
+        architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
+        priority=data.get("priority", "medium"),
+        business_impact=data.get("business_impact", "medium"),
+        estimated_effort=data.get("estimated_effort", "medium"),
+        capability_ids=None,
+        decision_sought=decision_sought_val or None,
+        alternatives_considered=data.get("alternatives_considered") or None,
+        application_ids=application_ids or None,
+        capability_impacts=capability_impacts if capability_impacts else None,
+    )
+
+
 @arb_bp.route("/reviews/create", methods=["GET", "POST"])
 @login_required
 @audit_log("arb_review_create")
@@ -619,96 +1456,40 @@ def create_review():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         try:
             data = request.get_json() if request.is_json else request.form.to_dict()
-
-            review_type = data.get("review_type")
-            capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
-
-            # Validation: decision_sought is required
-            decision_sought_val = (data.get("decision_sought") or "").strip()
-            if not decision_sought_val:
-                if is_json:
-                    return (
-                        jsonify({
-                            "success": False,
-                            "errors": {"decision_sought": "Decision sought is required."},
-                        }),
-                        400,
-                    )
-                flash("Decision sought is required.", "error")
-                return redirect(url_for("arb.dashboard"))
-
-            # Parse capability impacts (structured: capability_id, impact_type, impact_level)
-            capability_impacts = []
-            raw_impacts = data.get("capability_impacts")
-            if raw_impacts and isinstance(raw_impacts, list):
-                for imp in raw_impacts:
-                    cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
-                    if cap_id:
-                        raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
-                        capability_impacts.append({
-                            "capability_id": int(cap_id),
-                            "impact_type": _normalize_impact_type(raw_impact),
-                            "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
-                            "level": imp.get("level") if isinstance(imp, dict) else None,
-                        })
-            # Fallback: legacy capability_ids list
-            if not capability_impacts and data.get("capability_ids"):
-                raw = data.get("capability_ids")
-                ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in raw.split(",") if i.strip()]
-                default_impact = data.get("capability_impact_type") or "modifies"
-                for cap_id in ids:
-                    capability_impacts.append({"capability_id": cap_id, "impact_type": _normalize_impact_type(default_impact), "impact_level": "medium"})
-
-            # Validation: capability required for certain review types
-            if review_type in capability_required_types and not capability_impacts:
-                if is_json:
-                    return (
-                        jsonify({
-                            "success": False,
-                            "errors": {"capability_ids": f"At least one capability is required for {review_type.replace('_', ' ')} reviews."},
-                        }),
-                        400,
-                    )
-                flash(f"At least one capability is required for {review_type.replace('_', ' ')} reviews.", "error")
-                return redirect(url_for("arb.dashboard"))
-
-            # Parse application IDs
-            application_ids = []
-            if data.get("application_ids"):
-                raw = data.get("application_ids")
-                if isinstance(raw, list):
-                    application_ids = [int(i) for i in raw]
-                else:
-                    application_ids = [int(i.strip()) for i in str(raw).split(",") if i.strip()]
-
-            review_item = arb_service.submit_for_review(
-                title=data.get("title"),
-                description=data.get("description"),
-                review_type=review_type,
-                submitter_id=current_user.id,
-                togaf_phase=data.get("togaf_phase") or None,
-                archimate_layer=data.get("archimate_layer") or None,
-                solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
-                adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
-                architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
-                priority=data.get("priority", "medium"),
-                business_impact=data.get("business_impact", "medium"),
-                estimated_effort=data.get("estimated_effort", "medium"),
-                capability_ids=None,
-                decision_sought=decision_sought_val or None,
-                alternatives_considered=data.get("alternatives_considered") or None,
-                application_ids=application_ids or None,
-                capability_impacts=capability_impacts if capability_impacts else None,
-            )
+            review_item = _create_arb_review_item(data)
 
             if is_json:
+                if hasattr(review_item, "review_item_id"):
+                    typed = _typed_submission_payload(review_item)
+                    return jsonify(
+                        {"success": True, "id": review_item.review_item_id, **typed}
+                    ), 201
                 return jsonify({"success": True, "id": review_item.id, "review_number": review_item.review_number}), 201
 
+            review_id = getattr(review_item, "review_item_id", None) or review_item.id
+            review_number = getattr(review_item, "review_number", None)
             flash(
-                f"Review item {review_item.review_number} created successfully",
+                f"Review item {review_number} created successfully",
                 "success",
             )
-            return redirect(url_for("arb.review_detail", id=review_item.id))
+            return redirect(url_for("arb.review_detail", id=review_id))
+
+        except _ReviewValidationError as e:
+            if is_json:
+                payload = {"success": False, "errors": {e.field: e.message}}
+                if e.code:
+                    payload["reason_codes"] = [e.code]
+                return jsonify(payload), 400
+            flash(e.message, "error")
+            return redirect(url_for("arb.dashboard"))
+
+        except _TypedSubmissionError as error:
+            if is_json:
+                return jsonify(
+                    _typed_submission_error_payload(error.result)
+                ), error.result.http_status
+            flash("The governed subject is not ready for ARB submission.", "error")
+            return redirect(url_for("arb.dashboard"))
 
         except Exception as e:
             current_app.logger.error(f"Error creating review item: {e}")
@@ -716,7 +1497,13 @@ def create_review():
                 return jsonify({"success": False, "errors": {"general": str(e)}}), 500
             flash("Error creating review. Please try again.", "error")
 
-    # GET — redirect to dashboard (modal handles creation inline)
+    # GET — no standalone create page exists; creation is an inline modal on the
+    # dashboard. A bare redirect looked like the empty-state CTA "did nothing"
+    # (QA 01 Sep 2026), so tell the user where the form is and open it.
+    flash(
+        "Use the “Create Review Item” button to submit a new ARB review.",
+        "info",
+    )
     return redirect(url_for("arb.dashboard"))
 
 
@@ -756,15 +1543,22 @@ def review_detail(id):
             )
             if raw:
                 ra = raw.get("risk_assessment") or {}
+                # None, not "LOW", and not 0. This renders on a page where a
+                # reviewer signs off risk, and an unassessed risk presented as
+                # LOW is indistinguishable from an assessed one. The previous
+                # `or` chain collapsed None and "" to "LOW" as well as a missing
+                # key. Templates render None as an em dash.
                 canonical_impact = {
-                    "risk_level": ra.get("risk_level") or raw.get("risk_level", "LOW"),
-                    "total_score": ra.get("total_score", 0),
+                    "risk_level": ra.get("risk_level") or raw.get("risk_level"),
+                    "total_score": ra.get("total_score"),
                     "breakdown": ra.get("breakdown") or {},
                     "app_count": len(app_ids),
                 }
-        except Exception:  # fabricated-values-ok: best-effort score enrichment, non-fatal
-            logger.exception("Failed to operation")
-            pass
+        except Exception:
+            # The enrichment is best-effort, but its ABSENCE must be visible:
+            # canonical_impact stays as it was rather than being filled with
+            # confident-looking defaults.
+            logger.exception("ARB impact enrichment failed for app_id=%s", app_ids[0])
 
     # ARB-101: compute SLA banner info for review detail
     _SLA_THRESHOLDS = {"critical": 7, "high": 14, "medium": 21, "low": 30}
@@ -818,14 +1612,80 @@ def review_detail(id):
     except Exception:
         pass  # principles table may not yet be populated — degrade gracefully
 
+    # ARCH-092: surface the immutable audit trail on the review itself, not
+    # just in a service nobody calls. Best-effort — the audit trail is a
+    # secondary view and must never 500 the primary review page.
+    audit_trail = []
+    try:
+        from app.services.arb_audit_service import ARBAuditService
+
+        audit_trail = ARBAuditService().get_entity_history("review_item", id, limit=200)
+    except Exception:
+        current_app.logger.exception(f"Failed to load audit trail for review {id}")
+
+    typed_review = _typed_review_context(id)
+    response_status = 503 if typed_review and typed_review.get("state") == "failed" else 200
     return render_template(
         "arb/review_detail.html",
+        # Same dispatch contract as the queue: typed workspace when the read
+        # model resolves this review for the current tenant, legacy otherwise.
+        typed_review=typed_review,
         review=review,
         application_names=application_names,
         canonical_impact=canonical_impact,
         sla_info=sla_info,
         conditions_with_flags=conditions_with_flags,
         applicable_principles=applicable_principles,
+        audit_trail=audit_trail,
+        # The template must not re-derive which states can be decided: the
+        # service owns that set, and the two drifted (the page offered a
+        # decision on `pending_info`, which record_decision refuses, and
+        # withheld it on `deferred`, which it accepts).
+        decidable_statuses=sorted(DECIDABLE_STATUSES),
+    ), response_status
+
+
+@arb_bp.route("/reviews/<int:id>/audit-trail.csv")
+@login_required
+def review_audit_trail_csv(id):
+    """ARCH-092: export the immutable audit trail for one review item as CSV.
+
+    Reads the same stored ARBAuditLog rows the review detail page shows —
+    a read-only export, it writes nothing and cannot alter the review.
+    """
+    import csv
+    import io
+
+    from flask import Response
+
+    review = ARBReviewItem.query.get_or_404(id)
+
+    from app.services.arb_audit_service import ARBAuditService
+
+    logs = ARBAuditService().get_entity_history("review_item", id, limit=1000)
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ["timestamp_utc", "action", "actor_email", "old_value", "new_value", "description"]
+    )
+    for log in logs:
+        writer.writerow(
+            [
+                log.timestamp.isoformat() if log.timestamp else "",
+                log.action,
+                log.user_email or "",
+                log.old_value or "",
+                log.new_value or "",
+                log.action_description or "",
+            ]
+        )
+
+    filename = f"{review.review_number}-audit-trail.csv"
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -836,6 +1696,13 @@ def review_detail(id):
 def submit_review(id):
     """Submit a draft review item for ARB consideration."""
     try:
+        review = ARBReviewItem.query.get_or_404(id)
+        if review.solution_id or review.adr_id or review.architecture_model_id:
+            flash(
+                "Typed reviews must be submitted from their governed evidence dossier.",
+                "error",
+            )
+            return redirect(url_for("arb.review_detail", id=id))
         review = arb_service.submit_item(id)
         flash(f"Review item {review.review_number} submitted successfully", "success")
         return redirect(url_for("arb.review_detail", id=id))
@@ -852,8 +1719,8 @@ def assign_to_session(id):
     """Assign review item to an ARB session."""
     try:
         data = request.form.to_dict()
-        review = arb_service.assign_to_session(id, int(data.get("arb_session_id")))
-        flash(f"Review item assigned to ARB session", "success")
+        arb_service.assign_to_session(id, int(data.get("arb_session_id")))
+        flash("Review item assigned to ARB session", "success")
         return redirect(url_for("arb.review_detail", id=id))
     except Exception as e:
         current_app.logger.error(f"Error assigning to session: {e}")
@@ -865,32 +1732,62 @@ def assign_to_session(id):
 @login_required
 @audit_log("arb_decision_record")
 def record_decision(id):
-    """Record ARB decision for a review item."""
+    """Record ARB decision for a review item.
+
+    A typed review cycle is decided only by ``TypedARBDecisionService``; the
+    legacy branch below stays for generic, untyped historical review rows.
+    """
     try:
         data = request.form.to_dict()
 
-        # Parse conditions if provided
-        conditions = []
-        if data.get("conditions"):
-            for condition_line in data.get("conditions").strip().split("\n"):
-                if condition_line.strip():
-                    conditions.append(
-                        {
-                            "condition": condition_line.strip(),
-                            "status": "pending",
-                            "due_date": (
-                                datetime.utcnow() + timedelta(days=30)
-                            ).isoformat(),
-                        }
-                    )
-
-        review = arb_service.record_decision(
-            review_item_id=id,
-            decision=data.get("decision"),
-            rationale=data.get("rationale"),
-            decided_by_id=current_user.id,
-            conditions=conditions if conditions else None,
+        from app.modules.transformation_room.arb_decision_adapter import (
+            TypedARBDecisionAdapter,
         )
+
+        typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+            review_item_id=id,
+            payload=data,
+        )
+        if typed_result.typed:
+            if typed_result.success:
+                flash("ARB decision recorded against the pinned review evidence.", "success")
+                return redirect(url_for("arb.review_detail", id=id))
+            flash("The typed ARB decision could not be recorded.", "error")
+            return redirect(url_for("arb.review_detail", id=id)), typed_result.http_status
+
+        # Preserve the legacy ingress without fabricating a due date.
+        conditions = [
+            {"condition": line, "status": "pending", "due_date": None}
+            for line in (data.get("conditions") or "").splitlines()
+            if line.strip()
+        ]
+
+        try:
+            review = arb_service.record_decision(
+                review_item_id=id,
+                decision=data.get("decision"),
+                rationale=data.get("rationale"),
+                decided_by_id=current_user.id,
+                conditions=conditions if conditions else None,
+            )
+        except SelfApprovalError as e:
+            current_app.logger.warning(
+                f"Self-approval attempt blocked on review {id} by user {current_user.id}: {e}"
+            )
+            flash(
+                "You submitted this review, so you cannot also record its decision. "
+                "A separate approver must decide it.",
+                "error",
+            )
+            return redirect(url_for("arb.review_detail", id=id)), 403
+        except MissingApproverError as e:
+            current_app.logger.warning(f"Decision refused on review {id}: {e}")
+            flash("Decision refused: no approver could be identified.", "error")
+            return redirect(url_for("arb.review_detail", id=id)), 403
+        except ARBDecisionError as e:
+            current_app.logger.warning(f"Decision refused on review {id}: {e}")
+            flash(str(e), "error")
+            return redirect(url_for("arb.review_detail", id=id)), 403
 
         # Sync ARB decision to capability (if this is a capability review)
         try:
@@ -954,12 +1851,44 @@ def reopen_decision(id):
     who reopened the decision and why.
     """
     try:
+        from app.modules.transformation_room.arb_decision_adapter import (
+            TypedARBDecisionAdapter as CommandDecisionAdapter,
+        )
+        from app.modules.transformation_room.domain import NotFound
+
+        try:
+            if CommandDecisionAdapter.review_is_typed(id):
+                flash(
+                    "Typed ARB decisions are append-only and cannot be reopened.",
+                    "error",
+                )
+                return redirect(url_for("arb.review_detail", id=id)), 409
+        except NotFound:
+            pass
+
         from app.models.architecture_review_board import ARBAuditAction, ARBAuditLog
 
-        review = db.session.get(ARBReviewItem, id)
+        # The module-local adapter owns the legacy tenant-scoped read helpers;
+        # the command adapter above deliberately exposes only typed commands.
+        LegacyReviewAdapter = TypedARBDecisionAdapter
+
+        # Explicit (id, organization_id) predicate: Session.get() is scoped
+        # only on an identity-map miss, so it is not a tenancy boundary.
+        review = LegacyReviewAdapter.load_review(id)
         if not review:
             flash("Review item not found.", "error")
-            return redirect(url_for("arb.reviews"))
+            return redirect(url_for("arb.reviews")), 404
+
+        # Typed decision events are append-only: no typed service exposes a
+        # reopen command, so a typed cycle can never be reverted here.
+        if LegacyReviewAdapter.typed_cycle_for_review(review) is not None:
+            flash(
+                "This review is governed by a typed ARB cycle. Typed decisions "
+                "are append-only and cannot be reopened; submit a new review "
+                "cycle instead.",
+                "error",
+            )
+            return redirect(url_for("arb.review_detail", id=id)), 409
 
         # Only allow reopen if a decision has been recorded
         if not review.decision:
@@ -1142,7 +2071,10 @@ def change_request_detail(cr_id):
     """Detail view for a single change request (wires arb/change_request_detail.html)."""
     from app.models.architecture_decision import ArchitectureChangeRequest
     change_request = ArchitectureChangeRequest.query.get_or_404(cr_id)
-    return render_template("arb/change_request_detail.html", change_request=change_request)
+    # The template refers to this as `cr` throughout; passing it as
+    # `change_request` raised UndefinedError, so every row of the change-request
+    # list at arb/change_requests.html:106 linked to a 500.
+    return render_template("arb/change_request_detail.html", cr=change_request)
 
 
 @arb_bp.route("/change-requests/new", methods=["GET", "POST"])
@@ -1266,6 +2198,21 @@ def api_update_checklist(id):
 def api_capability_reviews(capability_id):
     """API endpoint to get reviews affecting a capability."""
     try:
+        # A capability that does not exist must 404, not answer with an empty
+        # list. This was the last of 78 routes that returned 200 for id
+        # 999999999: {"success": true, "reviews": []} is indistinguishable from
+        # "this capability has no reviews", so a caller cannot tell a typo from
+        # a clean governance record -- the fabricated-data rule, arriving as an
+        # empty collection instead of a wrong number.
+        from app.models.business_capabilities import BusinessCapability
+        from app.utils.route_guards import require_entity_json
+
+        _capability, missing = require_entity_json(
+            BusinessCapability, capability_id, label="Capability"
+        )
+        if missing:
+            return missing
+
         reviews = arb_service.get_pending_reviews_by_capability(capability_id)
         return jsonify(
             {
@@ -1297,28 +2244,24 @@ def api_dashboard():
 @audit_log("arb_solution_review_submit")
 def api_submit_solution_review(solution_id):
     """API endpoint to auto-submit solution for ARB review."""
-    try:
-        review = arb_service.auto_submit_solution_for_review(
-            solution_id, current_user.id
-        )
-        if review:
-            return jsonify(
-                {
-                    "success": True,
-                    "review_id": review.id,
-                    "review_number": review.review_number,
-                }
-            )
-        else:
-            return jsonify(
-                {
-                    "success": False,
-                    "error": "Solution does not meet criteria for ARB review",
-                }
-            )
-    except Exception as e:
-        current_app.logger.error(f"Error submitting solution review: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
+    )
+    if not result.success:
+        return jsonify({"success": False, "reason_codes": result.reason_codes,
+                        "missing_evidence": result.missing_evidence}), result.http_status
+    return jsonify({"success": True, "review_id": result.review_item_id,
+                    "review_item_id": result.review_item_id,
+                    "review_number": result.review_number, "snapshot_id": result.snapshot_id,
+                    "idempotent": result.idempotent,
+                    "review_cycle_id": result.review_cycle_id,
+                    "canonical_url": result.canonical_url})
 
 
 @arb_bp.route("/api/adr/<int:adr_id>/submit_review", methods=["POST"])
@@ -1326,23 +2269,18 @@ def api_submit_solution_review(solution_id):
 @audit_log("arb_adr_review_submit")
 def api_submit_adr_review(adr_id):
     """API endpoint to auto-submit ADR for ARB review."""
-    try:
-        review = arb_service.auto_submit_adr_for_review(adr_id, current_user.id)
-        if review:
-            return jsonify(
-                {
-                    "success": True,
-                    "review_id": review.id,
-                    "review_number": review.review_number,
-                }
-            )
-        else:
-            return jsonify(
-                {"success": False, "error": "ADR does not require ARB review"}
-            )
-    except Exception as e:
-        current_app.logger.error(f"Error submitting ADR review: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
+
+    result = TypedARBSubmissionAdapter.submit_subject_from_request(
+        subject_type="adr",
+        subject_id=adr_id,
+        payload=request.get_json(silent=True) or {},
+    )
+    if not result.success:
+        return jsonify(_typed_submission_error_payload(result)), result.http_status
+    return jsonify({"success": True, **_typed_submission_payload(result)})
 
 
 # =========================================================================
@@ -1390,74 +2328,33 @@ def api_list_reviews():
 @login_required
 @audit_log("arb_review_create_api")
 def api_create_review():
-    """API endpoint to create a review via modal form."""
+    """API endpoint to create a review via modal form.
+
+    V-03: thin JSON wrapper around the same _create_arb_review_item used by
+    the HTML form path (create_review, above) -- this used to be an
+    independent ~80-line copy of that parsing/validation logic. Response
+    shape (review_id/redirect_url, versus create_review's id/review_number)
+    is kept exactly as it was, since the frontend JS that calls this endpoint
+    depends on it.
+    """
     try:
         data = request.get_json()
-
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
 
-        decision_sought_val = (data.get("decision_sought") or "").strip()
-        if not decision_sought_val:
-            return jsonify({
-                "success": False,
-                "errors": {"decision_sought": "Decision sought is required."},
-            }), 400
+        review_item = _create_arb_review_item(data)
 
-        review_type = data.get("review_type")
-        capability_required_types = ["solution_design", "capability_implementation", "technology_selection"]
-
-        # Parse capability_impacts or fallback to capability_ids
-        capability_impacts = []
-        raw_impacts = data.get("capability_impacts")
-        if raw_impacts and isinstance(raw_impacts, list):
-            for imp in raw_impacts:
-                cap_id = imp.get("capability_id") if isinstance(imp, dict) else imp
-                if cap_id:
-                    raw_impact = imp.get("impact_type", "modifies") if isinstance(imp, dict) else "modifies"
-                    capability_impacts.append({
-                        "capability_id": int(cap_id),
-                        "impact_type": _normalize_impact_type(raw_impact),
-                        "impact_level": imp.get("impact_level", "medium") if isinstance(imp, dict) else "medium",
-                        "level": imp.get("level") if isinstance(imp, dict) else None,
-                    })
-        if not capability_impacts and data.get("capability_ids"):
-            raw = data.get("capability_ids")
-            ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
-            default_impact = _normalize_impact_type(data.get("capability_impact_type") or "modifies")
-            for cap_id in ids:
-                capability_impacts.append({"capability_id": cap_id, "impact_type": default_impact, "impact_level": "medium"})
-
-        if review_type in capability_required_types and not capability_impacts:
-            return jsonify({
-                "success": False,
-                "errors": {"capability_ids": f"At least one capability is required for {review_type.replace('_', ' ')} reviews."},
-            }), 400
-
-        application_ids = []
-        if data.get("application_ids"):
-            raw = data.get("application_ids")
-            application_ids = [int(i) for i in raw] if isinstance(raw, list) else [int(i.strip()) for i in str(raw).split(",") if str(i).strip()]
-
-        review_item = arb_service.submit_for_review(
-            title=data.get("title"),
-            description=data.get("description"),
-            review_type=review_type,
-            submitter_id=current_user.id,
-            togaf_phase=data.get("togaf_phase") or None,
-            archimate_layer=data.get("archimate_layer") or None,
-            solution_id=int(data.get("solution_id")) if data.get("solution_id") else None,
-            adr_id=int(data.get("adr_id")) if data.get("adr_id") else None,
-            architecture_model_id=int(data.get("architecture_model_id")) if data.get("architecture_model_id") else None,
-            priority=data.get("priority", "medium"),
-            business_impact=data.get("business_impact", "medium"),
-            estimated_effort=data.get("estimated_effort", "medium"),
-            capability_ids=None,
-            decision_sought=decision_sought_val or None,
-            alternatives_considered=data.get("alternatives_considered") or None,
-            application_ids=application_ids or None,
-            capability_impacts=capability_impacts if capability_impacts else None,
-        )
+        if hasattr(review_item, "review_item_id"):
+            typed = _typed_submission_payload(review_item)
+            return jsonify(
+                {
+                    "success": True,
+                    **typed,
+                    "redirect_url": url_for(
+                        "arb.review_detail", id=review_item.review_item_id
+                    ),
+                }
+            )
 
         return jsonify(
             {
@@ -1467,6 +2364,17 @@ def api_create_review():
                 "redirect_url": url_for("arb.review_detail", id=review_item.id),
             }
         )
+
+    except _ReviewValidationError as e:
+        payload = {"success": False, "errors": {e.field: e.message}}
+        if e.code:
+            payload["reason_codes"] = [e.code]
+        return jsonify(payload), 400
+
+    except _TypedSubmissionError as error:
+        return jsonify(
+            _typed_submission_error_payload(error.result)
+        ), error.result.http_status
 
     except Exception as e:
         current_app.logger.error(f"Error creating review via API: {e}")
@@ -1509,16 +2417,23 @@ ARB_IMPACT_TYPES = [
 def api_form_data():
     """API endpoint to get form data for create review modal."""
     try:
-        from app.models.adr import ArchitectureDecisionRecord
+        from app.models.architecture_decision import ArchitectureDecision
         from app.models.application_portfolio import ApplicationComponent
         from app.models.models import ArchitectureModel
         from app.models.truly_missing_models import Solution
         from app.models.unified_capability import UnifiedCapability
 
         solutions = Solution.query.order_by(Solution.name).limit(200).all()
+        # E2E-H: this dropdown read ArchitectureDecisionRecord, a model with
+        # 0 rows in production -- the Decision Register a user actually
+        # reaches (/architecture/decisions/new) writes ArchitectureDecision.
+        # Same class of defect as the risk-rollup fix earlier this session
+        # (029f59a9): two models answering "what is an ADR", one live, one
+        # dead. Confirmed 0 ArchitectureDecisionRecord / 7 ArchitectureDecision
+        # rows in production before switching, so nothing is orphaned.
         adrs = (
-            ArchitectureDecisionRecord.query.order_by(
-                ArchitectureDecisionRecord.created_at.desc()
+            ArchitectureDecision.query.order_by(
+                ArchitectureDecision.created_at.desc()
             )
             .limit(50)
             .all()
@@ -1540,7 +2455,7 @@ def api_form_data():
                 "success": True,
                 "solutions": [{"id": s.id, "name": s.name} for s in solutions],
                 "adrs": [
-                    {"id": a.id, "adr_number": a.adr_number, "title": a.title}
+                    {"id": a.id, "adr_number": a.decision_id, "title": a.title}
                     for a in adrs
                 ],
                 "architecture_models": [
@@ -1904,11 +2819,15 @@ def delete_review(id):
 from app.modules.architecture.routes import arb_decision_routes  # noqa: F401  # dead-code-ok
 # Import document attachment routes — adds upload/download endpoints to arb_bp (side-effect import)
 from app.modules.architecture.routes import arb_document_routes  # noqa: F401  # dead-code-ok
+# Import reviewer-side AI pre-brief route — adds POST /api/reviews/<id>/ai-prebrief (side-effect import)
+from app.modules.architecture.routes import arb_review_ai_routes  # noqa: F401  # dead-code-ok
+# Import queue-clerk AI routes — adds queue triage + session agenda/minutes draft endpoints (side-effect import)
+from app.modules.architecture.routes import arb_queue_ai_routes  # noqa: F401  # dead-code-ok
 import logging
 logger = logging.getLogger(__name__)
 
 
-@arb_bp.route("/initialize_standards")
+@arb_bp.route("/initialize_standards", methods=["POST"])
 @login_required
 def initialize_standards():
     """Initialize default governance standards."""
@@ -1930,10 +2849,57 @@ def initialize_standards():
 # =========================================================================
 
 
+def _typed_api_item(item_id: int):
+    """Resolve a review item and its typed cycle, both tenant-scoped.
+
+    Returns ``(item, cycle, error_response)``. A row in another tenant is
+    indistinguishable from a missing row: both are a bare 404.
+    """
+    item = TypedARBDecisionAdapter.load_review(item_id)
+    if item is None:
+        return None, None, (
+            jsonify(
+                {
+                    "success": False,
+                    "error": "Review item not found.",
+                    "reason_codes": ["arb_review_item_not_found"],
+                    "missing_evidence": [],
+                    "request_id": str(_uuid.uuid4()),
+                }
+            ),
+            404,
+        )
+    return item, TypedARBDecisionAdapter.typed_cycle_for_review(item), None
+
+
+def _typed_decision_api_response(result, item, *, legacy_fields=None):
+    """One envelope shape for every typed decision API caller."""
+    if not result.success:
+        return jsonify(result.failure_payload()), result.http_status
+    payload = {
+        "success": True,
+        "item_id": item.id,
+        "redirect_url": url_for("arb.review_detail", id=item.id),
+        **(legacy_fields or {}),
+        **result.success_fields(),
+    }
+    return jsonify(payload), 200
+
+
 @arb_bp.route("/api/arb/<int:item_id>/review", methods=["POST"])
 @login_required
 def api_arb_begin_review(item_id: int):
     """ENH-020: Transition ARBReviewItem to under_review status."""
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    typed_result = TypedARBDecisionAdapter.begin_review_from_request(
+        review_item_id=item_id
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
     item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status not in ("submitted", "draft", "pending"):
@@ -1942,7 +2908,7 @@ def api_arb_begin_review(item_id: int):
             "error": f"Cannot begin review from status '{current_status}'.",
         }), 409
 
-    data = request.get_json() or {}
+    request.get_json() or {}
     try:
         item.status = "under_review"
         item.reviewer_id = current_user.id
@@ -1963,6 +2929,19 @@ def api_arb_begin_review(item_id: int):
 @login_required
 def api_arb_approve(item_id: int):
     """ENH-020: Approve an ARBReviewItem that is under_review."""
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="approved",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
     item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
@@ -2007,6 +2986,22 @@ def api_arb_approve(item_id: int):
 @login_required
 def api_arb_reject(item_id: int):
     """ENH-020: Reject an ARBReviewItem that is under_review."""
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="rejected",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(
+            typed_result,
+            extra={"rejection_reason": data.get("reason")},
+        )
+
     item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
@@ -2057,6 +3052,19 @@ def api_arb_request_changes(item_id: int):
     Request Body:
         { "conditions": ["Fix security issue", ...], "notes": "Optional notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=item_id,
+        payload=data,
+        outcome="approved_with_conditions",
+    )
+    if typed_result.typed:
+        return _typed_decision_json(typed_result)
+
     item = ARBReviewItem.query.get_or_404(item_id)
     current_status = item.status or "draft"
     if current_status != "under_review":
@@ -2101,6 +3109,20 @@ def api_arb_request_changes(item_id: int):
 @login_required
 def api_arb_get_implementation_status(item_id: int):
     """ENH-020: Get implementation status for an approved ARB review item."""
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+    from app.modules.transformation_room.domain import NotFound
+
+    try:
+        if TypedARBDecisionAdapter.review_is_typed(item_id):
+            return jsonify({
+                "success": False,
+                "reason_codes": ["typed_implementation_status_not_supported"],
+            }), 409
+    except NotFound:
+        return jsonify({"success": False, "reason_codes": ["review_not_found"]}), 404
+
     item = ARBReviewItem.query.get_or_404(item_id)
     return jsonify({
         "success": True,
@@ -2132,6 +3154,20 @@ def api_arb_update_implementation_status(item_id: int):
             "conditions_response": {"0": "Evidence for condition 0", ...}
         }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+    from app.modules.transformation_room.domain import NotFound
+
+    try:
+        if TypedARBDecisionAdapter.review_is_typed(item_id):
+            return jsonify({
+                "success": False,
+                "reason_codes": ["typed_cycle_implementation_status_not_writable"],
+            }), 409
+    except NotFound:
+        return jsonify({"success": False, "reason_codes": ["review_not_found"]}), 404
+
     item = ARBReviewItem.query.get_or_404(item_id)
     if item.status not in ("approved", "approved_with_conditions"):
         return jsonify({

@@ -14,7 +14,8 @@
 {% set configs = configs|default([]) %}
 {% set recent_configs = recent_configs|default([]) %}
 {% set active_config = active_config|default(none) %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="frameworkConfigModal()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="frameworkConfigModal()"
+     @framework-config-created.window="setTimeout(() => window.location.reload(), 800)">
     {{ page_header(
         title='Framework Configuration',
         description='Configure and manage your capability framework with industry-specific extensions',
@@ -37,7 +38,7 @@
                 <p class="text-sm text-muted-foreground mt-1">{{ active_config.configuration_name }}</p>
             </div>
             <div class="flex items-center space-x-2">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success/10 text-success-emphasis">
                     Active
                 </span>
                 <a href="{{ url_for('framework_config_ui.view_configuration', config_id=active_config.id) }}" 
@@ -58,7 +59,7 @@
 
     <!-- Quick Actions -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <button @click="Platform.modal.open('create-framework-config')" 
+        <button type="button" @click="Platform.modal.open('create-framework-config')" 
                 class="bg-card rounded-lg border p-6 hover:bg-muted transition-colors text-left w-full" aria-label="Open">
             <div class="flex items-center space-x-4">
                 <div class="flex-shrink-0">
@@ -217,8 +218,8 @@
                             <td class="px-4 py-3 text-sm text-foreground">{{ config.industry_focus }}</td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                       {% if config.status == 'active' %}bg-success/10 text-success
-                                       {% elif config.status == 'draft' %}bg-warning/10 text-warning
+                                       {% if config.status == 'active' %}bg-success/10 text-success-emphasis
+                                       {% elif config.status == 'draft' %}bg-warning/10 text-warning-emphasis
                                        {% else %}bg-muted text-foreground{% endif %}">
                                     {{ config.status.title() }}
                                 </span>
@@ -258,18 +259,17 @@
             Framework Configuration v{{ active_config.framework_version if active_config else '1.0' }}
         </div>
     </div>
-</div>
 
 {% call modal(id='create-framework-config', title='New Framework Configuration', description='Create a new capability framework configuration', size='default') %}
-<form @submit.prevent="submitCreateConfig()" class="space-y-4">
+<form @submit.prevent="submit()" class="space-y-4">
     <div>
-        <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive">*</span></label>
+        <label for="cfc-name" class="block text-sm font-medium mb-1">Configuration Name <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cfc-name" x-model="formData.configuration_name" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. Enterprise Framework 2026">
     </div>
     <div>
-        <label for="cfc-code" class="block text-sm font-medium mb-1">Configuration Code <span class="text-destructive">*</span></label>
+        <label for="cfc-code" class="block text-sm font-medium mb-1">Configuration Code <span class="text-destructive-emphasis">*</span></label>
         <input type="text" id="cfc-code" x-model="formData.configuration_code" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. ENT-FW-2026">
@@ -281,7 +281,7 @@
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Describe this configuration"></textarea>
     </div>
-    <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div x-show="errorMsg" x-cloak class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
     <div class="flex justify-end gap-3 pt-2 border-t border-border">
         <button type="button" @click="Platform.modal.close('create-framework-config')"
                 class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Close">Cancel</button>
@@ -293,37 +293,5 @@
     </div>
 </form>
 {% endcall %}
-
-<script>
-function frameworkConfigModal() {
-    return {
-        formData: { configuration_name: '', configuration_code: '', description: '' },
-        submitting: false,
-        errorMsg: '',
-        submitCreateConfig() {
-            if (!this.formData.configuration_name.trim()) { this.errorMsg = 'Configuration name is required.'; return; }
-            if (!this.formData.configuration_code.trim()) { this.errorMsg = 'Configuration code is required.'; return; }
-            this.submitting = true;
-            this.errorMsg = '';
-            fetch('/api/framework-config/configurations', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                },
-                body: JSON.stringify(this.formData)
-            })
-            .then(r => r.json())
-            .then(data => {
-                this.submitting = false;
-                if (!data.success) { this.errorMsg = data.error || 'An error occurred.'; return; }
-                Platform.modal.close('create-framework-config');
-                showToast({ title: 'Configuration created successfully', variant: 'default' });
-                setTimeout(() => window.location.reload(), 800);
-            })
-            .catch(() => { this.submitting = false; this.errorMsg = 'Network error. Please try again.'; });
-        }
-    };
-}
-</script>
+</div>
 {% endblock %}

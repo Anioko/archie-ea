@@ -300,13 +300,15 @@ AI_ANALYSIS_SECTION = NavigationSectionV2(
         ),
         # ✅ FIXED: Impact Analysis now has proper icon
         # ❌ OLD: endpoint=None, url_fallback="#" (broken link)
-        # ✅ NEW: Either give it endpoint or mark as disabled
+        # ✅ NEW (BA persona work): repointed to the live strategic impact-analysis
+        # dashboard (strategic_bp, /strategic/impact-analysis) — the standalone
+        # /impact-analysis route was never implemented, so this was disabled forever.
         NavigationItemV2(
             label="Impact Analysis",
             icon="git-compare",
-            endpoint=None,
-            url_fallback="/impact-analysis",  # Route not yet implemented (disabled below)
-            disabled=True,  # Mark as disabled until implemented
+            endpoint="strategic.impact_analysis",
+            url_fallback="/strategic/impact-analysis",
+            disabled=False,
             order=5,
         ),
     ],
@@ -328,7 +330,13 @@ ARCHITECTURE_TOOLS_SECTION = NavigationSectionV2(
             label="ArchiMate Composer",
             icon="layers",
             endpoint="archimate.composer_page",
-            url_fallback="/archimate/composer",
+            url_fallback="/archimate/composer?viewpoint=layered",
+            # Opens directly into the Layered viewpoint (every element and
+            # relationship across all ArchiMate layers) instead of a blank
+            # "Unsaved diagram" canvas — composer_page's `viewpoint` query
+            # param opens straight into View mode on that viewpoint (see
+            # app/modules/architecture/routes/archimate_routes.py::composer_page).
+            query_params={"viewpoint": "layered"},
             order=1,
         ),
         NavigationItemV2(

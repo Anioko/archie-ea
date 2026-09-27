@@ -43,6 +43,7 @@ class VendorSuggestionService:
                 cap_name = cap.name if cap else f"Capability {cap_id}"
 
                 rows = (
+                    # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
                     db.session.query(
                         VendorProductCapability, VendorProductPricing, VendorProduct, VendorOrganization
                     )
@@ -138,6 +139,7 @@ class VendorSuggestionService:
         # Different price — update the existing architect_confirmed row for this
         # product+tier if one already exists (prevents duplicate competing rows on
         # concurrent submissions).
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         existing_correction = VendorProductPricing.query.filter_by(
             product_id=pricing.product_id,
             tier_name=pricing.tier_name,

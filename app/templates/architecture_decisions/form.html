@@ -24,7 +24,7 @@
         <!-- Title -->
         <div class="bg-card border border-border rounded-lg p-6 space-y-5">
             <div>
-                <label class="block text-sm font-medium text-foreground mb-1.5" for="title">Title <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="title">Title <span class="text-destructive-emphasis">*</span></label>
                 <input type="text" id="title" name="title" required
                        value="{{ decision.title if decision else '' }}"
                        placeholder="e.g. Adopt microservices for order management domain"
@@ -77,7 +77,7 @@
             </div>
 
             <div>
-                <label class="block text-sm font-medium text-foreground mb-1.5" for="decision">Decision <span class="text-destructive">*</span></label>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="decision">Decision <span class="text-destructive-emphasis">*</span></label>
                 <p class="text-xs text-muted-foreground mb-2">What was decided? Be specific and unambiguous.</p>
                 <textarea id="decision" name="decision" rows="4"
                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
@@ -116,7 +116,7 @@
                 <template x-for="el in selectedElements" :key="el.id">
                     <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/20">
                         <span x-text="el.name"></span>
-                        <button aria-label="Remove" type="button" @click="removeElement(el.id)" class="hover:text-destructive ml-0.5">
+                        <button aria-label="Remove" type="button" @click="removeElement(el.id)" class="hover:text-destructive-emphasis ml-0.5">
                             <i data-lucide="x" class="h-3 w-3"></i>
                         </button>
                     </span>
@@ -128,11 +128,12 @@
                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"></i>
                 <input type="text" x-model="searchQuery" @input.debounce.300ms="searchElements()"
                        placeholder="Search ArchiMate elements..."
-                       class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Search ArchiMate elements...">
             </div>
 
             <!-- Search results dropdown -->
-            <div x-show="searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
+            <div x-show="searchError" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md px-3 py-2 text-sm text-destructive-emphasis" x-text="searchError"></div>
+            <div x-show="!searchError && searchResults.length > 0" x-cloak class="mt-1 border border-border rounded-md bg-popover shadow-md divide-y divide-border max-h-48 overflow-y-auto">
                 <template x-for="el in searchResults" :key="el.id">
                     <button type="button" @click="addElement(el)"
                             class="w-full text-left flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors">
@@ -166,7 +167,8 @@ function elementPicker() {
     return {
         searchQuery: '',
         searchResults: [],
-        selectedElements: {{ (selected_elements | map(attribute='id') | list | tojson) if selected_elements else '[]' }}.map ? [] : [],
+        searchError: null,
+        selectedElements: [],
 
         init() {
             {% if selected_elements %}
@@ -186,14 +188,21 @@ function elementPicker() {
             if (this.searchQuery.length < 2) { this.searchResults = []; return; }
             try {
                 // Canonical element search (the old /architecture/decisions/api/element-search route no longer exists)
-                const resp = await fetch(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`);
-                const payload = await resp.json();
-                const data = Array.isArray(payload) ? payload : (payload.data || []);
-                this.searchResults = data
+                const data = await Platform.fetch.get(`/archimate/api/elements/search?q=${encodeURIComponent(this.searchQuery)}&limit=20`, { silent: true });
+                // Platform.fetch.get returns parsed data directly; it throws on non-ok responses.
+                // The endpoint returns either an array or an object with a data property.
+                const payload = Array.isArray(data) ? data : (data.data || []);
+                this.searchResults = payload
                     .map(el => ({ id: el.id, name: el.name, layer: el.layer || '', element_type: el.element_type || el.type || '' }))
                     .filter(el => !this.selectedIds.includes(el.id));
+                this.searchError = null;
             } catch (e) {
+                // Debounced typeahead: an inline message, not a toast on every keystroke.
+                // Platform.fetch already shows a toast unless silent:true, but we passed silent:true.
+                // We still need to surface the error inline, not swallow it.
                 this.searchResults = [];
+                this.searchError = e.message || 'Element search failed';
+                // Do NOT add console calls (forbidden). The error is already visible via searchError.
             }
         },
 

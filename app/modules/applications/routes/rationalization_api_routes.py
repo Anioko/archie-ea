@@ -1,5 +1,6 @@
 """Rationalization, duplicate detection, element CRUD, and template API routes."""
 
+import json
 import logging
 from datetime import datetime
 
@@ -12,6 +13,8 @@ from app.models.application_portfolio import ApplicationComponent
 from app.services.rate_limiter import rate_limit
 
 from . import unified_applications_bp
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,15 @@ def _log_rationalization_audit(
             actor_type=actor_type,
             before_state=before_state,
             after_state=after_state,
-            details=details,
+            # details is a TEXT column. A caller passing a dict raised
+            # "can't adapt type 'dict'" at COMMIT -- outside the caller's own
+            # try/except, so the whole request 500ed rather than losing just
+            # the audit entry. Serialise here so no caller can reintroduce it.
+            details=(
+                details
+                if details is None or isinstance(details, str)
+                else json.dumps(details, default=str, sort_keys=True)
+            ),
         )
         db.session.add(entry)
     except Exception as exc:
@@ -68,7 +79,7 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
         from app.models.consolidation_list import ConsolidationListEntry
 
         existing = ConsolidationListEntry.query.filter(
-            ConsolidationListEntry.source_application_id == app_id
+            ConsolidationListEntry.application_id == app_id
         ).first()
         if existing:
             return  # Already has a consolidation entry
@@ -80,7 +91,7 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
 
         savings = float(getattr(score, "estimated_annual_savings", 0) or 0)
         entry = ConsolidationListEntry(
-            source_application_id=app_id,
+            application_id=app_id,
             recommended_action=disposition,
             estimated_savings=savings,
             status="proposed",
@@ -94,7 +105,11 @@ def _auto_create_consolidation_for_app(app_id, score, actor_name):
             score_id=getattr(score, "id", None),
             action="auto_consolidation_created",
             actor=actor_name,
-            details={"disposition": disposition, "estimated_savings": savings},
+            after_state={"disposition": disposition, "estimated_savings": savings},
+            details=(
+                "Auto-created consolidation entry: %s (estimated annual savings %.2f)"
+                % (disposition, savings)
+            ),
         )
     except Exception as exc:
         logger.error("RATA-013 auto-consolidation failed for app %s: %s", app_id, exc)
@@ -181,6 +196,28 @@ def rationalization_dashboard():
             "roadmap_count": roadmap_count,
         }
 
+        # H7: the pipeline stepper renders every stage as count/total, and every
+        # 'total' here is meant to be >= the count next to it (a subset of the
+        # portfolio, or of the previous stage). "Plan: 2/0" happened because
+        # consolidation_count (ConsolidationListEntry) and time_scored_count
+        # (ApplicationRationalizationScore) are two independent tables with no
+        # subset relationship, so nothing enforced that invariant. The template
+        # was fixed to share total_apps as every stage's denominator, but log
+        # loudly if a genuine data inconsistency would still violate it, rather
+        # than silently rendering (or silently clamping) a fraction that lies.
+        for _label, _count in (
+            ("consolidation_count", consolidation_count),
+            ("time_scored_count", time_scored_count),
+            ("roadmap_count", roadmap_count),
+        ):
+            if _count > total_apps:
+                current_app.logger.warning(
+                    "RATIONALIZATION_STAGE_INVARIANT_VIOLATED: %s=%d exceeds "
+                    "total_applications=%d -- pipeline stepper percentages for "
+                    "this org are not trustworthy until this is investigated",
+                    _label, _count, total_apps,
+                )
+
         # RAT-001: Build data quality report for "What to do next" panel
         data_quality = _build_data_quality_report(total_apps)
 
@@ -201,25 +238,18 @@ def rationalization_dashboard():
             insufficient_count=insufficient_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading rationalization dashboard: {e}")
+        current_app.logger.exception("Error loading rationalization dashboard: %s", e)
         try:
             db.session.rollback()
         except Exception as exc:
             logger.debug("suppressed error in rationalization_dashboard (app/modules/applications/routes/rationalization_api_routes.py): %s", exc)
         try:
+            # stats=None, insufficient_count=None: the zeroed dict this used to
+            # pass rendered a complete, plausible pipeline - "0 duplicate
+            # groups, 0 estimated savings" - built entirely from a failed query.
             return render_template(
                 "applications/rationalization/dashboard.html",
-                stats={
-                    "total_applications": 0,
-                    "duplicate_groups": 0,
-                    "total_groups": 0,
-                    "pending_groups": 0,
-                    "resolved_groups": 0,
-                    "estimated_savings": 0,
-                    "consolidation_count": 0,
-                    "time_scored_count": 0,
-                    "roadmap_count": 0,
-                },
+                stats=None,
                 groups=[],
                 runs=[],
                 latest_run=None,
@@ -227,7 +257,8 @@ def rationalization_dashboard():
                 currency_symbol=currency_symbol,
                 active_tab="dashboard",
                 data_quality={},
-                insufficient_count=0,
+                insufficient_count=None,
+                load_error="Rationalization statistics could not be read.",
             )
         except Exception as inner_err:
             current_app.logger.error(f"Dashboard error handler also failed: {inner_err}")
@@ -584,23 +615,125 @@ def api_get_element(element_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _element_usage(element_id, exclude_diagram_id=None):
+    """How many relationships and OTHER saved diagrams reference this element.
+
+    The Composer's own "Remove from canvas" already unlinks an element from
+    one diagram while leaving it in the repository (composer_graph.js
+    deleteElement: "Element stays in catalog"). This is the check for the
+    other action -- deleting the repository row itself, which other diagrams
+    and every relationship touching it would silently lose data for.
+
+    exclude_diagram_id must be the diagram the delete is being requested
+    from: an element is trivially "on a diagram" -- the one the architect is
+    looking at right now -- and counting that against it would make every
+    single delete look "in use" and require force/admin, which defeats the
+    whole point of the safe, no-force path. What actually matters is whether
+    it is referenced *elsewhere*.
+    """
+    from app.models.archimate_core import SavedDiagramElement
+    from app.models.models import ArchiMateRelationship
+
+    rel_count = ArchiMateRelationship.query.filter(
+        db.or_(
+            ArchiMateRelationship.source_id == element_id,
+            ArchiMateRelationship.target_id == element_id,
+        )
+    ).count()
+    diagram_query = db.session.query(SavedDiagramElement.diagram_id).filter(
+        SavedDiagramElement.element_id == element_id
+    )
+    if exclude_diagram_id:
+        diagram_query = diagram_query.filter(SavedDiagramElement.diagram_id != exclude_diagram_id)
+    diagram_count = diagram_query.distinct().count()
+    return {"relationships": rel_count, "diagrams": diagram_count}
+
+
+@unified_applications_bp.route("/api/elements/<int:element_id>/usage", methods=["GET"])
+@login_required
+def api_element_usage(element_id):
+    """Report how many relationships/other diagrams reference an element.
+
+    Called before offering a repository-level delete so the confirmation the
+    architect sees states the real blast radius rather than a generic warning.
+
+    Query Parameters:
+        diagram_id (int): the diagram the delete is being offered from --
+            excluded from the "other diagrams" count (see _element_usage).
+    """
+    from app.models.models import ArchiMateElement
+
+    element = ArchiMateElement.query.get(element_id)
+    if not element:
+        return jsonify({"success": False, "error": "Element not found"}), 404
+    exclude_diagram_id = request.args.get("diagram_id", type=int)
+    return jsonify({"success": True, "usage": _element_usage(element_id, exclude_diagram_id)})
+
+
 @unified_applications_bp.route("/api/elements/<int:element_id>", methods=["DELETE"])
 @login_required
 @require_roles("admin", "architect")
 @audit_log("element_delete")
 def api_delete_element(element_id):
-    """Delete an ArchiMate element by ID."""
+    """Delete an ArchiMate element from the repository (not just a diagram).
+
+    RAT-114/GAP-DEL-001: this used to delete unconditionally, with no check
+    for other diagrams or relationships depending on the row -- either a
+    foreign-key violation on the next reference, or (if the FK has no
+    protection) a silent orphan elsewhere. Blocked by default when the
+    element is in use; ?force=true overrides it, but only for admins --
+    "I created a duplicate by mistake" is an architect's call, "delete this
+    out from under other diagrams anyway" is not.
+    """
     try:
-        from app.models.models import ArchiMateElement
+        from app.models.archimate_core import SavedDiagramElement
+        from app.models.models import ArchiMateElement, ArchiMateRelationship
 
         element = ArchiMateElement.query.get(element_id)
         if not element:
             return jsonify({"success": False, "error": "Element not found"}), 404
 
+        exclude_diagram_id = request.args.get("diagram_id", type=int)
+        usage = _element_usage(element_id, exclude_diagram_id)
+        force = request.args.get("force", "").lower() == "true"
+
+        if (usage["relationships"] or usage["diagrams"]) and not force:
+            return jsonify({
+                "success": False,
+                "error": "Element is in use elsewhere",
+                "usage": usage,
+            }), 409
+
+        if force and not (current_user.is_platform_admin or getattr(current_user, "is_org_admin", False)):
+            return jsonify({
+                "success": False,
+                "error": "Only an admin can delete an element that is still in use elsewhere",
+                "usage": usage,
+            }), 403
+
+        if force:
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id == element_id,
+                    ArchiMateRelationship.target_id == element_id,
+                )
+            ).delete(synchronize_session=False)
+
+        # Unconditional, not just under force: exclude_diagram_id only kept
+        # the *current* diagram's placement out of the usage count above (so
+        # "in use" means in use elsewhere, not just here) -- but that row
+        # still exists and still foreign-keys to this element, so it must go
+        # regardless of force or the delete 500s on the FK constraint.
+        # force additionally clears every OTHER diagram's placement row.
+        placement_query = SavedDiagramElement.query.filter_by(element_id=element_id)
+        if not force and exclude_diagram_id:
+            placement_query = placement_query.filter_by(diagram_id=exclude_diagram_id)
+        placement_query.delete(synchronize_session=False)
+
         db.session.delete(element)
         db.session.commit()
 
-        return jsonify({"success": True, "message": "Element deleted"})
+        return jsonify({"success": True, "message": "Element deleted", "usage": usage})
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting element {element_id}: {e}")
@@ -635,8 +768,8 @@ def api_list_requirements():
             }
         )
     except Exception as e:
-        current_app.logger.error(f"Error listing requirements: {e}")
-        return jsonify({"requirements": []})
+        current_app.logger.exception("Error listing requirements: %s", e)
+        return jsonify({"success": False, "error": "Could not load requirements"}), 500
 
 
 @unified_applications_bp.route("/api/templates/frameworks", methods=["GET"])
@@ -655,8 +788,8 @@ def api_template_frameworks():
         )
         return jsonify([f[0] for f in frameworks if f[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading frameworks: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading frameworks: %s", e)
+        return jsonify({"success": False, "error": "Could not load frameworks"}), 500
 
 
 @unified_applications_bp.route("/api/templates/categories", methods=["GET"])
@@ -676,8 +809,8 @@ def api_template_categories():
         categories = query.distinct().order_by(ElementTemplate.category).all()
         return jsonify([c[0] for c in categories if c[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading categories: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading categories: %s", e)
+        return jsonify({"success": False, "error": "Could not load categories"}), 500
 
 
 @unified_applications_bp.route("/api/templates", methods=["GET"])
@@ -694,7 +827,7 @@ def api_list_templates():
         layer = request.args.get("layer")
         element_type = request.args.get("element_type")
         search = request.args.get("search")
-        limit = request.args.get("limit", 200, type=int)
+        limit = safe_int_arg('limit', 200, minimum=1, maximum=500)
 
         if framework:
             query = query.filter(ElementTemplate.framework == framework)
@@ -738,8 +871,8 @@ def api_list_templates():
             ]
         )
     except Exception as e:
-        current_app.logger.error(f"Error listing templates: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error listing templates: %s", e)
+        return jsonify({"success": False, "error": "Could not load templates"}), 500
 
 
 @unified_applications_bp.route("/api/templates/element-types", methods=["GET"])
@@ -759,8 +892,8 @@ def api_template_element_types():
         types = query.distinct().order_by(ElementTemplate.element_type).all()
         return jsonify([t[0] for t in types if t[0]])
     except Exception as e:
-        current_app.logger.error(f"Error loading element types: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading element types: %s", e)
+        return jsonify({"success": False, "error": "Could not load element types"}), 500
 
 
 @unified_applications_bp.route(
@@ -769,16 +902,12 @@ def api_template_element_types():
 @login_required
 def api_template_recommendations(app_id):
     """Get recommended templates for an application."""
+    app = require_entity(ApplicationComponent, app_id, description="Application not found")
     try:
-        from app.models.application_portfolio import ApplicationComponent
         from app.models.element_templates import (
             ElementTemplate,
             ElementTemplateRecommendation,
         )
-
-        app = ApplicationComponent.query.get(app_id)
-        if not app:
-            return jsonify([])
 
         # Find recommendations based on application type and other triggers
         triggers = []
@@ -847,8 +976,10 @@ def api_template_recommendations(app_id):
             ]
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading recommendations for app {app_id}: {e}")
-        return jsonify([])
+        current_app.logger.exception("Error loading recommendations for app %s: %s", app_id, e)
+        return jsonify(
+            {"success": False, "error": "Could not load template recommendations"}
+        ), 500
 
 
 # ── Retirement Blocker Assessment API (RAT-109) ───────────────────────────
@@ -1062,8 +1193,8 @@ def rationalization_portfolio_dependencies():
     from app.models.application_rationalization import ApplicationDependency
 
     try:
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(request.args.get("per_page", 25, type=int), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
         risk_filter = request.args.get("risk_level", "").strip().lower()
 
         # Subquery: count of upstream blockers per target app (apps that depend ON this app)
@@ -1303,8 +1434,8 @@ def rationalization_portfolio_readiness():
     from app.models.application_portfolio import ApplicationComponent
 
     try:
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(request.args.get("per_page", 25, type=int), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
         ready_filter = request.args.get("ready", "").strip().lower()
 
         query = (
@@ -1358,8 +1489,8 @@ def rationalization_portfolio_readiness():
                 {
                     "app_id": app_obj.id,
                     "app_name": app_obj.name,
-                    "lifecycle_status": app_obj.lifecycle_status,  # noqa: model-safety-ok
-                    "business_criticality": app_obj.business_criticality,  # noqa: model-safety-ok
+                    "lifecycle_status": app_obj.lifecycle_status,  # model-safety-ok
+                    "business_criticality": app_obj.business_criticality,  # model-safety-ok
                     "readiness_score": score.readiness_score,
                     "is_decision_ready": is_decision_ready,
                     "readiness_dimensions": score.readiness_dimensions or {},
@@ -1755,8 +1886,8 @@ def rationalization_review_queue():
             ), 400
 
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(200, max(1, int(request.args.get("per_page", 50))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(200, max(1, safe_int_arg('per_page', 50, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page and per_page must be integers"}), 400
 
@@ -1859,14 +1990,13 @@ def rationalization_portfolio_workbench():
         include_unscored = request.args.get("include_unscored", "false").strip().lower() == "true"
 
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(1000, max(1, int(request.args.get("per_page", 200))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(1000, max(1, safe_int_arg('per_page', 200, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page/per_page must be integers"}), 400
 
         if include_unscored:
             # Left outer join: show ALL apps, scored or not
-            from sqlalchemy.orm import outerjoin
             query = (
                 db.session.query(ApplicationComponent, ApplicationRationalizationScore)
                 .outerjoin(
@@ -2497,10 +2627,12 @@ def rationalization_audit_trail(app_id):
     """
     from app.models.application_rationalization import RationalizationAuditEntry
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         try:
-            page = max(1, int(request.args.get("page", 1)))
-            per_page = min(100, max(1, int(request.args.get("per_page", 25))))
+            page = max(1, safe_int_arg('page', 1, minimum=1))
+            per_page = min(100, max(1, safe_int_arg('per_page', 25, minimum=1, maximum=500)))
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "page/per_page must be integers"}), 400
 
@@ -2552,7 +2684,6 @@ def rationalization_decision_dossier(app_id):
     from app.models.application_rationalization import (
         ApplicationDependency,
         ApplicationRationalizationScore,
-        ReplacementPlan,
     )
 
     try:
@@ -2677,17 +2808,48 @@ def rationalization_decision_dossier(app_id):
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _arb_gate_reason(score):
+    """Why this score may not advance to "approved" yet, or None if it may.
+
+    RAT-112 states the rule on the model -- governed dispositions (retire,
+    replace, consolidate) require an ARB approval before the review workflow
+    advances to "approved" -- and nothing enforced it. The single-application
+    ARB decision endpoint is the legitimate path to "approved" for these; the
+    bulk review endpoint reached the same state without consulting ARB at all.
+    """
+    if not getattr(score, "requires_arb", False):  # model-safety-ok
+        return None
+    if (getattr(score, "arb_decision", None) or "").lower() in {  # model-safety-ok
+        "approved",
+        "approved_with_conditions",
+    }:
+        return None
+    return (
+        "Disposition '%s' is ARB-governed and has no ARB approval; "
+        "submit it to ARB and record the decision first."
+        % (score.disposition_action or "")
+    )
+
+
 @unified_applications_bp.route("/rationalization/api/bulk-review", methods=["POST"])
 @login_required
 def rationalization_bulk_review():
     """RAT-121: Bulk review action for multiple applications."""
-    from app.models.application_rationalization import ApplicationRationalizationScore
+    from app.models.application_rationalization import (
+        ApplicationRationalizationScore,
+        DispositionAction,
+    )
 
     try:
         data = request.get_json(silent=True) or {}
         app_ids = data.get("app_ids", [])
         action = (data.get("action") or "").strip().lower()
         notes = (data.get("notes") or "").strip()
+        # Read alongside action/notes from the same payload. Its extraction had been
+        # removed while the "set_disposition" branch below still used it, so that
+        # branch raised NameError after already having mutated earlier records in
+        # the batch.
+        disposition_value = (data.get("disposition") or "").strip()
 
         if not app_ids or not isinstance(app_ids, list):
             return jsonify({"success": False, "error": "app_ids must be a non-empty list"}), 400
@@ -2695,9 +2857,21 @@ def rationalization_bulk_review():
         if len(app_ids) > 50:
             return jsonify({"success": False, "error": "Maximum 50 applications per bulk action"}), 400
 
-        valid_actions = {"approve", "defer", "request_data"}
+        # "set_disposition" was implemented below but omitted from this set, so
+        # every request for it was rejected with 400 before reaching the branch.
+        # That is the portfolio_manager persona's core action -- recording a 7R
+        # disposition against a scored application -- and it was unreachable.
+        valid_actions = {"approve", "defer", "request_data", "set_disposition"}
         if action not in valid_actions:
             return jsonify({"success": False, "error": f"action must be one of: {sorted(valid_actions)}"}), 400
+
+        if action == "set_disposition":
+            allowed_dispositions = {d.value for d in DispositionAction}
+            if disposition_value not in allowed_dispositions:
+                return jsonify({
+                    "success": False,
+                    "error": "disposition must be one of: %s" % sorted(allowed_dispositions),
+                }), 400
 
         actor_name = getattr(current_user, "display_name", None) or getattr(current_user, "username", "system")  # model-safety-ok
 
@@ -2722,6 +2896,10 @@ def rationalization_bulk_review():
                 if "approved" not in transitions:
                     results["skipped"].append({"app_id": aid, "reason": f"Cannot approve from status: {current_status}"})
                     continue
+                blocked = _arb_gate_reason(score)
+                if blocked:
+                    results["skipped"].append({"app_id": aid, "reason": blocked})
+                    continue
                 score.review_status = "approved"
                 score.approved_by = actor_name
                 score.approved_at = datetime.utcnow()
@@ -2745,10 +2923,35 @@ def rationalization_bulk_review():
             elif action == "set_disposition":
                 score.disposition_action = disposition_value
                 score.disposition_confidence = "manual"
+                score.review_notes = (getattr(score, "review_notes", "") or "") + f"\n[Disposition set to {disposition_value} by {actor_name}] {notes}".rstrip()  # model-safety-ok
+
+                # RAT-112: retire/replace/consolidate are governed. Setting one
+                # does NOT approve it -- it flags the record as needing ARB and
+                # leaves the review status where it was. This branch previously
+                # set review_status="approved" unconditionally, which would have
+                # let a portfolio manager retire an application with no ARB
+                # decision at all, through the model's own governance rule.
+                if _arb_gate_reason(score):
+                    score.arb_required = True
+                    results["processed"].append({
+                        "app_id": aid,
+                        "new_status": score.review_status or "draft",
+                        "disposition": disposition_value,
+                        "arb_required": True,
+                    })
+                    continue
+
+                if "approved" not in transitions:
+                    results["processed"].append({
+                        "app_id": aid,
+                        "new_status": current_status,
+                        "disposition": disposition_value,
+                    })
+                    continue
+
                 score.review_status = "approved"
                 score.approved_by = actor_name
                 score.approved_at = datetime.utcnow()
-                score.review_notes = (getattr(score, "review_notes", "") or "") + f"\n[Disposition set to {disposition_value} by {actor_name}] {notes}".rstrip()  # model-safety-ok
                 results["processed"].append({"app_id": aid, "new_status": "approved", "disposition": disposition_value})
                 _auto_create_consolidation_for_app(aid, score, actor_name)
 
@@ -2848,6 +3051,8 @@ def rationalization_roadmap_status(app_id):
     from app.models.consolidation_list import ConsolidationListEntry
     from app.models.application_rationalization import ApplicationRationalizationScore
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         score = ApplicationRationalizationScore.query.filter_by(
             application_component_id=app_id
@@ -2875,6 +3080,8 @@ def rationalization_roadmap_status(app_id):
 def rationalization_get_decommission_plan(app_id):
     """RAT-116: Get decommission plan for an application."""
     from app.models.application_rationalization import DecommissionPlan, ApplicationRationalizationScore
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
 
     try:
         plan = DecommissionPlan.query.filter_by(application_id=app_id).first()
@@ -3022,6 +3229,8 @@ def rationalization_workflow_status(app_id):
     from app.models.application_rationalization import ApplicationRationalizationScore
     from app.models.consolidation_list import ConsolidationListEntry
 
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         score = ApplicationRationalizationScore.query.filter_by(
             application_component_id=app_id
@@ -3080,6 +3289,8 @@ def _determine_current_phase(steps):
 def rationalization_get_benefits(app_id):
     """RAT-117: Get benefits tracking for an application."""
     from app.models.application_rationalization import RationalizationBenefitsTracker
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
 
     try:
         tracker = RationalizationBenefitsTracker.query.filter_by(
@@ -3344,21 +3555,16 @@ def rationalization_executive_summary():
             "confidence_distribution": {k: v for k, v in confidence_dist.items() if k},
         })
     except Exception as exc:
-        current_app.logger.error(
-            "Error generating executive summary: %s", exc, exc_info=True
+        current_app.logger.exception(
+            "Error generating executive summary: %s", exc
         )
+        # No zeroed distributions or financials here: a 0 saving is
+        # indistinguishable from a measured one, and the dashboard would
+        # render a fully-scored-and-worthless portfolio out of a DB error.
         return jsonify({
             "success": False,
-            "total_scored": 0,
-            "disposition_distribution": {},
-            "time_distribution": {},
-            "score_buckets": {"critical_0_25": 0, "poor_26_50": 0, "fair_51_75": 0, "good_76_100": 0},
-            "financial": {"total_projected_savings": 0, "total_investment_needed": 0},
-            "readiness": {"ready": 0, "not_ready": 0},
-            "readiness_summary": {"ready": 0, "not_ready": 0},
-            "review_status_distribution": {},
-            "confidence_distribution": {},
-        }), 200
+            "error": "Could not generate the executive summary",
+        }), 500
 
 
 # ── RATA-002: Scoring HTTP endpoints ─────────────────────────────────────
@@ -3371,7 +3577,6 @@ def rationalization_executive_summary():
 def rationalization_score_app(app_id):
     """RATA-002/REQ-RAT-102: Score a single application."""
     from app.models.application_rationalization import (
-        ApplicationRationalizationScore,
         RationalizationBenefitsTracker,
     )
     from app.services.rationalization_scoring_service import (
@@ -3622,6 +3827,19 @@ def _build_data_quality_report(total_apps: int) -> dict:
             if (a.technical_risk and a.technical_risk.strip())
             or (a.business_risk and a.business_risk.strip())
         )
+        # Vendor coverage was never computed here, and the template rendered
+        # `field_coverage.get('vendor', 0)` -- a hardcoded zero for a value
+        # nothing had measured. A portfolio with a vendor recorded against
+        # every application was shown a red "Vendor Coverage 0%" bar on the
+        # rationalization dashboard while the applications list, two clicks
+        # away, said "5 of 5 applications have a vendor recorded". Same
+        # definition as that list (app/modules/applications/routes/
+        # list_views.py) so the two can never disagree again.
+        vendor_count = sum(
+            1
+            for a in apps
+            if (a.vendor_name and a.vendor_name.strip()) or a.vendor_product_id
+        )
         # Capability coverage: apps with at least one mapped capability
         mapped_ids = set(
             r[0]
@@ -3643,6 +3861,7 @@ def _build_data_quality_report(total_apps: int) -> dict:
                 "lifecycle": round(lifecycle_count / count * 100, 1) if count else 0,
                 "cost": round(cost_count / count * 100, 1) if count else 0,
                 "risk": round(risk_count / count * 100, 1) if count else 0,
+                "vendor": round(vendor_count / count * 100, 1) if count else 0,
                 "capability": round(capability_count / count * 100, 1) if count else 0,
             },
         }
@@ -3739,8 +3958,10 @@ def rationalization_portfolio_scores():
         return resp
 
     except Exception as exc:
-        logger.error("RATA-009 portfolio-scores failed: %s", exc, exc_info=True)
-        return jsonify([])
+        logger.exception("RATA-009 portfolio-scores failed: %s", exc)
+        return jsonify(
+            {"success": False, "error": "Could not load portfolio scores"}
+        ), 500
 
 
 # ── RATA-018: Business case export ───────────────────────────────────────
@@ -3921,6 +4142,8 @@ def rationalization_import_dependencies():
 @login_required
 def api_check_duplicate_element(app_id):
     """Check if an element with the given name exists for this application."""
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         from app.models.models import ArchiMateElement
 
@@ -3938,8 +4161,10 @@ def api_check_duplicate_element(app_id):
 
         return jsonify({"exists": exists})
     except Exception as e:
-        current_app.logger.error(f"Error checking duplicate element: {e}")
-        return jsonify({"exists": False})
+        current_app.logger.exception("Error checking duplicate element: %s", e)
+        return jsonify(
+            {"success": False, "error": "Could not check for a duplicate element"}
+        ), 500
 
 
 # ── RAT-001: Bulk data enrichment page and API ───────────────────────────
@@ -3962,7 +4187,7 @@ def rationalization_enrich_candidates():
     from app.models.application_rationalization import ApplicationRationalizationScore
 
     try:
-        limit = min(request.args.get("limit", 50, type=int), 200)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 200)
 
         # Left-join scores so we include apps with no score at all
         query = (

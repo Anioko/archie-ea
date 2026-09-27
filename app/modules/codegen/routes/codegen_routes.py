@@ -15,7 +15,16 @@ import logging
 import re
 import time
 import zipfile
-from flask import Blueprint, Response, abort, jsonify, render_template, request, send_file
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    jsonify,
+    render_template,
+    request,
+    send_file,
+    stream_with_context,
+)
 from flask_login import current_user, login_required
 from app.utils.csrf_helper import require_csrf
 from app.extensions import db
@@ -844,6 +853,13 @@ def generate_code(solution_id):
     payload = request.get_json(silent=True) or {}
     gen = CodegenGeneration.query.filter_by(solution_id=solution_id).first()
 
+    # Non-fatal warnings raised during generation. This accumulator had been removed
+    # while a later `syntax_warnings.append(...)` remained, so the genome-quality
+    # branch raised NameError instead of recording its warning. Note the success
+    # responses in this function still emit a literal "syntax_warnings": [] — wiring
+    # them to this list is a behaviour change, so it is deliberately left alone.
+    syntax_warnings = []
+
     if gen and payload.get("version") and payload["version"] != gen.version:
         return jsonify({"error": "Version conflict. Refresh the page."}), 409
 
@@ -1535,6 +1551,9 @@ def generate_code(solution_id):
                 ts = CodegenTemplateSet.query.get(template_set_id)
                 if ts and ts.created_by_id and ts.created_by_id != current_user.id:
                     template_set_id = None
+            # Import here too: the genome branch's import (above) makes this name a
+            # function-local, so the deterministic branch must import it in its own scope.
+            from app.modules.solutions_product.services.deterministic_code_generator import DeterministicCodeGenerator
             generator = DeterministicCodeGenerator(language=language)
             code_bundle = generator.generate(bundle, template_set_id=template_set_id)
             files = {f.path: f.content for f in code_bundle.files}
@@ -1857,8 +1876,11 @@ def generate_code(solution_id):
     )
     if _enforce_quality_gate:
         _qg_failures = []
-        _min_qs = float(payload.get("min_quality_score", 80))
-        _min_cc = float(payload.get("min_chain_completeness", 0.95))
+        try:
+            _min_qs = float(payload.get("min_quality_score", 80))
+            _min_cc = float(payload.get("min_chain_completeness", 0.95))
+        except (ValueError, TypeError):
+            return jsonify({"error": "min_quality_score and min_chain_completeness must be numbers"}), 400
         if (quality_score or 0) < _min_qs:
             _qg_failures.append({
                 "dimension": "quality_score",
@@ -1898,7 +1920,10 @@ def generate_code(solution_id):
                 "issues": [i["issue"] for i in _sec_critical[:3]],
             })
         # Lint: block only on excessive violations (>50 E501 is a template bug, not style preference)
-        _max_lint = int(payload.get("max_lint_violations", 50))
+        try:
+            _max_lint = int(payload.get("max_lint_violations", 50))
+        except (ValueError, TypeError):
+            return jsonify({"error": "max_lint_violations must be an integer"}), 400
         if _lint_result.get("e501_count", 0) > _max_lint:
             _qg_failures.append({
                 "dimension": "lint",
@@ -2847,8 +2872,14 @@ def generate_stream(solution_id):
         )
         if _enforce_quality_gate:
             _qg_failures = []
-            _min_qs = float(payload.get("min_quality_score", 80))
-            _min_cc = float(payload.get("min_chain_completeness", 0.95))
+            try:
+                _min_qs = float(payload.get("min_quality_score", 80))
+                _min_cc = float(payload.get("min_chain_completeness", 0.95))
+            except (ValueError, TypeError):
+                _msg = "min_quality_score and min_chain_completeness must be numbers"
+                yield _sse({"phase": "validation", "status": "error", "error": _msg})
+                yield _sse({"phase": "complete", "success": False, "error": _msg})
+                return
             if (quality_score or 0) < _min_qs:
                 _qg_failures.append({
                     "dimension": "quality_score",
@@ -3538,8 +3569,14 @@ def verify_code(solution_id):
         elif "docker-compose.yml" not in _files:
             _preflight_error = "No docker-compose.yml in bundle — re-generate first"
 
-    # Alias: used throughout stream() below
+    # Aliases: used throughout stream() below
     files = _files or {}
+    # `preflight_smoke` is read inside stream() but its alias assignment had been
+    # removed, so verify_code raised NameError as soon as the setup event was
+    # emitted. `_smoke` is only bound in the else-branch above (it is not computed
+    # when there are no generated files), hence the locals() guard rather than a
+    # bare reference.
+    preflight_smoke = locals().get("_smoke") or {}
 
     def _sse(data):
         return f"data: {json.dumps(data)}\n\n"
@@ -3628,7 +3665,7 @@ def verify_code(solution_id):
                         "seed_expectation_issues": preflight_smoke.get("seed_expectation_issues", [])[:20]})
 
             # ── Detect API service name from docker-compose.yml ───────────
-            _svc_name = "api"  # default from ARCHIE generator
+            _svc_name = "api"  # default from Entelim generator
             _dc_content = files.get("docker-compose.yml", "")
             import re as _re
             for _line in _dc_content.splitlines():
@@ -3722,7 +3759,7 @@ def verify_code(solution_id):
                     yield _sse({"phase": "test", "status": "running", "line": line[-180:]})
             test_proc.wait(timeout=30)
 
-            full_output = "\n".join(test_lines)
+            "\n".join(test_lines)
             summary = {"passed": 0, "failed": 0, "errors": 0}
             for tl in reversed(test_lines):
                 m = re.search(r'(\d+) passed(?:[^\d]+(\d+) failed)?(?:[^\d]+(\d+) error)?', tl)
@@ -4258,7 +4295,6 @@ full file content here
     ).count()
     version_label = f"1.{history_count}.0"
 
-    from datetime import datetime as _dt_hist
     history = CodegenGenerationHistory(
         codegen_generation_id=gen.id,
         generated_by_id=current_user.id,
@@ -4788,7 +4824,7 @@ def export_openapi(solution_id):
         "info": {
             "title": f"{solution.name} API",
             "version": "1.0.0",
-            "description": f"Generated from ArchiMate architecture by A.R.C.H.I.E. Code Workbench",
+            "description": "Generated from ArchiMate architecture by Entelim Code Workbench",
         },
         "paths": paths,
         "components": {"schemas": schemas},
@@ -4835,7 +4871,9 @@ def download_zip(solution_id):
 
         if config.get("include_frontend"):
             frontend_files = _generate_refine_frontend(
-                _stream_solution.name or f"Solution {solution_id}",
+                # was `_stream_solution`, a variable belonging to the streaming
+                # handler — copy-pasted here where only `solution` exists.
+                solution.name or f"Solution {solution_id}",
                 gen.uml_snapshot or {},
             )
             for filepath, content in frontend_files.items():
@@ -4983,7 +5021,7 @@ locals {{
     Project     = "{app_name}"
     Environment = var.environment
     ManagedBy   = "terraform"
-    GeneratedBy = "ARCHIE"
+    GeneratedBy = "Entelim"
   }}
 }}
 """
@@ -5002,10 +5040,10 @@ variable "db_storage_gb"     { type = number; default = 20 }
 variable "db_password"       { type = string; sensitive = true }
 """
 
-    outputs_tf = f"""\
-output "alb_dns_name"    {{ value = aws_lb.main.dns_name }}
-output "ecs_cluster_arn" {{ value = aws_ecs_cluster.main.arn }}
-output "vpc_id"          {{ value = module.vpc.vpc_id }}
+    outputs_tf = """\
+output "alb_dns_name"    { value = aws_lb.main.dns_name }
+output "ecs_cluster_arn" { value = aws_ecs_cluster.main.arn }
+output "vpc_id"          { value = module.vpc.vpc_id }
 """
     if has_db:
         outputs_tf += 'output "db_endpoint" { value = aws_db_instance.main.endpoint; sensitive = true }\n'
@@ -5016,7 +5054,7 @@ output "vpc_id"          {{ value = module.vpc.vpc_id }}
         "terraform/main.tf": main_tf,
         "terraform/variables.tf": variables_tf,
         "terraform/outputs.tf": outputs_tf,
-        "terraform/README.md": f"# Terraform IaC — solution-{solution_id} ({environment})\n\nGenerated by A.R.C.H.I.E.\n\n```bash\nterraform init && terraform plan && terraform apply\n```\n",
+        "terraform/README.md": f"# Terraform IaC — solution-{solution_id} ({environment})\n\nGenerated by Entelim\n\n```bash\nterraform init && terraform plan && terraform apply\n```\n",
     }
 
 

@@ -6,7 +6,7 @@ POST /run-phase-e which creates a workflow instance.
 """
 import logging
 
-from flask import Blueprint, jsonify, request  # dead-code-ok
+from flask import Blueprint, jsonify  # dead-code-ok
 from flask_login import current_user, login_required
 from sqlalchemy import desc
 

@@ -4,7 +4,7 @@ Manages architecture reviews, standards compliance, and governance metrics.
 """
 import logging
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict
 
 from sqlalchemy import text
 

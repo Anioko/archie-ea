@@ -27,6 +27,7 @@ Helpers (3):
     - _get_gap_end_date(gap_types, apps, priority)
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from datetime import datetime
 
 from flask import current_app, jsonify, request
@@ -56,10 +57,27 @@ def api_roadmap_capabilities():
             ApplicationCapabilityCoverage,
             BusinessCapability,
         )
+        from app.models.unified_capability import UnifiedCapability
 
         capabilities = BusinessCapability.query.all()
         mappings = ApplicationCapabilityCoverage.query.all()
         mapped_cap_ids = {m.capability_id for m in mappings}
+
+        # D-R7-2: this is the roadmap screen's own data feed, sitting in the
+        # same file/blueprint as api_roadmap_detect_gaps() (the "Detect gaps"
+        # button), which was already fixed under D-R5-1 to read maturity
+        # through the single authority accessor rather than the SOURCE
+        # columns. Reading `cap.current_maturity_level` / `.target_maturity_level`
+        # / `.maturity_gap` here (the source, per ADR 0008 rule 3) instead of
+        # the authority let the two co-located endpoints disagree for up to
+        # the 15-minute raw-SQL-write-to-projection window: the list shows
+        # "has a gap" while the button reports zero gaps found. Fetch the
+        # authority for every candidate ONCE, batched, same as the sibling
+        # endpoint.
+        org_id = capabilities[0].organization_id if capabilities else None
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [c.id for c in capabilities], organization_id=org_id
+        )
 
         # Group by roadmap priority
         roadmap_groups = {
@@ -73,9 +91,24 @@ def api_roadmap_capabilities():
         for cap in capabilities:
             domain = None  # BusinessCapability uses string business_domain
 
-            # Calculate gap status
+            # Calculate gap status — D-R7-2: read through the same authority
+            # accessor as api_roadmap_detect_gaps(), not the source columns.
+            maturity = maturity_map.get(str(cap.id))
+            if maturity is None or maturity.get("reason_code") == "no_maturity_recorded":
+                cap_current_maturity = None
+                cap_target_maturity = None
+                cap_maturity_gap = None
+            else:
+                cap_current_maturity = maturity["current_maturity_level"]
+                cap_target_maturity = maturity["target_maturity_level"]
+                cap_maturity_gap = (
+                    (cap_target_maturity - cap_current_maturity)
+                    if cap_current_maturity is not None and cap_target_maturity is not None
+                    else None
+                )
+
             is_mapped = cap.id in mapped_cap_ids
-            has_maturity_gap = (cap.maturity_gap or 0) > 0
+            has_maturity_gap = (cap_maturity_gap or 0) > 0
 
             # Get investment priority from domain if available
             domain_investment_priority = (
@@ -95,9 +128,9 @@ def api_roadmap_capabilities():
                 "business_criticality": getattr(cap, "business_criticality", None)
                 or getattr(cap, "strategic_importance", None),
                 "is_core_differentiator": getattr(cap, "is_core_differentiator", None),
-                "current_maturity": cap.current_maturity_level,
-                "target_maturity": cap.target_maturity_level,
-                "maturity_gap": cap.maturity_gap,
+                "current_maturity": cap_current_maturity,
+                "target_maturity": cap_target_maturity,
+                "maturity_gap": cap_maturity_gap,
                 "is_mapped": is_mapped,
                 "has_maturity_gap": has_maturity_gap,
                 "investment_priority": domain_investment_priority,
@@ -203,7 +236,20 @@ def api_roadmap_gaps():
             BusinessCapability,
         )
 
-        capability_type_filter = request.args.get("capability_type")
+        # C1 fix: default to "business" when no capability_type is requested.
+        # Technical capabilities and APQC processes are SHARED reference taxonomies
+        # (no organization_id / TenantMixin) with no per-tenant coverage mapping in
+        # most tenants, so leaving this unfiltered counted nearly the entire shared
+        # taxonomy as a "gap" for every tenant regardless of whether that tenant owns
+        # any capabilities at all -- producing a large, tenant-independent number
+        # (e.g. 352) that "Detect Gaps" (which only scans BusinessCapability, see
+        # api_roadmap_detect_gaps below) can never create/update records for. That
+        # mismatch -- a big tile next to "0 gap(s) created/updated" -- is the C1
+        # defect. Business capabilities are the system of record Detect Gaps acts
+        # on, so they are now also the default population this tile counts.
+        # Explicit ?capability_type=technical|process is still honoured for callers
+        # that want to inspect the shared-taxonomy coverage gaps separately.
+        capability_type_filter = request.args.get("capability_type") or "business"
         gap_type_filter = request.args.get("gap_type")
 
         gaps = []
@@ -757,7 +803,7 @@ def _calculate_gap_priority(gap_types, apps, cap, today):
 
 def _get_gap_start_date(gap_types, apps, priority):
     """Get start date for gap resolution based on type and priority."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     today = datetime.now().date()
 
@@ -778,7 +824,7 @@ def _get_gap_start_date(gap_types, apps, priority):
 
 def _get_gap_end_date(gap_types, apps, priority):
     """Get end date for gap resolution based on type and priority."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     today = datetime.now().date()
 
@@ -882,7 +928,6 @@ def api_roadmap_convert_gaps():
 
         # Optionally create work packages
         if create_wps and result["created"] > 0:
-            from app.models.implementation_migration import Gap
 
             for gap_data in gaps_data:
                 gap = gap_archimate_service.find_existing_gap(
@@ -993,7 +1038,11 @@ def api_roadmap_add_from_capability():
         }
 
         # Convert to ArchiMate Gap
-        gap = gap_archimate_service.convert_capability_gap_to_archimate(gap_data)
+        # Returns (Gap, was_created). Assigning the tuple straight to `gap`
+        # made the `gap.id` below raise AttributeError on every call.
+        gap, _was_created = gap_archimate_service.convert_capability_gap_to_archimate(
+            gap_data
+        )
 
         # Create work packages if requested
         if data.get("create_work_packages", False):
@@ -1243,6 +1292,110 @@ def api_roadmap_work_packages():
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
+def _resolve_roadmap_gap_id(raw_gap_id):
+    """Turn whatever the roadmap sent into a real Gap row, or explain why not.
+
+    GET /api/roadmap/gaps returns TWO kinds of gap. Stored Gap rows carry their
+    integer primary key. Derived gaps -- one per capability with no application
+    mapped -- are synthesised on read and carry a composite id of the form
+    "{capability_type}-{capability_id}", e.g. "business-279". They are not rows;
+    nothing with that id exists to point a foreign key at.
+
+    The roadmap's own "Add Work Package" dropdown is populated from that combined
+    list, so selecting a derived gap and submitting sent "business-279" to an
+    endpoint doing Gap.query.get(...), which raised and returned 500. The QA
+    audit of 30 Aug 2026 (High 1) called it correctly: "The single most important
+    link in an EA tool -- turning an identified gap into planned work -- cannot
+    be completed through the UI", with a modal reading only "Notice / Not Found".
+
+    Converting a derived gap into planned work is exactly the user's intent, and
+    the machinery for it already existed: add-from-capability materialises a real
+    Gap from a capability via gap_archimate_service. This routes the composite id
+    through the same service -- reusing an existing gap for that capability if
+    one is already on the roadmap, creating it if not -- so the work package
+    lands against a real row and keeps the traceability that justified it.
+
+    Returns (gap, error_response). Exactly one is not None.
+    """
+    from app.models.implementation_migration import Gap
+
+    if raw_gap_id in (None, ""):
+        return None, None
+
+    # A plain integer is a stored Gap: the original path, unchanged.
+    try:
+        return_gap = Gap.query.get(int(raw_gap_id))
+    except (TypeError, ValueError):
+        return_gap = None
+    else:
+        if return_gap is None:
+            return None, (jsonify({"success": False, "error": "Gap not found"}), 404)
+        return return_gap, None
+
+    # Otherwise it should be a derived "{type}-{id}" composite.
+    text = str(raw_gap_id)
+    capability_type, _, capability_ref = text.partition("-")
+    valid_types = ("business", "technical", "process")
+    if capability_type not in valid_types or not capability_ref.isdigit():
+        return None, (
+            jsonify({
+                "success": False,
+                "error": (
+                    "gap_id %r is neither a stored gap nor a derived "
+                    "{type}-{id} reference" % text
+                ),
+            }),
+            400,
+        )
+
+    from app.services.gap_archimate_service import gap_archimate_service
+
+    capability_id = int(capability_ref)
+    existing = gap_archimate_service.find_existing_gap(capability_type, capability_id)
+    if existing is not None:
+        return existing, None
+
+    name = _derived_capability_name(capability_type, capability_id)
+    if name is None:
+        return None, (
+            jsonify({
+                "success": False,
+                "error": "No %s capability %d exists to raise a gap against"
+                         % (capability_type, capability_id),
+            }),
+            404,
+        )
+
+    gap, _was_created = gap_archimate_service.convert_capability_gap_to_archimate({
+        "capability_id": capability_id,
+        "capability_type": capability_type,
+        "name": name,
+        "gap_types": ["coverage"],
+        "priority": "medium",
+        "level": 1,
+        "color": "#6B7280",
+    })
+    db.session.flush()
+    return gap, None
+
+
+def _derived_capability_name(capability_type, capability_id):
+    """The capability a derived gap was synthesised from, or None if it is gone."""
+    if capability_type == "business":
+        from app.models.business_capabilities import BusinessCapability
+
+        row = BusinessCapability.query.get(capability_id)
+    elif capability_type == "technical":
+        from app.models.technical_capability import TechnicalCapability
+
+        row = TechnicalCapability.query.get(capability_id)
+    else:
+        from app.models.apqc_process import APQCProcess
+
+        row = APQCProcess.query.get(capability_id)
+    return getattr(row, "name", None) if row is not None else None
+
+
 @capability_map.route("/api/roadmap/work-packages", methods=["POST"])
 @login_required
 @rate_limit(30, "1m")
@@ -1263,7 +1416,7 @@ def api_roadmap_create_standalone_work_package():
     Returns 201 with work_package dict on success.
     """
     try:
-        from app.models.implementation_migration import Gap, Plateau, WorkPackage
+        from app.models.implementation_migration import Plateau, WorkPackage
 
         data = request.get_json() or {}
         if not data.get("name"):
@@ -1282,11 +1435,11 @@ def api_roadmap_create_standalone_work_package():
         gap_id = data.get("gap_id")
         plateau_id = data.get("plateau_id")
 
-        gap = None
-        if gap_id:
-            gap = Gap.query.get(gap_id)
-            if not gap:
-                return jsonify({"success": False, "error": "Gap not found"}), 404
+        # Accepts a stored Gap id OR a derived "{type}-{id}" reference, which is
+        # what this page's own dropdown supplies for the 500-odd gaps it computes.
+        gap, gap_error = _resolve_roadmap_gap_id(gap_id)
+        if gap_error is not None:
+            return gap_error
 
         plateau = None
         if plateau_id:
@@ -1331,6 +1484,7 @@ def api_roadmap_create_standalone_work_package():
             target_date=target_date,
         )
         db.session.add(wp)
+        sync_archimate_element(wp)
         db.session.flush()
 
         if gap:
@@ -1603,6 +1757,7 @@ def api_roadmap_create_plateau():
             target_date=target_date,
         )
         db.session.add(plateau)
+        sync_archimate_element(plateau)
         db.session.commit()
 
         return jsonify({
@@ -1638,40 +1793,96 @@ def api_roadmap_detect_gaps():
     """
     try:
         from app.models.business_capabilities import BusinessCapability
+        from app.models.unified_capability import UnifiedCapability
         from app.modules.architecture.services.gap_archimate_service import GapArchiMateService
 
         service = GapArchiMateService()
 
-        # BusinessCapability may not have maturity_gap — compute from levels
+        # D-R5-1: selection and magnitude/prose must read the SAME store.
+        # Previously the selection predicate below read the SOURCE
+        # (`BusinessCapability.current_maturity_level`) while the magnitude
+        # and persisted description read the AUTHORITY
+        # (`UnifiedCapability.maturity_for_source`). Those two stores can
+        # disagree for up to the 15-minute projection interval — the raw-SQL
+        # UPDATE in maturity_routes.py bypasses the ORM sync listener and
+        # only the next scheduled projection run catches the authority up —
+        # so a capability could be SELECTED off a fresh source write while
+        # its magnitude/prose were computed off a stale (still-NULL)
+        # authority row, fabricating a persisted "gap of 0" via `or 0` for a
+        # capability whose real gap was nonzero. Fetch the authority data for
+        # every candidate ONCE, up front, and use that SAME fetched data for
+        # both selection and magnitude/prose — never a mix of the two
+        # stores in one request.
         all_caps = BusinessCapability.query.all()
-        capabilities = [
-            c for c in all_caps
-            if (c.target_maturity_level or 0) - (c.current_maturity_level or 0) > 0
-        ]
+        org_id = all_caps[0].organization_id if all_caps else None
+        maturity_map = UnifiedCapability.maturity_for_sources(
+            "business_capability", [c.id for c in all_caps], organization_id=org_id
+        )
+
+        capabilities = []
+        for cap in all_caps:
+            maturity = maturity_map.get(str(cap.id))
+            if maturity is None or maturity["reason_code"] == "no_maturity_recorded":
+                # Authority has no recorded maturity (or the projection is
+                # stale and hasn't caught up yet) — skip rather than
+                # fabricate a gap from whichever store happens to be
+                # readable. See D-R5-1.
+                continue
+            current = maturity["current_maturity_level"]
+            target = maturity["target_maturity_level"]
+            if current is None or target is None:
+                continue
+            if (target - current) > 0:
+                capabilities.append((cap, maturity))
 
         created_count = 0
         updated_count = 0
         gap_results = []
 
-        for cap in capabilities:
+        for cap, maturity in capabilities:
+            # T-002: read current maturity through the single authority
+            # accessor rather than `cap.current_maturity` / `.target_maturity`
+            # — those names never existed on BusinessCapability (its columns
+            # are `current_maturity_level` / `target_maturity_level`, the
+            # projection's *source*, per ADR 0008 rule 3), so this always
+            # rendered "unknown" regardless of whether an assessment existed.
+            # R3-8: this loop is already filtered (see the selection above)
+            # to rows where the authority accessor returned real,
+            # non-None current/target values, so no reason-code fallback is
+            # needed here — both labels are always numeric.
+            current_label = maturity["current_maturity_level"]
+            target_label = maturity["target_maturity_level"]
+            # R3-7 / D-R5-1: compute the gap from the same accessor values
+            # used for selection and rendered above, not from the stale,
+            # unsynced `BusinessCapability.maturity_gap` derived column —
+            # reading that column here would be a THIRD, potentially-
+            # contradicting answer alongside the accessor values just
+            # rendered into `current_label`/`target_label`. No `or 0`
+            # fabrication needed: both values are guaranteed non-None here.
+            computed_gap = target_label - current_label
             gap_data = {
                 "source_capability_type": "business",
                 "source_capability_id": cap.id,
                 "name": f"Gap: {cap.name}",
                 "description": (
-                    f"Capability '{cap.name}' has a maturity gap of {cap.maturity_gap}. "
-                    f"Current maturity: {cap.current_maturity or 'unknown'}. "
-                    f"Target maturity: {cap.target_maturity or 'unknown'}."
+                    f"Capability '{cap.name}' has a maturity gap of {computed_gap}. "
+                    f"Current maturity: {current_label}. "
+                    f"Target maturity: {target_label}."
                 ),
-                "gap_type": "coverage" if not cap.current_maturity else "quality",
+                # D-R5-4: `maturity["current_maturity_level"]` is now always
+                # a real int here (filtered above), so `is 0` (falsy but
+                # assessed) must be distinguished from "not assessed" via an
+                # explicit `is None` check rather than `not maturity[...]`,
+                # which would misclassify a genuine 0 maturity as unassessed.
+                "gap_type": "coverage" if current_label is None else "quality",
                 "priority": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "severity": (
-                    "critical" if (cap.maturity_gap or 0) >= 3
-                    else "high" if (cap.maturity_gap or 0) >= 2
+                    "critical" if computed_gap >= 3
+                    else "high" if computed_gap >= 2
                     else "medium"
                 ),
                 "auto_generated": True,

@@ -1,0 +1,169 @@
+{#
+  `state == "legacy_generic"` — a review row that is not part of the typed
+  ARBReviewCycle graph (blueprint section 6).
+
+  It is shown visibly labelled and strictly read-only. The typed generic fields
+  (overall_score, mutable JSON conditions, implementation status, a separate
+  Solution decision) are deliberately NOT rendered: they have no immutable
+  evidence behind them, and showing them beside typed reviews would make an
+  unverifiable row look like a governed one.
+
+  The read model returns command_keys == {} and all-False actions for this
+  state, so no mutation control exists to render.
+
+  Renders no page header, breadcrumb or <h1>.
+
+  Context: review.
+#}
+{% from 'arb/partials/_typed_macros.html' import dash %}
+{% from 'components/card.html' import card, card_header, card_title, card_content %}
+
+{#
+  DEF-009/DEF-031, Capgemini dry-run: this banner claimed the review was
+  "read-only here" -- browser-verified false. The decision bar included
+  right below (line ~32) is the working, untyped record_decision() path
+  (app/services/arb_governance_service.py), and a board member can and did
+  Approve/Reject/Defer through it. "Read-only" here means only: this row
+  contributes no score/conditions/implementation-status posture to the
+  TYPED governance graph -- not that the review itself cannot be decided.
+#}
+<div class="mb-6 rounded-lg border border-border bg-muted p-4" role="status">
+    <p class="flex items-start gap-2 font-medium text-muted-foreground">
+        <i data-lucide="archive" class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true"></i>
+        Not part of the typed governance graph
+    </p>
+    <p class="mt-2 text-sm text-muted-foreground">
+        This row predates typed ARB submission, so it carries no immutable evidence
+        snapshot and contributes no verified governance posture (score, conditions,
+        implementation status).
+        {% if _orm_review is defined and _orm_review and _orm_review.status in ('submitted', 'under_review', 'deferred') and not _orm_review.decision %}
+        It can still be approved, rejected or deferred below — that decision is recorded
+        as a stored fact on the review itself.
+        {% elif _orm_review is defined and _orm_review and _orm_review.decision %}
+        A decision has already been recorded on it, shown below.
+        {% elif _orm_review is defined and _orm_review and _orm_review.status == 'draft' %}
+        Submit it for review before it can be decided.
+        {% endif %}
+    </p>
+    {# H4: the copy above used to instruct "Submit it for review" with no
+       control anywhere on the page. POST /arb/reviews/<id>/submit
+       (app/modules/architecture/routes/arb_routes.py::submit_review)
+       already handles exactly this case -- it explicitly refuses typed
+       reviews (solution_id/adr_id/architecture_model_id set) and only
+       transitions an untyped draft, which is what this partial always is. #}
+    {% if _orm_review is defined and _orm_review and _orm_review.status == 'draft' %}
+    <form method="POST" action="{{ url_for('arb.submit_review', id=_orm_review.id) }}" class="mt-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit"
+            class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <i data-lucide="send" class="h-3.5 w-3.5" aria-hidden="true"></i>
+            Submit for review
+        </button>
+    </form>
+    {% endif %}
+</div>
+
+{% with decision_review = _orm_review if _orm_review is defined else none %}{% include 'arb/partials/_decision_bar.html' %}{% endwith %}
+
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Recorded legacy review{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Title</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(review.subject.title if review.subject else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review item ID</dt>
+            <dd class="break-all font-mono text-xs text-foreground">{{ dash((review.identity or {}).get('review_item_id')) }}</dd>
+        </div>
+        {% if _orm_review is defined and _orm_review %}
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Status</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.status | replace('_', ' ') | title if _orm_review.status else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Priority</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.priority | title if _orm_review.priority else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Review type</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.review_type | replace('_', ' ') | title if _orm_review.review_type else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted by</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.submitter.email if _orm_review.submitter else none) }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Submitted on</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(_orm_review.submitted_at.strftime('%d %b %Y') if _orm_review.submitted_at else none) }}</dd>
+        </div>
+        <div class="min-w-0 sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Description</dt>
+            <dd class="whitespace-pre-line break-words text-sm text-foreground">{{ dash(_orm_review.description) }}</dd>
+        </div>
+        {% endif %}
+        <div class="min-w-0 sm:col-span-2">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reason</dt>
+            <dd class="break-words text-sm text-foreground">{{ dash(review.reason|humanize_key) }}</dd>
+        </div>
+    </dl>
+    {% endcall %}
+{% endcall %}
+
+{#
+  A decision recorded against a legacy row is a STORED fact (decision,
+  decision_rationale, decision_date, decided_by on arb_review_items), not a
+  derived posture, so rendering it does not breach this partial's rule about
+  unverifiable governance signal -- and withholding it was worse than silent:
+  a decided legacy review rendered identically to an undecided one, so nobody
+  reading the page could tell whether the board had ruled on it.
+
+  Only stored columns are shown. No score, no conditions tracker, no
+  implementation status.
+#}
+{% if _orm_review is defined and _orm_review and _orm_review.decision %}
+{% call card() %}
+    {% call card_header() %}
+        {% call card_title(class='text-lg') %}Decision on record{% endcall %}
+    {% endcall %}
+    {% call card_content() %}
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Outcome</dt>
+            <dd class="break-words text-sm text-foreground">{{ _orm_review.decision | replace('_', ' ') | title }}</dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decided by</dt>
+            <dd class="break-words text-sm text-foreground">
+                {{ dash(_orm_review.decided_by.email if _orm_review.decided_by else none) }}
+            </dd>
+        </div>
+        <div class="min-w-0">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Decided on</dt>
+            <dd class="break-words text-sm text-foreground">
+                {{ dash(_orm_review.decision_date.strftime('%d %b %Y') if _orm_review.decision_date else none) }}
+            </dd>
+        </div>
+        <div class="min-w-0 sm:col-span-3">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rationale</dt>
+            <dd class="whitespace-pre-line break-words text-sm text-foreground">{{ dash(_orm_review.decision_rationale) }}</dd>
+        </div>
+        {% if _orm_review.conditions %}
+        <div class="min-w-0 sm:col-span-3">
+            <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conditions</dt>
+            <dd class="text-sm text-foreground">
+                <ul class="list-disc space-y-1 pl-5">
+                    {% for cond in _orm_review.conditions %}
+                    <li class="break-words">{{ cond.condition if cond is mapping else cond }}</li>
+                    {% endfor %}
+                </ul>
+            </dd>
+        </div>
+        {% endif %}
+    </dl>
+    {% endcall %}
+{% endcall %}
+{% endif %}

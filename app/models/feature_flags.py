@@ -142,7 +142,7 @@ class FeatureFlag(db.Model, TimestampMixin):
         }
         color = badge_colors.get(self.state, "bg-gray-500/10 text-gray-500")
         label = escape(self.state.value)
-        return Markup(f'<span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium {color}">{label}</span>')
+        return Markup(f'<span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium {color}">{label}</span>')  # raw-html-ok: color is a fixed dict value above; label is escape()'d one line above
 
     def matches_route(self, route_path: str) -> bool:
         """Check if this feature flag applies to a route path.

@@ -7,12 +7,20 @@ These routes provide API endpoints for:
 """
 
 from flask import current_app, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.application_mgmt import application_mgmt
 from app.models.application_portfolio import ApplicationComponent
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+    find_similar_entities,
+    lock_name_for_write,
+)
+from app.utils.pagination import safe_int_arg
 
 @application_mgmt.route("/api/applications/<string:app_id>", methods=["GET"])
 @login_required
@@ -120,8 +128,8 @@ def get_application_elements(app_id):
     total = query.count()
 
     # Apply pagination
-    limit = min(int(request.args.get("limit", 100)), 500)
-    offset = int(request.args.get("offset", 0))
+    limit = min(safe_int_arg('limit', 100, minimum=1, maximum=500), 500)
+    offset = safe_int_arg('offset', 0, minimum=0)
     elements = query.order_by(ArchiMateElement.name).offset(offset).limit(limit).all()
 
     return jsonify(
@@ -162,7 +170,11 @@ def create_application_element(app_id):
         }
 
     Returns:
-        JSON with created element details.
+        JSON with created element details, or **409** when an element of the
+        same type and normalised name already exists in this organisation. The
+        409 body carries ``duplicate_of: {id, name}``. Send
+        ``allow_duplicate: true`` in the body (or ``?allow_duplicate=true``, or
+        the ``X-Allow-Duplicate`` header) to create the duplicate deliberately.
     """
     from app.models.archimate_core import ArchiMateElement, ArchitectureModel
 
@@ -308,12 +320,33 @@ def create_application_element(app_id):
             "Grouping": "other",
             "Junction": "other",
         }
-        for prefix, l in type_to_layer.items():
+        for prefix, item in type_to_layer.items():
             if data["type"].startswith(prefix):
-                layer = l
+                layer = item
                 break
         if not layer:
             layer = "application"
+
+    # ARCH-030: refuse a same-named element of the same type in this
+    # organisation. ArchiMateElement inherits TenantMixin at runtime, so the
+    # organisation predicate is injected — do not add one here.
+    if not allow_duplicate_requested(data):
+        # Serialise the check-then-insert (see lock_name_for_write).
+        lock_name_for_write(ArchiMateElement, data["name"])
+        existing = find_duplicate_by_name(
+            ArchiMateElement,
+            data["name"],
+            extra_filters=[ArchiMateElement.type == data["type"]],
+        )
+        if existing is not None:
+            return duplicate_conflict_response("An ArchiMate element", existing)
+
+    # S-06: near-duplicate advisory, surfaced before the write commits.
+    similar = find_similar_entities(
+        ArchiMateElement,
+        data["name"],
+        extra_filters=[ArchiMateElement.type == data["type"]],
+    )
 
     try:
         element = ArchiMateElement(
@@ -342,15 +375,17 @@ def create_application_element(app_id):
                         "documentation": getattr(element, "documentation", None),
                         "architecture_id": element.architecture_id,
                     },
+                    "similar_entities": similar,
+                    "similar_entities_count": len(similar),
                 }
             ),
             201,
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Element already exists or constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error creating element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -367,7 +402,7 @@ def get_application_element(app_id, element_id):
     Returns:
         JSON with element details including relationships.
     """
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 
     app_obj = ApplicationComponent.query.get_or_404(app_id)
 
@@ -534,10 +569,10 @@ def update_application_element(app_id, element_id):
             }
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Update failed due to constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error updating element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -604,7 +639,7 @@ def delete_application_element(app_id, element_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error deleting element")
         return jsonify({"error": "An internal error occurred"}), 500
@@ -776,10 +811,10 @@ def create_element_relationship(app_id, element_id):
             201,
         )
 
-    except IntegrityError as e:
+    except IntegrityError:
         db.session.rollback()
         return jsonify({"error": "Relationship already exists or constraint violation"}), 409
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception("Error creating relationship")
         return jsonify({"error": "An internal error occurred"}), 500

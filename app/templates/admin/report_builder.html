@@ -4,7 +4,7 @@
 {% block title %}Application Report Builder{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+<div class="p-6 space-y-6 mx-auto max-w-7xl">
     {{ page_header(
         title='Application Report Builder',
         description='Filter and export application data for portfolio analysis',
@@ -90,7 +90,14 @@
                     {% for app in apps %}
                     <tr class="hover:bg-muted/30 transition-colors">
                         <td class="px-4 py-3">
+                            {# The row names a real ApplicationComponent; the name is the
+                               way into it. Guarded because blueprints register non-fatally. #}
+                            {% if 'unified_applications.application_detail' in flask.current_app.view_functions and app.id %}
+                            <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}"
+                               class="font-medium text-primary hover:underline">{{ app.name or '-' }}</a>
+                            {% else %}
                             <div class="font-medium">{{ app.name or '-' }}</div>
+                            {% endif %}
                             {% if app.description %}
                             <div class="text-xs text-muted-foreground mt-0.5 truncate max-w-xs">{{ app.description[:100] }}</div>
                             {% endif %}

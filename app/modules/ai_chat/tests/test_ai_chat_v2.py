@@ -7,7 +7,6 @@ Covers:
 - Utility functions (truncate_message, sanitize_user_input, format_ai_response, safe_temperature, detect_intent)
 - Compat wrapper infrastructure (stats tracking)
 """
-import pytest
 
 
 # ============================================================================
@@ -25,21 +24,12 @@ class TestAIChatV2Imports:
     def test_v2_schemas_importable(self):
         from app.modules.ai_chat.v2.schemas import (
             ChatMessageSchema,
-            DataInteractionSchema,
-            GapDetectionSchema,
-            AIAssistanceSchema,
-            FeedbackSchema,
-            SessionConfigSchema,
         )
         assert callable(ChatMessageSchema.validate)
 
     def test_v2_utils_importable(self):
         from app.modules.ai_chat.v2.utils import (
             truncate_message,
-            sanitize_user_input,
-            format_ai_response,
-            safe_temperature,
-            detect_intent,
         )
         assert callable(truncate_message)
 
@@ -220,7 +210,6 @@ class TestAIChatCompatWrappers:
 
     def test_compat_module_imports(self):
         from app.compat.ai_chat import (
-            AIChatCompatStats,
             wrap_legacy_ai_chat_bp,
         )
         assert callable(wrap_legacy_ai_chat_bp)

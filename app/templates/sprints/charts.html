@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Sprint Charts — Velocity &amp; Burndown{% endblock %}
 
@@ -14,51 +15,97 @@
          velocityChart: null,
          loading: false,
          error: null,
+         boardId: null,
+         boardError: null,
+         velocityError: null,
+         sprintsLoaded: false,
 
-         async init() {
-             await this.loadVelocity();
-             await this.loadSprints();
-             if (this.sprints.length > 0) {
-                 this.selectedSprintId = this.sprints[0].id;
-                 await this.loadBurndown();
-             }
+         /* NOTE ON STYLE: everything below is written with .then()/.catch(),
+            NOT async/await. Alpine expressions on this page are evaluated by the
+            CSP-safe interpreter in app/static/js/csp/csp-evaluator.js, which
+            runs bodies synchronously and treats `await` as a PASS-THROUGH
+            (csp-evaluator.js: unary 'await' returns its operand). An awaited
+            call therefore assigns the Promise object itself, not the resolved
+            body — which is how this component ended up believing it had no
+            board and no sprints. Promise chains resolve correctly. */
+         init() {
+             this.loadVelocity();
+             this.resolveBoard();
          },
 
-         async loadSprints() {
-             try {
-                 const r = await fetch('/api/sprints?board_id=0', { headers: { 'Accept': 'application/json' } });
-                 if (!r.ok) { this.sprints = []; return; }
-                 this.sprints = await r.json();
-             } catch (e) {
-                 this.sprints = [];
-             }
+         /* GET /api/sprints requires a real board_id and correctly rejects
+            anything else with 400. The page used to send the placeholder
+            board_id=0 before a board was known, so every visit fired a request
+            that could only fail. Resolve the board first; if none can be
+            resolved, say so rather than asking for sprints on board zero. */
+         resolveBoard() {
+             const self = this;
+             return Platform.fetch.get('/api/sprints/default-board', null, { silent: true })
+                 .then(function (board) {
+                     self.boardId = (board && board.board_id) || null;
+                     if (!self.boardId) {
+                         self.boardError = 'No sprint board is available for your account yet.';
+                         return null;
+                     }
+                     return self.loadSprints();
+                 })
+                 .catch(function () {
+                     self.boardId = null;
+                     self.boardError = 'Could not determine which sprint board to read.';
+                 });
          },
 
-         async loadBurndown() {
-             if (!this.selectedSprintId) return;
+         loadSprints() {
+             const self = this;
+             if (!this.boardId) { this.sprints = []; return Promise.resolve(); }
+             return Platform.fetch.get('/api/sprints', { board_id: this.boardId }, {
+                     headers: { 'Accept': 'application/json' },
+                     silent: true,
+                 })
+                 .then(function (sprints) {
+                     self.sprints = sprints || [];
+                     self.sprintsLoaded = true;
+                     if (self.sprints.length > 0) {
+                         self.selectedSprintId = self.sprints[0].id;
+                         return self.loadBurndown();
+                     }
+                     return null;
+                 })
+                 .catch(function () {
+                     self.sprints = [];
+                     self.boardError = 'Sprints for this board could not be loaded.';
+                 });
+         },
+
+         loadBurndown() {
+             const self = this;
+             if (!this.selectedSprintId) return Promise.resolve();
              this.loading = true;
              this.error = null;
-             try {
-                 const r = await fetch(`/api/sprints/${this.selectedSprintId}/burndown`);
-                 if (!r.ok) { this.burndownData = null; this.loading = false; return; }
-                 this.burndownData = await r.json();
-                 this.$nextTick(() => this.renderBurndown());
-             } catch (e) {
-                 this.error = 'Failed to load burndown data.';
-             } finally {
-                 this.loading = false;
-             }
+             return Platform.fetch.get('/api/sprints/' + this.selectedSprintId + '/burndown', null, { silent: true })
+                 .then(function (data) {
+                     self.burndownData = data;
+                     self.loading = false;
+                     self.$nextTick(function () { self.renderBurndown(); });
+                 })
+                 .catch(function () {
+                     self.burndownData = null;
+                     self.error = 'Failed to load burndown data.';
+                     self.loading = false;
+                 });
          },
 
-         async loadVelocity() {
-             try {
-                 const r = await fetch('/api/sprints/velocity');
-                 if (!r.ok) { this.velocityData = null; return; }
-                 this.velocityData = await r.json();
-                 this.$nextTick(() => this.renderVelocity());
-             } catch (e) {
-                 this.velocityData = null;
-             }
+         loadVelocity() {
+             const self = this;
+             return Platform.fetch.get('/api/sprints/velocity', null, { silent: true })
+                 .then(function (data) {
+                     self.velocityData = data;
+                     self.$nextTick(function () { self.renderVelocity(); });
+                 })
+                 .catch(function () {
+                     self.velocityData = null;
+                     self.velocityError = 'Velocity history could not be loaded.';
+                 });
          },
 
          renderBurndown() {
@@ -155,11 +202,19 @@
      }">
 
     <!-- Page header -->
-    <div class="flex items-center justify-between pt-2">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight">Sprint Charts</h1>
-            <p class="text-sm text-muted-foreground mt-1">Velocity &amp; burndown analytics</p>
-        </div>
+    {{ page_shell(title='Sprint Charts', breadcrumb=[('Home', '/'), ('Sprint Charts', none)], subtitle='Velocity &amp; burndown analytics') }}
+
+    <!-- No board resolved: state the real situation instead of charting nothing -->
+    <div x-show="boardError" x-cloak
+         class="rounded-md border border-border bg-muted/30 text-sm text-muted-foreground px-4 py-3"
+         role="status">
+        <span x-text="boardError"></span>
+        {% if 'adm_kanban_view.index' in flask.current_app.view_functions %}
+        Create one on the
+        <a href="{{ url_for('adm_kanban_view.index') }}"
+           class="text-primary underline underline-offset-2">ADM Kanban board</a>
+        to see burndown for its sprints.
+        {% endif %}
     </div>
 
     <!-- Burndown chart -->
@@ -192,7 +247,7 @@
             </div>
 
             <!-- Error state -->
-            <div x-show="error" class="rounded-md bg-destructive/10 text-destructive text-sm p-3" x-cloak x-text="error"></div>
+            <div x-show="error" class="rounded-md bg-destructive/10 text-destructive-emphasis text-sm p-3" x-cloak x-text="error"></div>
 
             <!-- Empty state -->
             <div x-show="!loading && !error && (!burndownData || !burndownData.ideal_line || burndownData.ideal_line.length === 0)" x-cloak
@@ -248,5 +303,5 @@
 {% endblock %}
 
 {% block extra_head_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 {% endblock %}

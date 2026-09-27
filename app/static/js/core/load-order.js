@@ -8,9 +8,9 @@
  * ─── REQUIRED LOAD ORDER ─────────────────────────────────────────────────────
  *
  * <!-- 1. Third-party libraries (CDN, no defer on DOMPurify) -->
- * <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
- * <script src="https://unpkg.com/lucide@latest"></script>
- * <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+ * <script src="/static/vendor/purify.min.js"></script>
+ * <script src="/static/vendor/lucide.min.js"></script>
+ * <script defer src="/static/vendor/alpine.min.js"></script>
  *
  * <!-- 2. Platform core (must load synchronously, in order) -->
  * <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>

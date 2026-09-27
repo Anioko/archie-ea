@@ -7,7 +7,6 @@ Follows Factory pattern from Gang of Four design patterns.
 import logging
 from typing import Optional, Type
 
-from app import db
 from app.models.application_layer import (
     ApplicationCollaboration,
     ApplicationEvent,

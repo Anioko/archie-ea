@@ -6,9 +6,8 @@ All endpoints require authentication.
 import logging
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 
-from app import db  # dead-code-ok
 
 # Module-level imports so tests can patch via:
 #   app.modules.ea_workflows.routes.phase_f_routes.MigrationWave
@@ -116,7 +115,10 @@ def get_roadmap():
         return jsonify({"tasks": result, "total": len(result)}), 200
     except Exception as exc:
         logger.error("phase-f/roadmap error: %s", exc, exc_info=True)
-        return jsonify({"tasks": [], "total": 0}), 200
+        # 500, not 200. "tasks: [], total: 0" at 200 reads as an empty
+        # migration roadmap - the answer to "what work is planned?" - when
+        # the truth is that we could not read it.
+        return jsonify({"error": "Could not load the roadmap"}), 500
 
 
 # ---------------------------------------------------------------------------

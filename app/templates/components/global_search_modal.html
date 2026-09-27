@@ -18,6 +18,7 @@
         query: '',
         results: [],
         loading: false,
+        searchError: null,
         selectedIndex: 0,
         
         openSearch() {
@@ -34,33 +35,50 @@
             this.open = false;
             this.query = '';
             this.results = [];
+            this.searchError = null;
         },
         
-        async search() {
+        // Promise chain, not async/await: this expression lives in an Alpine
+        // attribute and is run by the CSP-safe interpreter
+        // (app/static/js/csp/csp-evaluator.js), which cannot await.
+        search() {
+            const self = this;
             if (this.query.length < 2) {
                 this.results = [];
-                return;
+                this.searchError = null;
+                return Promise.resolve();
             }
-            
+
             this.loading = true;
-            try {
-                const response = await fetch(`/api/sidebar/search?q=${encodeURIComponent(this.query)}`);
-                const data = await response.json();
-                this.results = data.results || [];
-                this.selectedIndex = 0;
-            } catch (error) {
-                console.error('Search error:', error);
-                this.results = [];
-            } finally {
-                this.loading = false;
-            }
+            // Use Platform.fetch.get for automatic CSRF, JSON parsing, and error handling
+            // silent:true prevents duplicate toast because we show inline error state
+            return Platform.fetch.get('/api/sidebar/search',
+                    { q: this.query },
+                    { silent: true }
+                )
+                .then(function (data) {
+                    self.results = (data && data.results) || [];
+                    self.selectedIndex = 0;
+                    self.searchError = null;
+                    self.loading = false;
+                })
+                .catch(function (error) {
+                    // A search that never ran must not read as "No results found".
+                    // Platform.fetch throws on network errors and non-ok responses
+                    self.results = [];
+                    // Ensure error.message exists to avoid TypeError if error is null/undefined
+                    self.searchError = (error && error.message) || 'Search failed';
+                    self.loading = false;
+                });
         },
         
         navigateDown() {
+            if (this.results.length === 0) return;
             this.selectedIndex = Math.min(this.selectedIndex + 1, this.results.length - 1);
         },
         
         navigateUp() {
+            if (this.results.length === 0) return;
             this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
         },
         
@@ -93,9 +111,8 @@
         x-transition:leave-start="opacity-100"
         x-transition:leave-end="opacity-0"
         @click="open = false"
-        class="fixed inset-0 bg-black/50 z-50"
-        style="display: none;"
-        :style="open ? 'display: block;' : 'display: none;'"
+        class="modal-backdrop fixed inset-0 bg-background/80 transition-opacity duration-200"
+        style="z-index: var(--modal-z, 1000);"
     ></div>
     
     <!-- Modal -->
@@ -110,9 +127,8 @@
         role="dialog"
         aria-modal="true"
         aria-label="Global search"
-        class="fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl z-50 px-4"
-        style="display: none;"
-        :style="open ? 'display: block;' : 'display: none;'"
+        class="modal-panel fixed top-[15vh] left-1/2 -translate-x-1/2 w-full max-w-2xl px-4"
+        style="z-index: calc(var(--modal-z, 1000) + 1);"
     >
         <div class="cmd-palette overflow-hidden">
             <!-- Search Input -->
@@ -129,10 +145,16 @@
                     placeholder="Search applications, solutions, capabilities, elements..."
                     class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                     autocomplete="off"
-                />
+                 aria-label="Search applications, solutions, capabilities, elements..."/>
                 <kbd class="hidden sm:inline-flex items-center px-2 py-1 text-xs font-mono bg-muted border border-border rounded text-muted-foreground">
                     ESC
                 </kbd>
+                {# ARCH-101: Escape and backdrop-click were the only ways out —
+                   no visible close control, unlike every other dialog. #}
+                <button type="button" @click="closeSearch()" aria-label="Close search"
+                        class="h-6 w-6 rounded-sm flex items-center justify-center text-muted-foreground hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring transition-colors">
+                    <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
             </div>
             
             <!-- Results -->
@@ -143,8 +165,15 @@
                     <p class="text-sm">Searching...</p>
                 </div>
                 
+                <!-- Search Failed -->
+                <div x-show="!loading && searchError" class="px-4 py-10 text-center text-destructive-emphasis">
+                    <i data-lucide="alert-triangle" class="h-5 w-5 mx-auto mb-2"></i>
+                    <p class="text-sm" x-text="searchError"></p>
+                    <p class="text-sm text-muted-foreground mt-1">Nothing was searched — this is not "no matches".</p>
+                </div>
+
                 <!-- No Results -->
-                <div x-show="!loading && query.length >= 2 && results.length === 0" class="px-4 py-10 text-center text-muted-foreground">
+                <div x-show="!loading && !searchError && query.length >= 2 && results.length === 0" class="px-4 py-10 text-center text-muted-foreground">
                     <i data-lucide="search-x" class="h-5 w-5 mx-auto mb-2"></i>
                     <p class="text-sm">No results found for "<span x-text="query" class="text-foreground font-medium"></span>"</p>
                 </div>
@@ -168,10 +197,10 @@
                             <!-- Type badge icon -->
                             <div 
                                 :class="{
-                                    'bg-blue-500/10 text-primary':   result.type === 'application',
-                                    'bg-violet-500/10 text-violet-600': result.type === 'solution',
-                                    'bg-emerald-500/10 text-emerald-600': result.type === 'capability',
-                                    'bg-amber-500/10 text-amber-600': result.type === 'archimate_element',
+                                    'bg-info/10 text-primary':   result.type === 'application',
+                                    'bg-violet-500/10 text-violet-600': result.type === 'solution', {# design-tokens-ok: 4-category legend, info already used by 'application' above; collision avoided by leaving this raw #}
+                                    'bg-success/10 text-success-emphasis': result.type === 'capability',
+                                    'bg-warning/10 text-warning-emphasis': result.type === 'archimate_element',
                                     'bg-muted text-muted-foreground': !['application','solution','capability','archimate_element'].includes(result.type)
                                 }"
                                 class="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-xs font-bold"
@@ -194,12 +223,12 @@
             <div class="cmd-palette-footer flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
                 <div class="flex items-center gap-3">
                     <span class="flex items-center gap-1">
-                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↑</kbd>
-                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↓</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↑</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↓</kbd>
                         Navigate
                     </span>
                     <span class="flex items-center gap-1">
-                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↵</kbd>
+                        <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↵</kbd>
                         Open
                     </span>
                 </div>

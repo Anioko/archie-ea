@@ -4,13 +4,18 @@
    Prefer: admin_base.html for all admin/dashboard pages.
    See also: admin_base.html (admin with sidebar), public_base.html (unauthenticated).
 #}
-{% import 'macros/nav_macros.html' as nav %}
+{% import 'macros/nav_macros.html' as nav with context %}
 
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 
 <head>
   {% include 'partials/_head.html' %}
+  {# F-05: this legacy layout had no <title> tag at all — worse than the
+     empty-fallback bug fixed in admin_base.html (ARCH-108), because no
+     block existed here to leave undefined. Same "Entelim" fallback
+     as admin_base.html/public_base.html for consistency. #}
+  <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
   {# Any templates that extend this template can set custom_head_tags to add scripts to their page #}
   {% block custom_head_tags %}{% endblock %}
 </head>
@@ -54,7 +59,7 @@
   {{ nav.render_nav(current_user, dropdown=strategic_dropdown) }}
   {% endblock %}
 
-  <div id="main-content" class="container mx-auto px-4 py-6">
+  <div id="main-content" class="px-4 py-6">
     {% include 'partials/_flashes.html' %}
     {# When extended, the content block contains all the html of the webpage #}
     {% block content %}

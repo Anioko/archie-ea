@@ -8,6 +8,8 @@ Target: < 200ms per solution analysis.
 import logging
 from datetime import datetime, timedelta
 
+from app import db
+
 logger = logging.getLogger(__name__)
 
 COMPLETENESS_GAP_THRESHOLD_DAYS = 14
@@ -41,14 +43,22 @@ class ProactiveAnalysisService:
         from app.models.solution_models import Solution
         return Solution.query.get(solution_id)
 
-    def _get_completeness_pct(self, solution_id: int) -> int:
-        """Rough completeness: linked ArchiMate elements / 20, capped at 100."""
+    def _get_completeness_pct(self, solution_id: int):
+        """Rough completeness: linked ArchiMate elements / 20, capped at 100.
+
+        Returns None — never 0 — when the count cannot be read. This figure is
+        printed verbatim into insight titles, bodies and the suggested_query
+        that seeds the assistant, so a fabricated 0 would surface as a CRITICAL
+        "blueprint 0% complete" warning about a solution nobody has measured.
+        Every caller must skip the check when it is None.
+        """
         try:
             from app.models.solution_models import SolutionArchiMateElement
             count = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).count()
             return min(100, count * 5)
         except Exception:
-            return 0
+            logger.exception("_get_completeness_pct(%s) failed", solution_id)
+            return None
 
     def _check_completeness_gap(self, sol) -> list:
         from app.models.copilot_insight import CopilotInsight, InsightType, InsightSeverity
@@ -56,7 +66,8 @@ class ProactiveAnalysisService:
         if age_days < COMPLETENESS_GAP_THRESHOLD_DAYS:
             return []
         pct = self._get_completeness_pct(sol.id)
-        if pct > 5:
+        if pct is None or pct > 5:
+            # Unknown completeness is not near-zero completeness: raise nothing.
             return []
         return [CopilotInsight(
             solution_id=sol.id,
@@ -91,7 +102,8 @@ class ProactiveAnalysisService:
             if days_to_review > ARB_DEADLINE_WARNING_DAYS:
                 return []
             pct = self._get_completeness_pct(sol.id)
-            if pct >= ARB_READY_COMPLETENESS_PCT:
+            if pct is None or pct >= ARB_READY_COMPLETENESS_PCT:
+                # pct is quoted three times below — never quote a guess.
                 return []
             return [CopilotInsight(
                 solution_id=sol.id,
@@ -111,6 +123,7 @@ class ProactiveAnalysisService:
                 expires_at=review.review_date,
             )]
         except Exception:
+            logger.exception("_check_arb_deadline(%s) failed", getattr(sol, "id", None))
             return []
 
     def _check_staleness(self, sol) -> list:
@@ -143,7 +156,8 @@ class ProactiveAnalysisService:
             from app.models.solution_models import Solution
             domain = getattr(sol, 'business_domain', None)
             phase = getattr(sol, 'adm_phase', None)
-            if not domain or not phase:
+            org_id = getattr(sol, 'organization_id', None)
+            if not domain or not phase or org_id is None:
                 return []
             first_word = (sol.name or '').split()[0].lower() if sol.name else ''
             if len(first_word) < 4:
@@ -151,6 +165,7 @@ class ProactiveAnalysisService:
             candidates = (
                 Solution.query
                 .filter(
+                    Solution.organization_id == org_id,
                     Solution.business_domain == domain,
                     Solution.adm_phase == phase,
                     Solution.id != sol.id,
@@ -178,33 +193,50 @@ class ProactiveAnalysisService:
                 expires_at=datetime.utcnow() + timedelta(days=30),
             )]
         except Exception:
+            logger.exception("_check_portfolio_duplicates(%s) failed", getattr(sol, "id", None))
             return []
 
     def _check_available_patterns(self, sol) -> list:
         from app.models.copilot_insight import CopilotInsight, InsightType, InsightSeverity
         try:
-            from app.models.solution_models import SolutionApplication, Solution
+            from app.models.solution_models import Solution, solution_applications
+            org_id = getattr(sol, 'organization_id', None)
+            if org_id is None:
+                return []
             my_apps = {
-                r.application_id
-                for r in SolutionApplication.query.filter_by(solution_id=sol.id).all()
+                row.application_component_id
+                for row in db.session.execute(
+                    solution_applications.select().where(
+                        solution_applications.c.solution_id == sol.id
+                    )
+                ).fetchall()
             }
             if not my_apps:
                 return []
             domain = getattr(sol, 'business_domain', None)
             if not domain:
                 return []
-            high_completeness_solutions = [
-                s for s in Solution.query.filter(
-                    Solution.business_domain == domain,
-                    Solution.id != sol.id,
-                ).limit(20).all()
-                if self._get_completeness_pct(s.id) >= 60
-            ]
+            candidate_solutions = Solution.query.filter(
+                Solution.organization_id == org_id,
+                Solution.business_domain == domain,
+                Solution.id != sol.id,
+            ).limit(20).all()
+            # A solution whose completeness could not be read is not evidence of
+            # high completeness, so it is left out rather than counted as 0.
+            high_completeness_solutions = []
+            for s in candidate_solutions:
+                s_pct = self._get_completeness_pct(s.id)
+                if s_pct is not None and s_pct >= 60:
+                    high_completeness_solutions.append(s)
             matches = []
             for s in high_completeness_solutions:
                 their_apps = {
-                    r.application_id
-                    for r in SolutionApplication.query.filter_by(solution_id=s.id).all()
+                    row.application_component_id
+                    for row in db.session.execute(
+                        solution_applications.select().where(
+                            solution_applications.c.solution_id == s.id
+                        )
+                    ).fetchall()
                 }
                 if len(my_apps & their_apps) >= 2:
                     matches.append(s)
@@ -227,4 +259,5 @@ class ProactiveAnalysisService:
                 expires_at=datetime.utcnow() + timedelta(days=14),
             )]
         except Exception:
+            logger.exception("_check_available_patterns(%s) failed", getattr(sol, "id", None))
             return []

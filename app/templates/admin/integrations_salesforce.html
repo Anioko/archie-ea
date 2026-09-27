@@ -7,7 +7,7 @@
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8" x-data="salesforceIntegration()">
     {{ page_header(
         title='Salesforce Org Discovery',
-        description='Scan a Salesforce org for Lightning apps and installed AppExchange packages, and import them into the ARCHIE application portfolio — optionally straight into a Transformation Programme baseline.',
+        description='Scan a Salesforce org for Lightning apps and installed AppExchange packages, and import them into the Entelim application portfolio — optionally straight into a Transformation Programme baseline.',
         breadcrumbs=[
             {'label': 'Home', 'href': url_for('main.index')},
             {'label': 'Admin', 'href': url_for('admin.index')},
@@ -16,7 +16,7 @@
     ) }}
 
     <div x-cloak x-show="alert.message"
-         :class="alert.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'"
+         :class="alert.kind === 'error' ? 'border-destructive/30 bg-destructive/10 text-destructive-emphasis' : 'border-success/30 bg-success/10 text-success-emphasis'"
          class="mb-6 rounded-md border p-4 text-sm" x-text="alert.message"></div>
 
     <!-- Credentials card -->
@@ -31,8 +31,8 @@
                 </p>
             </div>
             {% if sf_config.configured %}
-            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
-                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Configured
+            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
+                <span class="w-1.5 h-1.5 rounded-full bg-success inline-block"></span> Configured
             </span>
             {% else %}
             <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Not configured</span>
@@ -48,13 +48,13 @@
             <div>
                 <label for="sf-client-id" class="block text-sm font-medium mb-1">Consumer Key (Client ID)</label>
                 <input type="text" id="sf-client-id" x-model="creds.client_id"
-                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" autocomplete="off">
             </div>
             <div>
                 <label for="sf-client-secret" class="block text-sm font-medium mb-1">Consumer Secret</label>
                 <input type="password" id="sf-client-secret" x-model="creds.client_secret"
                        placeholder="{{ '••••••••  (saved)' if sf_config.configured else '' }}"
-                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                       class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" autocomplete="new-password">
             </div>
         </div>
         <div class="px-6 pb-5 flex items-center gap-3">
@@ -84,8 +84,8 @@
 
         <div x-cloak x-show="discovered.length" class="px-6 py-4 grid grid-cols-3 gap-4 border-b border-border">
             <div><p class="text-xs text-muted-foreground uppercase">Total found</p><p class="text-xl font-bold" x-text="stats.total"></p></div>
-            <div><p class="text-xs text-muted-foreground uppercase">Already in ARCHIE</p><p class="text-xl font-bold" x-text="stats.linked"></p></div>
-            <div><p class="text-xs text-muted-foreground uppercase">Ungoverned</p><p class="text-xl font-bold text-amber-600" x-text="stats.ungoverned"></p></div>
+            <div><p class="text-xs text-muted-foreground uppercase">Already in Entelim</p><p class="text-xl font-bold" x-text="stats.linked"></p></div>
+            <div><p class="text-xs text-muted-foreground uppercase">Ungoverned</p><p class="text-xl font-bold text-warning" x-text="stats.ungoverned"></p></div>
         </div>
 
         <div x-cloak x-show="discovered.length">
@@ -107,9 +107,9 @@
                             <td class="px-4 py-2 text-muted-foreground" x-text="a.kind === 'installed_package' ? 'AppExchange package' : 'Lightning app'"></td>
                             <td class="px-4 py-2 text-muted-foreground" x-text="a.namespace || '—'"></td>
                             <td class="px-4 py-2">
-                                <span :class="a.status === 'linked' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30' : 'bg-muted text-muted-foreground border-border'"
+                                <span :class="a.status === 'linked' ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-muted text-muted-foreground border-border'"
                                       class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
-                                      x-text="a.status === 'linked' ? 'In ARCHIE' : 'Unregistered'"></span>
+                                      x-text="a.status === 'linked' ? 'In Entelim' : 'Unregistered'"></span>
                             </td>
                         </tr>
                     </template>
@@ -156,13 +156,20 @@
             _csrf() { return document.querySelector('meta[name=csrf-token]')?.content || ''; },
             _notify(kind, message) { this.alert = { kind, message }; },
             async _post(url, body) {
-                const r = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                    body: JSON.stringify(body || {}),
-                });
-                const d = await r.json();
-                return { ok: r.ok, d };
+                try {
+                    const data = await Platform.fetch.post(url, body || {}, { silent: true });
+                    return { ok: true, d: data };
+                } catch (error) {
+                    // Platform.fetch throws on non-ok responses; preserve the existing
+                    // { ok: false, d: ... } shape that callers expect.
+                    // error.data may contain the server's JSON error response.
+                    // error.message is the user-facing message (already shown via toast unless silent:true).
+                    // error.status is the HTTP status code.
+                    return {
+                        ok: false,
+                        d: error.data || { error: error.message }
+                    };
+                }
             },
             async saveCredentials() {
                 this.busy = true;
@@ -203,7 +210,7 @@
                     });
                     if (!ok) { this._notify('error', d.error || 'Import failed'); return; }
                     this._notify('ok',
-                        'Imported ' + d.imported + ' · already in ARCHIE ' + d.already_exists +
+                        'Imported ' + d.imported + ' · already in Entelim ' + d.already_exists +
                         ' · failed ' + d.failed +
                         (d.linked_to_programme ? (' · linked to programme ' + d.linked_to_programme) : ''));
                     await this.discover();

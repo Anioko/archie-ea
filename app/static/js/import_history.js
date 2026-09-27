@@ -117,24 +117,24 @@ class ImportHistoryManager {
                         </div>
                     </div>
                     <div class="flex space-x-2">
-                        <button onclick="importHistoryManager.viewDetails(${parseInt(item.id, 10) || 0})"
+                        <button type="button" data-import-action="viewDetails" data-import-id="${parseInt(item.id, 10) || 0}"
                                 class="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary">
                             <i class="fas fa-eye"></i> Details
                         </button>
                         ${item.status === 'completed' ? `
-                        <button onclick="importHistoryManager.exportData(${parseInt(item.id, 10) || 0})"
+                        <button type="button" data-import-action="exportData" data-import-id="${parseInt(item.id, 10) || 0}"
                                 class="px-3 py-1 text-sm bg-emerald-500 text-primary-foreground rounded hover:bg-emerald-600">
                             <i class="fas fa-download"></i> Export
                         </button>
                         ` : ''}
                         ${item.status === 'completed' && this.canRollback(item) ? `
-                        <button onclick="importHistoryManager.confirmRollback(${parseInt(item.id, 10) || 0})"
+                        <button type="button" data-import-action="confirmRollback" data-import-id="${parseInt(item.id, 10) || 0}"
                                 class="px-3 py-1 text-sm bg-orange-500 text-primary-foreground rounded hover:bg-orange-600">
                             <i class="fas fa-undo"></i> Rollback
                         </button>
                         ` : ''}
                         ${item.status === 'failed' ? `
-                        <button onclick="importHistoryManager.retryFailed(${parseInt(item.id, 10) || 0})"
+                        <button type="button" data-import-action="retryFailed" data-import-id="${parseInt(item.id, 10) || 0}"
                                 class="px-3 py-1 text-sm bg-amber-500 text-primary-foreground rounded hover:bg-yellow-600">
                             <i class="fas fa-redo"></i> Retry
                         </button>
@@ -491,6 +491,26 @@ class ImportHistoryManager {
         }, 5000);
     }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes — these four row
+// buttons carried onclick="importHistoryManager.…" and never fired. Bound once
+// at document level so it survives the list being re-rendered.
+//
+// Note on Rollback: confirmRollback() only OPENS a confirmation modal; the
+// destructive rollback() behind it is currently a stub that reports
+// "Import history API is not yet available." Nothing is deleted by making this
+// button live — but the confirmation step is preserved, so if rollback() is
+// ever implemented it still cannot fire on a single click.
+document.addEventListener('click', (event) => {
+    const el = event.target.closest('[data-import-action]');
+    if (!el) return;
+    const manager = window.importHistoryManager;
+    if (!manager) return;
+    const action = el.getAttribute('data-import-action');
+    if (!['viewDetails', 'exportData', 'confirmRollback', 'retryFailed'].includes(action)) return;
+    event.preventDefault();
+    manager[action](Number(el.getAttribute('data-import-id')));
+});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

@@ -4,7 +4,6 @@ This is the ONLY file that knows about n8n's API. If we swap to
 Temporal, Prefect, or custom workers later, only this file changes.
 """
 import logging
-from datetime import datetime
 
 import requests
 from requests.exceptions import ConnectionError as RequestsConnectionError
@@ -13,6 +12,9 @@ from flask import current_app
 from app.extensions import db
 from app.modules.codegen.models import SolutionConnector
 from app.modules.codegen.services.credential_vault import CredentialVault
+from app.modules.intelligence.services.connector_allowlist import (
+    assert_connector_permitted,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +40,7 @@ def _schedule_node(cron: str) -> dict:
 
 
 def _push_node(target_api_url: str, connector_type: str) -> dict:
-    """Standard push-to-ARCHIE node used by all workflows."""
+    """Standard push-to-Entelim node used by all workflows."""
     return {
         "name": "Push",
         "type": "n8n-nodes-base.httpRequest",
@@ -94,7 +96,7 @@ def _build_salesforce_workflow(connector_type, credentials, object_mappings, tar
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -126,7 +128,7 @@ def _build_sap_workflow(connector_type, credentials, object_mappings, target_api
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -158,7 +160,7 @@ def _build_servicenow_workflow(connector_type, credentials, object_mappings, tar
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -187,7 +189,7 @@ def _build_jira_workflow(connector_type, credentials, object_mappings, target_ap
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -215,7 +217,7 @@ def _build_sharepoint_workflow(connector_type, credentials, object_mappings, tar
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -242,7 +244,7 @@ def _build_google_sheets_workflow(connector_type, credentials, object_mappings, 
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -273,7 +275,7 @@ def _build_postgresql_workflow(connector_type, credentials, object_mappings, tar
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -300,7 +302,7 @@ def _build_slack_workflow(connector_type, credentials, object_mappings, target_a
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -328,7 +330,7 @@ def _build_teams_workflow(connector_type, credentials, object_mappings, target_a
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -351,7 +353,7 @@ def _build_generic_workflow(connector_type, credentials, object_mappings, target
         _transform_node(connector_type),
         _push_node(target_api_url, connector_type),
     ]
-    return _wrap_workflow(f"ARCHIE Sync: {connector_type}", nodes, {
+    return _wrap_workflow(f"Entelim Sync: {connector_type}", nodes, {
         "Schedule": {"main": [[{"node": "Fetch"}]]},
         "Fetch": {"main": [[{"node": "Transform"}]]},
         "Transform": {"main": [[{"node": "Push"}]]},
@@ -402,7 +404,13 @@ class ConnectorOrchestrator:
         Credentials are stored encrypted via CredentialVault, then injected
         into the n8n workflow JSON at creation time. They are never persisted
         in n8n's own credential store.
+
+        Raises ``ConnectorNotPermitted`` before anything is stored when
+        *connector_type* is not on the allowlist -- this is the boundary
+        that holds for any caller, whether or not it checked first.
         """
+        assert_connector_permitted(connector_type)
+
         # Store credentials in vault (encrypted at rest)
         vault = CredentialVault()
         vault.store(solution_id, connector_type, credentials)
@@ -441,6 +449,11 @@ class ConnectorOrchestrator:
 
         Returns {"success": bool, "message": str}.
         """
+        try:
+            assert_connector_permitted(connector_type)
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
         try:
             if connector_type == "rest_api":
                 resp = requests.get(

@@ -20,8 +20,6 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
-from sqlalchemy import or_  # dead-code-ok
-from sqlalchemy.orm import joinedload  # dead-code-ok
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping  # dead-code-ok
@@ -35,46 +33,20 @@ from app.models.application_layer import (
     ApplicationService,
     DataObject,
 )
-from app.models.application_portfolio import ApplicationComponent
+from app.models.application_portfolio import (
+    APPLICATION_LIFECYCLE_STAGES,
+    ApplicationComponent,
+)
 from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import (  # dead-code-ok
     BusinessCapability,
 )
-from app.models.business_layer import (  # dead-code-ok
-    BusinessActor,
-)
-from app.models.implementation_migration import (  # dead-code-ok
-    Deliverable,
-    Gap,
-    ImplementationEvent,
-    Plateau,
-    WorkPackage,
-)
 from app.models.models import (  # dead-code-ok
-    ArchiMateElement,
+    # ArchiMateElement omitted deliberately: it is already imported from
+    # app.models.archimate_core above, and app.models.models re-exports the same
+    # object (verified identical), so importing it twice shadowed the first.
     ArchiMateRelationship,
     ArchitectureModel,
-    Requirement,
-)
-from app.models.motivation import Driver, Goal  # dead-code-ok
-from app.models.physical_layer import (  # dead-code-ok
-    PhysicalDistributionNetwork,
-    PhysicalEquipment,
-    PhysicalFacility,
-    PhysicalMaterial,
-)
-from app.models.relationship_tables import (  # dead-code-ok
-    ApplicationBusinessActorMapping,
-    ApplicationProcessSupport,
-)
-from app.models.unified_application_capability_mapping import (  # dead-code-ok
-    UnifiedApplicationCapabilityMapping,
-)
-from app.models.unified_capability import BusinessDomain, UnifiedCapability  # dead-code-ok
-from app.models.vendor.vendor_organization import (  # dead-code-ok
-    VendorOrganization,
-    VendorProduct,
-    application_vendor_products,
 )
 from app.services.archimate.archimate_llm_service import ArchiMateLLMService
 from app.decorators import audit_log, require_roles
@@ -89,21 +61,18 @@ from app.utils.validators import (
 )
 
 from app.schemas.api_schemas import ApplicationCreateSchema, _load_and_validate
+from app.utils.duplicate_guard import (
+    allow_duplicate_requested,
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+    lock_name_for_write,
+)
 
 from . import unified_applications_bp
-from ._constants import (  # dead-code-ok
-    ARCHIMATE_RELATIONSHIP_CHOICES,
-    CAPABILITY_MATURITY_CHOICES,
-    CAPABILITY_SUPPORT_LEVEL_CHOICES,
-    VENDOR_CRITICALITY_CHOICES,
-    VENDOR_DEPLOYMENT_CHOICES,
-    VENDOR_HOSTING_CHOICES,
-)
 from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
-    _format_date,
-    _load_domain_model_elements,
-    _query_archimate_by_layer,
+    _delete_mirror_archimate_element,
+    _soft_delete_mirror_archimate_element,
 )
 
 logger = logging.getLogger(__name__)
@@ -111,9 +80,21 @@ logger = logging.getLogger(__name__)
 
 @unified_applications_bp.route("/create", methods=["GET", "POST"])
 @login_required
+@require_roles("admin", "architect")
 @audit_log("application_create")
 def application_create():
-    """Create Application — modal handles creation inline; POST supports JSON."""
+    """Create Application — modal handles creation inline; POST supports JSON.
+
+    Duplicate protection (ARCH-030): the name is matched case-insensitively and
+    whitespace-normalised against existing applications in the caller's
+    organisation before the insert. A collision answers **409 Conflict** with a
+    ``duplicate_of`` block naming the existing record, so the caller — a human at
+    the modal or the AI agent — can reuse it instead of adding another row. Pass
+    ``allow_duplicate=true`` (query string, body field, or the
+    ``X-Allow-Duplicate`` header) to create the duplicate deliberately, which
+    some organisations need when two systems genuinely share a name in
+    different domains.
+    """
     if request.method == "GET":
         return redirect(url_for("unified_applications.application_list"))
 
@@ -174,9 +155,17 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
 
-    criticality = data.get("criticality")
+    # F-10(a), Capgemini dry-run: ApplicationCreateSchema names this field
+    # `criticality` (see app/schemas/api_schemas.py); the live create form
+    # (applicationCreateForm, app/static/js/applications/list.js) already
+    # knows this and sends `criticality` in its JSON body — but this route
+    # read `business_criticality` from the validated proxy, a key that
+    # dict never has, so the value was silently None on every JSON create.
+    # A raw form-encoded POST (the `else: data = request.form` branch above)
+    # still uses the model's own field name, so accept both.
+    business_criticality = data.get("criticality") or data.get("business_criticality")
     is_valid, validated_crit, error = validate_string(
-        criticality, max_length=50, field_name="criticality"
+        business_criticality, max_length=50, field_name="business_criticality"
     )
     if not is_valid:
         validation_errors.append(error)
@@ -236,13 +225,36 @@ def application_create():
             flash(error, "error")
         return redirect(url_for("unified_applications.application_list"))
 
+    # ARCH-030: refuse a same-named application unless the caller opted in.
+    # ApplicationComponent inherits TenantMixin, so the organisation predicate is
+    # injected by do_orm_execute — adding one here would double-filter.
+    if not allow_duplicate_requested(data):
+        # The check below is check-then-insert, which races: five simultaneous
+        # identical posts produced five rows. The advisory lock serialises the
+        # check and the insert per (table, tenant, folded name) for the rest of
+        # this transaction, so the second concurrent request sees the first
+        # one's row. See lock_name_for_write for why this rather than a UNIQUE
+        # index.
+        lock_name_for_write(ApplicationComponent, name)
+        existing = find_duplicate_by_name(ApplicationComponent, name)
+        if existing is not None:
+            if is_json:
+                return duplicate_conflict_response("An application", existing)
+            flash(
+                f"An application named '{existing.name}' already exists.",
+                "error",
+            )
+            return redirect(
+                url_for("unified_applications.application_detail", id=existing.id)
+            )
+
     try:
         app = ApplicationComponent(
             name=name,
             description=description,
             application_code=application_code,
             component_type=validated_type,
-            criticality=validated_crit,
+            business_criticality=validated_crit,
             technology_stack=technology_stack,
             deployment_status=validated_status,
             business_owner=business_owner,
@@ -267,6 +279,9 @@ def application_create():
             "integration_pattern",
             "authentication_method",
             "data_classification",
+            # F-09, Capgemini dry-run: Lifecycle Status could previously only
+            # be set in bulk (POST /api/bulk-lifecycle), never per-application.
+            "lifecycle_status",
         ]
         for field in optional_fields:
             value = data.get(field)
@@ -318,6 +333,22 @@ def application_detail(id):
     from app.application_mgmt.routes import render_application_detail
 
     return render_application_detail(id)
+
+
+@unified_applications_bp.route("/<int:id>/fact-sheet")
+@login_required
+def application_fact_sheet(id):
+    """Fact Sheet — one consolidated, single-source-of-truth page per application.
+
+    Pulls identity, ownership, cost, technology, security/lifecycle posture, the
+    capabilities it realises, its ArchiMate dependencies, and the diagrams it
+    appears on into one view, with a completeness score over the key fields.
+    """
+    from app.services.application_fact_sheet import build_fact_sheet  # noqa: PLC0415
+
+    app_obj = ApplicationComponent.query.get_or_404(id)
+    sheet = build_fact_sheet(app_obj)
+    return render_template("applications/fact_sheet.html", **sheet)
 
 
 @unified_applications_bp.route("/<int:id>/generate-archimate", methods=["POST"])
@@ -550,6 +581,7 @@ def generate_application_archimate(id):
 
 @unified_applications_bp.route("/<int:id>/edit", methods=["GET", "POST"])
 @login_required
+@require_roles("admin", "architect")
 @audit_log("application_update")
 def application_edit(id):
     """Edit Application - ALWAYS returns HTML"""
@@ -580,7 +612,13 @@ def application_edit(id):
                 if not is_valid:
                     validation_errors.append(error)
                 else:
-                    app.name = sanitize_html(validated_name)
+                    # F-10(b), Capgemini dry-run: sanitize_html() entity-escapes
+                    # ('&' -> '&amp;'), and Jinja autoescapes again on render —
+                    # double-escaping "SCADE Plant Control & Reporting" into
+                    # "...&amp;amp;..." on every page showing the name.
+                    # application_create() already gets this right (see its own
+                    # comment on the same field); mirror it here.
+                    app.name = validated_name
 
             # Validate description
             description = request.form.get("description")
@@ -589,9 +627,7 @@ def application_edit(id):
                 if not is_valid:
                     validation_errors.append(error)
                 else:
-                    app.description = (
-                        sanitize_html(validated_desc) if validated_desc else None
-                    )
+                    app.description = validated_desc or None
 
             # Validate application_code
             application_code = request.form.get("application_code")
@@ -643,7 +679,10 @@ def application_edit(id):
 
             # Validate deployment_status
             deployment_status = request.form.get("deployment_status")
-            if deployment_status is not None:
+            # An empty submission means "not set / leave alone" -- without this,
+            # a NULL deployment_status renders as the first <option> and any save
+            # silently reclassifies the application (was: to 'production').
+            if deployment_status:
                 is_valid, validated_status, error = validate_string(
                     deployment_status, max_length=50, field_name="deployment_status"
                 )
@@ -697,7 +736,11 @@ def application_edit(id):
             if validation_errors:
                 for error in validation_errors:
                     flash(error, "error")
-                return render_template("applications/edit.html", application=app), 400
+                return render_template(
+                    "applications/edit.html", application=app,
+                    lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
+                    lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+                ), 400
 
             # Capture additional fields if submitted (API calls, expanded forms)
             optional_fields = [
@@ -715,6 +758,21 @@ def application_edit(id):
                 "integration_pattern",
                 "authentication_method",
                 "data_classification",
+                # Technical profile / compliance / notes fields the edit form
+                # gained alongside the fact sheet that already displayed
+                # them -- the form having the input was not enough on its
+                # own; this loop never named any of these, so a submitted
+                # value was silently dropped.
+                "deployment_region",
+                "database_platforms",
+                "integration_methods",
+                "container_image",
+                "kubernetes_namespace",
+                "main_branch",
+                "compliance_requirements",
+                "security_certifications",
+                "notes",
+                "assessment_notes",
             ]
             for field in optional_fields:
                 value = request.form.get(field)
@@ -736,6 +794,23 @@ def application_edit(id):
                         logger.exception("Failed to operation")
                         pass
 
+            # F-08(c), Capgemini dry-run: applications had no plateau/as-is-to-be
+            # control anywhere, though ApplicationComponent already reaches one
+            # via archimate_element_id — the same mechanism BusinessRole already
+            # uses (see tests/test_plateau_filter_roundtrip.py). Reuse the
+            # existing set-only helper rather than duplicating its logic.
+            from app.modules.architecture.routes.archimate_crud.routes import (
+                _apply_architecture_state,
+            )
+            _apply_architecture_state(app, request.form)
+
+            # F-09, Capgemini dry-run: Lifecycle Status was shown on the detail
+            # page, the list filter and the Workbench facet but could only ever
+            # be set in bulk (POST /api/bulk-lifecycle) — never per-application.
+            lifecycle_status = request.form.get("lifecycle_status")
+            if lifecycle_status:
+                app.lifecycle_status = lifecycle_status
+
             app.updated_by = current_user.id
 
             db.session.commit()
@@ -749,9 +824,21 @@ def application_edit(id):
                 )
             )
 
-        return render_template("applications/edit.html", application=app)
+        # Current architecture state, for pre-selecting the control below —
+        # read from the linked ArchiMateElement, same resolution
+        # _apply_architecture_state uses to write it.
+        architecture_state = None
+        if app.archimate_element_id:
+            ae = db.session.get(ArchiMateElement, app.archimate_element_id)
+            if ae is not None:
+                architecture_state = ae.togaf_plateau
+        return render_template(
+            "applications/edit.html", application=app, architecture_state=architecture_state,
+            lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
+            lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+        )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error updating application. Please try again.", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
@@ -767,21 +854,45 @@ def application_delete(id):
     try:
         app = ApplicationComponent.query.get_or_404(id)
         app_name = app.name
+        element_id = app.archimate_element_id
 
         # Clean up related records first to avoid FK constraint errors
         _cleanup_application_relationships(id)
         db.session.delete(app)
+        db.session.flush()
+        # The application's mirror ArchiMate element goes with it (finding C-02).
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
         if is_ajax:
+            message = f"Application '{app_name}' deleted"
+            if mirror["errors"]:
+                message += "; its ArchiMate element could not be removed"
             return jsonify(
-                {"success": True, "message": f"Application '{app_name}' deleted"}
+                {
+                    "success": True,
+                    "message": message,
+                    "deleted": 1,
+                    "elements_deleted": mirror["elements_deleted"],
+                    "relationships_deleted": mirror["relationships_deleted"],
+                    "errors": mirror["errors"],
+                }
             ), 200
 
-        flash("Application deleted successfully!", "success")
+        if mirror["errors"]:
+            flash(
+                "Application deleted, but its ArchiMate element could not be "
+                "removed — it is still referenced elsewhere.",
+                "warning",
+            )
+        else:
+            flash("Application deleted successfully!", "success")
         return redirect(url_for("unified_applications.application_list"))
 
     except Exception as e:
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            raise
         db.session.rollback()
         if is_ajax:
             return jsonify(
@@ -798,11 +909,41 @@ def application_delete(id):
 @audit_log("application_bulk_delete")
 @rate_limit(5, "1m")
 def bulk_delete_applications():
-    """Bulk delete multiple applications - Returns JSON"""
+    """Bulk soft-delete multiple applications - Returns JSON.
+
+    Finding A-04/ARCH-051/C-10: this used to be a hard delete (application row,
+    ArchiMate mirror element and relationships all destroyed immediately) behind
+    nothing stronger than an admin-role check, with no recovery path. It now:
+      - requires an explicit `confirm: true` in the request body, so a
+        replayed/forged request that only guesses the id list still fails, and
+      - soft-deletes (sets deleted_at/deleted_by) instead of destroying rows,
+        leaving a recovery window.
+
+    Finding C-02 reopened: soft-deleting only the application left its
+    ArchiMate mirror element live and visible in the composer palette,
+    relationship matrix, OEF export and AI context — the exact orphaned-
+    element symptom C-02 closed on the other four delete paths. The mirror
+    is now soft-deleted alongside the application (see
+    ``_soft_delete_mirror_archimate_element``), hidden by the same
+    unconditional filter that hides the application, and restored together.
+    Restoring is not yet wired to a UI action; recovery today is
+    `UPDATE application_components SET deleted_at = NULL, deleted_by = NULL
+    WHERE id = ...` followed by the equivalent on `archimate_elements` for
+    that application's `archimate_element_id`, scoped to the caller's
+    organization_id via flask --app manage db-query.
+    """
     try:
         data = request.get_json()
         if not data:
             return jsonify({"success": False, "error": "No data provided"}), 400
+
+        if not data.get("confirm"):
+            return jsonify(
+                {
+                    "success": False,
+                    "error": "Confirmation required: resend with \"confirm\": true.",
+                }
+            ), 400
 
         # Accept both 'ids' and 'app_ids' for flexibility
         ids = data.get("ids") or data.get("app_ids", [])
@@ -812,11 +953,14 @@ def bulk_delete_applications():
             ), 400
 
         deleted_count = 0
+        elements_deleted = 0
+        element_errors = []
         errors = []
 
         # OPTIMIZATION: Batch-prefetch application objects to avoid N+1 queries
         _bulk_apps = ApplicationComponent.query.filter(
-            ApplicationComponent.id.in_(ids)
+            ApplicationComponent.id.in_(ids),
+            ApplicationComponent.deleted_at.is_(None),
         ).all()
         _bulk_apps_by_id = {a.id: a for a in _bulk_apps}
 
@@ -824,11 +968,17 @@ def bulk_delete_applications():
             try:
                 app = _bulk_apps_by_id.get(app_id)
                 if app:
-                    # Clean up related records first to avoid FK constraint errors
-                    _cleanup_application_relationships(app_id)
-                    db.session.delete(app)
+                    app.deleted_at = datetime.utcnow()
+                    app.deleted_by = getattr(current_user, "id", None)
+                    element_id = app.archimate_element_id
+                    db.session.flush()
+                    mirror = _soft_delete_mirror_archimate_element(
+                        element_id, deleted_by=getattr(current_user, "id", None)
+                    )
                     db.session.commit()
                     deleted_count += 1
+                    elements_deleted += mirror["elements_deleted"]
+                    element_errors.extend(mirror["errors"])
                 else:
                     errors.append(f"Application {app_id} not found")
             except Exception as e:
@@ -837,13 +987,21 @@ def bulk_delete_applications():
                 current_app.logger.error(f"Error deleting app {app_id}: {e}")
 
         all_failed = deleted_count == 0 and len(errors) > 0
+        message = (
+            f"Soft-deleted {deleted_count} application(s) and "
+            f"{elements_deleted} ArchiMate element(s); recoverable."
+        )
+        if element_errors:
+            message += " Some ArchiMate elements could not be hidden."
         return jsonify(
             {
                 "success": not all_failed,
                 "deleted": deleted_count,
                 "deleted_count": deleted_count,  # Alias for compatibility
-                "errors": errors,
-                "message": f"Successfully deleted {deleted_count} application(s)",
+                "elements_deleted": elements_deleted,
+                "relationships_deleted": 0,
+                "errors": errors + element_errors,
+                "message": message,
             }
         )
 
@@ -861,14 +1019,29 @@ def api_delete_application(app_id):
     """API endpoint for deleting an application"""
     try:
         app = ApplicationComponent.query.get_or_404(app_id)
+        app_name = app.name
+        element_id = app.archimate_element_id
 
         # Clean up related records first to avoid FK constraint errors
         _cleanup_application_relationships(app_id)
         db.session.delete(app)
+        db.session.flush()
+        # Mirror ArchiMate element goes with it (finding C-02).
+        mirror = _delete_mirror_archimate_element(element_id)
         db.session.commit()
 
+        message = f"Application {app_name} deleted successfully"
+        if mirror["errors"]:
+            message += "; its ArchiMate element could not be removed"
         return jsonify(
-            {"success": True, "message": f"Application {app.name} deleted successfully"}
+            {
+                "success": True,
+                "message": message,
+                "deleted": 1,
+                "elements_deleted": mirror["elements_deleted"],
+                "relationships_deleted": mirror["relationships_deleted"],
+                "errors": mirror["errors"],
+            }
         )
 
     except Exception as e:
@@ -994,8 +1167,6 @@ def suggest_capabilities(id):
     Returns ranked suggestions with confidence scores and evidence.
     """
     from sqlalchemy import func
-    from app.models.application_capability import ApplicationCapabilityMapping
-    from app.models.business_capabilities import BusinessCapability
 
     app_obj = ApplicationComponent.query.get_or_404(id)
 
@@ -1140,10 +1311,9 @@ def suggest_capabilities(id):
 @login_required
 def accept_capability_suggestion(id):
     """Accept an AI-suggested capability mapping — creates the ApplicationCapabilityMapping record."""
-    from flask_login import current_user
-    from app.models.application_capability import ApplicationCapabilityMapping
+    from flask import g
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    ApplicationComponent.query.get_or_404(id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     confidence = data.get("confidence", 0)
@@ -1151,7 +1321,11 @@ def accept_capability_suggestion(id):
     if not cap_id:
         return jsonify({"success": False, "error": "capability_id required"}), 400
 
+    if db.session.get(BusinessCapability, cap_id) is None:
+        return jsonify({"success": False, "error": "Capability not found"}), 404
+
     # Check if already mapped
+    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
     existing = ApplicationCapabilityMapping.query.filter_by(
         application_component_id=id, business_capability_id=cap_id
     ).first()
@@ -1159,6 +1333,9 @@ def accept_capability_suggestion(id):
         return jsonify({"success": False, "error": "Already mapped"}), 409
 
     mapping = ApplicationCapabilityMapping(
+        # organization_id is NOT NULL on this table and this model has no
+        # TenantMixin to default it — omitting it 500'd on every accept.
+        organization_id=g.current_org_id,
         application_component_id=id,
         business_capability_id=cap_id,
         support_level="partial",
@@ -1171,8 +1348,15 @@ def accept_capability_suggestion(id):
         is_active=True,
         created_by_id=getattr(current_user, "id", None),
     )
-    db.session.add(mapping)
-    db.session.commit()
+    try:
+        db.session.add(mapping)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "Failed to accept capability suggestion %s for application %s", cap_id, id
+        )
+        return jsonify({"success": False, "error": "Could not save that suggestion."}), 500
 
     return jsonify({
         "success": True,

@@ -3,7 +3,7 @@ Workflow Orchestrator Service - Main service for Phase 4 workflow generation.
 Converts AI recommendations into detailed implementation roadmaps.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 import logging
 
@@ -261,7 +261,7 @@ class WorkflowOrchestratorService:
         
         # Resolve
         if not self.dependency_resolver.resolve():
-            logger.warning(f"Circular dependency detected")
+            logger.warning("Circular dependency detected")
             return False
         
         # Copy calculated values back to tasks

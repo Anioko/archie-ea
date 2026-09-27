@@ -9,7 +9,6 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Any, Set
-from pathlib import Path
 
 
 class EnforcementLevel(str, Enum):

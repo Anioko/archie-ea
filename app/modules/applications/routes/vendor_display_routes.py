@@ -20,6 +20,7 @@ from app.decorators import audit_log
 
 from ._helpers import _vendors_impl
 from . import unified_applications_bp
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +48,8 @@ def vendors():
     domain_filter = request.args.get("domain", "all")
     contract_status_filter = request.args.get("contract_status", "all")
     search_query = request.args.get("search", "")
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 10, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 10, minimum=1, maximum=500), 200)
 
     try:
         return _vendors_impl(
@@ -67,17 +68,17 @@ def vendors():
             per_page,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading vendor list: {e}")
+        db.session.rollback()
+        current_app.logger.exception("Error loading vendor list: %s", e)
+        flash("Error loading vendors. Please try again.", "error")
+        # stats=None so every card shows an em dash. A zeroed vendor count
+        # reads as "we have no vendors", which is a different fact entirely.
         return render_template(
             "vendors/list.html",
             vendors=[],
-            stats={
-                "total": 0,
-                "active": 0,
-                "strategic": 0,
-                "total_products": 0,
-                "domain_distribution": {},
-            },
+            stats=None,
+            load_error="The vendor catalogue could not be read.",
+            vendor_type_filter_options=[],
             vendor_type_filter=vendor_type_filter,
             domain_filter=domain_filter,
             contract_status_filter=contract_status_filter,

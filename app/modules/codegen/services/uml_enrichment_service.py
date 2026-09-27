@@ -704,7 +704,6 @@ class UMLEnrichmentService:
         Uses ArchiMate relationships (if available) to match DataObjects with their
         related BusinessProcesses and AppComponents. Falls back to name similarity.
         """
-        import difflib
 
         data_objects = context.get("data_objects", [])
         all_processes = context.get("business_processes", [])

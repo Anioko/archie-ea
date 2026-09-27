@@ -10,7 +10,7 @@
         <div class="flex items-center gap-2 mb-3">
             <i data-lucide="layout-template" class="h-4 w-4 text-primary"></i>
             <span class="text-sm font-semibold text-foreground">Start from an Industry Template</span>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">NEW</span>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20">NEW</span>
         </div>
         <p class="text-xs text-muted-foreground mb-3">Pre-built architectures with entities, state machines, roles, and compliance. Customize the 30% that makes your app unique.</p>
         <div x-show="!genomeTemplates" class="flex items-center gap-2">
@@ -27,28 +27,28 @@
                         class="text-left rounded-lg border border-border bg-background p-3 hover:border-primary/50 hover:bg-primary/5 transition-colors">
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm font-semibold text-foreground" x-text="tpl.name"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"
                               x-text="tpl.quality_score + '/100'"></span>
                     </div>
                     <p class="text-xs text-muted-foreground line-clamp-2 mb-2" x-text="tpl.description"></p>
                     <div class="flex flex-wrap gap-1">
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                               x-text="tpl.module_count + ' modules'"></span>
-                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" {# design-tokens-ok: sibling stat badge legend (modules=info, state machines=warning); violet keeps entity-count visually distinct, would collide with the modules badge if mapped to info #}
                               x-text="tpl.entity_count + ' entities'"></span>
-                        <span x-show="tpl.has_state_machine" class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">state machines</span>
+                        <span x-show="tpl.has_state_machine" class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">state machines</span>
                     </div>
                 </button>
             </template>
         </div>
-        <div x-show="templateApplyResult" x-cloak class="mt-3 flex items-center gap-2 text-xs text-emerald-600">
+        <div x-show="templateApplyResult" x-cloak class="mt-3 flex items-center gap-2 text-xs text-success-emphasis">
             <i data-lucide="check-circle-2" class="h-3.5 w-3.5"></i>
             <span x-text="templateApplyResult"></span>
         </div>
     </div>
-    <div x-show="templateApplied" x-cloak class="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 flex items-center gap-2">
-        <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
-        <span class="text-sm text-emerald-700 font-medium" x-text="'Template applied: ' + (templateAppliedName || '') + ' — customize below'"></span>
+    <div x-show="templateApplied" x-cloak class="rounded-lg border border-success/30 bg-success/10 px-4 py-3 flex items-center gap-2">
+        <i data-lucide="check-circle-2" class="h-4 w-4 text-success"></i>
+        <span class="text-sm text-success-emphasis font-medium" x-text="'Template applied: ' + (templateAppliedName || '') + ' — customize below'"></span>
     </div>
 
     {# ── Sub-step indicator ─────────────────────────────────── #}
@@ -71,7 +71,7 @@
         <div class="border border-border rounded-lg p-4 bg-card space-y-4">
             <div>
                 <h3 class="text-lg font-semibold text-foreground">Business Context</h3>
-                <p class="text-sm text-muted-foreground">Help A.R.C.H.I.E. understand the organizational and project context.</p>
+                <p class="text-sm text-muted-foreground">Help Entelim understand the organizational and project context.</p>
             </div>
 
             {# Solution Name #}
@@ -81,7 +81,7 @@
                     <input type="text" x-model="solutionName" placeholder="e.g. Claims Processing Modernisation"
                            @blur="saveSolutionName()"
                            @keydown.enter.prevent="saveSolutionName()"
-                           class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Solution Name">
                     <span x-show="solutionNameSaving" x-cloak class="flex items-center text-xs text-muted-foreground gap-1">
                         <span class="animate-spin h-3 w-3 border-2 border-muted-foreground border-t-transparent rounded-full"></span>
                         Saving
@@ -112,7 +112,7 @@
             <div class="space-y-1">
                 <label class="text-sm font-medium">Timeline</label>
                 <input type="number" x-model.number="structuredIntake.timeline_months" min="1" max="60" placeholder="Duration in months"
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Timeline">
             </div>
 
             {# Budget Range #}
@@ -120,9 +120,9 @@
                 <label class="text-sm font-medium">Budget Range</label>
                 <div class="grid grid-cols-2 gap-4">
                     <input type="number" x-model.number="structuredIntake.budget_min" placeholder="Min budget (&pound;)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Budget Range">
                     <input type="number" x-model.number="structuredIntake.budget_max" placeholder="Max budget (&pound;)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Max budget (&pound;)">
                 </div>
             </div>
 
@@ -158,11 +158,11 @@
                 <div class="grid grid-cols-3 gap-4">
                     <!-- entity-picker-ok -->
                     <input type="number" x-model.number="structuredIntake.user_count" placeholder="End users"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Scale Indicators">
                     <input type="number" x-model.number="structuredIntake.transaction_volume" placeholder="Daily transactions"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Daily transactions">
                     <input type="number" x-model.number="structuredIntake.data_volume_gb" placeholder="Data volume (GB)"
-                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Data volume (GB)">
                 </div>
             </div>
         </div>
@@ -187,7 +187,7 @@
                         Extracting from document(s)…
                     </span>
                 </div>
-                <textarea x-model="problemStatement" rows="5"
+                <textarea aria-label="Problem statement" x-model="problemStatement" rows="5"
                           :disabled="clarifyPhase === 'questions'"
                           @input="searchLandscape()"
                           placeholder="e.g., We need to consolidate our three CRM systems into a single platform to reduce licensing costs and improve customer visibility across sales and support teams."
@@ -203,7 +203,7 @@
                             <span class="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full ml-auto"></span>
                         </template>
                         <template x-if="landscapeMatches && !landscapeSearching">
-                            <span class="ml-auto text-[10px] text-muted-foreground"
+                            <span class="ml-auto text-xs text-muted-foreground"
                                   x-text="landscapeMatches.total_matches + ' matching entities in your platform'"></span>
                         </template>
                     </div>
@@ -216,10 +216,10 @@
                         <div class="space-y-2">
                             <template x-if="landscapeMatches.capabilities && landscapeMatches.capabilities.length > 0">
                                 <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Capabilities you already own</p>
+                                    <p class="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Capabilities you already own</p>
                                     <div class="flex flex-wrap gap-1.5">
                                         <template x-for="c in landscapeMatches.capabilities" :key="c.name">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-700 border border-emerald-500/20"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-medium bg-success/10 text-success-emphasis border border-success/20"
                                                   x-text="c.name"></span>
                                         </template>
                                     </div>
@@ -227,10 +227,10 @@
                             </template>
                             <template x-if="landscapeMatches.applications && landscapeMatches.applications.length > 0">
                                 <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Applications in your portfolio</p>
+                                    <p class="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Applications in your portfolio</p>
                                     <div class="flex flex-wrap gap-1.5">
                                         <template x-for="a in landscapeMatches.applications" :key="a.name">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-500/10 text-blue-700 border border-blue-500/20"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-medium bg-info/10 text-info-emphasis border border-info/20"
                                                   x-text="a.name"></span>
                                         </template>
                                     </div>
@@ -238,10 +238,10 @@
                             </template>
                             <template x-if="landscapeMatches.elements && landscapeMatches.elements.length > 0">
                                 <div>
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">ArchiMate elements</p>
+                                    <p class="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">ArchiMate elements</p>
                                     <div class="flex flex-wrap gap-1.5">
                                         <template x-for="e in landscapeMatches.elements" :key="e.name">
-                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-violet-500/10 text-violet-700 border border-violet-500/20"
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-2xs font-medium bg-violet-500/10 text-violet-700 border border-violet-500/20" {# design-tokens-ok: legend of 3 landscape-match categories (capabilities=success, applications=info, elements=violet) — collapsing onto one token would make distinct entity types indistinguishable #}
                                                   x-text="e.layer ? e.name + ' (' + e.layer + ')' : e.name"></span>
                                         </template>
                                     </div>
@@ -258,7 +258,7 @@
                 </div>
                 <div class="flex items-center justify-between mt-2">
                     <span class="text-xs"
-                          :class="problemStatement.length > 45000 ? 'text-amber-500 font-medium' : 'text-muted-foreground'"
+                          :class="problemStatement.length > 45000 ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                           x-text="problemStatement.length.toLocaleString() + ' / 50,000 characters'"></span>
                     <button type="button" @click="getClarifyingQuestions()"
                             x-show="clarifyPhase === 'input'"
@@ -292,13 +292,13 @@
 
         {# ── LLM degradation warning ─────────────────────────── #}
         <div x-show="llmDegraded.step1" x-cloak
-             class="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-            <svg class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+             class="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+            <svg class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
             </svg>
             <div>
-                <p class="text-sm font-medium text-amber-700">AI clarification unavailable</p>
-                <p class="text-xs text-amber-600/80 mt-0.5">The LLM did not return questions. You can continue directly — your problem statement will be used as-is for architecture generation.</p>
+                <p class="text-sm font-medium text-warning-emphasis">AI clarification unavailable</p>
+                <p class="text-xs text-warning-emphasis/80 mt-0.5">The LLM did not return questions. You can continue directly — your problem statement will be used as-is for architecture generation.</p>
             </div>
         </div>
 
@@ -314,13 +314,13 @@
                     <div class="rounded-md border border-border bg-background p-4 space-y-2">
                         <div class="flex items-start justify-between gap-2">
                             <div class="flex items-start gap-2">
-                                <span class="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0 mt-0.5"
+                                <span class="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0 mt-0.5"
                                       x-text="idx + 1"></span>
                                 <p class="text-sm text-foreground" x-text="typeof q === 'string' ? q : (q.question || q.text || '')"></p>
                             </div>
                             <button type="button" @click="skipQuestion(idx)"
                                     x-show="clarifyAnswers[idx] !== '[skipped]'"
-                                    class="text-[10px] text-muted-foreground hover:text-foreground border border-input rounded px-2 py-0.5 flex-shrink-0 transition-colors">
+                                    class="text-xs text-muted-foreground hover:text-foreground border border-input rounded px-2 py-0.5 flex-shrink-0 transition-colors">
                                 Skip
                             </button>
                         </div>
@@ -331,7 +331,7 @@
                             <template x-if="q.type === 'entity_picker'">
                                 <div class="space-y-2">
                                     <div class="relative">
-                                        <input type="text"
+                                        <input aria-label="Search for an entity" type="text"
                                                x-model="pickerState[idx].query"
                                                @input="searchEntities(idx)"
                                                @keydown.enter.prevent="addFreeText(idx)"
@@ -341,7 +341,7 @@
                                             <span class="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full inline-block"></span>
                                         </div>
                                     </div>
-                                    <p x-show="pickerState[idx].searchError" x-cloak class="text-xs text-destructive" x-text="pickerState[idx].searchError"></p>
+                                    <p x-show="pickerState[idx].searchError" x-cloak class="text-xs text-destructive-emphasis" x-text="pickerState[idx].searchError"></p>
                                     <div x-show="pickerState[idx].results.length > 0" x-cloak
                                          class="border border-border rounded-md bg-background shadow-md max-h-40 overflow-y-auto">
                                         <template x-for="(item, ri) in pickerState[idx].results" :key="ri">
@@ -357,20 +357,20 @@
                                             <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
                                                 <span x-text="sel.name"></span>
                                                 <button @click="removeEntity(idx, sel.id)" type="button"
-                                                        class="hover:text-destructive transition-colors">&times;</button>
+                                                        class="hover:text-destructive-emphasis transition-colors">&times;</button>
                                             </span>
                                         </template>
                                     </div>
                                     <textarea x-model="pickerState[idx].contextText" rows="1"
                                               placeholder="Additional context (optional)..."
-                                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none text-muted-foreground"></textarea>
+                                              class="w-full rounded-md border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none text-muted-foreground" aria-label="Additional context (optional)..."></textarea>
                                 </div>
                             </template>
                             {# Regular textarea for text type questions #}
                             <template x-if="q.type !== 'entity_picker'">
                                 <textarea x-model="clarifyAnswers[idx]" rows="2"
                                           placeholder="Your answer..."
-                                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none"></textarea>
+                                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:ring-2 focus:ring-ring focus:outline-none" aria-label="Your answer..."></textarea>
                             </template>
                         </div>
                     </div>
@@ -403,11 +403,11 @@
 
         {# ── Enriched brief preview ───── #}
         <div x-show="clarifyPhase === 'enriched' && enrichedBrief" x-cloak
-             class="rounded-xl border-l-4 border-l-emerald-500 border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-3">
+             class="rounded-lg border border-border bg-card p-5 space-y-3">
             <div class="flex items-center justify-between">
-                <p class="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Enriched Brief</p>
-                <span class="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>AI-enhanced
+                <p class="text-2xs font-medium text-muted-foreground uppercase tracking-wider">Enriched Brief</p>
+                <span class="inline-flex items-center gap-1 text-xs text-success-emphasis font-medium">
+                    <span class="w-1.5 h-1.5 rounded-full bg-success"></span>AI-enhanced
                 </span>
             </div>
             <p class="text-sm text-foreground/90 leading-relaxed" x-text="enrichedBrief"></p>
@@ -475,7 +475,7 @@
                                 </div>
                                 <div class="col-span-4">
                                     <input type="text" x-model="nfr.target" placeholder="Target (e.g. 99.9%, &lt; 200ms)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Target (e.g. 99.9%, &lt; 200ms)">
                                 </div>
                                 <div class="col-span-3">
                                     <select x-model="nfr.priority" aria-label="NFR priority"
@@ -487,7 +487,7 @@
                                 </div>
                                 <div class="col-span-1 flex justify-center">
                                     <button @click="structuredIntake.nfrs.splice(idx, 1)" type="button"
-                                            class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                                            class="text-muted-foreground hover:text-destructive-emphasis transition-colors">&times;</button>
                                 </div>
                             </div>
                             {# Row 2: acceptance criteria / compliance reference / verification method #}
@@ -495,12 +495,12 @@
                                 <div class="col-span-5">
                                     <input type="text" x-model="nfr.acceptance_criteria"
                                            placeholder="Acceptance criteria (testable success condition)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Acceptance criteria (testable success condition)">
                                 </div>
                                 <div class="col-span-4">
                                     <input type="text" x-model="nfr.compliance_reference"
                                            placeholder="Compliance ref (e.g. GDPR Art. 25)"
-                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                           class="w-full px-3 py-2 border border-border rounded-md bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Compliance ref (e.g. GDPR Art. 25)">
                                 </div>
                                 <div class="col-span-3">
                                     <select x-model="nfr.verification_method" aria-label="NFR verification method"
@@ -540,11 +540,11 @@
                             </div>
                             <div class="col-span-6">
                                 <input type="text" x-model="tc.technology" placeholder="Technology name (e.g. Azure, PostgreSQL)"
-                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Technology name (e.g. Azure, PostgreSQL)">
                             </div>
                             <div class="col-span-1 flex justify-center">
                                 <button @click="structuredIntake.tech_constraints.splice(idx, 1)" type="button"
-                                        class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                                        class="text-muted-foreground hover:text-destructive-emphasis transition-colors">&times;</button>
                             </div>
                         </div>
                     </template>
@@ -561,7 +561,7 @@
                         <div class="grid grid-cols-12 gap-2 items-center">
                             <div class="col-span-4">
                                 <input type="text" x-model="driver.name" placeholder="Driver name"
-                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Business Drivers">
                             </div>
                             <div class="col-span-4">
                                 <select x-model="driver.type" aria-label="Driver type"
@@ -583,7 +583,7 @@
                             </div>
                             <div class="col-span-1 flex justify-center">
                                 <button @click="structuredIntake.drivers.splice(idx, 1)" type="button"
-                                        class="text-muted-foreground hover:text-destructive transition-colors">&times;</button>
+                                        class="text-muted-foreground hover:text-destructive-emphasis transition-colors">&times;</button>
                             </div>
                         </div>
                     </template>
@@ -621,7 +621,7 @@
                 <p class="text-xs text-muted-foreground">Select existing applications affected by this solution</p>
                 <input type="text" x-model="appSearchQuery" @input.debounce.300ms="searchApps()"
                        placeholder="Search applications..."
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Applications in Scope">
                 {# Search results dropdown #}
                 <div x-show="appSearchResults.length > 0" x-cloak
                      class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
@@ -639,7 +639,7 @@
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">
                             <span x-text="app.name"></span>
                             <button @click="removeScopeApp(app.id)" type="button"
-                                    class="ml-1 text-muted-foreground hover:text-destructive">&times;</button>
+                                    class="ml-1 text-muted-foreground hover:text-destructive-emphasis">&times;</button>
                         </span>
                     </template>
                 </div>
@@ -650,7 +650,7 @@
                 <label class="text-sm font-medium">Systems to Integrate With</label>
                 <input type="text" x-model="integrationSearchQuery" @input.debounce.300ms="searchIntegrations()"
                        placeholder="Search systems..."
-                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="w-full px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Systems to Integrate With">
                 <div x-show="integrationSearchResults.length > 0" x-cloak
                      class="border border-border rounded-md max-h-40 overflow-y-auto bg-background shadow-md">
                     <template x-for="sys in integrationSearchResults" :key="sys.id">
@@ -662,10 +662,10 @@
                 </div>
                 <div class="flex flex-wrap gap-2 mt-2">
                     <template x-for="sys in structuredIntake.integration_systems" :key="sys.id">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30">
                             <span x-text="sys.name"></span>
                             <button @click="removeIntegration(sys.id)" type="button"
-                                    class="ml-1 text-muted-foreground hover:text-destructive">&times;</button>
+                                    class="ml-1 text-muted-foreground hover:text-destructive-emphasis">&times;</button>
                         </span>
                     </template>
                 </div>
@@ -678,9 +678,9 @@
                     <template x-for="(pain, idx) in structuredIntake.pain_points" :key="idx">
                         <div class="flex gap-2">
                             <input type="text" x-model="structuredIntake.pain_points[idx]" placeholder="Describe a pain point"
-                                   class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+                                   class="flex-1 px-3 py-2 border border-border rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Current Pain Points">
                             <button @click="structuredIntake.pain_points.splice(idx, 1)" type="button"
-                                    class="text-muted-foreground hover:text-destructive">&times;</button>
+                                    class="text-muted-foreground hover:text-destructive-emphasis">&times;</button>
                         </div>
                     </template>
                 </div>
@@ -725,14 +725,14 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewStakeholder" placeholder="Stakeholder name..."
                        @keydown.enter.prevent="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Stakeholder name...">
                 <button type="button" @click="addMotivationItem('motivationStakeholders', _motivationNewStakeholder); _motivationNewStakeholder = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
             <template x-for="(s, i) in motivationStakeholders" :key="i">
                 <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
                     <span class="text-sm font-medium text-foreground flex-1" x-text="s.name"></span>
-                    <button type="button" @click="removeMotivationItem('motivationStakeholders', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                    <button type="button" @click="removeMotivationItem('motivationStakeholders', i)" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">&times;</button>
                 </div>
             </template>
         </div>
@@ -747,14 +747,14 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewDriver" placeholder="Business driver..."
                        @keydown.enter.prevent="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Business driver...">
                 <button type="button" @click="addMotivationItem('motivationDrivers', _motivationNewDriver); _motivationNewDriver = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
             <template x-for="(d, i) in motivationDrivers" :key="i">
                 <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
                     <span class="text-sm font-medium text-foreground flex-1" x-text="d.name"></span>
-                    <button type="button" @click="removeMotivationItem('motivationDrivers', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                    <button type="button" @click="removeMotivationItem('motivationDrivers', i)" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">&times;</button>
                 </div>
             </template>
         </div>
@@ -769,14 +769,14 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewGoal" placeholder="Goal or success metric..."
                        @keydown.enter.prevent="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Goal or success metric...">
                 <button type="button" @click="addMotivationItem('motivationGoals', _motivationNewGoal); _motivationNewGoal = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
             <template x-for="(g, i) in motivationGoals" :key="i">
                 <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
                     <span class="text-sm font-medium text-foreground flex-1" x-text="g.name"></span>
-                    <button type="button" @click="removeMotivationItem('motivationGoals', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                    <button type="button" @click="removeMotivationItem('motivationGoals', i)" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">&times;</button>
                 </div>
             </template>
         </div>
@@ -791,14 +791,14 @@
             <div class="flex gap-2">
                 <input type="text" x-model="_motivationNewConstraint" placeholder="Constraint..."
                        @keydown.enter.prevent="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
-                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring">
+                       class="flex-1 px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Constraint...">
                 <button type="button" @click="addMotivationItem('motivationConstraints', _motivationNewConstraint); _motivationNewConstraint = ''"
                         class="px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:opacity-90">Add</button>
             </div>
             <template x-for="(c, i) in motivationConstraints" :key="i">
                 <div class="flex items-center gap-2 p-2 border border-border rounded-md bg-muted/30">
                     <span class="text-sm font-medium text-foreground flex-1" x-text="c.name"></span>
-                    <button type="button" @click="removeMotivationItem('motivationConstraints', i)" class="text-xs text-destructive hover:text-destructive/80">&times;</button>
+                    <button type="button" @click="removeMotivationItem('motivationConstraints', i)" class="text-xs text-destructive-emphasis hover:text-destructive-emphasis/80">&times;</button>
                 </div>
             </template>
         </div>

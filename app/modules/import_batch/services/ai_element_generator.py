@@ -9,7 +9,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Tuple  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

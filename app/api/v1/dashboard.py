@@ -15,6 +15,7 @@ from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.vendor_organization import VendorOrganization
 from app.utils.api_response import error_response, success_response
+from app.utils.pagination import safe_int_arg
 
 dashboard_bp = Blueprint("dashboard_v1", __name__)
 logger = logging.getLogger(__name__)
@@ -70,8 +71,8 @@ def get_applications_table_data():
                 exc_info=True,
             )
 
-        page = max(request.args.get("page", 1, type=int), 1)
-        per_page = min(max(request.args.get("per_page", 50, type=int), 1), 100)
+        page = max(safe_int_arg('page', 1, minimum=1), 1)
+        per_page = min(max(safe_int_arg('per_page', 50, minimum=1, maximum=500), 1), 100)
         search = request.args.get("search", "", type=str)
         sort_by = request.args.get("sort_by", "name")
         sort_order = request.args.get("sort_order", "asc")

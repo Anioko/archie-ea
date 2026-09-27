@@ -12,6 +12,7 @@ from flask import Blueprint, jsonify, request, send_file
 from flask_login import login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,8 @@ def generate_product(solution_id):
         if _has_fields:
             _links = _SAE.query.filter_by(solution_id=solution_id).all()
             _needs_enrichment = not any(
-                (l.spec_data or {}).get("fields_status") in ("confirmed", "ai_inferred")
-                for l in _links
+                (item.spec_data or {}).get("fields_status") in ("confirmed", "ai_inferred")
+                for item in _links
             )
         if _needs_enrichment:
             logger.info("Auto-triggering UML enrichment for solution %d before code generation", solution_id)
@@ -473,8 +474,13 @@ def push_to_devops(solution_id):
     if not solution:
         return jsonify({"error": "Solution not found"}), 404
 
-    # Load connector config
-    config = DevOpsConnectorConfig.query.filter_by(id=connector_id).first()
+    # Load connector config. The connector must belong to the solution's own
+    # organisation (the solution is tenant-fenced): a connector id from another
+    # organisation is refused exactly like one that does not exist, so its stored
+    # token is never used on the caller's behalf.
+    config = DevOpsConnectorConfig.query.filter_by(
+        id=connector_id, organization_id=solution.organization_id
+    ).first()
     if not config or not config.enabled or config.provider != provider:
         return jsonify({"error": "Connector not found or not enabled for this provider"}), 400
 
@@ -737,8 +743,12 @@ def compliance_history(solution_id):
     GET /api/solutions/<id>/compliance/history
     """
     from app.models.compliance_check import RuntimeComplianceCheck as ComplianceCheck
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
 
-    limit = request.args.get("limit", 20, type=int)
+    require_entity(Solution, solution_id, description="Solution not found")
+
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
     limit = min(limit, 100)  # Cap at 100
 
     checks = (
@@ -765,6 +775,10 @@ def compliance_latest(solution_id):
     GET /api/solutions/<id>/compliance/latest
     """
     from app.models.compliance_check import RuntimeComplianceCheck as ComplianceCheck
+    from app.models.solution_models import Solution
+    from app.utils.route_guards import require_entity
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     check = (
         ComplianceCheck.query
@@ -963,7 +977,11 @@ def list_webhooks(solution_id):
 
     GET /api/solutions/<id>/webhooks
     """
+    from app.models.solution_models import Solution
     from app.models.spec_webhook import SpecWebhook
+    from app.utils.route_guards import require_entity
+
+    require_entity(Solution, solution_id, description="Solution not found")
 
     webhooks = SpecWebhook.query.filter_by(solution_id=solution_id).all()
     return jsonify({
@@ -1063,7 +1081,7 @@ def test_webhook(solution_id, webhook_id):
         "event": "test",
         "solution_id": solution_id,
         "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
-        "message": "This is a test webhook from A.R.C.H.I.E.",
+        "message": "This is a test webhook from Entelim",
     }
 
     success = svc._fire_single_webhook(webhook, test_payload)

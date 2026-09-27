@@ -15,6 +15,7 @@ from app import db
 from app.decorators import audit_log
 from app.models.vendor.vendor_organization import TCOCalculation, VendorProduct
 from app.services.advanced_tco_engine import AdvancedTCOEngine
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -200,7 +201,7 @@ def batch_calculate_tco():
                 )
                 successful += 1
 
-            except Exception as e:
+            except Exception:
                 calculations.append(
                     {"vendor_product_id": vendor_product_id, "error": "An internal error occurred", "success": False}
                 )
@@ -380,8 +381,8 @@ def get_tco_history():
     try:
         # Get query parameters
         vendor_product_id = request.args.get("vendor_product_id", type=int)
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         # Build query
         query = db.session.query(
@@ -603,7 +604,7 @@ def export_tco():
             return jsonify({"success": False, "error": "No request data provided"}), 400
 
         tco_calculation_id = data.get("tco_calculation_id")
-        export_format = data.get("format", "excel")
+        data.get("format", "excel")
         include_charts = data.get("include_charts", True)
         include_sensitivity = data.get("include_sensitivity", True)
 
@@ -646,7 +647,7 @@ def export_tco():
                 }
             )
 
-        except ImportError as e:
+        except ImportError:
             return (
                 jsonify(
                     {
@@ -702,7 +703,7 @@ def download_tco_file(tco_calculation_id):
             excel_data,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f'attachment; filename="{export_result["filename"]}"',
+                "Content-Disposition": f'attachment; filename="{export_result["filename"]}"',  # raw-html-ok: filename is regex-sanitized to [a-zA-Z0-9_-] in advanced_tco_engine.py before reaching this dict
                 "Content-Length": str(len(excel_data)),
             },
         )

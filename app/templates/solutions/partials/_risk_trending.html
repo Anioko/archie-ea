@@ -1,9 +1,11 @@
 {# Risk Trending — Risk heatmap evolution across ADM phases
-   Included in solutions/detail.html within solutionDetail() x-data scope #}
+   Included from solutions/blueprint.html. (The legacy solutionDetail()/
+   detail.js component was removed 15 Aug 2026; the page's inline Alpine
+   components own this scope now.) #}
 <div class="mt-7">
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-destructive inline-block"></span>Risk Snapshots</h3>
-        <div class="sad-actions"><button @click="openEntityModal('risk_snapshot')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Snapshot</button></div>
+        <div class="sad-actions"><button type="button" @click="openEntityModal('risk_snapshot')" class="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground transition-colors">+ Snapshot</button></div>
     </div>
     <template x-if="sadRiskSnapshots.length > 0">
         <div class="overflow-x-auto">
@@ -21,14 +23,14 @@
                     <template x-for="item in sadRiskSnapshots" :key="item.id">
                         <tr class="border-b border-border/50 hover:bg-muted/30">
                             <td class="py-2 px-3 font-medium text-foreground" x-text="item.risk_name"></td>
-                            <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" x-text="item.risk_category"></span></td>
+                            <td class="py-2 px-3"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30" x-text="item.risk_category"></span></td>
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.adm_phase || '\u2014'"></td>
-                            <td class="py-2 px-3 text-center"><span class="font-mono font-semibold" :class="{'text-destructive': item.risk_score >= 12, 'text-orange-600': item.risk_score >= 6, 'text-emerald-600': item.risk_score < 6}" x-text="item.risk_score"></span></td>
-                            <td class="py-2 px-3"><span :class="{'text-destructive': item.trend === 'increasing', 'text-emerald-600': item.trend === 'decreasing', 'text-muted-foreground': item.trend === 'stable'}" x-text="item.trend"></span></td>
+                            <td class="py-2 px-3 text-center"><span class="font-mono font-semibold" :class="{'text-destructive-emphasis': item.risk_score >= 12, 'text-warning': item.risk_score >= 6, 'text-success': item.risk_score < 6}" x-text="item.risk_score"></span></td>
+                            <td class="py-2 px-3"><span :class="{'text-destructive-emphasis': item.trend === 'increasing', 'text-success-emphasis': item.trend === 'decreasing', 'text-muted-foreground': item.trend === 'stable'}" x-text="item.trend"></span></td>
                             <td class="py-2 px-3 text-muted-foreground" x-text="item.mitigation_status"></td>
                             <td class="py-2 px-3 text-right sad-actions">
-                                <button @click="openEntityModal('risk_snapshot', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
-                                <button @click="confirmDeleteEntity('risk_snapshot', item)" class="text-destructive hover:underline text-xs">Delete</button>
+                                <button type="button" @click="openEntityModal('risk_snapshot', item)" class="text-primary hover:underline text-xs mr-2">Edit</button>
+                                <button type="button" @click="confirmDeleteEntity('risk_snapshot', item)" class="text-destructive-emphasis hover:underline text-xs">Delete</button>
                             </td>
                         </tr>
                     </template>

@@ -41,11 +41,18 @@ def industry_apqc_dashboard():
             framework_stats=framework_stats,
         )
     except Exception as e:
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading industry APQC dashboard: %s", e)
+        # frameworks=None, not []: the "0 frameworks / seed some" empty state is
+        # a statement about the tenant's data, not about a failed query.
         return render_template(
             "industry_apqc/dashboard.html",
-            frameworks=[],
-            framework_stats=[],
+            frameworks=None,
+            framework_stats=None,
             error=str(e),
+            load_error="Industry APQC frameworks could not be read.",
         )
 
 
@@ -73,7 +80,7 @@ def industry_apqc_framework_detail(industry_code):
             regulatory_processes=regulatory_processes,
             stats=stats,
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -122,7 +129,7 @@ def api_industry_apqc_frameworks():
         return jsonify(
             {"success": True, "frameworks": [fw.to_dict() for fw in frameworks]}
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -138,7 +145,7 @@ def api_industry_apqc_framework(industry_code):
             return jsonify({"success": False, "error": "Framework not found"}), 404
 
         return jsonify({"success": True, "framework": framework.to_dict()})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -158,7 +165,7 @@ def api_industry_apqc_processes(industry_code):
                 "total": len(processes),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -174,7 +181,7 @@ def api_industry_apqc_statistics(industry_code):
             return jsonify({"success": False, "error": "Framework not found"}), 404
 
         return jsonify({"success": True, "statistics": stats})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -216,7 +223,7 @@ def api_generate_recommendations():
                 "total": len(recommendations),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -233,7 +240,7 @@ def api_accept_recommendation(recommendation_id):
             recommendation_id=recommendation_id, user_id=current_user.id
         )
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -253,7 +260,7 @@ def api_reject_recommendation(recommendation_id):
             recommendation_id=recommendation_id, user_id=current_user.id, reason=reason
         )
         return jsonify(result)
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -277,5 +284,5 @@ def api_seed_frameworks():
                 "total_created": len(created),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

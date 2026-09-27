@@ -35,17 +35,14 @@ document.addEventListener('alpine:init', () => {
             this.error = null;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/quality/assess`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, step_data: stepData }),
-                });
-
-                const json = await resp.json();
-                const data = json.data || json;
+                /* Unguarded, a 500 parsed to `{}`: `passed` and `hard_block` were both
+                   undefined, so `canAdvance` came out true and the overlay was shown
+                   with a blank score — an assessment that never ran, displayed as a
+                   passing one. */
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/quality/assess`, {
+                    step,
+                    step_data: stepData,
+                }, { silent: true }); // silent: true because we handle inline error state
 
                 this.assessment = data;
                 this.canAdvance = data.passed || !data.hard_block;
@@ -53,10 +50,15 @@ document.addEventListener('alpine:init', () => {
                 return data;
 
             } catch (e) {
-                console.error('Quality gate assessment failed:', e);
                 this.error = 'Quality assessment unavailable';
-                // Degrade gracefully — allow advancement
+                // No assessment exists, so nothing may be rendered as one.
+                this.assessment = null;
+                this.visible = false;
+                // Degrade gracefully — allow advancement, but say why the gate is absent.
                 this.canAdvance = true;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning('Quality assessment is unavailable — this step was not checked. You can continue, but it has not been reviewed.');
+                }
                 return null;
             } finally {
                 this.loading = false;
@@ -72,27 +74,13 @@ document.addEventListener('alpine:init', () => {
             this.loading = true;
 
             try {
-                const resp = await fetch(`/api/wizard/${solutionId}/quality/can-advance`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({ step, step_data: stepData }),
-                });
+                const data = await Platform.fetch.post(`/api/wizard/${solutionId}/quality/can-advance`, {
+                    step,
+                    step_data: stepData,
+                }, { silent: true }); // silent: true because we handle inline error state
 
-                // Detect session timeout (302 redirect to login returns HTML)
-                const contentType = resp.headers.get('content-type') || '';
-                if (!contentType.includes('application/json') || resp.status === 401 || resp.status === 403) {
-                    if (resp.redirected || !contentType.includes('json')) {
-                        window.location.href = '/account/login';
-                        return false;
-                    }
-                }
-
-                const json = await resp.json();
-                const data = json.data || json;
-
+                // A 500 here parsed to `{}`, leaving can_advance undefined and the
+                // overlay hidden — the gate silently did not run.
                 this.assessment = data.assessment;
                 this.canAdvance = data.can_advance;
 
@@ -104,13 +92,26 @@ document.addEventListener('alpine:init', () => {
                 return data.can_advance;
 
             } catch (e) {
-                console.error('Can-advance check failed:', e);
-                // If the error looks like a login redirect (HTML response), redirect
-                if (e.message && e.message.includes('JSON')) {
+                // Platform.fetch throws on non-ok responses, including network errors.
+                // We need to detect session timeout (redirect to login) which would have been a non-JSON response.
+                // Since Platform.fetch throws before parsing, we cannot inspect headers directly.
+                // However, the original code redirected on 401/403 or non-JSON content-type.
+                // We'll treat any error as a potential login redirect if the error type indicates a network or HTTP error.
+                if (e.type === 'HttpError' && (e.status === 401 || e.status === 403)) {
+                    window.location.href = '/account/login';
+                    return false;
+                }
+                // If the error is a network error (type 'NetworkError'), it could be a redirect.
+                // The original code checked for redirected or non-JSON content-type.
+                // We'll assume network errors could be due to a redirect and redirect to login.
+                if (e.type === 'NetworkError') {
                     window.location.href = '/account/login';
                     return false;
                 }
                 this.canAdvance = true;
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning('The quality gate could not be checked — you are being let through unchecked.');
+                }
                 return true;
             } finally {
                 this.loading = false;
@@ -118,26 +119,31 @@ document.addEventListener('alpine:init', () => {
         },
 
         /**
-         * Record that user skipped a soft-block gate.
+         * Record that user skipped a soft-block gate. This is an audit-trail write
+         * only — canAdvance was already set true before this is called, so the user's
+         * ability to proceed never depends on it, and a failure must not stop them.
+         * It must still be reported: the skip is the governance record of a quality
+         * gate being overridden, and an override nobody can see later is worse than
+         * one that was refused.
          */
         async recordSkip() {
             if (!this.assessment || !this.solutionId) return;
 
             try {
-                await fetch(`/api/wizard/${this.solutionId}/quality/skip`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    },
-                    body: JSON.stringify({
-                        step: this.currentStep,
-                        overall_score: this.assessment.overall_score,
-                        threshold: this.assessment.threshold,
-                    }),
-                });
+                // The native API resolves on 4xx/5xx, so without the wrapper the audit
+                // fail with a 500 and look exactly like a successful one.
+                await Platform.fetch.post(`/api/wizard/${this.solutionId}/quality/skip`, {
+                    step: this.currentStep,
+                    overall_score: this.assessment.overall_score,
+                    threshold: this.assessment.threshold,
+                }, { silent: true }); // silent: true because we handle the error inline
             } catch (e) {
-                console.error('Failed to record quality skip:', e);
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.warning(
+                        'You can continue, but skipping this quality gate was not recorded for governance review: '
+                        + (e.message || 'request failed') + '.'
+                    );
+                }
             }
 
             this.dismiss();

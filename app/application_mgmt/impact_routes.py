@@ -208,7 +208,7 @@ def ai_analyze():
         data = request.get_json()
         app_id = data.get("app_id")
         scenario = data.get("scenario", "custom")
-        context = data.get("context", {})  # Additional context from frontend
+        data.get("context", {})
 
         if not app_id:
             return jsonify({"error": "Application ID is required"}), 400
@@ -256,7 +256,7 @@ def ai_analyze():
                 }
             )
 
-    except ValueError as e:
+    except ValueError:
         return jsonify({"available": False, "error": "Invalid request parameters"}), 400
     except Exception as e:
         current_app.logger.error(f"AI analysis failed: {e}", exc_info=True)
@@ -281,13 +281,12 @@ def ai_status():
             }
         )
     except Exception as e:
-        current_app.logger.error(f"AI status check failed: {e}")
+        current_app.logger.exception(f"AI status check failed: {e}")
+        # "ai_available: false" at 200 is indistinguishable from a genuine
+        # "no provider configured", and str(e) leaked the internals besides.
         return jsonify(
-            {
-                "ai_available": False,
-                "error": str(e),
-            }
-        )
+            {"success": False, "error": "Could not determine AI configuration status"}
+        ), 500
 
 
 def _format_impacted_services(dependency_analysis):

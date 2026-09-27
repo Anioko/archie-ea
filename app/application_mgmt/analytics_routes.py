@@ -5,6 +5,7 @@ from datetime import datetime
 
 from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 
 from ..models.application_portfolio import ApplicationComponent
 from . import application_mgmt
@@ -64,13 +65,15 @@ def application_gap_analysis_api(application_id):
     try:
         from app.modules.solutions_strategic.v2.services.gap_analysis_service import ArchitecturalGapAnalyzer
 
-        app = ApplicationComponent.query.get_or_404(application_id)
+        ApplicationComponent.query.get_or_404(application_id)
 
         analyzer = ArchitecturalGapAnalyzer()
         gap_results = analyzer.analyze_application_gaps(application_id)
 
         return jsonify(gap_results)
 
+    except HTTPException:
+        raise  # a missing application is a 404, not a masked 500
     except Exception as e:
         current_app.logger.error(f"Error in gap analysis API: {str(e)}")
         return jsonify({"error": "An internal error occurred"}), 500

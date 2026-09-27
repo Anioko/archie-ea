@@ -15,7 +15,7 @@ Field transforms handle Jira-specific formats:
 Mirrors pattern from app/config/abacus_field_mapping.py.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
 
 

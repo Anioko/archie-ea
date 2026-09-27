@@ -4,7 +4,6 @@ Tests for account module - authentication, registration, and account management.
 Verifies that the migrated account routes produce identical responses
 to the original app/account/views.py implementation.
 """
-import pytest
 
 
 class TestAccountService:

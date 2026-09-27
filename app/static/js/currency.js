@@ -7,9 +7,15 @@
 
 class CurrencyManager {
     constructor(config = null) {
+        // H-04: the org's currency code (config.CurrencyConfig.get_org_currency_code,
+        // injected via window.__APP_CONFIG__.currency in partials/_head.html) is the
+        // default here — NOT a hardcoded 'GBP' — so this matches whatever the server
+        // rendered for the same organisation.
+        let orgCurrency = (window.__APP_CONFIG__ && window.__APP_CONFIG__.currency) || 'GBP';
+
         // Default configuration - can be overridden with server config
         this.defaultConfig = config || {
-            defaultCurrency: 'GBP',
+            defaultCurrency: orgCurrency,
             supportedCurrencies: {
                 'GBP': {
                     symbol: '£',
@@ -108,6 +114,19 @@ class CurrencyManager {
         return currency.position === 'prefix'
             ? `${currency.symbol}${finalAmount}`
             : `${finalAmount}${currency.symbol}`;
+    }
+
+    /**
+     * Format amount with the currency CODE shown alongside it (e.g. "GBP £1,234")
+     * — H-04 acceptance criteria: no screen should show a currency figure with no
+     * indication of which currency it is.
+     * @param {number|string} amount
+     * @param {string} currencyCode
+     * @returns {string}
+     */
+    formatWithCode(amount, currencyCode = null) {
+        const currency = currencyCode ? this.defaultConfig.supportedCurrencies[currencyCode] : this.currentCurrencyConfig;
+        return (currency ? currency.code : '') + ' ' + this.format(amount, currencyCode);
     }
 
     /**
@@ -284,9 +303,10 @@ class CurrencyManager {
      */
     saveCurrencyPreference() {
         try {
+            // Private-mode browsers throw on localStorage writes; the preference just
+            // won't persist across sessions, which is harmless.
             localStorage.setItem('preferred_currency', this.currentCurrency);
-        } catch (e) {
-            console.warn('Could not save currency preference:', e);
+        } catch (e) { /* swallow-ok: localStorage writes throw in private mode; the currency the user picked is already applied, it just will not persist across sessions */
         }
     }
 
@@ -295,12 +315,12 @@ class CurrencyManager {
      */
     loadCurrencyPreference() {
         try {
+            // Private-mode browsers throw on localStorage reads; falls back to the default currency.
             const saved = localStorage.getItem('preferred_currency');
             if (saved && this.isSupported(saved)) {
                 this.setCurrency(saved);
             }
-        } catch (e) {
-            console.warn('Could not load currency preference:', e);
+        } catch (e) { /* swallow-ok: localStorage reads throw in private mode; the app falls back to the default currency, which is a working state and not an error the user can act on */
         }
     }
 

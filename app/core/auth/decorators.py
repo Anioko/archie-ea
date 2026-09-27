@@ -158,6 +158,10 @@ def require_roles(*allowed_roles):
             if hasattr(current_user, "role"):
                 user_roles.add(str(current_user.role).lower())
 
+            archetype = getattr(current_user, "role_archetype", None)
+            if archetype and str(archetype).lower() != "admin":
+                user_roles.add(str(archetype).lower())
+
             required = set(r.lower() for r in allowed_roles)
 
             if not user_roles & required:

@@ -32,9 +32,34 @@ from flask_login import current_user, login_required
 
 from app.decorators import audit_log, require_roles
 from app.extensions import db
+from app.models.user import Permission
+from app.modules.transformation_room.arb_decision_adapter import (
+    TypedARBDecisionAdapter,
+)
 from app.services.arb_workflow_service import ARBWorkflowService
 
 arb_workflow_bp = Blueprint("arb_workflow", __name__, url_prefix="/api/arb-workflow")
+
+
+def _enforce_legacy_roles(*roles):
+    """Apply a historical role gate only after a request is proven legacy."""
+
+    @require_roles(*roles)
+    def allowed():
+        return None
+
+    return allowed()
+
+
+def _arb_write_floor_denial():
+    """Retain the authenticated ARB write floor before canonical authority."""
+    if current_user.can(Permission.GENERAL):
+        return None
+    return jsonify({
+        "success": False,
+        "error": "Your role does not have write access to ARB governance.",
+        "code": "PERMISSION_DENIED",
+    }), 403
 
 
 @arb_workflow_bp.route("/<int:review_item_id>/compliance-check", methods=["POST"])
@@ -66,13 +91,12 @@ def run_compliance_check(review_item_id: int):
             return jsonify({"success": False, "error": results["error"]}), 404
 
         return jsonify({"success": True, "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
 @arb_workflow_bp.route("/<int:review_item_id>/conditional-approval", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect", "architect")
 @audit_log("arb_conditional_approval")
 def create_conditional_approval(review_item_id: int):
     """
@@ -94,7 +118,34 @@ def create_conditional_approval(review_item_id: int):
     Returns:
         JSON with approval result and condition details
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.decide_review_from_request(
+        review_item_id=review_item_id,
+        payload=data,
+        outcome="approved_with_conditions",
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "data": {
+                "review_cycle_id": typed_result.review_cycle_id,
+                "review_item_id": typed_result.review_item_id,
+                "decision_event_id": typed_result.decision_event_id,
+                "condition_ids": typed_result.condition_ids,
+                "status": typed_result.status,
+                "outcome": typed_result.outcome,
+                "conditions": typed_result.conditions,
+                "idempotent": typed_result.idempotent,
+            },
+        })
+
+    _enforce_legacy_roles("admin", "enterprise_architect", "architect")
+
     if not data or "conditions" not in data:
         return jsonify({"success": False, "error": "conditions array is required"}), 400
 
@@ -128,13 +179,12 @@ def create_conditional_approval(review_item_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
 @arb_workflow_bp.route("/conditions/<int:condition_id>/fulfill", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect", "architect")
 @audit_log("arb_condition_fulfill")
 def fulfill_condition(condition_id: int):
     """
@@ -149,9 +199,30 @@ def fulfill_condition(condition_id: int):
     Returns:
         JSON with fulfillment result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.fulfill_condition_from_request(
+        condition_id=condition_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, "data": typed_result.data})
+
+    _enforce_legacy_roles("admin", "enterprise_architect", "architect")
+
     if not data or "evidence" not in data:
         return jsonify({"success": False, "error": "evidence is required"}), 400
+    if not TypedARBDecisionAdapter.legacy_condition_matches_request(
+        condition_id=condition_id
+    ):
+        return jsonify({
+            "success": False,
+            "error": f"Condition {condition_id} not found",
+        }), 404
 
     try:
         service = ARBWorkflowService()
@@ -166,13 +237,12 @@ def fulfill_condition(condition_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
 @arb_workflow_bp.route("/conditions/<int:condition_id>/waive", methods=["POST"])
 @login_required
-@require_roles("admin", "enterprise_architect")
 @audit_log("arb_condition_waive")
 def waive_condition(condition_id: int):
     """
@@ -186,9 +256,32 @@ def waive_condition(condition_id: int):
     Returns:
         JSON with waiver result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
+    typed_result = TypedARBDecisionAdapter.waive_condition_from_request(
+        condition_id=condition_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, "data": typed_result.data})
+
+    # Keep the legacy endpoint's historical role gate after typed resolution.
+    # Typed authority is checked by the canonical service against locked rows.
+    _enforce_legacy_roles("admin", "enterprise_architect")
+
     if not data or "reason" not in data:
         return jsonify({"success": False, "error": "reason is required"}), 400
+    if not TypedARBDecisionAdapter.legacy_condition_matches_request(
+        condition_id=condition_id
+    ):
+        return jsonify({
+            "success": False,
+            "error": f"Condition {condition_id} not found",
+        }), 404
 
     try:
         service = ARBWorkflowService()
@@ -200,7 +293,7 @@ def waive_condition(condition_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -223,7 +316,7 @@ def get_conditions_summary():
         summary = service.get_conditions_summary(review_item_id=review_item_id)
 
         return jsonify({"success": True, "data": summary})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -241,7 +334,7 @@ def get_pending_by_phase():
         by_phase = service.get_pending_reviews_by_phase()
 
         return jsonify({"success": True, "data": by_phase})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -259,7 +352,7 @@ def get_compliance_dashboard():
         dashboard = service.get_compliance_dashboard()
 
         return jsonify({"success": True, "data": dashboard})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -329,7 +422,7 @@ def get_stages():
         stages = service.get_all_stages(include_inactive=include_inactive)
 
         return jsonify({"success": True, "data": stages})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -394,7 +487,7 @@ def create_stage():
             return jsonify({"success": False, "error": result["error"]}), 400
 
         return jsonify({"success": True, "data": result["stage"]}), 201
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -415,7 +508,7 @@ def get_stage(stage_id: int):
             return jsonify({"success": False, "error": f"Stage {stage_id} not found"}), 404
 
         return jsonify({"success": True, "data": stage})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -448,7 +541,7 @@ def update_stage(stage_id: int):
             )
 
         return jsonify({"success": True, "data": result["stage"]})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -474,7 +567,7 @@ def delete_stage(stage_id: int):
             )
 
         return jsonify({"success": True, "message": result["message"]})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -494,7 +587,7 @@ def init_stages():
         result = service.initialize_workflow_stages()
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -523,7 +616,7 @@ def reorder_stages():
         result = service.reorder_stages(data["stage_order"])
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -549,7 +642,7 @@ def get_available_transitions(review_item_id: int):
             return jsonify({"success": False, "error": result["error"]}), 404
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -578,7 +671,7 @@ def validate_transition(review_item_id: int):
         )
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -599,9 +692,33 @@ def transition_stage(review_item_id: int):
     Returns:
         JSON with transition result
     """
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if not data or "target_stage" not in data:
         return jsonify({"success": False, "error": "target_stage is required"}), 400
+
+    typed_result = TypedARBDecisionAdapter.transition_review_from_request(
+        review_item_id=review_item_id,
+        payload=data,
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "data": {
+                "review_cycle_id": typed_result.review_cycle_id,
+                "review_item_id": typed_result.review_item_id,
+                "decision_event_id": typed_result.decision_event_id,
+                "condition_ids": typed_result.condition_ids,
+                "status": typed_result.status,
+                "outcome": typed_result.outcome,
+                "conditions": typed_result.conditions,
+                "idempotent": typed_result.idempotent,
+            },
+        })
 
     # Force transition requires admin
     force = data.get("force", False)
@@ -634,7 +751,7 @@ def transition_stage(review_item_id: int):
             )
 
         return jsonify({"success": True, "data": result})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -666,7 +783,7 @@ def get_kanban_board():
         )
 
         return jsonify({"success": True, "data": board_data})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -684,7 +801,7 @@ def get_stage_analytics():
         analytics = service.get_stage_analytics()
 
         return jsonify({"success": True, "data": analytics})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -707,8 +824,68 @@ _REVIEW_ROLES = ("admin", "enterprise_architect", "architect")
 
 
 def _get_solution_or_404(solution_id: int):
+    """Resolve a solution with an explicit (id, organization_id) predicate.
+
+    ``Query.get()`` is tenant-scoped only on an identity-map miss, so it is
+    not a tenancy boundary (AGENTS.md). A solution in another tenant must be
+    indistinguishable from a missing one.
+    """
+    from flask import abort, g
+
     from app.models.solution_models import Solution
-    return Solution.query.get_or_404(solution_id)
+
+    organization_id = getattr(g, "current_org_id", None)
+    if not isinstance(organization_id, int) or organization_id <= 0:
+        abort(404)
+    solution = db.session.execute(
+        db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    if solution is None:
+        abort(404)
+    return solution
+
+
+def _typed_cycle_for_solution(solution_id: int, *, open_only: bool):
+    """Return the typed ARB cycle governing this solution, if any."""
+    from app.modules.architecture.routes.arb_routes import TypedARBDecisionAdapter
+
+    if open_only:
+        return TypedARBDecisionAdapter.open_typed_cycle_for_solution(solution_id)
+    cycles = TypedARBDecisionAdapter.typed_cycles_for_solution(solution_id)
+    return cycles[0] if cycles else None
+
+
+def _typed_lifecycle_blocked(reason_code: str, message: str):
+    """Refuse a lifecycle write that no typed command exposes."""
+    import uuid
+
+    return jsonify({
+        "success": False,
+        "error": message,
+        "reason_codes": [reason_code],
+        "missing_evidence": [],
+        "request_id": str(uuid.uuid4()),
+    }), 409
+
+
+def _typed_decision_response(result, solution_id: int, *, legacy_fields=None):
+    """Typed decision result in this endpoint's established envelope."""
+    if not result.success:
+        return jsonify(result.failure_payload()), result.http_status
+    payload = {
+        "success": True,
+        # governance_status stays a projection of the recorded decision event;
+        # this route no longer writes Solution.governance_status for a typed
+        # cycle.
+        "governance_status": result.status,
+        "solution_id": solution_id,
+        **(legacy_fields or {}),
+        **result.success_fields(),
+    }
+    return jsonify(payload), 200
 
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/lifecycle", methods=["GET"])
@@ -717,6 +894,17 @@ def get_solution_lifecycle(solution_id: int):
     """
     Return the current lifecycle state and available transitions for a solution.
     """
+    typed_result = TypedARBDecisionAdapter.current_solution_lifecycle_from_request(
+        solution_id=solution_id
+    )
+    if typed_result.typed:
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({"success": True, **typed_result.data})
+
     solution = _get_solution_or_404(solution_id)
     status = solution.governance_status or "draft"
     allowed_next = list(_LIFECYCLE_TRANSITIONS.get(status, set()))
@@ -735,7 +923,6 @@ def get_solution_lifecycle(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/begin-review", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_begin_review")
 def begin_arb_review(solution_id: int):
     """
@@ -744,7 +931,39 @@ def begin_arb_review(solution_id: int):
     Request Body (optional):
         { "notes": "Review notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
+        typed_result = TypedARBDecisionAdapter.begin_current_solution_from_request(
+            solution_id=solution_id
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "ARB review started",
+            "governance_status": typed_result.status,
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "idempotent": typed_result.idempotent,
+        })
+
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
+    if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
+        return _typed_lifecycle_blocked(
+            "typed_cycle_status_not_client_mutable",
+            "This solution is governed by a typed ARB cycle. Its review state "
+            "is derived from recorded commands and cannot be set directly.",
+        )
     status = solution.governance_status or "draft"
 
     if status not in ("arb_review", "arb_submitted", "proposed"):
@@ -771,7 +990,6 @@ def begin_arb_review(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/approve", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_approve_solution")
 def approve_solution(solution_id: int):
     """
@@ -780,7 +998,53 @@ def approve_solution(solution_id: int):
     Request Body (optional):
         { "notes": "Approval notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
+        typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+            outcome="approved",
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "Solution approved",
+            "governance_status": typed_result.status,
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "decision_event_id": typed_result.decision_event_id,
+            "idempotent": typed_result.idempotent,
+        })
+
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
+    typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
+    if typed_cycle is not None:
+        from app.modules.architecture.routes.arb_routes import (
+            TypedARBDecisionAdapter,
+        )
+
+        payload = request.get_json(silent=True) or {}
+        result = TypedARBDecisionAdapter.decide(
+            cycle=typed_cycle,
+            outcome="approved",
+            rationale=payload.get("notes") or payload.get("rationale"),
+            conditions=None,
+        )
+        return _typed_decision_response(
+            result, solution_id, legacy_fields={"message": "Solution approved"}
+        )
     status = solution.governance_status or "draft"
 
     if status != "under_review":
@@ -832,7 +1096,6 @@ def approve_solution(solution_id: int):
 
 @arb_workflow_bp.route("/solutions/<int:solution_id>/reject", methods=["POST"])
 @login_required
-@require_roles(*_REVIEW_ROLES)
 @audit_log("arb_reject_solution")
 def reject_solution(solution_id: int):
     """
@@ -841,7 +1104,60 @@ def reject_solution(solution_id: int):
     Request Body:
         { "reason": "Rejection reason" (required), "notes": "Additional notes" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    data = request.get_json(silent=True) or {}
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        denial = _arb_write_floor_denial()
+        if denial is not None:
+            return denial
+        typed_result = TypedARBDecisionAdapter.decide_current_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+            outcome="rejected",
+        )
+        if not typed_result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": typed_result.reason_codes,
+            }), typed_result.http_status
+        return jsonify({
+            "success": True,
+            "message": "Solution rejected",
+            "governance_status": typed_result.status,
+            "arb_rejection_reason": data.get("reason"),
+            "review_cycle_id": typed_result.review_cycle_id,
+            "review_item_id": typed_result.review_item_id,
+            "decision_event_id": typed_result.decision_event_id,
+            "idempotent": typed_result.idempotent,
+        })
+
+    _enforce_legacy_roles(*_REVIEW_ROLES)
     solution = _get_solution_or_404(solution_id)
+    typed_cycle = _typed_cycle_for_solution(solution_id, open_only=True)
+    if typed_cycle is not None:
+        from app.modules.architecture.routes.arb_routes import (
+            TypedARBDecisionAdapter,
+        )
+
+        payload = request.get_json(silent=True) or {}
+        rejection_reason = (payload.get("reason") or "").strip()
+        result = TypedARBDecisionAdapter.decide(
+            cycle=typed_cycle,
+            outcome="rejected",
+            rationale=rejection_reason or None,
+            conditions=None,
+        )
+        return _typed_decision_response(
+            result,
+            solution_id,
+            legacy_fields={
+                "message": "Solution rejected",
+                "arb_rejection_reason": rejection_reason,
+            },
+        )
     status = solution.governance_status or "draft"
 
     if status != "under_review":
@@ -882,7 +1198,25 @@ def withdraw_solution(solution_id: int):
     Request Body (optional):
         { "reason": "Withdrawal reason" }
     """
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        return jsonify({
+            "success": False,
+            "reason_codes": ["typed_withdraw_not_supported"],
+        }), 409
+
     solution = _get_solution_or_404(solution_id)
+    if _typed_cycle_for_solution(solution_id, open_only=True) is not None:
+        # Withdraw has no typed command with defined audit semantics, and a
+        # typed decision history must not be silently abandoned.
+        return _typed_lifecycle_blocked(
+            "typed_cycle_withdraw_not_supported",
+            "This solution is governed by an open typed ARB cycle. Withdrawal "
+            "is not an available typed command; return the review instead.",
+        )
     status = solution.governance_status or "draft"
 
     if status in _TERMINAL_STATUSES:

@@ -144,7 +144,7 @@ class SolutionSuggestionGenerator:
         if target_phases is None:
             target_phases = list(PHASE_ELEMENT_TYPES.keys())
 
-        solution = context.get("solution") or {}
+        context.get("solution") or {}
         results: Dict[str, Dict[str, List]] = {}
 
         for phase in target_phases:
@@ -261,7 +261,7 @@ class SolutionSuggestionGenerator:
                 "existing_elements": data.get("existing_elements", []),
                 "new_elements": data.get("new_elements", []),
             }
-        except (json.JSONDecodeError, IndexError, KeyError) as e:
+        except (json.JSONDecodeError, IndexError, KeyError) as e:  # fabricated-ok: returns honest empty suggestion set below, no invented elements
             logger.warning("Failed to parse LLM response for phase %s: %s", phase, e)
             return {"existing_elements": [], "new_elements": []}
 

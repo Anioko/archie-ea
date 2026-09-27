@@ -5,8 +5,10 @@ All 10 sections degrade gracefully to empty_state strings if no data exists.
 """
 
 import logging
+from html import escape
 
 from app import db
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +24,16 @@ def _safe(fn, default=None):
     try:
         return fn()
     except Exception as exc:  # noqa: BLE001
-        logger.debug("SAD safe-query failed: %s", exc)
+        # WARNING, not DEBUG. This swallows a failed read and substitutes an
+        # empty result, so the only trace that a section is empty because the
+        # query broke -- rather than because there is nothing to show -- is
+        # this line. At DEBUG it was invisible in production for the entire
+        # life of the broken risk query.
+        logger.warning("SAD safe-query failed, section will render empty: %s", exc)
         try:
             db.session.rollback()
         except Exception:  # noqa: BLE001
-            logger.debug("SAD safe-query rollback also failed")  # fabricated-values-ok
+            logger.debug("SAD safe-query rollback also failed")  # fabricated-ok: log-only on rollback failure; returns the caller-supplied default, invents nothing
         return default
 
 
@@ -52,8 +59,6 @@ def generate_sad(solution_id: int) -> dict:
         SolutionRequirement,
         SolutionConstraint,
     )
-    from app.models.archimate_core import ArchiMateElement
-    from app.models.solution_element import SolutionElement
     from app.services.archimate_traceability_service import get_traceability_chain
 
     solution = _safe(lambda: db.session.get(Solution, solution_id))
@@ -251,7 +256,6 @@ def generate_sad(solution_id: int) -> dict:
 
 def get_sad_html(solution_id: int) -> str:
     """Render the SAD dict to an HTML string using Jinja2 render_template_string."""
-    from flask import render_template_string
     sad = generate_sad(solution_id)
     template_path = "solutions/sad_document.html"
     try:
@@ -259,7 +263,10 @@ def get_sad_html(solution_id: int) -> str:
         return render_template(template_path, sad=sad, standalone=True)
     except Exception as exc:  # noqa: BLE001
         logger.error("SAD HTML render failed: %s", exc)
-        return f"<html><body><h1>SAD generation error</h1><pre>{exc}</pre></body></html>"
+        # A Jinja render failure can echo back template variable content
+        # (including solution data) in its exception message -- escape
+        # before it reaches this HTML error page.
+        return f"<html><body><h1>SAD generation error</h1><pre>{escape(str(exc))}</pre></body></html>"
 
 
 # ---------------------------------------------------------------------------
@@ -269,13 +276,17 @@ def get_sad_html(solution_id: int) -> str:
 def _query_archimate_by_layer(solution_id: int, layer: str) -> list:
     """Return ArchiMate elements for a solution scoped to a layer."""
     from sqlalchemy import text
-    rows = db.session.execute(text(  # tenant-filtered: scoped via parent FK (solution_id)
+    # solution_elements has no organization_id, so the join proves nothing about
+    # ownership. archimate_elements does (populated on every row) — scope there.
+    _org_clause, _org_params = org_scope(prefix="ae.")
+    rows = db.session.execute(text(
         "SELECT ae.id, ae.name, ae.type, ae.layer, ae.description "
         "FROM archimate_elements ae "
         "JOIN solution_elements se ON se.archimate_element_id = ae.id "
-        "WHERE se.solution_id = :sid AND LOWER(ae.layer) = LOWER(:layer) "
-        "ORDER BY ae.name LIMIT 200"
-    ), {"sid": solution_id, "layer": layer}).fetchall()
+        "WHERE se.solution_id = :sid AND LOWER(ae.layer) = LOWER(:layer)"
+        + _org_clause +
+        " ORDER BY ae.name LIMIT 200"
+    ), {"sid": solution_id, "layer": layer, **_org_params}).fetchall()
     return [
         {"id": r[0], "name": r[1], "type": r[2] or "", "layer": r[3] or "", "description": r[4] or ""}
         for r in rows
@@ -285,12 +296,17 @@ def _query_archimate_by_layer(solution_id: int, layer: str) -> list:
 def _query_roadmap(solution_id: int) -> list:
     """Return work packages / kanban cards linked to the solution."""
     from sqlalchemy import text
-    rows = _safe(lambda: db.session.execute(text(  # tenant-filtered: scoped via parent FK (solution_id)
+    # kanban_cards has an organization_id column but it is NULL on every row
+    # (added nullable by reconcile-schema, never backfilled), so a predicate
+    # there would return nothing. Scope through solutions, which is populated.
+    _org_clause, _org_params = org_scope(prefix="s.")
+    rows = _safe(lambda: db.session.execute(text(
         "SELECT kc.id, kc.title, kc.status, kc.priority "
         "FROM kanban_cards kc "
-        "WHERE kc.solution_id = :sid "
-        "ORDER BY kc.priority, kc.id LIMIT 100"
-    ), {"sid": solution_id}).fetchall(), default=[])
+        "JOIN solutions s ON s.id = kc.solution_id "
+        "WHERE kc.solution_id = :sid" + _org_clause +
+        " ORDER BY kc.priority, kc.id LIMIT 100"
+    ), {"sid": solution_id, **_org_params}).fetchall(), default=[])
     return [
         {"id": r[0], "title": r[1], "status": r[2] or "", "priority": r[3] or ""}
         for r in (rows or [])
@@ -301,7 +317,12 @@ def _query_risks(solution_id: int) -> list:
     """Return risk snapshots linked to the solution."""
     from sqlalchemy import text
     rows = _safe(lambda: db.session.execute(text(  # tenant-filtered: scoped via parent FK (solution_id)
-        "SELECT id, risk_name, risk_description, likelihood, impact, status "
+        # Column names checked against the live table, not guessed: this query
+        # asked for risk_description/likelihood/status, none of which exist here
+        # (they are notes/probability/mitigation_status). All three raised
+        # UndefinedColumn, _safe swallowed it, and every narrative rendered an
+        # empty risk register.
+        "SELECT id, risk_name, notes, probability, impact, mitigation_status "
         "FROM solution_risk_snapshots WHERE solution_id = :sid ORDER BY id LIMIT 100"
     ), {"sid": solution_id}).fetchall(), default=[])
     return [

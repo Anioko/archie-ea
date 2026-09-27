@@ -10,16 +10,19 @@ Complex routes (API settings, feature flags, abacus, seed) retain inline logic
 for Phase 0.5 parity; service extraction planned for Phase 2.
 """
 
+from app.models.models import ExternalSystem
 import hashlib
 import hmac
 import json
 import logging
 import os
 from datetime import datetime
+from html import escape
 
 from flask import (
     Blueprint,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -27,7 +30,9 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, joinedload
+from app.utils.pagination import safe_int_arg
 
 try:
     from flask_rq import get_queue
@@ -47,8 +52,9 @@ from ..forms.admin_forms import (
     NewUserForm,
 )
 from app.modules.account.forms.account_forms import CreatePasswordForm
-from app.decorators import admin_required, audit_log
-from app.models import APISettings, EditableHTML, Role, User
+from app.decorators import admin_required, audit_log, governance_gate_reader_required
+from app.models import APISettings, EditableHTML, Permission, Role, User
+from app.models.organization import Organization
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.services.llm_service import test_api_key
 from app.services.rbac_service import rbac_service
@@ -79,8 +85,8 @@ def index():
 @admin_required
 def dashboard_test():
     """Admin dashboard test page for dropdown testing."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -101,8 +107,8 @@ def dashboard_test():
 @admin_required
 def dashboard():
     """Admin dashboard with stats and overview."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -194,9 +200,32 @@ def manage_users_redirect():
 @admin_required
 def registered_users():
     """View all registered users."""
-    users = User.query.options(joinedload(User.role)).order_by(User.id.desc()).all()
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: cross-org user-listing IDOR fix).
+    users = (
+        User.query.filter_by(organization_id=g.current_org_id)
+        .options(joinedload(User.role))
+        .order_by(User.id.desc())
+        .all()
+    )
     roles = Role.query.order_by(Role.name).all()
-    return render_template("admin/registered_users.html", users=users, roles=roles)
+    # A-02: this page is (correctly, per the tenant-scoping fix above)
+    # scoped to the current organisation, but the header used to say
+    # "Registered Users" with no indication of that scope, while
+    # /admin/organizations sums per-org user counts across every org — 22
+    # tenants vs. 2 users here is not a leak or a drift, it is the same
+    # figure viewed at two different scopes with neither one saying so. Name
+    # the scope explicitly and surface the platform-wide total for
+    # reconciliation rather than leaving the admin to discover the gap.
+    current_org = Organization.query.get(g.current_org_id)
+    platform_total_users = User.query.count()
+    return render_template(
+        "admin/registered_users.html",
+        users=users,
+        roles=roles,
+        current_org=current_org,
+        platform_total_users=platform_total_users,
+    )
 
 
 @admin_bp.route("/user/<int:user_id>")
@@ -285,10 +314,9 @@ def delete_user_request(user_id):
     return render_template("admin/manage_user.html", user=user)
 
 
-@admin_bp.route("/user/<int:user_id>/_delete")
+@admin_bp.route("/user/<int:user_id>/_delete", methods=["POST"])
 @login_required
 @admin_required
-@audit_log("admin_user_delete")
 def delete_user(user_id):
     """Delete a user's account."""
     if current_user.id == user_id:
@@ -299,8 +327,26 @@ def delete_user(user_id):
         )
     else:
         user = _svc.get_user_or_404(user_id)
-        success, message = _svc.delete_user(user)
-        flash(message, "success")
+        try:
+            success, message = _svc.delete_user(user)
+            flash(message, "success")
+            from app.models.audit_log import AuditLog
+            AuditLog.log(
+                action="admin_user_delete",
+                entity_type="admin_user",
+                entity_id=user_id,
+                user_id=current_user.id,
+                user_email=current_user.email,
+                ip_address=request.remote_addr,
+                description=f"admin_user_delete via {request.path}",
+            )
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "This user still owns records and cannot be deleted.",
+                "error",
+            )
+            return redirect(url_for("admin.user_info", user_id=user_id))
     return redirect(url_for("admin.registered_users"))
 
 
@@ -507,7 +553,7 @@ def test_api_settings(settings_id):
     try:
         result = test_api_key(settings.provider, settings.api_key, model=settings.default_model or None)
         flash(f"API test successful: {result}", "success")
-    except Exception as e:
+    except Exception:
         flash("API test failed. Please try again.", "error")
 
     return redirect(url_for("admin.api_settings"))
@@ -534,7 +580,7 @@ def preview_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -548,7 +594,8 @@ def preview_env_keys():
     for env_var, provider in env_key_map.items():
         value = os.environ.get(env_var, "")
         if value and value.strip():
-            masked = value[:8] + "..." + value[-4:] if len(value) > 12 else "****"
+            # A-07: last-4 only — do not send prefix bytes of real key material to the client.
+            masked = ("*" * 4) + value[-4:] if len(value) > 4 else "****"
             found_keys.append(
                 {
                     "env_var": env_var,
@@ -624,7 +671,7 @@ def load_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -783,8 +830,8 @@ def consolidation_status():
 @admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
     search = request.args.get("search", "")
     filter_type = request.args.get("type", "")
     filter_state = request.args.get("state", "")
@@ -897,7 +944,7 @@ def feature_flag_new():
             flash(f"Feature flag '{feature.name}' created successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error creating feature flag. Please try again.", "error")
 
@@ -949,7 +996,7 @@ def feature_flag_edit(id):
             flash(f"Feature flag '{feature.name}' updated successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating feature flag. Please try again.", "error")
 
@@ -987,7 +1034,7 @@ def feature_flag_toggle(id):
                 "message": f"Feature {status}",
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1009,7 +1056,7 @@ def feature_flag_delete(id):
         FeatureFlag.clear_cache(feature_key)
 
         flash(f"Feature flag '{feature.name}' deleted successfully", "success")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error deleting feature flag. Please try again.", "error")
 
@@ -1054,7 +1101,7 @@ def feature_flags_discover_sidebar():
             parser_data=parser.to_dict(),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error parsing sidebar. Please try again.", "error")
         return redirect(url_for("admin.feature_flags"))
 
@@ -1130,7 +1177,7 @@ def feature_flags_create_from_sidebar():
         flash(message, "success")
         return redirect(url_for("admin.feature_flags"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error creating feature flags. Please try again.", "error")
         return redirect(url_for("admin.feature_flags_discover_sidebar"))
@@ -1156,7 +1203,14 @@ def abacus_settings():
     class AbacusSettingsForm(FlaskForm):
         base_url = StringField("Base URL", validators=[DataRequired(), URL()])
         client_id = StringField("Client ID", validators=[DataRequired()])
-        client_secret = PasswordField("Client Secret")
+        client_secret = PasswordField("Client Secret",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         enabled = BooleanField("Enable Integration", default=False)
         sync_enabled = BooleanField("Enable Auto-Sync", default=False)
         sync_interval_minutes = IntegerField("Sync Interval (minutes)", default=1440)
@@ -1457,7 +1511,7 @@ def trigger_abacus_sync():
             "info",
         )
 
-    except Exception as e:
+    except Exception:
         flash("Failed to create sync job. Please try again.", "error")
 
     return redirect(url_for("admin.abacus_settings"))
@@ -1581,7 +1635,7 @@ def abacus_stats():
 
 @admin_bp.route("/governance-gates")
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates():
     """Governance gates configuration page."""
     from app.modules.solutions_strategic.v2.services.governance_gate_service import (
@@ -1591,12 +1645,13 @@ def governance_gates():
     return render_template(
         "admin/governance_gates.html",
         default_gates=DEFAULT_GATES,
+        can_manage_governance_gates=current_user.can(Permission.ADMINISTER),
     )
 
 
 @admin_bp.route("/api/governance-gates", methods=["GET"])
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates_list():
     """List all governance gates from DB."""
     from app.models.governance_gates import GovernanceGate
@@ -2136,8 +2191,8 @@ def _auto_discover_features(app):
 @admin_required
 def api_list_users():
     """Paginated user list API for data table."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     role_filter = request.args.get("role", "")
     sort_by = request.args.get("sort", "id")
@@ -2148,7 +2203,9 @@ def api_list_users():
         sort_by = "id"
 
     from sqlalchemy.orm import joinedload
-    query = User.query.options(joinedload(User.role))
+    # admin_required is org-scoped admin, not platform_admin — restrict to the
+    # current org (tenant-scoping-ok: cross-org user-listing IDOR fix).
+    query = User.query.filter_by(organization_id=g.current_org_id).options(joinedload(User.role))
     if search:
         term = f"%{search}%"
         query = query.filter(
@@ -2546,7 +2603,14 @@ def jira_settings():
     class JiraSettingsForm(FlaskForm):
         base_url = StringField("Jira Base URL", validators=[DataRequired()])
         username = StringField("Username / Email", validators=[DataRequired()])
-        api_token = PasswordField("API Token")
+        api_token = PasswordField("API Token",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         project_key = StringField("Project Key", validators=[DataRequired()])
         issue_type = StringField("Issue Type", default="Task")
         filter_countries = StringField("Country Filter", default="United Kingdom")
@@ -3147,9 +3211,9 @@ tr:nth-child(even) { background: #f9fafb; }
 <p class="subtitle">Generated {data['generated_at']} &mdash; CONFIDENTIAL</p>
 
 <div class="kpi-row">
-  <div class="kpi"><div class="value">{data['total_solutions']}</div><div class="label">Total Solutions</div></div>
+  <div class="kpi"><div class="value">{escape(str(data['total_solutions']))}</div><div class="label">Total Solutions</div></div>
   <div class="kpi"><div class="value">{data['avg_completeness']}%</div><div class="label">Avg Completeness</div></div>
-  <div class="kpi"><div class="value">{len(data['solutions_by_status'])}</div><div class="label">Status Categories</div></div>
+  <div class="kpi"><div class="value">{escape(str(len(data['solutions_by_status'])))}</div><div class="label">Status Categories</div></div>
 </div>
 """)
 
@@ -3158,7 +3222,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["solutions_by_status"]:
         for status, count in sorted(data["solutions_by_status"].items()):
             label = status.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{count}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(count))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='2'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -3167,7 +3231,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Highest Completeness</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["top10"]:
         for i, s in enumerate(data["top10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -3176,7 +3240,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Gaps (Lowest Completeness)</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["bottom10"]:
         for i, s in enumerate(data["bottom10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -3186,7 +3250,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["junction_coverage"]:
         for jname, jdata in data["junction_coverage"].items():
             label = jname.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{jdata['with']}</td><td>{jdata['without']}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(jdata['with']))}</td><td>{escape(str(jdata['without']))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -3620,22 +3684,30 @@ def pricing_analytics():
         engine = ConfidenceEngine()
         analytics = engine.get_analytics()
     except Exception as exc:
-        logger.warning("pricing_analytics: ConfidenceEngine unavailable: %s", exc)
-        analytics = {
-            "coverage_pct": 0,
-            "covered_capabilities": 0,
-            "total_capabilities": 0,
-            "confidence_distribution": {},
-            "stale_count": 0,
-            "conflict_count": 0,
-        }
+        # Honest failure: the template renders coverage_pct, counts and stale/conflict
+        # totals as measured values (and injects them into JS), so a zero-filled dict
+        # would present an engine outage as a real 0% coverage reading. Surface the
+        # error instead of fabricating a measurement.
+        logger.error("pricing_analytics: ConfidenceEngine unavailable: %s", exc)
+        raise
     return render_template("admin/pricing_analytics.html", analytics=analytics)
 
 
 # ---------------------------------------------------------------------------
 # Power Platform CoE Integration
 # ---------------------------------------------------------------------------
-
+#
+# Wave 4 nav/security audit (8 Sep 2026): all five routes below carried only
+# @login_required despite living in the platform_admin-only Admin sidebar
+# zone (app/utils/role_access.py, "Power Platform") and writing tenant CoE
+# credentials to api_settings. The sidebar hid the link from non-admins, but
+# the route itself did not check anything beyond an authenticated session, so
+# any logged-in user of any role could GET the page (and its stored
+# tenant/client id) and POST new credentials or trigger discovery/import by
+# calling the URL directly. Added @admin_required (Permission.ADMINISTER) to
+# match the guard the sidebar's own "requires" comment
+# (app/utils/role_access.py:_link, "admin" -> @admin_required) already claims
+# every admin-zone route carries.
 _PP_PROVIDER = "power_platform_coe"
 _PP_LABEL = "default"
 
@@ -3649,6 +3721,7 @@ def _pp_settings_row():
 
 @admin_bp.route("/integrations/power-platform", methods=["GET"])
 @login_required
+@admin_required
 def power_platform_integration():
     """GET /admin/integrations/power-platform — CoE configuration and discovery UI."""
     row = _pp_settings_row()
@@ -3665,6 +3738,7 @@ def power_platform_integration():
 
 @admin_bp.route("/integrations/power-platform/save", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_save_credentials():
     """POST /admin/integrations/power-platform/save — persist credentials to api_settings."""
     data = request.get_json() or request.form
@@ -3685,6 +3759,7 @@ def power_platform_save_credentials():
 
 @admin_bp.route("/integrations/power-platform/test", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_test_connection():
     """POST /admin/integrations/power-platform/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -3717,6 +3792,7 @@ def power_platform_test_connection():
 
 @admin_bp.route("/integrations/power-platform/discover", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_discover():
     """POST /admin/integrations/power-platform/discover — trigger discovery, return app list."""
     from app.models.application_portfolio import ApplicationComponent
@@ -3732,7 +3808,7 @@ def power_platform_discover():
         row.jira_url or "", row.jira_email or "", row.api_key or ""
     )
 
-    # Annotate with ARCHIE link status
+    # Annotate with Entelim link status
     linked_ids = {
         r.source_identifier
         for r in ApplicationComponent.query.filter(
@@ -3757,6 +3833,7 @@ def power_platform_discover():
 
 @admin_bp.route("/integrations/power-platform/import", methods=["POST"])
 @login_required
+@admin_required
 def power_platform_import():
     """POST /admin/integrations/power-platform/import — import selected app_ids."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -3809,7 +3886,14 @@ def servicenow_integration():
         password = PasswordField(
             "API Password / Token",
             description="Leave blank to keep existing password"
-        )
+        ,
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         batch_size = IntegerField(
             "Batch Size",
             validators=[OptionalValidator(), NumberRange(min=1, max=1000)],
@@ -4082,3 +4166,41 @@ def servicenow_sync_status():
         "synced_applications": synced_apps,
         "instance_url": snow_config.base_url
     })
+
+
+# ── ARCH-030(ii): duplicate merge/reconcile workflow ────────────────────────
+# Admin-facing repoint-then-delete for duplicates already in the repository.
+# Never merges across organisations, never deletes without repointing FKs
+# first. See app/commands/dedupe_entities.py for the one-off bulk remediation
+# CLI this shares its merge engine with.
+
+@admin_bp.route("/duplicates/merge", methods=["POST"])
+@login_required
+@admin_required
+def merge_duplicates():
+    """Repoint FK references from loser rows to a chosen winner, then delete
+    the losers. Body: {"model": "archimate_element"|"solution",
+    "winner_id": int, "loser_ids": [int, ...], "dry_run": bool}."""
+    from app.commands.dedupe_entities import merge_duplicate_rows
+
+    data = request.get_json(silent=True) or {}
+    model_key = data.get("model")
+    winner_id = data.get("winner_id")
+    loser_ids = data.get("loser_ids") or []
+    dry_run = bool(data.get("dry_run", False))
+
+    if model_key not in ("archimate_element", "solution"):
+        return jsonify({"success": False, "error": "model must be 'archimate_element' or 'solution'"}), 400
+    if not isinstance(winner_id, int) or not loser_ids:
+        return jsonify({"success": False, "error": "winner_id (int) and loser_ids (non-empty list) are required"}), 400
+
+    org_id = getattr(g, "current_org_id", None)
+
+    try:
+        report = merge_duplicate_rows(
+            model_key, winner_id, loser_ids, organization_id=org_id, dry_run=dry_run
+        )
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+    return jsonify({"success": True, **report})

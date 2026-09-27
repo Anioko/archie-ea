@@ -6,7 +6,7 @@ and provides multi-criteria decision analysis.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -94,16 +94,16 @@ class TradeoffAnalysisAgent:
             Dictionary with trade-off analysis results and recommendations
         """
         try:
-            solution_description = context.get("solution_description", "")
-            solution_type = context.get("solution_type", "")
-            business_domain = context.get("business_domain", "")
-            constraints = context.get("constraints", [])
-            compliance_requirements = context.get("compliance_requirements", [])
-            organization_size = context.get("organization_size", "midmarket")
-            budget_range = context.get("budget_range", {})
-            timeline_months = context.get("timeline_months", 12)
-            user_count = context.get("user_count", 100)
-            is_critical = context.get("is_critical", False)
+            context.get("solution_description", "")
+            context.get("solution_type", "")
+            context.get("business_domain", "")
+            context.get("constraints", [])
+            context.get("compliance_requirements", [])
+            context.get("organization_size", "midmarket")
+            context.get("budget_range", {})
+            context.get("timeline_months", 12)
+            context.get("user_count", 100)
+            context.get("is_critical", False)
 
             # Identify relevant trade-off scenarios
             relevant_scenarios = self._identify_relevant_scenarios(context)
@@ -431,7 +431,7 @@ class TradeoffAnalysisAgent:
                     "type": "primary_recommendation",
                     "option": best_option,
                     "score": overall_scores[best_option],
-                    "rationale": f"Highest overall score across all trade-off analyses",
+                    "rationale": "Highest overall score across all trade-off analyses",
                     "confidence": "high",
                 }
             )

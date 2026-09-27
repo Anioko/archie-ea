@@ -48,7 +48,6 @@ const ReteLikeExtensions = {
      */
     enable(drawflowInstance, hostComponent) {
         if (this.enabled) {
-            console.warn('[ReteLike] Already enabled');
             return;
         }
 
@@ -128,7 +127,11 @@ const ReteLikeExtensions = {
                     break;
                 }
             } catch (err) {
-                console.error(`[ReteLike] Event handler error for ${event}:`, err);
+                // Isolate listeners from each other: one handler throwing must not
+                // stop the remaining listeners for this event from running.
+                if (typeof Platform !== 'undefined' && Platform.error) {
+                    Platform.error.handle(err, `ReteLike ${event} handler`);
+                }
             }
         }
 
@@ -398,7 +401,6 @@ const ReteLikeExtensions = {
             return { success: true, nodeId };
 
         } catch (err) {
-            console.error('[ReteLike] Insert failed:', err);
             this.emit('insertFailed', { reason: err.message, attemptedPayload: payload });
             return { success: false, error: err.message };
         }
@@ -473,7 +475,8 @@ const ReteLikeExtensions = {
             }
 
         } catch (err) {
-            console.warn('[ReteLike] Auto-connect failed:', err);
+            // Best-effort "snap to nearby node" convenience while dragging; failure is
+            // self-evident (no connecting line appears) and the user can connect manually.
         }
     },
 
@@ -484,7 +487,6 @@ const ReteLikeExtensions = {
     _initSVGOverlay() {
         const drawflowContainer = document.getElementById('drawflow');
         if (!drawflowContainer) {
-            console.warn('[ReteLike] Drawflow container not found, SVG overlay disabled');
             return;
         }
 
@@ -573,7 +575,6 @@ const ReteLikeExtensions = {
         // Compute path using strategy
         const strategy = this._pathStrategies.get(pathType);
         if (!strategy) {
-            console.warn(`[ReteLike] Unknown path strategy: ${pathType}`);
             return;
         }
 
@@ -877,7 +878,6 @@ const ReteLikeExtensions = {
         const { pathType, controlPoints = [] } = config;
 
         if (!this._pathStrategies.has(pathType)) {
-            console.warn(`[ReteLike] Unknown path strategy: ${pathType}`);
             return;
         }
 
@@ -924,7 +924,6 @@ const ReteLikeExtensions = {
     assignNodeToScope(nodeId, scopeId) {
         const scope = this._scopes.get(scopeId);
         if (!scope) {
-            console.warn(`[ReteLike] Scope not found: ${scopeId}`);
             return;
         }
 
@@ -1015,7 +1014,6 @@ const ReteLikeExtensions = {
                         return { allowed: false, reason: `Predicate ${predicateName} rejected connection` };
                     }
                 } catch (err) {
-                    console.error(`[ReteLike] Predicate ${predicateName} error:`, err);
                     return { allowed: false, reason: `Predicate ${predicateName} failed` };
                 }
             }
@@ -1046,7 +1044,6 @@ const ReteLikeExtensions = {
     deleteScope(scopeId, options = {}) {
         const scope = this._scopes.get(scopeId);
         if (!scope) {
-            console.warn(`[ReteLike] Scope not found: ${scopeId}`);
             return;
         }
 

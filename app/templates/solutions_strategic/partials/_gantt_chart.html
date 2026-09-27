@@ -60,9 +60,9 @@
     <div x-show="error && !loading" x-cloak class="absolute inset-0 flex items-center justify-center bg-destructive/5 z-50">
         <div class="text-center max-w-sm px-4">
             <i data-lucide="alert-circle" class="w-8 h-8 text-destructive mx-auto mb-2" aria-hidden="true"></i>
-            <p class="text-sm font-medium text-destructive mb-2">Failed to load Gantt chart</p>
+            <p class="text-sm font-medium text-destructive-emphasis mb-2">Failed to load Gantt chart</p>
             <p class="text-xs text-muted-foreground mb-3" x-text="error"></p>
-            <button @click="loadGanttData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+            <button type="button" @click="loadGanttData()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" aria-hidden="true"></i> Retry
             </button>
         </div>
@@ -78,7 +78,7 @@
             <div class="flex items-center gap-1.5">
                 <label class="text-xs text-muted-foreground">Phase:</label>
                 <select x-model="selectedPhase" @change="refreshChart()"
-                        class="px-2 py-1 rounded-md border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                        class="px-2 py-1 rounded-md border border-border bg-background text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Phase">
                     <option value="">All Phases</option>
                     <template x-for="phase in phases" :key="phase">
                         <option :value="phase" x-text="phase"></option>
@@ -117,13 +117,13 @@
         <div class="flex items-center gap-2">
             {# Zoom Controls #}
             <div class="flex items-center gap-1 border-l border-border pl-2">
-                <button @click="zoomOut()" :disabled="zoomLevel <= 1" 
+                <button type="button" @click="zoomOut()" :disabled="zoomLevel <= 1" 
                         class="p-1 rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         title="Zoom out" aria-label="Zoom out">
                     <i data-lucide="zoom-out" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                 </button>
                 <span class="text-xs text-muted-foreground min-w-[2.5rem] text-center" x-text="zoomLevel + 'x'"></span>
-                <button @click="zoomIn()" :disabled="zoomLevel >= 4" 
+                <button type="button" @click="zoomIn()" :disabled="zoomLevel >= 4" 
                         class="p-1 rounded-md hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         title="Zoom in" aria-label="Zoom in">
                     <i data-lucide="zoom-in" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
@@ -132,11 +132,11 @@
 
             {# Granularity Toggle #}
             <div class="flex items-center gap-1 pl-2 border-l border-border">
-                <button @click="setGranularity('week')" 
+                <button type="button" @click="setGranularity('week')" 
                         :class="granularity === 'week' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'"
                         class="px-2 py-1 rounded-md text-xs font-medium transition-colors"
                         title="Week granularity">Week</button>
-                <button @click="setGranularity('month')" 
+                <button type="button" @click="setGranularity('month')" 
                         :class="granularity === 'month' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent'"
                         class="px-2 py-1 rounded-md text-xs font-medium transition-colors"
                         title="Month granularity">Month</button>
@@ -145,12 +145,12 @@
             {# Export #}
             <template x-if="showExport">
                 <div class="flex items-center gap-1 pl-2 border-l border-border">
-                    <button @click="exportChart('png')" :disabled="exporting" 
+                    <button type="button" @click="exportChart('png')" :disabled="exporting" 
                             class="p-1 rounded-md hover:bg-accent disabled:opacity-50 transition-colors"
                             title="Export as PNG" aria-label="Export as PNG">
                         <i data-lucide="download" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                     </button>
-                    <button @click="showExportMenu = !showExportMenu" 
+                    <button type="button" @click="showExportMenu = !showExportMenu" 
                             class="p-1 rounded-md hover:bg-accent transition-colors"
                             title="Export options" aria-label="Export options">
                         <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true"></i>
@@ -163,13 +163,13 @@
     {# Export Menu (hidden) #}
     <div x-show="showExportMenu" @click.away="showExportMenu = false" x-cloak
          class="absolute top-12 right-4 z-40 rounded-lg border border-border bg-card shadow-lg p-2 space-y-1">
-        <button @click="exportChart('png')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('png')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as PNG
         </button>
-        <button @click="exportChart('svg')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('svg')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as SVG
         </button>
-        <button @click="exportChart('csv')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
+        <button type="button" @click="exportChart('csv')" class="w-full text-left px-3 py-2 text-xs rounded-md hover:bg-accent transition-colors">
             Export as CSV
         </button>
     </div>
@@ -182,11 +182,11 @@
                 <span class="text-muted-foreground">Critical Path</span>
             </div>
             <div class="flex items-center gap-1">
-                <div class="w-3 h-3 rounded-sm bg-emerald-500"></div>
+                <div class="w-3 h-3 rounded-sm bg-emerald-500"></div> {# design-tokens-ok: Gantt phase palette (data-viz), see getStatusBadgeClass below #}
                 <span class="text-muted-foreground">Completed</span>
             </div>
             <div class="flex items-center gap-1">
-                <div class="w-3 h-3 rounded-sm bg-amber-500"></div>
+                <div class="w-3 h-3 rounded-sm bg-amber-500"></div> {# design-tokens-ok: Gantt phase palette (data-viz) #}
                 <span class="text-muted-foreground">In Progress</span>
             </div>
             <div class="flex items-center gap-1">
@@ -333,7 +333,7 @@
                         <h3 class="font-semibold text-foreground" x-text="selectedTask.name"></h3>
                         <p class="text-xs text-muted-foreground mt-1" x-text="selectedTask.group"></p>
                     </div>
-                    <button @click="selectedTask = null" class="p-1 hover:bg-accent rounded-md">
+                    <button aria-label="Close task details" type="button" @click="selectedTask = null" class="p-1 hover:bg-accent rounded-md">
                         <i data-lucide="x" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
                     </button>
                 </div>
@@ -367,7 +367,7 @@
                     </div>
                     <div class="flex items-center justify-between" x-show="selectedTask.meta && selectedTask.meta.risk_level" x-cloak>
                         <span class="text-muted-foreground">Risk Level:</span>
-                        <span class="font-medium text-orange-600" x-text="selectedTask.meta.risk_level"></span>
+                        <span class="font-medium text-warning-emphasis" x-text="selectedTask.meta.risk_level"></span>
                     </div>
                 </div>
 
@@ -395,7 +395,7 @@
                         <h4 class="font-medium text-foreground">Dependencies</h4>
                         <div class="space-y-1">
                             <template x-for="depId in selectedTask.dependencies" :key="depId">
-                                <button @click="selectTaskById(depId)"
+                                <button type="button" @click="selectTaskById(depId)"
                                         class="w-full text-left px-2 py-1 rounded-md text-xs text-primary hover:bg-primary/10 transition-colors"
                                         x-text="getTaskNameById(depId)"></button>
                             </template>
@@ -414,7 +414,7 @@
                 {# Reschedule (draft mode only) #}
                 <template x-if="allowReschedule">
                     <div class="space-y-2 text-sm pt-2 border-t border-border">
-                        <button @click="enableRescheduleMode(selectedTask)"
+                        <button type="button" @click="enableRescheduleMode(selectedTask)"
                                 class="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                             <i data-lucide="move" class="w-3.5 h-3.5" aria-hidden="true"></i>
                             Reschedule
@@ -439,7 +439,7 @@
                     </p>
                 </template>
                 <template x-if="hoverTask.meta && hoverTask.meta.risk_level">
-                    <p class="text-orange-600">
+                    <p class="text-warning-emphasis">
                         <strong x-text="hoverTask.meta.risk_level"></strong> risk
                     </p>
                 </template>
@@ -455,7 +455,15 @@
 <script>
 (function() {
     if (typeof Alpine === 'undefined') {
-        console.error('[gantt_chart] Alpine.js not loaded');
+        // Without Alpine the chart never renders and the panel stays blank, which
+        // reads as "no roadmap". Say so instead.
+        document.querySelectorAll('[id^="gantt-chart-"]').forEach(function(el) {
+            el.textContent = 'The roadmap chart could not start (Alpine.js failed to load). Reload the page to try again.';
+            el.className = 'rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive-emphasis';
+        });
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('The roadmap chart could not start (Alpine.js failed to load).');
+        }
         return;
     }
 
@@ -510,23 +518,31 @@
                 try {
                     this.loading = true;
                     this.error = null;
-                    const response = await fetch(this.endpoint);
-                    if (!response.ok) throw new Error('Failed to load Gantt data');
-                    const data = await response.json();
+                    // Platform.fetch automatically throws on non-ok responses, returns parsed JSON
+                    const data = await Platform.fetch(this.endpoint);
                     
                     this.allTasks = data.gantt.tasks || [];
                     this.phases = [...new Set(this.allTasks.map(t => t.group))];
                     
-                    // Calculate critical path length
-                    const criticalTasks = this.allTasks.filter(t => t.dependencies && t.dependencies.length > 0);
-                    if (criticalTasks.length > 0) {
-                        this.criticalPathLength = Math.ceil(Math.random() * 24 + 18); // Placeholder: 18-24 weeks
-                    }
-                    
+                    // Critical path length, only if the API actually computed one.
+                    //
+                    // This used to be Math.ceil(Math.random() * 24 + 18) behind a
+                    // "Placeholder" comment, so a programme's critical path was a
+                    // different number on every page load and a reader had no way to
+                    // tell it from a real figure. There is no client-side critical
+                    // path calculation here to fall back on - deriving one needs the
+                    // dependency graph and durations - so when the API does not send
+                    // it the value stays null and the "Critical path" indicator stays
+                    // hidden (it is behind x-show="criticalPathLength").
+                    const reported = data.gantt.critical_path_weeks;
+                    this.criticalPathLength = Number.isFinite(reported) ? reported : null;
+
                     this.applyFilters();
                     this.renderChart();
                     this.loading = false;
                 } catch (e) {
+                    // Platform.fetch already shows a user-visible toast for network/HTTP errors.
+                    // We also need to set inline error state for the component's error display.
                     this.error = e.message;
                     this.loading = false;
                 }
@@ -591,12 +607,15 @@
             },
             
             // Risk visualization
+            // 4-tier RAG scale (critical/high/medium/low) — beyond the 3 tiers a single
+            // warning token can express without collapsing distinct risk levels onto the
+            // same hue, so the raw families stay. design-tokens-ok
             getRiskClass(riskLevel) {
                 const classes = {
                     'critical': 'text-destructive',
-                    'high': 'text-orange-600',
-                    'medium': 'text-amber-600',
-                    'low': 'text-emerald-600'
+                    'high': 'text-orange-600', // design-tokens-ok: 4-tier RAG scale
+                    'medium': 'text-amber-600', // design-tokens-ok: 4-tier RAG scale
+                    'low': 'text-emerald-600' // design-tokens-ok: 4-tier RAG scale
                 };
                 return classes[riskLevel] || 'text-muted-foreground';
             },
@@ -637,10 +656,11 @@
                 return Math.round(days / 30) + ' months';
             },
             
+            // Gantt phase palette (data-viz), mirrors the legend swatches above. design-tokens-ok
             getStatusBadgeClass(status) {
                 const classes = {
-                    'completed': 'bg-emerald-500/10 text-emerald-600',
-                    'in_progress': 'bg-orange-500/10 text-orange-600',
+                    'completed': 'bg-emerald-500/10 text-emerald-600', // design-tokens-ok: Gantt phase palette
+                    'in_progress': 'bg-orange-500/10 text-orange-600', // design-tokens-ok: Gantt phase palette
                     'planned': 'bg-primary/10 text-primary',
                     'not_started': 'bg-muted text-foreground'
                 };
@@ -708,8 +728,8 @@
                     // Export gantt as CSV (basic implementation)
                     if (format === 'csv') {
                         const rows = [['ID', 'Title', 'Start', 'End', 'Status', 'Assignee']];
-                        (this.tasks || []).forEach(t => {
-                            rows.push([t.id, t.title, t.start_date || '', t.end_date || '', t.status || '', t.assignee || '']);
+                        (this.allTasks || []).forEach(t => {
+                            rows.push([t.id, t.name, t.start_date || '', t.end_date || '', t.status || '', (t.meta && t.meta.assigned_to) || '']);
                         });
                         const csv = rows.map(r => r.map(c => JSON.stringify(c)).join(',')).join('\n');
                         const a = document.createElement('a');

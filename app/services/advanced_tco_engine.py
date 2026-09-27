@@ -17,31 +17,28 @@ import base64
 import io
 import json
 import logging
+import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 
 # Excel export dependencies
 try:
-    import openpyxl
+    import openpyxl  # noqa: F401 — availability probe: the import IS the test
     from openpyxl import Workbook
-    from openpyxl.chart import BarChart, LineChart, Reference
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.chart import BarChart, LineChart, Reference  # noqa: F401 — availability probe: the import IS the test
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: F401 — availability probe: the import IS the test
 
     EXCEL_AVAILABLE = True
 except ImportError:
     EXCEL_AVAILABLE = False
 
-from sqlalchemy import func
 
 from app import db
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
-    VendorOrganization,
     VendorProduct,
     VendorProductPricing,
 )
@@ -727,7 +724,7 @@ class AdvancedTCOEngine:
             },
             "cost_comparison": {
                 "total_tco_vs_benchmark": vs_industry_percentage,
-                "per_user_annual_vs_benchmark": vs_per_user_annual,
+                "per_user_annual_vs_benchmark": vs_per_user_percentage,
                 "assessment": self._assess_cost_performance(vs_industry_percentage),
             },
             "category_comparison": category_comparison,
@@ -808,6 +805,7 @@ class AdvancedTCOEngine:
 
     def _get_pricing_tiers(self, vendor_product_id: int) -> List[VendorProductPricing]:
         """Get pricing tiers for vendor product."""
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         return db.session.query(VendorProductPricing).filter_by(product_id=vendor_product_id).all()
 
     def _select_pricing_tier(
@@ -1053,7 +1051,11 @@ class AdvancedTCOEngine:
             return {
                 "success": True,
                 "excel_data": excel_data,
-                "filename": f"tco_analysis_{vendor_product.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                # vendor_product.name is freeform text with no character
+                # restriction; strip anything that could break out of the
+                # quoted Content-Disposition filename attribute it ends up
+                # in (found 11 Sep 2026, raw-html-escaping gate triage).
+                "filename": f"tco_analysis_{re.sub(r'[^a-zA-Z0-9_-]', '_', vendor_product.name)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 "file_size": len(excel_data),
                 "sheets_created": len(wb.worksheets),
                 "includes_charts": include_charts,

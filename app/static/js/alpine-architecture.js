@@ -20,7 +20,7 @@
  *   ✅ No duplicated component names
  *   ✅ Modal logic lives in modal components only
  *   ✅ Page logic lives in page components only
- *   ✅ Async always uses apiFetch() — never raw fetch()
+ *   ✅ Async always goes through Platform.fetch — never the native API
  *   ✅ Error handling always sets this.errorMsg
  *   ✅ Loading always uses this.loading flag
  *   ✅ Notifications always use window.toast — never alert()
@@ -51,7 +51,8 @@
 'use strict';
 
 if (window.__ALPINE_ARCH_LOADED__) {
-    console.warn('[alpine-architecture] Already loaded — skipping re-registration.');
+    /* Already loaded — skip re-registration. Harmless: the first load's
+       components are already registered and remain in use. */
 } else {
     window.__ALPINE_ARCH_LOADED__ = true;
 
@@ -61,9 +62,13 @@ if (window.__ALPINE_ARCH_LOADED__) {
      * ========================================================================= */
 
     function _fetch(url, opts) {
-        if (window.Platform && window.Platform.fetch) return window.Platform.fetch(url, opts);
-        if (window.apiFetch) return window.apiFetch(url, opts);
-        return fetch(url, opts).then(function (r) { return r.json(); });
+        // Merge opts with silent:true to suppress duplicate toast (error shown by component)
+        const mergedOpts = Object.assign({}, opts || {}, { silent: true });
+        if (window.Platform && window.Platform.fetch) {
+            return window.Platform.fetch(url, mergedOpts);
+        }
+        // Platform.fetch must be available; if not, the loading order is broken.
+        return Promise.reject(new Error('Platform.fetch not available'));
     }
 
     function _toast(type, msg) {
@@ -83,37 +88,41 @@ if (window.__ALPINE_ARCH_LOADED__) {
             successMsg: '',
             _startLoading() {
                 this.loading = true; this.submitting = true; this.errorMsg = ''; this.successMsg = '';
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').start();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: a missing or broken Alpine loading store must not stop the operation the user asked for */ }
             },
             _stopLoading() {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
             },
             _handleError(err) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
                 this.errorMsg = (err && err.message) ? err.message : 'An unexpected error occurred.';
                 _toast('error', this.errorMsg);
             },
             _handleSuccess(msg) {
                 this.loading = false; this.submitting = false;
+                // Best-effort UI affordance: a missing/broken loading store must not block the operation.
                 try {
                     if (typeof Alpine !== 'undefined' && Alpine.store && Alpine.store('loading')) {
                         Alpine.store('loading').stop();
                     }
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: spinner teardown only; the caller's own success or error message below is the real signal to the user */ }
                 this.successMsg = msg || 'Operation completed successfully.';
                 _toast('success', this.successMsg);
             }
@@ -307,33 +316,10 @@ if (window.__ALPINE_ARCH_LOADED__) {
             });
         });
 
-        Alpine.data('vendorCreateModal', function () {
-            return Object.assign(
-                {}, _asyncMixin(), _modalMixin(),
-                _formMixin({ name: '', vendor_type: '', country: '', website: '', description: '' }),
-                {
-                    apiUrl: '/api/vendors',
-                    validate() {
-                        this.validationErrors = {};
-                        if (!this.formData.name || !this.formData.name.trim())
-                            this._setFieldError('name', 'Vendor name is required.');
-                        if (this.formData.website && !/^https?:\/\//i.test(this.formData.website))
-                            this._setFieldError('website', 'Must start with http:// or https://');
-                        return !this._hasErrors();
-                    },
-                    async submit() {
-                        if (!this.validate()) return;
-                        this._startLoading();
-                        try {
-                            let data = await _fetch(this.apiUrl, { method: 'POST', body: this.formData });
-                            this._handleSuccess('Vendor created successfully.');
-                            this.$dispatch('vendor-created', { vendor: data });
-                            this.closeModal();
-                        } catch (err) { this._handleError(err); }
-                    }
-                }
-            );
-        });
+        // NOTE: vendorCreateModal is registered by app/static/js/vendors/create_modal.js
+        // (the page-specific factory with submitCreateVendor + the vendor_management
+        // .create_vendor POST target). A duplicate registration here shadowed it and
+        // broke vendor creation under the CSP Alpine build — do NOT re-add it.
 
         /* -----------------------------------------------------------------------
          * APPLICATION COMPONENTS
@@ -573,9 +559,11 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 async _loadItems() {
                     this._startLoading();
                     try {
-                        let data = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        let response = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                        let data = response.data || response;
                         this.items = data.items || data.solutions || [];
-                        this.totalItems = data.total || this.items.length;
+                        this.totalItems = data.total || data.pagination?.total || this.items.length;
                         this._stopLoading();
                     } catch (err) { this._handleError(err); }
                 },
@@ -595,13 +583,40 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 selectedSolution: null,
                 compareIds: [],
                 compareMode: false,
+                startingSolution: false,
                 init() { this._loadItems(); },
+                // E2E-4: a fresh workspace had no working way to create its
+                // first solution. The old plain create form was removed
+                // (a real fix -- it opened a page mislabeled "Architecture
+                // Journey"), but nothing replaced it: /solutions/new 404s,
+                // "New from Template" needs an existing solution to save one
+                // from, and "Start Architecture Journey" creates a separate
+                // ArchitectureJourney artifact with, by that route's own
+                // docstring, no Solution at all. POST /architecture-journey/start
+                // already does the real thing (creates a Solution, redirects
+                // into its design workspace) -- it was just never reachable
+                // from this page. Calling it directly here, honestly labelled
+                // "New Solution", is not the same mistake as before: the
+                // label matches exactly where it goes.
+                async startSolution() {
+                    if (this.startingSolution) return;
+                    this.startingSolution = true;
+                    try {
+                        const payload = await Platform.fetch.post('/architecture-journey/start', {}, { silent: true });
+                        window.location.assign(payload.data.redirect);
+                    } catch (error) {
+                        Platform.toast.error(error.message || 'Could not create a new solution.');
+                        this.startingSolution = false;
+                    }
+                },
                 async _loadItems() {
                     this._startLoading();
                     try {
-                        let data = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        let response = await _fetch(this.apiUrl + '?' + this._buildQueryString());
+                        // Unwrap success_response wrapper if present (per CLAUDE.md convention)
+                        let data = response.data || response;
                         this.items = data.items || data.solutions || [];
-                        this.totalItems = data.total || this.items.length;
+                        this.totalItems = data.total || data.pagination?.total || this.items.length;
                         this._stopLoading();
                     } catch (err) { this._handleError(err); }
                 },
@@ -619,7 +634,10 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 isInCompare(id) { return this.compareIds.includes(id); },
                 async deleteSolution(id, name) {
                     if (!(await Platform.modal.confirm(`Delete solution "${name}"?`))) return;
-                    _fetch(`/enterprise/api/solutions/${id}`, { method: 'DELETE' })
+                    // The list is served by enterprise.api_solutions (/enterprise/api/solutions),
+                    // but that blueprint exposes no per-id DELETE. Deletion lives on the
+                    // solution_design blueprint, which owns the cascade cleanup.
+                    _fetch(`/solutions/${id}/delete-json`, { method: 'DELETE' })
                         .then(() => this._loadItems())
                         .catch(err => Platform.toast.error('Delete failed: ' + err.message));
                 }
@@ -754,7 +772,7 @@ if (window.__ALPINE_ARCH_LOADED__) {
                 {}, _asyncMixin(), _modalMixin(),
                 _formMixin({ configuration_name: '', configuration_code: '', description: '' }),
                 {
-                    apiUrl: '/api/framework-config',
+                    apiUrl: '/api/framework-config/configurations',
                     validate() {
                         this.validationErrors = {};
                         if (!this.formData.configuration_name || !this.formData.configuration_name.trim())

@@ -5,12 +5,9 @@ Completes all bidirectional relationships to achieve 100% relationship integrity
 This service adds missing back_populates to existing models.
 """
 
-from typing import Dict, List, Set
+from typing import Dict
 
-from sqlalchemy import text
-from sqlalchemy.orm import relationship
 
-from app.models import BusinessCapability, BusinessProcess, Node, SystemSoftware, TechnologyArtifact
 
 
 class RelationshipCompletionService:
@@ -109,8 +106,8 @@ class RelationshipCompletionService:
                 code_block = f"""
     # ArchiMate 3.2 Relationships
     {rel_name} = relationship('{rel_config["target_model"]}',
-                          secondary='{rel_config["secondary"]}',
-                          back_populates='{rel_config["back_populates"]}')
+                          secondary='{rel_config["secondary"]}',  # raw-html-ok: generated Python code snippet (suggested SQLAlchemy relationship), not HTML
+                          back_populates='{rel_config["back_populates"]}')  # raw-html-ok: generated Python code snippet (suggested SQLAlchemy relationship), not HTML
 """
                 code_blocks.append(code_block)
             code_blocks.append("")

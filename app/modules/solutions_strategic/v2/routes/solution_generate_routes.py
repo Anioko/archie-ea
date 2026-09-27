@@ -212,8 +212,14 @@ def generate_phase(solution_id):
                 "preview": [] if dry_run else None,
                 "created_count": 0,
                 "linked_count": 0,
-                "completeness_before": 1.0,
-                "completeness_after": 1.0,
+                # None, not 1.0. This branch is the "nothing to score" path --
+                # source_elements is 0 and the message says so -- and reporting
+                # 1.0 told the caller the solution was 100% complete precisely
+                # when nothing had been measured. CLAUDE.md: a value that means
+                # "not computed" must not be indistinguishable from a measured
+                # one; use None so the UI renders an em dash.
+                "completeness_before": None,
+                "completeness_after": None,
                 "errors": [],
             }), 200
 
@@ -432,7 +438,6 @@ def bootstrap_architecture(solution_id):
             # Preview: show what would be created
             # Estimate the chain from a Goal
             preview = [{"type": "Goal", "name": goal_name, "direction": "root", "source": "solution"}]
-            downstream_types = []
             current_type = "Goal"
             for _ in range(10):  # max chain depth
                 required = engine.rules.required_downstream(current_type)
@@ -660,7 +665,7 @@ def refine_names(solution_id):
     Response: {"refined": [{"id": 1, "type": "Goal", "before": "...", "after": "..."}], ...}
     """
     from app.models.archimate_core import ArchiMateElement
-    from app.modules.architecture.services.inference_providers import PROVIDER_REGISTRY, _llm_refine_element
+    from app.modules.architecture.services.inference_providers import _llm_refine_element
 
     solution = Solution.query.get(solution_id)
     if not solution:

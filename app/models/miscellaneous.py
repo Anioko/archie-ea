@@ -3,19 +3,31 @@ from datetime import datetime  # migration-exempt
 from sqlalchemy import text
 
 from .. import db
+from .mixins.core import TenantMixin
 
 
-class SSOGroupRoleMapping(db.Model):
+class SSOGroupRoleMapping(TenantMixin, db.Model):
     """Database-driven SSO group-to-role mapping (PLT-033).
 
     Replaces the hardcoded DEFAULT_GROUP_ROLE_MAP in app/auth/sso.py.
     Platform admins manage these via /admin/sso-settings.
+
+    Pre-TenantMixin, this table had no tenant boundary at all -- any org's
+    admin could see/edit every other org's SSO group->role mappings via
+    /admin/sso-settings (a live config-leak and functional bug: a global
+    UNIQUE(sso_group_name) meant two orgs could not both use a group named
+    e.g. "Admins"), and app/auth/sso.py's login-time role lookup mixed every
+    org's mappings together -- a real cross-tenant privilege-confusion risk.
+    See app/commands/reconcile_schema.py's `_backfill_sso_mapping_organizations`
+    and `_ensure_sso_mapping_tenant_unique_constraint` for the existing-database
+    migration this needed: the old single-column UNIQUE constraint is replaced
+    with a composite (organization_id, sso_group_name) one.
     """
 
     __tablename__ = "sso_group_role_mappings"
 
     id = db.Column(db.Integer, primary_key=True)
-    sso_group_name = db.Column(db.String(200), nullable=False, unique=True)
+    sso_group_name = db.Column(db.String(200), nullable=False)
     role_name = db.Column(db.String(50), nullable=False)
     description = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -25,6 +37,13 @@ class SSOGroupRoleMapping(db.Model):
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
         nullable=False,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id", "sso_group_name",
+            name="uq_sso_group_role_mappings_org_group",
+        ),
     )
 
     def __repr__(self):

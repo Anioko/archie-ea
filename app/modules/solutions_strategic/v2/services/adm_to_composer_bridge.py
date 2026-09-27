@@ -17,14 +17,12 @@ Reuses:
 - ArchiMate 3.2 element types for proper visualization
 """
 
-import json  # dead-code-ok — used in downstream methods
 import logging
 from dataclasses import asdict
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok — type hints in method signatures
+from typing import Any, Dict, List  # dead-code-ok — type hints in method signatures
 from uuid import uuid4
 
-from app import db  # dead-code-ok — used in downstream methods
 from app.modules.solutions_strategic.v2.services.solution_composer_service import (
     CanvasNode,
     CanvasConnection,

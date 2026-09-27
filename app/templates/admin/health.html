@@ -1,11 +1,13 @@
-{% extends 'admin/index.html' %}
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% block title %}Platform Health{% endblock %}
 {% block content %}
 <div class="max-w-5xl mx-auto py-8">
-  <h1 class="text-2xl font-bold mb-6">Platform Health Dashboard</h1>
+  {{ page_shell(title='Platform Health', subtitle='Live platform status and diagnostics', breadcrumb=[('Home', '/'), ('Platform Health', none)]) }}
   <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
     <div class="bg-background rounded shadow p-6 flex flex-col items-center">
       <div class="text-lg font-semibold">Uptime</div>
-      <div class="text-3xl font-bold text-emerald-600">{{ summary.uptime_pct }}%</div>
+      <div class="text-3xl font-bold text-success">{{ summary.uptime_pct }}%</div>
     </div>
     <div class="bg-background rounded shadow p-6 flex flex-col items-center">
       <div class="text-lg font-semibold">Error Rate</div>
@@ -35,14 +37,14 @@
         <div>{{ c.name }}</div>
         <div>
           {% if c.status == 'healthy' %}
-            <span class="inline-block w-3 h-3 rounded-full bg-emerald-500 mr-2"></span>
-            <span class="text-emerald-700">Healthy</span>
+            <span class="inline-block w-3 h-3 rounded-full bg-success mr-2"></span>
+            <span class="text-success-emphasis">Healthy</span>
           {% elif c.status == 'down' %}
             <span class="inline-block w-3 h-3 rounded-full bg-destructive mr-2"></span>
-            <span class="text-destructive">Down</span>
+            <span class="text-destructive-emphasis">Down</span>
           {% else %}
-            <span class="inline-block w-3 h-3 rounded-full bg-yellow-400 mr-2"></span>
-            <span class="text-amber-700">Warning</span>
+            <span class="inline-block w-3 h-3 rounded-full bg-warning mr-2"></span>
+            <span class="text-warning-emphasis">Warning</span>
           {% endif %}
         </div>
         <div class="text-xs text-muted-foreground/60 ml-4">{{ c.last_checked.strftime('%Y-%m-%d %H:%M') }}</div>
@@ -55,7 +57,7 @@
     <div class="flex flex-row items-end space-x-1 h-32">
       {% for pt in error_trend %}
         <div class="flex flex-col items-center justify-end" style="height:100%">
-          <div class="bg-red-400 w-4" style="height:{{ pt.error_count * 3 + 2 }}px"></div>
+          <div class="bg-destructive w-4" style="height:{{ pt.error_count * 3 + 2 }}px"></div>
           <div class="text-xs text-muted-foreground mt-1">{{ pt.hour }}</div>
         </div>
       {% endfor %}

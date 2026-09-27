@@ -13,7 +13,7 @@ from typing import Optional
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
-from pptx.util import Cm, Inches, Pt
+from pptx.util import Inches, Pt
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ class PowerPointExportService:
 
         architect_name = "Unknown"
         if solution.created_by_id:
+            # tenant-scoping-ok: FK id from an already org-scoped Solution load.
             user = User.query.get(solution.created_by_id)
             if user:
                 architect_name = (user.full_name() if (user and callable(getattr(user, "full_name", None))) else None) or getattr(user, "name", None) or user.email or "Unknown"
@@ -222,7 +223,7 @@ class PowerPointExportService:
         lp = ltf.paragraphs[0]
         lp.alignment = PP_ALIGN.LEFT
         lrun = lp.add_run()
-        lrun.text = "Solution Architecture Blueprint — A.R.C.H.I.E. Platform"
+        lrun.text = "Solution Architecture Blueprint — Entelim Platform"
         lrun.font.size = Pt(11)
         lrun.font.color.rgb = _NEAR_WHITE
 

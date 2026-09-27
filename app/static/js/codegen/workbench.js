@@ -321,7 +321,18 @@
                 try {
                     const cfgResp = await this._fetch(`/solutions/${this.solutionId}/codegen/config`);
                     saved = (cfgResp && cfgResp.config) || {};
-                } catch (_) { /* first visit — no config yet */ }
+                } catch (e) {
+                    // "First visit" is NOT this branch: the endpoint answers 200
+                    // {"config": {}} when nothing is stored. A throw is a real
+                    // failure (403/500/offline), and the defaults applied below then
+                    // render as if they were the saved configuration — and overwrite
+                    // it the moment the user saves. Say so instead.
+                    this._addError(
+                        'Could not load this solution\'s saved code-generation settings. ' +
+                        'The panel is showing defaults, not your configuration — reload before saving. (' +
+                        (e.message || 'request failed') + ')'
+                    );
+                }
                 this.editedFiles = Object.keys(saved.manual_edits || {});
                 this.config.language = saved.language || 'python-fastapi';
                 this.config.generation_mode = saved.generation_mode || 'genome';
@@ -385,11 +396,13 @@
                 // Reset prompt group statuses
                 this.promptGroups.forEach(k => { this.promptGroupStatus[k] = 'pending'; });
 
-                // Load chat instruction history from localStorage
+                // Load chat instruction history from localStorage. Best-effort cache —
+                // unavailable in private browsing or corrupt JSON just means the seed
+                // suggestions below are used instead.
                 try {
                     const stored = localStorage.getItem('codegen_chat_history_' + this.solutionId);
                     if (stored) this.chatSuggestions = JSON.parse(stored);
-                } catch (_) {}
+                } catch (_) { /* swallow-ok: localStorage throws in private mode and the stored JSON is our own; either way the seeded suggestions below are used, so there is nothing to tell the user */ }
                 // Seed contextual suggestions if none saved yet
                 if (this.chatSuggestions.length === 0) {
                     this.chatSuggestions = [
@@ -401,22 +414,24 @@
                     ];
                 }
 
-                // Load confirmed classes from localStorage
+                // Load confirmed classes from localStorage. Best-effort cache — a
+                // missing/corrupt value just means classes start unconfirmed.
                 try {
                     const conf = localStorage.getItem('codegen_confirmed_' + this.solutionId);
                     if (conf) this.confirmedClasses = JSON.parse(conf);
-                } catch (_) {}
+                } catch (_) { /* swallow-ok: localStorage throws in private mode; this is a display-only cache of a confirmation the server already owns, so classes simply start unconfirmed */ }
 
                 // Check if Docker preview container is already running
                 if (initialData.hasFiles) this.checkDockerStatus();
 
-                // Restore saved panel widths from localStorage
+                // Restore saved panel widths from localStorage. Best-effort — falls
+                // back to the default widths already set above.
                 try {
                     const sl = localStorage.getItem('wb-leftW');
                     const sr = localStorage.getItem('wb-rightW');
                     if (sl) this.leftW = Math.max(0, Math.min(480, parseInt(sl, 10)));
                     if (sr) this.rightW = Math.max(280, Math.min(800, parseInt(sr, 10)));
-                } catch (_) {}
+                } catch (_) { /* swallow-ok: localStorage throws in private mode; panel widths are a cosmetic preference and the defaults already applied are correct */ }
 
                 // Global mouse-drag handlers for panel resize
                 this._onDragMove = (e) => {
@@ -520,18 +535,20 @@
             stopDrag() {
                 if (!this.dragging) return;
                 this.dragging = null;
+                // Best-effort: remember panel widths for next visit. Unavailable in
+                // private browsing just means the layout resets to defaults next time.
                 try {
                     localStorage.setItem('wb-leftW', this.leftW);
                     localStorage.setItem('wb-rightW', this.rightW);
-                } catch (_) {}
+                } catch (_) { /* swallow-ok: localStorage throws in private mode or when the quota is full; the panel is already the width the user dragged it to, only the recall next visit is lost */ }
             },
             toggleLeftPanel() {
                 this.leftW = this.leftW > 40 ? 0 : 208;
-                try { localStorage.setItem('wb-leftW', this.leftW); } catch (_) {}
+                try { localStorage.setItem('wb-leftW', this.leftW); } catch (_) { /* swallow-ok: localStorage throws in private mode; the panel already toggled, only the recall next visit is lost */ }
             },
             toggleRightWide() {
                 this.rightW = this.rightW <= 440 ? 660 : 400;
-                try { localStorage.setItem('wb-rightW', this.rightW); } catch (_) {}
+                try { localStorage.setItem('wb-rightW', this.rightW); } catch (_) { /* swallow-ok: localStorage throws in private mode; the panel already toggled, only the recall next visit is lost */ }
             },
 
             traceMarkerSummary() {
@@ -664,10 +681,10 @@
                         `/solutions/${this.solutionId}/codegen/generate-iac`,
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 region: this.iacRegion,
                                 environment: this.iacEnvironment,
-                            }),
+                            },
                         }
                     );
                     this.iacResult = data;
@@ -686,7 +703,9 @@
                 try {
                     let data = await this._fetch('/api/codegen/template-sets');
                     this.templateSets = Array.isArray(data) ? data : [];
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the template marketplace.', true);
+                }
             },
 
             filteredTemplateSets() {
@@ -706,7 +725,9 @@
                 try {
                     const data = await this._fetch('/api/codegen/template-sets/' + id);
                     this.templatePreviewFiles = data.files || [];
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the template preview.', true);
+                }
                 this.templatePreviewLoading = false;
             },
 
@@ -732,11 +753,11 @@
                         '/solutions/' + this.solutionId + '/codegen/save-as-template',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 name: name,
                                 description: (this.newTemplateDesc || '').trim() || null,
                                 language: this.config.language,
-                            }),
+                            },
                         }
                     );
                     this.templateSets.unshift(data);
@@ -764,26 +785,24 @@
                 // Delegate to shared store fetch when available
                 const s = Alpine.store('codegen');
                 if (s) return s.apiFetch(url, opts);
-                // Fallback (store not loaded)
-                opts = opts || {};
-                opts.headers = Object.assign({
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': this._csrfToken(),
-                }, opts.headers || {});
-                const resp = await fetch(url, opts);
-                const text = await resp.text();
-                let data;
+                // Fallback (store not loaded) — use Platform.fetch
+                // Platform.fetch automatically injects CSRF token, serializes JSON, and throws on non-ok.
+                // We need to preserve the existing error handling that shows inline errors.
+                // The caller already paints its own error state, so we pass { silent: true } to avoid duplicate toasts.
                 try {
-                    data = JSON.parse(text);
-                } catch (e) {
-                    // HTML error page or non-JSON response
-                    const preview = text.substring(0, 300).replace(/<[^>]+>/g, ' ').trim();
-                    throw new Error(`Server returned non-JSON (HTTP ${resp.status}): ${preview}`);
+                    const options = opts || {};
+                    // Platform.fetch expects body as plain object for auto-JSON; ensure we don't double-stringify.
+                    // If the caller already stringified, we need to adjust, but existing callers pass plain objects.
+                    // We'll rely on Platform.fetch's detection.
+                    return await Platform.fetch(url, { ...options, silent: true });
+                } catch (error) {
+                    // Rethrow: this is a shared helper whose callers own the
+                    // user-facing error state (which is why silent:true is set).
+                    // Swallowing would return undefined, and every caller reads
+                    // that as an empty result -- a failed request rendered as
+                    // "nothing here", which the user cannot tell apart.
+                    throw error;
                 }
-                if (!resp.ok) {
-                    throw new Error(data.error || `HTTP ${resp.status}`);
-                }
-                return data;
             },
 
             async runSapImport() {
@@ -810,7 +829,7 @@
                             lang: 'EN',
                         };
                     }
-                    const data = await this._fetch('/api/sap/import', { method: 'POST', body: JSON.stringify(body) });
+                    const data = await this._fetch('/api/sap/import', { method: 'POST', body: body });
                     si.result = data;
                     if (data.ok) {
                         const s = data.stats || {};
@@ -844,7 +863,16 @@
                     }
                     if (data.active_provider) this.activeProvider = data.active_provider;
                     if (data.active_model) this.activeModel = data.active_model;
-                } catch (_) { /* non-critical — UI degrades gracefully */ }
+                } catch (e) {
+                    // chainCompleteness stays null and renders as an em dash, which is
+                    // honest but identical to "never computed". Say which one it is.
+                    this._addError(
+                        'Could not load chain completeness and spec counts ('
+                        + (e.message || 'request failed')
+                        + ') — those figures show as "—" because they could not be read, not because they are zero.',
+                        true
+                    );
+                }
             },
 
             async _fetchGenome() {
@@ -997,7 +1025,7 @@
                 try {
                     await this._fetch(
                         `/solutions/${this.solutionId}/codegen/enrich`,
-                        { method: 'POST', body: JSON.stringify({ version: this.version }) }
+                        { method: 'POST', body: { version: this.version } }
                     );
                     // Job started in background — poll for completion
                     await this._pollEnrich();
@@ -1034,7 +1062,20 @@
                                 self.enriching = false;
                                 reject(new Error('timeout'));
                             }
-                        } catch (e) { /* keep polling on transient network error */ }
+                        } catch (e) {
+                            // A single transient blip must not abort a long generation,
+                            // so we keep polling — but the attempt still has to count.
+                            // Previously `polls` only advanced on a SUCCESSFUL response,
+                            // so an endpoint that failed every time polled forever and
+                            // left the user watching a spinner that could never resolve.
+                            if (++polls >= max) {
+                                clearInterval(timer);
+                                self._addError('Lost contact with the server while generating UML: '
+                                    + (e.message || 'network error') + '. The job may still be running — reload to check.');
+                                self.enriching = false;
+                                reject(e);
+                            }
+                        }
                     }, 8000);
                 });
             },
@@ -1060,7 +1101,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/apply-specs`,
-                        { method: 'POST', body: JSON.stringify({}) }
+                        { method: 'POST', body: {} }
                     );
                     this.version = data.version;
                     await this._loadUml();
@@ -1081,7 +1122,7 @@
                 try {
                     await this._fetch(
                         `/solutions/${this.solutionId}/codegen/uml/reset`,
-                        { method: 'POST', body: JSON.stringify({}) }
+                        { method: 'POST', body: {} }
                     );
                     this.uml = null;
                     this.generatedFiles = {};
@@ -1140,7 +1181,7 @@
                     };
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/config`,
-                        { method: 'PUT', body: JSON.stringify(payload) }
+                        { method: 'PUT', body: payload }
                     );
                     this.version = data.version;
                     this.phase = Math.max(this.phase, 4);
@@ -1209,7 +1250,8 @@
                 };
 
                 try {
-                    const resp = await fetch(
+                    // SSE streaming response requires raw fetch to read stream.
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/generate-stream`,
                         {
                             method: 'POST',
@@ -1228,7 +1270,7 @@
                                 ...this.normalizedSalesforceConfig(),
                             }),
                         }
-                    );
+                    ); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
 
                     if (!resp.ok) {
                         // Non-streaming error (e.g. 400 / 409)
@@ -1386,7 +1428,8 @@
                 };
 
                 try {
-                    const resp = await fetch(
+                    // SSE streaming response requires raw fetch to read stream.
+                    const resp = await fetch(  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                         `/solutions/${this.solutionId}/codegen/verify`,
                         {
                             method: 'POST',
@@ -1396,7 +1439,7 @@
                             },
                             body: JSON.stringify({}),
                         }
-                    );
+                    ); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
                     if (!resp.ok) {
                         const err = await resp.json().catch(() => ({ error: resp.statusText }));
                         throw new Error(err.error || resp.statusText);
@@ -1453,7 +1496,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/patch-violation`,
-                        { method: 'POST', body: JSON.stringify({ constraint }) }
+                        { method: 'POST', body: { constraint } }
                     );
                     if (data.success) {
                         this._setSuccess(data.message);
@@ -1477,12 +1520,14 @@
                 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
                 let patchesApplied = 0;
                 let errorMsg = '';
+                const patchFailures = [];
 
-                const resp = await fetch(url, {
+                // SSE streaming response requires raw fetch to read stream.
+                const resp = await fetch(url, {  // raw-fetch-ok: SSE stream; needs body.getReader() on the raw Response
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                     body: JSON.stringify(body),
-                });
+                }); // raw-fetch-ok: SSE streaming response requires raw fetch to read stream.
 
                 if (!resp.ok) {
                     const err = await resp.json().catch(() => ({}));
@@ -1515,34 +1560,47 @@
 
                         if (currentEventType === 'patch' && payload.file && payload.diff) {
                             try {
-                                const applyResp = await fetch(
+                                // This is a regular JSON endpoint, not SSE, so we can use Platform.fetch.
+                                // The caller already paints its own error state, so we pass { silent: true }.
+                                const applyData = await Platform.fetch(
                                     `/solutions/${this.solutionId}/codegen/chat-edit/apply-patch`,
                                     {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                                        body: JSON.stringify({ file: payload.file, diff: payload.diff }),
+                                        body: { file: payload.file, diff: payload.diff },
+                                        silent: true,
                                     }
                                 );
-                                const applyData = await applyResp.json();
-                                if (applyData.success) {
-                                    patchesApplied++;
-                                    const newContent = applyData.content || applyData.new_content;
-                                    if (newContent) {
-                                        this.generatedFiles[payload.file] = newContent;
-                                        if (this.selectedFile === payload.file && this._editorView) {
-                                            const { EditorState } = await import('/@codemirror/state');
-                                            this._editorView.setState(
-                                                EditorState.create({ doc: newContent, extensions: this._editorView.state.facet(EditorState.extensions) })
-                                            );
-                                        }
+                                // Platform.fetch throws on non-ok, so reaching here means success.
+                                patchesApplied++;
+                                const newContent = applyData.content || applyData.new_content;
+                                if (newContent) {
+                                    this.generatedFiles[payload.file] = newContent;
+                                    if (this.selectedFile === payload.file && this._editorView) {
+                                        const { EditorState } = await import('/@codemirror/state');
+                                        this._editorView.setState(
+                                            EditorState.create({ doc: newContent, extensions: this._editorView.state.facet(EditorState.extensions) })
+                                        );
                                     }
                                 }
-                            } catch (_e) { /* patch apply failure is non-fatal */ }
+                            } catch (e) {
+                                // The AI produced a patch and writing it FAILED. Swallowed,
+                                // this left patchesApplied at 0 and errorMsg empty, so both
+                                // callers rendered "No patches needed" / "No changes needed"
+                                // — telling the user their code was already fine when in
+                                // fact nothing was written to it.
+                                patchFailures.push(payload.file + ': ' + (e.message || 'apply failed'));
+                            }
                         } else if (currentEventType === 'error') {
                             errorMsg = payload.message || 'AI error';
                         }
                         currentEventType = '';
                     }
+                }
+
+                if (!errorMsg && patchFailures.length) {
+                    errorMsg = patchFailures.length + ' patch'
+                        + (patchFailures.length > 1 ? 'es' : '')
+                        + ' could not be applied — ' + patchFailures[0];
                 }
 
                 return { patchesApplied, errorMsg };
@@ -1648,7 +1706,8 @@
                             }
                         }
                     } catch (e) {
-                        // fileList from initialData is sufficient
+                        // Platform.fetch surfaced this failure before it threw; the
+                        // catch only stops it becoming an unhandled rejection.
                     }
                 }
                 // Auto-open the most useful file on first load. Deferred so Alpine finishes
@@ -1680,7 +1739,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/regenerate`,
-                        { method: 'POST', body: JSON.stringify({ file_key: groupKey, version: this.version }) }
+                        { method: 'POST', body: { file_key: groupKey, version: this.version } }
                     );
                     this.promptGroupStatus[groupKey] = 'done';
                     this.version = data.version;
@@ -1746,7 +1805,8 @@
                 const ext = filename.split('.').pop();
                 if (!window.__cm6langs) return [];
                 const factory = window.__cm6langs[ext];
-                try { return factory ? factory() : []; } catch(_) { return []; }
+                try { return factory ? factory() : []; }
+                catch(_) { /* swallow-ok: CodeMirror language-mode probe, not a network call; an empty extension list only costs syntax highlighting and the file's text is displayed unchanged either way */ return []; }
             },
 
             _cmAppTheme() {
@@ -1849,7 +1909,9 @@
                 const selectedText = this.cmEditor.state.sliceDoc(from, to);
                 let instruction;
                 if (mode === 'edit') {
-                    instruction = prompt('What do you want to do with this code?', 'Add error handling');
+                    instruction = await Platform.modal.promptText('What do you want to do with this code?', {
+                        title: 'Edit with AI', defaultValue: 'Add error handling'
+                    });
                     if (!instruction) return;
                 } else if (mode === 'fix') {
                     instruction = 'Fix any errors or issues in this code snippet';
@@ -1860,10 +1922,10 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/patch`,
-                        { method: 'POST', body: JSON.stringify({
+                        { method: 'POST', body: {
                             path: this.selectedFile,
                             instruction: instruction + '\n\nApply change ONLY to this exact snippet — return the replacement code with no explanation or markdown:\n\n' + selectedText,
-                        }) }
+                        } }
                     );
                     if (data.new_content) {
                         // Replace selection range with AI result
@@ -1886,7 +1948,7 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/files',
-                        { method: 'PATCH', body: JSON.stringify({ path: this.selectedFile, content: content }) }
+                        { method: 'PATCH', body: { path: this.selectedFile, content: content } }
                     );
                     this.generatedFiles[this.selectedFile] = content;
                     this.selectedContent = content;
@@ -1913,10 +1975,10 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/patch',
-                        { method: 'POST', body: JSON.stringify({
+                        { method: 'POST', body: {
                             path: this.selectedFile,
                             instruction: this.patchInstruction.trim()
-                        }) }
+                        } }
                     );
                     this.patchDiff = { path: data.path, old: data.old_content, new: data.new_content };
                 } catch (e) {
@@ -1961,10 +2023,10 @@
                 try {
                     const data = await this._fetch('/api/codegen/genome/patch', {
                         method: 'POST',
-                        body: JSON.stringify({
+                        body: {
                             genome: genome,
                             nl_instruction: this.genomePatchInstruction.trim()
-                        })
+                        }
                     });
                     this.genomePatchResult = data;
                 } catch (e) {
@@ -1981,10 +2043,10 @@
                     // Step 1: apply patch to get updated genome
                     const patchResult = await this._fetch('/api/codegen/genome/patch/apply', {
                         method: 'POST',
-                        body: JSON.stringify({
+                        body: {
                             genome: window.__codegenGenome || {},
                             patch_ops: this.genomePatchResult.patch_ops
-                        })
+                        }
                     });
                     if (!patchResult.success) throw new Error(patchResult.error || 'Patch apply failed');
                     // Update the non-reactive genome reference
@@ -1993,7 +2055,7 @@
                     // Step 2: persist patched genome to DB
                     await this._fetch('/solutions/' + this.solutionId + '/codegen/genome-patch/store', {
                         method: 'POST',
-                        body: JSON.stringify({ genome: patchResult.genome })
+                        body: { genome: patchResult.genome }
                     });
 
                     // Step 3: trigger full regeneration (uses stored genome)
@@ -2021,7 +2083,7 @@
                 try {
                     const data = await this._fetch(
                         `/solutions/${this.solutionId}/codegen/push-to-git`,
-                        { method: 'POST', body: JSON.stringify({ version: this.version }) }
+                        { method: 'POST', body: { version: this.version } }
                     );
                     this.githubUrl = data.github_url;
                     this.githubPrUrl = data.pr_url || '';
@@ -2075,7 +2137,7 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files`, {
                         method: 'DELETE',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ path }),
+                        body: { path },
                     });
                     this.closeTab(path);
                     this.fileList = this.fileList.filter(f => f !== path);
@@ -2089,13 +2151,15 @@
             },
 
             async createFile() {
-                const path = prompt('New file path (e.g. app/utils/helpers.py):');
+                const path = await Platform.modal.promptText('New file path (e.g. app/utils/helpers.py):', {
+                    title: 'New file'
+                });
                 if (!path || !path.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/create`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ path: path.trim(), content: '' }),
+                        body: { path: path.trim(), content: '' },
                     });
                     this.fileList.push(path.trim());
                     this.fileList.sort();
@@ -2110,13 +2174,15 @@
             async renameFile(oldPath) {
                 const p = oldPath || this.selectedFile;
                 if (!p) return;
-                const newPath = prompt(`Rename / move "${p}" to:`, p);
+                const newPath = await Platform.modal.promptText(`Rename / move "${p}" to:`, {
+                    title: 'Rename file', defaultValue: p
+                });
                 if (!newPath || newPath.trim() === p) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/rename`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ old_path: p, new_path: newPath.trim() }),
+                        body: { old_path: p, new_path: newPath.trim() },
                     });
                     // Update local state
                     this.fileList = this.fileList.map(f => f === p ? newPath.trim() : f).sort();
@@ -2143,13 +2209,15 @@
                 const ext = p.includes('.') ? '.' + p.split('.').pop() : '';
                 const base = p.includes('.') ? p.slice(0, p.lastIndexOf('.')) : p;
                 const suggested = `${base}_copy${ext}`;
-                const dest = prompt(`Duplicate "${p}" to:`, suggested);
+                const dest = await Platform.modal.promptText(`Duplicate "${p}" to:`, {
+                    title: 'Duplicate file', defaultValue: suggested
+                });
                 if (!dest || !dest.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/duplicate`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ source_path: p, dest_path: dest.trim() }),
+                        body: { source_path: p, dest_path: dest.trim() },
                     });
                     this.fileList.push(dest.trim());
                     this.fileList.sort();
@@ -2162,13 +2230,15 @@
             },
 
             async searchFiles() {
-                const query = prompt('Search across all files:');
+                const query = await Platform.modal.promptText('Search across all files:', {
+                    title: 'Search files'
+                });
                 if (!query || !query.trim()) return;
                 try {
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/files/search`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrfToken() },
-                        body: JSON.stringify({ query: query.trim() }),
+                        body: { query: query.trim() },
                     });
                     this.searchResults = data;
                     this.rightTab = 'search';
@@ -2238,7 +2308,9 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/drift-report`);
                     this.driftHasGithub = data.has_github || false;
                     this.driftReport = data.report || null;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not load the drift report.', true);
+                }
             },
 
             async scanDrift() {
@@ -2308,7 +2380,9 @@
                         this.previewSchemaCount = data.schema_count || 0;
                         this._startPreviewCountdown();
                     }
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not check live preview status.', true);
+                }
             },
 
             async startPreview() {
@@ -2343,7 +2417,12 @@
                         `/solutions/${this.solutionId}/codegen/preview/stop`,
                         { method: 'DELETE' }
                     );
-                } catch (_) {}
+                } catch (e) {
+                    // The panel below still closes (the user asked to stop it), but the
+                    // container may still be running server-side — tell them so it
+                    // isn't silently left consuming resources.
+                    this._addError('Could not confirm the live preview stopped on the server — it may still be running.');
+                }
                 this.previewActive = false;
                 this.previewOpen = false;
                 if (this._previewTimer) { clearInterval(this._previewTimer); this._previewTimer = null; }
@@ -2391,10 +2470,11 @@
                 }
 
                 try {
-                    const resp = await fetch(
+                    // FormData upload requires raw fetch.
+                    const resp = await fetch(  // raw-fetch-ok: FormData upload; the wrapper would re-serialise the body
                         `/architecture-journey/${this.solutionId}/upload-documents`,
                         { method: 'POST', headers: { 'X-CSRFToken': this._csrfToken() }, body: formData }
-                    );
+                    ); // raw-fetch-ok: FormData upload requires raw fetch.
                     const data = await resp.json();
                     if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
 
@@ -2471,7 +2551,7 @@
                 try {
                     const data = await this._fetch(
                         `/architecture-journey/${this.solutionId}/proposals/batch-accept`,
-                        { method: 'POST', body: JSON.stringify({ proposal_ids: pending.map(p => p.id) }) }
+                        { method: 'POST', body: { proposal_ids: pending.map(p => p.id) } }
                     );
                     const result = data.data || data;
                     // Mark all as accepted
@@ -2522,10 +2602,10 @@
                         `/solutions/${this.solutionId}/codegen/generate-architecture`,
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 description: this.nlDescription,
                                 append: append || false,
-                            }),
+                            },
                         }
                     );
                     if (data.success) {
@@ -2611,12 +2691,12 @@
                         '/solutions/' + this.solutionId + '/codegen/confirm-fields',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 classes: [{
                                     source_element_id: cls.source_element_id,
                                     fields: fields,
                                 }],
-                            }),
+                            },
                         }
                     );
                     this.version = data.version;
@@ -2627,7 +2707,9 @@
                     }
                     this.fieldEditorOpen[name] = false;
                     this.confirmedClasses[name] = true;
-                    try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) {}
+                    // Best-effort local cache of the confirmation the server just saved
+                    // above — a failure here doesn't affect the confirmation itself.
+                    try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) { /* swallow-ok: localStorage throws in private mode or over quota; the server already persisted the confirmation on the line above, so this cache is redundant and a failure would be a false alarm */ }
                     this._setSuccess('Fields confirmed for ' + name + '. Next generation will use these exact fields.');
                 } catch (e) {
                     this._addError('Confirm failed for ' + name + ': ' + e.message);
@@ -2656,7 +2738,7 @@
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/confirm-fields',
-                        { method: 'POST', body: JSON.stringify({ classes: classes }) }
+                        { method: 'POST', body: { classes: classes } }
                     );
                     this.version = data.version;
                     // Mark every class confirmed in local state
@@ -2664,7 +2746,9 @@
                     this.umlClasses.forEach(function(cls) {
                         self2.confirmedClasses[cls.name] = true;
                     });
-                    try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) {}
+                    // Best-effort local cache of the confirmation the server just saved
+                    // above — a failure here doesn't affect the confirmation itself.
+                    try { localStorage.setItem('codegen_confirmed_' + this.solutionId, JSON.stringify(this.confirmedClasses)); } catch (_) { /* swallow-ok: localStorage throws in private mode or over quota; the server already persisted the confirmation on the line above, so this cache is redundant and a failure would be a false alarm */ }
                     this._setSuccess('Confirmed fields for ' + data.confirmed_count + ' classes.');
                 } catch (e) {
                     this._addError('Confirm all failed: ' + e.message);
@@ -2773,7 +2857,7 @@
                         '/solutions/' + this.solutionId + '/codegen/intelligence',
                         {
                             method: 'POST',
-                            body: JSON.stringify({ action: action, payload: payload }),
+                            body: { action: action, payload: payload },
                         }
                     );
                     if (!data.success) {
@@ -2804,10 +2888,10 @@
                         '/solutions/' + this.solutionId + '/codegen/intent-plan',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 instruction: instruction,
                                 selected_path: this.selectedFile || null,
-                            }),
+                            },
                         }
                     );
                     this.intentPlan = data.plan || null;
@@ -2971,15 +3055,16 @@
                 this.chatHistory.push({ role: 'user', text: instruction });
                 this._scrollChatToBottom();
                 this.chatInstruction = '';
-                // Save to localStorage suggestions
+                // Save to localStorage suggestions — best-effort recent-history cache;
+                // unavailable in private browsing just means suggestions aren't recalled.
                 this.chatSuggestions = [instruction].concat(this.chatSuggestions.filter(function(s) { return s !== instruction; })).slice(0, 5);
-                try { localStorage.setItem('codegen_chat_history_' + this.solutionId, JSON.stringify(this.chatSuggestions)); } catch (_) {}
+                try { localStorage.setItem('codegen_chat_history_' + this.solutionId, JSON.stringify(this.chatSuggestions)); } catch (_) { /* swallow-ok: localStorage throws in private mode or over quota; this only recalls recent instructions as suggestions next visit, and the instruction itself is sent to the server below */ }
                 try {
                     let data = await this._fetch(
                         '/solutions/' + this.solutionId + '/codegen/chat-regenerate',
                         {
                             method: 'POST',
-                            body: JSON.stringify({
+                            body: {
                                 instruction: instruction,
                                 version: this.version,
                                 intent_plan_active: !!this.intentPlan,
@@ -2987,7 +3072,7 @@
                                 override_reason: this.allowChatWithoutVerify
                                     ? (this.chatOverrideReason || '').trim()
                                     : '',
-                            }),
+                            },
                         }
                     );
                     this.version = data.version;
@@ -3099,7 +3184,9 @@
                     this.dockerRunning = false;
                     this.dockerUrl = null;
                     this.dockerContainer = null;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not stop the Docker preview container — it may still be running.');
+                }
             },
 
             async checkDockerStatus() {
@@ -3107,7 +3194,9 @@
                     const data = await this._fetch(`/solutions/${this.solutionId}/codegen/docker-preview/status`);
                     this.dockerRunning = data.running;
                     if (data.running) this.dockerUrl = data.app_url || data.api_url;
-                } catch (_) {}
+                } catch (e) {
+                    this._addError('Could not check Docker preview status.', true);
+                }
             },
 
             /* ── StackBlitz Frontend Preview ── */
@@ -3136,7 +3225,7 @@
                     };
 
                     addField('project[title]', data.title || this.solutionName + ' — Frontend');
-                    addField('project[description]', 'Generated by A.R.C.H.I.E. — Architecture & Code Generator');
+                    addField('project[description]', 'Generated by Entelim — Architecture & Code Generator');
                     addField('project[template]', 'node');
                     addField('project[tags][]', 'nextjs');
                     addField('project[tags][]', 'typescript');
@@ -3198,7 +3287,6 @@
         };
     });
     } catch (e) {
-        console.error('[Workbench] Component registration failed:', e);
         document.addEventListener('DOMContentLoaded', () => {
             const wb = document.querySelector('[x-data*="codegenWorkbench"]');
             if (wb) {
@@ -3206,9 +3294,17 @@
                     '<div class="text-center max-w-md">' +
                     '<h2 class="text-xl font-bold text-slate-900 mb-2">Workbench failed to load</h2>' +
                     '<p class="text-slate-500 mb-4">' + e.message + '</p>' +
-                    '<button onclick="location.reload()" class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium">Reload Page</button>' +
+                    '<button type="button" data-workbench-reload class="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-medium">Reload Page</button>' +
                     '</div></div>';
             }
+            // Delegated, because the CSP refuses inline on*= attributes: this
+            // Reload button carried onclick="location.reload()" and never fired,
+            // so the workbench's only escape from a boot failure was dead.
+            document.addEventListener('click', (ev) => {
+                if (!ev.target.closest('[data-workbench-reload]')) return;
+                ev.preventDefault();
+                location.reload();
+            });
         });
     }
     }
@@ -3243,9 +3339,13 @@
                     let data = Alpine.$data(el);
                     if (data && data.cmEditor) return data.cmEditor.state.doc.toString() || '';
                     return (data && data.selectedContent) || '';
-                } catch (_) { return ''; }
+                } catch (_) { /* swallow-ok: reads the open editor's buffer for the chat panel and throws only when the workbench component has been torn down; there is then no open file, and the empty string is the buffer's true contents rather than a failed load */ return ''; }
             };
             window.wbRefreshFile = function (path) {
+                // Best-effort DOM/Alpine bridge from the chat panel — the AI edit
+                // itself already succeeded or failed on its own path with its own
+                // feedback; this only refreshes the editor view to match. A failure
+                // here just leaves the open file view stale until the user re-opens it.
                 try {
                     let data = Alpine.$data(el);
                     if (!data) return;
@@ -3254,7 +3354,7 @@
                     }
                     // Notify file tree of dirty state
                     window.dispatchEvent(new CustomEvent('wb:file-changed', { detail: { path: path } }));
-                } catch (_) {}
+                } catch (_) { /* swallow-ok: Alpine.$data throws if the workbench component has been torn down; the AI edit itself already reported its own success or failure, and this only refreshes the open editor view */ }
             };
         }
         if (document.readyState === 'loading') {

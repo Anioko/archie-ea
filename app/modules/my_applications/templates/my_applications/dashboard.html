@@ -1,22 +1,26 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}My Applications{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-6">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold">My Applications Dashboard</h1>
-            <p class="text-muted-foreground">Overview of applications you own and manage</p>
-        </div>
-        <a href="{{ url_for('my_applications.app_list') }}"
+<div class="p-6 space-y-6 mx-auto">
+    <div class="flex items-center gap-1 mb-4 border-b border-border" role="tablist" aria-label="My Applications">
+        <a href="{{ url_for('my_applications.dashboard') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.dashboard' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.dashboard' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Dashboard</a>
+        <a href="{{ url_for('my_applications.app_list') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.app_list' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.app_list' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Applications</a>
+        <a href="{{ url_for('my_applications.health_overview') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.health_overview' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.health_overview' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Health</a>
+        <a href="{{ url_for('my_applications.roadmap_impact') }}" role="tab" aria-selected="{{ 'true' if request.endpoint == 'my_applications.roadmap_impact' else 'false' }}" class="px-3 py-2 text-sm border-b-2 {{ 'border-primary text-foreground font-medium' if request.endpoint == 'my_applications.roadmap_impact' else 'border-transparent text-muted-foreground hover:text-foreground' }}">Roadmap</a>
+    </div>
+    {% macro _ps_actions() %}
+<a href="{{ url_for('my_applications.app_list') }}"
            class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors">
             <i data-lucide="list" class="w-4 h-4"></i>
             View All
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='My Applications Dashboard', breadcrumb=[('Home', '/'), ('My Applications Dashboard', none)], subtitle='Overview of applications you own and manage', actions_caller=_ps_actions) }}
 
     <!-- Summary Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
         <div class="bg-card border border-border rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
                 <div class="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
@@ -26,32 +30,47 @@
             </div>
             <div class="text-3xl font-bold">{{ ownership_summary.total }}</div>
         </div>
-        <div class="bg-card border border-green-500/50 rounded-lg p-4">
+        <div class="bg-card border border-success/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-green-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                <div class="w-10 h-10 bg-success/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-5 h-5 text-success"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Healthy</div>
             </div>
-            <div class="text-3xl font-bold text-green-600">{{ health_summary.healthy }}</div>
+            <div class="text-3xl font-bold text-success">{{ health_summary.healthy }}</div>
         </div>
-        <div class="bg-card border border-amber-500/50 rounded-lg p-4">
+        <div class="bg-card border border-warning/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-amber-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                <div class="w-10 h-10 bg-warning/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-warning"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">At Risk</div>
             </div>
-            <div class="text-3xl font-bold text-amber-600">{{ health_summary.at_risk }}</div>
+            <div class="text-3xl font-bold text-warning">{{ health_summary.at_risk }}</div>
         </div>
-        <div class="bg-card border border-red-500/50 rounded-lg p-4">
+        <div class="bg-card border border-destructive/50 rounded-lg p-4">
             <div class="flex items-center gap-3 mb-2">
-                <div class="w-10 h-10 bg-red-500/10 rounded-lg flex items-center justify-center">
-                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-600"></i>
+                <div class="w-10 h-10 bg-destructive/10 rounded-lg flex items-center justify-center">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-destructive-emphasis"></i>
                 </div>
                 <div class="text-sm text-muted-foreground">Critical</div>
             </div>
-            <div class="text-3xl font-bold text-red-600">{{ health_summary.critical }}</div>
+            <div class="text-3xl font-bold text-destructive-emphasis">{{ health_summary.critical }}</div>
+        </div>
+        {# Applications with no health status recorded. Without this tile
+           Healthy + At Risk + Critical would fall short of Total Apps with nothing to say why. #}
+        <div class="col-span-2 md:col-span-1 bg-card border border-border rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-muted rounded-lg flex items-center justify-center">
+                    <i data-lucide="help-circle" class="w-5 h-5 text-muted-foreground"></i>
+                </div>
+                <div class="text-sm text-muted-foreground">Not assessed</div>
+            </div>
+            <div class="text-3xl font-bold">{{ health_summary.unknown }}</div>
+            {% if health_summary.unknown > 0 %}
+            <a href="{{ url_for('my_applications.health_overview') }}#not-assessed"
+               class="mt-2 inline-block py-1 text-sm text-primary hover:underline">Record a health status</a>
+            {% endif %}
         </div>
     </div>
 
@@ -80,12 +99,20 @@
                 </div>
                 {% endfor %}
             </div>
+            {% if recent_apps|length < ownership_summary.total %}
+            <p class="text-sm text-muted-foreground mt-3">Showing {{ recent_apps|length }} of {{ ownership_summary.total }}.</p>
+            {% endif %}
             {% else %}
             <div class="text-center py-8">
                 <div class="w-12 h-12 mx-auto mb-3 bg-muted rounded-full flex items-center justify-center">
                     <i data-lucide="package" class="w-6 h-6 text-muted-foreground"></i>
                 </div>
                 <p class="text-muted-foreground">No applications assigned yet</p>
+                <p class="text-sm text-muted-foreground mt-1">Applications assigned to you as owner are listed here.</p>
+                <a href="{{ url_for('unified_applications.application_list') }}"
+                   class="inline-flex items-center px-4 py-2 mt-4 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring transition-colors">
+                    Browse all applications
+                </a>
             </div>
             {% endif %}
         </div>
@@ -101,8 +128,8 @@
                 {% for impact in roadmap_impacts %}
                 <div class="flex items-start gap-3 p-3 bg-muted/30 rounded-lg">
                     <div class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0
-                        {% if impact.impact_type == 'sunset' %}bg-amber-100 text-amber-600
-                        {% else %}bg-blue-100 text-blue-600{% endif %}">
+                        {% if impact.impact_type == 'sunset' %}bg-warning/10 text-warning-emphasis
+                        {% else %}bg-info/10 text-info-emphasis{% endif %}">
                         <i data-lucide="{% if impact.impact_type == 'sunset' %}sunset{% else %}calendar{% endif %}" class="w-4 h-4"></i>
                     </div>
                     <div>
@@ -117,8 +144,8 @@
             </div>
             {% else %}
             <div class="text-center py-8">
-                <div class="w-12 h-12 mx-auto mb-3 bg-green-100 rounded-full flex items-center justify-center">
-                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                <div class="w-12 h-12 mx-auto mb-3 bg-success/10 rounded-full flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-success"></i>
                 </div>
                 <p class="text-muted-foreground">No upcoming roadmap impacts</p>
             </div>

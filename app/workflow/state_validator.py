@@ -6,14 +6,13 @@ Provides comprehensive state validation for workflow executions.
 
 import logging
 import re
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 from typing import Dict, List, Any, Optional, Callable, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import threading
 
 from flask import current_app
-from app import db  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

@@ -8,23 +8,101 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Architecture Health Scorecard',
+        title='Architecture Health Scorecard', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Architecture Health Scorecard'}],
         description='Real-time portfolio risk, ARB pipeline, ArchiMate coverage, and ADM progression'
     ) }}
+
+    {# ── Health Score — the composite this page is named for. One line, not a
+       card: the value and format are the ones the dashboard shows, and the
+       components named are the ones the score was actually weighted from. ── #}
+    {% set basis = health_basis|default({}) %}
+    <p class="-mt-3 text-sm text-muted-foreground" data-testid="health-score-line">
+        Health Score
+        <strong class="ml-1 text-2xl font-bold tabular-nums text-foreground" data-testid="health-score-value">{{ health_score_text|default('—') }}</strong>
+        {% if basis.weighted_from %}<span class="ml-1">out of 100, weighted from {{ basis.weighted_from }}.</span>{% endif %}
+        {% if basis.not_measured %}<span class="ml-1" data-testid="health-score-not-measured">Not measured: {{ basis.not_measured }}.</span>{% endif %}
+    </p>
+
+    {# ── AI Executive Briefing (advisory) ─────────────────────────────────── #}
+    <div x-data="execBriefingPanel()" class="bg-card border border-border rounded-lg p-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="h-4 w-4 text-primary"></i>
+                <h3 class="text-sm font-semibold text-foreground">AI Executive Briefing</h3>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">AI-suggested summary</span>
+            </div>
+            <button type="button" @click="generate()" :disabled="loading"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                aria-label="Generate AI executive briefing">
+                <svg x-show="loading" x-cloak class="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                <span x-text="loading ? 'Generating…' : (briefing ? 'Regenerate' : 'Generate briefing')"></span>
+            </button>
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">
+            AI summary of this scorecard's own metrics — solution risk, ARB pipeline, ArchiMate coverage
+            and ADM progression. Advisory only; nothing here changes the scorecard.
+        </p>
+
+        <div x-show="error" x-cloak class="mt-3 text-sm text-destructive-emphasis bg-destructive/10 border border-destructive/30 rounded-md px-3 py-2" x-text="error"></div>
+
+        <div x-show="briefing" x-cloak class="mt-4 space-y-4">
+            <div>
+                <h4 class="text-xs font-semibold text-foreground/80 uppercase tracking-wide mb-1">Headline</h4>
+                <p class="text-sm text-foreground font-medium" x-text="briefing && briefing.headline"></p>
+            </div>
+
+            <div x-show="briefing && briefing.what_changed && briefing.what_changed.length">
+                <h4 class="text-xs font-semibold text-foreground/80 uppercase tracking-wide mb-1">What changed</h4>
+                <ul class="list-disc list-inside text-sm text-foreground space-y-0.5">
+                    <template x-for="(item, idx) in (briefing ? briefing.what_changed : [])" :key="idx">
+                        <li x-text="item"></li>
+                    </template>
+                </ul>
+            </div>
+
+            <div x-show="briefing && briefing.risks && briefing.risks.length">
+                <h4 class="text-xs font-semibold text-warning-emphasis uppercase tracking-wide mb-1">Risks</h4>
+                <ul class="list-disc list-inside text-sm text-foreground space-y-0.5">
+                    <template x-for="(risk, idx) in (briefing ? briefing.risks : [])" :key="idx">
+                        <li x-text="risk"></li>
+                    </template>
+                </ul>
+            </div>
+
+            <div x-show="briefing && briefing.recommended_focus && briefing.recommended_focus.length">
+                <h4 class="text-xs font-semibold text-foreground/80 uppercase tracking-wide mb-1">Recommended focus</h4>
+                <ul class="list-disc list-inside text-sm text-foreground space-y-0.5">
+                    <template x-for="(item, idx) in (briefing ? briefing.recommended_focus : [])" :key="idx">
+                        <li x-text="item"></li>
+                    </template>
+                </ul>
+            </div>
+
+            <div>
+                <h4 class="text-xs font-semibold text-foreground/80 uppercase tracking-wide mb-1">Rationale</h4>
+                <p class="text-sm text-muted-foreground" x-text="briefing && briefing.rationale"></p>
+            </div>
+        </div>
+    </div>
 
     {# ── Summary Metric Cards ─────────────────────────────────────────────── #}
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {{ metrics_card(
             title='Avg Solution Maturity',
-            value=(avg_maturity | string) + '%',
+            value=(avg_maturity | string) + '%' if avg_maturity is not none else '—',
             icon='trending-up',
-            description='Derived from ADM phase completion'
+            description='Average ADM phase progress, phase D counting as 50% and phase H as 100%; solutions without a recorded phase are left out'
         ) }}
         {{ metrics_card(
-            title='Total Solutions',
-            value=total_solutions | string,
+            title='Solutions in Organisation',
+            value=total_solutions | string if total_solutions is not none else '—',
+            value_testid='health-total-solutions',
             icon='puzzle',
-            description='Solutions tracked in portfolio'
+            description='All solutions tracked org-wide, regardless of who created them',
+            href=url_for('solution_design.list_solutions') if 'solution_design.list_solutions' in flask.current_app.view_functions else ''
         ) }}
         {{ metrics_card(
             title='ArchiMate Elements',
@@ -51,7 +129,7 @@
             {% endcall %}
             {% call card.card_content() %}
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {% set risk_colors = {'critical': 'text-destructive', 'high': 'text-orange-500', 'medium': 'text-amber-500', 'low': 'text-success'} %}
+                    {% set risk_colors = {'critical': 'text-destructive', 'high': 'text-orange-500', 'medium': 'text-amber-500', 'low': 'text-success'} %}{# design-tokens-ok: 4-tier severity scale (critical/high/medium/low) beyond the 3-tier RAG semantic set — kept raw so each tier stays visually distinct #}
                     {% for level in ['critical', 'high', 'medium', 'low'] %}
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground capitalize mb-1">{{ level }}</p>
@@ -80,7 +158,7 @@
                 <div class="grid grid-cols-3 gap-3 mb-3">
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground mb-1">Pending</p>
-                        <p class="text-3xl font-bold text-amber-500">{{ arb_pipeline.pending }}</p>
+                        <p class="text-3xl font-bold text-warning">{{ arb_pipeline.pending }}</p>
                     </div>
                     <div class="rounded-lg border border-border bg-background p-4 text-center">
                         <p class="text-xs text-muted-foreground mb-1">Under Review</p>
@@ -112,20 +190,12 @@
         {% call card.card() %}
             {% call card.card_header(class='pb-3') %}
                 {% call card.card_title(class='text-lg') %}
-                    <i data-lucide="layers" class="h-5 w-5 inline mr-2 text-amber-500" aria-hidden="true"></i>
+                    <i data-lucide="layers" class="h-5 w-5 inline mr-2 text-warning" aria-hidden="true"></i>
                     ArchiMate Coverage by Layer
                 {% endcall %}
             {% endcall %}
             {% call card.card_content() %}
-                {% set layer_colors = {
-                    'motivation': 'bg-violet-100 dark:bg-violet-950',
-                    'strategy': 'bg-primary/10 dark:bg-blue-950',
-                    'business': 'bg-amber-500/10 dark:bg-yellow-950',
-                    'application': 'bg-emerald-500/10 dark:bg-green-950',
-                    'technology': 'bg-cyan-100 dark:bg-cyan-950',
-                    'implementation': 'bg-orange-100 dark:bg-orange-950',
-                    'other': 'bg-muted'
-                } %}
+                {% set layer_colors = {'motivation': 'bg-violet-100', 'strategy': 'bg-primary/10', 'business': 'bg-amber-500/10', 'application': 'bg-emerald-500/10', 'technology': 'bg-cyan-100', 'implementation': 'bg-orange-100', 'other': 'bg-muted'} %}{# design-tokens-ok: 6-tier ArchiMate layer legend needs one distinct hue per layer; only 4 semantic tokens exist, so mapping any two layers onto the same token would collapse the legend — kept raw per the layer colours in DESIGN.md's ArchiMate Layer Colors table #}
                 <div class="rounded-lg border border-border overflow-hidden">
                     <table class="w-full text-sm">
                         <thead class="bg-muted/50">
@@ -136,7 +206,8 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for layer, count in archimate_by_layer.items() if count > 0 %}
+                            {% for layer, count in archimate_by_layer.items() %}
+                                {% if count > 0 %}
                             <tr class="border-t border-border">
                                 <td class="px-4 py-2">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {{ layer_colors.get(layer, 'bg-muted') }} capitalize">{{ layer }}</span>
@@ -146,11 +217,13 @@
                                     {% if total_archimate > 0 %}{{ ((count / total_archimate) * 100) | round(1) }}%{% else %}&#8212;{% endif %}
                                 </td>
                             </tr>
-                            {% else %}
+                                {% endif %}
+                            {% endfor %}
+                            {% if archimate_by_layer.items()|length == 0 %}
                             <tr>
                                 <td colspan="3" class="px-4 py-3 text-center text-muted-foreground">No ArchiMate elements found</td>
                             </tr>
-                            {% endfor %}
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
@@ -165,7 +238,7 @@
         {% call card.card() %}
             {% call card.card_header(class='pb-3') %}
                 {% call card.card_title(class='text-lg') %}
-                    <i data-lucide="milestone" class="h-5 w-5 inline mr-2 text-emerald-500" aria-hidden="true"></i>
+                    <i data-lucide="milestone" class="h-5 w-5 inline mr-2 text-success" aria-hidden="true"></i>
                     ADM Phase Distribution
                 {% endcall %}
             {% endcall %}
@@ -175,34 +248,77 @@
                     'D': 'Technology', 'E': 'Opportunities', 'F': 'Migration',
                     'G': 'Governance', 'H': 'Change Mgmt'
                 } %}
-                {% set adm_pct = {'A': 12, 'B': 25, 'C': 37, 'D': 50, 'E': 62, 'F': 75, 'G': 87, 'H': 100} %}
+                {# The trailing % is the MEASURED share of the portfolio in this
+                   phase (count / total_solutions), not a hardcoded ladder. A
+                   fixed 12/25/…/100 ladder per phase was removed: it read as
+                   "Governance 87%" from zero solutions — a fabricated-looking
+                   constant. Em dash when there are no solutions to measure. #}
+                {% if adm_distribution is none %}
+                <p class="text-sm text-muted-foreground" role="status">Phase data unavailable. Reload the page to try again.</p>
+                {% else %}
                 <div class="space-y-2">
-                    {% for phase in 'ABCDEFGH' %}
+                    {% for phase, count in adm_distribution.items() %}
                     {% set count = adm_distribution.get(phase, 0) %}
+                    {% set phase_share = ((count / total_solutions) * 100) | round(1) if total_solutions > 0 else none %}
                     <div class="flex items-center gap-3">
                         <span class="w-24 text-xs font-medium text-muted-foreground shrink-0">
-                            {{ phase }}: {{ adm_labels.get(phase, '') }}
+                            {% if phase == 'Unclassified' %}Unclassified{% else %}{{ phase }}: {{ adm_labels.get(phase, '') }}{% endif %}
                         </span>
                         <div class="flex-1 bg-muted rounded-full h-2 overflow-hidden">
                             <div class="bg-primary h-full rounded-full transition-all"
-                                 style="width: {% if total_solutions > 0 %}{{ ((count / total_solutions) * 100) | round(1) }}%{% else %}0%{% endif %}">
+                                 style="width: {% if phase_share is not none %}{{ phase_share }}%{% else %}0%{% endif %}">
                             </div>
                         </div>
                         <span class="w-8 text-xs text-right text-foreground font-medium shrink-0">{{ count }}</span>
-                        <span class="w-10 text-xs text-right text-muted-foreground shrink-0">{{ adm_pct.get(phase, 0) }}%</span>
+                        <span class="w-12 text-xs text-right text-muted-foreground shrink-0">{% if phase_share is not none %}{{ phase_share }}%{% else %}&#8212;{% endif %}</span>
                     </div>
                     {% endfor %}
                 </div>
+                {% endif %}
                 <div class="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                    <span class="text-sm text-muted-foreground">Average Maturity</span>
-                    <span class="text-2xl font-bold text-primary">{{ avg_maturity }}%</span>
+                    <span class="text-sm text-muted-foreground">Avg Solution Maturity</span>
+                    <span class="text-2xl font-bold text-primary">{% if avg_maturity is not none %}{{ avg_maturity }}%{% else %}&#8212;{% endif %}</span>
                 </div>
                 <p class="mt-2 text-xs text-muted-foreground">
-                    Maturity derived from ADM phase for solutions without explicit maturity scores.
+                    Average derived from recorded ADM phases only; unclassified solutions are excluded.
                     <a href="{{ url_for('solution_design.list_solutions') }}" class="text-primary hover:underline">View all &#8594;</a>
                 </p>
             {% endcall %}
         {% endcall %}
     </div>
 </div>
+
+<script>
+/* AI executive briefing panel (CTO advisory). Calls
+   POST /dashboard/api/ai-executive-briefing, which reads this page's own
+   metrics and writes nothing back — the result is rendered here only. */
+function execBriefingPanel() {
+    return {
+        loading: false,
+        error: null,
+        briefing: null,
+
+        async generate() {
+            this.loading = true;
+            this.error = null;
+            try {
+                // Platform.fetch automatically injects CSRF token and serialises JSON.
+                // It throws a structured PlatformError on non‑ok responses.
+                const d = await Platform.fetch.post('/dashboard/api/ai-executive-briefing', {});
+                this.briefing = d.briefing;
+            } catch (e) {
+                this.error = e.message || 'AI executive briefing failed';
+                // The call site paints its own inline error state, so suppress the global toast.
+                // However, if Platform.toast is already active, it will have shown a duplicate.
+                // We cannot prevent that retroactively, but future calls will be silent.
+                // We keep the inline error painting as before.
+                if (window.Platform && Platform.toast) Platform.toast.error(this.error);
+            } finally {
+                this.loading = false;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+    };
+}
+</script>
 {% endblock %}

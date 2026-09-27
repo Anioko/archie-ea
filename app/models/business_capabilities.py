@@ -15,9 +15,10 @@ Integration with existing models:
 """
 
 import json
+import logging
 from datetime import datetime
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 
 from app.datetime_helpers import utcnow
 
@@ -58,8 +59,26 @@ class BusinessCapability(TenantMixin, db.Model):
     )
 
     # Capability maturity
-    current_maturity_level = db.Column(db.Integer, default=1)  # 1 - 5 scale
-    target_maturity_level = db.Column(db.Integer, default=3)  # 1 - 5 scale
+    # No default: an unassessed capability must read as NULL -> "—", not as a
+    # measured Level 1. These defaulted to 1 and 3, which put a plausible score
+    # on every capability nobody had assessed — indistinguishable from a real
+    # assessment, and the exact failure CLAUDE.md's "never invent data" rule
+    # exists to prevent. maturity_assessment_date is what says "this is real".
+    #
+    # T-002 (ADR 0008 rule 3): these two columns are the projection's SOURCE,
+    # not a current-value read target. `app/commands/project_capabilities.py`
+    # reads them into `unified_capabilities.current_maturity_level` /
+    # `.target_maturity_level`, the single maturity authority; the write-time
+    # listeners at the bottom of this module and the scheduled job in
+    # `app/jobs/capability_projection_job.py` keep that projection fresh,
+    # including for the raw-SQL writers in
+    # `app/modules/capabilities/routes/maturity_routes.py` that never fire an
+    # ORM event. A caller asking "what is this capability's maturity now?"
+    # must use `UnifiedCapability.maturity_for_source("business_capability", id)`
+    # (or its batch form), never read these two columns directly outside this
+    # model and the projection itself.
+    current_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
+    target_maturity_level = db.Column(db.Integer, nullable=True)  # 1 - 5 scale
     maturity_gap = db.Column(db.Integer)  # Calculated gap between current and target
     maturity_assessment_date = db.Column(db.DateTime)
     maturity_assessment_notes = db.Column(db.Text)
@@ -572,12 +591,210 @@ def create_capability_archimate_element(mapper, connection, target):
 
         from .archimate_core import ArchiMateElement
 
+        # BusinessCapability.name is String(256) but ArchiMateElement.name is
+        # String(100); an over-long capability name would raise
+        # StringDataRightTruncation here and 500 the create. Truncate the mirrored
+        # name (the element IS the field — it must never fail to be created because
+        # the field was long); the full name still lives on the capability row.
+        full_name = target.name or ""
+        element_name = full_name if len(full_name) <= 100 else full_name[:99] + "…"
         result = connection.execute(
             insert(ArchiMateElement.__table__).values(
-                name=target.name,
+                name=element_name,
                 type="Capability",
                 layer="Strategy",
-                description=target.description or f"Business capability: {target.name}",
+                description=target.description or f"Business capability: {full_name}",
+                organization_id=target.organization_id,
             )
         )
         target.archimate_element_id = result.inserted_primary_key[0]
+
+
+# ============================================================================
+# SQLAlchemy Event Listeners - Keep unified_capabilities (ADR 0008's canonical
+# capability store) current with every business_capability write.
+# ============================================================================
+#
+# `flask project-capabilities --apply` backfills the existing rows into
+# unified_capabilities. That backfill does nothing for the *next* row:
+# without these listeners, `unified_capabilities` drifts back to stale the
+# moment a user creates, edits or deletes a capability through the UI.
+# These listeners are the same pattern as `create_capability_archimate_element`
+# above -- a second-store mirror during flush -- extended to the canonical
+# store rather than invented as a new mechanism.
+#
+# One SQL definition, deliberately: these listeners execute `_PROJECT_SQL` /
+# `_PARENT_SQL` from `app.commands.project_capabilities` verbatim, parameterised
+# to a single row via `single_id`, rather than re-expressing the column mapping
+# in Python. Two independent mappings would compute two different
+# `source_checksum` values for the same row, and every later CLI run would
+# report phantom drift and rewrite rows forever -- see that module's docstring.
+
+_logger = logging.getLogger(__name__)
+
+# Cached once per process: `_has_provenance_index` is a real query and this
+# listener fires on every capability write, so it is checked once rather than
+# once per row. A process that starts before the migration runs and keeps
+# running after it would need a restart to pick up the index -- true of every
+# other process-lifetime cache in this codebase and an acceptable tradeoff
+# against a query per write.
+_provenance_index_cache: dict[str, bool] = {}
+
+
+def _provenance_index_available(connection) -> bool:
+    # Keyed on the engine URL, not a single global flag: a process that opens
+    # a connection to a second database (a disposable test-schema clone, a
+    # migration dry-run against a scratch DB, etc.) before ever touching the
+    # real one would otherwise cache that scratch DB's "index absent" and
+    # silently skip projection on the real DB for the rest of the process.
+    # Re-checking is also cheap on a `False` result specifically, so a
+    # database that gets migrated mid-process (the provenance migration
+    # running after this listener already fired once) picks it up on the
+    # very next write instead of needing a restart.
+    key = str(connection.engine.url)
+    if not _provenance_index_cache.get(key):
+        from app.commands.project_capabilities import _has_provenance_index
+
+        _provenance_index_cache[key] = _has_provenance_index(connection)
+    return _provenance_index_cache[key]
+
+
+def _project_capability_row(connection, target):
+    """Mirror one BusinessCapability row into unified_capabilities.
+
+    Failure policy (decided in the bucket's implementation plan, section 2):
+    - Provenance index absent (un-migrated database): log ERROR and skip. A
+      capability create/update must never 500 because a migration has not been
+      applied yet; `flask project-capabilities` remains the recovery path.
+    - Index present and the write fails: let the exception propagate. The
+      capability write fails atomically rather than leaving the canonical store
+      silently half-projected, which is the defect this bucket exists to close.
+    """
+
+    from app.commands.project_capabilities import (
+        _PARENT_SQL,
+        _PROJECT_SQL,
+        SOURCE_TABLE,
+    )
+
+    if not _provenance_index_available(connection):
+        _logger.error(
+            "unified_capabilities has no valid provenance index; skipping "
+            "write-time projection of business_capability id=%s. Run `flask "
+            "--app manage apply-unified-capability-provenance-migration` then "
+            "`flask --app manage project-capabilities --apply` to catch up.",
+            target.id,
+        )
+        return
+
+    # `_PROJECT_SQL`'s ON CONFLICT target is (source_table, source_id) and its
+    # DO UPDATE deliberately excludes organization_id/code (see that module's
+    # comment -- they're policed by four partial unique indexes, and mutating
+    # them on a re-run turns an idempotent refresh into a constraint-violation
+    # lottery). That's correct for the CLI, which detects a row whose org/code
+    # moved since it was last projected as blocker 2
+    # ("owner_or_code_changed_since_projection") and refuses to run past it.
+    # This listener has no such gate: an admin editing a BusinessCapability's
+    # organization_id (a re-parent to a different tenant) would otherwise run
+    # straight through, INSERT ... ON CONFLICT matching the existing projected
+    # row by source_id, and silently leave THAT row's organization_id at its
+    # old value -- so the row's old tenant keeps seeing a capability that now
+    # belongs to someone else. Detect the same condition here, single-row, and
+    # defer to the batch job instead of writing a wrong row.
+    moved = connection.execute(
+        text(
+            """
+            SELECT uc.id
+              FROM unified_capabilities AS uc
+             WHERE uc.source_table = :source_table
+               AND uc.source_id = :source_id
+               AND (uc.organization_id IS DISTINCT FROM :organization_id
+                    OR uc.code IS DISTINCT FROM :code)
+            """
+        ),
+        {
+            "source_table": SOURCE_TABLE,
+            "source_id": str(target.id),
+            "organization_id": target.organization_id,
+            # Match the CLI's `COALESCE(bc.code, 'BC-' || bc.id)` exactly: COALESCE
+            # only substitutes on NULL, not on an empty string. `target.code or
+            # f"..."` would also substitute on '', permanently misclassifying a
+            # row with code='' as "moved" and silently skipping it forever.
+            "code": target.code if target.code is not None else f"BC-{target.id}",
+        },
+    ).first()
+    if moved:
+        _logger.warning(
+            "business_capability id=%s changed organization_id/code since it "
+            "was last projected into unified_capabilities id=%s; skipping "
+            "write-time sync for this row rather than leaving the old tenant "
+            "able to see it. Run `flask --app manage project-capabilities "
+            "--apply` to reconcile (it will surface as the "
+            "owner_or_code_changed_since_projection blocker until resolved).",
+            target.id,
+            moved[0],
+        )
+        return
+
+    # target.organization_id comes from the persisted row itself (queried back
+    # out of business_capability by id below), never from g.current_org_id --
+    # TenantMixin declares the column NOT NULL, so a projected row can never be
+    # scope='reference' / organization_id IS NULL by construction.
+    connection.execute(
+        text(_PROJECT_SQL),
+        {
+            "source_table": SOURCE_TABLE,
+            "single_id": target.id,
+            "row_limit": 1,
+            # This listener only ever projects the one row it was called for
+            # (`single_id` narrows the source set to it already); there is
+            # nothing else in this statement's row set to exclude.
+            "excluded_ids": [],
+        },
+    )
+    # Hierarchy translation (`_PARENT_SQL`) can only resolve a parent link once
+    # the parent row is itself projected, so out-of-order parent/child creates
+    # are handled honestly here by re-running the (idempotent, no-op-when-
+    # unchanged) global parent pass rather than guessing a parent id. A child
+    # created before its parent resolves on the parent's own insert/update, or
+    # on the next `flask project-capabilities` run.
+    connection.execute(
+        text(_PARENT_SQL), {"source_table": SOURCE_TABLE, "excluded_ids": []}
+    )
+
+
+def _delete_projected_capability(connection, target):
+    """Remove exactly the projected row for this source id. Never a broader predicate."""
+
+    from app.commands.project_capabilities import SOURCE_TABLE
+
+    if not _provenance_index_available(connection):
+        _logger.error(
+            "unified_capabilities has no valid provenance index; skipping "
+            "write-time projection delete for business_capability id=%s.",
+            target.id,
+        )
+        return
+
+    connection.execute(
+        text(
+            "DELETE FROM unified_capabilities "
+            "WHERE source_table = :source_table AND source_id = :source_id"
+        ),
+        {"source_table": SOURCE_TABLE, "source_id": str(target.id)},
+    )
+
+
+@event.listens_for(BusinessCapability, "after_insert")
+def project_capability_after_insert(mapper, connection, target):
+    _project_capability_row(connection, target)
+
+
+@event.listens_for(BusinessCapability, "after_update")
+def project_capability_after_update(mapper, connection, target):
+    _project_capability_row(connection, target)
+
+
+@event.listens_for(BusinessCapability, "after_delete")
+def project_capability_after_delete(mapper, connection, target):
+    _delete_projected_capability(connection, target)

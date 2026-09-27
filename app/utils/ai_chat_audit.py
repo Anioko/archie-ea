@@ -7,8 +7,7 @@ Captures user actions, AI decisions, data modifications, and system events.
 
 import json
 import logging
-from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from flask import request
 

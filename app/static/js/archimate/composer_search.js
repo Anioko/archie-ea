@@ -17,6 +17,7 @@ let ComposerSearch = (function() {
         let createNode = helpers.createNode;
         let guessLayer = helpers.guessLayer;
         let _toast = helpers._toast;
+        // Platform.fetch will handle CSRF automatically; csrfToken helper may still be used elsewhere
 
         // CMP-058: extract helpers that selectViewpoint() requires at call time
         let UndoStack = helpers.UndoStack;
@@ -25,9 +26,12 @@ let ComposerSearch = (function() {
 
         let VIEWPOINT_PALETTE_MAP = helpers.VIEWPOINT_PALETTE_MAP;
 
+        // Ensure Platform.fetch is available globally
+        const Platform = window.Platform;
+
         let methods = {
 
-        selectViewpoint: function(vpId, vpName) {
+        selectViewpoint: function(vpId, vpName, layer) {
             let self = this;
             self.vpDropdownOpen = false;
             self.activeViewpoint = vpId;
@@ -41,9 +45,9 @@ let ComposerSearch = (function() {
 
             let url = '/archimate/viewpoints-api/' + vpId + '/data';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
+            if (layer) url += (url.indexOf('?') === -1 ? '?' : '&') + 'layer=' + encodeURIComponent(layer);
 
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 /* ── Invariant 1: Scope required ── */
                 if (data.scope_required) {
@@ -56,6 +60,26 @@ let ComposerSearch = (function() {
                     self.scopeFallback = true;
                     self.statusText = 'Select a solution to view this viewpoint';
                     UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
+                    return;
+                }
+
+                /* D4: distinguish a genuine backend failure from a real empty
+                 * result — do not silently render "No elements for this
+                 * viewpoint" for an error. */
+                if (data.error) {
+                    UndoStack.pause();
+                    self.graph.clear();
+                    self.canvasElements = {};
+                    self.elementCount = 0;
+                    self.relCount = 0;
+                    self.viewpointLoading = false;
+                    self.statusText = data.error_reason || 'Failed to load viewpoint data';
+                    UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
+                    _toast('error', data.error_reason || 'Failed to load viewpoint data');
                     return;
                 }
 
@@ -74,6 +98,9 @@ let ComposerSearch = (function() {
                     self.relCount = 0;
                     self.statusText = 'No elements for this viewpoint';
                     self.viewpointLoading = false;
+                    UndoStack.resume();
+                    UndoStack.clear();
+                    self.viewpointDirty = false;
                     return;
                 }
 
@@ -104,6 +131,13 @@ let ComposerSearch = (function() {
 
                 UndoStack.resume();
                 UndoStack.clear();
+                /* D1 fix: loading/viewing a viewpoint is not an edit — graph.on('add')
+                 * fired above for each rendered element/relationship and marked the
+                 * canvas dirty purely from viewing it, which would otherwise let the
+                 * 30s autosave timer create a new SavedDiagram row for a user who
+                 * only looked. Mirror the reset composer.js:2541 does after
+                 * loadSavedViewpoint(). */
+                self.viewpointDirty = false;
                 self.$nextTick(function() {
                     self.fitCanvas();
                     if (window.lucide) lucide.createIcons();
@@ -115,7 +149,7 @@ let ComposerSearch = (function() {
             .catch(function(err) {
                 UndoStack.resume();
                 _toast('error', 'Failed to switch viewpoint');
-                console.error('[Composer] viewpoint load error:', err);
+                // Platform.fetch already logged the error; we keep the inline error state
                 self.viewpointLoading = false;
                 self.elementCount = 0;
                 self.relCount = 0;
@@ -149,11 +183,12 @@ let ComposerSearch = (function() {
             if (layerFilter) url += '&layer=' + encodeURIComponent(layerFilter);
             if (self.solutionOnlyFilter && self.solutionId) url += '&solution_id=' + self.solutionId;
 
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
-                .then(function(resp) {
-                    let data = resp.data || resp || [];
-                    self.searchResults = Array.isArray(data) ? data.filter(function(el) {
+            Platform.fetch.get(url, null, { silent: true })
+                .then(function(data) {
+                    // Platform.fetch returns parsed data directly
+                    let resp = data;
+                    let dataArray = resp.data || resp || [];
+                    self.searchResults = Array.isArray(dataArray) ? dataArray.filter(function(el) {
                         if (self.canvasElements[el.id]) return false;
                         /* Client-side layer filter fallback if API doesn't support it */
                         if (layerFilter && el.layer && el.layer.toLowerCase() !== layerFilter) return false;
@@ -179,12 +214,7 @@ let ComposerSearch = (function() {
             self.closeSearch();
             self.statusText = 'Creating...';
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: name, type: type, layer: layer }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: name, type: type, layer: layer }, { silent: true })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -290,6 +320,7 @@ let ComposerSearch = (function() {
             self._clearSrHighlights();
             self.srMatches = [];
             self.srCurrentIndex = -1;
+            self.srRegexError = null;
 
             let query = self.srFindText;
             if (!query) return;
@@ -299,6 +330,11 @@ let ComposerSearch = (function() {
             try {
                 re = self.srUseRegex ? new RegExp(query, flags) : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
             } catch(e) {
+                /* Returning here left srMatches empty, and the panel renders that
+                   as "0 / 0" — the identical answer a valid pattern that matched
+                   nothing gives. The user could not tell a typo in their regex
+                   from a diagram that does not contain what they searched for. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
                 return;
             }
 
@@ -318,7 +354,7 @@ let ComposerSearch = (function() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic search-match outline; the match count and jump-to-match still work without it */ }
                 }
             });
 
@@ -333,7 +369,7 @@ let ComposerSearch = (function() {
             (self.srMatches || []).forEach(function(cell) {
                 let view = self.paper.findViewByModel(cell);
                 if (view) {
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#8b5cf6', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic un-highlight when clearing search matches */ }
                 }
             });
         },
@@ -357,7 +393,12 @@ let ComposerSearch = (function() {
             let re;
             try {
                 re = self.srUseRegex ? new RegExp(query, flags + 'g') : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags + 'g');
-            } catch(e) { return; }
+            } catch(e) {
+                /* The button press did nothing at all and said nothing at all. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
+                _toast('error', self.srRegexError);
+                return;
+            }
 
             let newName = oldName.replace(re, self.srReplaceText);
             cell.set('elName', newName);
@@ -388,7 +429,12 @@ let ComposerSearch = (function() {
             let re;
             try {
                 re = self.srUseRegex ? new RegExp(query, flags + 'g') : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags + 'g');
-            } catch(e) { return; }
+            } catch(e) {
+                /* The button press did nothing at all and said nothing at all. */
+                self.srRegexError = 'Invalid regular expression: ' + (e.message || query);
+                _toast('error', self.srRegexError);
+                return;
+            }
 
             let count = self.srMatches.length;
             /* Save all old names for undo */
@@ -446,8 +492,7 @@ let ComposerSearch = (function() {
             let url = '/archimate/api/matrix?row_type=' + encodeURIComponent(self.matrixRowType)
                     + '&col_type=' + encodeURIComponent(self.matrixColType);
             if (self.solutionId) url += '&solution_id=' + self.solutionId;
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.get(url, null, { silent: true })
             .then(function(data) {
                 self.matrixRows = data.rows || [];
                 self.matrixCols = data.columns || [];

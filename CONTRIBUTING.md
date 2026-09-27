@@ -1,12 +1,12 @@
-# Contributing to Archie
+# Contributing to Entelim
 
-Archie is an open-source, AI-native enterprise architecture platform (TOGAF 9.2 /
+Entelim is an open-source, AI-native enterprise architecture platform (TOGAF 9.2 /
 ArchiMate 3.2). Contributions are welcome — bug fixes, features, docs, connectors,
 and codegen targets.
 
 ## License of contributions
 
-Archie is **AGPL-3.0** with a commercial dual-licence. By submitting a contribution
+Entelim is **AGPL-3.0** with a commercial dual-licence. By submitting a contribution
 you agree it is licensed under AGPL-3.0, and — so the dual-licence remains viable —
 that the maintainers may also offer it under the commercial licence. If your
 employer owns your work, get their sign-off first.
@@ -25,7 +25,10 @@ flask --app manage run                             # or: docker compose up
 ```
 
 A PostgreSQL database is required. The fastest path is `docker compose up`, which
-brings up the app + Postgres together.
+brings up the app + Postgres together. On the Windows dev box a portable
+PostgreSQL on **port 5439** is used instead — start/stop commands and the
+`TEST_DATABASE_URL` for running the suite are in
+[docs/local-test-database.md](docs/local-test-database.md).
 
 ## Before you open a PR
 

@@ -21,7 +21,7 @@ import io
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     Response,
@@ -70,7 +70,10 @@ def analyze_import_stream():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number"}), 400
     archimate_mode = request.form.get("archimate_mode", "standard")
 
     # Read file into memory before starting the generator (request context closes file)
@@ -203,7 +206,6 @@ def analyze_import_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
         # Set a longer timeout for streaming responses (10 minutes)
         direct_passthrough=True,
@@ -396,6 +398,12 @@ def export_csv():
         response.headers["Content-Disposition"] = (
             f"attachment; filename=applications_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         )
+        # P-12: an empty catalogue produced a header-only CSV via a raw
+        # `window.location.href` navigation, so the frontend had no way to
+        # tell the user "nothing to export" vs. "download happened" — this
+        # header lets the fetch-based client (see applications/list.js
+        # exportCSV()) distinguish the two without sniffing CSV content.
+        response.headers["X-Export-Empty"] = "1" if not apps else "0"
 
         return response
 
@@ -421,11 +429,14 @@ def analyze_import():
     if file.filename == "":
         return jsonify({"error": "No file selected"}), 400
 
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
-    # Analyze ALL applications - no artificial limit
-    max_preview = int(
-        request.form.get("max_preview", "999999")
-    )  # Effectively unlimited
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+        # Analyze ALL applications - no artificial limit
+        max_preview = int(
+            request.form.get("max_preview", "999999")
+        )  # Effectively unlimited
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold and max_preview must be numbers"}), 400
     archimate_mode = request.form.get(
         "archimate_mode", "standard"
     )  # quick, standard, or comprehensive
@@ -713,6 +724,94 @@ def preview_excel():
 # ---------------------------------------------------------------------------
 # 5. rollback_import  (POST /rollback-import/<int:history_id>)
 # ---------------------------------------------------------------------------
+def _rollback_metadata(history):
+    """Resolve created IDs, failing closed on conflicting historical encodings."""
+    def object_pairs(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Import metadata contains duplicate JSON keys")
+            result[key] = value
+        return result
+
+    def decode(raw, allow_errors=False):
+        if raw is None or raw == "":
+            return {}
+        try:
+            value = json.loads(raw, object_pairs_hook=object_pairs) if isinstance(raw, str) else raw
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("Import metadata is not valid JSON") from exc
+        if allow_errors and isinstance(value, list):
+            return {}
+        if not isinstance(value, dict):
+            raise ValueError("Import metadata must be an object")
+        return value
+
+    def ids(value):
+        if not isinstance(value, list) or any(type(item) is not int or item <= 0 for item in value):
+            raise ValueError("Recorded application IDs must be a list of positive integers")
+        return set(value)
+
+    settings = decode(history.import_settings)
+    details = decode(history.error_details, allow_errors=True)
+    created_sources, updated_sources = [], []
+    if "application_ids" in settings:
+        created_sources.append(ids(settings["application_ids"]))
+    for container in (settings, details):
+        if "linked_applications" not in container:
+            continue
+        linked = container["linked_applications"]
+        if not isinstance(linked, dict):
+            raise ValueError("Recorded linked applications must be an object")
+        if "created_ids" in linked or "updated_ids" in linked:
+            created_sources.append(ids(linked.get("created_ids", [])))
+            updated_sources.append(ids(linked.get("updated_ids", [])))
+    for sources in (created_sources, updated_sources):
+        if sources and any(source != sources[0] for source in sources[1:]):
+            raise ValueError("Import metadata contains conflicting application IDs")
+    created = created_sources[0] if created_sources else set()
+    updated = updated_sources[0] if updated_sources else set()
+    if created & updated:
+        raise ValueError("Import metadata marks an application as both created and updated")
+    if not created:
+        raise ValueError("No recorded created applications are available to rollback")
+    return sorted(created)
+
+
+def _rollback_policy(history, user, now=None):
+    """Shared UI/POST eligibility. POST must additionally validate database targets."""
+    administrator = getattr(user, "is_admin", False)
+    is_admin = administrator() is True if callable(administrator) else administrator is True
+    if history.imported_by_id is None and not is_admin:
+        raise PermissionError("Only administrators can rollback legacy imports")
+    if history.imported_by_id not in (None, user.id) and not is_admin:
+        raise PermissionError("Not authorized to rollback this import")
+    if history.status == "rolled_back":
+        raise ValueError("This import has already been rolled back")
+    if history.status not in ("completed", "partial"):
+        raise ValueError("Only completed or partially completed imports can be rolled back")
+    if not isinstance(history.imported_at, datetime):
+        raise ValueError("The import date is unavailable; rollback is not permitted")
+    imported_at = history.imported_at
+    imported_at = (imported_at.replace(tzinfo=timezone.utc) if imported_at.tzinfo is None
+                   else imported_at.astimezone(timezone.utc))
+    now = now or datetime.now(timezone.utc)
+    now = now.replace(tzinfo=timezone.utc) if now.tzinfo is None else now.astimezone(timezone.utc)
+    age = now - imported_at
+    if age < timedelta(0) or age > timedelta(days=7):
+        raise ValueError("Rollback is only available within seven days of the import")
+    return _rollback_metadata(history)
+
+
+def rollback_import_eligibility(history, user, now=None):
+    """Read-only display contract; no authority to delete is conveyed by this result."""
+    try:
+        created_ids = _rollback_policy(history, user, now)
+    except (ValueError, PermissionError) as exc:
+        return {"can_rollback": False, "rollback_reason": str(exc), "rollback_created_count": 0}
+    return {"can_rollback": True, "rollback_reason": None, "rollback_created_count": len(created_ids)}
+
+
 @unified_applications_bp.route("/rollback-import/<int:history_id>", methods=["POST"])
 @login_required
 @audit_log("rollback_import")
@@ -731,44 +830,51 @@ def rollback_import(history_id):
             UnifiedApplicationCapabilityMapping,
         )
 
-        history = ApplicationImportHistory.query.get(history_id)
+        from flask import g
+
+        org_id = getattr(g, "current_org_id", None)
+        if org_id is None:
+            return jsonify({"success": False, "error": "An active organization is required"}), 403
+
+        # A fresh scoped SELECT avoids Session.get() identity-map tenant bypasses.
+        # Lock the history so concurrent requests cannot execute the same rollback.
+        history = ApplicationImportHistory.query.filter_by(
+            id=history_id, organization_id=org_id
+        ).populate_existing().with_for_update().first()
         if not history:
             return jsonify({"success": False, "error": "Import history not found"}), 404
 
-        # Ownership check: only the importer or admin can rollback
-        is_admin = getattr(current_user, "is_admin", False)
-        if history.imported_by_id is None:
-            # Legacy imports have no owner - only admins can rollback
-            if not is_admin:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": "Only administrators can rollback legacy imports",
-                    }
-                ), 403
-        elif history.imported_by_id != current_user.id and not is_admin:
-            return jsonify(
-                {"success": False, "error": "Not authorized to rollback this import"}
-            ), 403
+        try:
+            app_ids = _rollback_policy(history, current_user)
+        except PermissionError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 403
+        except ValueError as exc:
+            return jsonify({"success": False, "error": str(exc)}), 400
 
-        # Parse import settings to get application IDs
-        import json
+        # Validate the COMPLETE target set before touching unscoped mapping tables.
+        apps = ApplicationComponent.query.filter(
+            ApplicationComponent.id.in_(app_ids),
+            ApplicationComponent.organization_id == org_id,
+        ).populate_existing().with_for_update().all()
+        if {app.id for app in apps} != set(app_ids):
+            return jsonify({"success": False, "error": "Recorded applications are missing or unavailable in this organization"}), 400
 
-        settings = (
-            json.loads(history.import_settings) if history.import_settings else {}
-        )
-        app_ids = settings.get("application_ids", [])
-
-        if not app_ids:
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "No application IDs found in import history",
-                    }
-                ),
-                400,
-            )
+        archimate_ids = sorted({app.archimate_element_id for app in apps if app.archimate_element_id})
+        if archimate_ids:
+            elements = ArchiMateElement.query.filter(
+                ArchiMateElement.id.in_(archimate_ids),
+                ArchiMateElement.organization_id == org_id,
+            ).populate_existing().with_for_update().all()
+            if {element.id for element in elements} != set(archimate_ids):
+                return jsonify({"success": False, "error": "Recorded ArchiMate elements are missing or unavailable in this organization"}), 400
+            # Core-table SELECT intentionally sees reverse references in every org.
+            # It discloses no records; it only prevents deleting a shared element.
+            table = ApplicationComponent.__table__
+            shared_ids = set(db.session.execute(db.select(table.c.archimate_element_id).where(
+                table.c.archimate_element_id.in_(archimate_ids),
+                table.c.id.notin_(app_ids),
+            )).scalars())
+            archimate_ids = [identifier for identifier in archimate_ids if identifier not in shared_ids]
 
         # Delete in reverse order: mappings first, then applications
         deleted_counts = {
@@ -780,7 +886,7 @@ def rollback_import(history_id):
 
         # OPTIMIZATION: Bulk delete capability mappings (single query instead of N queries)
         cap_count = UnifiedApplicationCapabilityMapping.query.filter(
-            UnifiedApplicationCapabilityMapping.application_id.in_(app_ids)
+            UnifiedApplicationCapabilityMapping.application_component_id.in_(app_ids)
         ).delete(synchronize_session="fetch")
         deleted_counts["capability_mappings"] = cap_count
 
@@ -790,29 +896,21 @@ def rollback_import(history_id):
         ).delete(synchronize_session="fetch")
         deleted_counts["process_mappings"] = proc_count
 
-        # Fetch all applications in batch to get their ArchiMate element IDs
-        apps = ApplicationComponent.query.filter(
-            ApplicationComponent.id.in_(app_ids)
-        ).all()
-
         # AUDIT-IMP-006: Capture application names before deletion for audit trail
         rolled_back_app_names = [app.name for app in apps]
-
-        # Collect ArchiMate element IDs to delete
-        archimate_ids = [
-            app.archimate_element_id for app in apps if app.archimate_element_id
-        ]
 
         # OPTIMIZATION: Bulk delete ArchiMate elements
         if archimate_ids:
             elem_count = ArchiMateElement.query.filter(
-                ArchiMateElement.id.in_(archimate_ids)
+                ArchiMateElement.id.in_(archimate_ids),
+                ArchiMateElement.organization_id == org_id,
             ).delete(synchronize_session="fetch")
             deleted_counts["archimate_elements"] = elem_count
 
         # OPTIMIZATION: Bulk delete applications
         app_count = ApplicationComponent.query.filter(
-            ApplicationComponent.id.in_(app_ids)
+            ApplicationComponent.id.in_(app_ids),
+            ApplicationComponent.organization_id == org_id,
         ).delete(synchronize_session="fetch")
         deleted_counts["applications"] = app_count
 
@@ -824,7 +922,6 @@ def rollback_import(history_id):
         # AUDIT-IMP-006: Create audit log entry for the rollback action.
         # This provides accountability for destructive rollback operations.
         try:
-            from datetime import datetime
             from app.models.batch_import import ImportAuditLog
 
             rollback_audit = ImportAuditLog(
@@ -997,8 +1094,12 @@ def application_import():
     generate_archimate = (
         request.form.get("generate_archimate", "false").lower() == "true"
     )
-    clone_vendor = request.form.get("clone_vendor_archimate", "false").lower() == "true"
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    request.form.get("clone_vendor_archimate", "false").lower() == "true"
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        flash("confidence_threshold must be a number", "error")
+        return redirect(url_for("unified_applications.application_list"))
 
     # Quick import mode: skip AI to prevent timeout (for E2E tests and fast imports)
     quick_mode = request.form.get("quick_mode", "false").lower() == "true"
@@ -2230,7 +2331,7 @@ def application_import():
     except ValueError as exc:
         db.session.rollback()
         flash(f"Invalid import data: {exc}", "error")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error importing file. Please try again.", "error")
 
@@ -2319,15 +2420,17 @@ def import_with_ai_review():
     generate_archimate = (
         request.form.get("generate_archimate", "false").lower() == "true"
     )
-    confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    try:
+        confidence_threshold = float(request.form.get("confidence_threshold", "0.7"))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number"}), 400
     import_mode = request.form.get("import_mode", "skip")
 
     # Get custom field mappings if provided
-    field_mappings = {}
     field_mappings_json = request.form.get("field_mappings")
     if field_mappings_json:
         try:
-            field_mappings = json.loads(field_mappings_json)
+            json.loads(field_mappings_json)
         except json.JSONDecodeError:
             logger.exception("Failed to JSON parsing")
             pass
@@ -2347,7 +2450,6 @@ def import_with_ai_review():
         count = 0
         updated = 0
         skipped = 0
-        errors = []
 
         if filename.endswith(".csv"):
             import csv

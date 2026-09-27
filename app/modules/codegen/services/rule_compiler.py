@@ -69,7 +69,7 @@ class RuleCompiler:
         }
 
     def _generate_api_call(self, rule_def: Dict[str, Any], entity: str) -> str:
-        suffix = hashlib.md5(json.dumps(rule_def, sort_keys=True, default=str).encode()).hexdigest()[:8]
+        suffix = hashlib.md5(json.dumps(rule_def, sort_keys=True, default=str).encode(), usedforsecurity=False).hexdigest()[:8]
         entity_snake = entity.lower()
         api_actions = [a for a in rule_def.get("actions", []) if a["type"] == "call_api"]
 
@@ -100,7 +100,7 @@ def call_api_{entity_snake}_rule_{suffix}(record: dict) -> list:
 '''
 
     def _generate_record_creator(self, rule_def: Dict[str, Any], entity: str) -> str:
-        suffix = hashlib.md5(json.dumps(rule_def, sort_keys=True, default=str).encode()).hexdigest()[:8]
+        suffix = hashlib.md5(json.dumps(rule_def, sort_keys=True, default=str).encode(), usedforsecurity=False).hexdigest()[:8]
         entity_snake = entity.lower()
 
         return f'''# Rule: create record on {entity} event

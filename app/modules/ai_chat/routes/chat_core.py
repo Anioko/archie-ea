@@ -28,6 +28,75 @@ from .chat_views import get_chat_service
 
 logger = logging.getLogger(__name__)
 
+# How long the SSE generator waits on an empty event_queue before emitting a
+# keepalive. Module-level (not a literal in generate()) so a test can shrink
+# it rather than actually sleeping for the production interval.
+#
+# Must stay comfortably BELOW the client's idle-read timeout
+# (app/static/js/ai_chat/transport.js's STREAM_IDLE_TIMEOUT_MS, 30s): a turn
+# with no tokens for a while (slow model, tool-heavy turn with silent gaps
+# between tool calls) is legitimate, not a wedge, and used to look identical
+# to one from the client's side because the ONLY thing standing between it
+# and a false "AI service did not respond" was this same queue.get() at a
+# 95s timeout - well inside the 30s window it was supposed to protect. At
+# 15s, a client that has gone quiet for 30s has missed at least one
+# keepalive it should have received, which is what actually distinguishes
+# "slow" from "wedged" rather than merely how long since the turn started.
+_STREAM_KEEPALIVE_INTERVAL_S = 15
+
+
+def _bind_trusted_workbench(workspace_candidate, requested_solution_id=None):
+    """Validate and persist a client workspace candidate as trusted server state."""
+    from flask import session as flask_session
+    from app import db
+    from app.models.solution_architect_models import SolutionAnalysisSession
+    from app.models.solution_models import Solution
+
+    state = flask_session.get("_workbench_workflow_state") or {}
+    candidate = workspace_candidate if workspace_candidate is not None else state.get("workspace_id")
+    if candidate is None:
+        return None, None
+    valid, workspace_id, _ = validate_integer(candidate, min_val=1, field_name="workspace_id")
+    if not valid:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_not_found"],
+                       "missing_evidence": []}, 404)
+
+    organization_id = getattr(g, "current_org_id", None)
+    workspace = db.session.execute(
+        db.select(SolutionAnalysisSession).where(
+            SolutionAnalysisSession.id == workspace_id,
+            SolutionAnalysisSession.organization_id == organization_id,
+            SolutionAnalysisSession.created_by_id == current_user.id,
+        )
+    ).scalar_one_or_none()
+    if workspace is None:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_not_found"],
+                       "missing_evidence": []}, 404)
+
+    solution_id = (workspace.custom_metadata or {}).get("solution_id")
+    if not solution_id:
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_solution_missing"],
+                       "missing_evidence": []}, 422)
+    solution = db.session.execute(
+        db.select(Solution).where(
+            Solution.id == solution_id,
+            Solution.organization_id == organization_id,
+        )
+    ).scalar_one_or_none()
+    if solution is None or (
+        requested_solution_id is not None and requested_solution_id != solution_id
+    ):
+        flask_session.pop("_workbench_workflow_state", None)
+        return None, ({"success": False, "reason_codes": ["workspace_solution_mismatch"],
+                       "missing_evidence": []}, 422)
+
+    state.update({"workspace_id": workspace.id, "solution_id": solution.id})
+    flask_session["_workbench_workflow_state"] = state
+    return workspace.id, None
+
 
 def _get_configured_chat_models():
     """Return models that are actually selectable in AI chat."""
@@ -80,7 +149,59 @@ def _get_configured_chat_models():
 
             models.append(model_info)
 
+    # Runtime provider resolution deliberately supports environment-backed
+    # bootstrap configuration.  A tenant with no APISettings rows must see the
+    # same provider that the message service will actually use; otherwise the
+    # model picker reports "unavailable" while chat health is green.
+    if not models:
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        try:
+            provider_name, model_id = LLMService._get_configured_provider()
+        except ValueError:
+            provider_name, model_id = None, None
+
+        if provider_name and model_id:
+            models.append({
+                "provider": provider_name,
+                "model": model_id,
+                "display_name": f"{provider_name.title()} - {model_id}",
+                "recommended_for": [],
+                "fallback_order": 0,
+                "is_fallback": False,
+                "test_status": None,
+                "last_tested_at": None,
+            })
+
     return models
+
+
+def _agent_auto_execute_allowed():
+    """Whether the agent may execute a mutating tool without a confirmation.
+
+    The session flag is a USER PREFERENCE. REQUIRE_AI_APPROVAL is an OPERATOR
+    CONTROL. A preference must never defeat a control, and until 31 Aug 2026 it
+    did: the agent loop read the session flag alone and never consulted the
+    config at all, while config.py stated the flag gated "the LLM-agent
+    mutating-tool queue" and that setting it false "restores the pre-Aug-2026
+    direct-write behaviour for the LLM-agent paths".
+
+    Both statements were false for the agent path. An operator who set
+    REQUIRE_AI_APPROVAL=true believed AI-proposed writes went to a human queue;
+    any authenticated user could POST /session/toggle-auto-execute once and
+    every tier:"auto" mutating tool -- create_solution, create_archimate_element,
+    create_driver/goal/constraint/requirement/risk, the link_* family -- then
+    executed immediately with no approval row. Found 31 Aug 2026 by an AI
+    architecture audit; the /ai-chat/data/* routes were correctly gated the
+    whole time, which is why it was invisible.
+
+    Fails CLOSED: an unreadable config is treated as "approval required".
+    """
+    if current_app.config.get("REQUIRE_AI_APPROVAL", True):
+        return False
+    from flask import session as flask_session
+
+    return bool(flask_session.get("agent_auto_execute", False))
 
 
 @unified_ai_chat_bp.route("/persona-context/<persona>", methods=["GET"])
@@ -177,6 +298,36 @@ def get_available_models():
         )
 
 
+def _load_history(thread_id, user_id):
+    """Prior turns of *thread_id*, oldest first, or [] when there are none.
+
+    Ownership-checked: thread_id arrives from the client, so without the check a
+    user could replay another user's conversation into their own prompt simply
+    by passing someone else's id.
+
+    Never raises. History is an enhancement to the turn, not a precondition for
+    it - a failure here should cost the model its memory, not cost the user their
+    answer.
+    """
+    if not thread_id or not user_id:
+        return []
+    try:
+        from app.services.conversation_history import get_history_service, thread_owned_by
+
+        if not thread_owned_by(thread_id, user_id):
+            logger.warning("chat history requested for a thread the user does not own")
+            return []
+        messages = get_history_service().get_thread_messages(thread_id)
+        return [
+            {"role": m.role, "content": m.content}
+            for m in messages
+            if getattr(m, "role", None) in ("user", "assistant") and getattr(m, "content", None)
+        ]
+    except Exception:
+        logger.warning("chat history unavailable; continuing without it", exc_info=True)
+        return []
+
+
 @unified_ai_chat_bp.route("/message", methods=["POST"])
 @login_required
 @rate_limit(30, "1h")  # LLM-003: 30 requests per hour for chat operations
@@ -248,6 +399,14 @@ def send_message():
     # Validate JSON payload exists
     if data is None:
         return validation_error_response("Request body is required")
+
+    # Capture the conversation this turn belongs to (None on the first message),
+    # then REMOVE it from the payload — the request schema is strict
+    # (unknown=RAISE), so leaving thread_id in would 400 the whole message.
+    incoming_thread_id = data.get("thread_id")
+    if isinstance(data, dict) and "thread_id" in data:
+        data = dict(data)
+        data.pop("thread_id", None)
 
     # T-031: marshmallow schema validation
     _schema = ChatMessageSchema()
@@ -362,13 +521,12 @@ def send_message():
         )
         solution_id = validated_sol_id if is_valid else None
 
-    # AIC-312: Validate workspace_id — grounds chat in a workbench workspace
-    workspace_id = data.get("workspace_id")
-    if workspace_id is not None:
-        is_valid, validated_ws_id, error = validate_integer(
-            workspace_id, min_val=1, field_name="workspace_id"
-        )
-        workspace_id = validated_ws_id if is_valid else None
+    trusted_workspace_id, workspace_error = _bind_trusted_workbench(
+        data.get("workspace_id"), solution_id
+    )
+    if workspace_error:
+        body, status = workspace_error
+        return jsonify(body), status
 
     # Validate persona
     persona = data.get("persona")
@@ -404,7 +562,7 @@ def send_message():
 
     try:
         # Get multi-domain chat service
-        chat_service = get_chat_service()
+        get_chat_service()
 
         # Prepare context data
         context_data = {}
@@ -423,16 +581,27 @@ def send_message():
         if solution_id:
             context_data["solution_id"] = solution_id
 
-        # AIC-312: Ground chat in workbench workspace
-        if workspace_id:
-            context_data["workspace_id"] = workspace_id
-
         # Add document context from uploaded documents
         document_context = data.get("document_context", {})
         if document_context and isinstance(document_context, dict):
-            context_data.update(document_context)
+            context_data.update({
+                key: value
+                for key, value in document_context.items()
+                if key not in {
+                    "workspace_id",
+                    "_trusted_workspace_id",
+                    "arb_assertions",
+                    "workflow_type",
+                }
+            })
 
         # ENT-085: Pass attached image data for vision/multimodal analysis
+        # The chat client no longer sends these. AgentRunner — which is what
+        # actually runs the turn — has no vision handling, so the base64 landed
+        # in context_data and was dropped by every context loader. The user saw
+        # a thumbnail and got a confident answer generated as if no diagram had
+        # been attached. The UI was removed rather than left lying; this stays
+        # as the reattachment point, and is inert while nothing sends it.
         image_data = data.get("image_data")
         if image_data and isinstance(image_data, str):
             context_data["image_data"] = image_data
@@ -440,15 +609,32 @@ def send_message():
 
         # Run AgentRunner (ReAct loop with tool use).
         # Falls back to text-only mode automatically for unsupported providers.
-        from app.modules.ai_chat.services.agent_runner import AgentRunner
+        from app.modules.ai_chat.services.agent_runner import (
+            AgentRunner,
+            sanitize_agent_error,
+        )
 
-        runner = AgentRunner(user_id=current_user.id)
+        if trusted_workspace_id is not None:
+            context_data["workspace_id"] = trusted_workspace_id
+            context_data["_trusted_workspace_id"] = trusted_workspace_id
+
+        runner = AgentRunner(
+            user_id=current_user.id,
+            auto_execute=_agent_auto_execute_allowed(),
+            # ARCH-020: prefer the real thread id when the client sent one;
+            # otherwise fall back to the same per-user stable id
+            # MultiDomainChatService uses (self._stable_session_id there), so
+            # any approval this run queues is still traceable to *a* session
+            # instead of chat_session_id=null.
+            chat_session_id=incoming_thread_id or f"chat_user_{current_user.id}",
+        )
         agent_result = runner.run(
             user_message=user_message,
             domain=domain,
             context=context_data,
             persona=persona,
             requested_model=requested_model,
+            history=_load_history(incoming_thread_id, current_user.id),
         )
 
         # ENH-018: Populate junction tables if agent result includes design_output
@@ -463,16 +649,63 @@ def send_message():
             except Exception as _junc_err:
                 logger.debug("ENH-018: Junction populate skipped: %s", _junc_err)
 
+        # Persist this turn (thread-backed history rail). Always on; never
+        # breaks the reply if storage hiccups. thread_id rides back so the next
+        # turn appends to the same conversation.
+        thread_id = incoming_thread_id
+        try:
+            from app.services.conversation_history import persist_turn
+
+            thread_id = persist_turn(
+                current_user.id,
+                incoming_thread_id,
+                user_message,
+                agent_result.get("response", ""),
+                model=requested_model or (agent_result.get("metadata", {}) or {}).get("model"),
+            )
+        except Exception:
+            logger.warning("send_message persist_turn failed", exc_info=True)
+
+        # A failed LLM call is not a success. This used to return
+        # "success": true alongside agent_error, so any client reading the
+        # envelope — and any log or metric counting 2xx+success — recorded a
+        # failure as a working answer. The HTTP status stays 200 and `response`
+        # still carries the honest "couldn't be completed" copy, because the
+        # user does have something to read; it is the envelope that was lying.
+        agent_failure = agent_result.get("error")
+        if agent_failure:
+            logger.warning("send_message agent failure: %s", agent_failure)
+
         return jsonify(
             {
-                "success": True,
+                "success": not agent_failure,
                 "response": agent_result.get("response", ""),
                 "domain": domain,
                 "actions_taken": agent_result.get("actions_taken", []),
                 "pending_approvals": agent_result.get("pending_approvals", []),
                 "requires_approval": bool(agent_result.get("pending_approvals")),
-                "context_used": True,
-                "workspace_id": workspace_id,
+                # The records the read tools actually returned this turn, so the
+                # reader can check the answer against the rows rather than
+                # trusting it.
+                "sources": agent_result.get("sources", []),
+                # AgentRunner._fallback() persists a friendly "couldn't be
+                # completed" response AND keeps the raw failure reason on the
+                # same dict; without this field the UI could not tell an
+                # ordinary answer from one that only exists because the LLM
+                # call failed.
+                #
+                # Sanitised: the raw reason is the provider's error body, which
+                # for OpenRouter's 402 contains the provider account's user_id.
+                # That was reaching the browser verbatim. The full reason is in
+                # the server log line above.
+                "agent_error": sanitize_agent_error(agent_failure),
+                # Was hardcoded True on every response regardless of whether any
+                # context was built - _build_system_prompt swallows a context
+                # failure into an empty string, so the API asserted grounding
+                # unconditionally. Report what actually happened.
+                "context_used": bool(agent_result.get("sources")),
+                "workspace_id": trusted_workspace_id,
+                "thread_id": thread_id,
                 "processing_metadata": {
                     "domain": domain,
                     "persona": persona,
@@ -571,44 +804,31 @@ def submit_message_feedback():
     if rating not in ("up", "down"):
         return jsonify({"error": "rating must be 'up' or 'down'"}), 400
 
+    from app import db
+
     try:
-        from app.extensions import db
-        from sqlalchemy import text
-        # Store feedback; table created lazily on first use
-        _org_id = getattr(g, 'current_org_id', None)
-        if _org_id:
-            db.session.execute(
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at, organization_id) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP, :org_id)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                    "org_id": _org_id,
-                },
-            )
-        else:
-            db.session.execute(  # tenant-exempt: fallback when organization_id unavailable
-                text(
-                    "INSERT INTO ai_chat_feedback (user_id, rating, domain, persona, message_text, created_at) "
-                    "VALUES (:uid, :r, :d, :p, :m, CURRENT_TIMESTAMP)"
-                ),
-                {
-                    "uid": current_user.id,
-                    "r": rating,
-                    "d": domain,
-                    "p": persona,
-                    "m": message_text,
-                },
-            )
+        from app.models.ai_chat_feedback import AIChatFeedback
+
+        # organization_id is set by the tenant before_flush; do not pass it.
+        db.session.add(AIChatFeedback(
+            user_id=current_user.id,
+            rating=rating,
+            domain=domain,
+            persona=persona,
+            message_text=message_text,
+        ))
         db.session.commit()
     except Exception:
-        # Table may not exist yet — log and return success anyway so UI works
-        current_app.logger.info("ai_chat_feedback table not ready; feedback not persisted")
+        # This used to swallow every failure, log at INFO and return
+        # success: True. organization_id was declared on no model and in no
+        # migration, so the raw INSERT that referenced it raised
+        # UndefinedColumn every time — the endpoint reported success for a
+        # write that never happened, and without a rollback the aborted
+        # transaction cascaded InFailedSqlTransaction into every later query
+        # on the request.
+        db.session.rollback()
+        current_app.logger.exception("ai_chat_feedback insert failed")
+        return jsonify({"error": "Feedback could not be saved"}), 500
 
     return jsonify({"success": True, "rating": rating})
 
@@ -628,6 +848,13 @@ def send_message_stream():
     data = request.json or {}
     if not data:
         return validation_error_response("Request body is required")
+
+    # Capture the conversation this turn belongs to, then REMOVE it from the
+    # payload — the schema is strict (unknown=RAISE) and would 400 otherwise.
+    incoming_thread_id = data.get("thread_id")
+    if isinstance(data, dict) and "thread_id" in data:
+        data = dict(data)
+        data.pop("thread_id", None)
 
     _schema = ChatMessageSchema()
     _validated, _err = _load_and_validate(_schema, data)
@@ -659,17 +886,19 @@ def send_message_stream():
     requested_model = sanitize_html(data.get("model") or "")
 
     context_data = {}
+    solution_id = None
     solution_id = data.get("solution_id")
     if solution_id:
         is_valid_s, validated_sol, _ = validate_integer(solution_id, min_val=1, field_name="solution_id")
         if is_valid_s:
-            context_data["solution_id"] = validated_sol
-    workspace_id = data.get("workspace_id")
-    if workspace_id:
-        is_valid_w, validated_ws, _ = validate_integer(workspace_id, min_val=1, field_name="workspace_id")
-        if is_valid_w:
-            context_data["workspace_id"] = validated_ws
-
+            solution_id = validated_sol
+            context_data["solution_id"] = solution_id
+    trusted_workspace_id, workspace_error = _bind_trusted_workbench(
+        data.get("workspace_id"), solution_id
+    )
+    if workspace_error:
+        body, status = workspace_error
+        return jsonify(body), status
     event_queue = _queue.Queue()
 
     def emit(e):
@@ -678,11 +907,66 @@ def send_message_stream():
     app = current_app._get_current_object()
     user_id_for_thread = current_user.id if current_user.is_authenticated else None
 
+    # Capture the tenant NOW, while we are still on the request thread.
+    #
+    # app/middleware/tenant_context.py sets g.current_org_id in a before_request
+    # handler, and app/middleware/tenant_isolation.py returns without adding any
+    # filter when it is absent. The worker below runs in a daemon thread with only
+    # an app context - stream_with_context preserves the request context for the
+    # SSE *generator*, not for this thread - so without this every TenantMixin
+    # SELECT executed while building the prompt and running the agent's tools ran
+    # UNFILTERED ACROSS EVERY ORGANISATION. That included APISettings, so provider
+    # selection could pick up another tenant's LLM API key and send this
+    # organisation's prompts under, and billed to, that account.
+    #
+    # This is the default path: the UI tries /message/stream first and only falls
+    # back to /message on failure.
+    from app.middleware.tenant_context import current_org_id as _current_org_id
+
+    org_id_for_thread = _current_org_id()
+    # Same reason as the tenant capture above: the write-approval preference
+    # lives in flask.session, which the background thread below does not have
+    # (only an app context is re-established there, not a request context).
+    # Read it here, on the request thread, and pass the plain bool down.
+
+    auto_execute_for_thread = _agent_auto_execute_allowed()
+    if trusted_workspace_id is not None:
+        context_data["workspace_id"] = trusted_workspace_id
+        context_data["_trusted_workspace_id"] = trusted_workspace_id
+    # Load history here too, on the request thread, so the worker starts with the
+    # conversation already in hand rather than paying a DB round-trip inside the
+    # stream.
+    history_for_thread = _load_history(incoming_thread_id, user_id_for_thread)
+    if org_id_for_thread is None:
+        # Reproduce the request's own tenant context exactly rather than guessing
+        # an org - but say so, because an authenticated chat turn should have one.
+        logger.warning(
+            "chat stream: no tenant context on the request; the agent thread will "
+            "run with the same unscoped context this user would see in-request"
+        )
+
     def run_agent():
         try:
             with app.app_context():
-                from app.modules.ai_chat.services.agent_runner import AgentRunner
-                runner = AgentRunner(user_id=user_id_for_thread, yield_event=emit)
+                # Re-establish the tenant before anything queries. Must precede
+                # AgentRunner construction: context assembly reads on import-time
+                # paths inside run().
+                g.current_org_id = org_id_for_thread
+
+                from app.modules.ai_chat.services.agent_runner import (
+                    AgentRunner,
+                    sanitize_agent_error,
+                )
+                runner = AgentRunner(
+                    user_id=user_id_for_thread,
+                    yield_event=emit,
+                    auto_execute=auto_execute_for_thread,
+                    # ARCH-020: same reasoning as the non-streaming send_message
+                    # path above — real thread id when available, else the
+                    # per-user stable fallback, so approvals from this run are
+                    # never orphaned with chat_session_id=null.
+                    chat_session_id=incoming_thread_id or f"chat_user_{user_id_for_thread}",
+                )
                 result = runner.run(
                     user_message=user_message,
                     domain=domain,
@@ -690,14 +974,38 @@ def send_message_stream():
                     persona=persona or None,
                     requested_model=requested_model or None,
                     stream_mode=True,
+                    history=history_for_thread,
                 )
+                # Persist this turn (thread-backed history rail). Always on;
+                # never breaks the stream. thread_id rides back on the done event.
+                try:
+                    from app.services.conversation_history import persist_turn
+
+                    result["thread_id"] = persist_turn(
+                        user_id_for_thread,
+                        incoming_thread_id,
+                        user_message,
+                        result.get("response", ""),
+                        model=requested_model or (result.get("metadata", {}) or {}).get("model"),
+                    )
+                except Exception:
+                    logger.warning("stream persist_turn failed", exc_info=True)
+                # Same leak as the non-streaming path: result["error"] is the
+                # provider's raw error body (OpenRouter's 402 carries the
+                # provider account's user_id). Log it, send a category.
+                if result.get("error"):
+                    logger.warning("stream agent failure: %s", result["error"])
+                    result["error"] = sanitize_agent_error(result["error"])
                 event_queue.put({"type": "done", **result})
         except Exception as exc:
             logger.exception("send_message_stream: agent error")
+            from app.modules.ai_chat.services.agent_runner import (
+                sanitize_agent_error as _sanitize,
+            )
             event_queue.put({
                 "type": "done",
                 "response": "",
-                "error": str(exc),
+                "error": _sanitize(str(exc)),
                 "actions_taken": [],
                 "pending_approvals": [],
             })
@@ -706,15 +1014,20 @@ def send_message_stream():
 
     def generate():
         import json as _json
-        yield ": keepalive\n\n"
+        # A real `data:` event, not a `:`-comment: the client's idle timer
+        # resets on any byte it reads regardless of what it parses to, but an
+        # actual event is what makes this independently testable and what
+        # the plan asks for ("periodic server keepalive events"), rather
+        # than relying on an implementation detail of the client's timer.
+        yield f"data: {_json.dumps({'type': 'keepalive'})}\n\n"
         while True:
             try:
-                event = event_queue.get(timeout=95)
+                event = event_queue.get(timeout=_STREAM_KEEPALIVE_INTERVAL_S)
                 yield f"data: {_json.dumps(event, default=str)}\n\n"
                 if event.get("type") == "done":
                     break
             except _queue.Empty:
-                yield ": keepalive\n\n"
+                yield f"data: {_json.dumps({'type': 'keepalive'})}\n\n"
 
     return Response(
         stream_with_context(generate()),
@@ -722,7 +1035,6 @@ def send_message_stream():
         headers={
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
     )
 
@@ -828,12 +1140,16 @@ def get_token_usage():
         try:
             provider_name, _ = LLMService._get_configured_provider()
         except ValueError:
+            # No LLM provider configured is a settled configuration state, not a failure.
+            # Counts are None (unknowable without a provider tokenizer), never a 0 that
+            # would read as a measured zero.
+            # error-signalling-ok: configuration-state verdict, not a failure; the caller reads configured=false and renders the warning
             return jsonify({
                 "success": True,
                 "token_usage": {
-                    "total_tokens": 0,
-                    "limit": 0,
-                    "percentage": 0,
+                    "total_tokens": None,
+                    "limit": None,
+                    "percentage": None,
                     "warning": "No enabled LLM provider is configured.",
                 },
                 "provider": None,
@@ -867,7 +1183,7 @@ def get_available_domains():
         chat_service = get_chat_service()
         domains = chat_service.get_available_domains()
         return jsonify({"success": True, "domains": domains})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {"error": "Failed to get domains", "details": "See server logs for details"}
         ), 500
@@ -906,7 +1222,7 @@ def get_available_personas():
         chat_service = get_chat_service()
         personas = chat_service.get_available_personas()
         return jsonify({"success": True, "personas": personas})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get personas",
@@ -976,7 +1292,7 @@ def get_prompt_templates():
             }
         ]
         return jsonify({"success": True, "templates": template_list, "slash_commands": slash_commands})
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get templates",
@@ -1007,7 +1323,7 @@ def get_chat_history():
 
         return jsonify({"success": True, "history": history})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get chat history",
@@ -1032,7 +1348,7 @@ def clear_chat_history():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to clear history",
@@ -1071,7 +1387,7 @@ def save_chat_session():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to save session",
@@ -1090,7 +1406,7 @@ def get_saved_sessions():
 
         return jsonify({"success": True, "sessions": sessions})
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to get sessions",
@@ -1112,13 +1428,74 @@ def load_chat_session(session_id):
         else:
             return jsonify({"error": result.get("error", "Session not found")}), 404
 
-    except Exception as e:
+    except Exception:
         return jsonify(
             {
                 "error": "Failed to load session",
                 "details": "See server logs for details",
             }
         ), 500
+
+
+# ============================================================================
+# CONVERSATION THREADS — the ChatGPT-style history rail (always on)
+# Backed by the conversation_history thread/message model. Every chat turn is
+# persisted (see persist_turn in send_message / send_message_stream), so history
+# survives reloads and restarts. Ownership-checked to prevent cross-user reads.
+# ============================================================================
+
+
+def _conv_dict(obj):
+    """Normalise a thread/message to a dict whether cached as object or dict."""
+    return obj.to_dict() if hasattr(obj, "to_dict") else obj
+
+
+@unified_ai_chat_bp.route("/threads", methods=["GET"])
+@login_required
+def list_conversation_threads():
+    """List the current user's conversations, newest first, for the rail."""
+    try:
+        from app.services.conversation_history import get_history_service
+
+        threads = get_history_service().get_user_threads(current_user.id, limit=100)
+        return jsonify({"success": True, "threads": [_conv_dict(t) for t in threads]})
+    except Exception as e:
+        current_app.logger.exception("list_conversation_threads failed: %s", e)
+        return jsonify({"success": False, "error": "Could not load conversations"}), 500
+
+
+@unified_ai_chat_bp.route("/threads/<thread_id>", methods=["GET"])
+@login_required
+def get_conversation_thread(thread_id):
+    """Load one conversation's messages (ownership-checked)."""
+    from app.services.conversation_history import get_history_service, thread_owned_by
+
+    if not thread_owned_by(thread_id, current_user.id):
+        return jsonify({"success": False, "error": "Conversation not found"}), 404
+    messages = get_history_service().get_thread_messages(thread_id)
+    return jsonify(
+        {
+            "success": True,
+            "thread_id": thread_id,
+            "messages": [_conv_dict(m) for m in messages],
+        }
+    )
+
+
+@unified_ai_chat_bp.route("/threads/<thread_id>", methods=["DELETE"])
+@login_required
+def delete_conversation_thread(thread_id):
+    """Delete one conversation (ownership-checked)."""
+    from app.services.conversation_history import get_history_service, thread_owned_by
+
+    if not thread_owned_by(thread_id, current_user.id):
+        return jsonify({"success": False, "error": "Conversation not found"}), 404
+    try:
+        get_history_service().delete_thread(thread_id)
+        return jsonify({"success": True})
+    except Exception as e:
+        current_app.logger.warning("delete_conversation_thread failed: %s", e)
+        return jsonify({"success": False, "error": "Could not delete conversation"}), 500
 
 
 # ============================================================================
@@ -1175,8 +1552,14 @@ def get_domain_context(domain):
     try:
         chat_service = get_chat_service()
         context_data = chat_service.get_domain_context(domain)
-        return jsonify(context_data)
-    except Exception as e:
+        # P-08: get_domain_context() returns {"success": False, ...} for an
+        # unrecognized domain instead of raising — jsonify()-ing it verbatim
+        # produced HTTP 200 for a failure, so a caller checking response.ok
+        # (the documented CLAUDE.md fetch trap) never sees the error. Mirror
+        # the success flag onto the HTTP status.
+        status = 200 if context_data.get("success", True) else 404
+        return jsonify(context_data), status
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -1200,71 +1583,102 @@ def approve_tool_action(approval_id: int):
     submit_for_arb_review) instead of executing them immediately.  The frontend shows
     the user a confirmation dialog; clicking Confirm calls this endpoint.
     """
-    from datetime import datetime
-    from app import db
-    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
-    from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
-    import json
+    # ARCH-022: this used to hand-roll status/approved_at updates directly
+    # (bypassing AIChatApprovalService entirely) and never set approved_by_id
+    # -- the exact defect: an approval left PENDING, executed, with
+    # approved_by_id: null, because the code path that actually flipped the
+    # row's status never wrote who did it. approve_and_execute's operation_type
+    # == "tool_use" branch already dispatches through ToolExecutor with the
+    # same ToolCall shape this route built by hand, sets approved_by_id, and
+    # writes the audit trail — delegate to it instead of duplicating (and
+    # subtly diverging from) that logic.
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 
-    record = AIChatCRUDApproval.query.get_or_404(approval_id)
-
-    # Ownership check
-    if record.user_id != current_user.id:
-        return jsonify({"error": "Access denied"}), 403
-
-    if record.status != ApprovalStatus.PENDING:
-        return jsonify({"error": f"Approval is already {record.status.value}"}), 409
-
-    # Execute
-    executor = ToolExecutor(current_user.id)
-    try:
-        args = json.loads(record.operation_payload)
-    except Exception:
-        args = {}
-
-    tc = ToolCall(id=str(approval_id), name=record.entity_type, arguments=args)
-    result = executor.execute(tc)
-
-    record.status = ApprovalStatus.APPROVED if result["success"] else ApprovalStatus.REJECTED
-    record.approved_at = datetime.utcnow()
-    db.session.commit()
-
+    result = AIChatApprovalService(current_user.id).approve_and_execute(approval_id, current_user.id)
+    status_code = {
+        "NOT_FOUND": 404,
+        "FORBIDDEN": 403,
+        "APPROVAL_DENIED": 403,
+        "CONFLICT": 409,
+    }.get(result.get("code"), 200 if result.get("success") else 400)
     return jsonify({
-        "success": result["success"],
+        "success": result.get("success", False),
         "message": result.get("message", ""),
         "result": result.get("result"),
         "error": result.get("error"),
-    })
+    }), status_code
 
 
 @unified_ai_chat_bp.route("/tools/reject/<int:approval_id>", methods=["POST"])
 @login_required
 def reject_tool_action(approval_id: int):
     """Cancel a queued 'approve' tier tool action."""
-    from datetime import datetime
-    from app import db
-    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
 
-    record = AIChatCRUDApproval.query.get_or_404(approval_id)
-    if record.user_id != current_user.id:
-        return jsonify({"error": "Access denied"}), 403
-    if record.status != ApprovalStatus.PENDING:
-        return jsonify({"error": f"Approval is already {record.status.value}"}), 409
+    result = AIChatApprovalService(current_user.id).reject_approval(approval_id)
+    status_code = {
+        "NOT_FOUND": 404,
+        "FORBIDDEN": 403,
+        "APPROVAL_DENIED": 403,
+        "CONFLICT": 409,
+    }.get(result.get("code"), 200 if result.get("success") else 400)
+    return jsonify({
+        "success": result.get("success", False),
+        "message": result.get("message", "Action cancelled." if result.get("success") else result.get("error")),
+    }), status_code
 
-    record.status = ApprovalStatus.REJECTED
-    record.approved_at = datetime.utcnow()
-    db.session.commit()
-    return jsonify({"success": True, "message": "Action cancelled."})
+
+@unified_ai_chat_bp.route("/session/auto-execute", methods=["GET"])
+@login_required
+def get_auto_execute():
+    """Read (never flip) the session's current auto-execute preference.
+
+    M2 fix: blueprint_chat.js's `autoExecute` Alpine field used to have no way
+    to learn the server's real state on page load — it just assumed a
+    hardcoded default, so a session left ON from a previous page visit showed
+    as OFF in a freshly loaded panel (or vice versa) until the user clicked
+    the toggle once to force a resync. init() below calls this on mount to
+    seed the UI from ground truth. Deliberately a separate GET, not a change
+    to the POST toggle route's contract — the toggle intentionally has no
+    'give me the state without changing it' mode, and overloading it with a
+    query param would be a bigger change than adding four lines here.
+    """
+    from flask import session as flask_session
+
+    return jsonify({"success": True, "auto_execute": flask_session.get("agent_auto_execute", False)})
 
 
 @unified_ai_chat_bp.route("/session/toggle-auto-execute", methods=["POST"])
 @login_required
 def toggle_auto_execute():
-    """
-    Toggle the agent auto-execute mode for the current session.
-    When ON: auto-tier tools execute immediately.
-    When OFF (default): all tools queue for user confirmation.
-    Returns the new state.
+    """Toggle the session's auto-execute preference and return the new state.
+
+    This is a PREFERENCE, and it cannot defeat the operator control: when
+    REQUIRE_AI_APPROVAL is true, _agent_auto_execute_allowed() returns False
+    whatever this flag says, and every mutating tool is queued. Until 31 Aug
+    2026 the agent path read this flag alone, so any authenticated user could
+    turn off a governance control the operator had set.
+
+    ENFORCED. Each of the 37 tools in tools/registry.py carries an explicit
+    `mutates` flag, read alongside `tier` (registry.py's own docstring). Both
+    chat routes read this session flag on the request thread and pass it into
+    AgentRunner(auto_execute=...) — see send_message() and the run_agent()
+    worker in send_message_stream() below, which captures it before spawning
+    the background thread because flask.session is not available there.
+    AgentRunner._should_queue(schema, auto_execute) then queues a call for
+    confirmation when EITHER is true:
+      - tier == "approve" (unconditional — unaffected by this flag), or
+      - mutates is True and auto_execute is False.
+    Read-only tools (mutates False) are never queued, regardless of this flag —
+    gating them would put every search behind an approval prompt, which is what
+    made an earlier "OFF means everything confirms" version of this docstring
+    false: `tier` alone could not distinguish a write from a read.
+
+    Default is OFF (session has no `agent_auto_execute` key -> False), so a
+    fresh session queues every mutating tool call until the user explicitly
+    turns auto-execute on. Session-scoped, not persisted: it resets when the
+    session does. blueprint_chat.js:43 calls this endpoint from the blueprint
+    chat panel's toggle.
     """
     from flask import session as flask_session
     current = flask_session.get("agent_auto_execute", False)

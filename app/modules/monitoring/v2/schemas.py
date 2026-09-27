@@ -7,7 +7,7 @@ location for any future POST/PUT monitoring endpoints (e.g.
 custom health check registration, alert configuration).
 """
 
-from app.core.validation.schemas import EnumField, IntField, Schema, StringField
+from app.core.validation.schemas import EnumField, IntField, Schema
 
 
 class HealthFilterSchema(Schema):

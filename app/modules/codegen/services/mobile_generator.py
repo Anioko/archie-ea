@@ -73,7 +73,6 @@ def generate_mobile_from_genome(genome: dict, mobile_ui_framework: str = "native
         "solutions_product", "templates", "react_native_expo",
     ))
     # Legacy alias kept for backwards compat
-    template_dir = base_template_dir
 
     if mobile_ui_framework == "paper":
         paper_override_dir = os.path.join(base_template_dir, "paper")
@@ -93,7 +92,7 @@ def generate_mobile_from_genome(genome: dict, mobile_ui_framework: str = "native
     modules = genome.get("modules", {})
     mobile_cfg = genome.get("mobile", {})
     ux_prefs = genome.get("ux_preferences", {})
-    security = genome.get("security", {})
+    genome.get("security", {})
     idp = genome.get("identity_provider", {})
 
     # Determine auth mode
@@ -319,7 +318,7 @@ def generate_mobile_from_genome(genome: dict, mobile_ui_framework: str = "native
     # ── Generate .env.example with mobile-specific vars ──
     env_lines = [
         f"# {solution_name} — Mobile App Environment",
-        f"EXPO_PUBLIC_API_URL=http://localhost:8000",
+        "EXPO_PUBLIC_API_URL=http://localhost:8000",
     ]
     if push_enabled:
         env_lines.append("# Firebase project ID for push notifications")

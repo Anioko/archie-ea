@@ -3,7 +3,7 @@ Architecture CRUD Routes
 Unified dashboard for managing Motivation, Strategy, and Business layer elements
 """
 
-import json
+import re
 from datetime import datetime
 
 from flask import (
@@ -22,7 +22,12 @@ from sqlalchemy import or_
 from app import db
 from . import archimate_crud
 from .services.ai_generation_service import AIGenerationService
-from .services.field_configs import get_element_config, create_empty_form_data
+from .services.field_configs import (
+    create_empty_form_data,
+    get_all_element_types,
+    get_element_config,
+    get_element_field_names,
+)
 
 # Application Layer imports
 from app.models.application_layer import (
@@ -45,6 +50,20 @@ from app.models.archimate_missing_elements import (
     Product,
     Stakeholder,
 )
+
+# Technology Layer behavioural elements. `TechnologyCollaborationFull`
+# (technology_collaborations_full) is the ArchiMate "Technology Collaboration"
+# used here rather than technology_layer.TechnologyCollaboration
+# (technology_collaborations): the two map the same concept onto two tables, and
+# the "Full" one is the only one any application code writes or reads
+# (app/application_mgmt/detail_layer_routes.py), so it is where the rows are.
+from app.models.archimate_technology import (
+    TechnologyCollaborationFull,
+    TechnologyEvent,
+    TechnologyFunction,
+    TechnologyInteraction,
+    TechnologyProcess,
+)
 from app.models.business_capabilities import BusinessCapability, BusinessFunction
 from app.models.business_layer import (
     BusinessActor,
@@ -57,10 +76,19 @@ from app.models.business_layer import (
 # Implementation Layer imports
 from app.models.implementation_migration import Deliverable as PlanningDeliverable
 from app.models.implementation_migration import Gap
+from app.models.implementation_migration import ImplementationEvent
 from app.models.implementation_migration import Plateau
 from app.models.implementation_migration import WorkPackage
 from app.models.models import ConstraintElement, Outcome, Principle, Requirement
 from app.models.motivation import Assessment, Driver, Goal, Meaning, Value
+
+# Physical Layer imports
+from app.models.physical_layer import (
+    PhysicalDistributionNetwork,
+    PhysicalEquipment,
+    PhysicalFacility,
+    PhysicalMaterial,
+)
 from app.models.process_data import BusinessProcess
 from app.models.representation import Representation
 from app.models.strategy_layer import CourseOfAction, StrategyResource
@@ -72,11 +100,13 @@ from app.models.technology_layer import (
     Node,
     Path,
     SystemSoftware,
+    TechnologyArtifact,
     TechnologyInterface,
     TechnologyService,
 )
 from app.models.unified_capability import ValueStream
 import logging
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -122,22 +152,52 @@ MODEL_REGISTRY = {
     "ApplicationEvent": ApplicationEvent,
     "ApplicationCollaboration": ApplicationCollaboration,
     "DataObject": DataObject,
-    # Technology Layer
+    # Technology Layer — all 13 ArchiMate 3.2 types
     "Node": Node,
     "Device": Device,
     "SystemSoftware": SystemSoftware,
-    "TechnologyService": TechnologyService,
+    "TechnologyCollaboration": TechnologyCollaborationFull,
     "TechnologyInterface": TechnologyInterface,
     "Path": Path,
     "CommunicationNetwork": CommunicationNetwork,
+    "TechnologyFunction": TechnologyFunction,
+    "TechnologyProcess": TechnologyProcess,
+    "TechnologyInteraction": TechnologyInteraction,
+    "TechnologyEvent": TechnologyEvent,
+    "TechnologyService": TechnologyService,
+    "Artifact": TechnologyArtifact,
+    # Physical Layer
+    "Equipment": PhysicalEquipment,
+    "Facility": PhysicalFacility,
+    "DistributionNetwork": PhysicalDistributionNetwork,
+    "Material": PhysicalMaterial,
     # Implementation & Migration Layer
     "WorkPackage": WorkPackage,
     "Deliverable": PlanningDeliverable,
+    "ImplementationEvent": ImplementationEvent,
     "Plateau": Plateau,
     "Gap": Gap,
 }
 
 # Layer configuration
+# Accepted stored spellings per layer key. ArchiMate 3.2 names two layers with
+# an ampersand ("Implementation & Migration"), and rows exist in both forms, so
+# a count that matches only the short key silently loses them (ARCH-010).
+LAYER_ALIASES = {
+    "motivation": ["motivation"],
+    "strategy": ["strategy"],
+    "business": ["business"],
+    "application": ["application"],
+    "technology": ["technology"],
+    "physical": ["physical"],
+    "implementation": [
+        "implementation",
+        "implementation & migration",
+        "implementation and migration",
+        "implementation_migration",
+    ],
+}
+
 LAYER_CONFIG = {
     "motivation": {
         "name": "Motivation Layer",
@@ -200,19 +260,156 @@ LAYER_CONFIG = {
             "Node",
             "Device",
             "SystemSoftware",
-            "TechnologyService",
+            "TechnologyCollaboration",
             "TechnologyInterface",
             "Path",
             "CommunicationNetwork",
+            "TechnologyFunction",
+            "TechnologyProcess",
+            "TechnologyInteraction",
+            "TechnologyEvent",
+            "TechnologyService",
+            "Artifact",
         ],
         "icon": "⚙️",
     },
+    "physical": {
+        "name": "Physical Layer",
+        "elements": [
+            "Equipment",
+            "Facility",
+            "DistributionNetwork",
+            "Material",
+        ],
+        "icon": "🏭",
+    },
     "implementation": {
         "name": "Implementation & Migration Layer",
-        "elements": ["WorkPackage", "Deliverable", "Plateau", "Gap"],
+        "elements": [
+            "WorkPackage",
+            "Deliverable",
+            "ImplementationEvent",
+            "Plateau",
+            "Gap",
+        ],
         "icon": "🚀",
     },
 }
+
+# User-facing layer language belongs beside the registry that defines the layer
+# keys, while the ORM-oriented LAYER_CONFIG remains stable for API consumers.
+# The colour values deliberately reference only the domain tokens already
+# declared in shadcn_tokens.css.  ArchiMate's Physical extension shares the
+# Technology layer's green family because the design system has no separate
+# physical-layer token.
+LAYER_PRESENTATION = {
+    "motivation": {
+        "title": "Motivation Architecture",
+        "short_name": "Motivation",
+        "description": "Goals, drivers, requirements and constraints that explain why the architecture changes",
+        "color_token": "--layer-motivation",
+    },
+    "strategy": {
+        "title": "Strategy Architecture",
+        "short_name": "Strategy",
+        "description": "Resources, capabilities, value streams and courses of action that shape strategic direction",
+        "color_token": "--layer-strategy",
+    },
+    "business": {
+        "title": "Business Architecture",
+        "short_name": "Business",
+        "description": "Actors, roles, processes, services and information that describe how the enterprise operates",
+        "color_token": "--layer-business",
+    },
+    "application": {
+        "title": "Application Architecture",
+        "short_name": "Application",
+        "description": "Components, services, interfaces, behaviours and data that support the enterprise",
+        "color_token": "--layer-application",
+    },
+    "technology": {
+        "title": "Technology Architecture",
+        "short_name": "Technology",
+        "description": "Nodes, platforms, networks, services and artifacts that provide the technical foundation",
+        "color_token": "--layer-technology",
+    },
+    "physical": {
+        "title": "Physical Architecture",
+        "short_name": "Physical",
+        "description": "Facilities, equipment, distribution networks and materials that anchor the physical estate",
+        "color_token": "--layer-technology",
+    },
+    "implementation": {
+        "title": "Implementation & Migration Architecture",
+        "short_name": "Implementation",
+        "description": "Work packages, deliverables, plateaus, events and gaps that govern architecture change",
+        "color_token": "--layer-implementation",
+    },
+}
+
+
+# JSON-serialisable typed field configs for every element type that has one,
+# keyed by element_type. Handed to the dashboard template so the create modal
+# can render typed fields instead of just name/description — see field_configs.py.
+ELEMENT_FIELD_CONFIGS = {
+    et: get_element_config(et).to_dict() for et in get_all_element_types()
+}
+
+
+# D-02: single source of truth for element_type -> layer, derived from
+# LAYER_CONFIG (the same table that drives the by-layer tabs and dashboard) so
+# there is exactly one place this mapping is authored. Consumed by
+# create_element() below instead of trusting the URL's ``layer`` segment,
+# which can disagree with element_type when a stale/hand-built link pairs the
+# wrong layer with a type (e.g. .../business/ApplicationInterface/new) —
+# that mismatch is how ApplicationInterface rows ended up stored with
+# layer="Business" (D-02).
+ELEMENT_TYPE_TO_LAYER: dict[str, str] = {
+    element_type: layer_key
+    for layer_key, cfg in LAYER_CONFIG.items()
+    for element_type in cfg["elements"]
+}
+
+
+def _canonical_layer_for_type(element_type, requested_layer):
+    """Return the correct layer key for ``element_type``.
+
+    Falls back to ``requested_layer`` only for element types the registry
+    does not know about, so an unrecognised/custom type is not blocked from
+    being created.
+    """
+    return ELEMENT_TYPE_TO_LAYER.get(element_type, requested_layer)
+
+
+# ARCH-050: the browsing routes below take a bare "/<layer>/<element_type>"
+# segment pair. Left unconstrained, that pattern is a catch-all matching ANY
+# two path segments under /architecture/ — including "/architecture/element/99999999"
+# (layer="element", element_type="99999999", neither a real layer) and
+# "/architecture/elements/-1" or "/architecture/elements/abc" (layer="elements",
+# element_type="-1"/"abc" — the int converter on the real detail route
+# elements/<int:element_id> simply declines to match those, and THIS route
+# silently absorbs them instead). Every miss then flashed a warning and
+# redirected to the dashboard, which renders 200 — so a mistyped or malicious
+# element id never reached a 404, it landed on the generic elements page.
+# Restricting <layer> to the known LAYER_CONFIG keys makes the pattern only
+# match real by-layer browsing URLs, so anything else correctly falls through
+# to the app's 404 handler.
+_LAYER_URL_PATTERN = "<any(" + ", ".join(LAYER_CONFIG.keys()) + "):layer>"
+
+
+def _validated_layer_filter(layer, element_type):
+    """Narrow a requested (layer, element_type) pair to what the registry knows.
+
+    The By-Layer sidebar links hand these in on the query string. Anything the
+    registry does not recognise is dropped rather than passed through: a filter
+    that matches nothing renders as an active filter over an empty table, which
+    reads as "you have no Nodes" rather than "that is not a type".
+    """
+    if layer not in LAYER_CONFIG:
+        return None, None
+    if element_type not in LAYER_CONFIG[layer]["elements"]:
+        return layer, None
+    return layer, element_type
 
 
 # Fields to skip when auto-discovering displayable attributes
@@ -272,9 +469,18 @@ def _get_display_fields(element, model_class):
         # Skip 0 for numeric types only (not booleans)
         if not isinstance(value, bool) and value == 0:
             continue
+        # An empty JSON dict/list column (e.g. a provenance or config column
+        # with no data yet) has nothing to show -- str({}) rendering as a
+        # literal "{}" on a real screen is worse than omitting the row.
+        if isinstance(value, (dict, list)) and not value:
+            continue
 
-        # Build a human-readable label from snake_case
+        # Build a human-readable label from snake_case, correcting acronyms
+        # that .title() mangles (Acm -> ACM) rather than leaving the wrong
+        # case on a screen a real architect reads.
         label = col_name.replace("_", " ").title()
+        for acronym in ("Acm", "Api", "Id", "Url", "Sap", "Rfc", "Bapi", "Arb"):
+            label = re.sub(rf"\b{acronym}\b", acronym.upper(), label)
 
         # Format special types
         if isinstance(value, bool):
@@ -283,6 +489,13 @@ def _get_display_fields(element, model_class):
             value = value.strftime("%Y-%m-%d %H:%M")
         elif isinstance(value, float):
             value = f"{value:.2f}" if value != int(value) else str(int(value))
+        elif isinstance(value, dict):
+            # A dict column is internal structure, not prose -- render its
+            # entries as "key: value" pairs rather than Python's repr(), which
+            # leaked as a literal {'source_model': 'Risk'} on real screens.
+            value = "; ".join(f"{k}: {v}" for k, v in value.items())
+        elif isinstance(value, list):
+            value = ", ".join(str(v) for v in value)
 
         fields.append({"label": label, "value": str(value)})
 
@@ -293,8 +506,106 @@ def _get_display_fields(element, model_class):
 @archimate_crud.route("/dashboard")
 @login_required
 def dashboard():
-    """Main dashboard with tabs for each layer"""
-    return render_template("archimate_crud/dashboard.html", layer_config=LAYER_CONFIG)
+    """Main dashboard with tabs for each layer.
+
+    ``?layer=`` and ``?element_type=`` pre-select a tab and a type filter, which
+    is how the By-Layer sidebar navigation lands on the elements it names. Both
+    are validated here rather than in the browser so the server decides what
+    counts as a real filter.
+    """
+    initial_layer, initial_element_type = _validated_layer_filter(
+        request.args.get("layer"), request.args.get("element_type")
+    )
+    selected_key = initial_layer or "motivation"
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
+    return render_template(
+        "archimate_crud/dashboard.html",
+        layer_config=presentation_config,
+        selected_layer=presentation_config[selected_key],
+        initial_layer=initial_layer,
+        initial_element_type=initial_element_type,
+    )
+
+
+@archimate_crud.route("/api/field-configs")
+@login_required
+def api_field_configs():
+    """Typed per-element-type form field configs, split out of the dashboard
+    payload (ARCH-064). This is static configuration, identical for every
+    request and every tenant — it does not belong inline in every dashboard
+    HTML response. The dashboard template points the create/edit modal at
+    this endpoint instead of receiving the ~16KB of ``tojson`` output inline
+    on every page load; ``app/static/js/archimate_crud/dashboard.js``
+    fetches it once in ``init()``.
+    """
+    resp = jsonify(ELEMENT_FIELD_CONFIGS)
+    # Static per-deployment config, not per-tenant data — safe to cache in the
+    # browser so a returning visitor doesn't refetch it every dashboard load.
+    resp.cache_control.max_age = 3600
+    resp.cache_control.private = True
+    return resp
+
+
+def _count_layer_elements(layer):
+    """Total element count for one layer, or None if it could not be counted.
+
+    Shared by the per-layer and batched endpoints so the two can never drift.
+
+    Counts dedicated per-type tables (portfolio source) plus archimate_elements
+    (architecture source), excluding typed rows that are mirrored into
+    archimate_elements -- counting both sides reported every mirrored entity
+    twice, and a tenant with 71 elements was told it had 142.
+
+    Returns None, never a partial total, when any constituent count raises.
+    The previous behaviour logged the failure and carried on with the remaining
+    types, which produced an under-count that looked exactly like a real one:
+    the user could not tell a measured total from a broken one. Per CLAUDE.md a
+    value that was not measured must be None so the UI renders an em dash.
+    """
+    if layer not in LAYER_CONFIG:
+        return None
+
+    layer_types = LAYER_CONFIG[layer]["elements"]
+    total = 0
+    # Count from dedicated per-type tables, EXCLUDING rows that are mirrored into
+    # archimate_elements — those are added below, and counting both sides made the
+    # page report every mirrored entity twice. A tenant with 71 elements was told
+    # it had 142 (71 typed rows + the same 71 mirrors). A model with no
+    # archimate_element_id cannot be deduplicated this way, so it is counted whole.
+    for etype in layer_types:
+        model_class = MODEL_REGISTRY.get(etype)
+        if not model_class:
+            continue
+        try:
+            q = model_class.query
+            if hasattr(model_class, "archimate_element_id"):
+                q = q.filter(model_class.archimate_element_id.is_(None))
+            total += q.count()
+        except Exception as e:
+            current_app.logger.warning(f"_count_layer_elements: count failed for {etype}: {e}")
+            return None
+
+    # Count from archimate_elements for this layer.
+    # 17 Aug 2026 (ARCH-010): matched on the LAYER_CONFIG key alone, so an
+    # element stored as "implementation & migration" — the ArchiMate 3.2 name
+    # for the layer whose key here is "implementation" — matched nothing and
+    # was dropped from every count. The dashboard headline was short by exactly
+    # the size of that layer while its own tiles summed to the real total, and
+    # the layer's elements were invisible in the UI. Match every spelling.
+    try:
+        _aliases = [a.lower() for a in LAYER_ALIASES.get(layer, [layer])]
+        ae_count = ArchiMateElement.query.filter(
+            db.func.lower(ArchiMateElement.layer).in_(_aliases),
+        ).count()
+        total += ae_count
+    except Exception as e:
+        current_app.logger.warning(f"_count_layer_elements: archimate_elements count failed for {layer}: {e}")
+        return None
+
+    return total
 
 
 @archimate_crud.route("/api/layer/<layer>/count")
@@ -313,28 +624,23 @@ def api_layer_count(layer):
     if layer not in LAYER_CONFIG:
         return jsonify({"success": False, "error": f"Unknown layer: {layer}"}), 404
 
-    layer_types = LAYER_CONFIG[layer]["elements"]
-    total = 0
-    # Count from dedicated per-type tables
-    for etype in layer_types:
-        model_class = MODEL_REGISTRY.get(etype)
-        if not model_class:
-            continue
-        try:
-            total += model_class.query.count()
-        except Exception as e:
-            current_app.logger.warning(f"api_layer_count: count failed for {etype}: {e}")
-
-    # Count from archimate_elements for this layer
-    try:
-        ae_count = ArchiMateElement.query.filter(
-            db.func.lower(ArchiMateElement.layer) == layer.lower(),
-        ).count()
-        total += ae_count
-    except Exception as e:
-        current_app.logger.warning(f"api_layer_count: archimate_elements count failed for {layer}: {e}")
-
+    total = _count_layer_elements(layer)
+    if total is None:
+        # Counting failed; return null to indicate unknown count
+        return jsonify({"layer": layer, "total": None})
     return jsonify({"layer": layer, "total": total})
+
+
+@archimate_crud.route("/api/layer/counts")
+@login_required
+def api_layer_counts():
+    """Return counts for ALL layers in one response.
+    Used by the dashboard to avoid per-layer requests that trigger rate limits.
+    """
+    # A layer that could not be counted is null, never 0 -- the dashboard renders
+    # null as an em dash and falls back to the per-layer endpoint for it.
+    counts = {layer: _count_layer_elements(layer) for layer in LAYER_CONFIG}
+    return jsonify({"counts": counts})
 
 
 @archimate_crud.route("/api/layer/<layer>/elements")
@@ -352,8 +658,8 @@ def api_layer_elements(layer):
     search = request.args.get("search", "").strip()
     type_filter = request.args.get("element_type", "").strip()
     source_filter = request.args.get("source", "").strip()  # "portfolio", "architecture", or ""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 25, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 25, minimum=1, maximum=500)
     sort_by = request.args.get("sort_by", "name")
     sort_order = request.args.get("sort_order", "asc")
 
@@ -373,6 +679,19 @@ def api_layer_elements(layer):
                 continue
             try:
                 q = model_class.query
+                # Same fix as _count_layer_elements (ARCH — "a tenant with 71
+                # elements was told it had 142"): a dedicated-table row that has
+                # been mirrored into archimate_elements is added again below as
+                # its own "architecture" entry — the seen_pairs check at line 728
+                # keyed on (element_type, elem.id), never the actual mirror's
+                # own id, so it never recognised the mirror as already seen. Every
+                # correctly-mirrored element therefore appeared twice, as
+                # Source=Portfolio and Source=Architecture with different ids.
+                # Excluding mirrored rows here (they're still shown, once, via
+                # the archimate_elements supplement below) fixes it the same way
+                # the count endpoint was already fixed.
+                if hasattr(model_class, "archimate_element_id"):
+                    q = q.filter(model_class.archimate_element_id.is_(None))
                 if search:
                     safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     filters = []
@@ -386,29 +705,93 @@ def api_layer_elements(layer):
                         filters.append(model_class.description.ilike(f"%{safe_search}%", escape="\\"))
                     if filters:
                         q = q.filter(or_(*filters))
-                for (
-                    elem
-                ) in q.all():  # model-safety-ok: small fixed set (max 10 layer types)
+                rows = q.all()  # model-safety-ok: small fixed set (max 10 layer types)
+                # Batch-fetch the plateau off each row's linked ArchiMateElement in
+                # one query rather than N+1 — same fix as the "architecture" branch
+                # below (T-14-adjacent audit, 2 Sep 2026): the as-is/to-be state a
+                # user sets on the create/edit form is togaf_plateau, a real column,
+                # but this endpoint never read it back, so the client-side Plateau
+                # filter (dashboard.js) — which reads a "plateau" key this dict never
+                # had — silently matched nothing. Tagging worked; filtering by what
+                # you tagged did not.
+                linked_ae_ids = [
+                    getattr(e, "archimate_element_id", None) for e in rows
+                ]
+                linked_ae_ids = [i for i in linked_ae_ids if i]
+                plateau_by_ae_id = {}
+                # H6: this branch always shipped rel_count=None for every
+                # "portfolio"-sourced element (a Driver/Goal/etc. row synced
+                # to ArchiMateElement per CLAUDE.md's "ArchiMate is the
+                # backbone" rule) -- the "architecture" branch below computes
+                # a real count via the exact same linked ae_id, this one just
+                # never did. That made the dashboard's "Connected" tile read
+                # 'Relationship data unavailable' for every layer whose
+                # elements come from dedicated per-type tables (motivation
+                # included) even when the elements API call itself succeeded.
+                # One batched query per page, same shape as the plateau batch
+                # already here, rather than N+1.
+                rel_count_by_ae_id = {}
+                if linked_ae_ids:
+                    plateau_by_ae_id = dict(
+                        db.session.query(
+                            ArchiMateElement.id, ArchiMateElement.togaf_plateau
+                        ).filter(ArchiMateElement.id.in_(linked_ae_ids))
+                    )
+                    rel_rows = (
+                        db.session.query(ArchiMateRelationship.source_id)
+                        .filter(ArchiMateRelationship.source_id.in_(linked_ae_ids))
+                        .union_all(
+                            db.session.query(ArchiMateRelationship.target_id).filter(
+                                ArchiMateRelationship.target_id.in_(linked_ae_ids)
+                            )
+                        )
+                        .all()
+                    )
+                    for (ae_id_hit,) in rel_rows:
+                        rel_count_by_ae_id[ae_id_hit] = rel_count_by_ae_id.get(ae_id_hit, 0) + 1
+                # F-08(a), Capgemini dry-run: the edit modal's typedFieldDefaults()
+                # (dashboard.js) reads source[name] for each of this type's
+                # configured fields (goal_type, driver_type, category, ...) —
+                # this dict never had any of them, so every typed field looked
+                # blank on reopening even though the write path (create/edit
+                # POST -> _set_model_fields/_apply_architecture_state) worked
+                # and persisted correctly. It was a read gap, not a write one.
+                type_config = get_element_config(etype)
+                typed_field_names = (
+                    [f.name for f in type_config.fields if f.name != "architecture_state"]
+                    if type_config else []
+                )
+                for elem in rows:
                     name = getattr(elem, "name", None) or getattr(
                         elem, "title", "Unnamed"
                     )  # model-safety-ok: polymorphic ArchiMate elements
                     status = getattr(elem, "status", None) or getattr(
                         elem, "operational_status", None
                     )  # model-safety-ok: polymorphic ArchiMate elements
-                    all_elements.append(
-                        {
-                            "id": elem.id,
-                            "name": name,
-                            "description": getattr(elem, "description", "")
-                            or "",  # model-safety-ok: polymorphic ArchiMate elements
-                            "element_type": etype,
-                            "status": status,
-                            "layer": layer,
-                            "source": "portfolio",
-                            "properties": getattr(elem, "properties", None) or "",
-                            "rel_count": None,
-                        }
-                    )
+                    ae_id = getattr(elem, "archimate_element_id", None)
+                    elem_dict = {
+                        "id": elem.id,
+                        "name": name,
+                        "description": getattr(elem, "description", "")
+                        or "",  # model-safety-ok: polymorphic ArchiMate elements
+                        "element_type": etype,
+                        "status": status,
+                        "layer": layer,
+                        "source": "portfolio",
+                        "properties": getattr(elem, "properties", None) or "",
+                        "plateau": plateau_by_ae_id.get(ae_id) if ae_id else None,
+                        # None (not 0) when there is no linked ArchiMateElement at
+                        # all -- that is genuinely unmeasured, not "zero relationships".
+                        "rel_count": rel_count_by_ae_id.get(ae_id, 0) if ae_id else None,
+                    }
+                    # architecture_state is the form's name for the plateau
+                    # select; the API calls the same value "plateau" — map it
+                    # under both keys so typedFieldDefaults finds it.
+                    elem_dict["architecture_state"] = elem_dict["plateau"] or ""
+                    for field_name in typed_field_names:
+                        value = getattr(elem, field_name, None)
+                        elem_dict[field_name] = value if value is not None else ""
+                    all_elements.append(elem_dict)
             except Exception as e:
                 current_app.logger.warning(f"Error querying {etype}: {e}")
 
@@ -417,8 +800,13 @@ def api_layer_elements(layer):
     if source_filter != "portfolio":  # skip archimate_elements when filtering to portfolio-only
         try:
             seen_pairs = {(el["element_type"], el["id"]) for el in all_elements}
+            # Same alias matching as api_layer_count (ARCH-010) — otherwise the
+            # listing silently omits the elements the count now includes, and the
+            # catalogue page keeps rendering the layer as empty.
             ae_q = ArchiMateElement.query.filter(
-                db.func.lower(ArchiMateElement.layer) == layer.lower(),
+                db.func.lower(ArchiMateElement.layer).in_(
+                    [a.lower() for a in LAYER_ALIASES.get(layer, [layer])]
+                ),
                 ArchiMateElement.type.in_(query_types),
             )
             if search:
@@ -437,19 +825,40 @@ def api_layer_elements(layer):
                             ArchiMateRelationship.target_id == ae.id,
                         )
                     ).count()
-                    all_elements.append(
-                        {
-                            "id": ae.id,
-                            "name": ae.name or "",
-                            "description": ae.description or "",
-                            "element_type": ae.type,
-                            "status": None,
-                            "layer": layer,
-                            "source": "architecture",
-                            "properties": ae.properties or "",
-                            "rel_count": _rel_count,
-                        }
-                    )
+                    ae_dict = {
+                        "id": ae.id,
+                        "name": ae.name or "",
+                        "description": ae.description or "",
+                        "element_type": ae.type,
+                        "status": None,
+                        "layer": layer,
+                        "source": "architecture",
+                        "properties": ae.properties or "",
+                        "plateau": ae.togaf_plateau,
+                        "rel_count": _rel_count,
+                    }
+                    ae_dict["architecture_state"] = ae_dict["plateau"] or ""
+                    # F-08(a): the F-04 dedup fix means every MIRRORED element
+                    # (the overwhelming majority — anything created through
+                    # the normal form) is now listed from here, not from the
+                    # dedicated-table branch above. Without this lookup, this
+                    # branch's elements would still lose their typed fields —
+                    # trading the double-listing bug for a "typed fields only
+                    # populate for the rare unmirrored row" bug instead.
+                    ae_type_config = get_element_config(ae.type)
+                    if ae_type_config:
+                        dedicated_model = MODEL_REGISTRY.get(ae.type)
+                        dedicated_row = None
+                        if dedicated_model is not None and hasattr(dedicated_model, "archimate_element_id"):
+                            dedicated_row = dedicated_model.query.filter_by(
+                                archimate_element_id=ae.id
+                            ).first()
+                        for f in ae_type_config.fields:
+                            if f.name == "architecture_state":
+                                continue
+                            value = getattr(dedicated_row, f.name, None) if dedicated_row else None
+                            ae_dict[f.name] = value if value is not None else ""
+                    all_elements.append(ae_dict)
         except Exception as e:
             current_app.logger.warning(f"Error supplementing from archimate_elements: {e}")
 
@@ -480,7 +889,7 @@ def api_layer_elements(layer):
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>")
 @login_required
 def list_elements(layer, element_type):
     """List all elements of a specific type"""
@@ -492,8 +901,8 @@ def list_elements(layer, element_type):
 
     # Get search/filter parameters
     search = request.args.get("search", "").strip()
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 20, minimum=1, maximum=500)
     view_mode = request.args.get("view", "table", type=str)  # table or card
 
     # Build query
@@ -562,6 +971,12 @@ def list_elements(layer, element_type):
             }
         )
 
+    initial_layer, initial_element_type = _validated_layer_filter(layer, element_type)
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
+    selected_key = initial_layer or "motivation"
     return render_template(
         "archimate_crud/dashboard.html",
         layer=layer,
@@ -570,11 +985,33 @@ def list_elements(layer, element_type):
         pagination=pagination,
         search=search,
         view_mode=view_mode,
-        layer_config=LAYER_CONFIG,
+        layer_config=presentation_config,
+        selected_layer=presentation_config[selected_key],
+        # dashboard.html is an Alpine app that fetches its own rows; without
+        # these it would ignore the path it was reached by and open on the
+        # default tab, showing a different layer than the URL asked for.
+        initial_layer=initial_layer,
+        initial_element_type=initial_element_type,
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>/new", methods=["GET", "POST"])
+def _selected_layer_for(layer):
+    """The dashboard.html template's title block reads selected_layer.title
+    unconditionally (`{% block title %}{{ selected_layer.title }}{% endblock %}`)
+    — every render of this template needs it or the whole page 500s before any
+    content renders, which is what GET .../<type>/new did (Capgemini walkthrough,
+    F-18-adjacent: element creation was unreachable, not merely edit). Mirrors
+    the same presentation_config lookup the dashboard() route already does."""
+    presentation_config = {
+        key: {**config, **LAYER_PRESENTATION[key], "key": key}
+        for key, config in LAYER_CONFIG.items()
+    }
+    selected_key = layer if layer in presentation_config else "motivation"
+    return presentation_config[selected_key]
+
+
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/new", methods=["GET", "POST"])
 @login_required
 def create_element(layer, element_type):
     """Create a new element"""
@@ -607,7 +1044,7 @@ def create_element(layer, element_type):
                 element.description = data.get("description", "").strip()
 
             # Set layer-specific fields based on model
-            _set_model_fields(element, data, model_class)
+            _set_model_fields(element, data, model_class, element_type)
 
             # Auto-create ArchiMateElement if not provided
             if not element.archimate_element_id:
@@ -616,7 +1053,7 @@ def create_element(layer, element_type):
                     if hasattr(element, "name")
                     else element.title,  # model-safety-ok: polymorphic ArchiMate elements
                     type=element_type,
-                    layer=layer.capitalize(),
+                    layer=_canonical_layer_for_type(element_type, layer).capitalize(),
                     description=getattr(
                         element, "description", ""
                     ),  # model-safety-ok: polymorphic ArchiMate elements
@@ -624,6 +1061,9 @@ def create_element(layer, element_type):
                 db.session.add(archimate_element)
                 db.session.flush()
                 element.archimate_element_id = archimate_element.id
+
+            # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
+            _apply_architecture_state(element, data)
 
             db.session.add(element)
             db.session.commit()
@@ -658,14 +1098,18 @@ def create_element(layer, element_type):
                     {"success": False, "error": "Invalid request parameters"}
                 ), 400
 
-            flash("Error creating {element_type}. Please try again.", "error")
+            # f-prefix was missing, so the user was shown the literal text
+            # "Error creating {element_type}." — braces and all.
+            flash(f"Error creating {element_type}. Please try again.", "error")
             return render_template(
                 "archimate_crud/dashboard.html",
                 layer=layer,
                 element_type=element_type,
                 layer_config=LAYER_CONFIG,
+                selected_layer=_selected_layer_for(layer),
                 field_config=get_element_config(element_type),
                 form_data=create_empty_form_data(element_type),
+                element_field_configs=ELEMENT_FIELD_CONFIGS,
             )
 
     return render_template(
@@ -673,12 +1117,14 @@ def create_element(layer, element_type):
         layer=layer,
         element_type=element_type,
         layer_config=LAYER_CONFIG,
+        selected_layer=_selected_layer_for(layer),
         field_config=get_element_config(element_type),
         form_data=create_empty_form_data(element_type),
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
-@archimate_crud.route("/<layer>/<element_type>/<int:element_id>")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>")
 @login_required
 def detail_element(layer, element_type, element_id):
     """View/edit element details"""
@@ -700,6 +1146,15 @@ def detail_element(layer, element_type, element_id):
     # Get relationships
     relationships = _get_element_relationships(element, element_id)
 
+    # The real archimate_elements.id to source a new relationship from (F-05(a)
+    # "Add relationship" control) — a dedicated-table element reaches it via
+    # archimate_element_id, same resolution _get_element_relationships uses.
+    ae_id = None
+    if hasattr(element, "archimate_element_id") and element.archimate_element_id:
+        ae_id = element.archimate_element_id
+    elif element.__class__.__name__ == "ArchiMateElement":
+        ae_id = element.id
+
     # Auto-discover displayable fields from the model
     display_fields = _get_display_fields(element, model_class)
 
@@ -709,13 +1164,14 @@ def detail_element(layer, element_type, element_id):
         element_type=element_type,
         element=element,
         relationships=relationships,
+        source_ae_id=ae_id,
         display_fields=display_fields,
         layer_config=LAYER_CONFIG,
     )
 
 
 @archimate_crud.route(
-    "/<layer>/<element_type>/<int:element_id>/edit", methods=["GET", "POST"]
+    f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/edit", methods=["GET", "POST"]
 )
 @login_required
 def update_element(layer, element_type, element_id):
@@ -759,7 +1215,7 @@ def update_element(layer, element_type, element_id):
 
             if not _from_ae:
                 # Update layer-specific fields only for dedicated model instances
-                _set_model_fields(element, data, model_class)
+                _set_model_fields(element, data, model_class, element_type)
 
                 # Update ArchiMateElement if linked
                 if getattr(element, "archimate_element_id", None):
@@ -775,6 +1231,10 @@ def update_element(layer, element_type, element_id):
                         archimate_element.description = getattr(
                             element, "description", ""
                         )  # model-safety-ok: polymorphic ArchiMate elements
+
+            # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
+            # Works for a native ArchiMateElement (element itself) and a linked one.
+            _apply_architecture_state(element, data)
 
             db.session.commit()
 
@@ -812,11 +1272,13 @@ def update_element(layer, element_type, element_id):
         element_type=element_type,
         element=element,
         layer_config=LAYER_CONFIG,
+        selected_layer=_selected_layer_for(layer),
+        element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
 
 
 @archimate_crud.route(
-    "/<layer>/<element_type>/<int:element_id>/delete", methods=["POST"]
+    f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/delete", methods=["POST"]
 )
 @login_required
 def delete_element(layer, element_type, element_id):
@@ -844,14 +1306,63 @@ def delete_element(layer, element_type, element_id):
         abort(404)
 
     try:
+        # DEF-067, Capgemini dry-run pass 3: this deleted the ArchiMateElement
+        # mirror (and, for a dedicated model, the row itself) with no cleanup
+        # of ArchiMateRelationship rows still pointing at it.
+        # archimate_relationships.source_id/target_id carry ON DELETE NO
+        # ACTION, so any element with a relationship raised an
+        # IntegrityError on commit — caught below and reported as the
+        # actively misleading "Invalid request parameters" (this was never
+        # a request-parameter problem). Clear relationships referencing
+        # either id first so delete is robust regardless of how the
+        # relationship got there.
+        archimate_element = None
         if not _from_ae:
-            # Delete linked ArchiMateElement if exists in dedicated model
             if getattr(element, "archimate_element_id", None):
                 archimate_element = ArchiMateElement.query.get(element.archimate_element_id)
-                if archimate_element:
-                    db.session.delete(archimate_element)
+        else:
+            archimate_element = element
+
+        ae_ids = [aid for aid in (element_id if _from_ae else None, getattr(archimate_element, "id", None)) if aid]
+        if ae_ids:
+            ArchiMateRelationship.query.filter(
+                db.or_(
+                    ArchiMateRelationship.source_id.in_(ae_ids),
+                    ArchiMateRelationship.target_id.in_(ae_ids),
+                )
+            ).delete(synchronize_session=False)
+
+        # DEF-067's actual live failure (found in server logs, and only
+        # reproduced by clicking the real duplicated production element —
+        # see DEF-004): the dashboard card for a DEF-004-duplicated element
+        # links to the ArchiMateElement's own id, not its dedicated-model
+        # twin's id, so model_class.query.get(element_id) returns None and
+        # this falls into the `_from_ae` branch — which deleted ONLY the
+        # archimate_elements row. The dedicated row (a *different* id, e.g.
+        # stakeholders.id=2 with archimate_element_id=1287) was never found
+        # or deleted, and it still held stakeholders_archimate_element_id_fkey
+        # (ON DELETE NO ACTION) pointing at the row this branch just tried
+        # to delete. Reordering session.delete() calls and even an explicit
+        # flush did not help THIS path, because the dedicated row was never
+        # looked up here at all. When falling back to the ArchiMateElement,
+        # also find and delete any dedicated-model row of the same type that
+        # mirrors it (the DEF-004 duplicate), before deleting the
+        # ArchiMateElement row itself.
+        if _from_ae:
+            dedicated_model = MODEL_REGISTRY.get(getattr(element, "type", None))
+            if dedicated_model is not None and hasattr(dedicated_model, "archimate_element_id"):
+                duplicate_rows = dedicated_model.query.filter_by(
+                    archimate_element_id=element.id
+                ).all()
+                for row in duplicate_rows:
+                    db.session.delete(row)
+                if duplicate_rows:
+                    db.session.flush()
 
         db.session.delete(element)
+        db.session.flush()
+        if not _from_ae and archimate_element:
+            db.session.delete(archimate_element)
         db.session.commit()
 
         if request.is_json:
@@ -869,15 +1380,17 @@ def delete_element(layer, element_type, element_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(
-            f"Error deleting {element_type}: {str(e)}", exc_info=True
+            f"Error deleting {element_type} {element_id}: {str(e)}", exc_info=True
         )
 
-        if request.is_json:
-            return jsonify(
-                {"success": False, "error": "Invalid request parameters"}
-            ), 400
+        # Never surface the raw exception (DEF-003: no toast may contain
+        # psycopg2/SQL:/sqlalche) — the real detail goes to the log above.
+        safe_message = f"Could not delete this {element_type}. It may still be referenced elsewhere in the model."
 
-        flash("Error deleting {element_type}. Please try again.", "error")
+        if request.is_json:
+            return jsonify({"success": False, "error": safe_message}), 400
+
+        flash(safe_message, "error")
         return redirect(
             url_for(
                 "archimate_crud.detail_element",
@@ -909,7 +1422,7 @@ def validate_archimate_element(element_id):
     return jsonify({'issues': issues, 'valid': len(issues) == 0})
 
 
-@archimate_crud.route("/<layer>/<element_type>/bulk-delete", methods=["POST"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/bulk-delete", methods=["POST"])
 @login_required
 def bulk_delete(layer, element_type):
     """Bulk delete elements"""
@@ -958,7 +1471,7 @@ def bulk_delete(layer, element_type):
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
 
 
-@archimate_crud.route("/<layer>/<element_type>/export", methods=["GET"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/export", methods=["GET"])
 @login_required
 def export_elements(layer, element_type):
     """Export elements to JSON/CSV"""
@@ -1027,7 +1540,7 @@ def export_elements(layer, element_type):
     return response
 
 
-@archimate_crud.route("/<layer>/<element_type>/ai-generate", methods=["POST"])
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/ai-generate", methods=["POST"])
 @login_required
 def ai_generate(layer, element_type):
     """AI-powered element generation from documents/internet"""
@@ -1052,7 +1565,7 @@ def ai_generate(layer, element_type):
         return jsonify({"success": False, "error": "Invalid request parameters"}), 400
 
 
-@archimate_crud.route("/<layer>/<element_type>/<int:element_id>/relationships")
+@archimate_crud.route(f"/{_LAYER_URL_PATTERN}/<element_type>/<int:element_id>/relationships")
 @login_required
 def element_relationships(layer, element_type, element_id):
     """Get relationships for an element"""
@@ -1154,8 +1667,51 @@ def api_element_patch(element_id):
 
 
 
-def _set_model_fields(element, data, model_class):
-    """Set model-specific fields from data"""
+_ARCHITECTURE_STATES = ("Baseline", "Target", "Transition")
+
+
+def _apply_architecture_state(element, data):
+    """Set an element's as-is/to-be state (ArchiMateElement.plateau) from the form.
+
+    Baseline = As-Is, Target = To-Be, Transition = interim. This is what lets a
+    transformation programme hold a baseline architecture and a target
+    architecture as distinct states of the model — before this, the plateau
+    column existed but no create/edit path ever wrote it.
+
+    Set-only: an empty or unrecognised value is ignored, never a clear. The edit
+    modal does not pre-load the current state, so treating blank as "clear" would
+    silently wipe an element's state on any unrelated edit — set-only makes that
+    impossible. Applies to a native ArchiMateElement directly, or to the element
+    linked from a domain model.
+    """
+    raw = (data.get("architecture_state") or "").strip()
+    if raw not in _ARCHITECTURE_STATES:
+        return
+    if isinstance(element, ArchiMateElement):
+        element.togaf_plateau = raw
+        return
+    ae_id = getattr(element, "archimate_element_id", None)
+    if ae_id:
+        ae = ArchiMateElement.query.get(ae_id)
+        if ae is not None:
+            ae.togaf_plateau = raw
+
+
+def _set_model_fields(element, data, model_class, element_type=None):
+    """Set model-specific fields from data.
+
+    Applied fields come from two merged sources: the legacy ``field_mappings``
+    table below, and (when ``element_type`` is given) the typed field names
+    declared in ``services/field_configs.py`` for that type — the same config
+    the create-modal renders fields from, so a field the UI can show is also a
+    field this will persist. Either way a field is only ever set when the
+    model actually declares the attribute (``hasattr``) and the caller
+    actually posted it (``field in data``): an unknown/renamed field name in
+    the payload is silently ignored here, never a 500. Shared verbatim by
+    both create (POST /<layer>/<element_type>/new) and update
+    (POST /<layer>/<element_type>/<id>/edit) so typed fields behave the same
+    on both paths.
+    """
     # Common fields
     common_fields = ["description", "status", "operational_status"]
     for field in common_fields:
@@ -1223,12 +1779,15 @@ def _set_model_fields(element, data, model_class):
         Product: ["product_type", "product_category", "target_market", "pricing_model"],
     }
 
-    if model_class in field_mappings:
-        for field in field_mappings[model_class]:
-            if (
-                hasattr(element, field) and field in data
-            ):  # model-safety-ok: polymorphic ArchiMate elements
-                setattr(element, field, data[field])
+    allowed_fields = set(field_mappings.get(model_class, []))
+    if element_type:
+        allowed_fields.update(get_element_field_names(element_type))
+
+    for field in allowed_fields:
+        if (
+            hasattr(element, field) and field in data
+        ):  # model-safety-ok: polymorphic ArchiMate elements
+            setattr(element, field, data[field])
 
 
 def _get_element_relationships(element, element_id):
@@ -1338,8 +1897,8 @@ def api_traceability_sankey():
         return _build_traceability_sankey_response()
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Traceability sankey API error: %s", e)
-        return jsonify({"nodes": [], "links": [], "layer_counts": {}, "error": str(e)}), 200
+        current_app.logger.exception("Traceability sankey API error: %s", e)
+        return jsonify({"error": "Could not build the traceability diagram"}), 500
 
 
 def _build_traceability_sankey_response():
@@ -1399,8 +1958,8 @@ def _build_traceability_sankey_response():
     # Layer counts
     layer_counts = {}
     for node in nodes_map.values():
-        l = node["layer"]
-        layer_counts[l] = layer_counts.get(l, 0) + 1
+        item = node["layer"]
+        layer_counts[item] = layer_counts.get(item, 0) + 1
 
     return jsonify({
         "nodes": list(nodes_map.values()),
@@ -1426,14 +1985,33 @@ def api_health_scorecard():
         # ------------------------------------------------------------------ #
         # Fetch raw counts (union of legacy + inference relationship tables)  #
         # ------------------------------------------------------------------ #
-        total_elements = db.session.query(func.count(ArchiMateElement.id)).scalar() or 0
-        legacy_rels = db.session.query(func.count(ArchiMateRelationship.id)).scalar() or 0
+        # Scope every count to the signed-in tenant explicitly. These are COLUMN
+        # queries (func.count(...)), and this codebase's isolation is
+        # with_loader_criteria, which only applies to ENTITY queries — so an
+        # unscoped func.count() silently reports every organisation's rows. The
+        # same defect put another tenant's totals in the sidebar.
+        from flask import g
+
+        _org = getattr(g, "current_org_id", None)
+
+        def _scope(query, model):
+            return query.filter(model.organization_id == _org) if _org is not None else query
+
+        total_elements = _scope(
+            db.session.query(func.count(ArchiMateElement.id)), ArchiMateElement
+        ).scalar() or 0
+        legacy_rels = _scope(
+            db.session.query(func.count(ArchiMateRelationship.id)), ArchiMateRelationship
+        ).scalar() or 0
         inference_rels = db.session.query(func.count(InfRel.id)).scalar() or 0
         total_rels = legacy_rels + inference_rels
 
         # Elements per layer
         layer_rows = (
-            db.session.query(ArchiMateElement.layer, func.count(ArchiMateElement.id))
+            _scope(
+                db.session.query(ArchiMateElement.layer, func.count(ArchiMateElement.id)),
+                ArchiMateElement,
+            )
             .group_by(ArchiMateElement.layer)
             .all()
         )
@@ -1484,8 +2062,7 @@ def api_health_scorecard():
         semantic_rels = sum(v for k, v in rel_by_type.items() if (k or "").lower() not in STRUCTURAL_TYPES)
 
         # Cross-layer relationship pairs (excluding composition/aggregation within same layer)
-        cross_layer_raw = (
-            db.session.query(
+        (db.session.query(
                 ArchiMateElement.layer.label("src_layer"),
                 func.count(ArchiMateRelationship.id).label("cnt"),
             )
@@ -1499,8 +2076,7 @@ def api_health_scorecard():
                 ArchiMateRelationship.type.notin_(["composition", "aggregation"]),
             )
             .group_by(ArchiMateElement.layer)
-            .all()
-        )
+            .all())
         # Fallback: count relationships crossing layers via raw SQL for reliability
         try:
             _cross_sql = """

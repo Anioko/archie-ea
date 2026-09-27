@@ -3,7 +3,7 @@
    Requires: solution.id, linked_apps (list of serialized app dicts) #}
 
 <div class="mt-6"
-     x-data="appPicker({{ solution.id }}, {{ linked_apps | default([]) | tojson }})"
+     x-data='appPicker({{ solution.id }}, {{ linked_apps | default([]) | tojson }})'
      x-init="init()">
 
     <div class="flex items-center justify-between mb-3">
@@ -27,7 +27,7 @@
                    x-model="searchQuery"
                    @input.debounce.300ms="search()"
                    placeholder="Search applications by name…"
-                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" />
+                   class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"  aria-label="Search applications by name…"/>
             <div x-show="searching" class="absolute right-2 top-2 text-muted-foreground text-xs">searching…</div>
         </div>
 
@@ -51,7 +51,11 @@
             </ul>
         </template>
 
-        <template x-if="searchQuery.length >= 2 && results.length === 0 && !searching">
+        <template x-if="searchError && !searching">
+            <p class="text-xs text-destructive-emphasis" x-text="searchError + ' — nothing was searched.'"></p>
+        </template>
+
+        <template x-if="!searchError && searchQuery.length >= 2 && results.length === 0 && !searching">
             <p class="text-xs text-muted-foreground/70 italic">No matching applications found.</p>
         </template>
     </div>
@@ -85,7 +89,7 @@
                             <td class="py-2 px-3 text-right sad-actions">
                                 <button type="button"
                                         @click="unlinkApp(app.id)"
-                                        class="text-muted-foreground hover:text-destructive text-xs p-1 rounded-md transition-colors">
+                                        class="text-muted-foreground hover:text-destructive-emphasis text-xs p-1 rounded-md transition-colors">
                                     Unlink
                                 </button>
                             </td>
@@ -102,7 +106,7 @@
         </p>
     </template>
 
-    <div x-show="errorMsg" class="mt-2 text-xs text-destructive" x-text="errorMsg"></div>
+    <div x-show="errorMsg" class="mt-2 text-xs text-destructive-emphasis" x-text="errorMsg"></div>
 </div>
 
 <script>
@@ -113,6 +117,7 @@ function appPicker(solutionId, initialApps) {
         showPicker: false,
         searchQuery: '',
         results: [],
+        searchError: '',
         searching: false,
         linking: false,
         errorMsg: '',
@@ -125,14 +130,19 @@ function appPicker(solutionId, initialApps) {
 
         async search() {
             const q = this.searchQuery.trim();
-            if (q.length < 2) { this.results = []; return; }
+            if (q.length < 2) { this.results = []; this.searchError = ''; return; }
             this.searching = true;
             try {
-                const res = await fetch('/api/enterprise/applications?search=' + encodeURIComponent(q) + '&limit=20');
-                const data = await res.json();
+                const data = await Platform.fetch.get('/api/enterprise/applications', {
+                    search: q,
+                    limit: 20
+                }, { silent: true });
                 this.results = data.applications || data.results || data || [];
+                this.searchError = '';
             } catch (e) {
+                // Debounced typeahead: inline message, not a toast per keystroke.
                 this.results = [];
+                this.searchError = e.message || 'Application search failed';
             } finally {
                 this.searching = false;
             }
@@ -143,13 +153,9 @@ function appPicker(solutionId, initialApps) {
             this.linking = true;
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                const res = await fetch('/solutions/' + this.solutionId + '/link-application', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-                    body: JSON.stringify({application_id: app.id}),
-                });
-                const data = await res.json();
+                const data = await Platform.fetch.post('/solutions/' + this.solutionId + '/link-application', {
+                    application_id: app.id
+                }, { silent: true });
                 if (data.success) {
                     this.linkedApps.push({
                         id: app.id,
@@ -171,12 +177,7 @@ function appPicker(solutionId, initialApps) {
         async unlinkApp(appId) {
             this.errorMsg = '';
             try {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
-                const res = await fetch('/solutions/' + this.solutionId + '/unlink-application/' + appId, {
-                    method: 'DELETE',
-                    headers: {'X-CSRFToken': csrfToken},
-                });
-                const data = await res.json();
+                const data = await Platform.fetch.delete('/solutions/' + this.solutionId + '/unlink-application/' + appId, { silent: true });
                 if (data.success) {
                     this.linkedApps = this.linkedApps.filter(a => a.id !== appId);
                 } else {

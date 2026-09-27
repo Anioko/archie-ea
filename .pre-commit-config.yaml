@@ -1,0 +1,144 @@
+# Pre-commit gates — fast, changed-files-only feedback.
+#
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files    # one-off sweep
+#
+# Design notes
+# ------------
+# These hooks are the *in-loop* half of the verification strategy: an agent or
+# developer gets the failure at commit time, not in a PR review an hour later.
+# `scripts/verify.py` is the *whole-tree* half, and CI runs that.
+#
+# Deliberately calibrated to the correctness-critical rule subset (F821 undefined
+# name, F811 redefinition, F822 bad __all__, E9 syntax) rather than the full lint
+# set. Rationale: the tree carries ~4.5k known F401/F841 findings, so gating every
+# touched file on the full set would block routine edits to legacy modules on
+# unrelated pre-existing debt — which trains people to pass --no-verify, and a
+# bypassed gate is worse than no gate. Whole-tree totals are held by the ratchets
+# in verification_baseline.json instead.
+#
+# No auto-formatter is included on purpose: a formatting sweep across ~500 Python
+# files would bury real diffs and make history bisection painful.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Parses every changed Python file — catches a syntax error before it lands.
+      - id: check-ast
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2048"]
+      - id: detect-private-key
+      - id: check-yaml
+        # CI workflow files use multi-document / template syntax in places.
+        args: ["--allow-multiple-documents"]
+      - id: check-json
+      - id: end-of-file-fixer
+        # Limited to the files this repo's gates own, to avoid a tree-wide sweep.
+        files: ^(scripts/|tests/|docs/adr/).*\.(py|md)$
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        name: ruff (correctness subset, changed files)
+        # Do NOT add --force-exclude here: the upstream hook's entry is already
+        # `ruff check --force-exclude`, so repeating it makes ruff exit 2 with
+        # "the argument '--force-exclude' cannot be used multiple times" -- the
+        # hook then failed on every commit without ever linting anything.
+        args: ["--select", "F821,F811,F822,E9"]
+
+  - repo: local
+    hooks:
+      - id: design-tokens
+        name: DESIGN.md colour tokens (changed templates)
+        entry: python scripts/check_design_tokens.py
+        language: system
+        files: ^app/templates/.*\.html$
+        pass_filenames: true
+
+      - id: no-console-log
+        name: no console.log in shipped templates/JS
+        # CONTRIBUTING.md forbids these; Platform.toast is the sanctioned path.
+        entry: bash -c 'if grep -nE "console\.log\(|(^|[^.\w])alert\(|(^|[^.\w])confirm\(" "$@" /dev/null; then echo "Use Platform.toast — see CONTRIBUTING.md"; exit 1; fi' --
+        language: system
+        files: ^app/(templates/.*\.html|static/js/.*\.js)$
+
+      # These three run whole-repo rather than on changed files: each resolves
+      # findings against the app's real route table or the Python AST, so a
+      # per-file view would miss the cross-file cases that are the whole point.
+      # They are the commit-time half of gates CI already enforces via
+      # `verify.py --tag static`; catching them here saves a red build.
+      - id: silent-data
+        name: no server failure returned to the caller as data
+        entry: python scripts/check_silent_data.py
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false
+
+      - id: error-signalling
+        name: no API error path that answers HTTP 200
+        entry: python scripts/check_error_signalling.py
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false
+
+      - id: sqlalchemy-raw-execute
+        name: no bare-string db.session.execute (SQLAlchemy 2.0 raises)
+        entry: bash -c 'if grep -nE "session\.execute\(\s*[\x27\"]" "$@" /dev/null; then echo "Wrap in db.text(...) — see CLAUDE.md"; exit 1; fi' --
+        language: system
+        files: ^app/.*\.py$
+
+      # The UI-role gates, added 31 Aug 2026 with the three roles they enforce.
+      # Sub-second each, and they catch the class that shipped a collapsed
+      # sidebar showing several destinations behind one icon with the labels
+      # clipped to "All mo..." -- which seventy source-reading gates were green
+      # over, because none of them looks at what a person ends up seeing.
+      # Entry is verify.py --gate, not the checker: the checkers always exit 0
+      # (the count is the signal) and two of these carry a non-zero baseline,
+      # so calling them directly would either never block or block every
+      # commit. verify.py compares against verification_baseline.json and
+      # exits non-zero only on a REGRESSION, which is the contract here.
+      - id: nav-icon-ambiguity
+        name: one icon, one destination within a persona's menu
+        entry: python scripts/verify.py --gate nav-icon-ambiguity
+        language: system
+        files: ^app/utils/role_access\.py$
+        pass_filenames: false
+
+      - id: nav-label-clarity
+        name: one name, one destination, and it fits the rail
+        entry: python scripts/verify.py --gate nav-label-clarity
+        language: system
+        files: ^app/utils/role_access\.py$
+        pass_filenames: false
+
+      - id: collapsed-nav-affordance
+        name: the collapsed sidebar is still navigable
+        entry: python scripts/verify.py --gate collapsed-nav-affordance
+        language: system
+        files: ^app/templates/.*\.html$
+        pass_filenames: false
+
+      # A role with no gate is a role being recited rather than played. This is
+      # the cheapest check in the repo and the one that keeps the other twelve
+      # honest, so it runs whenever the contract or the registry moves.
+      - id: role-gate-coverage
+        name: every declared role has a gate enforcing it
+        entry: python scripts/verify.py --gate role-gate-coverage
+        language: system
+        files: ^(docs/DELIVERY_CONTRACT\.md|scripts/verify\.py)$
+        pass_filenames: false
+
+      # Raw SQL naming a column that does not exist. reconcile-schema and the
+      # schema-drift gate compare ORM MODELS to the database and cannot see raw
+      # SQL, which is how a page shipped that returned HTTP 200 and told the
+      # user "This page could not load its data". Skips cleanly with no
+      # database, so it never blocks a commit merely because Postgres is down.
+      - id: raw-sql-columns
+        name: raw SQL only names columns that exist
+        entry: python scripts/verify.py --gate raw-sql-columns
+        language: system
+        files: ^app/.*\.py$
+        pass_filenames: false

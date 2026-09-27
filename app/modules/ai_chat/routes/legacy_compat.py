@@ -8,7 +8,7 @@ Error handlers: 404, 500, 401, 403.
 
 import logging
 
-from flask import current_app, jsonify, redirect, request, url_for
+from flask import current_app, jsonify, redirect, url_for
 from flask_login import login_required
 
 from app.decorators import audit_log

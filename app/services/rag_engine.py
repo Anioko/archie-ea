@@ -20,15 +20,12 @@ Architecture:
 """
 
 import asyncio
-import hashlib  # dead-code-ok
-import json  # dead-code-ok
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta  # dead-code-ok
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple  # dead-code-ok
+from datetime import datetime  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from flask import current_app, g  # dead-code-ok
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -36,7 +33,7 @@ from sqlalchemy.orm import relationship
 from ... import db
 from .llm_cache import get_llm_cache
 from .llm_service import get_llm_service
-from .pgvector_embedding_service import EMBEDDING_DIMENSION, get_embedding_model  # dead-code-ok
+from .pgvector_embedding_service import get_embedding_model  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 

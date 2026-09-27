@@ -8,6 +8,7 @@ Handles ArchiMate business-layer element management:
   * Application-to-Process Linking API (CRUD + semantic matching)
 """
 
+from app.application_mgmt.routes import _link_application_to_processes
 import logging
 from datetime import datetime
 
@@ -435,7 +436,7 @@ def create_process_link(app_id):
     from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
-    app = ApplicationComponent.query.get_or_404(app_id)
+    ApplicationComponent.query.get_or_404(app_id)
     data = request.get_json()
 
     if not data or "process_id" not in data:
@@ -571,14 +572,18 @@ def bulk_process_link():
         "dry_run": false  // if true, only return suggestions without creating links
     }
     """
-    from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
     data = request.get_json() or {}
 
     app_ids = data.get("application_ids", [])
     auto_link = data.get("auto_link", False)
-    confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    try:
+        confidence_threshold = float(data.get("confidence_threshold", 0.5))
+    except (ValueError, TypeError):
+        return jsonify({"error": "confidence_threshold must be a number between 0 and 1"}), 400
+    if not 0 <= confidence_threshold <= 1:
+        return jsonify({"error": "confidence_threshold must be between 0 and 1"}), 400
     dry_run = data.get("dry_run", True)
 
     if app_ids == "all":
@@ -675,7 +680,7 @@ def semantic_process_mapping():
     data = request.get_json() or {}
 
     description = data.get("description", "")
-    threshold = data.get("threshold", 0.7)
+    data.get("threshold", 0.7)
     max_results = data.get("max_results", 10)
 
     if not description:

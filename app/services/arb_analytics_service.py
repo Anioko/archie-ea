@@ -12,13 +12,12 @@ Provides metrics, trends, and analytics for ARB operations including:
 import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import or_
 
 from app import db
 from app.models.architecture_review_board import (
-    ARBAuditLog,
     ARBException,
     ARBGovernanceStandard,
     ARBReviewItem,

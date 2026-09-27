@@ -322,7 +322,7 @@ class CapabilityRoadmapDashboardService:
             return min(gaps * 20, 100)
         elif metric_type == "investment":
             work_packages = RoadmapWorkPackage.query.filter(
-                RoadmapWorkPackage.capability_ids.contains([str(capability.id)])
+                RoadmapWorkPackage.capabilities.any(id=capability.id)
             ).all()
             total_cost = sum(wp.estimated_cost or 0 for wp in work_packages)
             return min(total_cost / 10000, 100)
@@ -810,8 +810,11 @@ class CapabilityRoadmapDashboardService:
             "capability": {
                 "id": str(capability.id),
                 "name": capability.name,
-                "current_maturity": capability.current_maturity_level or 0,
-                "target_maturity": capability.target_maturity_level or 0,
+                # D-7: L0 does not exist on a 1-5 scale -- an unassessed
+                # capability must render as unassessed (None -> "-"), not a
+                # fabricated level 0.
+                "current_maturity": capability.current_maturity_level,
+                "target_maturity": capability.target_maturity_level,
             },
             "questions": questions,
             "total_weight": sum(q["weight"] for q in questions),
@@ -979,7 +982,7 @@ class CapabilityRoadmapDashboardService:
 
             # Get work packages for this capability
             work_packages = RoadmapWorkPackage.query.filter(
-                RoadmapWorkPackage.capability_ids.contains([str(cap.id)])
+                RoadmapWorkPackage.capabilities.any(id=cap.id)
             ).all()
 
             stage_mappings[stage].append(

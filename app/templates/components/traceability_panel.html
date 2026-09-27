@@ -9,19 +9,19 @@
    - entity_name: display name
 #}
 
-<div class="traceability-panel bg-accent/30 border-l-3 border-primary p-4 rounded-r-lg my-4">
+<div class="traceability-panel bg-accent/30 border-l-3 border-primary p-4 rounded-r-lg my-4" x-data="{ open: true }">
     <div class="flex items-center justify-between mb-3">
         <h3 class="text-sm font-semibold text-foreground flex items-center gap-2">
             <i data-lucide="network" class="h-4 w-4 text-primary"></i>
-            Traceability & Relationships
+            Traceability &amp; Relationships
         </h3>
-        <button class="text-xs text-muted-foreground hover:text-foreground" 
-                @click="$refs.traceabilityDetails.classList.toggle('hidden')">
+        <button type="button" class="text-xs text-muted-foreground hover:text-foreground" 
+                @click="open = !open">
             Toggle
         </button>
     </div>
     
-    <div x-ref="traceabilityDetails">
+    <div x-show="open">
         <!-- For Solutions -->
         {% if entity_type == 'solution' %}
         <div class="grid grid-cols-3 gap-3 text-xs">
@@ -48,8 +48,7 @@
         // Fetch traceability data
         (async () => {
             try {
-                const res = await fetch('/api/solutions/{{ entity_id }}/traceability');
-                const data = await res.json();
+                const data = await Platform.fetch('/api/solutions/{{ entity_id }}/traceability', { silent: true });
                 
                 document.getElementById('trace-capabilities-{{ entity_id }}').innerHTML = 
                     data.capabilities?.length ? data.capabilities.map(c => 
@@ -64,7 +63,12 @@
                 document.getElementById('trace-requirements-{{ entity_id }}').innerHTML = 
                     data.requirements?.length || 0;
             } catch (e) {
-                console.error('Traceability fetch failed:', e);
+                // Otherwise these three panels are stuck reading "Loading..." forever,
+                // which looks like the request is still in flight.
+                ['trace-capabilities-{{ entity_id }}', 'trace-applications-{{ entity_id }}', 'trace-requirements-{{ entity_id }}'].forEach(function(id) {
+                    const el = document.getElementById(id);
+                    if (el) el.innerHTML = '<span class="text-destructive-emphasis">Could not load</span>';
+                });
             }
         })();
         </script>

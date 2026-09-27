@@ -6,7 +6,7 @@
    Usage Examples:
    
    1. Basic File Upload:
-   {% from 'components/file_upload.html' import file_upload %}
+   {% from 'components/file_upload.html' import file_upload with context %}
    {{ file_upload(
        id='document-upload',
        name='document',
@@ -122,7 +122,7 @@
 >
     {% if label %}
     <label class="block text-sm font-medium mb-2">
-        {{ label }}{% if required %}<span class="text-destructive ml-1">*</span>{% endif %}
+        {{ label }}{% if required %}<span class="text-destructive-emphasis ml-1">*</span>{% endif %}
     </label>
     {% endif %}
     
@@ -144,7 +144,7 @@
         }"
         class="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all hover:border-primary hover:bg-accent/50"
     >
-        <input 
+        <input aria-label="{{ label or 'Choose a file' }}" 
             type="file"
             id="{{ id }}"
             name="{{ name }}"
@@ -174,7 +174,7 @@
     </div>
     
     <!-- Error Message -->
-    <div x-show="error" x-cloak class="mt-2 text-sm text-destructive" role="alert">
+    <div x-show="error" x-cloak class="mt-2 text-sm text-destructive-emphasis" role="alert">
         <i data-lucide="alert-circle" class="inline h-4 w-4 mr-1"></i>
         <span x-text="error"></span>
     </div>
@@ -214,7 +214,7 @@
                 <button
                     type="button"
                     @click.stop="removeFile(index)"
-                    class="flex-shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded-md hover:bg-destructive/10"
+                    class="flex-shrink-0 text-muted-foreground hover:text-destructive-emphasis transition-colors p-1 rounded-md hover:bg-destructive/10"
                     :disabled="uploading"
                  aria-label="Remove file">
                     <i data-lucide="x" class="h-4 w-4"></i>

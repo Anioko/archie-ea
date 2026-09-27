@@ -12,34 +12,60 @@ from .validators import validate_email as validate_model_email
 # ── Enterprise RBAC role constants (ENT-068, updated NS-001) ─────────────────────────
 ROLE_SOLUTION_ARCHITECT = "solution_architect"
 ROLE_ENTERPRISE_ARCHITECT = "enterprise_architect"
+ROLE_BUSINESS_ARCHITECT = "business_architect"
 ROLE_ARB_MEMBER = "arb_member"
 ROLE_PORTFOLIO_MANAGER = "portfolio_manager"
 ROLE_CTO = "cto"
 ROLE_PROCUREMENT = "procurement"
 ROLE_APPLICATION_MANAGER = "application_manager"
 ROLE_PLATFORM_ADMIN = "platform_admin"
+# Promoted from charter-only to assignable, 31 Aug 2026.
+#
+# security_architect: the solution blueprint scores a Security Viewpoint as one
+# of its fifteen sections, and no persona owned it. A governance artefact the
+# product grades with nobody accountable for it is the same defect shape as an
+# ARB decision with no visible decider -- which this codebase has been fixing
+# all week. TOGAF 9.2, which Entelim implements, names the role.
+#
+# data_architect: /architecture/data-architecture, data lineage and data
+# stewardship all ship and were reachable only inside enterprise_architect's
+# zone, which ARCH-123 recorded as a temporary fold ("no dedicated role yet")
+# rather than a decision to leave them there.
+#
+# The other five charters (application_architect, integration_architect,
+# systems_architect, business_analyst, product_analyst) stay charter-only: they
+# own no surface the product grades, and two are analyst rather than architect
+# roles. See ASPIRATIONAL in scripts/check_persona_vocabularies.py.
+ROLE_SECURITY_ARCHITECT = "security_architect"
+ROLE_DATA_ARCHITECT = "data_architect"
 
 VALID_ROLES = [
     ROLE_SOLUTION_ARCHITECT,
     ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_BUSINESS_ARCHITECT,
     ROLE_ARB_MEMBER,
     ROLE_PORTFOLIO_MANAGER,
     ROLE_CTO,
     ROLE_PROCUREMENT,
     ROLE_APPLICATION_MANAGER,
     ROLE_PLATFORM_ADMIN,
+    ROLE_SECURITY_ARCHITECT,
+    ROLE_DATA_ARCHITECT,
 ]
 
 # Role display names for UI
 ROLE_DISPLAY_NAMES = {
     ROLE_SOLUTION_ARCHITECT: "Solution Architect",
     ROLE_ENTERPRISE_ARCHITECT: "Enterprise Architect",
+    ROLE_BUSINESS_ARCHITECT: "Business Architect",
     ROLE_ARB_MEMBER: "ARB Member",
     ROLE_PORTFOLIO_MANAGER: "Portfolio Manager",
     ROLE_CTO: "CTO / CIO",
     ROLE_PROCUREMENT: "Procurement",
     ROLE_APPLICATION_MANAGER: "Application Manager",
     ROLE_PLATFORM_ADMIN: "Platform Admin",
+    ROLE_SECURITY_ARCHITECT: "Security Architect",
+    ROLE_DATA_ARCHITECT: "Data Architect",
 }
 
 
@@ -59,9 +85,38 @@ class Role(db.Model):
 
     @staticmethod
     def insert_roles():
+        # "Architect" is the DEFAULT role for new sign-ups. This platform is FOR
+        # architects, and the CRUD route guards use require_roles("admin",
+        # "architect") — so the default role MUST normalize to "architect", or
+        # every normal user gets 403 on create/update/delete of their own data
+        # (the "CRUD is broken" symptom). Architect gets GENERAL permission (NOT
+        # ADMINISTER), so user.can(ADMINISTER)/is_admin() stays False and truly
+        # admin-only areas (user mgmt, seeding) remain restricted.
+        # (name, permissions, index, is_default)
         roles = {
-            "User": (Permission.GENERAL, "main", True),
+            "User": (Permission.GENERAL, "main", False),
+            "Architect": (Permission.GENERAL, "main", True),
             "Administrator": (Permission.ADMINISTER, "admin", False),
+            # A-03 (S2): "no read-only role exists" — added as a selectable
+            # Role row only. permissions=0 means user.can(GENERAL) and
+            # user.can(ADMINISTER) both evaluate False, so a Viewer can
+            # authenticate and read but every write-guarding
+            # @permission_required/@admin_required check rejects them same
+            # as an unauthenticated user would be rejected for admin routes.
+            # Purely additive: existing roles/users are untouched, and no
+            # route currently assigns this role automatically.
+            "Viewer": (0, "main", False),
+            # M-05/M-06 (S1): a distinct decision-making role, separate from
+            # the default "Architect" contributor role. Purely additive —
+            # existing roles/users are untouched and no route currently
+            # assigns this role automatically. Not yet used as a hard gate
+            # on ARBGovernanceService.record_decision (that would lock out
+            # every existing production approver, all of whom are on the
+            # default "Architect" role today); it exists so an organization
+            # can start assigning it, and record_decision already rejects
+            # any account whose role carries no GENERAL permission (e.g. a
+            # pure Viewer) regardless of this role's presence.
+            "Approver": (Permission.GENERAL, "main", False),
         }
         for r in roles:
             role = Role.query.filter_by(name=r).first()
@@ -118,6 +173,13 @@ class User(UserMixin, db.Model):
     primary_concern = db.Column(db.Text)
     primary_frameworks = db.Column(db.Text)  # JSON array as string
     onboarding_completed_at = db.Column(db.DateTime)
+    # Dashboard "Welcome to Entelim" one-line banner, dismissed once per
+    # user, forever (shell-wave-1 Task 5). Deliberately separate from
+    # onboarding_completed_at: that column is set by /dashboard/api/
+    # onboarding-complete, which also rewrites enterprise_role -- reusing it for
+    # a plain dismiss click would carry a side effect the UI never asks for.
+    # Nullable, no backfill, tolerated when NULL (reconcile-schema adds it).
+    welcome_banner_dismissed_at = db.Column(db.DateTime, nullable=True)
     generation_method = db.Column(db.String(50))  # text, upload, template
     first_architecture_id = db.Column(db.Integer)
 
@@ -132,6 +194,24 @@ class User(UserMixin, db.Model):
     # PLT-017: In-app notification preferences — JSON dict keyed by notification type.
     # Default: all types enabled. migration-exempt (DDL added in manage.py init_db)
     notification_preferences = db.Column(db.JSON, nullable=True)  # migration-exempt
+
+    # Plain-language display: when False (default), element types and layers use
+    # plain names (e.g. "Application" instead of "ApplicationComponent").
+    # When True, the standard ArchiMate names are shown everywhere.
+    # Stored inside notification_preferences JSON to keep user-level boolean
+    # toggles in one authority (ADR 0008).  The property delegates to
+    # get_notification_preference / set_notification_preferences so every
+    # access path — template filter, context processor, account route — reads
+    # and writes the same store.
+    @property
+    def show_archimate_names(self):
+        return self.get_notification_preference("show_archimate_names")
+
+    @show_archimate_names.setter
+    def show_archimate_names(self, value):
+        prefs = dict(self.notification_preferences or {})
+        prefs["show_archimate_names"] = bool(value)
+        self.notification_preferences = prefs
 
     @staticmethod
     def normalize_email(email):
@@ -189,7 +269,7 @@ class User(UserMixin, db.Model):
             for role in junction_roles:
                 if role.permissions is not None and (role.permissions & permissions) == permissions:
                     return True
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             db.session.rollback()  # Prevent transaction poisoning if user_roles table missing
         return False
 
@@ -284,33 +364,37 @@ class User(UserMixin, db.Model):
         return self.enterprise_role in roles
 
     def can_edit_solutions(self):
-        """Solution editing: solution_architect, enterprise_architect, platform_admin."""
+        """Solution editing: solution_architect, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_SOLUTION_ARCHITECT,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_edit_archimate(self):
-        """ArchiMate editing: enterprise_architect, platform_admin."""
+        """ArchiMate editing: enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_vote_arb(self):
-        """ARB voting: arb_member, enterprise_architect, platform_admin."""
+        """ARB voting: arb_member, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_ARB_MEMBER,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
     def can_manage_portfolio(self):
-        """Portfolio management: portfolio_manager, enterprise_architect, platform_admin."""
+        """Portfolio management: portfolio_manager, enterprise_architect, business_architect, platform_admin."""
         return self.enterprise_role in (
             ROLE_PORTFOLIO_MANAGER,
             ROLE_ENTERPRISE_ARCHITECT,
+            ROLE_BUSINESS_ARCHITECT,
             ROLE_PLATFORM_ADMIN,
         )
 
@@ -321,6 +405,7 @@ class User(UserMixin, db.Model):
         "assignment_changes": True,
         "weekly_digest": True,
         "mention_notifications": True,
+        "show_archimate_names": False,
     }
 
     def get_notification_preference(self, key):  # model-safety-ok
@@ -336,11 +421,21 @@ class User(UserMixin, db.Model):
         return prefs.get(key, self._DEFAULT_NOTIFICATION_PREFS.get(key, True))
 
     def set_notification_preferences(self, prefs_dict):
-        """Replace notification_preferences with validated dict. Only known keys are stored."""
+        """Update notification_preferences from a validated dict.
+
+        Only known keys are stored. A known key that is not in *prefs_dict*
+        keeps its current value: the display preference (``show_archimate_names``)
+        lives in this same JSON, so saving the notification form, which does not
+        carry it, must not reset it.
+        """
+        import json
+
         known_keys = set(self._DEFAULT_NOTIFICATION_PREFS.keys())
-        self.notification_preferences = {
-            k: bool(v) for k, v in prefs_dict.items() if k in known_keys
-        }
+        raw = getattr(self, "notification_preferences", None)
+        stored = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        merged = {k: bool(v) for k, v in stored.items() if k in known_keys}
+        merged.update({k: bool(v) for k, v in prefs_dict.items() if k in known_keys})
+        self.notification_preferences = merged
 
     def __repr__(self):
         return f"<User '{self.full_name()}'>"

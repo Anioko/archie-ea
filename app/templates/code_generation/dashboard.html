@@ -1,23 +1,21 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Code Generation Dashboard{% endblock %}
 
 {% block content %}
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
-    <div class="mb-6">
-        <h1 class="text-2xl font-bold text-foreground">MDD Code Generation</h1>
-        <p class="text-muted-foreground mt-1">Generate production-ready code from models and architecture</p>
-    </div>
+    {{ page_shell(title='MDD Code Generation', breadcrumb=[('Home', '/'), ('MDD Code Generation', none)], subtitle='Generate production-ready code from models and architecture') }}
 
     <!-- Mode Selection -->
     <div class="mb-6">
         <div class="flex space-x-4">
-            <button id="enhancementModeBtn" class="px-4 py-2 rounded-md font-medium transition-colors
+            <button type="button" id="enhancementModeBtn" class="px-4 py-2 rounded-md font-medium transition-colors
                 {% if mode == 'enhancement' %}bg-primary text-primary-foreground{% else %}bg-muted text-foreground hover:bg-muted/80{% endif %}" aria-label="Action">
                 Application Enhancement
             </button>
-            <button id="architectureModeBtn" class="px-4 py-2 rounded-md font-medium transition-colors
+            <button type="button" id="architectureModeBtn" class="px-4 py-2 rounded-md font-medium transition-colors
                 {% if mode == 'architecture' %}bg-primary text-primary-foreground{% else %}bg-muted text-foreground hover:bg-muted/80{% endif %}" aria-label="Action">
                 Architecture-to-Code
             </button>
@@ -47,10 +45,12 @@
 </div>
 
 <!-- Hidden data -->
-<label for="currentMode">Field</label>
-    <input type="hidden" id="currentMode" value="{{ mode }}">
-<label for="contextId">Field</label>
-    <input type="hidden" id="contextId" value="{{ app_id or view_id }}">
+<input type="hidden" id="currentMode" value="{{ mode }}">
+    {# `or ''`: with no application/view selected both are Python None, and
+       Jinja renders that as the literal string "None" — which is truthy in JS,
+       so the page requested /code-generation/api/context/application/None and
+       got a 404 on every unfiltered visit. #}
+    <input type="hidden" id="contextId" value="{{ app_id or view_id or '' }}">
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -70,9 +70,14 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function hasContextId(contextId) {
+    // Defensive against a server-side None/undefined ever reaching the field again.
+    return !!contextId && contextId !== 'None' && contextId !== 'undefined' && contextId !== 'null';
+}
+
 function initializeCodeGeneration(mode, contextId) {
-    // Load context if available
-    if (contextId) {
+    // Load context only when one is actually selected
+    if (hasContextId(contextId)) {
         loadContext(mode, contextId);
     }
 
@@ -85,29 +90,40 @@ function loadContext(mode, contextId) {
         ? `{{ url_for("code_generation.get_application_context", app_id=0) }}`.replace('/0', `/${contextId}`)
         : `{{ url_for("code_generation.get_architecture_context", view_id=0) }}`.replace('/0', `/${contextId}`);
 
-    fetch(endpoint)
-        .then(response => response.json())
+    Platform.fetch(endpoint, { silent: true })
         .then(data => {
-            if (data.success) {
-                displayContext(data, mode);
-            }
+            if (!data.success) throw new Error(data.error || 'context unavailable');
+            displayContext(data, mode);
         })
-        .catch(error => {
-            console.error('Failed to load context:', error);
+        .catch(() => {
+            renderLoadFailure('contextContainer', 'Could not load the selected context.');
+            Platform.toast.error('Could not load the selected context.');
         });
 }
 
 function loadTemplates() {
-    fetch('{{ url_for("code_generation.list_templates") }}')
-        .then(response => response.json())
+    Platform.fetch('{{ url_for("code_generation.list_templates") }}', { silent: true })
         .then(data => {
-            if (data.success) {
-                displayTemplates(data.templates);
-            }
+            if (!data.success) throw new Error(data.error || 'templates unavailable');
+            displayTemplates(data.templates);
         })
-        .catch(error => {
-            console.error('Failed to load templates:', error);
+        .catch(() => {
+            // Leave the list empty but say so: an empty picker would otherwise
+            // read as "this project has no templates".
+            renderLoadFailure('templateList', 'Could not load code generation templates.');
+            Platform.toast.error('Could not load code generation templates.');
         });
+}
+
+// A load failure must not be mistaken for an empty result.
+function renderLoadFailure(containerId, message) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.textContent = '';
+    const el = document.createElement('div');
+    el.className = 'rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive';
+    el.textContent = message;
+    container.appendChild(el);
 }
 
 function displayContext(data, mode) {
@@ -199,30 +215,22 @@ function generateCode() {
     };
 
     // Generate code
-    fetch('{{ url_for("code_generation.generate_code") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestData)
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            displayResults(data.artifacts);
-            showNotification(`Generated ${data.artifacts.length} code artifacts`, 'success');
-        } else {
-            showNotification(data.error || 'Generation failed', 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Generation failed:', error);
-        showNotification('Generation failed: ' + error.message, 'error');
-    })
-    .finally(() => {
-        generateBtn.disabled = false;
-        generateBtn.textContent = originalText;
-    });
+    Platform.fetch.post('{{ url_for("code_generation.generate_code") }}', requestData, { silent: true })
+        .then(data => {
+            if (data.success) {
+                displayResults(data.artifacts);
+                showNotification(`Generated ${data.artifacts.length} code artifacts`, 'success');
+            } else {
+                showNotification(data.error || 'Generation failed', 'error');
+            }
+        })
+        .catch(error => {
+            showNotification('Generation failed: ' + error.message, 'error');
+        })
+        .finally(() => {
+            generateBtn.disabled = false;
+            generateBtn.textContent = originalText;
+        });
 }
 
 function displayResults(artifacts) {
@@ -240,10 +248,10 @@ function displayResults(artifacts) {
                         <p class="text-sm text-muted-foreground">${artifact.language} • ${artifact.type}</p>
                     </div>
                     <div class="flex space-x-2">
-                        <button data-action="copyCode" data-id="${index}" class="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90" aria-label="Action">
+                        <button type="button" data-action="copyCode" data-id="${index}" class="px-3 py-1 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90" aria-label="Action">
                             Copy
                         </button>
-                        <button data-action="downloadCode" data-id="${index}" class="px-3 py-1 text-sm border border-input bg-background text-foreground rounded hover:bg-accent hover:text-accent-foreground" aria-label="Action">
+                        <button type="button" data-action="downloadCode" data-id="${index}" class="px-3 py-1 text-sm border border-input bg-background text-foreground rounded hover:bg-accent hover:text-accent-foreground" aria-label="Action">
                             Download
                         </button>
                     </div>

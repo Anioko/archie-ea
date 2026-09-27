@@ -7,7 +7,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title=template_name|title ~ ' Template',
+        title=template_name|title ~ ' Template', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': template_name|title ~ ' Template'}],
         description='Framework template configuration and deployment',
         actions=[
             {'text': 'Apply Template', 'icon': 'play', 'onclick': 'applyTemplate()', 'variant': 'default'},
@@ -54,7 +54,7 @@
                     <div class="flex justify-between">
                         <span class="text-muted-foreground">Quality Score:</span>
                         <div class="flex items-center">
-                            <div id="qualityScore" class="flex text-warning/80">
+                            <div id="qualityScore" class="flex text-warning-emphasis/80">
                                 <!-- Stars will be populated by JavaScript -->
                             </div>
                             <span class="text-foreground ml-1" id="qualityValue">Loading...</span>
@@ -365,14 +365,22 @@ function renderImplementationSteps(steps) {
 }
 
 function loadRecentDeployments() {
-    const deployments = [
-        { organization: 'Acme Manufacturing', date: '2024-01-12', status: 'Completed', progress: 100 },
-        { organization: 'Global Industries', date: '2024-01-10', status: 'In Progress', progress: 65 },
-        { organization: 'Tech Solutions Inc', date: '2024-01-08', status: 'Completed', progress: 100 },
-        { organization: 'Precision Engineering', date: '2024-01-05', status: 'Planning', progress: 15 }
-    ];
-    
+    // Previously rendered four invented organisations ("Acme Manufacturing",
+    // "Global Industries", …) with fabricated progress bars, unconditionally and
+    // for every tenant. There is no deployments API yet, so render an honest
+    // empty state rather than someone else's fictional portfolio.
+    const deployments = [];
+
     const container = document.getElementById('recentDeployments');
+    if (!container) return;
+    if (deployments.length === 0) {
+        container.innerHTML = '';
+        const empty = document.createElement('p');
+        empty.className = 'text-sm text-muted-foreground py-4 text-center';
+        empty.textContent = 'No deployment history available.';
+        container.appendChild(empty);
+        return;
+    }
     container.innerHTML = '';
     
     deployments.forEach(deployment => {
@@ -431,10 +439,10 @@ function applyTemplate() {
                     <input type="text" id="orgName" class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" placeholder="Enter organization name">
                 </div>
                 <div class="flex gap-2 pt-2">
-                    <button data-action="confirmApplyTemplate" class="inline-flex items-center justify-center h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium" aria-label="Action">
+                    <button type="button" data-action="confirmApplyTemplate" class="inline-flex items-center justify-center h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-sm font-medium" aria-label="Action">
                         Apply Template
                     </button>
-                    <button data-action="closeModal" class="inline-flex items-center justify-center h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Action">
+                    <button type="button" data-action="closeModal" class="inline-flex items-center justify-center h-10 px-4 rounded-lg border border-input bg-background hover:bg-accent text-sm font-medium" aria-label="Action">
                         Cancel
                     </button>
                 </div>
@@ -444,7 +452,7 @@ function applyTemplate() {
     document.body.appendChild(modal);
 }
 
-function confirmApplyTemplate() {
+async function confirmApplyTemplate() {
     const configName = document.getElementById('configName').value;
     const orgName = document.getElementById('orgName').value;
     
@@ -454,26 +462,22 @@ function confirmApplyTemplate() {
     }
     
     // API call to apply template
-    fetch('/framework-management/api/apply-template', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/framework-management/api/apply-template', {
             template_name: templateName,
             configuration_name: configName,
             organization_name: orgName
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            const applyModal = document.getElementById('apply-framework-template');
-            if (applyModal) applyModal.remove();
-            Platform.toast.info('Template applied successfully!');
-            loadRecentDeployments();
-        }
-    });
+        }, { silent: true });
+        
+        if (!data.success) throw new Error(data.error || 'Could not apply the template');
+        const applyModal = document.getElementById('apply-framework-template');
+        if (applyModal) applyModal.remove();
+        Platform.toast.info('Template applied successfully!');
+        loadRecentDeployments();
+    } catch (err) {
+        // The modal deliberately stays open so the entered names are not lost.
+        Platform.toast.error(err.message);
+    }
 }
 
 function customizeTemplate() {

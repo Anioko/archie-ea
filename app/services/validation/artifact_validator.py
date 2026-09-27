@@ -229,7 +229,7 @@ class ArtifactValidator:
         if result.valid:
             result.message = f"✓ Validated {len(requirements)} requirements"
         else:
-            result.message = f"✗ Requirements validation failed"
+            result.message = "✗ Requirements validation failed"
 
         return result
 
@@ -286,7 +286,7 @@ class ArtifactValidator:
         if result.valid:
             result.message = f"✓ Validated {len(artifacts)} code artifacts"
         else:
-            result.message = f"✗ Code validation failed"
+            result.message = "✗ Code validation failed"
 
         return result
 

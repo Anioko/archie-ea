@@ -271,7 +271,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'scope',
                 'summary': f'Solution #{solution_id} created',
-                'confidence': 0.9,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.9,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             scope_phase = {'error': str(e), 'status': 'failed'}
@@ -287,7 +287,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'capabilities',
                 'summary': f'{len(suggestions or [])} capabilities identified',
-                'confidence': 0.8,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.8,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             capabilities_phase = {'suggestions': [], 'count': 0, 'error': str(e)}
@@ -309,7 +309,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'gaps',
                 'summary': f'{len(risks)} gaps identified',
-                'confidence': 0.75,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.75,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             gaps_phase = {'gaps': [], 'critical_count': 0, 'error': str(e)}
@@ -324,7 +324,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'options',
                 'summary': f'{len(opts)} options generated',
-                'confidence': 0.8,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.8,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             options_phase = {'options': [], 'error': str(e)}
@@ -343,7 +343,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'roadmap',
                 'summary': '3-plateau roadmap generated',
-                'confidence': 0.7,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.7,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             roadmap_phase = {'plateaus': [], 'error': str(e)}
@@ -378,7 +378,7 @@ class SolutionAIOrchestrator:
             reasoning_trail.append({
                 'phase': 'arb_draft',
                 'summary': 'ARB draft compiled from all phases',
-                'confidence': 0.85,  # fabricated-values-ok: confidence scale 0-1
+                'confidence': 0.85,  # fabricated-ok: fixed heuristic confidence for this deterministic phase, not a per-record measurement
             })
         except Exception as e:
             arb_draft_phase = {'status': 'failed', 'error': str(e)}
@@ -413,7 +413,7 @@ class SolutionAIOrchestrator:
                 ),
                 'confidence': archimate_result.get(
                     'validation_results', {}
-                ).get('confidence', 0.8),  # fabricated-values-ok: confidence scale 0-1
+                ).get('confidence'),  # None when the validator reported none -> UI renders em dash, not a fabricated 0.8
             })
         except Exception as e:
             archimate_phase = {
@@ -917,7 +917,7 @@ class SolutionAIOrchestrator:
             from app.modules.ai_chat.services.solution_ai_service import SolutionAIService
 
             vendors = wave1_context.get("vendors") or []
-            vendor_names = [v.get("name", "") for v in vendors if v.get("name")]
+            [v.get("name", "") for v in vendors if v.get("name")]
 
             svc = SolutionAIService()
             suggestions = svc.suggest_elements(
@@ -1127,7 +1127,6 @@ class SolutionAIOrchestrator:
             return {"proposals": [], "reasoning_id": None, "total": 0}
 
         # Build lookup by name for filtering
-        linked_ids = {e.id for e in linked}
         name_to_id = {}
         for e in linked:
             name_to_id[e.name] = e.id
@@ -1261,6 +1260,8 @@ class SolutionAIOrchestrator:
 ## Organizational Context
 {org_context}
 
+{existing_repository_context}
+
 ## Instructions
 Generate a comprehensive draft architecture. The MOTIVATION LAYER must be COMPLETE -- all 10 ArchiMate element types.
 Generate entities IN ORDER so each can reference its parent by exact name.
@@ -1333,13 +1334,17 @@ CRITICAL RULES:
 2. Assessments must be EVIDENCE-BASED -- describe what exists today, not what should exist. Include findings and scores.
 3. Goals must have ALL SMART fields populated -- specific_objective, measurable_metrics, target_value, current_value, baseline_value, time_bound_target, business_owner.
 4. Conflict flags: only flag REAL conflicts where achieving one goal significantly hinders another.
-5. Be specific to the domain -- no generic filler."""
+5. Be specific to the domain -- no generic filler.
+6. DO NOT DUPLICATE existing repository entities listed above -- if one already represents the concept you were about to generate, reuse its exact name (reference it) instead of creating a new, differently-worded entity for the same thing."""
 
     ARCHITECTURE_VARIANTS_PROMPT = """You are an enterprise architect. For the following solution, produce exactly 3 alternative architecture variants.
 
 Solution: {solution_name}
 Domain: {business_domain}
 Brief: {problem_statement}
+
+{existing_repository_context}
+IMPORTANT: do not duplicate existing repository entities listed above -- reuse an existing entity's exact name where one already represents the concept, rather than inventing a new, differently-worded entity for the same thing.
 
 Output a single JSON object with key "variants", an array of exactly 3 objects. Each object must have:
 - "variant_type": one of "cost_optimized", "timeline_optimized", "risk_balanced"
@@ -1395,6 +1400,8 @@ Return only valid JSON, no markdown fences. Example shape:
 ## CROSS-CUTTING REQUIREMENTS (apply to EVERY element you generate)
 {nfr_checklist}
 For each element, indicate which cross-cutting requirements it must satisfy.
+
+{existing_repository_context}
 
 ## Instructions
 Generate Strategy Layer entities that connect the Motivation Layer (drivers, goals) to the selected capabilities.
@@ -1464,6 +1471,10 @@ CRITICAL -- TRACEABILITY:
 - Each value_stream.stages[].capability_name must match a selected capability
 - Each capability_gap_analysis.capability_name must match a selected capability
 - Each resource.course_of_action_name must match a course of action name you generated
+
+DO NOT DUPLICATE existing repository entities listed above -- reuse an existing entity's exact
+name where one already represents the concept, rather than inventing a new, differently-worded
+entity for the same thing.
 
 Be specific to the domain. No generic filler."""
 
@@ -1765,7 +1776,6 @@ CRITICAL -- TRACEABILITY:
         """
         try:
             from app.models.solution_architect_models import (
-                SolutionAnalysisSession,
                 SolutionRecommendation,
                 RecommendationOptionType,
             )
@@ -1778,6 +1788,7 @@ CRITICAL -- TRACEABILITY:
                 solution_name=solution.name or 'Untitled',
                 business_domain=solution.business_domain or 'General',
                 problem_statement=(brief or {}).get('problem_statement', ''),
+                existing_repository_context=self._gather_duplicate_avoidance_context(solution),
             )
             from app.modules.ai_chat.services.llm_service import LLMService
             provider, model = LLMService._get_configured_provider()
@@ -1927,6 +1938,7 @@ CRITICAL -- TRACEABILITY:
                 industry_context=brief.get('industry_context', 'Not specified'),
                 technology_preferences=brief.get('technology_preferences', 'No preference'),
                 org_context=org_context,
+                existing_repository_context=self._gather_duplicate_avoidance_context(solution),
             )
 
             # 3. Call LLM
@@ -2035,16 +2047,14 @@ CRITICAL -- TRACEABILITY:
         if solution.analysis_session_id:
             session = SolutionAnalysisSession.query.get(solution.analysis_session_id)
 
-        drivers = []
         goals = []
-        requirements = []
 
         if session:
             pd = SolutionProblemDefinition.query.filter_by(session_id=session.id).first()
             if pd:
-                drivers = SolutionDriver.query.filter_by(problem_id=pd.id).all()
+                SolutionDriver.query.filter_by(problem_id=pd.id).all()
                 goals = SolutionGoal.query.filter_by(problem_id=pd.id).all()
-                requirements = SolutionRequirement.query.filter_by(problem_id=pd.id).all()
+                SolutionRequirement.query.filter_by(problem_id=pd.id).all()
 
         # 2. Gather selected capabilities (try UnifiedCapability first, fall back to BusinessCapability)
         from app.models.unified_capability import UnifiedCapability
@@ -2092,6 +2102,7 @@ CRITICAL -- TRACEABILITY:
             nfr_checklist=motiv_ctx['nfr_checklist'],
             capability_count=len(capabilities),
             capabilities_json=caps_json,
+            existing_repository_context=self._gather_duplicate_avoidance_context(solution),
         )
 
         # 4. Call LLM
@@ -2155,7 +2166,7 @@ CRITICAL -- TRACEABILITY:
 
         created = {'courses_of_action': 0, 'value_streams': 0, 'resources': 0, 'gaps_analyzed': 0}
         caps_by_name = {c.name.lower().strip(): c for c in capabilities}
-        goals_by_name = {g.name.lower().strip(): g for g in goals}
+        {g.name.lower().strip(): g for g in goals}
 
         # --- Courses of Action ---
         try:
@@ -2283,7 +2294,7 @@ CRITICAL -- TRACEABILITY:
             'business_actors': 0, 'business_processes': 0, 'business_services': 0,
             'business_roles': 0, 'business_objects': 0, 'business_events': 0,
         }
-        caps_by_name = {c.name.lower().strip(): c for c in capabilities}
+        {c.name.lower().strip(): c for c in capabilities}
 
         # --- Business Actors (derived from stakeholders) ---
         actors_by_name = {}
@@ -2550,7 +2561,7 @@ CRITICAL -- TRACEABILITY:
                     logger.info(f"Budget >60% used ({cumulative_tokens}/{budget}), switching to {cheap_models[provider]}")
                     return provider, cheap_models[provider]
                 return provider, model
-            except Exception:  # fabricated-values-ok -- fallback to default model
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- fallback to default model
                 logger.exception("Failed to compute provider, model")
                 pass
         return LLMService._get_configured_provider()
@@ -2846,7 +2857,7 @@ CRITICAL -- TRACEABILITY:
                 'provider_used': provider,
                 'wave': 'architecture_layers',
             }
-        except Exception:  # fabricated-values-ok -- token tracking is non-critical
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- token tracking is non-critical
             logger.exception("Failed to database query")
             pass
 
@@ -3231,7 +3242,7 @@ CRITICAL -- TRACEABILITY:
             for evt_data in parsed.get('implementation_events', []):
                 with db.session.begin_nested():
                     plateau_name = (evt_data.get('plateau_name') or '').lower().strip()
-                    plateau_ref = plateaus_by_name.get(plateau_name)
+                    plateaus_by_name.get(plateau_name)
                     evt = ImplementationEvent(
                         name=evt_data.get('name', ''),
                         description=evt_data.get('description', ''),
@@ -3302,7 +3313,7 @@ CRITICAL -- TRACEABILITY:
                      'description': s.description or ''}
                     for s in stakeholders
                 ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3375,7 +3386,7 @@ CRITICAL -- TRACEABILITY:
                  'target_value': o.target_value or '', 'kpi_metric': o.kpi_metric or ''}
                 for o in outcomes
             ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3395,7 +3406,7 @@ CRITICAL -- TRACEABILITY:
                  'value_type': v.value_type or '', 'amount': float(v.amount) if v.amount else None}
                 for v in values
             ], indent=2)
-        except Exception:  # fabricated-values-ok -- optional enrichment
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.exception("Failed to operation")
             pass
 
@@ -3538,7 +3549,6 @@ CRITICAL -- TRACEABILITY:
         stacks, business processes, and rationalization scores to ground the LLM
         in organizational reality instead of generic patterns.
         """
-        import json as _json
         ctx = {
             'app_capability_map': '',
             'tech_standards': '',
@@ -3583,7 +3593,7 @@ CRITICAL -- TRACEABILITY:
                     )
                 lines.append("Use these REAL applications. Do NOT invent apps when existing ones cover the capability.")
                 ctx['app_capability_map'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("App-capability enrichment failed: %s", exc)
 
         # 2. Technology standards from existing portfolio
@@ -3615,7 +3625,7 @@ CRITICAL -- TRACEABILITY:
                     lines.append("  Database platforms: " + ", ".join(f"{d} ({c} apps)" for d, c in top_dbs))
                 lines.append("MATCH these technology standards. Do NOT suggest technologies the org doesn't use unless explicitly required.")
                 ctx['tech_standards'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Tech standards enrichment failed: %s", exc)
 
         # 3. Existing business processes from catalog
@@ -3623,7 +3633,6 @@ CRITICAL -- TRACEABILITY:
             from app.models.process_data import BusinessProcess
 
             if cap_ids:
-                from app.models.business_capability import BusinessCapability
                 # Find processes linked to selected capabilities
                 processes = BusinessProcess.query.filter(
                     BusinessProcess.primary_capability_id.in_(cap_ids)
@@ -3640,7 +3649,7 @@ CRITICAL -- TRACEABILITY:
                     lines.append(f"  - {p.name} (type: {ptype}{auto_str})")
                 lines.append("MATCH these existing processes by name. Do NOT create duplicates.")
                 ctx['process_baseline'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Process baseline enrichment failed: %s", exc)
 
         # 4. Historical implementation metrics
@@ -3662,10 +3671,73 @@ CRITICAL -- TRACEABILITY:
                         lines.append(f"  - Average work package cost: £{avg_cost:,.0f} (n={len(costs)})")
                     lines.append("Base your estimates on these REAL historical averages, not generic industry benchmarks.")
                     ctx['historical_metrics'] = '\n'.join(lines)
-        except Exception as exc:  # fabricated-values-ok -- optional enrichment
+        except Exception as exc:  # fabricated-ok: guarded skip on error; emits no fabricated value -- optional enrichment
             logger.debug("Historical metrics enrichment failed: %s", exc)
 
         return ctx
+
+    def _gather_duplicate_avoidance_context(self, solution: Solution) -> str:
+        """A-06: repository-context for the "blind generation" prompts.
+
+        DRAFT_ARCHITECTURE_PROMPT, ARCHITECTURE_VARIANTS_PROMPT and
+        STRATEGY_SPECIALIST_PROMPT generated entities with zero visibility into
+        what already exists, which the August 2026 QA sweep pinned as the root
+        cause of the repository's 46% duplication rate (see
+        app/utils/duplicate_guard.py) -- the LLM has no way to avoid recreating
+        a Driver or CourseOfAction that is already there if it is never told.
+
+        This mirrors the Composer's element-reuse picker pattern (surface a
+        short list of existing similar names, org-scoped, and let the caller
+        decide to reuse rather than recreate) instead of inventing a new
+        mechanism: same normalised-name universe as duplicate_guard, just
+        listing instead of blocking, because a prompt has no write to 409 on.
+        """
+        try:
+            from app.models.archimate_core import ArchiMateElement
+
+            # ArchiMateElement inherits TenantMixin -> do_orm_execute already
+            # injects organization_id, so no explicit predicate here (would
+            # double-filter per CLAUDE.md).
+            existing_elements = (
+                ArchiMateElement.query.order_by(ArchiMateElement.id.desc())
+                .limit(40)
+                .all()
+            )
+            element_lines = [
+                f"  - {e.name} ({e.type})"
+                for e in existing_elements
+                if e.name
+            ]
+
+            existing_solutions = (
+                Solution.query.filter(Solution.id != solution.id)
+                .order_by(Solution.id.desc())
+                .limit(15)
+                .all()
+            )
+            solution_lines = [f"  - {s.name}" for s in existing_solutions if s.name]
+
+            if not element_lines and not solution_lines:
+                return ""
+
+            block = [
+                "## Existing Repository Entities (DO NOT DUPLICATE)",
+                "These already exist in this organisation's repository. Before naming a "
+                "new entity, check this list: if an existing entity already represents "
+                "the same concept, REUSE its exact name instead of inventing a new, "
+                "differently-worded entity for the same thing. Only create a new entity "
+                "when nothing below already covers it.",
+            ]
+            if element_lines:
+                block.append("### Existing ArchiMate elements (sample)")
+                block.extend(element_lines)
+            if solution_lines:
+                block.append("### Existing solutions (sample)")
+                block.extend(solution_lines)
+            return "\n".join(block)
+        except Exception as e:
+            logger.debug("Duplicate-avoidance context gathering failed: %s", e)
+            return ""
 
     def _gather_org_context(self, solution: Solution) -> str:
         """Gather organizational context for the LLM prompt."""
@@ -3725,13 +3797,21 @@ CRITICAL -- TRACEABILITY:
             mappings = SolutionCapabilityMapping.query.filter_by(solution_id=solution.id).all()
             cap_ids = [m.capability_id for m in mappings]
             if cap_ids:
-                coverage_rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution capability FK
+                # solution_capability_mappings has no organization_id, so cap_ids
+                # are not themselves a tenant boundary. business_capability and
+                # application_components both carry one — scope on those.
+                from flask import g as _g
+                _org = getattr(_g, "current_org_id", None)
+                _org_and_bc = " AND bc.organization_id = :org" if _org is not None else ""
+                _org_and_ac = " AND ac.organization_id = :org" if _org is not None else ""
+                _org_params = {"org": _org} if _org is not None else {}
+                coverage_rows = db.session.execute(db.text(
                     "SELECT bc.name, COUNT(DISTINCT acm.application_component_id) as apps "
                     "FROM business_capability bc "
                     "LEFT JOIN application_capability_mapping acm ON acm.business_capability_id = bc.id "
-                    "WHERE bc.id IN :ids "
+                    f"WHERE bc.id IN :ids{_org_and_bc} "
                     "GROUP BY bc.id, bc.name ORDER BY apps DESC"
-                ), {"ids": tuple(cap_ids)}).fetchall()
+                ), {"ids": tuple(cap_ids), **_org_params}).fetchall()
                 if coverage_rows:
                     parts.append("\n- CAPABILITY COVERAGE (real application landscape):")
                     for row in coverage_rows:
@@ -3739,13 +3819,13 @@ CRITICAL -- TRACEABILITY:
                         parts.append(f"  {row[0]}: {row[1]} apps [{status}]")
 
                 # Top apps covering these capabilities
-                app_rows = db.session.execute(db.text(  # tenant-filtered: scoped via solution capability FK
+                app_rows = db.session.execute(db.text(
                     "SELECT DISTINCT ac.name, ac.lifecycle_status "
                     "FROM application_capability_mapping acm "
                     "JOIN application_components ac ON ac.id = acm.application_component_id "
-                    "WHERE acm.business_capability_id IN :ids "
+                    f"WHERE acm.business_capability_id IN :ids{_org_and_ac} "
                     "ORDER BY ac.name LIMIT 10"
-                ), {"ids": tuple(cap_ids)}).fetchall()
+                ), {"ids": tuple(cap_ids), **_org_params}).fetchall()
                 if app_rows:
                     parts.append("- KEY APPLICATIONS involved:")
                     for r in app_rows:
@@ -3773,19 +3853,19 @@ CRITICAL -- TRACEABILITY:
         try:
             return json.loads(text)
         except json.JSONDecodeError:
-            logger.exception("Failed to JSON parsing")
             pass
 
-        # Regex fallback: extract first JSON object
-        match = re.search(r'\{[\s\S]*\}', text)
-        if match:
+        # Robust fallback: scan for the first balanced JSON object
+        for _i, _ch in enumerate(text):
+            if _ch != '{':
+                continue
             try:
-                return json.loads(match.group(0))
+                _obj, _ = json.JSONDecoder().raw_decode(text[_i:])
+                return _obj
             except json.JSONDecodeError:
-                logger.exception("Failed to JSON parsing")
-                pass
+                continue
 
-        logger.warning("Failed to parse LLM response as JSON")
+        logger.warning("Failed to parse LLM response as JSON (len=%d)", len(text))
         return None
 
     def _sync_archimate_element(self, solution_id: int, name: str, element_type: str, layer: str, description: str = "", role: str = "ai_derived"):
@@ -3796,7 +3876,6 @@ CRITICAL -- TRACEABILITY:
         Without this, the Sankey, traceability, and dashboard show empty data.
         """
         from app.models.archimate_core import ArchiMateElement
-        from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
 
         if not name or not name.strip():
             return None
@@ -3855,7 +3934,7 @@ CRITICAL -- TRACEABILITY:
             # element_role exists in DB but not in SAEFull model -- set via attribute
             try:
                 sae.element_role = role
-            except Exception:  # fabricated-values-ok -- column may not exist on model
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value -- column may not exist on model
                 logger.exception("Failed to compute sae.element_role")
                 pass
             db.session.add(sae)
@@ -4198,7 +4277,7 @@ CRITICAL -- TRACEABILITY:
 
         # 14. ApplicationComponent → BusinessProcess (via capability_name cross-match)
         # Link app components to the business processes they serve
-        biz_process_names = [bp.get('name', '') for bp in biz_parsed.get('business_processes', []) if bp.get('name')]
+        [bp.get('name', '') for bp in biz_parsed.get('business_processes', []) if bp.get('name')]
         for ac in app_parsed.get('application_components', []):
             cap_name = ac.get('capability_name', '')
             if cap_name:
@@ -4418,15 +4497,11 @@ CRITICAL -- TRACEABILITY:
         Returns:
             (created_counts, failed_types) -- e.g. ({'drivers': 4, 'goals': 3, ...}, {'options': 'error msg'})
         """
-        from flask_login import current_user
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession,
-            SolutionProblemDefinition,
             SolutionDriver,
             SolutionGoal,
             SolutionConstraint,
             SolutionRequirement,
-            SolutionRecommendation,
             SolutionPrinciple,
             SolutionAssessment,
             DriverType,

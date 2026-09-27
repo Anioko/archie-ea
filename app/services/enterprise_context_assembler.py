@@ -13,11 +13,28 @@ and direct DB queries — without introducing new data-access patterns.
 import logging
 import re
 from dataclasses import dataclass, field
+
+
 from typing import Any, Dict, List, Optional
 
 from app import db
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _rollback_quietly() -> None:
+    """Clear a failed statement so later queries in the same block can run.
+
+    PostgreSQL aborts the whole transaction on the first error, and every
+    subsequent statement then fails with InFailedSqlTransaction. A handler that
+    catches per-query without rolling back therefore turns one broken query into
+    an empty answer for all of them.
+    """
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001
+        logger.debug("rollback after a failed context query also failed")
 
 
 # ---------------------------------------------------------------------------
@@ -412,34 +429,36 @@ triggering, flow, specialization, association.
 
         Used by the generation dialog to show "Found: 12 apps, 8 elements..."
         before the user clicks Generate.
+
+        The counts MUST reflect the context the AI actually reasons over, so the
+        preview runs the same assembly path as generation (assemble_context) and
+        reports the size of each resulting entity list. A previous version ran a
+        separate, tighter search (limit=5) here, which reported far fewer entities
+        than generation truly used and made the modal look as though the AI only
+        saw a handful of the tenant's records.
         """
         terms = self.extract_terms(description)
-        # Build individual search queries: each compound term + its individual words
-        queries = list(terms)
-        for term in terms:
-            words = term.split()
-            if len(words) > 1:
-                queries.extend(w for w in words if len(w) > 2)
 
-        if not queries:
-            queries = [description[:100]]
-
-        counts = {}
-        for entity_type in ["application", "archimate_element", "vendor",
-                             "capability"]:
-            seen_ids: set = set()
-            for q in queries:
-                try:
-                    results = self._search.search(
-                        q, entity_type=entity_type, limit=5, threshold=0.3
-                    )
-                    for r in results:
-                        rid = r.get("id")
-                        if rid and rid not in seen_ids:
-                            seen_ids.add(rid)
-                except Exception as exc:
-                    logger.debug("Semantic search failed for %s: %s", entity_type, exc)
-            counts[entity_type] = len(seen_ids)
+        counts = {
+            "application": 0,
+            "archimate_element": 0,
+            "vendor": 0,
+            "capability": 0,
+        }
+        try:
+            ctx = self.assemble_context(
+                description=description,
+                phase=phase,
+                business_domain=business_domain,
+            )
+            counts = {
+                "application": len(ctx.applications),
+                "archimate_element": len(ctx.archimate_elements),
+                "vendor": len(ctx.vendors),
+                "capability": len(ctx.capabilities),
+            }
+        except Exception as exc:
+            logger.debug("Context preview assembly failed: %s", exc)
 
         return {
             "query_terms": terms,
@@ -646,14 +665,15 @@ triggering, flow, specialization, association.
         for r in results:
             app_data = dict(r)
             try:
-                row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
+                _org_clause, _org_params = org_scope()
+                row = db.session.execute(
                     db.text(
                         "SELECT vendor_name, technology_stack, criticality, "
                         "lifecycle_status, business_domain, integration_methods, "
                         "deployment_model "
-                        "FROM application_components WHERE id = :id"
+                        "FROM application_components WHERE id = :id" + _org_clause
                     ),
-                    {"id": r["id"]},
+                    {"id": r["id"], **_org_params},
                 ).fetchone()
                 if row:
                     app_data["metadata"] = {
@@ -820,8 +840,13 @@ triggering, flow, specialization, association.
             try:
                 row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
                     db.text(
+                        # market_position is a vendor_products column and was
+                        # never on vendor_organizations, so this SELECT raised
+                        # UndefinedColumn and the bare except below dropped the
+                        # Gartner position and vendor type along with it -- the
+                        # model got no vendor positioning at all.
                         "SELECT gartner_magic_quadrant_position, "
-                        "market_position, vendor_type "
+                        "forrester_wave_position, vendor_type "
                         "FROM vendor_organizations WHERE id = :id"
                     ),
                     {"id": r["id"]},
@@ -830,11 +855,15 @@ triggering, flow, specialization, association.
                     v_data["metadata"] = {
                         **v_data.get("metadata", {}),
                         "gartner_quadrant": row[0] or "",
-                        "market_position": row[1] or "",
+                        # Named for what it actually is. Reporting a Forrester
+                        # Wave placement to the model as "market_position" would
+                        # be a label describing a different field than the one
+                        # read, which is the fabrication rule's core case.
+                        "forrester_wave": row[1] or "",
                         "vendor_type": row[2] or "",
                     }
             except Exception:
-                logger.debug("Failed to enrich vendor %s", r.get("id"))
+                logger.warning("Failed to enrich vendor %s", r.get("id"))
             enriched.append(v_data)
 
         return enriched[:10]
@@ -905,13 +934,14 @@ triggering, flow, specialization, association.
         for r in results:
             cap_data = dict(r)
             try:
-                row = db.session.execute(  # tenant-filtered: scoped via parent FK (id from search results)
+                _org_clause, _org_params = org_scope()
+                row = db.session.execute(
                     db.text(
                         "SELECT current_maturity_level, target_maturity_level, "
                         "strategic_importance, business_value, business_domain "
-                        "FROM business_capability WHERE id = :id"
+                        "FROM business_capability WHERE id = :id" + _org_clause
                     ),
-                    {"id": r["id"]},
+                    {"id": r["id"], **_org_params},
                 ).fetchone()
                 if row:
                     cap_data["metadata"] = {
@@ -951,6 +981,9 @@ triggering, flow, specialization, association.
                 "WHERE s.governance_status IN ('approved', 'arb_approved', 'deployed') "
             )
             params: Dict[str, Any] = {}
+            _org_clause, _org_params = org_scope(prefix="s.")
+            q += _org_clause + " "
+            params.update(_org_params)
             if domain:
                 q += "AND s.business_domain = :domain "
                 params["domain"] = domain
@@ -976,41 +1009,68 @@ triggering, flow, specialization, association.
         """Get entities already linked to a specific solution."""
         entities: Dict[str, List[Dict]] = {}
 
-        # Linked applications
+        # Linked applications.
+        #
+        # The join column is application_component_id; `sa.application_id` does
+        # not exist on solution_applications and never has. Every call raised
+        # UndefinedColumn here, which aborted the transaction and made the two
+        # queries below fail too with InFailedSqlTransaction — so all three
+        # handlers returned [] and the assembler reported "no entities linked to
+        # this solution" to the LLM for every solution in the system.
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            _org_clause, _org_params = org_scope(prefix="ac.")
+            rows = db.session.execute(
                 db.text(
                     "SELECT ac.id, ac.name FROM application_components ac "
-                    "JOIN solution_applications sa ON sa.application_id = ac.id "
-                    "WHERE sa.solution_id = :sid"
+                    "JOIN solution_applications sa "
+                    "ON sa.application_component_id = ac.id "
+                    "WHERE sa.solution_id = :sid AND ac.deleted_at IS NULL" + _org_clause
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **_org_params},
             ).fetchall()
             entities["applications"] = [{"id": r[0], "name": r[1]} for r in rows]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-application lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["applications"] = []
+            # A failed statement poisons the transaction; without this the next
+            # two blocks cannot run at all.
+            _rollback_quietly()
 
         # Linked ArchiMate elements
+        #
+        # solution_archimate_elements carries no organization_id, so the join
+        # alone proves nothing: a solution_id from another tenant would hand its
+        # elements straight into the LLM prompt. archimate_elements does carry
+        # one — scope on it.
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            _org_clause, _org_params = org_scope(prefix="ae.")
+            rows = db.session.execute(
                 db.text(
                     "SELECT ae.id, ae.name, ae.type, ae.layer "
                     "FROM archimate_elements ae "
                     "JOIN solution_archimate_elements sae ON sae.element_id = ae.id "
-                    "WHERE sae.solution_id = :sid"
+                    "WHERE sae.solution_id = :sid" + _org_clause
                 ),
-                {"sid": solution_id},
+                {"sid": solution_id, **_org_params},
             ).fetchall()
             entities["archimate_elements"] = [
                 {"id": r[0], "name": r[1], "type": r[2], "layer": r[3]}
                 for r in rows
             ]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-element lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["archimate_elements"] = []
+            _rollback_quietly()
 
         # Linked vendor products
         try:
-            rows = db.session.execute(  # tenant-filtered: scoped via parent FK (solution_id)
+            rows = db.session.execute(  # tenancy-ok: vendor_product_details has no organization_id column and no tenant-scoped parent in this join; solution_vendor_products is keyed by solution_id only
                 db.text(
                     "SELECT vp.id, vp.product_name FROM vendor_product_details vp "
                     "JOIN solution_vendor_products svp ON svp.vendor_product_id = vp.id "
@@ -1020,7 +1080,12 @@ triggering, flow, specialization, association.
             ).fetchall()
             entities["vendor_products"] = [{"id": r[0], "name": r[1]} for r in rows]
         except Exception:
+            logger.warning(
+                "Solution %s: linked-vendor-product lookup failed", solution_id,
+                exc_info=True,
+            )
             entities["vendor_products"] = []
+            _rollback_quietly()
 
         return entities
 

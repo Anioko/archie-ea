@@ -1,4 +1,4 @@
-# DESIGN.md — A.R.C.H.I.E. Design System
+# DESIGN.md — Entelim Design System
 
 > **For AI agents:** Read this file before editing any template or UI file.
 > This describes the complete design system used by this Flask + Tailwind CSS + shadcn/ui + Alpine.js application.
@@ -56,6 +56,13 @@ All colors use CSS variables defined in `app/static/css/shadcn_tokens.css`. Refe
 | Implementation | sky (`--layer-implementation`) | Work Packages, Plateaus |
 | Risk | red (`--layer-risk`) | Assessments, Issues |
 
+Use them as Tailwind utilities: `bg-layer-<name>` / `border-layer-<name>` for the
+fill and border, and **`text-layer-<name>-emphasis`** for any text on a
+`bg-layer-<name>/10` tint. The base hue is picked for distinctness between the
+seven layers, not for contrast — as text it is under WCAG AA, exactly as
+`--info` is against `bg-info/10`. Never hand-roll the layer palette from raw
+`amber-*` / `violet-*` / `emerald-*` classes; a layer badge is these tokens.
+
 ### Forbidden Color Classes
 
 **Never** use raw Tailwind color scales — the pre-commit hook `check_token_migration.py` will block the commit.
@@ -77,11 +84,64 @@ All colors use CSS variables defined in `app/static/css/shadcn_tokens.css`. Refe
 
 Green and yellow have no semantic tokens — use emerald and amber scales directly for status colors.
 
+**Coloured text on its own tint** — use `-emphasis`, not the base token:
+
+```
+❌ bg-destructive/10 text-destructive           → ✅ bg-destructive/10 text-destructive-emphasis
+❌ bg-info/10 text-info                         → ✅ bg-info/10 text-info-emphasis
+❌ bg-warning/10 text-warning-foreground        → ✅ bg-warning/10 text-warning-emphasis
+```
+
+`--destructive` scores 3.30 against `bg-destructive/10` and `--info` scores 4.50
+against `bg-info/10`, both under the WCAG AA 4.5 required for normal text. shadcn's
+`-foreground` variants do not cover this case: they are for text on a *solid* fill.
+The `-emphasis` variants are darker in light mode and lighter in dark mode, where
+the tint is dark.
+
+**Warning is the trap.** `--warning-foreground` is pure black — `0 0% 0%` — in
+*both* themes. On `bg-warning/10` that is 19.43 in light mode and **1.19 in dark
+mode**, where the tint composites to near-black: invisible, not merely low-contrast.
+Use `--warning-emphasis` (5.62 light / 11.81 dark) on any warning tint.
+
+All three emphasis tokens are now declared in **both** `:root` and `.dark`.
+`--info-emphasis` was previously light-mode only, so `text-info-emphasis` resolved
+to an invalid declaration in dark mode and silently fell back to the inherited
+colour. When adding an `-emphasis` token, declare both halves or it will fail in
+exactly one theme — the one you are less likely to be looking at.
+
+Note on blue: `bg-blue-500` maps to `bg-info`, not `bg-primary`, despite the table
+above. In light mode the two are the same colour, but `--primary` becomes near-white
+in dark mode (`210 40% 98%`), which would turn every blue info badge white for
+dark-theme users. `--info` tracks blue in both.
+
 ---
 
 ## Typography
 
-All text uses Tailwind's default font stack. Key classes:
+**Brand typeface (ARCH-111, decided 18 Aug 2026): Inter**, SIL Open Font
+License 1.1 — no royalty, no source-disclosure obligation, embedding and
+redistribution explicitly permitted, so there was no licensing question to
+escalate. It was already referenced in the Caddy 503 page's font stack before
+being adopted for the app itself.
+
+Vendored locally, never loaded from Google Fonts or any CDN: four static
+woff2 weights (400/500/600/700, latin subset) at
+`app/static/vendor/inter-{400,500,600,700}.woff2`, tracked with their upstream
+URL and sha384 in `app/static/vendor/VENDOR_MANIFEST.txt`, licence text at
+`app/static/vendor/inter-LICENSE.txt`. Wired via `@font-face` and a
+`--font-sans` CSS variable in `app/static/css/shadcn_tokens.css` (a plain,
+non-Tailwind stylesheet loaded directly by `partials/_head.html`), **not**
+through `tailwind.config.js`'s `fontFamily` — that file would be a silent
+no-op until the next Tailwind rebuild, and `tailwind-output.css` is committed
+pre-built with no Node toolchain available to regenerate it. `body` sets
+`font-family: var(--font-sans)`; do not set `font-family` per-template.
+
+The system stack remains the fallback in `--font-sans` — `ui-sans-serif,
+system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+sans-serif` — so a missing or slow woff2 (`font-display: swap`) never blocks
+text from painting or breaks layout.
+
+Key classes (unchanged):
 
 | Use | Class |
 |-----|-------|
@@ -141,9 +201,71 @@ Always include via:
 {% endblock %}
 ```
 
+### `page_shell` — the screen-system header
+
+`macros/page_shell.html`'s `page_shell()` is the header for screens rebuilt from
+2026-08-12 onward, and the one the `shell_conformance` gate counts. Prefer it over
+`components/page_header.html` for new work.
+
+```jinja
+{% from 'macros/page_shell.html' import page_shell %}
+
+{% macro _ps_actions() %}<a href="/new" class="...">New</a>{% endmacro %}
+{{ page_shell(
+    title='Applications',
+    subtitle='Manage your application portfolio',
+    breadcrumb=[('Home', url_for('main.index')), ('Applications', None)],
+    actions_caller=_ps_actions
+) }}
+```
+
+`breadcrumb` takes `(label, href)` tuples — the last one is the current page and
+takes `None`. Three optional slots exist for headers a plain title/subtitle cannot
+express; all default to off:
+
+| Slot | Use for |
+|---|---|
+| `icon='git-branch'` | a lucide icon beside the `<h1>` |
+| `subtitle_caller` | a subtitle carrying markup (an Alpine `x-text` span, a badge macro, `<strong>`) — wins over `subtitle` |
+| `meta_caller` | a row of identity badges / counters under the title that are not actions |
+
+**Do not hand-roll a header row beside these.** A page with an icon, a badge or a
+back-link next to its title belongs in these slots; a back-link belongs in
+`breadcrumb`. There is exactly one `<h1>` per page and `page_shell` owns it.
+
 ---
 
 ## Components
+
+### Button size scale (H-06 — mandatory, no arbitrary heights)
+
+`/procurement/spend` and several other pages accumulated eight distinct
+button heights (20/28/32/34/40/44px), seven font sizes and six border radii
+with no scale governing any of them. There are exactly three permitted
+button heights. Do not hand-write a height, padding, or `text-[Npx]` value on
+a button — pick one of these three:
+
+| Tier | Height class | Height | Use for |
+|---|---|---|---|
+| `sm` | `h-8` (32px) | compact / dense toolbars, inline table-row actions | |
+| `md` | `h-9` (36px)\* | the default — most buttons, forms | |
+| `lg` | `h-11` (44px) | primary page-level CTAs, WCAG 2.5.8 target-size-sensitive actions | |
+
+\* The existing shadcn default is `h-9` (36px), not 40px — that default
+predates this scale and is left as `md` rather than mass-migrated to `h-10`
+across every existing button, which would be a large, low-value diff. New
+`md` buttons should use `h-9` to match the existing convention; `h-10` (40px)
+is not a fourth tier and must not appear on a button.
+
+All three heights pair with `px-3 text-xs` (sm), `px-4 py-2 text-sm` (md), or
+`px-6 text-base` (lg) — never a bespoke padding/font combination. Border
+radius on interactive controls is `rounded-md` (buttons, inputs) or
+`rounded-lg` (cards, panels) only — never a raw multi-value `border-radius`
+or an arbitrary `rounded-[...]` value; a 3-value shorthand like `0px 0px 4px`
+silently omits the fourth corner and is what ARCH-110 / H-06 flagged. No
+instance of that malformed value was found in the current template tree
+(`grep -rn "0px 0px 4px"` across `app/templates` and `app/modules/**/templates`
+returns nothing) — it was already corrected in an earlier design-token wave.
 
 ### Buttons
 
@@ -464,6 +586,45 @@ const data = json.data ?? json; // unwrap success_response() wrapper
 ```
 
 Risk level badge colors: `CRITICAL`/`HIGH` → `text-destructive`, `MEDIUM` → `text-amber-600`, `LOW` → `text-emerald-600`.
+
+---
+
+## Business Architecture surfaces (persona: `business_architect`)
+
+`business_architect` is a first-class `enterprise_role` (`app/models/user.py`,
+`ROLE_BUSINESS_ARCHITECT`) with a governed AI charter (`architect_persona_charters.py`,
+in `ARCHITECT_PERSONAS`). Its pages are grouped in the **"Business Architecture"** sidebar
+section (`components/admin_sidebar.html`, gated on the `business_architecture` nav section
+in `role_access.py` / `context_processors.py`) and mirrored as "Your Workspace" cards on
+`/dashboard/overview` (plus a "Business" persona tab). All these pages extend
+`layouts/admin_base.html` and use the standard macros/tokens — **no new components or color
+tokens were introduced** for them.
+
+| Surface | Route (endpoint) | Notes |
+|---|---|---|
+| Capability map + visuals | `/capability-map` (`capability_map.index`) | nested-box map, maturity radar, 2×2 TIME investment bubble (Chart.js) |
+| Value streams + BIZBOK grid | `/value-streams` (`value_stream.index`) | stage swimlane + capability×stage grid, click-to-set cells |
+| Business / Operating Model canvas | `/business-model` (`business_model.index`) | 9-box BMC + operating-model archetype, inline block editing |
+| Traceability matrix | `/architecture/traceability` (`architect_ui.traceability_matrix`) | existing; surfaced in nav |
+| Impact analysis | `/strategic/impact-analysis` (`strategic.impact_analysis`) | existing; the old `/impact-analysis` nav item was a dead link — repointed here |
+| Application rationalization | `/rationalization` (`unified_applications.rationalization_dashboard`) | existing; surfaced in nav |
+| Organization & RACI | `/organization` (`organization.index`) | D3 org chart (BusinessActor composition) + enterprise RACI matrix |
+| Business cases | `/business-case` (`business_case.index`) | structured business-case document |
+
+**Guarded nav links (required pattern).** The value-stream / business-model / organization /
+business-case blueprints register **non-fatally** (a load failure is logged, not raised).
+A sidebar `url_for('<endpoint>')` to such a blueprint therefore MUST be guarded, or one
+failed registration would `BuildError` and 500 **every** page:
+
+```jinja
+{% if 'value_stream.index' in flask.current_app.view_functions %}
+<a href="{{ url_for('value_stream.index') }}">…</a>
+{% endif %}
+```
+
+**Motivation bridge.** Journey-scoped `Solution*` motivation is promoted into the enterprise
+motivation layer (Driver/Goal/Outcome/Principle + ArchiMate element) via the
+`flask bridge-motivation` CLI — non-destructive and idempotent (`MotivationBridgeLink`).
 
 ---
 

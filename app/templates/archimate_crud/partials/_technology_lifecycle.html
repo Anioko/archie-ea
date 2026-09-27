@@ -2,10 +2,10 @@
 <div class="space-y-4">
     <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <template x-for="phase in [
-            {key: 'current',      label: 'Current',      bg: 'bg-emerald-500/10', text: 'text-emerald-700',       border: 'border-emerald-200'},
-            {key: 'transitional', label: 'Transitional', bg: 'bg-amber-500/10',   text: 'text-amber-700',         border: 'border-amber-200'},
+            {key: 'current',      label: 'Current',      bg: 'bg-success/10', text: 'text-success-emphasis',       border: 'border-success/20'},
+            {key: 'transitional', label: 'Transitional', bg: 'bg-warning/10',   text: 'text-warning-emphasis',         border: 'border-warning/20'},
             {key: 'target',       label: 'Target',       bg: 'bg-primary/10',     text: 'text-primary',           border: 'border-primary/20'},
-            {key: 'retire',       label: 'Retire',       bg: 'bg-destructive/10', text: 'text-destructive',       border: 'border-destructive/20'},
+            {key: 'retire',       label: 'Retire',       bg: 'bg-destructive/10', text: 'text-destructive-emphasis',       border: 'border-destructive/20'},
             {key: 'unset',        label: 'Unassigned',   bg: 'bg-muted',          text: 'text-muted-foreground',  border: 'border-border'}
         ]" :key="phase.key">
             <div class="flex flex-col gap-2">
@@ -21,11 +21,9 @@
                         <select class="text-xs border rounded px-2 py-1 bg-background"
                                 :value="getLifecyclePhase(el)"
                                 @change="
-                                    fetch('/api/archimate/elements/' + el.id + '/lifecycle', {
-                                        method: 'PATCH',
-                                        headers: {'Content-Type': 'application/json'},
-                                        body: JSON.stringify({lifecycle: $event.target.value})
-                                    }).then(() => loadElements())
+                                    Platform.fetch.patch('/api/archimate/elements/' + el.id + '/lifecycle', {lifecycle: $event.target.value})
+                                        .then(() => loadElements())
+                                        .catch(() => { Platform.toast.error('Could not update lifecycle phase.'); loadElements(); })
                                 " aria-label="Set lifecycle phase">
                             <option value="current">Current</option>
                             <option value="transitional">Transitional</option>

@@ -1,0 +1,76 @@
+{# Inside blueprintPage(); Platform.modal owns visibility and focus. #}
+{% from 'components/modal.html' import modal %}
+{% set composition_input = 'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50' %}
+{% set composition_button = 'inline-flex items-center justify-center rounded-md text-sm font-medium h-9 px-4 py-2 disabled:opacity-50 disabled:pointer-events-none' %}
+{% set composition_label = 'block text-xs font-medium text-muted-foreground mb-1.5' %}
+{% call modal(id='bp-composition-editor', size='lg', labelledby='bp-composition-editor-heading') %}
+<form @submit.prevent="submitEntity()" novalidate>
+    <h2 id="bp-composition-editor-heading" class="text-lg font-semibold pr-8 mb-4" x-text="editingEntity && editingEntity.id ? 'Edit Component' : 'Add Component'"></h2>
+    <p class="text-sm text-muted-foreground mb-4">Select a recorded component and describe its role in this solution. Fields marked * are required.</p>
+    <fieldset :disabled="modalSaving" class="space-y-4">
+        <div>
+            <label for="composition-type" class="{{ composition_label }}">Component type *</label>
+            <select id="composition-type" x-model="formData.component_type" @change="clearCompositionComponent()" class="{{ composition_input }}" required>
+                <option value="application">Application</option>
+                <option value="archimate_element">ArchiMate element</option>
+                <template x-if="editingEntity && !['application', 'archimate_element'].includes(editingEntity.component_type)">
+                    <option :value="editingEntity.component_type" x-text="editingEntity.component_type"></option>
+                </template>
+            </select>
+        </div>
+        <div>
+            <template x-if="formData.component_id && formData.component_name">
+                <div class="flex items-center justify-between gap-2 rounded-md border border-input bg-muted/30 px-3">
+                    <span class="text-sm text-foreground" x-text="formData.component_name"></span>
+                    <button type="button" @click="clearCompositionComponent()" class="{{ composition_button }} hover:bg-accent hover:text-accent-foreground">Clear</button>
+                </div>
+            </template>
+            <input type="hidden" name="component_id" :value="formData.component_id || ''">
+            <template x-if="!formData.component_id || !formData.component_name">
+                <div>
+                    <label for="composition-search" class="{{ composition_label }}" x-text="formData.component_type === 'application' ? 'Application *' : 'ArchiMate element *'"></label>
+                    <input id="composition-search" type="search" x-model="compositionPicker.query"
+                           @input="compositionPicker.results = []; compositionPicker.searched = false; compositionPicker.error = ''; compositionPicker.loading = false"
+                           @input.debounce.300ms="searchCompositionComponents()"
+                           :disabled="!['application', 'archimate_element'].includes(formData.component_type)"
+                           aria-describedby="composition-search-help" autocomplete="off" class="{{ composition_input }}">
+                    <p id="composition-search-help" class="text-xs text-muted-foreground mt-1">Type at least two characters, then select a result. To replace a legacy component, choose Application or ArchiMate element first.</p>
+                    <p role="status" class="text-sm text-muted-foreground mt-1" x-text="compositionPicker.error || (compositionPicker.loading ? 'Searching…' : (compositionPicker.searched && !compositionPicker.results.length ? 'No components found. Try another search.' : ''))"></p>
+                    <ul x-show="compositionPicker.results.length > 0" x-cloak aria-label="Component search results" class="mt-1 max-h-48 overflow-y-auto rounded-md border border-border bg-popover text-sm">
+                        <template x-for="component in compositionPicker.results" :key="component.id">
+                            <li><button type="button" @click="pickCompositionComponent(component)" class="{{ composition_button }} w-full justify-start hover:bg-accent hover:text-accent-foreground" x-text="component.name"></button></li>
+                        </template>
+                    </ul>
+                </div>
+            </template>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {% for field, label, options in [
+                ('role', 'Role', [('core', 'Core'), ('supporting', 'Supporting'), ('optional', 'Optional')]),
+                ('criticality', 'Criticality', [('critical', 'Critical'), ('high', 'High'), ('medium', 'Medium'), ('low', 'Low')]),
+                ('coupling', 'Coupling', [('tightly_coupled', 'Tightly coupled'), ('loosely_coupled', 'Loosely coupled'), ('standalone', 'Standalone')])
+            ] %}
+            <div>
+                <label for="composition-{{ field }}" class="{{ composition_label }}">{{ label }}</label>
+                <select id="composition-{{ field }}" x-model="formData.{{ field }}" class="{{ composition_input }}">
+                    <option value="">Not set</option>
+                    {% for value, text in options %}<option value="{{ value }}">{{ text }}</option>{% endfor %}
+                    <template x-if="editingEntity && editingEntity.{{ field }} && !{{ options | map(attribute=0) | list | tojson | forceescape }}.includes(editingEntity.{{ field }})">
+                        <option :value="editingEntity.{{ field }}" x-text="editingEntity.{{ field }}"></option>
+                    </template>
+                </select>
+            </div>
+            {% endfor %}
+        </div>
+        <div>
+            <label for="composition-notes" class="{{ composition_label }}">Notes</label>
+            <textarea id="composition-notes" x-model="formData.notes" rows="3" class="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"></textarea>
+        </div>
+    </fieldset>
+    <p x-show="entityError" x-cloak role="alert" class="text-sm text-destructive-emphasis mt-4" x-text="entityError"></p>
+    <div class="flex items-center justify-end gap-2 mt-6">
+        <button type="button" @click="closeModal()" :disabled="modalSaving" class="{{ composition_button }} border border-input bg-background hover:bg-accent hover:text-accent-foreground">Cancel</button>
+        <button type="submit" :disabled="modalSaving" class="{{ composition_button }} bg-primary text-primary-foreground hover:bg-primary/90" x-text="modalSaving ? 'Saving…' : (editingEntity && editingEntity.id ? 'Save changes' : 'Save')"></button>
+    </div>
+</form>
+{% endcall %}

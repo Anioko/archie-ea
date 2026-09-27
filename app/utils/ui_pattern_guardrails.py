@@ -3,10 +3,8 @@ UI Pattern Guardrails - Unified Modal Enforcement
 ZERO TOLERANCE for UI pattern violations
 """
 
-import os
 import re
 import sys
-from pathlib import Path
 from typing import Any, Dict, List
 
 
@@ -137,7 +135,7 @@ class UIPatternGuardrails:
                     {
                         "type": "UNIFIED_MODAL_VIOLATION",
                         "pattern": pattern,
-                        "description": f"Custom mapping modal pattern detected - MUST use unified_mapping_modal.html",
+                        "description": "Custom mapping modal pattern detected - MUST use unified_mapping_modal.html",
                         "file": file_path,
                         "severity": "CRITICAL",
                     }

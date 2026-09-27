@@ -18,6 +18,30 @@ from sqlalchemy.orm import relationship
 from app import db
 from app.models.mixins import TenantMixin
 
+# StrategicInitiative <-> Goal (2 Sep 2026): before this, a programme's goal
+# alignment was recorded as strategic_alignment — a JSON list of goal NAME
+# strings on the initiative row, unqueryable as "every programme serving goal
+# X" and silently divergent the moment a goal is renamed. A parallel, correct
+# junction (initiative_goals) already existed for the SAME purpose but wired
+# to EnterpriseInitiative, a second/legacy "programme" concept — leaving this,
+# the aggregate root WorkPackage/Benefit/Solution already point at, with no
+# real Goal linkage at all. This table is the fix for that root; the string
+# column stays for now as a display fallback on old rows only.
+strategic_initiative_goals = db.Table(
+    "strategic_initiative_goals",
+    db.Column(
+        "strategic_initiative_id", db.Integer,
+        db.ForeignKey("strategic_initiatives.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "goal_id", db.Integer, db.ForeignKey("goals.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column("contribution_level", db.String(20)),  # 'primary', 'supporting', 'indirect'
+    db.Column("created_at", db.DateTime, default=datetime.utcnow),
+)
+
 
 class StrategicInitiative(TenantMixin, db.Model):
     """
@@ -34,6 +58,8 @@ class StrategicInitiative(TenantMixin, db.Model):
     id = Column(Integer, primary_key=True)
     name = Column(String(256), nullable=False, index=True)
     description = Column(Text)
+    # Nullable by design: existing initiatives are not silently reclassified.
+    record_kind = Column(String(40), nullable=True, index=True)
 
     # Status and priority
     status = Column(
@@ -67,12 +93,15 @@ class StrategicInitiative(TenantMixin, db.Model):
     vendor_key = Column(String(50), index=True)  # aligns with VendorArchiMateTemplate/IntegrationPattern vendor keys (SAP, SALESFORCE, MICROSOFT_POWER, ...)
     clean_core_target = Column(Integer)  # governance target %, e.g. 70 — cockpit shows actual vs target (PROG-004)
 
-    # Strategic alignment - stored as JSON list of strategic goals
+    # Legacy display-only fallback — see strategic_initiative_goals above for
+    # the real, queryable linkage. Not written to by new code.
     strategic_alignment = Column(Text)  # JSON list: ["goal1", "goal2"]
 
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    archived_at = Column(DateTime, nullable=True)
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
 
     # Relationships
     owner = relationship("User", backref="owned_strategic_initiatives", foreign_keys=[owner_id])
@@ -83,6 +112,8 @@ class StrategicInitiative(TenantMixin, db.Model):
         lazy="dynamic",
     )
     roadmap_items = relationship("RoadmapItem", back_populates="initiative", lazy="dynamic")
+    goals = relationship("Goal", secondary=strategic_initiative_goals, backref="strategic_initiatives")
+    raid_items = relationship("RaidItem", back_populates="strategic_initiative")
 
     def __repr__(self):
         return f"<StrategicInitiative {self.name}>"
@@ -134,6 +165,7 @@ class StrategicInitiative(TenantMixin, db.Model):
             "id": self.id,
             "name": self.name,
             "description": self.description,
+            "record_kind": self.record_kind,
             "status": self.status,
             "priority": self.priority,
             "start_date": self.start_date.isoformat() if self.start_date else None,
@@ -269,7 +301,7 @@ class StrategicMilestone(db.Model):
         }
 
 
-class RoadmapItem(db.Model):
+class RoadmapItem(TenantMixin, db.Model):
     """
     Roadmap Item model for strategic roadmap visualization.
 
@@ -278,13 +310,29 @@ class RoadmapItem(db.Model):
     """
 
     __tablename__ = "strategic_roadmap_items"
-    __table_args__ = {"extend_existing": True}
-
     # Core fields
     id = Column(Integer, primary_key=True)
     initiative_id = Column(
-        Integer, ForeignKey("strategic_initiatives.id"), nullable=True, index=True
+        Integer,
+        ForeignKey("strategic_initiatives.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
     )
+    programme_workstream_id = Column(
+        Integer,
+        ForeignKey("programme_workstreams.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    work_package_id = Column(
+        Integer,
+        ForeignKey("work_packages.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # Task 5 installs the FK when decision_brief_versions becomes canonical.
+    decision_brief_version_id = Column(Integer, nullable=True, index=True)
+    materialisation_key = Column(String(64), nullable=True)
     title = Column(String(256), nullable=False, index=True)
     description = Column(Text)
 
@@ -319,6 +367,21 @@ class RoadmapItem(db.Model):
 
     # Relationships
     initiative = relationship("StrategicInitiative", back_populates="roadmap_items")
+    programme_workstream = relationship(
+        "ProgrammeWorkstream", foreign_keys=[programme_workstream_id]
+    )
+    work_package = relationship("WorkPackage", foreign_keys=[work_package_id])
+
+    __table_args__ = (
+        db.Index(
+            "uq_roadmap_item_materialisation",
+            "organization_id",
+            "materialisation_key",
+            unique=True,
+            postgresql_where=materialisation_key.isnot(None),
+        ),
+        {"extend_existing": True},
+    )
 
     def __repr__(self):
         return f"<RoadmapItem {self.title}>"
@@ -378,6 +441,10 @@ class RoadmapItem(db.Model):
         result = {
             "id": self.id,
             "initiative_id": self.initiative_id,
+            "programme_workstream_id": self.programme_workstream_id,
+            "work_package_id": self.work_package_id,
+            "decision_brief_version_id": self.decision_brief_version_id,
+            "materialisation_key": self.materialisation_key,
             "title": self.title,
             "description": self.description,
             "category": self.category,
@@ -659,6 +726,13 @@ class EnterpriseBriefing(db.Model):
     finding_count = Column(Integer, default=0)
     flagged_count = Column(Integer, default=0)  # high/critical severity
 
+    # Which finding gatherers actually executed this run, and how many
+    # findings each produced — lets the page show "N checks ran" rather than
+    # asserting "live data" with nothing behind it. Nullable: historical
+    # briefings predate this column and reconcile-schema only adds nullable
+    # columns (see CLAUDE.md Schema management).
+    checks_run = Column(JSON, nullable=True)
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -669,6 +743,7 @@ class EnterpriseBriefing(db.Model):
             "findings": self.findings or [],
             "finding_count": self.finding_count,
             "flagged_count": self.flagged_count,
+            "checks_run": self.checks_run or [],
         }
 
 

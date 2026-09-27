@@ -1,0 +1,19 @@
+[Unit]
+Description=Run the Archie synthetic user journey check every 5 minutes
+Documentation=file:///root/archie-ea/deploy/synthetic_monitor.py
+
+[Timer]
+# Five minutes is the useful floor here: long enough that the check costs
+# nothing, short enough that a Monday-morning outage is caught before the first
+# users are in rather than after.
+OnBootSec=3min
+OnUnitActiveSec=5min
+
+# Without this every timer on the box fires on the same second.
+RandomizedDelaySec=30
+
+# Catch up after a reboot rather than waiting a full interval.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

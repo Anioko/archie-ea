@@ -1,27 +1,14 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Data Enrichment — Rationalization{% endblock %}
 
 {% block content %}
 <div x-data="enrichmentApp()" x-init="load()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="/dashboard" class="hover:text-foreground">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="/applications" class="hover:text-foreground">Applications</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="/applications/rationalization" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Data Enrichment</span>
-    </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Data Enrichment</h1>
-            <p class="text-sm text-muted-foreground mt-1">Add cost, ownership, and criticality data to improve rationalization scoring</p>
-        </div>
-    </div>
+    {{ page_shell(title='Data Enrichment', subtitle='Add cost, ownership, and criticality data to improve rationalization scoring', breadcrumb=[('Dashboard', '/dashboard'), ('Applications', '/applications'), ('Rationalization', '/applications/rationalization'), ('Data Enrichment', none)]) }}
 
     {# ── Sub-Navigation ───────────────────────────────────────────── #}
     {% include 'applications/rationalization/_sub_nav.html' %}
@@ -50,7 +37,7 @@
     <template x-if="error && !loading">
         <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-6 text-center">
             <i data-lucide="alert-circle" class="h-8 w-8 text-destructive mx-auto mb-2"></i>
-            <p class="text-sm text-destructive font-medium">Failed to load applications</p>
+            <p class="text-sm text-destructive-emphasis font-medium">Failed to load applications</p>
             <button type="button" @click="load()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
         </div>
     </template>
@@ -75,7 +62,7 @@
                     <tbody>
                         <template x-for="(app, idx) in apps" :key="app.id">
                             <tr class="border-b border-border/50 hover:bg-muted/20 transition-colors"
-                                :class="app._saved ? 'bg-emerald-500/5' : ''">
+                                :class="app._saved ? 'bg-success/5' : ''">
                                 <td class="px-4 py-3 text-muted-foreground text-xs" x-text="idx + 1"></td>
                                 <td class="px-4 py-3">
                                     <span class="font-medium text-foreground" x-text="app.name"></span>
@@ -83,17 +70,17 @@
                                 <td class="px-4 py-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                                           :class="app.health_score === null ? 'bg-muted/50 text-muted-foreground' :
-                                                  app.health_score <= 25 ? 'bg-destructive/10 text-destructive' :
-                                                  app.health_score <= 50 ? 'bg-amber-500/10 text-amber-600' :
+                                                  app.health_score <= 25 ? 'bg-destructive/10 text-destructive-emphasis' :
+                                                  app.health_score <= 50 ? 'bg-warning/10 text-warning-emphasis' :
                                                   app.health_score <= 75 ? 'bg-primary/10 text-primary' :
-                                                  'bg-emerald-500/10 text-emerald-600'"
+                                                  'bg-success/10 text-success-emphasis'"
                                           x-text="app.health_score !== null ? app.health_score + '%' : 'N/A'"></span>
                                 </td>
                                 <td class="px-4 py-3">
                                     <span class="text-xs text-muted-foreground" x-text="app.disposition ? app.disposition.replace(/_/g, ' ') : '—'"></span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <input type="number" min="0" step="100" placeholder="0.00"
+                                    <input aria-label="Total cost of ownership" type="number" min="0" step="100" placeholder="0.00"
                                            class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                            :value="app.total_cost_of_ownership || ''"
                                            @input="app.total_cost_of_ownership = parseFloat($event.target.value) || 0; app._dirty = true; app._saved = false">
@@ -102,12 +89,12 @@
                                     <input type="text" placeholder="Owner name" maxlength="100"
                                            class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                            :value="app.application_owner || ''"
-                                           @input="app.application_owner = $event.target.value; app._dirty = true; app._saved = false">
+                                           @input="app.application_owner = $event.target.value; app._dirty = true; app._saved = false" aria-label="Owner name">
                                 </td>
                                 <td class="px-4 py-3">
                                     <select class="w-full h-8 px-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                                             :value="app.business_criticality || ''"
-                                            @change="app.business_criticality = $event.target.value; app._dirty = true; app._saved = false">
+                                            @change="app.business_criticality = $event.target.value; app._dirty = true; app._saved = false" aria-label="Select...">
                                         <option value="">Select...</option>
                                         <option value="Critical">Critical</option>
                                         <option value="High">High</option>
@@ -138,7 +125,7 @@
                                             </template>
                                         </button>
                                     </div>
-                                    <p x-show="app._rescored" x-cloak class="text-[10px] text-emerald-600 mt-1" x-text="app._newDisposition || 'Re-scored'"></p>
+                                    <p x-show="app._rescored" x-cloak class="text-xs text-success-emphasis mt-1" x-text="app._newDisposition || 'Re-scored'"></p>
                                 </td>
                             </tr>
                         </template>
@@ -158,7 +145,7 @@
 <script>
 'use strict';
 function enrichmentApp() {
-    let csrfToken = document.querySelector('meta[name="csrf-token"]');
+    let csrfToken = document.querySelector('meta[name=csrf-token]');
     csrfToken = csrfToken ? csrfToken.getAttribute('content') : '';
 
     return {
@@ -166,19 +153,17 @@ function enrichmentApp() {
         loading: false,
         error: false,
 
-        load: function() {
+        // `await` below requires this to be async. It was a plain function, which
+        // is a SyntaxError -- and a SyntaxError discards the whole <script>, so
+        // enrichmentApp() was never defined and Alpine reported "enrichmentApp is
+        // not a function". The entire page was inert, not just the load.
+        load: async function() {
             const self = this;
             self.loading = true;
             self.error = false;
 
-            fetch('/applications/rationalization/api/enrich-candidates?limit=50', {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.get('/applications/rationalization/api/enrich-candidates?limit=50', null, { silent: true });
                 self.apps = (data.applications || []).map(function(app) {
                     app._dirty = false;
                     app._saving = false;
@@ -192,15 +177,14 @@ function enrichmentApp() {
                 self.$nextTick(function() {
                     if (window.lucide) window.lucide.createIcons();
                 });
-            })
-            .catch(function(err) {
-                console.error('Enrich load failed:', err);
+            } catch (err) {
                 self.loading = false;
                 self.error = true;
-            });
+                // The error is already surfaced by the inline error state; no need for a toast.
+            }
         },
 
-        saveApp: function(app) {
+        saveApp: async function(app) {
             const self = this;
             app._saving = true;
 
@@ -209,16 +193,8 @@ function enrichmentApp() {
             if (app.application_owner) payload.application_owner = app.application_owner;
             if (app.business_criticality) payload.business_criticality = app.business_criticality;
 
-            fetch('/applications/rationalization/api/enrich/' + app.id, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.post('/applications/rationalization/api/enrich/' + app.id, payload, { silent: true });
                 app._saving = false;
                 if (data.success) {
                     app._dirty = false;
@@ -227,28 +203,18 @@ function enrichmentApp() {
                 } else {
                     Platform.toast.error('Save failed: ' + (data.error || 'Unknown error'));
                 }
-            })
-            .catch(function(err) {
+            } catch (err) {
                 app._saving = false;
-                console.error('Save failed:', err);
-                Platform.toast.error('Save request failed.');
-            });
+                Platform.toast.error('Save request failed: ' + (err.message || err));
+            }
         },
 
-        rescoreApp: function(app) {
+        rescoreApp: async function(app) {
             app._rescoring = true;
             app._rescored = false;
 
-            fetch('/applications/rationalization/api/score/' + app.id, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            try {
+                const data = await Platform.fetch.post('/applications/rationalization/api/score/' + app.id, {}, { silent: true });
                 app._rescoring = false;
                 if (data.success || data.score) {
                     const score = data.score || data;
@@ -260,12 +226,10 @@ function enrichmentApp() {
                 } else {
                     Platform.toast.error('Re-score failed: ' + (data.error || 'Unknown error'));
                 }
-            })
-            .catch(function(err) {
+            } catch (err) {
                 app._rescoring = false;
-                console.error('Re-score failed:', err);
-                Platform.toast.error('Re-score request failed.');
-            });
+                Platform.toast.error('Re-score request failed: ' + (err.message || err));
+            }
         }
     };
 }

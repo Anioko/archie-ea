@@ -1,7 +1,7 @@
 {# shadcn/ui Dialog Component (Alpine.js powered) #}
 {% macro dialog(trigger_text='Open', title='', description='') %}
     <div x-data="{ dialogOpen: false }">
-        <button @click="dialogOpen = true" class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Open">
+        <button type="button" @click="dialogOpen = true" class="inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2" aria-label="Open">
             {{ trigger_text }}
         </button>
         
@@ -25,7 +25,7 @@
                     {{ caller() }}
                 </div>
                 
-                <button
+                <button type="button"
                     @click="dialogOpen = false"
                     class="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100"
                  aria-label="Open">

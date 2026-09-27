@@ -32,6 +32,7 @@ from app.modules.solutions_strategic.v2.services.roadmap_sync import RoadmapData
 from app.modules.solutions_strategic.v2.services.roadmap_validator import (
     RoadmapValidator,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +117,8 @@ def get_work_packages():
     """
     try:
         # Query parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         status = request.args.get("status")
         business_capability = request.args.get("business_capability")
         assigned_to = request.args.get("assigned_to")
@@ -758,16 +759,16 @@ def create_deliverable():
         data = request.get_json()
 
         # Validate work package exists
-        work_package = ImplementationWorkPackage.query.get_or_404(data["work_package_id"])
+        ImplementationWorkPackage.query.get_or_404(data["work_package_id"])
 
+        # Deliverable columns are delivery_status/target_date/assigned_user_id — the
+        # old code used status/due_date/approval_criteria/created_by (none exist).
         deliverable = Deliverable(
             name=data["name"],
             description=data.get("description", ""),
             work_package_id=data["work_package_id"],
-            status=data.get("status", "planned"),
-            due_date=datetime.fromisoformat(data["due_date"]) if data.get("due_date") else None,
-            approval_criteria=data.get("approval_criteria", ""),
-            created_by=current_user.id,
+            delivery_status=data.get("status", "planned"),
+            target_date=datetime.fromisoformat(data["due_date"]) if data.get("due_date") else None,
         )
 
         db.session.add(deliverable)
@@ -781,7 +782,7 @@ def create_deliverable():
                         "id": deliverable.id,
                         "name": deliverable.name,
                         "work_package_id": deliverable.work_package_id,
-                        "status": deliverable.status,
+                        "status": deliverable.delivery_status,
                     },
                 }
             ),
@@ -1052,15 +1053,20 @@ def create_gap():
 
         data = request.get_json()
 
+        # Gap has no 'impact_assessment' (only a short 'impact' enum) and no
+        # 'created_by' — the old kwargs crashed every call. Fold the free-text
+        # impact narrative into description so it isn't lost.
+        _impact = (data.get("impact_assessment") or "").strip()
+        _desc = data.get("description", "")
+        if _impact:
+            _desc = (f"{_desc}\n\nImpact: {_impact}" if _desc else f"Impact: {_impact}")
         gap = ImplementationGap(
             name=data["name"],
-            description=data.get("description", ""),
+            description=_desc,
             gap_type=data["gap_type"],
             priority=data.get("priority", "medium"),
             current_state_ref=data.get("current_state", ""),
             target_state_ref=data.get("target_state", ""),
-            impact_assessment=data.get("impact_assessment", ""),
-            created_by=current_user.id,
         )
 
         db.session.add(gap)
@@ -1120,12 +1126,11 @@ def get_plateaus():
                     {
                         "id": p.id,
                         "name": p.name,
-                        "description": p.description,
-                        "start_date": p.start_date.isoformat() if p.start_date else None,
-                        "end_date": p.end_date.isoformat() if p.end_date else None,
-                        "stability_period": p.stability_period,
-                        "transition_state": p.transition_state,
-                        "created_at": p.created_at.isoformat() if p.created_at else None,
+                        "description": getattr(p, "description", None),
+                        "target_date": p.target_date.isoformat() if getattr(p, "target_date", None) else None,
+                        "sequence_order": getattr(p, "sequence_order", None),
+                        "state_summary": getattr(p, "state_summary", None),
+                        "created_at": p.created_at.isoformat() if getattr(p, "created_at", None) else None,
                     }
                     for p in plateaus
                 ]
@@ -1191,16 +1196,13 @@ def create_plateau():
 
         data = request.get_json()
 
+        # Plateau is milestone-based: it has target_date/sequence_order, not
+        # start_date/end_date/stability_period/transition_state/created_by. Map the
+        # target milestone to end_date; the other legacy kwargs have no columns.
         plateau = ImplementationPlateau(
             name=data["name"],
             description=data.get("description", ""),
-            start_date=datetime.fromisoformat(data["start_date"])
-            if data.get("start_date")
-            else None,
-            end_date=datetime.fromisoformat(data["end_date"]) if data.get("end_date") else None,
-            stability_period=data.get("stability_period", ""),
-            transition_state=data.get("transition_state", ""),
-            created_by=current_user.id,
+            target_date=datetime.fromisoformat(data["end_date"]) if data.get("end_date") else None,
         )
 
         db.session.add(plateau)
@@ -1213,7 +1215,7 @@ def create_plateau():
                     "plateau": {
                         "id": plateau.id,
                         "name": plateau.name,
-                        "transition_state": plateau.transition_state,
+                        "target_date": plateau.target_date.isoformat() if plateau.target_date else None,
                     },
                 }
             ),
@@ -1501,39 +1503,54 @@ def get_statistics():
         description: Unauthorized
     """
     try:
+        # These are per-user roadmap statistics, not a system-wide aggregate:
+        # the "tenant-exempt: aggregate stats" note they carried was wrong, and
+        # work_packages / gaps are both tenant tables. Raw SQL bypasses the ORM
+        # listener, so the predicate has to be written out.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE organization_id = :org" if _org is not None else ""
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        _org_params = {"org": _org} if _org is not None else {}
+        _gap_kind_clause = (
+            " AND gap_kind != 'plateau_transition'"
+            if _org_where
+            else " WHERE gap_kind != 'plateau_transition'"
+        )
+
         stats = {
             "work_packages": {
                 "total": ImplementationWorkPackage.query.count(),
                 "by_status": dict(
-                    db.session.execute(  # tenant-exempt: system table (aggregate stats)
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT status, COUNT(*)
-                    FROM work_packages
+                    FROM work_packages{_org_where}
                     GROUP BY status
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
                 "by_priority": dict(
-                    db.session.execute(  # tenant-exempt: aggregate stats
+                    db.session.execute(
                         text(
-                            """
+                            f"""
                     SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM work_packages
+                    FROM work_packages{_org_where}
                     GROUP BY priority
                 """
-                        )
+                        ), _org_params
                     ).fetchall()
                 ),
-                "total_cost": db.session.execute(  # tenant-exempt: aggregate stats
+                "total_cost": db.session.execute(
                     text(
-                        """
+                        f"""
                     SELECT COALESCE(SUM(estimated_cost), 0)
                     FROM work_packages
-                    WHERE estimated_cost IS NOT NULL
+                    WHERE estimated_cost IS NOT NULL{_org_and}
                 """
-                    )
+                    ), _org_params
                 ).fetchone()[0]
                 or 0,
             },
@@ -1552,27 +1569,28 @@ def get_statistics():
                 ),
             },
             "gaps": {
-                "total": ImplementationGap.query.count(),
+                "total": ImplementationGap.query.filter(ImplementationGap.gap_kind != "plateau_transition").count(),
                 "by_priority": dict(
-                    db.session.execute(  # tenant-exempt: system table (aggregate stats)
+                    db.session.execute(
+                        # _org_where/_gap_kind_clause are each one of a fixed
+                        # set of hardcoded literal clauses; the only dynamic
+                        # value (_org) is always bound via _org_params, never
+                        # interpolated -- no request input reaches this text.
                         text(
-                            """
-                    SELECT COALESCE(priority, 'unset'), COUNT(*)
-                    FROM gaps
-                    GROUP BY priority
-                """
-                        )
+                            f"SELECT COALESCE(priority, 'unset'), COUNT(*) "
+                            f"FROM gaps{_org_where}{_gap_kind_clause} "
+                            f"GROUP BY priority"  # nosec B608
+                        ), _org_params
                     ).fetchall()
                 ),
                 "by_type": dict(
-                    db.session.execute(  # tenant-exempt: aggregate stats
+                    db.session.execute(
+                        # Same shape as by_priority above.
                         text(
-                            """
-                    SELECT COALESCE(gap_type, 'unset'), COUNT(*)
-                    FROM gaps
-                    GROUP BY gap_type
-                """
-                        )
+                            f"SELECT COALESCE(gap_type, 'unset'), COUNT(*) "
+                            f"FROM gaps{_org_where}{_gap_kind_clause} "
+                            f"GROUP BY gap_type"  # nosec B608
+                        ), _org_params
                     ).fetchall()
                 ),
             },

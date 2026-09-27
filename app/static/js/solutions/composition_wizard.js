@@ -14,6 +14,7 @@ document.addEventListener('alpine:init', () => {
         saving: false,
         saveError: null,
         saveResult: null,
+        _searchErrorShown: false,
 
         // Element selections
         appSearch: '',
@@ -91,11 +92,19 @@ document.addEventListener('alpine:init', () => {
             try {
                 let url = '/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query);
                 if (layerFilter) url += '&layer=' + encodeURIComponent(layerFilter);
-                const res = await fetch(url, { credentials: 'same-origin' });
-                if (!res.ok) return [];
-                const data = await res.json();
+                const data = await Platform.fetch(url, { credentials: 'same-origin', silent: true });
+                this._searchErrorShown = false;
                 return (data.elements || data || []).slice(0, 10);
             } catch (e) {
+                // An empty result list reads as "no such element exists", and the
+                // architect's next move is to create a duplicate of one that does.
+                // Toast once per outage, not once per debounced keystroke.
+                if (!this._searchErrorShown) {
+                    this._searchErrorShown = true;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Element search failed: ' + (e.message || 'request failed') + '. No results are shown because the search could not run.');
+                    }
+                }
                 return [];
             }
         },
@@ -244,37 +253,33 @@ document.addEventListener('alpine:init', () => {
 
                 for (const el of allElements) {
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/elements', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                archimate_element_id: el.id,
-                                layer: el.layer || 'application',
-                            }),
-                        });
-                        if (res.ok || res.status === 409) elementsLinked++;
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/elements', {
+                            archimate_element_id: el.id,
+                            layer: el.layer || 'application',
+                        }, { credentials: 'same-origin', silent: true });
+                        elementsLinked++;
                     } catch (e) {
-                        errors.push('Link ' + el.name + ': ' + e.message);
+                        // Platform.fetch throws on non-ok responses, including 409.
+                        // We treat 409 as success because the element is already linked.
+                        if (e.status === 409) {
+                            elementsLinked++;
+                        } else {
+                            errors.push('Link ' + el.name + ': ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
+                        }
                     }
                 }
 
                 // Create proposed relationships (step 1)
                 for (const rel of this.proposedRels) {
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: rel.source_id,
-                                target_element_id: rel.target_id,
-                                relationship_type: rel.type,
-                            }),
-                        });
-                        if (res.ok) relsCreated++;
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: rel.source_id,
+                            target_element_id: rel.target_id,
+                            relationship_type: rel.type,
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': ' + e.message);
+                        errors.push('Rel ' + rel.source_name + '->' + rel.target_name + ': ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
@@ -282,19 +287,14 @@ document.addEventListener('alpine:init', () => {
                 for (const [key, accessType] of Object.entries(this.accessMap)) {
                     const [appId, dataId] = key.split('-').map(Number);
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: appId,
-                                target_element_id: dataId,
-                                relationship_type: 'access',
-                            }),
-                        });
-                        if (res.ok) relsCreated++;
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: appId,
+                            target_element_id: dataId,
+                            relationship_type: 'access',
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Access rel: ' + e.message);
+                        errors.push('Access rel: ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
@@ -302,19 +302,14 @@ document.addEventListener('alpine:init', () => {
                 for (const [appId, nodeId] of Object.entries(this.deploymentMap)) {
                     if (!nodeId) continue;
                     try {
-                        const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            credentials: 'same-origin',
-                            body: JSON.stringify({
-                                source_element_id: parseInt(nodeId),
-                                target_element_id: parseInt(appId),
-                                relationship_type: 'assignment',
-                            }),
-                        });
-                        if (res.ok) relsCreated++;
+                        await Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                            source_element_id: parseInt(nodeId),
+                            target_element_id: parseInt(appId),
+                            relationship_type: 'assignment',
+                        }, { credentials: 'same-origin', silent: true });
+                        relsCreated++;
                     } catch (e) {
-                        errors.push('Deploy rel: ' + e.message);
+                        errors.push('Deploy rel: ' + (e.message || 'HTTP ' + (e.status || 'unknown')));
                     }
                 }
 
@@ -322,9 +317,24 @@ document.addEventListener('alpine:init', () => {
                     elementsLinked,
                     relsCreated,
                     errors: errors.length,
+                    // The messages were being thrown away and only the count kept, so a
+                    // partial save could not be diagnosed or retried.
+                    errorMessages: errors,
                 };
+                /* Every per-item failure above was collected and then reported to
+                   nobody: the wizard closed on a save where half the relationships
+                   had not been written. */
+                if (errors.length && window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error(
+                        errors.length + ' of the selected items were NOT saved.',
+                        { description: errors.slice(0, 3).join('; '), duration: 0 }
+                    );
+                }
             } catch (e) {
-                this.saveError = e.message;
+                this.saveError = 'Nothing further was saved — ' + ((e && e.message) || 'request failed');
+                if (window.Platform && window.Platform.toast) {
+                    window.Platform.toast.error(this.saveError);
+                }
             } finally {
                 this.saving = false;
             }

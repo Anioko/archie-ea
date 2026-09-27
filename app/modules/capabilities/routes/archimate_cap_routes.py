@@ -14,6 +14,7 @@ Routes (8):
     - api_delete_archimate_mapping(mapping_id)                    DELETE "/api/archimate-mappings/<int:mapping_id>"
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from flask import current_app, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,6 +23,7 @@ from app import db
 from app.decorators import audit_log
 
 from . import capability_map
+from app.utils.pagination import safe_int_arg
 
 
 # ============================================================================
@@ -194,6 +196,7 @@ def api_create_archimate_element():
             )
 
         db.session.add(element)
+        sync_archimate_element(element)
         db.session.commit()
 
         return jsonify(
@@ -284,20 +287,27 @@ def api_application_archimate_summary(app_id):
             "implementation_layer": {"work_packages": 15, "events": 8}
         }
     """
+    from app.models.application_portfolio import ApplicationComponent
+    from app.utils.route_guards import require_entity
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         from app.models.application_layer import ApplicationEvent, ApplicationInterface
         from app.models.business_layer import BusinessActor, BusinessRole, BusinessService
         from app.models.implementation_migration import ImplementationEvent, WorkPackage
         from app.models.technology_layer import Node, SystemSoftware
 
-        # Helper function to safely count entities (some models may not have application_component_id)
+        # Helper function to count entities. Models with no
+        # application_component_id genuinely have 0 elements attached to an
+        # application; a *query failure* does not, so it is not caught here.
+        # Swallowing it returned 0 for that layer and then summed it into
+        # total_elements, publishing an undercount as a measured figure. The
+        # route handler below logs and returns an explicit error instead.
         def safe_count(model, app_id):
-            try:
-                if hasattr(model, "application_component_id"):  # model-safety-ok: polymorphic - checking multiple model classes for column existence
-                    return model.query.filter_by(application_component_id=app_id).count()
-                return 0
-            except Exception:
-                return 0
+            if hasattr(model, "application_component_id"):  # model-safety-ok: polymorphic - checking multiple model classes for column existence
+                return model.query.filter_by(application_component_id=app_id).count()
+            return 0
 
         summary = {
             "business_layer": {
@@ -660,7 +670,7 @@ def api_archimate_relationship_health():
         by_layer: [{layer, element_count, relationship_count, avg}]
     """
     try:
-        from sqlalchemy import func, or_, literal_column
+        from sqlalchemy import func
 
         from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
         from app.models.architecture_inference_relationship import ArchitectureInferenceRelationship
@@ -669,8 +679,37 @@ def api_archimate_relationship_health():
         total_elements = db.session.query(func.count(ArchiMateElement.id)).scalar() or 0
 
         # Total relationships (legacy + inference)
-        legacy_rels = db.session.query(func.count(ArchiMateRelationship.id)).scalar() or 0
-        inference_rels = db.session.query(func.count(ArchitectureInferenceRelationship.id)).scalar() or 0
+        #
+        # E2E-I: neither ArchiMateRelationship nor
+        # ArchitectureInferenceRelationship carries an organization_id (no
+        # TenantMixin), so a raw count() here summed every tenant's rows,
+        # not this one's -- confirmed live 6 Sep 2026
+        # (Archie-E2E-Workflow-Test-Report.md E2E-I): a from-empty tenant
+        # with 1 element read "34 relationships", a figure close to another
+        # tenant's real total. ArchiMateElement IS tenant-scoped (TenantMixin),
+        # so joining through it and letting the ORM's automatic tenant filter
+        # apply to that side of the join scopes the relationship count
+        # correctly without a schema change. Retrofitting TenantMixin onto
+        # the relationship tables themselves (a real column + backfill) is a
+        # separate, bigger remediation -- this closes the reported leak now.
+        from sqlalchemy import or_
+
+        legacy_rels = (
+            db.session.query(func.count(func.distinct(ArchiMateRelationship.id)))
+            .join(ArchiMateElement, or_(
+                ArchiMateRelationship.source_id == ArchiMateElement.id,
+                ArchiMateRelationship.target_id == ArchiMateElement.id,
+            ))
+            .scalar() or 0
+        )
+        inference_rels = (
+            db.session.query(func.count(func.distinct(ArchitectureInferenceRelationship.id)))
+            .join(ArchiMateElement, or_(
+                ArchitectureInferenceRelationship.source_id == ArchiMateElement.id,
+                ArchitectureInferenceRelationship.target_id == ArchiMateElement.id,
+            ))
+            .scalar() or 0
+        )
         total_relationships = legacy_rels + inference_rels
 
         # Elements with 0 relationships (union both tables)
@@ -769,7 +808,7 @@ def api_relationship_suggestions():
 
         status = request.args.get("status", "pending")
         min_confidence = float(request.args.get("min_confidence", 0.3))
-        limit = min(int(request.args.get("limit", 50)), 100)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 100)
 
         query = RelationshipSuggestion.query.filter_by(status=status)
         if status == "pending":

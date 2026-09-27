@@ -28,7 +28,63 @@ def _csrf_exempt_blueprint(app, blueprint):
 
 
 
+class _RegistrationFailureCapture(logging.Handler):
+    """Collect WARNING+ records emitted while blueprints register.
+
+    ``init_blueprints`` deliberately swallows import errors so one broken module
+    degrades a single feature instead of taking down the whole app — 99 of its
+    ~100 ``except`` handlers report via ``app.logger.warning``/``.error``. That
+    resilience is intentional, but it also makes breakage invisible: a module can
+    silently stop registering and the only symptom is a ``BuildError`` 500 the
+    next time a template calls ``url_for()`` on one of its endpoints.
+
+    Capturing the records here turns every one of those handlers into an
+    assertable signal without editing a single call site. Read the result from
+    ``app.extensions["blueprint_registration_failures"]``; see
+    ``tests/test_boot_health.py``.
+    """
+
+    def __init__(self):
+        super().__init__(level=logging.WARNING)
+        self.records = []
+
+    def emit(self, record):
+        try:
+            self.records.append(
+                {
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "message": record.getMessage(),
+                }
+            )
+        except Exception:  # noqa: BLE001 — a broken record must never break boot
+            pass
+
+
 def init_blueprints(app):
+    """Register every blueprint / module on *app*, recording any failures.
+
+    Thin wrapper around :func:`_init_blueprints` that captures the warnings the
+    registration helpers emit when a module fails to import, and stashes them on
+    ``app.extensions["blueprint_registration_failures"]``.
+    """
+    capture = _RegistrationFailureCapture()
+    original_level = app.logger.level
+
+    # A logger whose effective level is above WARNING would drop the records
+    # before any handler sees them. Lower it for the duration, then restore.
+    if original_level > logging.WARNING or original_level == logging.NOTSET:
+        app.logger.setLevel(logging.WARNING)
+    app.logger.addHandler(capture)
+    try:
+        _init_blueprints(app)
+    finally:
+        app.logger.removeHandler(capture)
+        app.logger.setLevel(original_level)
+        app.extensions["blueprint_registration_failures"] = capture.records
+
+
+def _init_blueprints(app):
     """Register every blueprint / module on *app*."""
     from app.extensions import csrf
 
@@ -64,6 +120,46 @@ def init_blueprints(app):
     # --- North Star Phase 2: ArchiMate Layer Navigation (NORTH-STAR-002) ---
     _register_archimate_layer_navigation(app)
 
+    # --- Enterprise Genome (ADR 0010) — deterministic, provenance-carrying
+    # emitter slices; each registers non-fatally so one broken slice degrades
+    # to a missing page, not a dead app. ---
+    try:
+        from app.modules.genome.routes.coverage_routes import register as register_genome_coverage
+        register_genome_coverage(app)
+        app.logger.info("[BLUEPRINT] Genome coverage matrix registered at /genome/coverage")
+    except Exception as _gc_exc:
+        app.logger.warning("[BLUEPRINT] Genome coverage not available: %s", _gc_exc)
+    try:
+        from app.modules.codegen.routes.genome_data_routes import genome_data_bp
+        app.register_blueprint(genome_data_bp)
+        app.logger.info("[BLUEPRINT] Genome data RoPA registered at /genome/data/ropa")
+    except Exception as _gd_exc:
+        app.logger.warning("[BLUEPRINT] Genome data RoPA not available: %s", _gd_exc)
+    try:
+        from app.modules.genome.routes.roadmap_routes import register as register_genome_roadmap
+        register_genome_roadmap(app)
+        app.logger.info("[BLUEPRINT] Genome transformation roadmap registered at /genome/roadmap")
+    except Exception as _gr_exc:
+        app.logger.warning("[BLUEPRINT] Genome roadmap not available: %s", _gr_exc)
+    try:
+        from app.modules.genome.routes.drift_routes import register as register_genome_drift
+        register_genome_drift(app)
+        app.logger.info("[BLUEPRINT] Genome model-health / drift registered at /genome/model-health")
+    except Exception as _gh_exc:
+        app.logger.warning("[BLUEPRINT] Genome model-health not available: %s", _gh_exc)
+    try:
+        from app.modules.enterprise_genome.routes.security_genome_routes import enterprise_genome_bp
+        app.register_blueprint(enterprise_genome_bp)
+        app.logger.info("[BLUEPRINT] Genome security matrix registered at /enterprise-genome/security/matrix")
+    except Exception as _gs_exc:
+        app.logger.warning("[BLUEPRINT] Genome security matrix not available: %s", _gs_exc)
+    try:
+        from app.modules.enterprise_genome.routes.ai_systems_routes import ai_systems_genome_bp
+        app.register_blueprint(ai_systems_genome_bp)
+        app.logger.info("[BLUEPRINT] Genome AI-systems register at /genome/ai-systems")
+    except Exception as _gai_exc:
+        app.logger.warning("[BLUEPRINT] Genome AI-systems not available: %s", _gai_exc)
+
     # --- Feature-flagged domain modules ---
     _ff_solutions_strategic = _register_solutions_strategic(app, csrf)
     _ff_architecture = _register_architecture(app, csrf)
@@ -75,6 +171,7 @@ def init_blueprints(app):
     _ff_governance = _register_governance(app, csrf)
     _ff_industry_apqc = _register_industry_apqc(app)
     _register_solution_product(app)
+    _register_intelligence(app)
 
     # --- North Star Persona MVP modules (NS-008, NS-009, NS-010, NS-011, NS-012, NS-013) ---
     _register_persona_modules(app)
@@ -133,8 +230,44 @@ def _register_optional_standalone(app):
     specs = [
         # (module_path, attr, url_prefix or None to use the blueprint's own)
         ("app.modules.governance.routes.governance_dashboard_routes", "governance_bp", None),
+        ("app.modules.portfolio.routes.portfolio_routes", "portfolio_bp", None),
+        # Declared since forever, imported by nothing: /admin/security 404'd in
+        # every tier. Registered here (not in admin v1/v2) because it is
+        # tier-independent, like billing and team below.
+        ("app.modules.admin.security_routes", "admin_security_bp", None),
         ("app.modules.admin.billing_routes", "billing_bp", "/admin/billing"),
         ("app.modules.admin.team_routes", "team_bp", "/admin"),
+        ("app.modules.business_model_canvas.routes", "business_model_bp", "/business-model"),
+        ("app.modules.organization.routes", "organization_bp", "/organization"),
+        ("app.modules.business_case.routes", "business_case_bp", "/business-case"),
+        # The Business Architecture practice landing page — one front door to
+        # the twelve BA outputs, all of which already ship scattered across
+        # five generic sidebar zones.
+        (
+            "app.modules.business_architecture.routes",
+            "business_architecture_bp",
+            "/business-architecture",
+        ),
+        # ARCH-124: Tech Radar — adopt/trial/assess/hold over the existing
+        # Technology-layer ArchiMateElement catalogue.
+        ("app.modules.tech_radar.routes", "tech_radar_bp", "/technology/radar"),
+        # SAP S/4HANA Interface Register (Task 02): gives
+        # ApplicationInterfaceMetadata its first producer, scoped to a
+        # TechnologyRoadmapInitiative.
+        (
+            "app.modules.interface_register.routes",
+            "interface_register_bp",
+            "/interface-register",
+        ),
+        # BA-B1: revocable, read-only share links for capability artefacts. Its
+        # public route (/shared/<token>) is the only unauthenticated page here —
+        # scope comes from the share row, never from the URL. See the module
+        # docstring in app/modules/sharing/routes.py.
+        ("app.modules.sharing.routes", "artefact_share_bp", None),
+        # ARCH-123 (Data Lineage) is NOT a new blueprint: it extends the
+        # existing app.modules.architecture.routes.data_architecture_routes
+        # (blueprint "data_architecture", already registered elsewhere) with
+        # a real create path and a lineage view — see that file.
     ]
     for module_path, attr, prefix in specs:
         try:
@@ -163,7 +296,11 @@ CANONICAL_BLUEPRINTS = {
     'arb', 'arb_workflow',
     'consolidation_list',
     'unified_ai_chat',
-    # 'implementation_planning',  # REMOVED (PLT-099 audit): deprecated, all routes 404
+    # 'implementation_planning',  # Not canonical, but NOT dead: it is still
+    # registered elsewhere and serves 26 live rules under /implementation/*
+    # (verified against app.url_map). The previous note here said "all routes
+    # 404", which is false and has already misled one change. Deregistering it
+    # is still the intent — until then, treat its routes as live.
     'strategic',
     'admin', 'account',
     'dashboard_pages',
@@ -391,7 +528,10 @@ def _register_vendors(app, csrf):
             )
     # BPM-002: Tier 3 legacy fallback removed. USE_VENDORS_GUARDRAILS=True (Tier 1) is the
     # only active path. All 12 vendor blueprint families are registered via vendors v2 module.
-    # vendor_analysis_bp, vendor_mdm_bp, options_analysis_bp are covered by v2/unified_vendor_api.
+    # vendor_analysis_bp and vendor_mdm_bp are covered by v2/unified_vendor_api.
+    # options_analysis_bp is NOT: its routes do not exist under v2 and the blueprint is
+    # registered nowhere, so those endpoints are unreachable. Wire it up or delete it
+    # (deferred as a judgement call; see the W1-1 findings in the diligence register).
     # Neither feature flag is enabled: the v2 (guardrail) vendor module is not mounted.
     # Vendor routes are still served by the always-on unified vendor blueprints, so this
     # is the expected default — not a failure. Set USE_VENDORS_GUARDRAILS=true to opt into v2.
@@ -414,6 +554,13 @@ def _register_always_on_apis(app, csrf):
     # csrf.exempt: health check blueprint — monitoring probes cannot include CSRF tokens
     csrf.exempt(health_bp)
     app.logger.info("[BLUEPRINT] Health checks registered at /health, /health/db")
+
+    # Error aggregation: client-error sink + platform-admin /admin/errors page
+    # (app/_bootstrap/error_tracking.py covers the server-side half).
+    from app.modules.monitoring.routes.error_events_routes import error_events_bp
+
+    app.register_blueprint(error_events_bp)
+    app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
 
     # Security API
     from app.routes.security_api import security_bp
@@ -443,10 +590,46 @@ def _register_always_on_apis(app, csrf):
 
     app.register_blueprint(api_v1_bp)
     app.logger.info("[BLUEPRINT] API v1 registered at /api/v1")
-    
-    # csrf.exempt: api_v1 blueprint — Bearer token authenticated REST API, no browser session
-    _csrf_exempt_blueprint(app, api_v1_bp)
 
+    # OAuth 2.1 authorization server — the provider side of authlib
+    # (the client side is already in app/modules/account/ for SSO).
+    # CSRF-exempt: the /oauth/token endpoint is called by OAuth clients
+    # with a Bearer token or no session cookie at all.
+    from app.modules.oauth_provider import oauth_provider_bp, oauth_metadata_bp
+
+    app.register_blueprint(oauth_provider_bp)
+    app.logger.info("[BLUEPRINT] OAuth provider registered at /oauth")
+    app.register_blueprint(oauth_metadata_bp)
+    app.logger.info("[BLUEPRINT] OAuth metadata registered at /.well-known")
+    _csrf_exempt_blueprint(app, oauth_provider_bp)
+    _csrf_exempt_blueprint(app, oauth_metadata_bp)
+
+    # MCP Streamable HTTP endpoint — the read-only lens tools
+    from app.modules.mcp import mcp_bp
+
+    app.register_blueprint(mcp_bp)
+    app.logger.info("[BLUEPRINT] MCP endpoint registered at /mcp")
+    _csrf_exempt_blueprint(app, mcp_bp)
+    
+    # api_v1 blueprint is NOT CSRF-exempt. Audited 2026-08-18 (finding A-04/ARCH-051/C-10):
+    # every route under app/api/v1/ authenticates with @login_required (the browser
+    # session cookie), not a Bearer token — there is no token-based auth path in this
+    # blueprint at all. The previous blanket `csrf.exempt(api_v1_bp)` here let a
+    # logged-in browser session be driven by a cross-site form/fetch with no token,
+    # e.g. POST /api/v1/applications/ (create) and bulk-delete endpoints. The
+    # front-end CSRF safety net (app/static/js/core/03-fetch.js) already injects
+    # X-CSRFToken on every mutating fetch, including calls to /api/v1/*, so browser
+    # callers are unaffected by requiring the token here.
+
+
+    # GDPR data-subject API (export / erasure / status).
+    # Routes carry their own full "/api/gdpr/..." paths, so no url_prefix here.
+    # Deliberately NOT csrf-exempt: the erasure route is a POST driven from the
+    # browser session, and the front-end fetch wrapper already sends X-CSRFToken.
+    from app.modules.compliance.gdpr_routes import gdpr_bp
+
+    app.register_blueprint(gdpr_bp)
+    app.logger.info("[BLUEPRINT] GDPR data-subject API registered at /api/gdpr")
 
     # Unified Enterprise Architecture
     from app.routes.unified_enterprise_routes import enterprise_bp
@@ -616,8 +799,13 @@ def _register_always_on_apis(app, csrf):
         from app.api.confidence_review_routes import confidence_review_bp as confidence_review_api_bp
 
         app.register_blueprint(confidence_review_api_bp)
-        # csrf.exempt: confidence review API — REST API at /api/confidence, programmatic callers cannot include CSRF tokens
-        csrf.exempt(confidence_review_api_bp)
+        # NOT CSRF-exempt. Audited 2026-08-18 (P-04): every route in
+        # app/api/confidence_review_routes.py uses @login_required against the
+        # session cookie; there is no Bearer/API-key authentication anywhere in
+        # this blueprint despite the "programmatic callers" justification that
+        # used to sit here. That is the same falsely-justified pattern removed
+        # from api_v1 in 9cda379 — a session-cookie-authenticated endpoint is
+        # never a legitimate CSRF opt-out. See app/_bootstrap/csrf_coverage.py.
         app.logger.info(
             "[BLUEPRINT] Confidence Review API registered at /api/confidence"
         )
@@ -722,6 +910,20 @@ def _register_solutions_strategic(app, csrf):
 
 
 def _register_architecture(app, csrf):
+    # SA-008 completeness routes are tier-independent: they have no v2 equivalent, so
+    # registering them only in the Tier-3 fallback below left both the page
+    # (/solutions/<id>/completeness) and the API it fetches
+    # (/api/solutions/<id>/completeness) unrouted whenever USE_ARCHITECTURE_GUARDRAILS
+    # is on — which is the default. Register before the tier branches, all of which
+    # can return early.
+    try:
+        from app.modules.architecture.routes.completeness_routes import completeness_bp
+
+        app.register_blueprint(completeness_bp)
+        app.logger.info("[BLUEPRINT] SA-008 completeness routes registered")
+    except ImportError as e:
+        app.logger.warning(f"Completeness blueprint not available: {e}")
+
     # --- Tier 1: v2 (guardrail-enabled) ---
     if _is_flag("USE_ARCHITECTURE_GUARDRAILS"):
         try:
@@ -784,14 +986,6 @@ def _register_architecture(app, csrf):
         app.logger.info("[BLUEPRINT] ArchiMate routes registered at /archimate")
     except ImportError as e:
         app.logger.warning(f"ArchiMate routes blueprint not available: {e}")
-
-    try:
-        from app.modules.architecture.routes.completeness_routes import completeness_bp
-
-        app.register_blueprint(completeness_bp)
-        app.logger.info("[BLUEPRINT] SA-008 completeness routes registered")
-    except ImportError as e:
-        app.logger.warning(f"Completeness blueprint not available: {e}")
 
     try:
         from app.archimate_crud import archimate_crud
@@ -1175,6 +1369,25 @@ def _register_industry_apqc(app):
         return False
 
 
+def _register_intelligence(app):
+    """Register the intelligence module (T-001 skeleton — mounts nothing yet).
+
+    ``app.modules.intelligence.register`` currently registers no blueprint and
+    no event hook (T-003/T-004 add those). This call exists so later tasks
+    have exactly one non-fatal registration point to extend, matching every
+    other module here.
+    """
+    try:
+        from app.modules.intelligence import register as _reg
+
+        _reg(app)
+        app.logger.info(
+            "[MODULE] Intelligence module registered (app.modules.intelligence)"
+        )
+    except Exception as e:
+        app.logger.warning("Failed to register intelligence module: %s", e)
+
+
 def _register_solution_product(app):
     """Register Solution Product generation module (GA — flag removed COM-023)."""
     try:
@@ -1196,18 +1409,66 @@ def _register_solution_product(app):
 
 
 def _register_persona_modules(app):
-    """North Star persona modules — REGISTRATION DISABLED 2026-06-11.
+    """North Star persona modules — RE-ENABLED 2026-07-31.
 
-    procurement (7 page routes) and my_applications (5 page routes) were
-    registered with ZERO templates in app/templates/ — every page route
-    returned 500 for any user with the matching role. Routes are not
-    linked from any sidebar. Re-enable only after the templates are
-    built and browser-verified (see DONE_CRITERIA protocol). The route
-    files remain at app/modules/{procurement,my_applications}/ as the
-    spec for that future feature work.
+    Disabled on 2026-06-11 on the grounds that both modules had "ZERO templates
+    in app/templates/" and returned 500 for any user holding the matching role.
+    Disabling was the right call at the time; a 500 is worse than an absent page.
+
+    The premise was incomplete, though. Both blueprints declare
+    template_folder="templates" and ship 12 substantive templates (1,919 lines)
+    at app/modules/{procurement,my_applications}/templates/, all extending
+    layouts/admin_base.html. Flask resolves those through the blueprint's own
+    loader, not app/templates/ — so looking only in app/templates/ found nothing
+    while the templates were present all along.
+
+    Every dependency was verified before re-enabling: the ApplicationOwner,
+    VendorContract and LicenseEntitlement models exist, their tables
+    (application_owners, vendor_contracts, license_entitlements) exist in the
+    production database, and requires_procurement / requires_application_owner
+    are exported from app.decorators.
+
+    The cost of leaving them off was not neutral. ENTERPRISE_ROLE_SECTION_MAP
+    grants the procurement archetype 3 sections and application_manager 5 — and
+    the missing module is the DEFINING section of each. Two of nine archetypes
+    were promised a product that returned 404.
+
+    Registration is guarded: a failure here must not take down the rest of the
+    application, and is loud rather than silent.
+
+    tests/journeys/ asserts these pages actually render, so this cannot regress
+    to a 500 unnoticed.
     """
-    logger.info("[Blueprint] Persona MVP modules (procurement, my_applications) "
-                "not registered — templates missing, see _register_persona_modules docstring")
+    try:
+        from app.modules.my_applications import my_applications_bp
+        from app.modules.my_applications import routes as _my_app_routes  # noqa: F401
+
+        app.register_blueprint(my_applications_bp)
+        logger.info("[Blueprint] my_applications registered (/my-applications)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] my_applications FAILED to register: %s", e)
+
+    try:
+        from app.modules.procurement import procurement_bp
+        from app.modules.procurement import routes as _proc_routes  # noqa: F401
+
+        app.register_blueprint(procurement_bp)
+        logger.info("[Blueprint] procurement registered (/procurement)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] procurement FAILED to register: %s", e)
+
+    # All-modules directory (shell-overhaul Wave 1, Task 3 fix round). Not
+    # role-gated — every authenticated user can see the full surface list,
+    # same as the sidebar's own view_functions guard already lets a curious
+    # user reach anything by URL; this just makes that discoverable.
+    try:
+        from app.modules.modules_directory import modules_directory_bp
+        from app.modules.modules_directory import routes as _modules_dir_routes  # noqa: F401
+
+        app.register_blueprint(modules_directory_bp)
+        logger.info("[Blueprint] modules_directory registered (/modules)")
+    except Exception as e:  # noqa: BLE001
+        logger.error("[Blueprint] modules_directory FAILED to register: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -1251,6 +1512,40 @@ def _register_misc_blueprints(app, csrf):
             app.logger.warning(f"[BLUEPRINT] Unified Vendors not available: {e}")
 
         # COM-015: vendor_comparison removed (BPM-001 wave-2, zero callers, merged into unified_vendors_api)
+
+    # The vendors page (vendors/list.html) and its JS depend on the vendor JSON API
+    # (/api/vendors/list, /api/vendors/ranking) and on vendor_management.create_vendor.
+    # When USE_VENDORS_GUARDRAILS is on, the v2 vendor blueprints can fail to register
+    # with no fallback, so the vendor table 404s on load ("NOT FOUND" toasts) and the
+    # Add Vendor button is dead. Register the canonical vendor API + management routes
+    # unconditionally, guarded against double-registration so v1 and v2 both work.
+    if "unified_vendors_api" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.unified_vendor_api import (
+                unified_vendors_api_bp,
+            )
+
+            app.register_blueprint(unified_vendors_api_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor JSON API registered at /api/vendors (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(f"[BLUEPRINT] Vendor JSON API registration failed: {e}")
+
+    if "vendor_management" not in app.blueprints:
+        try:
+            from app.modules.vendors.routes.vendor_management_routes import (
+                vendor_management_bp,
+            )
+
+            app.register_blueprint(vendor_management_bp)
+            app.logger.info(
+                "[BLUEPRINT] Vendor Management registered (always-on)"
+            )
+        except Exception as e:  # pragma: no cover - defensive
+            app.logger.warning(
+                f"[BLUEPRINT] Vendor Management registration failed: {e}"
+            )
 
     if not _use_applications:
         # Application Merging
@@ -1430,7 +1725,6 @@ def _register_late_apis(app, csrf, **flags):
 
             if os.environ.get("USE_IMPORT_BATCH_COMPAT", "true").lower() != "false":
                 try:
-                    from app.compat.import_batch import wrap_legacy_import_batch_bp
 
                     # Note: register_batch_processing_routes is a function, not a blueprint
                     # Compat wrapper would need to be applied differently if needed
@@ -1615,8 +1909,41 @@ def _register_tail_blueprints(app, csrf, **flags):
                 f"[BLUEPRINT] Failed to register Roadmap Builder API routes: {e}"
             )
 
-    # Architecture Monitoring — removed (empty shell page, 17 unused API routes)
-    # architecture_monitoring_bp unregistered
+    # Architecture Monitoring API: mounted by app.modules.architecture (v2 and module
+    # tiers) only when ARCHITECTURE_MONITORING_API_ENABLED is on; off by default.
+
+    # Typed ARB condition evidence/verify/waive API. Canonical-only surface with
+    # no legacy counterpart, so it is not gated on the legacy architecture flag.
+    try:
+        from app.modules.architecture.routes.arb_condition_routes import (
+            arb_conditions_api_bp,
+        )
+
+        app.register_blueprint(arb_conditions_api_bp)
+        app.logger.info(
+            "[BLUEPRINT] Typed ARB condition API registered at /arb/api/conditions"
+        )
+    except Exception as e:
+        app.logger.warning(
+            f"[BLUEPRINT] Failed to register typed ARB condition routes: {e}"
+        )
+
+    # Typed ARB condition HTML child routes (blueprint §11). The non-JS form
+    # transport for the same commands; separate blueprint so it does not depend
+    # on arb_bp being imported first.
+    try:
+        from app.modules.architecture.routes.arb_condition_html_routes import (
+            arb_conditions_html_bp,
+        )
+
+        app.register_blueprint(arb_conditions_html_bp)
+        app.logger.info(
+            "[BLUEPRINT] Typed ARB condition HTML child routes registered at /arb/reviews"
+        )
+    except Exception as e:
+        app.logger.warning(
+            f"[BLUEPRINT] Failed to register typed ARB condition HTML routes: {e}"
+        )
 
     # ARB routes
     if not _ff_architecture:

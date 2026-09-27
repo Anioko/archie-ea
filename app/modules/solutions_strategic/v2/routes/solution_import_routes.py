@@ -8,7 +8,7 @@ Routes are attached to ``solution_design_bp`` (url_prefix=/solutions).
 
 import logging
 
-from flask import jsonify, request
+from flask import jsonify, render_template, request
 from flask_login import login_required
 
 from .solution_design_routes import solution_design_bp
@@ -16,6 +16,16 @@ from .solution_design_routes import solution_design_bp
 logger = logging.getLogger(__name__)
 
 _MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB limit for OEF XML files
+
+
+@solution_design_bp.route("/import/archimate", methods=["GET"])
+@login_required
+def import_archimate_page():
+    """DOGFOOD-003/004: the OEF import preview/execute panel
+    (``solutions/partials/_import_preview.html``) that drives
+    ``/solutions/import/archimate/preview`` and ``.../execute`` was written
+    but never included on a reachable page. This is that page."""
+    return render_template("solutions/import_archimate.html")
 
 
 @solution_design_bp.route("/import/archimate/preview", methods=["POST"])

@@ -5,9 +5,8 @@ Extracted from capability_map_routes.py (lines 3418-4073).
 Routes registered on the shared ``capability_map`` blueprint.
 """
 
-from datetime import datetime
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 from flask_login import login_required
 
 from app.decorators import audit_log
@@ -25,7 +24,11 @@ from . import capability_map
 
 @capability_map.route("/api/acm/domains")
 @login_required
-@cached(ttl=300, key_prefix="capability_map:acm_domains")
+@cached(
+    ttl=300,
+    key_prefix="capability_map:acm_domains",
+    key_func=lambda: getattr(g, "current_org_id", None),
+)
 def api_acm_domains():
     """
     Get ACM technical capability domains with statistics for capability-map Technical tab.
@@ -445,7 +448,7 @@ def api_acm_capability_applications(capability_id):
             return jsonify({"error": "Technical capability not found"}), 404
 
         # Single SQL LEFT OUTER JOIN: fetch all non-retired applications with their
-        # mapping row for this capability (NULL columns when not mapped).  # noqa: raw-sql
+        # mapping row for this capability (NULL columns when not mapped).  # raw-sql
         atcm = application_technical_capability_mapping
         rows = (
             db.session.query(ApplicationComponent, atcm)

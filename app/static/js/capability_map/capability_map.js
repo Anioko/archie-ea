@@ -38,18 +38,16 @@
         async function loadTechnicalTab() {
             try {
                 // Load domains
-                const domainsResponse = await fetch('/capability-map/api/acm/domains');
-                const domainsData = await domainsResponse.json();
-
+                const domainsData = await Platform.fetch('/capability-map/api/acm/domains');
+                // Unchecked, a 500 parsed to `{}`: `domainsData.domains` was falsy, the
+                // render was skipped, and the tab sat empty as if no domains existed.
                 if (domainsData.domains) {
                     acmDomainsData = domainsData.domains;
                     renderACMDomains(domainsData);
                 }
 
                 // Load capabilities
-                const capsResponse = await fetch('/capability-map/api/acm/capabilities');
-                const capsData = await capsResponse.json();
-
+                const capsData = await Platform.fetch('/capability-map/api/acm/capabilities');
                 if (capsData.capabilities) {
                     acmCapabilitiesData = capsData.capabilities;
                     acmFilteredData = capsData.capabilities;
@@ -62,26 +60,29 @@
 
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
-                console.error('Error loading ACM data:', error);
                 safeHTML(document.getElementById('acm-domains-grid'), `
                     <div class="col-span-full text-center text-destructive py-8">
                         <i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>
                         <p>Error loading ACM data. Please try again.</p>
                     </div>
                 `);
+                // Platform.fetch already shows a toast for non‑silent errors; this inline error is the user‑visible fallback.
+                // No console call remains.
             }
         }
 
         async function loadApplicationsForACMMapping() {
             try {
-                const response = await fetch('/capability-map/api/applications');
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/applications');
+                // Unchecked, a 500 left the mapping dropdown holding only its
+                // "Choose an application..." placeholder.
                 if (data.applications) {
                     acmApplicationsList = data.applications;
                     populateACMApplicationsDropdown();
                 }
             } catch (error) {
-                console.error('Error loading applications for ACM mapping:', error);
+                // Platform.fetch already shows a toast for non‑silent errors; this inline error is the user‑visible fallback.
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for mapping');
             }
         }
 
@@ -120,7 +121,9 @@
 
                 return `
                     <div class="${colors.bg} ${colors.border} border-2 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                         onclick="filterACMByDomain('${domain.domain}')">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-acm-domain" data-domain="${cmxEscapeAttr(domain.domain)}"
+                         aria-label="Filter capabilities to ${cmxEscapeAttr(domain.name)}">
                         <div class="flex items-start justify-between mb-3">
                             <div class="p-2 rounded-lg ${colors.bg}">
                                 <i data-lucide="${colors.icon}" class="w-6 h-6 ${colors.text}"></i>
@@ -189,7 +192,6 @@
                     ? '<span class="px-2 py-1 text-xs font-medium rounded-full bg-accent text-green-800">Mapped</span>'
                     : '<span class="px-2 py-1 text-xs font-medium rounded-full bg-destructive/10 text-red-800">Gap</span>';
 
-                const escapedName = (cap.name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
 
                 const roadmapBadge = cap.on_roadmap
                     ? '<span class="px-1.5 py-0.5 text-xs rounded bg-accent text-purple-800 ml-1" title="On Roadmap"><i data-lucide="map" class="w-3 h-3 inline"></i></span>'
@@ -212,15 +214,15 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <div class="flex items-center gap-2">
-                                <button onclick="openACMMappingModal(${cap.id}, '${escapedName}', '${cap.acm_domain}', '${cap.level}')"
+                                <button type="button" data-cmx-action="open-acm-mapping" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}" data-domain="${cmxEscapeAttr(cap.acm_domain)}" data-level="${cmxEscapeAttr(cap.level)}"
                                         class="text-cyan-600 hover:text-cyan-800 text-sm">
                                     Map
                                 </button>
-                                <button onclick="openACMCapabilityDetail(${cap.id}, '${escapedName}')"
+                                <button type="button" data-cmx-action="open-acm-detail" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}"
                                         class="text-muted-foreground hover:text-foreground text-sm">
                                     View
                                 </button>
-                                <button onclick="addToRoadmap(${cap.id}, '${escapedName}', 'technical', ${cap.level_number || 1}, 'medium')"
+                                <button type="button" data-cmx-action="add-to-roadmap" data-cap-id="${cmxEscapeAttr(cap.id)}" data-cap-name="${cmxEscapeAttr(cap.name || '')}" data-cap-level="${cmxEscapeAttr(cap.level_number || 1)}"
                                         class="text-primary hover:text-purple-800 text-sm ${cap.on_roadmap ? 'opacity-50 cursor-not-allowed' : ''}"
                                         ${cap.on_roadmap ? 'disabled title="Already on roadmap"' : 'title="Add to roadmap"'}>
                                     <i data-lucide="map" class="w-4 h-4 inline"></i>
@@ -319,7 +321,7 @@
                 panel = document.createElement('div');
                 panel.id = 'capability-detail-panel';
                 panel.className = 'fixed inset-y-0 right-0 w-[420px] bg-card border-l border-border shadow-xl z-50 transform translate-x-full transition-transform duration-200 overflow-y-auto';
-                panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button onclick="closeCapabilityDetail()" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
+                panel.innerHTML = '<div class="p-6"><div class="flex items-center justify-between mb-4"><h3 class="text-lg font-semibold" id="cap-detail-title"></h3><button type="button" data-cmx-action="close-capability-detail" aria-label="Close capability detail" class="text-muted-foreground hover:text-foreground p-1"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button></div><div id="cap-detail-content"><p class="text-sm text-muted-foreground">Loading...</p></div></div>';
                 document.body.appendChild(panel);
             }
 
@@ -327,8 +329,7 @@
             document.getElementById('cap-detail-content').innerHTML = '<p class="text-sm text-muted-foreground">Loading...</p>';
             panel.classList.remove('translate-x-full');
 
-            fetch('/capability-map/api/capability/' + capabilityId + '/applications')
-                .then(r => r.json())
+            Platform.fetch('/capability-map/api/capability/' + capabilityId + '/applications')
                 .then(data => {
                     let html = '';
                     const cap = data.capability || {};
@@ -352,8 +353,15 @@
                         html += '</div>';
                     }
 
-                    // Linked applications
-                    const apps = data.applications || [];
+                    // Linked applications — "Linked Applications" must list only apps
+                    // actually mapped to this capability (is_mapped === true). The
+                    // endpoint returns every application in the org (mapped and
+                    // unmapped) so callers can offer them for mapping; showing that
+                    // full list here under a "Linked" heading is what produced the
+                    // "0 of 25 apps mapped" / "Linked Applications (25)" contradiction
+                    // — filtering here makes both figures come from the same
+                    // is_mapped flag, so they can no longer disagree.
+                    const apps = (data.applications || []).filter(function(app) { return app.is_mapped; });
                     html += '<div class="mb-2"><p class="text-sm font-medium mb-2">Linked Applications (' + apps.length + ')</p>';
                     if (apps.length === 0) {
                         html += '<p class="text-sm text-muted-foreground py-4 text-center">No applications mapped to this capability.</p>';
@@ -438,8 +446,9 @@
         async function loadACMApplicationsForCapability(capabilityId) {
             try {
                 const id = String(capabilityId);
-                const response = await fetch(`/capability-map/api/acm/capability/${id}/applications`);
-                const data = await response.json();
+                const data = await Platform.fetch(`/capability-map/api/acm/capability/${id}/applications`);
+                // Unchecked, a 500 opened the mapping modal with an empty application
+                // list — the existing mappings looked as though they had been cleared.
 
                 if (data.error) {
                     showACMNotification('Error loading applications: ' + data.error, 'error');
@@ -488,7 +497,6 @@
                     if (searchInput) searchInput.focus();
                 }, 100);
             } catch (error) {
-                console.error('Error loading ACM applications:', error);
                 showACMNotification('Error loading applications', 'error');
             }
         }
@@ -622,7 +630,10 @@
                             </div>
                             ${app.is_mapped && app.mapping_id ? `
                                 <button
-                                    onclick="deleteACMMapping('${app.mapping_id}', '${app.id}')"
+                                    type="button"
+                                    data-cmx-action="delete-acm-mapping"
+                                    data-mapping-id="${cmxEscapeAttr(app.mapping_id)}"
+                                    data-app-id="${cmxEscapeAttr(app.id)}"
                                     class="ml-2 px-3 py-1.5 text-xs bg-destructive text-primary-foreground rounded hover:bg-destructive transition-colors flex items-center space-x-1"
                                     title="Remove mapping"
                                 >
@@ -744,15 +755,7 @@
 
         async function _doDeleteACMMapping(mappingId, appId) {
             try {
-                const response = await fetch(`/capability-map/api/acm/mapping/${mappingId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                    }
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.delete(`/capability-map/api/acm/mapping/${mappingId}`);
                 if (data.success) {
                     // Update local state
                     acmSelectedApplications.delete(appId);
@@ -767,7 +770,6 @@
                     showACMNotification('Error: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
-                console.error('Error deleting ACM mapping:', error);
                 showACMNotification('Network error', 'error');
             }
         }
@@ -787,16 +789,7 @@
                     notes: data.mapping?.notes || ''
                 }));
 
-                const response = await fetch('/capability-map/api/acm/mappings/bulk', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-                    },
-                    body: JSON.stringify({ mappings })
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.post('/capability-map/api/acm/mappings/bulk', { mappings });
                 if (data.success) {
                     closeACMMappingModal();
                     showACMNotification(`Successfully saved ${data.created || 0} new and updated ${data.updated || 0} mappings`, 'success');
@@ -805,7 +798,6 @@
                     showACMNotification('Error: ' + (data.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
-                console.error('Error saving ACM mappings:', error);
                 showACMNotification('Network error. Please try again.', 'error');
             }
         }
@@ -832,8 +824,7 @@
 
         function openProcessMappingModal(processId, processName, processCode, processType) {
             // Check if user is authenticated before opening modal
-            fetch('/capability-map/api/check-auth')
-                .then(response => response.json())
+            Platform.fetch('/capability-map/api/check-auth')
                 .then(data => {
                     if (data.authenticated) {
                         // User is authenticated, proceed with modal
@@ -862,7 +853,6 @@
                     }
                 })
                 .catch(error => {
-                    console.error('Error checking authentication:', error);
                     showProcessNotification('Error checking authentication status', 'error');
                 });
         }
@@ -882,8 +872,9 @@
         async function loadProcessApplicationsForProcess(processId) {
             try {
                 const id = String(processId);
-                const response = await fetch(`/capability-map/api/process-gaps/process/${id}/applications`);
-                const data = await response.json();
+                const data = await Platform.fetch(`/capability-map/api/process-gaps/process/${id}/applications`);
+                // Unchecked, a 500 opened the mapping modal with an empty application
+                // list — the existing mappings looked as though they had been cleared.
 
                 if (data.error) {
                     showProcessNotification('Error loading applications: ' + data.error, 'error');
@@ -932,7 +923,6 @@
                     if (searchInput) searchInput.focus();
                 }, 100);
             } catch (error) {
-                console.error('Error loading process applications:', error);
                 showProcessNotification('Error loading applications', 'error');
             }
         }
@@ -1131,8 +1121,9 @@
         async function saveProcessMappings() {
             try {
                 // Check authentication before saving
-                const authResponse = await fetch('/capability-map/api/check-auth');
-                const authData = await authResponse.json();
+                const authData = await Platform.fetch('/capability-map/api/check-auth');
+                // Unchecked, a 500 made `authenticated` undefined and the save aborted
+                // with "Please log in" at a user who was logged in the whole time.
 
                 if (!authData.authenticated) {
                     // FAR-001: Show login prompt without auto-redirect (was causing page to navigate away)
@@ -1157,18 +1148,7 @@
                     });
                 });
 
-                const response = await fetch('/capability-map/api/process-gaps/mappings/bulk', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        mappings: mappings
-                    })
-                });
-
-                const result = await response.json();
-
+                const result = await Platform.fetch.post('/capability-map/api/process-gaps/mappings/bulk', { mappings });
                 if (result.success) {
                     showProcessNotification(`Successfully saved ${mappings.length} mappings`, 'success');
                     closeProcessMappingModal();
@@ -1178,8 +1158,7 @@
                     showProcessNotification('Error saving mappings: ' + (result.error || 'Unknown error'), 'error');
                 }
             } catch (error) {
-                console.error('Error saving process mappings:', error);
-                showProcessNotification('Error saving mappings', 'error');
+                showProcessNotification('Mappings were NOT saved — ' + ((error && error.message) || 'request failed'), 'error');
             }
         }
 
@@ -1208,8 +1187,7 @@
 
         async function loadBusinessDomainCards() {
             try {
-                const response = await fetch('/capability-map/api/unified/domains');
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/unified/domains');
 
                 if (data.success) {
                     // Update statistics
@@ -1224,7 +1202,7 @@
 
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
-                console.error('Error loading business domains:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load business domains');
             }
         }
 
@@ -1256,7 +1234,9 @@
 
                 return `
                     <div class="${cs.bg} border-2 ${cs.border} rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
-                         onclick="document.getElementById('unified-domain-filter').value='${domain.code}'; filterTable('unified');">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-unified-domain" data-domain-code="${cmxEscapeAttr(domain.code)}"
+                         aria-label="Filter capabilities to domain ${cmxEscapeAttr(domain.code)}">
                         <div class="flex items-start justify-between mb-3">
                             <span class="text-xs font-bold ${cs.textBold} ${cs.badge} px-2 py-0.5 rounded">${domain.code}</span>
                             <div class="w-2 h-2 rounded-full ${statusColor}"></div>
@@ -1284,8 +1264,7 @@
 
         async function loadManufacturingDomainStats() {
             try {
-                const response = await fetch('/capability-map/api/manufacturing/domains');
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/manufacturing/domains');
 
                 if (data.success) {
                     // Update statistics
@@ -1305,7 +1284,7 @@
 
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
-                console.error('Error loading manufacturing domains:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load manufacturing domains');
             }
         }
 
@@ -1330,8 +1309,7 @@
 
         async function loadProcessCategoryStats() {
             try {
-                const response = await fetch('/capability-map/api/process/categories');
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/process/categories');
 
                 if (data.success) {
                     const categories = data.categories || {};
@@ -1351,7 +1329,7 @@
 
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
-                console.error('Error loading process categories:', error);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to load process categories');
             }
         }
 
@@ -1370,8 +1348,7 @@
 
         async function loadACMGapAnalysis() {
             try {
-                const response = await fetch('/capability-map/api/acm/gap-analysis');
-                const data = await response.json();
+                const data = await Platform.fetch('/capability-map/api/acm/gap-analysis');
 
                 if (data.success) {
                     acmGapData = data.capabilities || [];
@@ -1393,7 +1370,6 @@
 
                 if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
             } catch (error) {
-                console.error('Error loading ACM gap analysis:', error);
                 safeHTML(document.getElementById('acm-gap-table-body'), `
                     <tr>
                         <td colspan="6" class="px-6 py-8 text-center text-destructive">
@@ -1430,7 +1406,9 @@
 
                 return `
                     <div class="${colors.bg} rounded-lg p-3 text-center cursor-pointer hover:shadow-md transition-shadow"
-                         onclick="document.getElementById('acm-gap-domain-filter').value='${domain.domain}'; filterACMGapTable();">
+                         role="button" tabindex="0"
+                         data-cmx-action="filter-acm-gap-domain" data-domain="${cmxEscapeAttr(domain.domain)}"
+                         aria-label="Filter gaps to domain ${cmxEscapeAttr(domain.domain)}">
                         <div class="font-semibold ${colors.text} text-sm mb-1">${colors.short}</div>
                         <div class="${coverageColor} font-bold text-lg">${domain.coverage}%</div>
                         <div class="w-full bg-border rounded-full h-1 mt-2">
@@ -1541,3 +1519,72 @@
             renderACMGapTable(acmGapData);
             if (typeof lucide !== 'undefined') setTimeout(() => lucide.createIcons(), 100);
         }
+
+
+// ============================================================================
+// Delegated action dispatcher
+// ============================================================================
+//
+// The app ships script-src 'self' 'nonce-...' 'strict-dynamic' with neither
+// 'unsafe-inline' nor 'unsafe-hashes', so an on*= attribute never executes --
+// innerHTML-injected ones included. The controls above are now data-driven and
+// dispatched by one document-level listener; delegation is required because
+// these grids are re-rendered wholesale from fetched data.
+//
+// NOTE: this file is not referenced by any template -- `index.html` loads only
+// index.js and index_inline.js, and nothing else in the repo names it. It is a
+// dormant duplicate of index_inline.js's ACM functions. It is converted rather
+// than left as-is so that it is not a trap if it is ever wired up, but nothing
+// here runs today. The data-cmx-action namespace is distinct from index.js's
+// data-cm-action and index_inline.js's data-acm-action so that, if all three
+// ever load together, no dispatcher sees another's controls.
+
+function cmxEscapeAttr(value) {
+    if (value === null || value === undefined) return '';
+    return String(value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function cmxSetFilterAndApply(selectId, value, apply) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    select.value = value;
+    apply();
+}
+
+const CMX_ACTIONS = {
+    'filter-acm-domain':       (el) => filterACMByDomain(el.dataset.domain),
+    'open-acm-mapping':        (el) => openACMMappingModal(
+                                         el.dataset.capId, el.dataset.capName,
+                                         el.dataset.domain, el.dataset.level),
+    'open-acm-detail':         (el) => openACMCapabilityDetail(el.dataset.capId, el.dataset.capName),
+    'add-to-roadmap':          (el) => addToRoadmap(el.dataset.capId, el.dataset.capName,
+                                         'technical', parseInt(el.dataset.capLevel, 10) || 1, 'medium'),
+    'close-capability-detail': ()   => closeCapabilityDetail(),
+    'delete-acm-mapping':      (el) => deleteACMMapping(el.dataset.mappingId, el.dataset.appId),
+    'filter-unified-domain':   (el) => cmxSetFilterAndApply(
+                                         'unified-domain-filter', el.dataset.domainCode,
+                                         () => filterTable('unified')),
+    'filter-acm-gap-domain':   (el) => cmxSetFilterAndApply(
+                                         'acm-gap-domain-filter', el.dataset.domain,
+                                         filterACMGapTable),
+};
+
+function runCmxAction(event) {
+    const el = event.target.closest('[data-cmx-action]');
+    if (!el) return;
+    if (el.disabled) return;
+    const handler = CMX_ACTIONS[el.getAttribute('data-cmx-action')];
+    if (!handler) return;
+    handler(el, event);
+}
+
+document.addEventListener('click', runCmxAction);
+document.addEventListener('keydown', function(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const el = event.target.closest('[data-cmx-action][role="button"]');
+    if (!el) return;
+    event.preventDefault();
+    runCmxAction(event);
+});

@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime
 
-from flask import current_app, flash, jsonify, redirect, request  # dead-code-ok
+from flask import current_app, flash, g, jsonify, request  # dead-code-ok
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -115,21 +115,48 @@ def analyze_document_for_application(application_id):
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
     from ..services.archimate.document_upload_service import DocumentUploadService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         analysis_service = DocumentAnalysisService()
         provider = request.form.get("provider", "claude")
 
         # Check if analyzing existing document or uploading new one
-        document_id = request.form.get("document_id")
+        document_id_raw = request.form.get("document_id")
         file = None
         file_name = None
         file_content_type = None
 
-        if document_id:
+        if document_id_raw:
+            # Parse at the edge, before any query. Under psycopg 3 a string id
+            # makes SQLAlchemy emit application_documents.id = '5'::VARCHAR,
+            # and PostgreSQL refuses to compare an integer column to varchar
+            # rather than coercing it, turning a bad id into a 500 instead of
+            # a clean refusal.
+            try:
+                document_id = int(document_id_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "document_id must be an integer."}), 400
+
             # Analyze existing document
-            document = ApplicationDocument.query.get_or_404(document_id)
+            query = ApplicationDocument.query.filter_by(id=document_id)
+            if not getattr(current_user, "is_platform_admin", False):
+                query = query.filter_by(organization_id=g.current_org_id)
+            document = query.first()
+
+            if not document:
+                return jsonify({"error": "Document not found."}), 404
+
+            # Tenant isolation: verify the document belongs to the caller's
+            # organisation. The query above skips the organisation filter for
+            # platform administrators, who can reach any document;
+            # verify_file_access provides a second line of defence, including
+            # unrestricted access for platform admins.
+            from app.middleware.tenant_files import verify_file_access
+
+            if not verify_file_access(document.organization_id):
+                return jsonify({"error": "Access denied."}), 403
+
             if document.application_component_id != application_id:
                 return jsonify(
                     {"error": "Document does not belong to this application"}
@@ -289,7 +316,7 @@ def apply_analysis_to_application(application_id):
     """
     from ..services.archimate.document_analysis_service import DocumentAnalysisService
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     try:
         data = request.get_json()
@@ -361,7 +388,7 @@ def get_analysis_history(application_id):
     """Get analysis history for an application."""
     from ..models.document_analysis import DocumentAnalysis
 
-    app = ApplicationComponent.query.get_or_404(application_id)
+    ApplicationComponent.query.get_or_404(application_id)
 
     analyses = (
         DocumentAnalysis.query.filter_by(
@@ -397,7 +424,7 @@ def test_api():
 def get_applications_table_data():
     """API endpoint for server-side paginated table data"""
     try:
-        from app.utils.api_response import error_response, success_response
+        from app.utils.api_response import success_response
         from sqlalchemy import inspect
 
         # Get query parameters with pagination bounds checking

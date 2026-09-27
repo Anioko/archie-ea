@@ -5,9 +5,7 @@
 (function (global) {
     'use strict';
 
-    let _fetch = (global.Platform && global.Platform.fetch)
-        ? global.Platform.fetch
-        : function (url, opts) { return global.fetch(url, opts).then(function (r) { return r.json(); }); };
+    let _fetch = global.Platform.fetch;
 
     global.admKanbanV2 = function () {
         return {
@@ -90,8 +88,7 @@
                         card.column = target;
                         return _fetch('/api/adm-kanban/v2/cards/' + cardId + '/move', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ to_column: target }),
+                            body: { to_column: target },
                             silent: true,
                         });
                     }
@@ -267,8 +264,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards/' + cardRef + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                     silent: true,
                 }).then(function (data) {
                     if (data && data.card && card) {
@@ -311,8 +307,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards/' + card.id + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                     silent: true,
                 }).then(function (data) {
                     if (data && data.card) {
@@ -455,6 +450,10 @@
                 });
             },
 
+            solutionCount: function () {
+                return this.cards.filter(function (c) { return c.card_type === 'solution'; }).length;
+            },
+
             phaseTotal: function (phaseCode) {
                 return this.cards.filter(function (c) { return c.phase === phaseCode; }).length;
             },
@@ -510,8 +509,7 @@
                 }
                 _fetch('/api/adm-kanban/v2/deliverables/' + deliverableId + '/check', {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ checked: newChecked }),
+                    body: { checked: newChecked },
                 }).catch(function () {
                     if (item) {
                         item.checked = !newChecked;
@@ -552,6 +550,7 @@
                     })
                     .catch(function () {
                         self.phaseElements[phaseCode].loading = false;
+                        self.phaseElements[phaseCode].elementsFailed = true;
                     });
                 _fetch('/api/adm-kanban/v2/phases/' + phaseCode + '/completion')
                     .then(function (data) {
@@ -560,13 +559,19 @@
                             self.phaseElements[phaseCode].pct = data.pct || 0;
                         }
                     })
-                    .catch(function () {});
+                    .catch(function () {
+                        // Platform.fetch already toasted the failure; mark completion as
+                        // unknown so the badge shows "—" instead of a fabricated 0/N.
+                        self.phaseElements[phaseCode].completionFailed = true;
+                    });
             },
 
             phaseElementBadgeText: function (phaseCode) {
                 let pe = this.phaseElements[phaseCode];
                 if (!pe || pe.loading) return '';
-                return pe.created + '/' + pe.total_suggested + ' elements';
+                let created = pe.completionFailed ? '—' : pe.created;
+                let total = pe.elementsFailed ? '—' : pe.total_suggested;
+                return created + '/' + total + ' elements';
             },
         };
     };
@@ -728,8 +733,7 @@
 
                 _fetch('/api/adm-kanban/v2/cards', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
+                    body: body,
                 }).then(function (data) {
                     self.loading = false;
                     if (data && data.success && data.card) {
@@ -746,12 +750,20 @@
                 });
             },
 
+            /* Every picker below reports a lookup failure through `error`, which the
+               modal already renders as a destructive banner. Unguarded, a 500 parsed
+               to `{}` and the dropdown showed "no matches" — the user concludes the
+               person or requirement does not exist and files the task without it. */
+            _searchFailed: function (what, e) {
+                this.error = 'Could not search ' + what + ' — ' + ((e && e.message) || 'request failed') +
+                             '. This is a lookup failure, not an empty result.';
+            },
+
             searchUsers: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(this.assigneeSearch));
-                    const data = await res.json();
+                    const data = await global.Platform.fetch.get('/api/adm-kanban/v2/suggestions/users', { q: this.assigneeSearch }, { silent: true });
                     this.userResults = data.results || [];
-                } catch (e) { this.userResults = []; }
+                } catch (e) { this.userResults = []; this._searchFailed('users', e); }
             },
             selectUser: function (u) {
                 this.form.assignee = u.id;
@@ -761,11 +773,10 @@
             },
             searchRequirements: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/requirements?q=' + encodeURIComponent(this.requirementSearch));
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/requirements', { q: this.requirementSearch }, { silent: true });
                     const selected = this.form.requirement_ids.map(function (x) { return x.id; });
                     this.requirementResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.requirementResults = []; }
+                } catch (e) { this.requirementResults = []; this._searchFailed('requirements', e); }
             },
             addRequirement: function (item) {
                 if (!this.form.requirement_ids.find(function (x) { return x.id === item.id; })) {
@@ -780,11 +791,10 @@
 
             searchGoals: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/goals?q=' + encodeURIComponent(this.goalSearch));
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/goals', { q: this.goalSearch }, { silent: true });
                     const selected = this.form.goal_ids.map(function (x) { return x.id; });
                     this.goalResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.goalResults = []; }
+                } catch (e) { this.goalResults = []; this._searchFailed('goals', e); }
             },
             addGoal: function (item) {
                 if (!this.form.goal_ids.find(function (x) { return x.id === item.id; })) {
@@ -799,11 +809,10 @@
 
             searchDrivers: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/drivers?q=' + encodeURIComponent(this.driverSearch));
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/drivers', { q: this.driverSearch }, { silent: true });
                     const selected = this.form.driver_ids.map(function (x) { return x.id; });
                     this.driverResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.driverResults = []; }
+                } catch (e) { this.driverResults = []; this._searchFailed('drivers', e); }
             },
             addDriver: function (item) {
                 if (!this.form.driver_ids.find(function (x) { return x.id === item.id; })) {
@@ -818,11 +827,10 @@
 
             searchPrinciples: async function () {
                 try {
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/principles?q=' + encodeURIComponent(this.principleSearch));
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/principles', { q: this.principleSearch }, { silent: true });
                     const selected = this.form.principle_ids.map(function (x) { return x.id; });
                     this.principleResults = (data.results || []).filter(function (r) { return !selected.includes(r.id); });
-                } catch (e) { this.principleResults = []; }
+                } catch (e) { this.principleResults = []; this._searchFailed('principles', e); }
             },
             addPrinciple: function (item) {
                 if (!this.form.principle_ids.find(function (x) { return x.id === item.id; })) {
@@ -837,10 +845,9 @@
             searchEditUsers: async function () {
                 try {
                     const q = (this.editAssigneeSearch || '');
-                    const res = await fetch('/api/adm-kanban/v2/suggestions/users?q=' + encodeURIComponent(q));
-                    const data = await res.json();
+                    const data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/users', { q: q }, { silent: true });
                     this.editUserResults = data.results || [];
-                } catch (e) { this.editUserResults = []; }
+                } catch (e) { this.editUserResults = []; this._searchFailed('users', e); }
             },
             selectEditUser: function (u) {
                 this.editFields.assignee = u.id;

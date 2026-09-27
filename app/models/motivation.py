@@ -452,6 +452,70 @@ class Stakeholder(db.Model):
         return f"<Stakeholder {self.name} ({self.role or 'no role'})>"
 
 
+# ============================================================================
+# Motivation Bridge (journey <-> enterprise motivation layer)
+# ============================================================================
+
+
+class MotivationBridgeLink(db.Model):
+    """
+    Non-destructive bridge record linking a solution-scoped motivation element
+    (SolutionDriver, SolutionGoal, SolutionOutcome, SolutionPrinciple — created
+    during the AI solution-design journey) to the corresponding enterprise
+    motivation entity (Driver, Goal, Outcome, Principle) it was promoted to.
+
+    This is a brand-new table (safe under db.create_all(), which never adds
+    columns to existing tables but does create missing tables). It never
+    mutates, deletes, or retypes any existing table or Solution* row — it is
+    purely an additive mapping used by app.services.motivation_bridge_service
+    to make journey motivation visible/traceable at the enterprise level.
+
+    The unique constraint on (solution_element_type, solution_element_id)
+    ensures at most one bridge link per solution-side element, which is what
+    makes re-running the bridge idempotent (a no-op on already-bridged rows).
+    """
+
+    __tablename__ = "motivation_bridge_links"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Which Solution this bridge link was produced for (journey side)
+    solution_id = db.Column(
+        db.Integer, db.ForeignKey("solutions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Solution-scoped source element, e.g. ('SolutionDriver', 17)
+    solution_element_type = db.Column(db.String(50), nullable=False)
+    solution_element_id = db.Column(db.Integer, nullable=False)
+
+    # Enterprise-side element it was bridged to, e.g. ('Driver', 42)
+    enterprise_element_type = db.Column(db.String(50), nullable=False)
+    enterprise_element_id = db.Column(db.Integer, nullable=False)
+
+    # Convenience pointer to the shared ArchiMateElement row created for the
+    # enterprise entity (nullable — the enterprise entity may not have one in
+    # rare edge cases, e.g. it was matched to a pre-existing row without one).
+    archimate_element_id = db.Column(
+        db.Integer, db.ForeignKey("archimate_elements.id"), nullable=True
+    )
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "solution_element_type",
+            "solution_element_id",
+            name="uq_motivation_bridge_solution_element",
+        ),
+    )
+
+    def __repr__(self):
+        return (
+            f"<MotivationBridgeLink {self.solution_element_type}:{self.solution_element_id} "
+            f"-> {self.enterprise_element_type}:{self.enterprise_element_id}>"
+        )
+
+
 # Event Listeners
 
 from sqlalchemy import event

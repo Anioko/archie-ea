@@ -19,10 +19,9 @@ TOGAF ADM Integration:
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
-from sqlalchemy import and_, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import func, or_
 
 from app import db
 from app.models.architecture_review_board import (
@@ -30,12 +29,8 @@ from app.models.architecture_review_board import (
     ARBBoardMember,
     ARBCapabilityImpact,
     ARBGovernanceStandard,
-    ARBReviewComment,
     ARBReviewItem,
-    ARBReviewStatus,
     ArchitectureReviewBoard,
-    ReviewType,
-    TOGAFPhase,
 )
 
 logger = logging.getLogger(__name__)
@@ -237,6 +232,15 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
+        if solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
+        if adr_id is not None or architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
+            )
         review_number = ARBReviewItem.generate_review_number()
 
         # Auto-determine ArchiMate layer from TOGAF phase if not provided
@@ -288,9 +292,18 @@ class ARBGovernanceService:
         item = db.session.get(ARBReviewItem, review_item_id)
         if not item:
             raise ValueError(f"Review item {review_item_id} not found")
+        if item.solution_id is not None:
+            raise ValueError(
+                "Solution reviews require the canonical evidence-gated submission service"
+            )
+        if item.adr_id is not None or item.architecture_model_id is not None:
+            raise ValueError(
+                "ADR and model reviews require the canonical evidence-gated typed ARB "
+                "submission service"
+            )
 
         if item.status != "draft":
-            raise ValueError(f"Item must be in draft status to submit")
+            raise ValueError("Item must be in draft status to submit")
 
         item.status = "submitted"
         item.submitted_at = datetime.utcnow()
@@ -584,30 +597,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.truly_missing_models import Solution
-
-        solution = db.session.get(Solution, solution_id)
-        if not solution:
-            raise ValueError(f"Solution {solution_id} not found")
-
-        # Determine review type based on solution characteristics
-        review_type = "solution_design"
-        togaf_phase = "phase_e_opportunities"  # Solutions typically align with Phase E
-
-        # Get capability mappings
-        capability_ids = []
-        if hasattr(solution, "capability_mappings"):
-            capability_ids = [cm.capability_id for cm in solution.capability_mappings]
-
-        return self.submit_for_review(
-            title=f"Solution Review: {solution.name}",
-            description=f"Architecture review for solution: {solution.description or 'No description'}",
-            review_type=review_type,
-            submitter_id=submitter_id,
-            togaf_phase=togaf_phase,
-            solution_id=solution_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_solution(solution),
+        raise ValueError(
+            "Automatic solution review is disabled; use the canonical "
+            "evidence-gated submission service"
         )
 
     def auto_submit_adr_for_review(self, adr_id: int, submitter_id: int) -> ARBReviewItem:
@@ -626,32 +618,9 @@ class ARBGovernanceService:
         Returns:
             Created ARBReviewItem
         """
-        from app.models.adr import ArchitectureDecisionRecord
-
-        adr = db.session.get(ArchitectureDecisionRecord, adr_id)
-        if not adr:
-            raise ValueError(f"ADR {adr_id} not found")
-
-        # Determine if ADR needs ARB review
-        if not self._adr_needs_arb_review(adr):
-            return None
-
-        # Get linked capabilities
-        capability_ids = []
-        from app.models.unified_capability import UnifiedCapability
-
-        if adr.linked_capabilities:
-            capability_ids = [cap.id for cap in adr.linked_capabilities]
-
-        return self.submit_for_review(
-            title=f"ADR Review: {adr.title}",
-            description=f"Architecture Decision Record review: {adr.context}",
-            review_type="architecture_change",
-            submitter_id=submitter_id,
-            togaf_phase=self._map_adr_to_togaf_phase(adr),
-            adr_id=adr_id,
-            capability_ids=capability_ids,
-            priority=self._determine_priority_from_adr(adr),
+        raise ValueError(
+            "Automatic ADR review is disabled; use the canonical typed ARB "
+            "submission service"
         )
 
     def get_pending_reviews_by_capability(self, capability_id: int) -> List[ARBReviewItem]:

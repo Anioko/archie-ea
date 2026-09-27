@@ -5,7 +5,6 @@ Provides comprehensive rollback capabilities for workflow executions.
 """
 
 import logging
-import json  # dead-code-ok
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict

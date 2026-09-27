@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'applications/rationalization/_disposition_tooltip.html' import disposition_badge %}
 {% block title %}Decision Workbench — Rationalization{% endblock %}
 
@@ -6,28 +7,18 @@
 <div x-data="workbenchApp()" x-init="load()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="/dashboard" class="hover:text-foreground">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Workbench</span>
-    </nav>
 
     {# ── Page Header ──────────────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Decision Workbench</h1>
-            <p class="text-sm text-muted-foreground mt-1">Triage scored applications by readiness, disposition, and confidence</p>
-        </div>
-        <div class="flex items-center gap-3 text-sm text-muted-foreground">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-3 text-sm text-muted-foreground">
             <span x-show="totalCount > 0" x-cloak
                   x-text="results.length < totalCount ? 'Showing ' + results.length + ' of ' + totalCount + ' applications' : totalCount + ' applications'"></span>
             <button type="button" x-show="results.length < totalCount" x-cloak
                     @click="perPage = totalCount; page = 1; load()"
                     class="text-xs text-primary hover:underline font-medium">Load all</button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Decision Workbench', subtitle='Triage scored applications by readiness, disposition, and confidence', actions_caller=_ps_actions, breadcrumb=[('Dashboard', '/dashboard'), ('Rationalization', url_for('unified_applications.rationalization_dashboard')), ('Workbench', none)]) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 
@@ -37,23 +28,23 @@
             <div class="flex-1 min-w-[200px]">
                 <input type="text" placeholder="Search applications..."
                        x-model.debounce.300ms="filters.search" @input="load()"
-                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"><!-- entity-picker-ok -->
+                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Search applications..."><!-- entity-picker-ok -->
             </div>
             <select x-model="filters.readiness" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Readiness">
                 <option value="">All Readiness</option>
                 <option value="ready">Decision Ready</option>
                 <option value="not_ready">Not Ready</option>
             </select>
             <select x-model="filters.disposition" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Disposition">
                 <option value="">All Dispositions</option>
                 <template x-for="f in facets.dispositions" :key="f.value">
                     <option :value="f.value" x-text="f.label"></option>
                 </template>
             </select>
             <select x-model="filters.reviewStatus" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Review Status">
                 <option value="">All Review Status</option>
                 <option value="draft">Draft</option>
                 <option value="reviewed">Reviewed</option>
@@ -61,21 +52,21 @@
                 <option value="rejected">Rejected</option>
             </select>
             <select x-model="filters.lifecycle" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Lifecycle">
                 <option value="">All Lifecycle</option>
                 <template x-for="[ls, count] in Object.entries(facets.lifecycle_statuses || {})" :key="ls">
                     <option :value="ls" x-text="ls + ' (' + count + ')'"></option>
                 </template>
             </select>
             <select x-model="filters.businessUnit" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Filter by Business Unit">
                 <option value="">All Business Units</option>
                 <template x-for="bu in facets.business_units" :key="bu.value">
                     <option :value="bu.value" x-text="bu.label"></option>
                 </template>
             </select>
             <select x-model="filters.sort" @change="load()"
-                    class="rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    class="rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Sort">
                 <option value="health_desc">Health (High → Low)</option>
                 <option value="health_asc">Health (Low → High)</option>
                 <option value="confidence_desc">Confidence (High → Low)</option>
@@ -96,11 +87,11 @@
         <span class="text-sm font-medium" x-text="selectedCount + ' selected'"></span>
         <div class="flex gap-2">
             <button type="button" @click="bulkAction('approve')"
-                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-primary-foreground hover:bg-emerald-700">
+                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-success text-success-foreground hover:bg-success/90">
                 Approve Selected
             </button>
             <button type="button" @click="bulkAction('defer')"
-                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-amber-600 text-primary-foreground hover:bg-amber-700">
+                    class="px-3 py-1.5 text-xs font-medium rounded-md bg-warning text-warning-foreground hover:bg-warning/90">
                 Defer Selected
             </button>
             <button type="button" @click="bulkAction('request_data')"
@@ -108,7 +99,7 @@
                 Request Data
             </button>
             <div class="flex items-center gap-1.5 ml-2 pl-2 border-l border-border">
-                <select x-model="bulkDisposition"
+                <select aria-label="Bulk disposition" x-model="bulkDisposition"
                         class="px-2 py-1.5 text-xs font-medium rounded-md border border-border bg-background text-foreground">
                     <option value="">Disposition...</option>
                     <option value="retire">Retire</option>
@@ -144,7 +135,7 @@
         <template x-if="error && !loading">
             <div class="p-8 text-center">
                 <i data-lucide="alert-circle" class="h-8 w-8 text-destructive mx-auto mb-2"></i>
-                <p class="text-sm text-destructive mb-2">Failed to load workbench data.</p>
+                <p class="text-sm text-destructive-emphasis mb-2">Failed to load workbench data.</p>
                 <button type="button" @click="load()" class="text-xs text-primary hover:underline">Retry</button>
             </div>
         </template>
@@ -165,7 +156,7 @@
                     <thead class="bg-muted/50">
                         <tr>
                             <th class="px-4 py-3 text-left w-8">
-                                <input type="checkbox" @change="toggleAll($event.target.checked)"
+                                <input aria-label="Select all applications" type="checkbox" @change="toggleAll($event.target.checked)"
                                        :checked="allSelected"
                                        class="rounded border-border">
                             </th>
@@ -184,7 +175,7 @@
                             <tr class="hover:bg-muted/30 cursor-pointer transition-colors"
                                 @click="if (!$event.target.closest('input')) goToPlanning(app.id)">
                                 <td class="px-4 py-3">
-                                    <input type="checkbox" :value="app.id"
+                                    <input aria-label="Select application" type="checkbox" :value="app.id"
                                            :checked="selectedIds[app.id]"
                                            @change="toggleSelect(app.id)"
                                            class="rounded border-border">
@@ -192,7 +183,7 @@
                                 <td class="px-4 py-3 font-medium text-foreground" x-text="app.name"></td>
                                 <td class="px-4 py-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
-                                          :class="app.health >= 70 ? 'bg-emerald-500/10 text-emerald-600' : app.health >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-destructive/10 text-destructive'"
+                                          :class="app.health >= 70 ? 'bg-success/10 text-success-emphasis' : app.health >= 40 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                           x-text="app.health"></span>
                                 </td>
                                 <td class="px-4 py-3">
@@ -202,7 +193,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     <i :data-lucide="app.is_ready ? 'check-circle-2' : 'circle'"
-                                       :class="app.is_ready ? 'text-emerald-600' : 'text-muted-foreground'"
+                                       :class="app.is_ready ? 'text-success-emphasis' : 'text-muted-foreground'"
                                        class="h-4 w-4"></i>
                                 </td>
                                 <td class="px-4 py-3">
@@ -216,7 +207,7 @@
                                             class="text-xs text-primary hover:underline">View</button>
                                     <button type="button" @click.stop="toggleCompare(app)"
                                             class="text-xs hover:underline"
-                                            :class="compareIds.indexOf(app.id) >= 0 ? 'text-emerald-600 font-semibold' : 'text-muted-foreground'"
+                                            :class="compareIds.indexOf(app.id) >= 0 ? 'text-success-emphasis font-semibold' : 'text-muted-foreground'"
                                             x-text="compareIds.indexOf(app.id) >= 0 ? 'Added' : 'Compare'"></button>
                                 </td>
                             </tr>
@@ -272,9 +263,11 @@
                             <td class="px-3 py-2 font-medium text-muted-foreground" x-text="dimName"></td>
                             <template x-for="ca in compareApps" :key="ca.id + dimName">
                                 <td class="px-3 py-2">
+                                    {# null = the server did not report this dimension. An em
+                                       dash, never 0 — a 0 here reads as a measured worst score. #}
                                     <span class="font-bold"
-                                          :class="(ca.dims[dimName] || 0) >= 70 ? 'text-emerald-600' : (ca.dims[dimName] || 0) >= 40 ? 'text-amber-600' : 'text-destructive'"
-                                          x-text="ca.dims[dimName] || 0"></span>
+                                          :class="ca.dims[dimName] == null ? 'text-muted-foreground' : (ca.dims[dimName] >= 70 ? 'text-success-emphasis' : ca.dims[dimName] >= 40 ? 'text-warning-emphasis' : 'text-destructive')"
+                                          x-text="ca.dims[dimName] == null ? '—' : ca.dims[dimName]"></span>
                                 </td>
                             </template>
                         </tr>
@@ -357,12 +350,12 @@
                                     <span class="text-xs font-medium text-muted-foreground w-28" x-text="dim.label"></span>
                                     <div class="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                                         <div class="h-full rounded-full"
-                                             :class="dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 40 ? 'bg-amber-500' : 'bg-destructive'"
-                                             :style="'width:' + dim.score + '%'"></div>
+                                             :class="dim.score === null ? 'bg-muted' : (dim.score >= 70 ? 'bg-success' : dim.score >= 40 ? 'bg-warning' : 'bg-destructive')"
+                                             :style="'width:' + (dim.score === null ? 0 : dim.score) + '%'"></div>
                                     </div>
                                     <span class="text-xs font-bold w-8 text-right"
-                                          :class="dim.score >= 70 ? 'text-emerald-600' : dim.score >= 40 ? 'text-amber-600' : 'text-destructive'"
-                                          x-text="dim.score"></span>
+                                          :class="dim.score === null ? 'text-muted-foreground' : (dim.score >= 70 ? 'text-success-emphasis' : dim.score >= 40 ? 'text-warning-emphasis' : 'text-destructive')"
+                                          x-text="dim.score === null ? '—' : dim.score"></span>
                                 </div>
                             </template>
                         </div>
@@ -377,7 +370,7 @@
                                         <div class="flex items-center gap-2 text-xs text-muted-foreground pl-2">
                                             <span class="w-28 truncate" x-text="f.name"></span>
                                             <span class="font-mono" x-text="f.raw_value != null ? f.raw_value : '—'"></span>
-                                            <span class="ml-auto" x-text="'+' + (f.contribution || 0)"></span>
+                                            <span class="ml-auto" x-text="f.contribution == null ? '—' : '+' + f.contribution"></span>
                                         </div>
                                     </template>
                                 </div>
@@ -393,8 +386,8 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="{{ url_for('static', filename='js/applications/rationalization_workbench.js') }}?v=3"></script><!-- entity-picker-ok -->
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/applications/rationalization_workbench.js') }}"></script><!-- entity-picker-ok -->
 <script>
 function dispositionTaxonomyPanel() { return { open: false }; }
 </script>

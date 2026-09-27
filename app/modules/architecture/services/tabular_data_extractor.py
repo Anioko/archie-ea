@@ -5,15 +5,13 @@ Parses Excel/CSV files and maps them to ArchiMate elements.
 Supports application portfolios, server inventories, business capability catalogs, etc.
 """
 
-import csv
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
 from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
-from app.services.llm_service import LLMService
 
 # Column mapping templates for common portfolio types
 COLUMN_MAPPINGS = {

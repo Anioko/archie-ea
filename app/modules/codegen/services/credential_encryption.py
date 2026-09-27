@@ -1,4 +1,4 @@
-"""Fernet symmetric encryption for credentials stored in ARCHIE's database.
+"""Fernet symmetric encryption for credentials stored in Entelim's database.
 
 Used by:
 - SolutionInstance.database_url_encrypted (Phase 1)
@@ -7,7 +7,6 @@ Used by:
 Key is sourced from app.config["CREDENTIAL_ENCRYPTION_KEY"].
 Generate a key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
-import base64
 import logging
 
 from cryptography.fernet import Fernet, InvalidToken

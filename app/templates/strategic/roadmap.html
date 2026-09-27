@@ -11,7 +11,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Strategic Roadmap', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -19,17 +20,13 @@
 <div class="space-y-6">
     {{ page_header(
         title='Strategic Roadmap',
-        description='Architecture transformation roadmap by swim lane',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Strategic Roadmap'}
-        ]
+        description='Architecture transformation roadmap by swim lane'
     ) }}
 
     {# ── Filter Bar ──────────────────────────────────────────────────────── #}
     {% call card.card() %}
         {% call card.card_content(class='p-4') %}
-            <form method="get" class="flex flex-wrap gap-4 items-end">
+            <form method="get" action="{{ request.path }}" class="flex flex-wrap gap-4 items-end">
                 <div class="flex-1 min-w-[200px]">
                     <label for="year" class="block text-sm font-medium text-foreground mb-1">Year</label>
                     <select name="year" id="year" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

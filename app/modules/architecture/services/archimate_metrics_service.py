@@ -11,7 +11,7 @@ Calculates and tracks architecture quality metrics including:
 
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 

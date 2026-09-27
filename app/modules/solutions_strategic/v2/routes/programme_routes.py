@@ -8,16 +8,21 @@ Pages:
     GET  /solutions/programmes/<id>          — governance cockpit
 
 APIs:
-    POST   /solutions/programmes                          — create programme
+    POST   /solutions/programmes                          — retired legacy intake
     GET    /solutions/programmes/<id>/api/rollup          — rollup JSON
     POST   /solutions/programmes/<id>/solutions           — assign member solution
     DELETE /solutions/programmes/<id>/solutions/<sid>     — unassign member
     GET    /solutions/programmes/api/unassigned-solutions — picker source
+
+Chief Architect Workbench:
+    GET  /solutions/architect-synthesis              — enterprise-wide workbench
+    GET  /solutions/architect-synthesis/api          — the same posture as JSON
+    POST /solutions/architect-synthesis/ai-briefing  — advisory AI briefing
 """
 
 import logging
 
-from flask import jsonify, render_template, request
+from flask import current_app, g, jsonify, redirect, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
@@ -28,8 +33,10 @@ from .solution_design_routes import solution_design_bp
 
 logger = logging.getLogger(__name__)
 
-VALID_TYPES = ("greenfield", "brownfield")
-
+#: Rows shown in the Chief Architect Workbench attention queue before it is
+#: truncated. The full count is always reported beside it so a truncated queue
+#: never reads as a complete one.
+ATTENTION_DISPLAY_LIMIT = 10
 
 # =============================================================================
 # PAGES
@@ -77,26 +84,126 @@ def solution_review_packet_api(solution_id):
     return jsonify(packet), (200 if packet.get("success") else 404)
 
 
-@solution_design_bp.route("/architect-synthesis", methods=["GET"])
-@login_required
-def architect_synthesis():
-    """Portfolio-wide Chief Architect synthesis."""
+def _chief_architect_workbench():
+    """Assemble the full Chief Architect Workbench posture.
+
+    The HTML page and its JSON twin must never disagree, so both call this. They
+    previously held two literal copies of this body, which is how they would
+    have drifted the first time either was changed.
+
+    Three sources, each keeping its own denominator and its own failure mode:
+    solution conformance + ARB (``ChiefArchitectService``), the transformation
+    programme portfolio (authorisation-gated), and the enterprise domain lenses
+    (``EnterprisePostureService``). No composite score is derived across them —
+    they measure unlike things.
+    """
     from app.modules.solutions_strategic.v2.services.chief_architect_service import (
         ChiefArchitectService,
     )
+    from app.modules.solutions_strategic.v2.services.enterprise_posture_service import (
+        EnterprisePostureService,
+    )
+    from app.modules.transformation_room.domain import TransformationError
+    from app.modules.transformation_room.read_models import (
+        ChiefArchitectTransformationReadModel,
+    )
+    from app.modules.transformation_room.routes import actor_from_request
 
     synthesis = ChiefArchitectService.portfolio_synthesis()
-    return render_template("solutions/architect_synthesis.html", synthesis=synthesis)
+    try:
+        transformation = ChiefArchitectTransformationReadModel.portfolio(
+            actor=actor_from_request()
+        )
+        synthesis["transformation"] = (
+            ChiefArchitectTransformationReadModel.to_template(transformation)
+        )
+    except TransformationError as error:
+        synthesis["transformation"] = _unavailable_transformation_posture(error.reason)
+
+    enterprise = EnterprisePostureService.enterprise_posture()
+    synthesis["enterprise"] = enterprise
+
+    # The enterprise lenses feed the ONE prioritised queue rather than a second
+    # list beside it: a Chief Architect wants "what needs me next", not one
+    # backlog per domain. Merged into the untruncated queue and re-sorted through
+    # the service's own comparator, so an enterprise finding and a solution
+    # finding interleave by severity instead of by which list they came from.
+    solution_items = synthesis.get("attention_all") or []
+    full = ChiefArchitectService._prioritise_attention(
+        list(solution_items) + enterprise["attention"]
+    )
+    displayed = min(len(full), ATTENTION_DISPLAY_LIMIT)
+    synthesis["attention"] = full[:displayed]
+    synthesis["attention_all"] = full
+    synthesis["attention_total"] = len(full)
+    synthesis["attention_displayed"] = displayed
+    synthesis["attention_truncated"] = len(full) > displayed
+    return synthesis
+
+
+@solution_design_bp.route("/architect-synthesis", methods=["GET"])
+@login_required
+def architect_synthesis():
+    """Enterprise-wide Chief Architect Workbench."""
+    return render_template(
+        "solutions/architect_synthesis.html", synthesis=_chief_architect_workbench()
+    )
 
 
 @solution_design_bp.route("/architect-synthesis/api", methods=["GET"])
 @login_required
 def architect_synthesis_api():
-    from app.modules.solutions_strategic.v2.services.chief_architect_service import (
-        ChiefArchitectService,
-    )
+    return jsonify(_chief_architect_workbench())
 
-    return jsonify(ChiefArchitectService.portfolio_synthesis())
+
+@solution_design_bp.route("/architect-synthesis/ai-briefing", methods=["POST"])
+@login_required
+def architect_synthesis_ai_briefing():
+    """Advisory Chief Architect briefing over the workbench's own measured posture.
+
+    The model is handed only what the page already measured. A failure returns
+    502 with the reason so the panel can say the briefing is unavailable — it
+    never degrades into a generated-sounding fallback, which the reader could
+    not distinguish from a real one.
+    """
+    from app.modules.solutions_strategic.v2.services.chief_architect_briefing_service import (
+        ChiefArchitectBriefingError,
+        generate_chief_architect_briefing,
+    )
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS,
+        endpoint_name="solution_design.architect_synthesis_ai_briefing",
+    )
+    if feature_guard:
+        return feature_guard
+
+    synthesis = _chief_architect_workbench()
+    try:
+        briefing = generate_chief_architect_briefing(synthesis)
+    except ChiefArchitectBriefingError as error:
+        current_app.logger.warning("Chief Architect briefing unparseable: %s", error)
+        return jsonify({"error": f"AI briefing failed: {error}"}), 502
+    except Exception as error:  # noqa: BLE001
+        current_app.logger.exception("Chief Architect briefing generation failed")
+        return jsonify({"error": f"AI briefing failed: {error}"}), 502
+
+    return jsonify({"briefing": briefing})
+
+
+def _unavailable_transformation_posture(reason):
+    unavailable = {"value": None, "reason": reason}
+    return {
+        "state": "not_authorised",
+        "programme_count": None,
+        "non_solution_programmes": None,
+        "evidence_debt": dict(unavailable),
+        "decision_ageing": dict(unavailable),
+        "cross_domain_dependencies": dict(unavailable),
+        "delivery_confidence": dict(unavailable),
+        "outcome_variance": dict(unavailable),
+    }
 
 
 # ── AI-6: Escalate an AI finding to the ARB ──────────────────────────── #
@@ -105,18 +212,44 @@ def architect_synthesis_api():
 @login_required
 def arb_escalate_finding():
     """Turn an AI architect finding into a tracked ARB review item."""
+    data = request.get_json(silent=True) or {}
+    solution_id = data.get("solution_id") or None
+    if solution_id is not None:
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
+        )
+
+        result = TypedARBSubmissionAdapter.submit_solution_from_request(
+            solution_id=solution_id,
+            payload=data,
+        )
+        if not result.success:
+            return jsonify({
+                "success": False,
+                "reason_codes": result.reason_codes,
+                "missing_evidence": result.missing_evidence,
+            }), result.http_status
+        return jsonify({
+            "success": True,
+            "review_number": result.review_number,
+            "id": result.review_item_id,
+            "review_cycle_id": result.review_cycle_id,
+            "snapshot_id": result.snapshot_id,
+            "canonical_url": result.canonical_url,
+            "idempotent": result.idempotent,
+        }), (200 if result.idempotent else 201)
+
     from app.modules.solutions_strategic.v2.services.arb_escalation_service import (
         ARBEscalationService,
     )
 
-    data = request.get_json(silent=True) or {}
     result = ARBEscalationService.escalate(
         title=data.get("title", ""),
         detail=data.get("detail", ""),
         category=data.get("category", ""),
         severity=data.get("severity", ""),
         user_id=current_user.id,
-        solution_id=data.get("solution_id") or None,
+        solution_id=None,
     )
     return jsonify(result), (201 if result.get("success") else 400)
 
@@ -359,6 +492,14 @@ def programme_drift(initiative_id):
 @login_required
 def programme_cockpit(initiative_id):
     """Programme governance cockpit."""
+    canonical = StrategicInitiative.query.filter(
+        StrategicInitiative.id == initiative_id,
+        StrategicInitiative.organization_id == getattr(g, "current_org_id", None),
+        StrategicInitiative.record_kind == "transformation_programme",
+    ).first()
+    if canonical is not None:
+        return redirect(f"/solutions/programmes/{canonical.id}/overview", code=302)
+
     from app.modules.solutions_strategic.v2.services.programme_governance_service import (
         ProgrammeGovernanceService,
     )
@@ -385,29 +526,12 @@ def programme_cockpit(initiative_id):
 @solution_design_bp.route("/programmes", methods=["POST"])
 @login_required
 def create_programme_entity():
-    """Create a Transformation Programme (StrategicInitiative)."""
-    data = request.get_json(silent=True) or {}
-    name = (data.get("name") or "").strip()
-    if not name:
-        return jsonify({"success": False, "error": "Programme name is required."}), 400
-    itype = (data.get("initiative_type") or "brownfield").lower()
-    if itype not in VALID_TYPES:
-        return jsonify({"success": False, "error": "initiative_type must be greenfield or brownfield."}), 400
-
-    initiative = StrategicInitiative(
-        name=name,
-        description=data.get("description") or "",
-        initiative_type=itype,
-        target_platform=(data.get("target_platform") or "").strip() or None,
-        vendor_key=(data.get("vendor_key") or "").strip().upper() or None,
-        status=data.get("status") or "in_progress",
-        priority=data.get("priority") or "high",
-        owner_id=current_user.id,
-    )
-    db.session.add(initiative)
-    db.session.commit()
-    logger.info("Programme created: id=%s name=%s type=%s", initiative.id, name, itype)
-    return jsonify({"success": True, "id": initiative.id}), 201
+    """Retire the technology-first bypass; canonical intake owns creation."""
+    return jsonify({
+        "success": False,
+        "error": "Use the governed transformation programme intake.",
+        "redirect_url": "/solutions/new-programme",
+    }), 410
 
 
 @solution_design_bp.route("/programmes/<int:initiative_id>/api/rollup", methods=["GET"])

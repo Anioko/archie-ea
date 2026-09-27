@@ -5,32 +5,23 @@
 
 {% block content %}
 <div class="space-y-6">
-    <!-- Breadcrumbs -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('industry_apqc.industry_apqc_dashboard') }}" class="hover:text-foreground transition-colors">Industry APQC</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">Recommendations</span>
-    </nav>
-
     <!-- Page Header -->
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         {{ page_header(
-        title='Process Recommendations',
+        title='Process Recommendations', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Industry APQC', 'href': url_for('industry_apqc.industry_apqc_dashboard')}, {'label': 'Process Recommendations'}],
         description='AI-generated recommendations based on maturity assessments'
     ) }}
     </div>
 
     <!-- Filters -->
     <div class="rounded-xl border-2 border-input bg-background p-4 mb-6">
-        <form method="GET" class="flex flex-wrap items-center gap-4">
+        <form method="GET" action="{{ url_for('industry_apqc.industry_apqc_recommendations') }}" class="flex flex-wrap items-center gap-4">
             <div>
                 <label class="text-sm font-medium text-muted-foreground">Industry</label>
-                <select name="industry" class="ml-2 rounded-lg border-2 border-input px-3 py-1.5 text-sm">
+                <select name="industry" class="ml-2 rounded-lg border-2 border-input px-3 py-1.5 text-sm" aria-label="Industry">
                     <option value="">All Industries</option>
                     {% for fw in frameworks %}
-                    <option value="{{ fw.industry_code }}" {% if selected_industry == fw.industry_code %}selected{% endif %}>
+                    <option value="{{ fw.industry_code }}" {% if selected_industry|default('')|string == fw.industry_code|string %}selected{% endif %}>
                         {{ fw.industry_name }}
                     </option>
                     {% endfor %}
@@ -58,7 +49,7 @@
                     <div class="flex items-center gap-3 mb-2">
                         <h3 class="text-lg font-semibold">{{ rec.recommendation_title }}</h3>
                         {% if rec.is_quick_win %}
-                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success">
+                        <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium bg-success/10 text-success-emphasis">
                             Quick Win
                         </span>
                         {% endif %}
@@ -71,13 +62,13 @@
                     <p class="text-muted-foreground">{{ rec.recommendation_description }}</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button @click="acceptRecommendation({{ rec.id }})"
-                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-success/10 text-success hover:bg-success/20 text-sm" aria-label="Action">
+                    <button type="button" @click="acceptRecommendation({{ rec.id }})"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-success/10 text-success-emphasis hover:bg-success/20 text-sm" aria-label="Action">
                         <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
                         Accept
                     </button>
-                    <button @click="rejectRecommendation({{ rec.id }})"
-                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 text-sm" aria-label="Reject">
+                    <button type="button" @click="rejectRecommendation({{ rec.id }})"
+                            class="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive-emphasis hover:bg-destructive/20 text-sm" aria-label="Reject">
                         <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
                         Reject
                     </button>
@@ -117,44 +108,35 @@
 <script>
 async function acceptRecommendation(id) {
     try {
-        const response = await fetch(`/api/vendors/recommendations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            }
-        });
-        const data = await response.json();
+        // Platform.fetch.post automatically injects CSRF token and serializes body to JSON
+        const data = await Platform.fetch.post(`/api/vendors/recommendations`, null, { silent: true });
         if (data.success) {
             location.reload();
         } else {
             Platform.toast.error('Error: ' + data.error);
         }
     } catch (error) {
+        // Platform.fetch throws on non-ok responses, surface the error to user
         Platform.toast.error('Error: ' + error.message);
     }
 }
 
 async function rejectRecommendation(id) {
-    const reason = prompt('Reason for rejection:');
+    const reason = await Platform.modal.promptText('Reason for rejection:', {
+        title: 'Reject recommendation', multiline: true, confirmLabel: 'Reject'
+    });
     if (!reason) return;
 
     try {
-        const response = await fetch(`/api/vendors/recommendations`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': '{{ csrf_token() }}'
-            },
-            body: JSON.stringify({ reason })
-        });
-        const data = await response.json();
+        // Platform.fetch.post automatically injects CSRF token and serializes plain object body to JSON
+        const data = await Platform.fetch.post(`/api/vendors/recommendations`, { reason }, { silent: true });
         if (data.success) {
             location.reload();
         } else {
             Platform.toast.error('Error: ' + data.error);
         }
     } catch (error) {
+        // Platform.fetch throws on non-ok responses, surface the error to user
         Platform.toast.error('Error: ' + error.message);
     }
 }

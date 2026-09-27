@@ -20,17 +20,16 @@ The Motivation Layer in ArchiMate 3.2 includes:
 - Constraint: Restriction on implementation
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from app import db
 from app.models import (
     AcceptanceCriteria,
     ArchiMateElement,
     ArchiMateRelationship,
-    ArchitectureModel,
     Requirement,
 )
 from app.models.business_capabilities import BusinessFunction
@@ -273,6 +272,7 @@ Focus on QUALITY over quantity - each requirement should be specific, measurable
             stakeholder_id=stakeholder_ids[0] if stakeholder_ids else None,
         )
         db.session.add(requirement)
+        sync_archimate_element(requirement)
         db.session.flush()
 
         # 3. Create ArchiMate 3.2 relationships
@@ -308,7 +308,7 @@ Focus on QUALITY over quantity - each requirement should be specific, measurable
                 source_id=business_func.archimate_element_id,
                 target_id=archimate_element.id,
                 type="realization",
-                description=f"Business function realizes requirement",
+                description="Business function realizes requirement",
             )
             db.session.add(rel)
 
@@ -1294,7 +1294,7 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
 
             return requirements_data
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as e:  # fabricated-ok: unparseable response yields empty lists, not fabricated requirements
             logger.error(f" Failed to parse compliance requirements JSON: {e}")
             logger.info(f"Response: {response[:500]}")
             return {

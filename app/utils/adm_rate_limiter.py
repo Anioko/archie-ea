@@ -7,12 +7,9 @@ Prevents abuse and ensures fair usage.
 
 import logging
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from flask import current_app, g, request
 
-from app import db
 
 # redis_client is optional — import lazily to avoid ImportError when Redis is not configured
 try:

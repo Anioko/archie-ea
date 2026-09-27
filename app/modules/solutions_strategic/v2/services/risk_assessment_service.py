@@ -9,13 +9,10 @@ Identifies and assesses risks across business capabilities and applications:
 - Integration and dependency risks
 """
 
-from datetime import date, datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List
 
-from sqlalchemy import and_, func, or_
 
-from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
 from .decorators import transactional
@@ -345,10 +342,10 @@ class RiskAssessmentService:
         compliance_count = len(
             [c for c in capability_risks if "COMPLIANCE_RISK" in c["risk_factors"]]
         )
-        dependency_count = len(
+        (len(
             [c for c in capability_risks if "DEPENDENCY_RISK" in c["risk_factors"]]
-        )
-        skill_gap_count = len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
+        ))
+        len([c for c in capability_risks if "SKILL_GAP" in c["risk_factors"]])
 
         # Average risk scores
         avg_spof_risk = (

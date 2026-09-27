@@ -6,6 +6,7 @@ matching KanbanCard in the local database.
 """
 
 import logging
+from datetime import datetime
 
 import requests
 from flask import current_app
@@ -50,11 +51,25 @@ def sync_card_from_jira(card: KanbanCard) -> dict:
         return {"updated": False, "jira_status": None, "error": str(exc)}
 
     data = resp.json()
-    jira_status = (data.get("fields") or {}).get("status", {}).get("name")
+    fields = data.get("fields") or {}
+    jira_status = (fields.get("status") or {}).get("name")
 
     if jira_status:
         from app.modules.integrations.jira.jira_webhook_handler import _JIRA_STATUS_MAP
         card.status = _JIRA_STATUS_MAP.get(jira_status, jira_status.lower().replace(" ", "_"))
+
+    # Effort actuals. Previously only status came back, so no part of the platform
+    # could observe consumed effort and initiative spend stayed permanently empty.
+    # Jira omits these keys entirely when no work is logged; that is NOT zero
+    # effort, so leave the column NULL rather than writing 0.
+    time_spent = fields.get("timespent")
+    time_estimate = fields.get("timeoriginalestimate") or fields.get("timeestimate")
+    if isinstance(time_spent, int):
+        card.time_spent_seconds = time_spent
+    if isinstance(time_estimate, int):
+        card.time_estimate_seconds = time_estimate
+    if isinstance(time_spent, int) or isinstance(time_estimate, int):
+        card.effort_synced_at = datetime.utcnow()
 
     card.jira_push_status = f"synced:{jira_status}" if jira_status else "synced"
 

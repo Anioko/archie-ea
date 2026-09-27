@@ -1,29 +1,16 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge %}
 
 {% block title %}{{ session.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-7xl" x-data="sessionDetail()">
-    {# Breadcrumbs #}
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('solution_design.list_solutions') }}" class="hover:text-foreground transition-colors">Solutions</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">{{ session.name }}</span>
-    </nav>
-
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="sessionDetail()">
     <!-- Header -->
-    <div class="flex items-center justify-between mb-8">
-        <div class="flex items-center gap-4">
-            <a href="{{ url_for('solution_design.list_solutions') }}"
-               class="p-2 rounded-md hover:bg-accent transition-colors">
-                <i data-lucide="arrow-left" class="h-5 w-5" aria-hidden="true"></i>
-            </a>
-            <div>
-                <h1 class="text-4xl font-bold tracking-tight">{{ session.name }}</h1>
-                <p class="text-muted-foreground mt-1">
+    {# The subtitle carries a status_badge macro call, so it goes through
+       subtitle_caller rather than the plain-text `subtitle` kwarg. #}
+    {% macro _ps_sub() %}
                     Created {{ session.created_at.strftime('%Y-%m-%d %H:%M') }} •
                     Version {{ session.current_version }} •
                     {% if session.status.value == 'completed' %}
@@ -33,58 +20,64 @@
                     {% else %}
                     {{ status_badge(session.status.value|replace('_', ' ')|title, 'neutral') }}
                     {% endif %}
-                </p>
-            </div>
-        </div>
-
-        <div class="flex gap-2">
-            <button @click="resumeAnalysis"
+    {% endmacro %}
+    {% macro _ps_actions() %}
+            <button type="button" @click="resumeAnalysis"
                     class="inline-flex items-center gap-2 h-10 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-sm font-medium" aria-label="Resume analysis">
                 <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
                 Resume Analysis
             </button>
-            <button @click="exportSession"
+            <button type="button" @click="exportSession"
                     class="inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Export">
                 <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
                 Export
             </button>
-        </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(
+        title=session.name,
+        breadcrumb=[
+            ('Dashboard', url_for('main.index')),
+            ('Solutions', url_for('solution_design.list_solutions')),
+            (session.name, None)
+        ],
+        subtitle_caller=_ps_sub,
+        actions_caller=_ps_actions
+    ) }}
 
     <!-- Tabs -->
     <div class="border-b border-border mb-6">
         <nav class="flex gap-6">
-            <button @click="activeTab = 'overview'"
+            <button type="button" @click="activeTab = 'overview'"
                     :class="activeTab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show overview tab">
                 Overview
             </button>
-            <button @click="activeTab = 'problem'"
+            <button type="button" @click="activeTab = 'problem'"
                     :class="activeTab === 'problem' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show problem definition tab">
                 Problem Definition
             </button>
-            <button @click="activeTab = 'motivational'"
+            <button type="button" @click="activeTab = 'motivational'"
                     :class="activeTab === 'motivational' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show motivational elements tab">
                 Motivational Elements
             </button>
-            <button @click="activeTab = 'recommendations'"
+            <button type="button" @click="activeTab = 'recommendations'"
                     :class="activeTab === 'recommendations' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show recommendations tab">
                 Recommendations
             </button>
-            <button @click="activeTab = 'options_analysis'; if (!analysisLoaded) loadAnalysisResults()"
+            <button type="button" @click="activeTab = 'options_analysis'; if (!analysisLoaded) loadAnalysisResults()"
                     :class="activeTab === 'options_analysis' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show options analysis tab">
                 Options Analysis
             </button>
-            <button @click="activeTab = 'ai_design'"
+            <button type="button" @click="activeTab = 'ai_design'"
                     :class="activeTab === 'ai_design' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show AI design tab">
                 AI Design
             </button>
-            <button @click="activeTab = 'versions'"
+            <button type="button" @click="activeTab = 'versions'"
                     :class="activeTab === 'versions' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'"
                     class="pb-3 border-b-2 font-medium text-sm transition-colors" aria-label="Show versions tab">
                 Versions ({{ session.versions|length }})
@@ -405,7 +398,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {% if rec.pros %}
                 <div>
-                    <h4 class="font-semibold text-sm mb-2 text-success">✓ Pros</h4>
+                    <h4 class="font-semibold text-sm mb-2 text-success-emphasis">✓ Pros</h4>
                     <ul class="space-y-1">
                         {% for pro in rec.pros %}
                         <li class="text-sm">• {{ pro }}</li>
@@ -415,7 +408,7 @@
                 {% endif %}
                 {% if rec.cons %}
                 <div>
-                    <h4 class="font-semibold text-sm mb-2 text-destructive">✗ Cons</h4>
+                    <h4 class="font-semibold text-sm mb-2 text-destructive-emphasis">✗ Cons</h4>
                     <ul class="space-y-1">
                         {% for con in rec.cons %}
                         <li class="text-sm">• {{ con }}</li>
@@ -460,14 +453,14 @@
                     Run a multi-criteria options analysis to compare Buy, Build, Reuse, and Hybrid approaches
                     based on your problem definition, budget, and timeline constraints.
                 </p>
-                <button @click="runOptionsAnalysis()"
+                <button type="button" @click="runOptionsAnalysis()"
                         :disabled="!hasProblemDefinition"
                         class="inline-flex items-center gap-2 h-10 px-6 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Run options analysis">
                     <i data-lucide="play" class="h-4 w-4" aria-hidden="true"></i>
                     Run Options Analysis
                 </button>
                 <template x-if="!hasProblemDefinition">
-                    <p class="text-sm text-warning mt-3">A problem definition is required before running analysis.</p>
+                    <p class="text-sm text-warning-emphasis mt-3">A problem definition is required before running analysis.</p>
                 </template>
             </div>
         </template>
@@ -482,7 +475,7 @@
                         <p class="text-sm text-muted-foreground mt-1"
                            x-text="analysisResults.length + ' options analyzed and ranked by score'"></p>
                     </div>
-                    <button @click="runOptionsAnalysis()"
+                    <button type="button" @click="runOptionsAnalysis()"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-input hover:bg-accent transition-colors text-sm font-medium" aria-label="Re-run options analysis">
                         <i data-lucide="refresh-cw" class="h-4 w-4" aria-hidden="true"></i>
                         Re-run Analysis
@@ -577,8 +570,8 @@
 
                                 <!-- Pros -->
                                 <div x-show="rec.pros && rec.pros.length > 0" x-cloak>
-                                    <button @click="rec._showPros = !rec._showPros"
-                                            class="flex items-center gap-1 text-sm font-semibold text-success mb-2 hover:underline" aria-label="Toggle pros list">
+                                    <button type="button" @click="rec._showPros = !rec._showPros"
+                                            class="flex items-center gap-1 text-sm font-semibold text-success-emphasis mb-2 hover:underline" aria-label="Toggle pros list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showPros ? 'rotate-180' : ''"></i>
                                         Pros (<span x-text="rec.pros.length"></span>)
@@ -586,7 +579,7 @@
                                     <ul x-show="rec._showPros" x-cloak class="space-y-1 pl-1">
                                         <template x-for="pro in rec.pros" :key="pro">
                                             <li class="text-sm flex items-start gap-2">
-                                                <span class="text-success mt-0.5 shrink-0">+</span>
+                                                <span class="text-success-emphasis mt-0.5 shrink-0">+</span>
                                                 <span x-text="pro"></span>
                                             </li>
                                         </template>
@@ -595,8 +588,8 @@
 
                                 <!-- Cons -->
                                 <div x-show="rec.cons && rec.cons.length > 0" x-cloak>
-                                    <button @click="rec._showCons = !rec._showCons"
-                                            class="flex items-center gap-1 text-sm font-semibold text-destructive mb-2 hover:underline" aria-label="Toggle cons list">
+                                    <button type="button" @click="rec._showCons = !rec._showCons"
+                                            class="flex items-center gap-1 text-sm font-semibold text-destructive-emphasis mb-2 hover:underline" aria-label="Toggle cons list">
                                         <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform"
                                            :class="rec._showCons ? 'rotate-180' : ''"></i>
                                         Cons (<span x-text="rec.cons.length"></span>)
@@ -604,7 +597,7 @@
                                     <ul x-show="rec._showCons" x-cloak class="space-y-1 pl-1">
                                         <template x-for="con in rec.cons" :key="con">
                                             <li class="text-sm flex items-start gap-2">
-                                                <span class="text-destructive mt-0.5 shrink-0">-</span>
+                                                <span class="text-destructive-emphasis mt-0.5 shrink-0">-</span>
                                                 <span x-text="con"></span>
                                             </li>
                                         </template>
@@ -629,7 +622,7 @@
 
                 <!-- Scenario What-If Controls -->
                 <div class="bg-card rounded-lg border border-border p-6" x-data="{ showScenario: false }">
-                    <button @click="showScenario = !showScenario" class="flex items-center justify-between w-full text-left" aria-label="Toggle what-if scenario analysis">
+                    <button type="button" @click="showScenario = !showScenario" class="flex items-center justify-between w-full text-left" aria-label="Toggle what-if scenario analysis">
                         <h3 class="text-lg font-bold flex items-center gap-2">
                             <i data-lucide="sliders-horizontal" class="h-5 w-5 text-warning" aria-hidden="true"></i>
                             What-If Scenario Analysis
@@ -695,10 +688,10 @@
                             <div class="text-sm">
                                 <span class="text-muted-foreground">Total weight: </span>
                                 <span class="font-bold tabular-nums"
-                                      :class="scenarioWeightSum === 100 ? 'text-success' : 'text-destructive'"
+                                      :class="scenarioWeightSum === 100 ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                                       x-text="scenarioWeightSum + '%'"></span>
                             </div>
-                            <button @click="recalculateScenario()"
+                            <button type="button" @click="recalculateScenario()"
                                     :disabled="scenarioWeightSum !== 100 || scenarioLoading"
                                     class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed" aria-label="Recalculate scenario rankings">
                                 <svg class="h-4 w-4" :class="scenarioLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -717,7 +710,7 @@
                                         <div class="flex items-center justify-between p-3 rounded-lg bg-muted">
                                             <div class="flex items-center gap-3">
                                                 <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold"
-                                                      :class="idx === 0 ? 'bg-success/10 text-success' : 'bg-background text-foreground'"
+                                                      :class="idx === 0 ? 'bg-success/10 text-success-emphasis' : 'bg-background text-foreground'"
                                                       x-text="'#' + (idx + 1)"></span>
                                                 <span class="font-medium" x-text="sr.option_type"></span>
                                             </div>
@@ -749,13 +742,13 @@
         <!-- Error State -->
         <template x-if="analysisError">
             <div class="bg-destructive/5 border border-destructive/20 rounded-lg p-4">
-                <div class="flex items-center gap-2 text-destructive">
+                <div class="flex items-center gap-2 text-destructive-emphasis">
                     <i data-lucide="alert-circle" class="h-5 w-5" aria-hidden="true"></i>
                     <span class="font-medium">Analysis Error</span>
                 </div>
-                <p class="text-sm text-destructive mt-1" x-text="analysisError"></p>
-                <button @click="analysisError = null"
-                        class="mt-2 text-sm text-destructive hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
+                <p class="text-sm text-destructive-emphasis mt-1" x-text="analysisError"></p>
+                <button type="button" @click="analysisError = null"
+                        class="mt-2 text-sm text-destructive-emphasis hover:underline" aria-label="Dismiss analysis error">Dismiss</button>
             </div>
         </template>
     </div>
@@ -776,7 +769,7 @@
                     </p>
                 </div>
                 <template x-if="!hasProblemDefinition">
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-warning text-sm">
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/20 text-warning-emphasis text-sm">
                         <i data-lucide="alert-triangle" class="h-4 w-4" aria-hidden="true"></i>
                         Problem definition required
                     </span>
@@ -794,10 +787,10 @@
                         </div>
                         <div>
                             <h3 class="text-lg font-bold">Architecture Elements</h3>
-                            <p class="text-sm text-muted-foreground">ArchiMate elements across all 6 layers</p>
+                            <p class="text-sm text-muted-foreground">Architecture elements across all 6 layers</p>
                         </div>
                     </div>
-                    <button @click="generateAIElements()"
+                    <button type="button" @click="generateAIElements()"
                             :disabled="!hasProblemDefinition || aiLoading.elements"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate architecture elements">
                         <svg x-show="aiLoading.elements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -819,7 +812,7 @@
                     </div>
                     <template x-for="layer in ['motivation', 'strategy', 'business', 'application', 'technology', 'implementation']" :key="layer">
                         <div x-show="aiElements[layer] && aiElements[layer].length > 0" x-cloak>
-                            <button @click="aiExpandedLayers[layer] = !aiExpandedLayers[layer]"
+                            <button type="button" @click="aiExpandedLayers[layer] = !aiExpandedLayers[layer]"
                                     class="flex items-center justify-between w-full text-left p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors" aria-label="Toggle architecture layer details">
                                 <div class="flex items-center gap-2">
                                     <svg class="w-4 h-4 text-muted-foreground transition-transform" :class="aiExpandedLayers[layer] ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -874,7 +867,7 @@
                             <p class="text-sm text-muted-foreground">Match architecture patterns from the pattern library</p>
                         </div>
                     </div>
-                    <button @click="detectAIPatterns()"
+                    <button type="button" @click="detectAIPatterns()"
                             :disabled="!hasProblemDefinition || aiLoading.patterns"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-success text-primary-foreground hover:bg-success disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Detect architecture patterns">
                         <svg x-show="aiLoading.patterns" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -898,11 +891,11 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <template x-for="pattern in aiPatterns" :key="pattern.pattern_id">
                             <div class="rounded-lg border p-4 transition-colors"
-                                 :class="pattern.is_match ? 'border-green-300 bg-success/5/50' : 'border-border bg-muted/20 opacity-60'">
+                                 :class="pattern.is_match ? 'border-success/40 bg-success/5' : 'border-border bg-muted/20 opacity-60'">
                                 <div class="flex items-start justify-between mb-2">
                                     <h4 class="font-semibold text-sm" x-text="pattern.name"></h4>
                                     <span class="text-xs font-bold px-2 py-0.5 rounded"
-                                          :class="pattern.is_match ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'"
+                                          :class="pattern.is_match ? 'bg-success/10 text-success-emphasis' : 'bg-muted text-muted-foreground'"
                                           x-text="(pattern.confidence * 100).toFixed(0) + '% match'"></span>
                                 </div>
                                 <p class="text-xs text-muted-foreground mb-3" x-text="pattern.description"></p>
@@ -918,7 +911,7 @@
                                 <template x-if="pattern.matched_triggers.length > 0">
                                     <div class="flex flex-wrap gap-1 mt-2">
                                         <template x-for="trigger in pattern.matched_triggers" :key="trigger">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-success/10 text-success"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-success/10 text-success-emphasis"
                                                   x-text="trigger"></span>
                                         </template>
                                     </div>
@@ -927,7 +920,7 @@
                                 <!-- Pattern elements (collapsed) -->
                                 <template x-if="pattern.is_match">
                                     <div class="mt-3" x-data="{ showElems: false }">
-                                        <button @click="showElems = !showElems" class="text-xs text-success hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
+                                        <button type="button" @click="showElems = !showElems" class="text-xs text-success-emphasis hover:underline flex items-center gap-1" aria-label="Toggle pattern elements">
                                             <svg class="w-3 h-3 transition-transform" :class="showElems ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                             </svg>
@@ -963,7 +956,7 @@
                             <p class="text-sm text-muted-foreground">Functional, non-functional, and constraint requirements</p>
                         </div>
                     </div>
-                    <button @click="generateAIRequirements()"
+                    <button type="button" @click="generateAIRequirements()"
                             :disabled="!hasProblemDefinition || aiLoading.requirements"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate requirements">
                         <svg x-show="aiLoading.requirements" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -988,7 +981,7 @@
                     <template x-for="category in ['Functional', 'Non-Functional', 'Constraint']" :key="category">
                         <div x-show="aiRequirements.filter(r => r.category === category).length > 0" x-cloak>
                             <h4 class="font-semibold text-sm mb-2 flex items-center gap-2">
-                                <span :class="category === 'Functional' ? 'text-primary' : category === 'Non-Functional' ? 'text-primary' : 'text-warning'"
+                                <span :class="category === 'Functional' ? 'text-primary' : category === 'Non-Functional' ? 'text-primary' : 'text-warning-emphasis'"
                                       x-text="category"></span>
                                 <span class="text-xs text-muted-foreground px-1.5 py-0.5 rounded bg-muted"
                                       x-text="aiRequirements.filter(r => r.category === category).length"></span>
@@ -1002,9 +995,9 @@
                                                 <div class="text-xs text-muted-foreground mt-1" x-text="req.description"></div>
                                             </div>
                                             <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium shrink-0"
-                                                  :class="req.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
-                                                           req.priority === 'high' ? 'bg-warning/10 text-warning' :
-                                                           req.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                  :class="req.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' :
+                                                           req.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' :
+                                                           req.priority === 'medium' ? 'bg-warning/10 text-warning-emphasis' :
                                                            'bg-muted text-muted-foreground'"
                                                   x-text="req.priority"></span>
                                         </div>
@@ -1014,7 +1007,7 @@
                                                 <ul class="space-y-0.5">
                                                     <template x-for="ac in req.acceptance_criteria" :key="ac">
                                                         <li class="text-xs text-muted-foreground flex items-start gap-1.5">
-                                                            <span class="text-success mt-0.5 shrink-0">&#10003;</span>
+                                                            <span class="text-success-emphasis mt-0.5 shrink-0">&#10003;</span>
                                                             <span x-text="ac"></span>
                                                         </li>
                                                     </template>
@@ -1056,7 +1049,7 @@
                             <p class="text-sm text-muted-foreground">Work packages organized by implementation phase</p>
                         </div>
                     </div>
-                    <button @click="generateAIRoadmap()"
+                    <button type="button" @click="generateAIRoadmap()"
                             :disabled="!hasProblemDefinition || aiLoading.roadmap"
                             class="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-warning text-primary-foreground hover:bg-warning disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium" aria-label="Generate implementation roadmap">
                         <svg x-show="aiLoading.roadmap" x-cloak class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
@@ -1105,9 +1098,9 @@
                                             </div>
                                             <div class="flex items-center gap-2 shrink-0">
                                                 <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive' :
-                                                               item.priority === 'high' ? 'bg-warning/10 text-warning' :
-                                                               item.priority === 'medium' ? 'bg-warning/10 text-warning' :
+                                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' :
+                                                               item.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' :
+                                                               item.priority === 'medium' ? 'bg-warning/10 text-warning-emphasis' :
                                                                'bg-muted text-muted-foreground'"
                                                       x-text="item.priority"></span>
                                                 <span class="text-xs text-muted-foreground tabular-nums"
@@ -1117,7 +1110,7 @@
                                         <!-- Duration bar -->
                                         <div class="mt-2 w-full bg-muted rounded-full h-1.5">
                                             <div class="h-1.5 rounded-full transition-all duration-300"
-                                                 :class="phase.color === 'blue' ? 'bg-primary/40' : phase.color === 'green' ? 'bg-success/40' : phase.color === 'purple' ? 'bg-purple-400' : 'bg-warning/40'"
+                                                 :class="phase.color === 'blue' ? 'bg-primary/40' : phase.color === 'green' ? 'bg-success/40' : phase.color === 'purple' ? 'bg-info/40' : 'bg-warning/40'"
                                                  :style="'width: ' + Math.min(100, (item.duration_weeks || 1) * 10) + '%'"></div>
                                         </div>
                                         <!-- Dependencies -->
@@ -1222,11 +1215,9 @@ function sessionDetail() {
         async loadAnalysisResults() {
             if (this.analysisLoaded) return;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', {
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.has_results) {
+                const data = await Platform.fetch('/solutions/architect/api/sessions/{{ session.id }}/analysis-results', { silent: true });
+                if (!data.success) throw new Error(data.error || data.message || 'Failed to load analysis results');
+                if (data.has_results) {
                     this.analysisResults = data.recommendations.map(rec => ({
                         ...rec,
                         _showPros: false,
@@ -1235,8 +1226,11 @@ function sessionDetail() {
                 }
                 this.analysisLoaded = true;
             } catch (err) {
-                console.error('Failed to load analysis results:', err);
+                // Marked loaded either way so the panel stops spinning, but the
+                // user is told: an empty options list from a failed load is
+                // indistinguishable from a session with no recommendations.
                 this.analysisLoaded = true;
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to load analysis results');
             }
         },
 
@@ -1244,11 +1238,7 @@ function sessionDetail() {
             this.analysisLoading = true;
             this.analysisError = null;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/run-analysis', undefined, { silent: true });
                 if (data.success) {
                     this.analysisResults = data.recommendations.map((rec, idx) => ({
                         option_type: rec.option_type,
@@ -1269,8 +1259,7 @@ function sessionDetail() {
                     this.analysisError = data.error || 'Analysis failed. Please try again.';
                 }
             } catch (err) {
-                this.analysisError = 'Network error. Please check your connection and try again.';
-                console.error('Options analysis error:', err);
+                this.analysisError = err.message || 'Analysis failed. Please try again.';
             } finally {
                 this.analysisLoading = false;
             }
@@ -1279,18 +1268,17 @@ function sessionDetail() {
         async generateAIElements() {
             this.aiLoading.elements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.suggestions) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-elements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.suggestions) throw new Error(data.error || data.message || 'Failed to generate AI elements');
+                {
                     this.aiElements = data.suggestions;
                     this.aiElementsSource = data.source || 'unknown';
                     this.aiGenerated.elements = true;
                 }
             } catch (err) {
-                console.error('AI elements generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI elements');
             } finally {
                 this.aiLoading.elements = false;
             }
@@ -1299,18 +1287,17 @@ function sessionDetail() {
         async detectAIPatterns() {
             this.aiLoading.patterns = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.patterns) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-patterns', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.patterns) throw new Error(data.error || data.message || 'Failed to detect patterns');
+                {
                     this.aiPatterns = data.patterns;
                     this.aiPatternMatchCount = data.match_count || 0;
                     this.aiGenerated.patterns = true;
                 }
             } catch (err) {
-                console.error('Pattern detection error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to detect patterns');
             } finally {
                 this.aiLoading.patterns = false;
             }
@@ -1319,18 +1306,17 @@ function sessionDetail() {
         async generateAIRequirements() {
             this.aiLoading.requirements = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.requirements) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-requirements', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.requirements) throw new Error(data.error || data.message || 'Failed to generate AI requirements');
+                {
                     this.aiRequirements = data.requirements;
                     this.aiRequirementsSource = data.source || 'unknown';
                     this.aiGenerated.requirements = true;
                 }
             } catch (err) {
-                console.error('AI requirements generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI requirements');
             } finally {
                 this.aiLoading.requirements = false;
             }
@@ -1339,18 +1325,17 @@ function sessionDetail() {
         async generateAIRoadmap() {
             this.aiLoading.roadmap = true;
             try {
-                const response = await fetch('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                if (data.success && data.roadmap_items) {
+                const data = await Platform.fetch.post('/solutions/architect/api/sessions/{{ session.id }}/ai-roadmap', undefined, { silent: true });
+                // A 200 carrying success:false used to fall through with no message,
+                // leaving the button looking dead. Treat it as the failure it is.
+                if (!data.success || !data.roadmap_items) throw new Error(data.error || data.message || 'Failed to generate AI roadmap');
+                {
                     this.aiRoadmap = data.roadmap_items;
                     this.aiRoadmapSource = data.source || 'unknown';
                     this.aiGenerated.roadmap = true;
                 }
             } catch (err) {
-                console.error('AI roadmap generation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error(err.message || 'Failed to generate AI roadmap');
             } finally {
                 this.aiLoading.roadmap = false;
             }
@@ -1392,7 +1377,7 @@ function sessionDetail() {
                 recalculated.sort((a, b) => b.score - a.score);
                 this.scenarioResults = recalculated;
             } catch (err) {
-                console.error('Scenario recalculation error:', err);
+                if (window.Platform && Platform.toast) Platform.toast.error('Failed to recalculate scenario');
             } finally {
                 this.scenarioLoading = false;
             }

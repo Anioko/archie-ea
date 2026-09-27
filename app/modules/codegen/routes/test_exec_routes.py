@@ -13,6 +13,7 @@ from app.extensions import db
 from app.models.solution_models import Solution
 from app.modules.codegen.routes.codegen_routes import codegen_bp
 from app.modules.codegen.routes._helpers import _check_access
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +229,7 @@ def get_test_run_history(solution_id):
     if not solution or not _check_access(solution):
         abort(404)
 
-    limit = request.args.get("limit", 20, type=int)
+    limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
     scheduler = TestScheduler()
     history = scheduler.get_run_history(solution_id, limit=limit)
 

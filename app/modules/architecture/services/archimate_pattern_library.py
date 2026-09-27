@@ -6,7 +6,7 @@ Reusable architecture patterns for common enterprise scenarios
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from app.models.application_portfolio import ApplicationComponent
 
@@ -640,6 +640,6 @@ class ArchiMatePatternLibrary:
                 "pattern_id": pattern_id,
             }
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty element/relationship lists mean the pattern produced nothing to apply, not a measured value
             logger.error(f"Pattern application error: {e}")
             return {"elements": [], "relationships": []}

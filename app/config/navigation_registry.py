@@ -238,11 +238,13 @@ NAVIGATION_REGISTRY = {
                 "url_fallback": "/market-intelligence/",
             },
             {
+                # Repointed to the live strategic impact-analysis dashboard (BA
+                # persona work) — the old "#" placeholder route was never built.
                 "label": "Impact Analysis",
                 "icon": "git-compare",
-                "endpoint": None,
-                "url_fallback": "#",
-                "disabled": True,
+                "endpoint": "strategic.impact_analysis",
+                "url_fallback": "/strategic/impact-analysis",
+                "disabled": False,
             },
         ],
     },

@@ -10,6 +10,7 @@ from capability analysis and solution options for the Architecture Assistant.
 import logging
 import uuid
 from datetime import datetime
+from html import escape
 from typing import Any, Dict, List, Tuple
 
 from app import db
@@ -619,30 +620,34 @@ class ArchiMateModelGenerator:
             '<?xml version="1.0" encoding="UTF - 8"?>',
             '<model xmlns="http://www.opengroup.org/xsd/archimate/3.0/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"',
             '        xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3.0/archimate3_Model.xsd"',
-            f'        identifier="{model["id"]}" version="{model["version"]}">',
-            f'  <name xml:lang="en">{model["name"]}</name>',
-            f'  <documentation xml:lang="en">{model["description"]}</documentation>',
+            # model/element/relationship name, description, id, type are all
+            # architect-authored or LLM-generated text with no character
+            # restriction -- escape() everything interpolated into this XML,
+            # same class of bug as the 10 Sep 2026 digest-email incident.
+            f'        identifier="{escape(str(model["id"]))}" version="{escape(str(model["version"]))}">',
+            f'  <name xml:lang="en">{escape(str(model["name"]))}</name>',
+            f'  <documentation xml:lang="en">{escape(str(model["description"]))}</documentation>',
         ]
 
         # Add elements
         for element in model["elements"]:
             xml_parts.append(
-                f'  <elements identifier="{element["id"]}" xsi:type="{element["type"]}ElementType">'
+                f'  <elements identifier="{escape(str(element["id"]))}" xsi:type="{escape(str(element["type"]))}ElementType">'
             )
-            xml_parts.append(f'    <name xml:lang="en">{element["name"]}</name>')
+            xml_parts.append(f'    <name xml:lang="en">{escape(str(element["name"]))}</name>')
             if element.get("description"):
                 xml_parts.append(
-                    f'    <documentation xml:lang="en">{element["description"]}</documentation>'
+                    f'    <documentation xml:lang="en">{escape(str(element["description"]))}</documentation>'
                 )
             xml_parts.append("  </elements>")
 
         # Add relationships
         for relationship in model["relationships"]:
             xml_parts.append(
-                f'  <relationships identifier="{relationship["id"]}" xsi:type="{relationship["type"]}RelationshipType"'
+                f'  <relationships identifier="{escape(str(relationship["id"]))}" xsi:type="{escape(str(relationship["type"]))}RelationshipType"'
             )
             xml_parts.append(
-                f'                   source="{relationship["source"]}" target="{relationship["target"]}">'
+                f'                   source="{escape(str(relationship["source"]))}" target="{escape(str(relationship["target"]))}">'
             )
             xml_parts.append("  </relationships>")
 

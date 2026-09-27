@@ -14,7 +14,9 @@ import logging
 import statistics
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
+
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
 
@@ -154,11 +156,14 @@ class AdvancedAnalyticsService:
             if not app_id:
                 return self._analyze_portfolio_complexity()
 
-            row = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # app_id arrives as an LLM tool argument, i.e. ultimately from chat
+            # text — nothing upstream proves it belongs to the caller's org.
+            _org_clause, _org_params = org_scope()
+            row = db.session.execute(text(
                 "SELECT name, number_of_integrations, interfaces_count, dependencies_count, "
                 "technology_stack, programming_languages "
-                "FROM application_components WHERE id = :app_id"
-            ), {"app_id": app_id}).fetchone()
+                "FROM application_components WHERE id = :app_id" + _org_clause
+            ), {"app_id": app_id, **_org_params}).fetchone()
 
             if not row:
                 return {"complexity_score": 0, "complexity_grade": "Unknown", "data_status": "application_not_found"}
@@ -215,10 +220,14 @@ class AdvancedAnalyticsService:
             from app.extensions import db
             from sqlalchemy import text
 
-            rows = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # Whole-table read with no key at all. Unfiltered it scored every
+            # organisation's portfolio and handed the result to the assistant as
+            # "your" complexity distribution.
+            _org_clause, _org_params = org_scope(keyword="WHERE")
+            rows = db.session.execute(text(
                 "SELECT id, number_of_integrations, interfaces_count, dependencies_count "
-                "FROM application_components"
-            )).fetchall()
+                "FROM application_components" + _org_clause
+            ), _org_params).fetchall()
 
             if not rows:
                 return {"overall_complexity": 0, "complexity_distribution": {}, "data_status": "no_applications"}
@@ -282,11 +291,15 @@ class AdvancedAnalyticsService:
             from app.extensions import db
             from sqlalchemy import text
 
-            cost_row = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via application_components (tenant-scoped table)
+            # Same shape as the complexity read: an unkeyed SUM. Unfiltered it
+            # reported every organisation's combined spend as this tenant's
+            # current total cost, and 15% of it as their savings opportunity.
+            _org_clause, _org_params = org_scope(keyword="WHERE")
+            cost_row = db.session.execute(text(
                 "SELECT SUM(COALESCE(annual_cost, 0) + COALESCE(maintenance_cost, 0) + "
                 "COALESCE(infrastructure_cost, 0) + COALESCE(support_cost, 0)) "
-                "FROM application_components"
-            )).scalar() or 0
+                "FROM application_components" + _org_clause
+            ), _org_params).scalar() or 0
 
             current_total = float(cost_row)
             potential = round(current_total * 0.15, 2)  # conservative 15% optimization target
@@ -543,19 +556,26 @@ class AdvancedAnalyticsService:
         """
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
 
-            total_rels = db.session.execute(text("SELECT COUNT(*) FROM archimate_relationships")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_relationships
-            total_els = db.session.execute(text("SELECT COUNT(*) FROM archimate_elements")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_elements
+            # Scope to the caller's org (raw SQL bypasses the ORM tenant filter).
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _we = " WHERE e.organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+
+            total_rels = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_relationships{_w}"), _p).scalar() or 0
+            total_els = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_elements{_w}"), _p).scalar() or 0
 
             # Find most connected elements
             most_connected = []
             if total_rels > 0:
-                rows = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via archimate_elements + archimate_relationships
+                rows = db.session.execute(text(
                     "SELECT e.name, COUNT(*) as cnt FROM archimate_elements e "
                     "JOIN archimate_relationships r ON r.source_id = e.id OR r.target_id = e.id "
-                    "GROUP BY e.id, e.name ORDER BY cnt DESC LIMIT 5"
-                )).fetchall()
+                    f"{_we} GROUP BY e.id, e.name ORDER BY cnt DESC LIMIT 5"
+                ), _p).fetchall()
                 most_connected = [{"name": r[0], "connections": r[1]} for r in rows]
 
             return {
@@ -697,13 +717,17 @@ class AdvancedAnalyticsService:
         """Calculate capability coverage score from real mapping data."""
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
-            total = db.session.execute(text("SELECT COUNT(*) FROM business_capability")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via business_capability
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            total = db.session.execute(text(f"SELECT COUNT(*) FROM business_capability{_w}"), _p).scalar() or 0
             if total == 0:
                 return 0.0
-            mapped = db.session.execute(text(  # raw-sql-ok: tenant-filtered: scoped via parent FK (junction)
-                "SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping"
-            )).scalar() or 0
+            mapped = db.session.execute(text(
+                f"SELECT COUNT(DISTINCT business_capability_id) FROM application_capability_mapping{_w}"
+            ), _p).scalar() or 0
             return round((mapped / total) * 100, 1)
         except Exception:
             logger.debug("Capability coverage query failed, returning 0")
@@ -713,11 +737,15 @@ class AdvancedAnalyticsService:
         """Calculate integration health from ArchiMate relationship density."""
         try:
             from app.extensions import db
+            from flask import g
             from sqlalchemy import text
-            elements = db.session.execute(text("SELECT COUNT(*) FROM archimate_elements")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_elements
+            _org = getattr(g, "current_org_id", None)
+            _w = " WHERE organization_id = :org" if _org is not None else ""
+            _p = {"org": _org} if _org is not None else {}
+            elements = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_elements{_w}"), _p).scalar() or 0
             if elements == 0:
                 return 0.0
-            relationships = db.session.execute(text("SELECT COUNT(*) FROM archimate_relationships")).scalar() or 0  # raw-sql-ok: tenant-filtered: scoped via archimate_relationships
+            relationships = db.session.execute(text(f"SELECT COUNT(*) FROM archimate_relationships{_w}"), _p).scalar() or 0
             ratio = relationships / elements if elements > 0 else 0
             score = min(ratio / 2.0 * 100, 100)
             return round(score, 1)

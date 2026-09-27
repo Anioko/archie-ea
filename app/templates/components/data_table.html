@@ -5,7 +5,16 @@
    Alpine.js implementation of TanStack Table patterns.
 
    Usage:
-     {% from 'components/data_table.html' import data_table, data_table_faceted_filter %}
+     rows_expr names a JS identifier this app's CSP-safe Alpine adapter can
+     actually resolve at directive-evaluation time -- that means
+     `window.<name>`, not a bare `const`/`let` from another <script> tag. A
+     plain `const requirements = [...]` is invisible here and silently left
+     the table empty despite real data (confirmed live 7 Sep 2026, Risk
+     Register's first adoption of this component):
+
+       <script>window.requirements = {% raw %}{{ requirements | tojson }}{% endraw %};</script>
+
+     {% from 'components/data_table.html' import data_table, data_table_faceted_filter with context %}
 
      {{ data_table(
          id='requirements-table',
@@ -44,7 +53,7 @@ if (!window._dataTableEngine) {
             sortOrder: 'asc',
             currentPage: 1,
             perPage: config.perPage || 10,
-            selectedRows: new Set(),
+            selectedRows: [],
             facetFilters: {},
             _filterOpen: {},
 
@@ -93,7 +102,7 @@ if (!window._dataTableEngine) {
                 return this.filteredRows.slice(start, start + this.perPage);
             },
             get allSelected() {
-                return this.paginatedRows.length > 0 && this.paginatedRows.every(function(r) { return this.selectedRows.has(r.id); }.bind(this));
+                return this.paginatedRows.length > 0 && this.paginatedRows.every(function(r) { return this.selectedRows.includes(r.id); }.bind(this));
             },
             get hasActiveFilters() {
                 if (this.search) return true;
@@ -110,18 +119,22 @@ if (!window._dataTableEngine) {
                 this.currentPage = 1;
             },
             toggleSelect(id) {
-                if (this.selectedRows.has(id)) this.selectedRows.delete(id);
-                else this.selectedRows.add(id);
-                this.selectedRows = new Set(this.selectedRows);
+                // Array, not Set: Alpine observes array reassignment reliably;
+                // it does not observe Set add/delete (DESIGN.md), so the header
+                // checkbox and bulk bar failed to react with a Set.
+                if (this.selectedRows.includes(id)) this.selectedRows = this.selectedRows.filter(function(x) { return x !== id; });
+                else this.selectedRows = this.selectedRows.concat([id]);
             },
             toggleSelectAll() {
                 let self = this;
+                let ids = self.paginatedRows.map(function(r) { return r.id; });
                 if (self.allSelected) {
-                    self.paginatedRows.forEach(function(r) { self.selectedRows.delete(r.id); });
+                    self.selectedRows = self.selectedRows.filter(function(x) { return ids.indexOf(x) === -1; });
                 } else {
-                    self.paginatedRows.forEach(function(r) { self.selectedRows.add(r.id); });
+                    let merged = self.selectedRows.slice();
+                    ids.forEach(function(id) { if (merged.indexOf(id) === -1) merged.push(id); });
+                    self.selectedRows = merged;
                 }
-                self.selectedRows = new Set(self.selectedRows);
             },
             toggleFacet(columnKey, value) {
                 if (!this.facetFilters[columnKey]) this.facetFilters[columnKey] = new Set();
@@ -190,7 +203,7 @@ if (!window._dataTableEngine) {
             {% if searchable %}
             <input type="text" x-model="search" @input="currentPage = 1"
                    placeholder="{{ search_placeholder }}"
-                   class="flex h-8 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                   class="flex h-8 w-full max-w-sm rounded-md border border-input bg-background px-3 py-1 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" aria-label="Search">
             {% endif %}
 
             {# Faceted filter buttons #}
@@ -204,7 +217,7 @@ if (!window._dataTableEngine) {
                     <template x-if="facetFilters['{{ filter.key }}'] && facetFilters['{{ filter.key }}'].size > 0">
                         <span class="flex items-center gap-1">
                             <span class="mx-1 h-4 w-px bg-border"></span>
-                            <span class="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-[10px] font-medium"
+                            <span class="inline-flex items-center rounded-sm bg-muted px-1.5 py-0.5 text-xs font-medium"
                                   x-text="facetFilters['{{ filter.key }}'].size + ' selected'"></span>
                         </span>
                     </template>
@@ -214,7 +227,7 @@ if (!window._dataTableEngine) {
                 <div x-show="open" x-cloak x-transition
                      class="absolute left-0 top-full mt-1 z-50 w-52 rounded-md border border-border bg-popover shadow-lg">
                     <div class="p-1.5">
-                        <input type="text" placeholder="{{ filter.label }}..."
+                        <input aria-label="{{ filter.label }}" type="text" placeholder="{{ filter.label }}..."
                                class="flex h-8 w-full rounded-md bg-transparent px-2 py-1 text-sm placeholder:text-muted-foreground outline-none">
                     </div>
                     <div class="border-t border-border max-h-48 overflow-y-auto p-1">
@@ -261,12 +274,12 @@ if (!window._dataTableEngine) {
     {# ══════════════════════════════════════════════════════════════ #}
     {# TABLE                                                         #}
     {# ══════════════════════════════════════════════════════════════ #}
-    <div class="overflow-hidden rounded-md border border-border">
+    <div class="overflow-auto max-h-[70vh] rounded-md border border-border">
         <table class="w-full caption-bottom text-sm" role="table">
-            <thead class="[&_tr]:border-b">
+            <thead class="[&_tr]:border-b sticky top-0 z-20">
                 <tr class="border-b border-border bg-muted/50">
                     {% if row_selection %}
-                    <th class="h-10 w-10 px-3 align-middle">
+                    <th class="h-10 w-10 px-3 align-middle bg-card">
                         <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
                               :class="allSelected ? 'bg-primary border-primary text-primary-foreground' : ''"
                               @click="toggleSelectAll()" role="checkbox" :aria-checked="allSelected" tabindex="0">
@@ -275,7 +288,7 @@ if (!window._dataTableEngine) {
                     </th>
                     {% endif %}
                     {% for col in columns %}
-                    <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs {{ col.get('class', '') }}">
+                    <th class="h-10 px-3 text-left align-middle font-medium text-muted-foreground text-xs bg-card {{ col.get('class', '') }}">
                         {% if sortable and col.get('sortable', false) %}
                         <button type="button" @click="sortBy('{{ col.key }}')"
                                 class="inline-flex items-center gap-1.5 -ml-2 h-8 px-2 rounded-md hover:bg-accent transition-colors data-[state=open]:bg-accent"
@@ -297,7 +310,7 @@ if (!window._dataTableEngine) {
                     </th>
                     {% endfor %}
                     {% if actions %}
-                    <th class="h-10 w-10 px-3 text-right align-middle font-medium text-muted-foreground text-xs">
+                    <th class="h-10 w-10 px-3 text-right align-middle font-medium text-muted-foreground text-xs bg-card">
                         <span class="sr-only">Actions</span>
                     </th>
                     {% endif %}
@@ -316,13 +329,13 @@ if (!window._dataTableEngine) {
                 {# Rows #}
                 <template x-for="row in paginatedRows" :key="row.id">
                     <tr class="border-b border-border transition-colors hover:bg-muted/50"
-                        :class="selectedRows.has(row.id) ? 'bg-muted/50' : ''">
+                        :class="selectedRows.includes(row.id) ? 'bg-muted/50' : ''">
                         {% if row_selection %}
                         <td class="w-10 px-3 py-2 align-middle">
                             <span class="flex h-4 w-4 items-center justify-center rounded-sm border border-input cursor-pointer"
-                                  :class="selectedRows.has(row.id) ? 'bg-primary border-primary text-primary-foreground' : ''"
-                                  @click="toggleSelect(row.id)" role="checkbox" :aria-checked="selectedRows.has(row.id)" tabindex="0">
-                                <svg x-show="selectedRows.has(row.id)" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                  :class="selectedRows.includes(row.id) ? 'bg-primary border-primary text-primary-foreground' : ''"
+                                  @click="toggleSelect(row.id)" role="checkbox" :aria-checked="selectedRows.includes(row.id)" tabindex="0">
+                                <svg x-show="selectedRows.includes(row.id)" x-cloak class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                             </span>
                         </td>
                         {% endif %}
@@ -335,24 +348,24 @@ if (!window._dataTableEngine) {
                             <div class="flex items-center gap-2">
                                 <span class="h-2 w-2 rounded-full"
                                       :class="{
-                                          'bg-emerald-500': row['{{ col.key }}'] === 'approved' || row['{{ col.key }}'] === 'done',
-                                          'bg-blue-500': row['{{ col.key }}'] === 'in_review' || row['{{ col.key }}'] === 'in_progress',
-                                          'bg-amber-500': row['{{ col.key }}'] === 'draft' || row['{{ col.key }}'] === 'todo',
-                                          'bg-red-500': row['{{ col.key }}'] === 'rejected' || row['{{ col.key }}'] === 'cancelled',
-                                          'bg-muted-foreground': row['{{ col.key }}'] === 'open' || row['{{ col.key }}'] === 'backlog' || row['{{ col.key }}'] === 'deferred'
+                                          'bg-success': row['{{ col.key }}'] === 'approved' || row['{{ col.key }}'] === 'done' || row['{{ col.key }}'] === 'mitigated' || row['{{ col.key }}'] === 'accepted',
+                                          'bg-info': row['{{ col.key }}'] === 'in_review' || row['{{ col.key }}'] === 'in_progress',
+                                          'bg-warning': row['{{ col.key }}'] === 'draft' || row['{{ col.key }}'] === 'todo',
+                                          'bg-destructive': row['{{ col.key }}'] === 'rejected' || row['{{ col.key }}'] === 'cancelled',
+                                          'bg-muted-foreground': row['{{ col.key }}'] === 'open' || row['{{ col.key }}'] === 'backlog' || row['{{ col.key }}'] === 'deferred' || row['{{ col.key }}'] === 'closed'
                                       }"></span>
                                 <span class="text-sm capitalize" x-text="(row['{{ col.key }}'] || '').replace(/_/g, ' ')"></span>
                             </div>
                             {% elif col.get('type') == 'priority' %}
                             <div class="flex items-center gap-2">
                                 <template x-if="row['{{ col.key }}'] === 'MUST' || row['{{ col.key }}'] === 'high'">
-                                    <i data-lucide="arrow-up" class="h-3.5 w-3.5 text-red-500" aria-hidden="true"></i>
+                                    <i data-lucide="arrow-up" class="h-3.5 w-3.5 text-destructive" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'SHOULD' || row['{{ col.key }}'] === 'medium'">
-                                    <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-amber-500" aria-hidden="true"></i>
+                                    <i data-lucide="arrow-right" class="h-3.5 w-3.5 text-warning" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'COULD' || row['{{ col.key }}'] === 'low'">
-                                    <i data-lucide="arrow-down" class="h-3.5 w-3.5 text-blue-500" aria-hidden="true"></i>
+                                    <i data-lucide="arrow-down" class="h-3.5 w-3.5 text-info" aria-hidden="true"></i>
                                 </template>
                                 <template x-if="row['{{ col.key }}'] === 'WONT'">
                                     <i data-lucide="minus" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
@@ -360,10 +373,41 @@ if (!window._dataTableEngine) {
                                 <span class="text-sm" x-text="row['{{ col.key }}'] || '—'"></span>
                             </div>
                             {% elif col.get('type') == 'boolean' %}
-                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/20">Required</span>
+                            <span x-show="row['{{ col.key }}']" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/20">Required</span>
                             <span x-show="!row['{{ col.key }}']" class="text-muted-foreground">—</span>
+                            {% elif col.get('type') == 'risk-level' %}
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
+                                  :class="{
+                                      'bg-destructive/10 text-destructive-emphasis': row['{{ col.key }}'] === 'critical',
+                                      'bg-warning/10 text-warning-emphasis': row['{{ col.key }}'] === 'high',
+                                      'bg-info/10 text-info-emphasis': row['{{ col.key }}'] === 'medium',
+                                      'bg-muted text-muted-foreground': row['{{ col.key }}'] === 'low'
+                                  }"
+                                  x-text="(row['{{ col.key }}'] || '—').replace(/^./, c => c.toUpperCase())"></span>
                             {% elif col.get('type') == 'truncate' %}
                             <span class="line-clamp-1 max-w-[300px]" x-text="row['{{ col.key }}'] || '—'" :title="row['{{ col.key }}']"></span>
+                            {% elif col.get('type') == 'row-actions' %}
+                            {# Workflow-transition buttons whose label/click/visibility depend
+                               on the row's own data — e.g. "Mark mitigated" only when a risk
+                               isn't already mitigated or closed. Each action is
+                               {label, click, show_when (optional), variant (optional 'danger')}
+                               with `row` in scope for both `click` and `show_when` JS expressions. #}
+                            <div class="flex items-center justify-end gap-1 whitespace-nowrap">
+                                {% for action in col.get('actions', []) %}
+                                <template x-if="{{ action.get('show_when', 'true') }}">
+                                    <button type="button" @click="{{ action.click }}"
+                                            {% if action.get('disabled_when') %}:disabled="{{ action.disabled_when }}"{% endif %}
+                                            class="inline-flex items-center rounded-md border border-input bg-background px-2 py-1 text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 {{ 'text-destructive-emphasis' if action.get('variant') == 'danger' else '' }}">
+                                        {{ action.label }}
+                                    </button>
+                                </template>
+                                {% endfor %}
+                                {% if col.get('else_text') %}
+                                <template x-if="!({{ col.get('actions', []) | map(attribute='show_when', default='true') | join(' || ') }})">
+                                    <span class="text-xs text-muted-foreground">{{ col.else_text }}</span>
+                                </template>
+                                {% endif %}
+                            </div>
                             {% else %}
                             <span x-text="row['{{ col.key }}'] || '—'"></span>
                             {% endif %}
@@ -395,7 +439,7 @@ if (!window._dataTableEngine) {
                                     {% if on_delete %}
                                     <div class="my-1 h-px bg-border"></div>
                                     <button type="button" @click="{{ on_delete }}; menuOpen = false"
-                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-destructive hover:bg-destructive/10 transition-colors">
+                                            class="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                                         <i data-lucide="trash-2" class="h-3.5 w-3.5" aria-hidden="true"></i> Delete
                                     </button>
                                     {% endif %}
@@ -417,7 +461,7 @@ if (!window._dataTableEngine) {
         {# Selected rows count #}
         {% if row_selection %}
         <div class="flex-1 text-sm text-muted-foreground">
-            <span x-text="selectedRows.size"></span> of <span x-text="filteredRows.length"></span> row(s) selected.
+            <span x-text="selectedRows.length"></span> of <span x-text="filteredRows.length"></span> row(s) selected.
         </div>
         {% else %}
         <div class="flex-1 text-sm text-muted-foreground">
@@ -430,7 +474,7 @@ if (!window._dataTableEngine) {
             <div class="flex items-center gap-2">
                 <p class="text-sm font-medium text-muted-foreground hidden sm:block">Rows per page</p>
                 <select x-model.number="perPage" @change="currentPage = 1"
-                        class="flex h-8 w-[70px] items-center justify-between rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+                        class="flex h-8 w-[70px] items-center justify-between rounded-md border border-input bg-background px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Per Page">
                     <option value="10">10</option>
                     <option value="20">20</option>
                     <option value="30">30</option>
@@ -445,19 +489,27 @@ if (!window._dataTableEngine) {
 
             {# Navigation buttons #}
             <div class="flex items-center gap-1">
+                {# aria-label is required, not optional: the icon carries aria-hidden,
+                   so without a label these announce as "button" with no name. This is
+                   the shared pagination control, so every data table in the product
+                   inherits whatever it does. #}
                 <button type="button" @click="firstPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to first page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="previousPage()" :disabled="currentPage <= 1"
+                        aria-label="Go to previous page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-left" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="nextPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to next page"
                         class="inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>
                 <button type="button" @click="lastPage()" :disabled="currentPage >= totalPages"
+                        aria-label="Go to last page"
                         class="hidden lg:inline-flex items-center justify-center rounded-md border border-input bg-background h-8 w-8 hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none">
                     <i data-lucide="chevrons-right" class="h-4 w-4" aria-hidden="true"></i>
                 </button>

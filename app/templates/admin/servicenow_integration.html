@@ -1,19 +1,11 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}ServiceNow CMDB Integration{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Breadcrumbs -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Admin</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">ServiceNow Integration</span>
-    </nav>
-
     {{ page_header(
-        title='ServiceNow CMDB Integration',
+        title='ServiceNow CMDB Integration', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'ServiceNow CMDB Integration'}],
         description='Sync Configuration Items from ServiceNow CMDB to automatically discover and maintain your application portfolio.'
     ) }}
 
@@ -22,7 +14,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -129,7 +121,7 @@
                         </li>
                         <li class="flex items-start gap-2">
                             <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
-                            <span>Lifecycle status & criticality</span>
+                            <span>Lifecycle status &amp; criticality</span>
                         </li>
                         <li class="flex items-start gap-2">
                             <i data-lucide="check" class="h-4 w-4 text-primary mt-0.5 flex-shrink-0"></i>
@@ -151,21 +143,21 @@
                     <h3 class="text-lg font-semibold">Configuration</h3>
                 </div>
                 <div class="p-4 sm:p-6">
-                    <form method="POST" class="space-y-6">
+                    <form method="POST" action="{{ request.path }}" class="space-y-6">
                         {{ form.hidden_tag() }}
 
                         <!-- Instance URL -->
                         <div>
                             <label for="{{ form.instance_url.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.instance_url.label.text }}
-                                <span class="text-destructive">*</span>
+                                <span class="text-destructive-emphasis">*</span>
                             </label>
                             {{ form.instance_url(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="https://yourorg.service-now.com") }}
                             {% if form.instance_url.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.instance_url.description }}</p>
                             {% endif %}
                             {% if form.instance_url.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.instance_url.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.instance_url.errors[0] }}</p>
                             {% endif %}
                         </div>
 
@@ -173,14 +165,14 @@
                         <div>
                             <label for="{{ form.username.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.username.label.text }}
-                                <span class="text-destructive">*</span>
+                                <span class="text-destructive-emphasis">*</span>
                             </label>
                             {{ form.username(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="api.user") }}
                             {% if form.username.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.username.description }}</p>
                             {% endif %}
                             {% if form.username.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.username.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.username.errors[0] }}</p>
                             {% endif %}
                         </div>
 
@@ -188,14 +180,14 @@
                         <div>
                             <label for="{{ form.password.id }}" class="block text-sm font-medium mb-2">
                                 {{ form.password.label.text }}
-                                {% if snow_config %}<span class="text-muted-foreground text-xs">(optional - leave blank to keep existing)</span>{% else %}<span class="text-destructive">*</span>{% endif %}
+                                {% if snow_config %}<span class="text-muted-foreground text-xs">(optional - leave blank to keep existing)</span>{% else %}<span class="text-destructive-emphasis">*</span>{% endif %}
                             </label>
                             {{ form.password(class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50", placeholder="••••••••") }}
                             {% if form.password.description %}
                                 <p class="mt-1 text-xs text-muted-foreground">{{ form.password.description }}</p>
                             {% endif %}
                             {% if form.password.errors %}
-                                <p class="mt-1 text-xs text-destructive">{{ form.password.errors[0] }}</p>
+                                <p class="mt-1 text-xs text-destructive-emphasis">{{ form.password.errors[0] }}</p>
                             {% endif %}
                         </div>
 
@@ -264,14 +256,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load sync status
     function loadSyncStatus() {
-        fetch('{{ url_for("admin.servicenow_sync_status") }}')
-            .then(res => res.json())
+        Platform.fetch.get('{{ url_for("admin.servicenow_sync_status") }}', null, { silent: true })
             .then(data => {
-                if (data.synced_applications !== undefined) {
-                    appsCountEl.textContent = data.synced_applications;
-                }
+                // An em dash where the count is unknown -- never a 0, which would be
+                // indistinguishable from a measured "nothing synced".
+                appsCountEl.textContent = (data.synced_applications !== undefined && data.synced_applications !== null)
+                    ? data.synced_applications
+                    : '—';
             })
-            .catch(err => console.error('Failed to load sync status:', err));
+            .catch(err => {
+                appsCountEl.textContent = '—';
+                appsCountEl.title = 'Sync status could not be loaded';
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not load the ServiceNow sync status.');
+                }
+            });
     }
 
     // Test connection
@@ -281,8 +280,7 @@ document.addEventListener('DOMContentLoaded', function() {
             testBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Testing...';
             lucide.createIcons();
 
-            fetch('{{ url_for("admin.servicenow_test_connection") }}', { method: 'POST' })
-                .then(res => res.json())
+            Platform.fetch.post('{{ url_for("admin.servicenow_test_connection") }}', null, { silent: true })
                 .then(data => {
                     Platform.toast.info(data.message);
                     testBtn.disabled = false;
@@ -309,8 +307,7 @@ document.addEventListener('DOMContentLoaded', function() {
             syncBtn.innerHTML = '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i> Syncing...';
             lucide.createIcons();
 
-            fetch('{{ url_for("admin.servicenow_trigger_sync") }}', { method: 'POST' })
-                .then(res => res.json())
+            Platform.fetch.post('{{ url_for("admin.servicenow_trigger_sync") }}', null, { silent: true })
                 .then(data => {
                     Platform.toast.info(data.message);
                     syncBtn.disabled = false;

@@ -1,10 +1,12 @@
 """Stakeholder Map — Power/Interest Grid routes."""
 import logging
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, g, jsonify, render_template, request
 
 from app import db
 from app.models.solution_stakeholder import SolutionStakeholder, SolutionStakeholderMapping
+from app.modules.architecture.services.stakeholder_service import StakeholderService
+from app.services.feature_flag_service import FeatureFlagService
 from flask_login import login_required
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,7 @@ def search_people():
 
     # Search Users
     users = User.query.filter(
+        User.organization_id == g.current_org_id,
         db.or_(
             User.first_name.ilike(f"%{q}%"),
             User.last_name.ilike(f"%{q}%"),
@@ -117,13 +120,21 @@ def create_stakeholder():
     business_actor_id = data.get("business_actor_id")
     user_id = data.get("user_id")
 
+    try:
+        influence_level = int(data.get("influence_level", 3))
+        interest_level = int(data.get("interest_level", 3))
+        business_actor_id = int(business_actor_id) if business_actor_id else None
+        user_id = int(user_id) if user_id else None
+    except (ValueError, TypeError):
+        return jsonify({"error": "influence_level, interest_level, business_actor_id and user_id must be integers"}), 400
+
     s = SolutionStakeholder(
         name=data.get("name", "New Stakeholder"),
         description=data.get("description", ""),
-        influence_level=int(data.get("influence_level", 3)),
-        interest_level=int(data.get("interest_level", 3)),
-        business_actor_id=int(business_actor_id) if business_actor_id else None,
-        user_id=int(user_id) if user_id else None,
+        influence_level=influence_level,
+        interest_level=interest_level,
+        business_actor_id=business_actor_id,
+        user_id=user_id,
     )
     try:
         s.stakeholder_type = StakeholderType(data.get("stakeholder_type", "individual"))
@@ -140,9 +151,14 @@ def create_stakeholder():
     # Link to solution if provided
     solution_id = data.get("solution_id")
     if solution_id:
+        try:
+            solution_id = int(solution_id)
+        except (ValueError, TypeError):
+            db.session.rollback()
+            return jsonify({"error": "solution_id must be an integer"}), 400
         mapping = SolutionStakeholderMapping(
             stakeholder_id=s.id,
-            solution_id=int(solution_id),
+            solution_id=solution_id,
         )
         db.session.add(mapping)
 
@@ -157,10 +173,13 @@ def update_stakeholder(stakeholder_id):
     s = SolutionStakeholder.query.get_or_404(stakeholder_id)
     data = request.get_json(force=True) or {}
 
-    if "influence_level" in data:
-        s.influence_level = max(1, min(5, int(data["influence_level"])))
-    if "interest_level" in data:
-        s.interest_level = max(1, min(5, int(data["interest_level"])))
+    try:
+        if "influence_level" in data:
+            s.influence_level = max(1, min(5, int(data["influence_level"])))
+        if "interest_level" in data:
+            s.interest_level = max(1, min(5, int(data["interest_level"])))
+    except (ValueError, TypeError):
+        return jsonify({"error": "influence_level and interest_level must be integers"}), 400
     if "attitude" in data:
         from app.models.solution_stakeholder import StakeholderAttitude
         try:
@@ -173,3 +192,72 @@ def update_stakeholder(stakeholder_id):
 
     db.session.commit()
     return jsonify(s.to_dict(include_details=False))
+
+
+# ---------------------------------------------------------------------------
+# AI
+# ---------------------------------------------------------------------------
+
+MAX_BUSINESS_CONTEXT_CHARS = 8000
+
+
+@stakeholder_map_api_bp.route("/ai/identify", methods=["POST"])
+@login_required
+def ai_identify_stakeholders():
+    """POST /api/stakeholders/ai/identify
+    Body: {"business_context": "..."}
+    Suggests stakeholders from free-text context via the LLM. Suggestions are
+    NOT persisted — the caller reviews them and adds the ones it wants via the
+    existing POST /api/stakeholders/ endpoint.
+    """
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS, endpoint_name="stakeholder_map_api.ai_identify_stakeholders"
+    )
+    if feature_guard:
+        return feature_guard
+
+    data = request.get_json(force=True) or {}
+    business_context = (data.get("business_context") or "").strip()
+    if not business_context:
+        return jsonify({"error": "business_context is required"}), 400
+    if len(business_context) > MAX_BUSINESS_CONTEXT_CHARS:
+        return jsonify({
+            "error": f"business_context is too long (max {MAX_BUSINESS_CONTEXT_CHARS} characters)"
+        }), 400
+
+    try:
+        suggestions = StakeholderService().identify_stakeholders_from_context(business_context)
+    except Exception as e:
+        logger.exception("AI stakeholder identification failed")
+        return jsonify({"error": f"Stakeholder identification failed: {e}"}), 502
+
+    return jsonify({"stakeholders": suggestions})
+
+
+@stakeholder_map_api_bp.route("/<int:stakeholder_id>/ai/engagement-strategy", methods=["POST"])
+@login_required
+def ai_engagement_strategy(stakeholder_id):
+    """POST /api/stakeholders/<id>/ai/engagement-strategy
+    Recommends a tailored engagement strategy for an existing stakeholder,
+    using their recorded description/concerns/attitude and their current
+    Power/Interest grid position.
+    """
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS, endpoint_name="stakeholder_map_api.ai_engagement_strategy"
+    )
+    if feature_guard:
+        return feature_guard
+
+    stakeholder = SolutionStakeholder.query.get_or_404(stakeholder_id)
+
+    try:
+        strategy = StakeholderService().recommend_engagement_strategy_for_solution_stakeholder(
+            stakeholder
+        )
+    except Exception as e:
+        logger.exception(
+            "AI engagement strategy recommendation failed for stakeholder %s", stakeholder_id
+        )
+        return jsonify({"error": f"Engagement strategy recommendation failed: {e}"}), 502
+
+    return jsonify(strategy)

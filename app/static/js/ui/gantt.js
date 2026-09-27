@@ -19,7 +19,13 @@
     }
 
     let log   = global.Platform.log   ? global.Platform.log.child('gantt')   : { debug: function(){}, warn: function(){}, error: function(){} };
-    let error = global.Platform.error || { handle: function(e){ console.error(e); } };
+    // Platform.error normally owns user-facing reporting. If core/05-error.js is not
+    // loaded, fall back to a toast so a Gantt failure still reaches the user.
+    let error = global.Platform.error || { handle: function(e){
+        if (global.Platform.toast) {
+            global.Platform.toast.error((e && e.message) ? e.message : 'Something went wrong in the timeline.');
+        }
+    } };
 
     // ── Constants ────────────────────────────────────────────────────────────
     let ROW_HEIGHT          = 40;
@@ -200,7 +206,9 @@
                 self.error   = null;
 
                 if (self._abortController) {
-                    try { self._abortController.abort(); } catch (e) { /* ignore */ }
+                    // Best-effort cancel of a superseded in-flight request; aborting an
+                    // already-settled controller is a no-op we don't need to react to.
+                    try { self._abortController.abort(); } catch (e) { /* swallow-ok: cancelling a request the user already superseded; an already-settled controller throws and there is nothing for the user to do about it */ }
                 }
                 self._abortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
 
@@ -741,7 +749,7 @@
                 this._recompute();
                 try {
                     localStorage.setItem('archie_gantt_zoom_' + this._storageKey, level);
-                } catch (e) { /* quota or private browsing */ }
+                } catch (e) { /* swallow-ok: localStorage write of a view preference; the zoom already applied, it just will not be remembered next visit */ }
                 let self = this;
                 if (typeof self.$nextTick === 'function') {
                     self.$nextTick(function () { self._scrollToToday(); });
@@ -754,7 +762,7 @@
                     if (saved && ['weeks', 'months', 'quarters', 'years'].indexOf(saved) > -1) {
                         this.zoom = saved;
                     }
-                } catch (e) { /* ignore */ }
+                } catch (e) { /* swallow-ok: localStorage read of a view preference; the chart opens at the default zoom, which is a working state and not an error */ }
             },
 
             // ═══════════════════════════════════════════════════════════════

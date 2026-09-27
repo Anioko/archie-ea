@@ -3,19 +3,19 @@
 
     {# TRAC-001: chain health warning banner for Step 5 #}
     <template x-if="stepWarnings[5] && !stepWarningsDismissed[5]">
-        <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+        <div class="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
             <div class="flex items-start justify-between gap-3">
                 <div class="flex items-start gap-3 flex-1">
-                    <svg class="h-4 w-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <svg class="h-4 w-4 text-warning mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
                     </svg>
                     <div class="space-y-1">
                         <template x-for="w in stepWarnings[5]" :key="w.code">
-                            <p class="text-sm text-amber-700" x-text="w.message"></p>
+                            <p class="text-sm text-warning-emphasis" x-text="w.message"></p>
                         </template>
                     </div>
                 </div>
-                <button type="button" @click="stepWarningsDismissed[5] = true" class="text-amber-500 hover:text-amber-700 shrink-0" aria-label="Dismiss">
+                <button type="button" @click="stepWarningsDismissed[5] = true" class="text-warning-emphasis hover:text-warning-emphasis shrink-0" aria-label="Dismiss">
                     <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
@@ -54,7 +54,7 @@
             </template>
             <template x-if="!roadmapAutoFilling && roadmapAutoFillDone">
                 <span class="flex items-center gap-2">
-                    <i data-lucide="check" class="w-4 h-4 text-emerald-600" aria-hidden="true"></i>
+                    <i data-lucide="check" class="w-4 h-4 text-success" aria-hidden="true"></i>
                     Done
                 </span>
             </template>
@@ -81,7 +81,7 @@
 
     {# Loading state #}
     <div x-show="roadmapLoading" x-cloak class="py-8 text-center">
-        <span class="animate-spin h-8 w-8 border-3 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
+        <span class="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full inline-block mb-3"></span>
         <p class="text-sm text-muted-foreground">Building implementation phases from architecture elements...</p>
     </div>
 
@@ -98,7 +98,7 @@
             <div class="flex items-center gap-4 text-sm">
                 <span class="font-medium" x-text="reasoningOptions.length + ' options generated'"></span>
                 <template x-if="reasoningRecommendation">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                         Recommendation selected
                     </span>
                 </template>
@@ -108,24 +108,24 @@
         <template x-for="(opt, idx) in reasoningOptions" :key="opt.option_id || idx">
             <div class="rounded-md border overflow-hidden"
                  :class="reasoningRecommendation && reasoningRecommendation.option_id === opt.option_id
-                     ? 'border-emerald-500/40 bg-emerald-500/5'
+                     ? 'border-success/40 bg-success/5'
                      : 'border-border bg-card'">
                 <div class="px-4 py-3 space-y-2">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-semibold" x-text="opt.title || ('Option ' + (idx + 1))"></span>
                             <template x-if="opt.option_type">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                                       :class="{
-                                          'bg-blue-500/10 text-primary border border-blue-500/30': opt.option_type === 'build',
-                                          'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': opt.option_type === 'buy',
-                                          'bg-purple-500/10 text-primary border border-purple-500/30': opt.option_type === 'hybrid',
-                                          'bg-zinc-500/10 text-zinc-600 border border-zinc-500/30': true
+                                          'bg-info/10 text-primary border border-info/30': opt.option_type === 'build',
+                                          'bg-success/10 text-success-emphasis border border-success/30': opt.option_type === 'buy',
+                                          'bg-purple-500/10 text-primary border border-purple-500/30': opt.option_type === 'hybrid',  <!-- design-tokens-ok: option-type legend, hybrid kept distinct from build (info) -->
+                                          'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/30': true
                                       }"
                                       x-text="opt.option_type"></span>
                             </template>
                             <template x-if="reasoningRecommendation && reasoningRecommendation.option_id === opt.option_id">
-                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                     Recommended
                                 </span>
@@ -142,9 +142,9 @@
                         </template>
                         <template x-if="opt.risk_level">
                             <span :class="{
-                                'text-destructive': opt.risk_level === 'high',
-                                'text-amber-600': opt.risk_level === 'medium',
-                                'text-emerald-600': opt.risk_level === 'low'
+                                'text-destructive-emphasis': opt.risk_level === 'high',
+                                'text-warning-emphasis': opt.risk_level === 'medium',
+                                'text-success-emphasis': opt.risk_level === 'low'
                             }" x-text="'Risk: ' + opt.risk_level"></span>
                         </template>
                     </div>
@@ -181,19 +181,19 @@
                     {# Phase header #}
                     <div class="px-4 py-3 flex items-center gap-3"
                          :class="{
-                             'bg-rose-500/5 border-b border-rose-500/20': phase.phase_order === 0,
-                             'bg-cyan-500/5 border-b border-cyan-500/20': phase.phase_order === 1,
-                             'bg-blue-500/5 border-b border-blue-500/20': phase.phase_order === 2,
-                             'bg-amber-500/5 border-b border-amber-500/20': phase.phase_order === 3,
-                             'bg-sky-500/5 border-b border-sky-500/20': phase.phase_order === 4
+                             'bg-rose-500/5 border-b border-rose-500/20': phase.phase_order === 0,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                             'bg-cyan-500/5 border-b border-cyan-500/20': phase.phase_order === 1,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                             'bg-info/5 border-b border-info/20': phase.phase_order === 2,
+                             'bg-amber-500/5 border-b border-amber-500/20': phase.phase_order === 3,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                             'bg-sky-500/5 border-b border-sky-500/20': phase.phase_order === 4  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
                          }">
                         <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
                              :class="{
-                                 'bg-rose-500/10 text-rose-600': phase.phase_order === 0,
-                                 'bg-cyan-500/10 text-cyan-600': phase.phase_order === 1,
-                                 'bg-blue-500/10 text-primary': phase.phase_order === 2,
-                                 'bg-amber-500/10 text-amber-600': phase.phase_order === 3,
-                                 'bg-sky-500/10 text-sky-600': phase.phase_order === 4
+                                 'bg-rose-500/10 text-rose-600': phase.phase_order === 0,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                                 'bg-cyan-500/10 text-cyan-600': phase.phase_order === 1,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                                 'bg-info/10 text-primary': phase.phase_order === 2,
+                                 'bg-amber-500/10 text-amber-600': phase.phase_order === 3,  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
+                                 'bg-sky-500/10 text-sky-600': phase.phase_order === 4  <!-- design-tokens-ok: implementation-phase legend, distinct hue per phase_order -->
                              }"
                              x-text="idx + 1"></div>
                         <div class="flex-1">
@@ -207,10 +207,10 @@
                             <div class="px-4 py-2.5 flex items-center justify-between gap-3">
                                 <div class="min-w-0 flex-1">
                                     <div class="flex items-center gap-2">
-                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider"
+                                        <span class="inline-flex items-center px-1 py-0.5 rounded text-2xs font-bold uppercase tracking-wider"
                                               :class="getDomainBadgeClass(el.acm_domain)"
                                               x-text="el.acm_domain"></span>
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium"
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                                               :class="getTypeBadgeClass(el.type)"
                                               x-text="el.type"></span>
                                         <span class="text-sm font-medium truncate" x-text="el.name"></span>
@@ -218,9 +218,9 @@
                                 </div>
                                 <div class="flex items-center gap-2 flex-shrink-0">
                                     {# Build/Buy inline select #}
-                                    <select x-model="el.build_or_buy"
+                                    <select aria-label="Build or buy" x-model="el.build_or_buy"
                                             @change="saveRoadmapProp(el.proposal_id, 'build_or_buy', el.build_or_buy)"
-                                            class="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            class="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
                                         <option value="">Build/Buy?</option>
                                         <option value="Build">Build</option>
                                         <option value="Buy">Buy</option>
@@ -228,9 +228,9 @@
                                         <option value="TBD">TBD</option>
                                     </select>
                                     {# Estimated effort inline select #}
-                                    <select x-model="el.estimated_effort"
+                                    <select aria-label="Estimated effort" x-model="el.estimated_effort"
                                             @change="saveRoadmapProp(el.proposal_id, 'estimated_effort', el.estimated_effort)"
-                                            class="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
+                                            class="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
                                         <option value="">Effort?</option>
                                         <option value="XS (1-2w)">XS (1-2w)</option>
                                         <option value="S (2-4w)">S (2-4w)</option>
@@ -239,28 +239,28 @@
                                         <option value="XL (6m+)">XL (6m+)</option>
                                     </select>
                                     {# TRAC-004: Plateau assignment inline select #}
-                                    <select x-model="el.plateau_phase"
+                                    <select aria-label="Plateau phase" x-model="el.plateau_phase"
                                             @change="saveRoadmapProp(el.proposal_id, 'plateau_phase', el.plateau_phase)"
-                                            class="text-[10px] px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                                            :class="!el.plateau_phase ? 'border-amber-400/60 text-amber-700' : ''">
+                                            class="text-xs px-1.5 py-0.5 rounded border border-border bg-background text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                                            :class="!el.plateau_phase ? 'border-warning/60 text-warning-emphasis' : ''">
                                         <option value="">Plateau?</option>
                                         <template x-for="ph in (roadmapData && roadmapData.phases ? roadmapData.phases : [])" :key="ph.id">
                                             <option :value="ph.id" x-text="ph.name"></option>
                                         </template>
                                     </select>
                                     <template x-if="!el.plateau_phase">
-                                        <span class="text-[9px] text-amber-600 font-medium">No plateau</span>
+                                        <span class="text-2xs text-warning-emphasis font-medium">No plateau</span>
                                     </template>
                                     {# Implementation status inline select #}
-                                    <select x-model="el.implementation_status"
+                                    <select aria-label="Implementation status" x-model="el.implementation_status"
                                             @change="saveRoadmapProp(el.proposal_id, 'implementation_status', el.implementation_status)"
-                                            class="text-[10px] px-1.5 py-0.5 rounded border focus:outline-none focus:ring-1 focus:ring-ring"
+                                            class="text-xs px-1.5 py-0.5 rounded border focus:outline-none focus:ring-1 focus:ring-ring"
                                             :class="{
                                                 'border-border bg-background text-muted-foreground': !el.implementation_status,
-                                                'border-zinc-400/40 bg-zinc-500/10 text-zinc-600': el.implementation_status === 'not_started',
-                                                'border-blue-400/40 bg-blue-500/10 text-primary': el.implementation_status === 'in_progress',
-                                                'border-emerald-400/40 bg-emerald-500/10 text-emerald-600': el.implementation_status === 'complete',
-                                                'border-red-400/40 bg-red-500/10 text-destructive': el.implementation_status === 'blocked'
+                                                'border-muted-foreground/40 bg-muted-foreground/10 text-muted-foreground': el.implementation_status === 'not_started',
+                                                'border-info/40 bg-info/10 text-info-emphasis': el.implementation_status === 'in_progress',
+                                                'border-success/40 bg-success/10 text-success-emphasis': el.implementation_status === 'complete',
+                                                'border-destructive/40 bg-destructive/10 text-destructive-emphasis': el.implementation_status === 'blocked'
                                             }">
                                         <option value="">Status?</option>
                                         <option value="not_started">Not Started</option>
@@ -269,7 +269,7 @@
                                         <option value="blocked">Blocked</option>
                                     </select>
                                     <template x-if="el.dependencies">
-                                        <span class="text-[10px] text-amber-600" title="Has dependencies">
+                                        <span class="text-xs text-warning-emphasis" title="Has dependencies">
                                             <i data-lucide="link" class="w-3 h-3 inline" aria-hidden="true"></i>
                                         </span>
                                     </template>

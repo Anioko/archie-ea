@@ -8,18 +8,15 @@ Part of application rationalization framework for EA portfolio management.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 
-from sqlalchemy import and_, distinct, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy import distinct, func
 
 from app import db
 from app.models.application_layer import ApplicationComponent
 from app.models.application_portfolio import VendorContract
 from app.models.application_rationalization import VendorConcentrationAnalysis
-from app.models.business_capabilities import BusinessCapability
-from app.models.process_data import BusinessProcess
 from app.models.vendor.vendor_organization import (
     VendorOrganization,
     VendorProduct,
@@ -505,7 +502,7 @@ class VendorRiskService:
                 total_contract_value = sum(
                     contract.annual_cost for contract in contracts if contract.annual_cost
                 )
-            except Exception:  # fabricated-values-ok: VendorContract table may not exist yet
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug("VendorContract not available for impact analysis")
 
             # Find alternatives

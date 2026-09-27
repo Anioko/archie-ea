@@ -17,7 +17,7 @@ All 40 routes preserved exactly from v1 dashboard_pages_routes.py.
 
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
 from app.core.compat import mark_blueprint_guardrailed
@@ -28,6 +28,7 @@ from app.modules.dashboard.v2.services import (
     CapabilityHeatmapService,
     RationalizationScoringService,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +40,134 @@ mark_blueprint_guardrailed(dashboard_pages_bp_v2)
 @timed_route
 @login_required
 def api_capability_heatmap():
-    """API endpoint for capability maturity heatmap data."""
+    """API endpoint for capability maturity heatmap data.
+
+    Query params:
+        group_by  – When ``domain``, aggregates investment (sum of solution TCO)
+                    per capability domain alongside the maturity heatmap data.
+                    The page's "Investment" view mode requests exactly this; a
+                    response without it would leave every currency figure on that
+                    tab at the template's ``|| 0`` fallback, which reads as a
+                    measured zero.
+    """
     try:
         heatmap_service = CapabilityHeatmapService()
         heatmap_data = heatmap_service.get_maturity_heatmap()
+
+        if request.args.get("group_by", "") == "domain":
+            investment_by_domain = _aggregate_investment_by_domain()
+            inv_lookup = {d["domain_code"]: d for d in investment_by_domain}
+            for domain_row in heatmap_data.get("domains", []):
+                inv = inv_lookup.get(domain_row.get("code", ""), {})
+                domain_row["total_investment"] = inv.get("total_investment", 0)
+                domain_row["solution_count"] = inv.get("solution_count", 0)
+                domain_row["cost_breakdown"] = inv.get("cost_breakdown", {})
+            heatmap_data["investment_summary"] = {
+                "grand_total": sum(d.get("total_investment", 0) for d in investment_by_domain),
+                "domains_with_investment": len(
+                    [d for d in investment_by_domain if d["total_investment"] > 0]
+                ),
+            }
+
         return jsonify({"success": True, "data": heatmap_data}), 200
     except Exception as e:
         logger.exception(f"Error getting capability heatmap: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
+
+def _aggregate_investment_by_domain():
+    """Aggregate solution TCO amounts grouped by capability domain.
+
+    Join chain: BusinessCapability → SolutionCapabilityMapping → Solution → SolutionTCOItem.
+    Returns a list of dicts: [{domain_code, domain_name, total_investment, solution_count, cost_breakdown}].
+    """
+    from sqlalchemy import func as sa_func
+
+    from app import db
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.solution_lifecycle_models import SolutionTCOItem
+    from app.models.solution_models import SolutionCapabilityMapping
+
+    try:
+        rows = (
+            db.session.query(
+                BusinessCapability.business_domain,
+                BusinessCapability.code,
+                SolutionTCOItem.cost_category,
+                sa_func.sum(SolutionTCOItem.amount).label("total"),
+                sa_func.count(sa_func.distinct(SolutionTCOItem.solution_id)).label("sol_count"),
+            )
+            .join(
+                SolutionCapabilityMapping,
+                SolutionCapabilityMapping.capability_id == BusinessCapability.id,
+            )
+            .join(
+                SolutionTCOItem,
+                SolutionTCOItem.solution_id == SolutionCapabilityMapping.solution_id,
+            )
+            .group_by(
+                BusinessCapability.business_domain,
+                BusinessCapability.code,
+                SolutionTCOItem.cost_category,
+            )
+            .all()
+        )
+
+        domain_map = {}
+        for domain_name, domain_code, cost_cat, total, sol_count in rows:
+            d_code = domain_code or "UNK"
+            entry = domain_map.setdefault(
+                d_code,
+                {
+                    "domain_code": d_code,
+                    "domain_name": domain_name or "Unknown",
+                    "total_investment": 0,
+                    "solution_count": 0,
+                    "cost_breakdown": {},
+                },
+            )
+            amount = float(total) if total else 0
+            entry["total_investment"] += amount
+            category = cost_cat or "other"
+            entry["cost_breakdown"][category] = entry["cost_breakdown"].get(category, 0) + amount
+            entry["solution_count"] = max(entry["solution_count"], sol_count or 0)
+
+        results = []
+        for entry in domain_map.values():
+            entry["total_investment"] = round(entry["total_investment"], 2)
+            for k in entry["cost_breakdown"]:
+                entry["cost_breakdown"][k] = round(entry["cost_breakdown"][k], 2)
+            results.append(entry)
+
+        return sorted(results, key=lambda r: r["total_investment"], reverse=True)
+
+    except Exception as e:
+        logger.warning(f"Investment aggregation failed (non-fatal): {e}")
+        return []
+
+
+@dashboard_pages_bp_v2.route("/capability-heatmap")
+@timed_route
+@login_required
+def capability_heatmap_page():
+    """Capability heatmap and investment-by-domain dashboard page.
+
+    v1 (``app/modules/dashboard/routes/dashboard_pages_routes.py``) served this
+    page; the v2 rewrite kept the API and dropped the page, so
+    ``/dashboard/capability-heatmap`` 404'd for as long as USE_DASHBOARD_GUARDRAILS
+    has been on. The template and the API it calls were both live throughout.
+    """
+    from config import CurrencyConfig
+
+    try:
+        currency_symbol = CurrencyConfig.get_currency_config().get("symbol", "£")
+    except Exception:
+        currency_symbol = "£"
+
+    return render_template(
+        "dashboard/capability_heatmap.html",
+        currency_symbol=currency_symbol,
+    )
 
 
 # apqc_browser route removed — zero backend API, empty shell
@@ -75,7 +195,6 @@ def import_history():
 def rationalization_dashboard():
     """Application Rationalization Dashboard - TIME Framework."""
     from app.models import ApplicationComponent
-    from app.models.unified_duplicate_detection import UnifiedDuplicateGroup
     from app.modules.dashboard.v2.services import UnifiedDuplicateDetectionService
     from config import CurrencyConfig
 
@@ -133,23 +252,20 @@ def rationalization_dashboard():
             currency_symbol=currency_symbol,
         )
     except Exception as e:
-        logger.warning(f"Could not load rationalization stats: {e}")
+        from app import db
+
+        db.session.rollback()
+        logger.exception("Could not load rationalization stats: %s", e)
+        flash("Error loading rationalization data. Please try again.", "error")
+        # stats=None rather than a zeroed dict. "0 duplicate groups, 0 estimated
+        # savings" is a conclusion about the portfolio; nothing was counted here.
         return render_template(
             "applications/rationalization.html",
-            stats={
-                "total_applications": 0,
-                "duplicate_groups": 0,
-                "total_groups": 0,
-                "pending_groups": 0,
-                "resolved_groups": 0,
-                "estimated_savings": 0,
-                "time_scored_count": 0,
-                "consolidation_count": 0,
-                "roadmap_count": 0,
-            },
+            stats=None,
             groups=[],
             runs=[],
             currency_symbol=currency_symbol,
+            load_error="Rationalization statistics could not be read.",
         )
 
 
@@ -278,9 +394,14 @@ def analyze_migration_options(app_id):
 def calculate_portfolio_scores():
     """Calculate rationalization scores for entire portfolio."""
     try:
-        force_recalc = (
-            request.json.get("force_recalculate", False) if request.json else False
-        )
+        # request.json raises UnsupportedMediaType (a plain Exception) when the
+        # caller sends no body/Content-Type — which is exactly what the scorecard
+        # pages do (Platform.fetch.post(url, null) omits both). The blanket
+        # `except Exception` below then turned that into a 500 and the page
+        # showed "Unhandled promise rejection: An internal error occurred".
+        # get_json(silent=True) returns None instead of raising.
+        payload = request.get_json(silent=True) or {}
+        force_recalc = bool(payload.get("force_recalculate", False))
         results = RationalizationScoringService.calculate_portfolio_scores(force_recalc)
         # Add flat keys expected by scorecard JS (updateMetrics function)
         avg = results.get("average_scores", {})
@@ -304,7 +425,7 @@ def calculate_portfolio_scores():
 def get_elimination_candidates():
     """Get top candidates for elimination."""
     try:
-        limit = request.args.get("limit", 20, type=int)
+        limit = safe_int_arg('limit', 20, minimum=1, maximum=500)
         candidates = RationalizationScoringService.get_elimination_candidates(
             limit=limit
         )
@@ -408,7 +529,7 @@ def get_consolidation_opportunities():
     """Get top consolidation opportunities."""
     try:
         service = ApplicationConsolidationService()
-        limit = request.args.get("limit", 10, type=int)
+        limit = safe_int_arg('limit', 10, minimum=1, maximum=500)
         opportunities = service.get_consolidation_opportunities(limit)
         return jsonify({"success": True, "data": opportunities})
     except Exception as e:
@@ -465,6 +586,11 @@ def generate_consolidation_recommendations():
 @login_required
 def get_retirement_blockers(app_id):
     """Get applications that depend on this app and would block its retirement."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.utils.route_guards import require_entity
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     try:
         blockers = RationalizationScoringService.get_retirement_blockers(app_id)
         # IA-011: enrich with canonical impact analysis for retirement scenario
@@ -476,15 +602,22 @@ def get_retirement_blockers(app_id):
             )
             if raw:
                 ra = raw.get("risk_assessment") or {}
+                # None, not "LOW"/0 -- this is a retirement risk shown to someone
+                # deciding whether to retire an application. An unassessed risk
+                # rendered as LOW is indistinguishable from an assessed one, and
+                # the `or` chain collapsed None and "" as well as a missing key.
                 canonical_impact = {
-                    "risk_level": ra.get("risk_level") or raw.get("risk_level", "LOW"),
-                    "total_score": ra.get("total_score", 0),
+                    "risk_level": ra.get("risk_level") or raw.get("risk_level"),
+                    "total_score": ra.get("total_score"),
                     "breakdown": ra.get("breakdown") or {},
                     "summary": raw.get("executive_summary") or raw.get("summary"),
                 }
-        except Exception:  # fabricated-values-ok: best-effort canonical impact enrichment, non-fatal
-            logger.exception("Failed to operation")
-            pass
+        except Exception:
+            # Best-effort enrichment, but its absence stays visible: the key
+            # returns null rather than a confident-looking default.
+            logger.exception(
+                "canonical impact enrichment failed for app_id=%s", app_id
+            )
         return jsonify({"success": True, "data": blockers, "canonical_impact": canonical_impact})
     except Exception as e:
         logger.error(
@@ -821,7 +954,7 @@ def get_tco_cost_tiers():
     try:
         from app.models import ApplicationComponent
         from app.extensions import db
-        from sqlalchemy import func, case
+        from sqlalchemy import func
 
         tiers = [
             {
@@ -889,7 +1022,7 @@ def get_tco_cost_tiers():
 
             count = query.scalar() or 0
 
-            results.append({**tier, "application_count": count, "percentage": 0})
+            results.append({**tier, "application_count": count, "percentage": None})  # M1: None until computed below
 
         apps_in_tiers = sum(r["application_count"] for r in results)
         if apps_in_tiers > 0:
@@ -903,7 +1036,7 @@ def get_tco_cost_tiers():
                 "total_portfolio": total_portfolio,
                 "apps_with_tco": apps_with_tco,
                 "apps_without_tco": total_portfolio - apps_with_tco,
-                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else 0,
+                "coverage_percent": round((apps_with_tco / total_portfolio) * 100, 1) if total_portfolio > 0 else None,  # M1: no portfolio yet is unmeasured, not 0%
                 "total_tco": round(float(portfolio_tco), 2),
             },
         })
@@ -956,7 +1089,7 @@ def api_rationalization_onboard():
             description=data.get("description"),
             application_type=data.get("type"),
             lifecycle_status=data.get("lifecycle_status", "planning"),
-            estimated_cost=data.get("annual_cost"),
+            total_cost_of_ownership=data.get("annual_cost"),
         )
         db.session.add(app)
         db.session.flush()
@@ -1152,11 +1285,16 @@ def resolve_validation_conflict(app_id):
 def api_executive_summary():
     """FRAG-035: Get executive dashboard summary.
 
-    Returns a flat dict of numeric scalars so the dashboard template can
-    render each value with x-text without '[object Object]' artefacts.
+    Returns a flat dict of scalars so the dashboard template can render each
+    value with x-text without '[object Object]' artefacts. The Health Score is
+    the string the other screens show for it, so the executive summary cannot
+    spell the same score differently from the cards beside it.
     """
     try:
-        from app.modules.dashboard.v2.services.executive_dashboard_service import ExecutiveDashboardService
+        from app.modules.dashboard.v2.services.executive_dashboard_service import (
+            ExecutiveDashboardService,
+            format_health_score,
+        )
         service = ExecutiveDashboardService()
         summary = service.get_executive_summary()
         health = summary.get("architecture_health", {})
@@ -1164,14 +1302,19 @@ def api_executive_summary():
         cap = summary.get("capability_coverage", {})
         risk = summary.get("risk_posture", {})
         arb = summary.get("pending_decisions", {})
+        # No `, 0` defaults. A missing key means the metric could not be measured,
+        # and a 0 the reader cannot distinguish from a real zero is worse than no
+        # number at all (CLAUDE.md). These serialise to JSON null; the dashboard
+        # renders null as an em dash.
+        health_score = health.get("composite_score")
         flat = {
-            "Health Score": health.get("composite_score", 0),
-            "Solutions": portfolio.get("solutions", 0),
-            "Applications": portfolio.get("applications", 0),
-            "ArchiMate Elements": portfolio.get("archimate_elements", 0),
-            "Capability Coverage %": cap.get("percentage", 0),
-            "Open Risks": risk.get("total", 0),
-            "ARB Pending": arb.get("pending", 0),
+            "Health Score": None if health_score is None else format_health_score(health_score),
+            "Solutions": portfolio.get("solutions"),
+            "Applications": portfolio.get("applications"),
+            "ArchiMate Elements": portfolio.get("archimate_elements"),
+            "Capability Coverage %": cap.get("percentage"),
+            "Open Risks": risk.get("total"),
+            "ARB Pending": arb.get("pending"),
         }
         return jsonify({"success": True, "data": flat})
     except Exception as e:

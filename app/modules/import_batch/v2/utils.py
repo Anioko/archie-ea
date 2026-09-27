@@ -5,7 +5,7 @@ Shared helpers for the import batch v2 module routes.
 """
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

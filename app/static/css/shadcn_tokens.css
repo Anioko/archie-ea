@@ -12,17 +12,29 @@
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 45%; /* 4.51:1 on bg-muted (46.9% was 4.34, a WCAG AA fail on every bg-muted chip) */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
+    /* -emphasis: coloured TEXT on the token's own light tint. The base
+       --destructive scores 3.30 against bg-destructive/10, below WCAG AA 4.5, so
+       every tinted status badge built from it failed. shadcn's -foreground
+       variants do not solve this: they are for text on a SOLID fill. */
+    --destructive-emphasis: 0 72% 42%;
     --success: 142.1 76.2% 36.3%;
     --success-foreground: 0 0% 100%;
+    --success-emphasis: 142.1 76.2% 28%;  /* 4.63 on bg-success/10; base is 2.95 */
     --warning: 37.7 92.1% 50.2%;
     --warning-foreground: 0 0% 0%;
+    /* 5.62 on bg-warning/10. --warning-foreground is pure black in BOTH themes,
+       which is 19.43 here but 1.19 in dark mode, where bg-warning/10 composites
+       to near-black — the AI degraded-mode and provider-health banners were
+       unreadable for dark-theme users. */
+    --warning-emphasis: 32 95% 30%;
     --info: 221.2 83.2% 53.3%;
     --info-foreground: 210 40% 98%;
+    --info-emphasis: 221 83% 42%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
@@ -36,6 +48,16 @@
     --layer-technology: 142 71% 45%;     /* green — Nodes, Devices, Networks */
     --layer-implementation: 199 89% 48%; /* sky — Work Packages, Plateaus */
     --layer-risk: 0 84% 60%;            /* red — Assessments, Issues */
+    /* Readable text on a `bg-layer-*/10` tint: the base hues above are chosen
+       for fill/border distinctness and are far under WCAG AA as text. Same
+       relationship as --info / --info-emphasis. */
+    --layer-motivation-emphasis: 263 70% 40%;
+    --layer-strategy-emphasis: 38 92% 28%;
+    --layer-business-emphasis: 160 84% 26%;
+    --layer-application-emphasis: 221 83% 42%;
+    --layer-technology-emphasis: 142 71% 26%;
+    --layer-implementation-emphasis: 199 89% 30%;
+    --layer-risk-emphasis: 0 84% 42%;
   }
 
   .dark {
@@ -55,12 +77,20 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+    --destructive-emphasis: 0 91% 71%;
     --success: 142.1 70.6% 45.3%;
     --success-foreground: 0 0% 0%;
+    --success-emphasis: 142.1 70.6% 60%;  /* light-on-dark counterpart; matches warning/info-emphasis pattern */
     --warning: 45.4 93.4% 47.5%;
     --warning-foreground: 0 0% 0%;
+    --warning-emphasis: 45 93% 65%;   /* 11.81 on bg-warning/10 */
     --info: 217.2 91.2% 59.8%;
     --info-foreground: 222.2 47.4% 11.2%;
+    /* --info-emphasis was declared in :root only, so text-info-emphasis
+       resolved to an invalid declaration in dark mode and fell back to the
+       inherited colour — affecting admin_overview.html and
+       _capability_heatmap.html. 9.88 on bg-info/10. */
+    --info-emphasis: 213 94% 78%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
@@ -73,6 +103,13 @@
     --layer-technology: 142 71% 55%;
     --layer-implementation: 199 89% 58%;
     --layer-risk: 0 84% 65%;
+    --layer-motivation-emphasis: 263 70% 75%;
+    --layer-strategy-emphasis: 38 92% 68%;
+    --layer-business-emphasis: 160 84% 62%;
+    --layer-application-emphasis: 221 83% 74%;
+    --layer-technology-emphasis: 142 71% 64%;
+    --layer-implementation-emphasis: 199 89% 68%;
+    --layer-risk-emphasis: 0 84% 74%;
   }
 }
 
@@ -109,3 +146,62 @@
 .bg-purple-500 { background-color: #a855f7; }
 .bg-green-500  { background-color: #22c55e; }
 .bg-slate-500  { background-color: #64748b; }
+
+/* Brand typeface — ARCH-111. Inter, SIL Open Font License 1.1 (no licensing
+ * question: OFL permits embedding, subsetting and redistribution with the
+ * product, including commercial use, with no royalty and no source-disclosure
+ * obligation — see app/static/vendor/inter-LICENSE.txt).
+ *
+ * Vendored locally (app/static/vendor/inter-*.woff2, tracked in
+ * VENDOR_MANIFEST.txt) — never Google Fonts or any other CDN, per the air-gap
+ * gate. Wired here via @font-face + a CSS variable rather than a new Tailwind
+ * utility class, because tailwind-output.css is committed pre-built and this
+ * repo has no Node toolchain to rebuild it (DESIGN.md / CLAUDE.md); editing
+ * tailwind.config.js's fontFamily would be a no-op until the next rebuild.
+ * `font-display: swap` plus the system-stack fallback in --font-sans below
+ * mean a missing or slow-loading font file never blocks text from painting.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../vendor/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('../vendor/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('../vendor/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../vendor/inter-700.woff2') format('woff2');
+}
+
+:root {
+  /* System stack kept as the fallback list — if inter-400.woff2 etc. ever
+   * 404 (CDN outage during a rebuild, a bad deploy), the browser falls
+   * straight through to the platform default with no layout break. */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+/* text-2xs — the 11px tier the dense data/badge UI relies on, made an on-scale
+   token so pages stop reaching for arbitrary text-[Npx]. Enforced by the
+   ui-contract gate (arbitrary pixel type is banned; this named utility is not). */
+.text-2xs { font-size: 11px; line-height: 1rem; }

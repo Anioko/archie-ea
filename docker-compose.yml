@@ -1,58 +1,234 @@
 version: '3.4'
 services:
+  database-bootstrap:
+    build:
+      context: .
+    command: python -m scripts.database.configure_roles
+    restart: "no"
+    volumes:
+      - './:/app'
+    environment:
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      DATABASE_NAMES: archie,archie_test
+      DATABASE_DEPLOY_PASSWORD: ${DATABASE_DEPLOY_PASSWORD}
+      DATABASE_RUNTIME_PASSWORD: ${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  schema-deploy:
+    build:
+      context: .
+    command: sh scripts/database/deploy-schema.sh
+    restart: "no"
+    volumes:
+      - './:/app'
+    environment:
+      DATABASE_URL: postgresql://archie_deploy:${DATABASE_DEPLOY_PASSWORD}@postgres:5432/archie
+      DEV_DATABASE_URL: postgresql://archie_deploy:${DATABASE_DEPLOY_PASSWORD}@postgres:5432/archie
+      TEST_DATABASE_URL: postgresql://archie_deploy:${DATABASE_DEPLOY_PASSWORD}@postgres:5432/archie_test
+      TRANSFORMATION_COMMAND_CAPABILITY_SECRET: ${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS: ${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
+    depends_on:
+      database-bootstrap:
+        condition: service_completed_successfully
+
+  database-acl:
+    build:
+      context: .
+    command: python -m scripts.database.configure_roles
+    restart: "no"
+    volumes:
+      - './:/app'
+    environment:
+      DATABASE_ADMIN_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres
+      DATABASE_NAMES: archie,archie_test
+      DATABASE_DEPLOY_PASSWORD: ${DATABASE_DEPLOY_PASSWORD}
+      DATABASE_RUNTIME_PASSWORD: ${DATABASE_RUNTIME_PASSWORD}
+    depends_on:
+      schema-deploy:
+        condition: service_completed_successfully
+
   server:
     build:
       context: .
-    # Create the schema (idempotent, non-destructive) before starting the web server.
-    # Without this, `docker compose up` boots gunicorn against an empty database and
-    # every request fails with "relation does not exist".
-    command: sh -c "flask --app manage init-db && gunicorn -c gunicorn.conf.py manage:app"
+    # Bring the schema up before starting the web server (all idempotent, non-destructive):
+    #   init-db          — create any missing tables (create_all). Without it, gunicorn
+    #                      boots against an empty DB and every request 500s ("relation does not exist").
+    #   reconcile-schema — add any columns the models gained since this DB was created.
+    #                      create_all never alters existing tables, so a long-lived DB drifts
+    #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
+    #                      docs/known-issues/schema-drift-on-existing-databases.md
+    #   backfill-principle-org — Principle gained TenantMixin; reconcile-schema adds
+    #                      organization_id as NULL, and the tenant filter compares with
+    #                      `=`, so NULL matches nothing. Without this every pre-existing
+    #                      architecture principle silently disappears from the governance
+    #                      dashboard, the ARB screens and the AI chat tools. Non-fatal:
+    #                      it refuses to guess when several organisations exist.
+    #   backfill-archimate-layer-casing — archimate_elements.layer accumulated two
+    #                      casings and Postgres `=` is case-sensitive, so the column
+    #                      partitioned itself. ArchiMateElement.layer now canonicalises
+    #                      both stored values and query literals to lower case, which
+    #                      means a legacy capitalised row matches NOTHING until this
+    #                      has run. It is therefore required, not optional, on any
+    #                      database that predates that change. Idempotent.
+    #   backfill-architect-role — normalise existing users onto the architect role.
+    command: gunicorn -c gunicorn.conf.py manage:app
+    # Guardrails added 2026-07-30. Previously restart=no and no mem_limit, so a
+    # memory spike triggered a GLOBAL OOM (22 Jul) and a wedged container stayed
+    # wedged for six days (24-30 Jul). The ceiling confines a spike to this
+    # container; unless-stopped brings it back by itself.
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    # ARCH-001 (raised 18 Aug 2026, from 2600m): the binding constraint was the
+    # container's own cgroup ceiling, not host RAM. A read-only measurement on
+    # the droplet showed server at 1.425GiB/2.539GiB (56%) while the HOST had
+    # ~1.8GB available and a 4GB swap file barely touched (170MB used) — so
+    # this was never a "buy a bigger droplet" question. Arithmetic for the new
+    # ceiling, all in MB against the droplet's 3915MB total RAM:
+    #   server 3072 + postgres 448 + adminer 64 + redis 160 = 3744
+    #   3915 - 3744 = 171MB headroom for the OS, PLUS the 4GB swap file as a
+    #   second cushion behind that. Re-derive by re-summing the mem_limit
+    #   lines below against `free -m` on the droplet if any service's limit
+    #   changes.
+    # Do NOT run `docker compose exec server flask ...` against production —
+    # it boots a second full Flask app (~800MB) inside THIS SAME cgroup, on
+    # top of gunicorn's steady-state footprint, and is what actually killed
+    # gunicorn: 07 Aug 12:22 and 17 Aug 09:29 from ordinary operation, and
+    # 18 Aug from a one-off diagnostic `flask` invocation. Query Postgres
+    # directly instead (`flask --app manage db-query` from OUTSIDE the
+    # container, or `docker compose exec postgres psql`) — never spin up a
+    # second app instance inside the server container's memory budget.
+    mem_limit: 3072m
+    memswap_limit: 3072m   # == mem_limit: no swap allowance
     ports:
-      - '5000:5000'
+      # NOT 0.0.0.0. Publishing on all interfaces left the app reachable from the
+      # open internet on :5000, bypassing Caddy entirely - no TLS, no request
+      # timeouts, none of the security headers (verified 2026-07-30: arbitrary
+      # scanner IPs held established connections straight to gunicorn).
+      #   127.0.0.1  - host-side healthcheck and the archie-watchdog timer
+      #   10.106.0.6 - this droplet's DigitalOcean VPC address, which is where
+      #                the Caddy droplet (10.106.0.2) now proxies to. If the
+      #                droplet's private IP ever changes, update both this and
+      #                the proxy's Caddyfile.
+      - '127.0.0.1:5000:5000'
+      - '10.106.0.6:5000:5000'
     volumes:
       - './:/app'
     environment:
       # Database URLs - separate databases for dev and test
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
-      DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
-      TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
+      DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie
+      DEV_DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie
+      TEST_DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie_test
+      TRANSFORMATION_COMMAND_CAPABILITY_SECRET: ${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS: ${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       REDISTOGO_URL: redis://redis:6379
+      GUNICORN_WORKERS: "3"
+      # Was 4x8 (measured on this 2 vCPU box at concurrency 32: 4 workers gave
+      # 89 req/s p95 628ms vs 2 workers 51 req/s p95 1588ms; each extra worker
+      # costs ~355 MB). Dropped to 3 after ARCH-001: `dmesg -T` on the droplet
+      # shows the memory-cgroup OOM killer taking gunicorn twice under normal
+      # single-user testing (07 Aug 12:22, 17 Aug 09:29) despite the 2600m
+      # mem_limit then in force and `free -m` showing only ~178MB free on this
+      # 4GB host once postgres/redis/adminer are also running. Killing the
+      # gunicorn process kills the container's PID 1, so `restart:
+      # unless-stopped` has to replay the whole init-db -> reconcile-schema ->
+      # backfills -> gunicorn boot chain (8-12 min) before anything answers
+      # again — that chain, not request handling, is the outage users saw.
+      # KEPT deliberately when mem_limit was raised to 3072m on 18 Aug: the
+      # trim and the ceiling raise are two different fixes for two different
+      # symptoms. The trim protects steady-state headroom against ordinary
+      # traffic; the raised ceiling protects against the actual root cause
+      # found on inspection — `docker compose exec server flask ...` booting
+      # a second ~800MB app inside this cgroup (see the mem_limit comment
+      # above). Reverting the trim now would spend the new headroom on more
+      # workers instead of on that margin. If OOMs recur at 3072m/3 workers
+      # WITHOUT a `flask exec` in the picture, that is new evidence and a
+      # hardware question — not before.
+      GUNICORN_THREADS: "8"
+      GUNICORN_MAX_REQUESTS: "750"
+      # 8+4 per process x 3 workers = 36 connections, under max_connections=100.
+      SQLALCHEMY_POOL_SIZE: "8"
+      SQLALCHEMY_MAX_OVERFLOW: "4"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf --max-time 10 http://127.0.0.1:5000/health || exit 1"]
+      interval: 30s
+      timeout: 12s
+      retries: 3
+      start_period: 420s
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-acl:
+        condition: service_completed_successfully
       redis:
         condition: service_started
 
   worker:
+    # Disabled 2026-07-30. Its only job is sending email, but no MAIL_/SMTP
+    # settings exist anywhere, so it could not send - it only logged messages,
+    # while holding ~1 GB (25% of RAM). Parked behind a profile, not deleted:
+    #   re-enable with:  docker compose --profile email up -d worker
+    profiles: ['email']
     build:
       dockerfile: Dockerfile.worker
       context: .
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    mem_limit: 1200m
+    memswap_limit: 1200m   # == mem_limit: no swap allowance
     volumes:
       - './:/app'
     environment:
       # Database URLs - separate databases for dev and test
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
-      DEV_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie
-      TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/archie_test
+      DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie
+      DEV_DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie
+      TEST_DATABASE_URL: postgresql://archie_runtime:${DATABASE_RUNTIME_PASSWORD}@postgres:5432/archie_test
+      TRANSFORMATION_COMMAND_CAPABILITY_SECRET: ${TRANSFORMATION_COMMAND_CAPABILITY_SECRET}
+      TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS: ${TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS:-}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       REDISTOGO_URL: redis://redis:6379
+      # The RQ worker opens its own pool too; it only sends email, so keep it small.
+      SQLALCHEMY_POOL_SIZE: "4"
+      SQLALCHEMY_MAX_OVERFLOW: "2"
     depends_on:
-      postgres:
-        condition: service_healthy
+      database-acl:
+        condition: service_completed_successfully
       redis:
         condition: service_started
 
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    mem_limit: 448m
+    memswap_limit: 448m   # == mem_limit: no swap allowance
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      # Sourced from .env, which is gitignored. It must NOT be hardcoded here:
+      # docker-compose.yml is tracked and this repository is published.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: postgres
     volumes:
       - db-data:/var/lib/postgresql/data
       # Init script creates flask_dev and flask_test databases on startup
       - ./scripts/database/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     ports:
-      - '5432:5432'
+      # Bind to loopback only — the app reaches Postgres over the internal Docker
+      # network (host 'postgres'), so this never needs to be public. Publishing on
+      # 0.0.0.0 exposed the DB to the internet (Shadowserver/DO security finding).
+      - '127.0.0.1:5432:5432'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -61,16 +237,40 @@ services:
 
   adminer:
     image: adminer
-    restart: always
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    mem_limit: 64m
+    memswap_limit: 64m   # == mem_limit: no swap allowance
     ports:
-      - 8080:8080
+      # Adminer is a DB admin UI — loopback only (reach it via an SSH tunnel), never public.
+      - '127.0.0.1:8080:8080'
     depends_on:
       - postgres
 
   redis:
     image: redis:6-alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    mem_limit: 160m
+    memswap_limit: 160m   # == mem_limit: no swap allowance
+    # noeviction is deliberate: Redis is the RQ broker, so evicting keys would
+    # silently drop queued jobs. maxmemory is a guard rail, not a cache policy.
+    # Do NOT add --save here: any --save argument overrides the compiled-in
+    # defaults and yielded an EMPTY save policy (verified), silently disabling
+    # RDB snapshots. Omitting it keeps the default 3600/1, 300/100, 60/10000.
+    command: redis-server --maxmemory 128mb --maxmemory-policy noeviction
     ports:
-      - '6379:6379'
+      # Loopback only — the app uses Redis over the Docker network (host 'redis').
+      # Publishing on 0.0.0.0 left Redis open to the internet on 6379 (the security finding).
+      - '127.0.0.1:6379:6379'
 
 volumes:
   db-data:

@@ -660,7 +660,7 @@ class ImportErrorHandler:
         return {
             'success': True,
             'action': 'log_and_continue',
-            'message': f"Error logged, continuing with import",
+            'message': "Error logged, continuing with import",
             'error_id': error.id
         }
     

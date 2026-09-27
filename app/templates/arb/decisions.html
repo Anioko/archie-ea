@@ -18,8 +18,9 @@
             {'label': 'Decision Register'}
         ],
         actions=[
-            {'text': 'New Decision', 'icon': 'plus', 'onclick': "Platform.modal.open('create-decision')", 'variant': 'default'}
-        ]
+            {'text': 'New Decision', 'icon': 'plus', 'variant': 'default',
+             'href': url_for('arch_decisions.create_decision')}
+        ] if 'arch_decisions.create_decision' in flask.current_app.view_functions else []
     ) }}
 
     <!-- Summary Metrics -->
@@ -48,7 +49,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Horizon</label>
                     <select x-model="filterHorizon"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]" aria-label="Horizon">
                         <option value="">All Horizons</option>
                         {% for h in valid_horizons %}
                         <option value="{{ h }}">{{ h | replace('_', ' ') | title }}</option>
@@ -58,7 +59,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Authority Level</label>
                     <select x-model="filterAuthority"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[160px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[160px]" aria-label="Authority Level">
                         <option value="">All Authority Levels</option>
                         {% for a in valid_authority_levels %}
                         <option value="{{ a }}">{{ a | replace('_', ' ') | title }}</option>
@@ -68,7 +69,7 @@
                 <div>
                     <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
                     <select x-model="filterStatus"
-                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]">
+                            class="rounded-md border border-input bg-background px-3 py-2 text-sm min-w-[140px]" aria-label="Status">
                         <option value="">All Statuses</option>
                         {% for s in valid_statuses %}
                         <option value="{{ s }}">{{ s | replace('_', ' ') | title }}</option>
@@ -86,7 +87,7 @@
         </div>
 
         <!-- Decisions Table -->
-        <div class="bg-card border border-border rounded-lg overflow-hidden">
+        <div class="bg-card border border-border rounded-lg overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-muted/50 border-b border-border">
                     <tr>
@@ -112,8 +113,8 @@
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-mono text-muted-foreground">{{ d.decision_id }}</span>
-                                <a href="#"
-                                   class="font-medium text-foreground hover:text-primary hover:underline transition-colors">
+                                <a href="{{ url_for('arch_decisions.view_decision', decision_id=d.id) }}"
+                                   class="font-medium text-foreground hover:text-primary hover:underline">
                                     {{ d.title }}
                                 </a>
                             </div>
@@ -123,15 +124,15 @@
                         </td>
                         <td class="px-4 py-3">
                             {% if d.horizon == 'strategic' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-info/10 text-info-emphasis">
                                 Strategic
                             </span>
                             {% elif d.horizon == 'tactical' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90 dark:bg-primary/20 dark:text-primary/80">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary/90">
                                 Tactical
                             </span>
                             {% elif d.horizon == 'operational' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground dark:bg-card dark:text-foreground/70">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-foreground">
                                 Operational
                             </span>
                             {% else %}
@@ -163,7 +164,7 @@
                         </td>
                         <td class="px-4 py-3">
                             {% if d.enterprise_level %}
-                            <span class="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400" title="Enterprise decision">
+                            <span class="inline-flex items-center gap-1 text-warning-emphasis" title="Enterprise decision">
                                 <i data-lucide="star" class="w-3.5 h-3.5 fill-current" aria-hidden="true"></i>
                                 <span class="text-xs font-medium">Enterprise</span>
                             </span>
@@ -175,9 +176,22 @@
                     {% else %}
                     <tr>
                         <td colspan="7">
-                            {{ empty_state(icon='file-text', title='No decisions found',
-                                           description='Create your first architecture decision to get started.',
+                            {% if 'arch_decisions.create_decision' in flask.current_app.view_functions %}
+                            {{ empty_state(icon='file-text', title='No decisions recorded yet',
+                                           description='The register holds the architecture decisions your organisation has taken, with their status, horizon and authority level. Record the first one to start the trail.',
+                                           cta_text='Record a decision',
+                                           cta_href=url_for('arch_decisions.create_decision'),
+                                           cta_icon='plus',
                                            padding='py-8') }}
+                            {% else %}
+                            {# The decision-authoring blueprint failed to register on this boot, so
+                               there is no create route to link to; doing it anyway would BuildError
+                               and 500 every page that renders the sidebar.
+                               empty-state-ok: create route absent on this boot #}
+                            {{ empty_state(icon='file-text', title='No decisions recorded yet',
+                                           description='The decision register is empty and the decision-authoring module is unavailable on this deployment. Ask your platform admin to check the architecture-decisions blueprint.',
+                                           padding='py-8') }}
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

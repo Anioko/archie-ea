@@ -19,8 +19,11 @@ from app.models.integration_contract import (
     VALID_SPEC_FORMATS,
     IntegrationContract,
 )
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
+
+from app.utils.route_guards import require_entity
 
 integration_contract_bp = Blueprint(
     "integration_contract_api",
@@ -140,8 +143,8 @@ def list_contracts():
         except (ValueError, TypeError):
             return jsonify({"error": "application_id must be an integer"}), 400
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
 
     pagination = query.order_by(IntegrationContract.updated_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False,
@@ -256,6 +259,10 @@ def fetch_spec(contract_id):
 @login_required
 def list_contracts_for_app(app_id):
     """List all contracts for a specific application."""
+    from app.models.application_portfolio import ApplicationComponent
+
+    require_entity(ApplicationComponent, app_id, description="Application not found")
+
     contracts = (
         IntegrationContract.query
         .filter_by(application_id=app_id)

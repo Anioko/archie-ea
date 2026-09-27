@@ -53,7 +53,7 @@ def natural_language_query():
         service = AIGapDetectionService()
         results = service.query(data["query"])
         return jsonify({"success": True, "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -77,7 +77,7 @@ def get_low_coverage_capabilities():
         return jsonify(
             {"success": True, "threshold": threshold, "count": len(results), "data": results}
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -103,7 +103,7 @@ def get_rationalization_opportunities():
                 ),
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -120,7 +120,7 @@ def get_legacy_only_capabilities():
         service = AIGapDetectionService()
         results = service.find_capabilities_with_only_legacy_apps()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -137,7 +137,7 @@ def get_critical_gaps():
         service = AIGapDetectionService()
         results = service.find_critical_gaps()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -154,7 +154,7 @@ def get_vendor_lifecycle_risks():
         service = AIGapDetectionService()
         results = service.find_vendor_lifecycle_risks()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -171,7 +171,7 @@ def get_uncovered_capabilities():
         service = AIGapDetectionService()
         results = service.find_uncovered_capabilities()
         return jsonify({"success": True, "count": len(results), "data": results})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -188,7 +188,7 @@ def get_gap_summary():
         service = AIGapDetectionService()
         summary = service.get_comprehensive_gap_summary()
         return jsonify({"success": True, "data": summary})
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -269,11 +269,11 @@ def workflow_start():
         critical = svc.find_critical_gaps()
         uncovered = svc.find_uncovered_capabilities()
         state["results"]["IDENTIFY_GAPS"] = {
-            "critical_gaps": critical[:5],  # fabricated-values-ok: preview cap of 5
+            "critical_gaps": critical[:5],  # fabricated-ok: real gap data, sliced to a 5-item preview
             "uncovered_count": len(uncovered),
         }
         _save_workflow_state(state)
-    except Exception as _wf_err:  # fabricated-values-ok: graceful degradation when service unavailable
+    except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
         current_app.logger.warning("Gap workflow init skipped: %s", _wf_err)
 
     return jsonify({
@@ -323,12 +323,12 @@ def workflow_advance():
 
     try:
         if next_step == "SURFACE_APPS":
-            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-values-ok: preview 10
+            step_data["unmapped_apps"] = svc.find_low_coverage_capabilities(threshold=20)[:10]  # fabricated-ok: real capability data, sliced to a 10-item preview
         elif next_step == "SUGGEST_VENDORS":
-            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-values-ok: preview 10
+            step_data["lifecycle_risks"] = svc.find_vendor_lifecycle_risks()[:10]  # fabricated-ok: real vendor-risk data, sliced to a 10-item preview
         elif next_step == "GENERATE_RECOMMENDATIONS":
             step_data["summary"] = svc.get_comprehensive_gap_summary()
-    except Exception as _wf_err:  # fabricated-values-ok: graceful degradation
+    except Exception as _wf_err:  # fabricated-ok: guarded skip on error; emits no fabricated value
         current_app.logger.warning("Gap workflow advance skipped: %s", _wf_err)
 
     state["results"][next_step] = step_data

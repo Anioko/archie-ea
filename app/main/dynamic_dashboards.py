@@ -6,7 +6,7 @@ dashboards for ANY SQLAlchemy model without requiring manual route creation.
 """
 from datetime import datetime
 
-from flask import Blueprint, abort, current_app, render_template, request, url_for  # dead-code-ok
+from flask import Blueprint, abort, current_app, render_template, url_for  # dead-code-ok
 
 from app.models.application_layer import (
     ApplicationEvent,
@@ -22,7 +22,7 @@ from app.models.business_capabilities import BusinessCapability
 
 # Import models from implementation planning (avoid conflicts with implementation_migration)
 from app.models.implementation_planning import ImplementationPlateau as Plateau
-from app.models.project_models import Milestone, Project, ProjectNote, ProjectResource, Task  # dead-code-ok
+from app.models.project_models import Milestone, Project, Task  # dead-code-ok
 from app.services.api_dashboard_generator import APIDashboardGenerator
 from flask_login import login_required
 
@@ -200,7 +200,7 @@ def universal_dashboard(model_slug):
 
         # Render with the new beautiful dashboard template
         return render_template("dashboards/model_dashboard.html", config=config)
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,
@@ -249,7 +249,7 @@ def universal_detail(model_slug, record_id):
         # Render with detail template
         return render_template("dashboards/generic_detail.html", config=detail_config)
 
-    except (OperationalError, ProgrammingError) as e:
+    except (OperationalError, ProgrammingError):
         # Table doesn't exist in database
         abort(
             404,
@@ -278,7 +278,22 @@ def workflow_pipeline():
         all_applications = ApplicationComponent.query.limit(2000).all()
 
         # Get all mappings
-        mappings = ApplicationCapabilityMapping.query.limit(5000).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would match zero
+        # rows and report every capability as a gap. Joining
+        # BusinessCapability lets do_orm_execute scope the join
+        # automatically. See e622d36 / rationalization_scoring_service.py.
+        mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .limit(5000)
+            .all()
+        )
 
         # Analyze gaps
         capability_gaps = []

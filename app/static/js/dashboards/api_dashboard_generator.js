@@ -139,21 +139,7 @@ document.getElementById('generateBtn').addEventListener('click', async function(
     let parsed = JSON.parse(schema);
     safeHTML(previewArea, '<div class="text-center py-8"><i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto"></i><p class="mt-4 text-muted-foreground">Generating dashboard...</p></div>');
 
-    let csrfMeta = document.querySelector('meta[name=csrf-token]');
-    let response = await fetch('/code-generation/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrfMeta ? csrfMeta.getAttribute('content') : ''
-      },
-      body: JSON.stringify(parsed)
-    });
-
-    if (!response.ok) {
-      throw new Error('Generation failed: ' + response.statusText);
-    }
-
-    let result = await response.json();
+    let result = await Platform.fetch.post('/code-generation/api/generate', parsed, { silent: true });
 
     // Render preview in iframe for proper isolation
     if (result.preview) {
@@ -194,7 +180,6 @@ document.getElementById('generateBtn').addEventListener('click', async function(
 
   } catch (e) {
     safeHTML(previewArea, '<div class="text-center py-8"><i data-lucide="alert-circle" class="w-8 h-8 text-destructive mx-auto"></i><p class="mt-4 text-destructive">Error: ' + e.message + '</p></div>');
-    console.error('Generation error:', e);
   }
 });
 
@@ -246,15 +231,14 @@ document.getElementById('downloadBtn').addEventListener('click', async function(
   try {
     let schema = JSON.parse(document.getElementById('schemaInput').value);
 
-    let csrfMeta = document.querySelector('meta[name=csrf-token]');
-    let response = await fetch('/dashboard/applications/download-template', {
+    let response = await fetch('/dashboard/applications/download-template', {  // raw-fetch-ok: blob download; needs the raw Response
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrfMeta ? csrfMeta.getAttribute('content') : ''
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(schema)
-    });
+      body: JSON.stringify(schema),
+      credentials: 'include'
+    }); // raw-fetch-ok: need raw Response to access blob
 
     if (!response.ok) throw new Error('Download failed');
 

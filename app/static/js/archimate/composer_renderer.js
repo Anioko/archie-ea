@@ -357,7 +357,11 @@ let ComposerRenderer = (function() {
         joint.dia.Element.define('archimate.Node', {
             size: { width: 200, height: 130 },
             attrs: Object.assign({}, CARD_ATTRS_BASE, {
-                body: { refWidth: '100%', refHeight: '100%', rx: 10, ry: 10, fill: '#f8fafc', stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1 },
+                /* rx:3 and a crisp dark border, not the 10px/near-invisible-border
+                   "SaaS card" look — the official ArchiMate 3.2 notation for Active
+                   Structure elements is a plain, lightly-rounded, sharply-bordered
+                   rectangle (17 Aug 2026: composer skin request). */
+                body: { refWidth: '100%', refHeight: '100%', rx: 3, ry: 3, fill: '#f8fafc', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1 },
             }),
             ports: CARD_PORTS,
         }, { markup: CARD_MARKUP_RECT });
@@ -368,7 +372,7 @@ let ComposerRenderer = (function() {
         joint.dia.Element.define('archimate.BehaviorNode', {
             size: { width: 200, height: 130 },
             attrs: Object.assign({}, CARD_ATTRS_BASE, {
-                body: { refWidth: '100%', refHeight: '100%', rx: 0, ry: 0, fill: '#f8fafc', stroke: 'rgba(0,0,0,0.1)', strokeWidth: 1 },
+                body: { refWidth: '100%', refHeight: '100%', rx: 0, ry: 0, fill: '#f8fafc', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1 },
             }),
             ports: CARD_PORTS,
         }, { markup: CARD_MARKUP_RECT });
@@ -380,8 +384,8 @@ let ComposerRenderer = (function() {
         joint.dia.Element.define('archimate.PassiveNode', {
             size: { width: 200, height: 130 },
             attrs: Object.assign({}, CARD_ATTRS_BASE, {
-                body:         { refPoints: '0,0 0.88,0 1,0.15 1,1 0,1', fill: '#f8fafc', stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1 },
-                foldTriangle: { refPoints: '0.88,0 1,0 1,0.15', fill: 'rgba(255,255,255,0.6)', stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1 },
+                body:         { refPoints: '0,0 0.88,0 1,0.15 1,1 0,1', fill: '#f8fafc', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1 },
+                foldTriangle: { refPoints: '0.88,0 1,0 1,0.15', fill: 'rgba(255,255,255,0.6)', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1 },
                 foldCrease:   { refPoints: '0.88,0 0.88,0.15 1,0.15', fill: 'none', stroke: 'rgba(0,0,0,0.18)', strokeWidth: 1 },
             }),
             ports: CARD_PORTS,
@@ -423,7 +427,7 @@ let ComposerRenderer = (function() {
         joint.dia.Element.define('archimate.MotivationNode', {
             size: { width: 200, height: 130 },
             attrs: Object.assign({}, CARD_ATTRS_BASE, {
-                body:      { refPoints: '0.1,0 0.9,0 1,0.1 1,0.9 0.9,1 0.1,1 0,0.9 0,0.1', fill: '#f8fafc', stroke: 'rgba(0,0,0,0.1)', strokeWidth: 1.5 },
+                body:      { refPoints: '0.1,0 0.9,0 1,0.1 1,0.9 0.9,1 0.1,1 0,0.9 0,0.1', fill: '#f8fafc', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1.5 },
                 accentBar: { x: 20, y: 0, refWidth: -40, height: 5, rx: 0, ry: 0, fill: '#94a3b8' },
             }),
             ports: CARD_PORTS,
@@ -460,8 +464,8 @@ let ComposerRenderer = (function() {
         joint.dia.Element.define('archimate.ImplementationNode', {
             size: { width: 200, height: 130 },
             attrs: Object.assign({}, CARD_ATTRS_BASE, {
-                underlay: { refWidth: '100%', refHeight: '100%', x: 4, y: 4, rx: 5, ry: 5, fill: '#94a3b8', opacity: 0.25, stroke: 'none' },
-                body:     { refWidth: '100%', refHeight: '100%', rx: 5, ry: 5, fill: '#f8fafc', stroke: 'rgba(0,0,0,0.08)', strokeWidth: 1 },
+                underlay: { refWidth: '100%', refHeight: '100%', x: 4, y: 4, rx: 3, ry: 3, fill: '#94a3b8', opacity: 0.25, stroke: 'none' },
+                body:     { refWidth: '100%', refHeight: '100%', rx: 3, ry: 3, fill: '#f8fafc', stroke: 'rgba(17,24,39,0.55)', strokeWidth: 1 },
             }),
             ports: CARD_PORTS,
         }, {
@@ -761,10 +765,20 @@ let ComposerRenderer = (function() {
      *
      *  Callers:  composer_graph.toggleLayerZones()
      *            composer_persistence.loadSavedViewpoint()   (restore)
+     *
+     *  An optional sixth argument, `zoneDef` ({box_key, label}), turns a
+     *  plain layer band into a canvas box. When given, the rendered label is
+     *  zoneDef.label (falling back to the usual "<Layer> Layer" text when
+     *  zoneDef carries no label of its own — the restore path below only
+     *  persists box_key, not label) and the cell carries 'boxKey' so
+     *  _serializeCanvasExt and the restore path can round-trip which canvas
+     *  box a swimlane is. Entries are not placed into it here — that is a
+     *  later change's projection.
      */
-    function createLayerZone(layer, x, y, w, h) {
+    function createLayerZone(layer, x, y, w, h, zoneDef) {
         let c = layerColor(layer);
-        let displayName = layer.charAt(0).toUpperCase() + layer.slice(1) + ' Layer';
+        let displayName = (zoneDef && zoneDef.label)
+            || (layer.charAt(0).toUpperCase() + layer.slice(1) + ' Layer');
 
         let zone = new joint.shapes.standard.Rectangle({
             position: { x: x || 0, y: y || 0 },
@@ -797,6 +811,9 @@ let ComposerRenderer = (function() {
 
         zone.set('isLayerZone', true);
         zone.set('zoneLayer', layer);
+        if (zoneDef && zoneDef.box_key) {
+            zone.set('boxKey', zoneDef.box_key);
+        }
         return zone;
     }
 
@@ -822,10 +839,18 @@ let ComposerRenderer = (function() {
         else if (cat === 'implementation') { ShapeClass = joint.shapes.archimate.ImplementationNode; }
         else                               { ShapeClass = joint.shapes.archimate.Node; }
 
+        /* 17 Aug 2026 composer skin request: the accent stripe and translucent
+           icon backing box are Entelim's own "SaaS card" polish, not part of the
+           ArchiMate 3.2 visual notation — real ArchiMate editor renders
+           are a single flat-coloured element with a crisp border and the type
+           icon sitting directly on the fill. accentBar is hidden (opacity 0,
+           not removed from markup, to avoid touching 5 shapes' selector lists);
+           iconBox drops its background/border so the icon reads as part of the
+           notation rather than a UI chrome affordance. */
         let shapeAttrs = {
-            body:      { fill: c.fill, stroke: 'rgba(0,0,0,0.08)' },
-            accentBar: { fill: c.accent || c.stroke },
-            iconBox:   { fill: 'rgba(255,255,255,0.65)' },
+            body:      { fill: c.fill, stroke: 'rgba(17,24,39,0.55)' },
+            accentBar: { fill: c.fill, opacity: 0 },
+            iconBox:   { fill: 'none', stroke: 'none' },
             typeIcon:  iconPath ? { d: iconPath, stroke: c.text, strokeWidth: 1.1 } : { d: '' },
             nameLabel: { text: name || '(unnamed)', fill: c.text },
             typeLabel: { text: typeName },
@@ -834,10 +859,6 @@ let ComposerRenderer = (function() {
         /* ImplementationNode: tint underlay with layer accent */
         if (cat === 'implementation') {
             shapeAttrs.underlay = { fill: c.accent || c.fill, opacity: 0.22 };
-        }
-        /* MotivationNode: inset accentBar to clear chamfered corners */
-        if (cat === 'motivation') {
-            shapeAttrs.accentBar = { fill: c.accent || c.stroke, x: 20, y: 0, refWidth: -40, height: 5 };
         }
 
         let node = new ShapeClass({

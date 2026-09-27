@@ -8,6 +8,7 @@ and tracking tagging analytics.
 
 from flask import Blueprint, jsonify, request
 from flask_login import login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log
@@ -26,7 +27,7 @@ def get_application_tags(app_id):
     """Get all capability tags for an application."""
     try:
         app = ApplicationComponent.query.get_or_404(app_id)
-        service = CapabilityTagService()
+        CapabilityTagService()
 
         # Get tags through the application's capability relationships
         tags = []
@@ -52,7 +53,9 @@ def get_application_tags(app_id):
                 "total": len(tags),
             }
         )
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -89,7 +92,7 @@ def tag_application(app_id):
                 "tag_ids": tag_ids,
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -123,7 +126,7 @@ def get_capability_gaps():
                 "gap_percentage": len(gaps) / len(all_tags) * 100 if all_tags else 0,
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -163,5 +166,5 @@ def get_tag_analytics():
                 },
             }
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

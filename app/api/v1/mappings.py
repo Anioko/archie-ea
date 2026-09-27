@@ -18,7 +18,6 @@ from sqlalchemy import func, or_
 from app.decorators import audit_log
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.capability_to_vendor_mapping import (
     ApplicationVendorProductMapping,
     TechnicalCapabilityVendorMapping,
@@ -26,9 +25,8 @@ from app.models.capability_to_vendor_mapping import (
     UnifiedCapabilityVendorOrganizationMapping,
 )
 from app.models.technical_capability import TechnicalCapability
-from app.models.unified_capability import UnifiedCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.utils.api_response import error_response, not_found_response, success_response
+from app.utils.pagination import safe_int_arg
 
 mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
 
@@ -41,7 +39,6 @@ mappings_bp = Blueprint("mappings_v1", __name__, url_prefix="/api/v1/mappings")
 def _build_filter_query(query, filters):
     """Build query with common filters."""
     if filters.get("search"):
-        search = f"%{filters['search']}%"
         # Search across name fields if available
         query = query.filter(
             or_(
@@ -111,8 +108,8 @@ def get_technical_to_vendor_mappings():
     }
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         # Build query
         query = db.session.query(TechnicalCapabilityVendorMapping)
@@ -371,8 +368,8 @@ def get_unified_to_application_mappings():
     - per_page: Items per page
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(UnifiedCapabilityApplicationMapping)
 
@@ -445,7 +442,7 @@ def create_unified_to_application_mapping():
         # Check for duplicates
         existing = UnifiedCapabilityApplicationMapping.query.filter_by(
             unified_capability_id=data["unified_capability_id"],
-            application_id=data["application_id"],
+            application_component_id=data["application_id"],
         ).first()
 
         if existing:
@@ -453,13 +450,13 @@ def create_unified_to_application_mapping():
 
         mapping = UnifiedCapabilityApplicationMapping(
             unified_capability_id=data["unified_capability_id"],
-            application_id=data["application_id"],
-            coverage_type=data.get("coverage_type", "supported"),
+            application_component_id=data["application_id"],
+            support_level=data.get("coverage_type", "supported"),
             coverage_percentage=data.get("coverage_percentage", 80.0),
-            gap_description=data.get("gap_description"),
-            roadmap_priority=data.get("roadmap_priority"),
-            implementation_status=data.get("implementation_status", "active"),
-            notes=data.get("notes"),
+            gaps_description=data.get("gap_description"),
+            modernization_priority=data.get("roadmap_priority"),
+            health_status=data.get("implementation_status", "active"),
+            mapping_notes=data.get("notes"),
         )
 
         db.session.add(mapping)
@@ -576,8 +573,8 @@ def get_unified_to_vendor_org_mappings():
     - page: Page number
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(UnifiedCapabilityVendorOrganizationMapping)
 
@@ -671,12 +668,10 @@ def create_unified_to_vendor_org_mapping():
         mapping = UnifiedCapabilityVendorOrganizationMapping(
             unified_capability_id=data["unified_capability_id"],
             vendor_organization_id=data["vendor_organization_id"],
-            strategic_alignment=data.get("strategic_alignment", "tactical"),
+            strategic_importance=data.get("strategic_alignment", "tactical"),
             annual_spend=data.get("annual_spend"),
-            primary_contact=data.get("primary_contact"),
-            vendor_score=data.get("vendor_score"),
-            relationship_status=data.get("relationship_status", "active"),
-            notes=data.get("notes"),
+            relationship_type=data.get("relationship_status", "active"),
+            strategic_notes=data.get("notes"),
         )
 
         db.session.add(mapping)
@@ -792,8 +787,8 @@ def get_application_to_vendor_mappings():
     - per_page: Items per page
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
 
         query = db.session.query(ApplicationVendorProductMapping)
 
@@ -873,26 +868,20 @@ def create_application_to_vendor_mapping():
 
         # Check for duplicates
         existing = ApplicationVendorProductMapping.query.filter_by(
-            application_id=data["application_id"], vendor_product_id=data["vendor_product_id"]
+            application_component_id=data["application_id"],
+            vendor_product_id=data["vendor_product_id"],
         ).first()
 
         if existing:
             return error_response("Mapping already exists", 409)
 
         mapping = ApplicationVendorProductMapping(
-            application_id=data["application_id"],
+            application_component_id=data["application_id"],
             vendor_product_id=data["vendor_product_id"],
-            tech_stack_category=data.get("tech_stack_category"),
-            integration_type=data.get("integration_type", "direct"),
-            integration_status=data.get("integration_status", "active"),
-            performance_impact=data.get("performance_impact"),
-            security_alignment=data.get("security_alignment"),
-            support_level=data.get("support_level", "standard"),
-            version=data.get("version"),
+            product_version=data.get("version"),
             deployment_model=data.get("deployment_model", "cloud"),
-            licensing_model=data.get("licensing_model"),
-            annual_license_cost=data.get("annual_license_cost"),
-            notes=data.get("notes"),
+            license_cost_annual=data.get("annual_license_cost"),
+            mapping_notes=data.get("notes"),
         )
 
         db.session.add(mapping)

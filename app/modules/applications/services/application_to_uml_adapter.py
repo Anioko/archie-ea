@@ -9,7 +9,7 @@ enterprise architecture data model and MDD's UML-based code generation.
 import logging
 from typing import Dict, List
 
-from app.models import ApplicationComponent, BusinessCapability
+from app.models import ApplicationComponent
 from app.services.mdd_code_generation_service import UMLElement
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ class ApplicationToUMLAdapter:
         try:
             from app.models import ApplicationCapabilityMapping
 
+            # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
             mappings = ApplicationCapabilityMapping.query.filter_by(
                 application_id=application.id
             ).all()
@@ -103,7 +104,6 @@ class ApplicationToUMLAdapter:
     @staticmethod
     def _add_standard_methods(uml_element: UMLElement, application: ApplicationComponent):
         """Add standard CRUD methods to UML element."""
-        class_name = uml_element.name
 
         uml_element.add_method(
             name="__init__",

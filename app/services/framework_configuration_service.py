@@ -16,27 +16,18 @@ import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
 
 from app import db
 from app.models.framework_configuration import (
     CapabilityFrameworkConfiguration,
-    FrameworkConfigurationTemplate,
     FrameworkExtension,
     FrameworkInstance,
     FrameworkMigrationMapping,
     FrameworkValidationRule,
 )
-from app.models.manufacturing_capability import (
-    ManufacturingCapability,
-    ManufacturingProcess,
-    ManufacturingValueStream,
-)
 from app.models.unified_capability import (
     BusinessDomain,
     UnifiedCapability,
-    ValueStream,
-    ValueStreamStage,
 )
 
 

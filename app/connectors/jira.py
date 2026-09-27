@@ -11,7 +11,6 @@ API Reference: https://developer.atlassian.com/cloud/jira/platform/rest/v3/
 """
 
 import base64
-import json
 import logging
 import time
 from datetime import datetime

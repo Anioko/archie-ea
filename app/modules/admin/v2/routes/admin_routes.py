@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 from flask import (
     Blueprint,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -29,7 +30,9 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased
+from app.utils.pagination import safe_int_arg
 
 try:
     from flask_rq import get_queue
@@ -43,6 +46,7 @@ import hmac
 import hashlib
 import json
 from datetime import datetime, timedelta
+from html import escape
 
 from app import csrf
 from app.extensions import db
@@ -57,11 +61,11 @@ from ...forms.admin_forms import (
     NewUserForm,
 )
 from app.modules.account.forms.account_forms import CreatePasswordForm
-from app.decorators import admin_required, audit_log
+from app.decorators import admin_required, audit_log, governance_gate_reader_required
 from app.middleware.tenant_decorators import org_admin_required, platform_admin_required
-from app.models import APISettings, EditableHTML, Role, User
+from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
-from app.models.ai_service import AIPromptTemplate
+from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.modules.admin.v2.services.llm_service_v2 import test_api_key
 from app.utils.sidebar_parser import SidebarSubmenu, parse_sidebar_template
@@ -95,19 +99,21 @@ def send_digest():
     results = {}
 
     if digest_type in ("maturity", "both"):
-        data = send_data_maturity_digest(current_app._get_current_object())
+        run = send_data_maturity_digest(current_app._get_current_object())
         results["maturity"] = {
-            "total_solutions": data["total"],
-            "avg_score": data["avg_score"],
-            "zero_connections": len(data["zero_connections"]),
+            "organisations": run.succeeded,
+            "recipients": sum((r.value or {}).get("recipients", 0)
+                              for r in run.results if r.ok),
+            "failed": run.failed,
         }
 
     if digest_type in ("executive", "both"):
-        data = send_executive_summary(current_app._get_current_object())
+        run = send_executive_summary(current_app._get_current_object())
         results["executive"] = {
-            "total_solutions": data["total_solutions"],
-            "new_this_week": data["new_solutions_count"],
-            "arb_decisions": data["arb_decisions_count"],
+            "organisations": run.succeeded,
+            "recipients": sum((r.value or {}).get("recipients", 0)
+                              for r in run.results if r.ok),
+            "failed": run.failed,
         }
 
     return jsonify({"success": True, "results": results})
@@ -159,8 +165,10 @@ def _get_solutions_portfolio_stats() -> dict:
             "top_risks": [{"description": r.risk_description[:80], "impact": r.impact} for r in top_risks],
         }
     except Exception as e:
+        # Do not fabricate a zero portfolio on failure -- the caller renders
+        # None as an em dash rather than an invented "0 solutions".
         logger.warning(f"Could not compute solution portfolio stats: {e}")
-        return {"total": 0, "phases": {}, "pending_arb": 0, "top_risks": []}
+        return None
 
 
 def _get_data_maturity_stats() -> dict:
@@ -273,7 +281,8 @@ def index():
     except Exception:
         health["db"] = "error"
     try:
-        import redis as _redis, os as _os
+        import redis as _redis
+        import os as _os
         _r = _redis.from_url(_os.environ.get("REDIS_URL", "redis://localhost:6379/0"))
         _r.ping()
     except Exception:
@@ -298,9 +307,11 @@ def index():
 
     # Recent users
     try:
-        recent_users = User.query.order_by(User.id.desc()).limit(8).all()
-        total_users = User.query.count()
-        unconfirmed = User.query.filter_by(confirmed=False).count()
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org (tenant-scoping-ok: org-admin cross-org IDOR fix).
+        recent_users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.id.desc()).limit(8).all()
+        total_users = User.query.filter_by(organization_id=g.current_org_id).count()
+        unconfirmed = User.query.filter_by(organization_id=g.current_org_id, confirmed=False).count()
     except Exception:
         recent_users = []
         total_users = unconfirmed = 0
@@ -317,8 +328,8 @@ def index():
 @admin_required
 def dashboard():
     """Admin dashboard with stats and overview."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 10, minimum=1, maximum=500)
     search_query = request.args.get("search", "")
 
     pagination = _svc.get_paginated_users(page, per_page, search_query)
@@ -340,9 +351,11 @@ def dashboard():
     except Exception:
         flags_enabled = flags_disabled = 0
     try:
-        recent_users = User.query.order_by(User.id.desc()).limit(8).all()
-        total_users = User.query.count()
-        unconfirmed_users = User.query.filter_by(confirmed=False).count()
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org (tenant-scoping-ok: org-admin cross-org IDOR fix).
+        recent_users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.id.desc()).limit(8).all()
+        total_users = User.query.filter_by(organization_id=g.current_org_id).count()
+        unconfirmed_users = User.query.filter_by(organization_id=g.current_org_id, confirmed=False).count()
     except Exception:
         recent_users = []
         total_users = unconfirmed_users = 0
@@ -425,7 +438,22 @@ def registered_users():
     """View all registered users."""
     users = _svc.get_all_users()
     roles = _svc.get_all_roles()
-    return render_template("admin/registered_users.html", users=users, roles=roles)
+    # A-02: get_all_users() is (correctly) org-scoped — see the
+    # tenant-scoping-ok note in AdminUserService.get_all_users. That scoping
+    # is right, but the page used to render as "Registered Users" with no
+    # indication of it, so 2 users here vs. 22 summed across
+    # /admin/organizations read as a platform undercounting itself rather
+    # than the same figure viewed at two different scopes. Name the scope
+    # and surface the platform-wide total so the two views reconcile.
+    current_org = Organization.query.get(g.current_org_id)
+    platform_total_users = User.query.count()
+    return render_template(
+        "admin/registered_users.html",
+        users=users,
+        roles=roles,
+        current_org=current_org,
+        platform_total_users=platform_total_users,
+    )
 
 
 @admin_bp_v2.route("/user/<int:user_id>")
@@ -475,7 +503,13 @@ def change_account_type(user_id):
         return redirect(url_for("admin.user_info", user_id=user_id))
 
     user = _svc.get_user_or_404(user_id)
-    form = ChangeAccountTypeForm()
+    # obj=user pre-populates the role field from the same user.role the
+    # read-only /admin/user/<id> page displays, so the drop-down opens on
+    # the account's current role instead of defaulting to the first
+    # choice in the query. Submitted form data still takes precedence over
+    # this default (WTForms applies obj data first, then overlays formdata),
+    # so POST behaviour is unchanged.
+    form = ChangeAccountTypeForm(obj=user)
     if form.validate_on_submit():
         _svc.change_user_role(user, form.role.data)
         role_name = user.role.name if user.role else "No Role"
@@ -519,7 +553,7 @@ def delete_user_request(user_id):
     return render_template("admin/manage_user.html", user=user)
 
 
-@admin_bp_v2.route("/user/<int:user_id>/_delete")
+@admin_bp_v2.route("/user/<int:user_id>/_delete", methods=["POST"])
 @timed_route
 @login_required
 @admin_required
@@ -533,8 +567,26 @@ def delete_user(user_id):
         )
     else:
         user = _svc.get_user_or_404(user_id)
-        success, message = _svc.delete_user(user)
-        flash(message, "success")
+        try:
+            success, message = _svc.delete_user(user)
+            flash(message, "success")
+            from app.models.audit_log import AuditLog
+            AuditLog.log(
+                action="admin_user_delete",
+                entity_type="admin_user",
+                entity_id=user_id,
+                user_id=current_user.id,
+                user_email=current_user.email,
+                ip_address=request.remote_addr,
+                description=f"admin_user_delete via {request.path}",
+            )
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                "This user still owns records and cannot be deleted.",
+                "error",
+            )
+            return redirect(url_for("admin.user_info", user_id=user_id))
     return redirect(url_for("admin.registered_users"))
 
 
@@ -720,7 +772,7 @@ def test_api_settings(settings_id):
     try:
         result = test_api_key(settings.api_key, settings.api_provider)
         flash(f"API test successful: {result}", "success")
-    except Exception as e:
+    except Exception:
         flash("API test failed. Please try again.", "error")
 
     return redirect(url_for("admin.api_settings"))
@@ -748,7 +800,7 @@ def preview_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -762,7 +814,10 @@ def preview_env_keys():
     for env_var, provider in env_key_map.items():
         value = os.environ.get(env_var, "")
         if value and value.strip():
-            masked = value[:8] + "..." + value[-4:] if len(value) > 12 else "****"
+            # A-07: previously exposed value[:8] + value[-4:] to the client — 12
+            # characters of real key material to any admin who opens this page,
+            # which per finding A-03 is currently every user. Last-4 only.
+            masked = ("*" * 4) + value[-4:] if len(value) > 4 else "****"
             found_keys.append(
                 {
                     "env_var": env_var,
@@ -840,7 +895,7 @@ def load_env_keys():
 
     default_models = {
         "openai": "gpt-4o",
-        "anthropic": "claude-3-5-sonnet-20241022",
+        "anthropic": "claude-opus-5",
         "gemini": "gemini-2.0-flash-exp",
         "deepseek": "deepseek-chat",
         "huggingface": "meta-llama/Llama-3.1-8B-Instruct",
@@ -1001,8 +1056,8 @@ def consolidation_status():
 @admin_required
 def feature_flags():
     """Feature flags management page with pagination."""
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 50, type=int)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = safe_int_arg('per_page', 50, minimum=1, maximum=500)
     search = request.args.get("search", "")
     filter_type = request.args.get("type", "")
     filter_state = request.args.get("state", "")
@@ -1139,7 +1194,7 @@ def feature_flag_new():
             flash(f"Feature flag '{feature.name}' created successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error creating feature flag. Please try again.", "error")
 
@@ -1189,7 +1244,7 @@ def feature_flag_edit(id):
             flash(f"Feature flag '{feature.name}' updated successfully", "success")
             return redirect(url_for("admin.feature_flags"))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating feature flag. Please try again.", "error")
 
@@ -1225,7 +1280,7 @@ def feature_flag_toggle(id):
                 "message": f"Feature {status}",
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -1243,7 +1298,7 @@ def feature_flag_delete(id):
         db.session.delete(feature)
         db.session.commit()
         flash(f"Feature flag '{feature.name}' deleted successfully", "success")
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error deleting feature flag. Please try again.", "error")
 
@@ -1289,7 +1344,7 @@ def feature_flags_discover_sidebar():
             parser_data=parser.to_dict(),
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error parsing sidebar. Please try again.", "error")
         return redirect(url_for("admin.feature_flags"))
 
@@ -1366,7 +1421,7 @@ def feature_flags_create_from_sidebar():
         flash(message, "success")
         return redirect(url_for("admin.feature_flags"))
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         flash("Error creating feature flags. Please try again.", "error")
         return redirect(url_for("admin.feature_flags_discover_sidebar"))
@@ -1393,7 +1448,14 @@ def abacus_settings():
     class AbacusSettingsForm(FlaskForm):
         base_url = StringField("Base URL", validators=[DataRequired(), URL()])
         client_id = StringField("Client ID", validators=[DataRequired()])
-        client_secret = PasswordField("Client Secret")
+        client_secret = PasswordField("Client Secret",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         enabled = BooleanField("Enable Integration", default=False)
         sync_enabled = BooleanField("Enable Auto-Sync", default=False)
         sync_interval_minutes = IntegerField("Sync Interval (minutes)", default=1440)
@@ -1727,7 +1789,7 @@ def trigger_abacus_sync():
             "info",
         )
 
-    except Exception as e:
+    except Exception:
         flash("Failed to create sync job. Please try again.", "error")
 
     return redirect(url_for("admin.abacus_settings"))
@@ -1810,7 +1872,7 @@ def cancel_abacus_job(job_id):
 @admin_required
 def clear_stale_abacus_jobs():
     """Force-clear sync jobs stuck in_progress for more than 1 hour."""
-    from app.models import Job  # noqa: local import to match pattern
+    from app.models import Job  # local import to match pattern
 
     cutoff = datetime.utcnow() - timedelta(hours=1)
     stale_jobs = Job.query.filter(
@@ -2114,13 +2176,18 @@ def get_relationship_mappings():
 # SSO Group-to-Role Mapping (PLT-033)
 # ============================================================================
 
-_VALID_ROLES = [
-    "solution_architect",
-    "enterprise_architect",
-    "arb_member",
-    "portfolio_manager",
-    "platform_admin",
-]
+# Derived, not restated. This list was hand-maintained and had drifted three
+# roles behind app.models.user.VALID_ROLES: cto, procurement and
+# application_manager were missing. It is the validator for the SSO
+# group-to-role screen (see the `role_name not in _VALID_ROLES` check below) AND
+# the dropdown it renders, so an administrator could not map an IdP group to a
+# CTO, a procurement user or an application manager AT ALL -- three of the nine
+# personas the product ships, each with its own sidebar, permissions and AI
+# charter, unprovisionable at an SSO-only customer.
+#
+# Deriving means adding a persona to the product adds it here, which is the
+# whole reason the drift happened: two lists, one source of truth, no gate.
+from app.models.user import VALID_ROLES as _VALID_ROLES  # noqa: E402
 
 
 @admin_bp_v2.route("/sso-settings", methods=["GET", "POST"])
@@ -2206,8 +2273,9 @@ def sso_settings():
             from app.models.user import User
             from app.auth.sso import sso_service
 
-            sso_users = User.query.filter(User.sso_provider.isnot(None)).all()
-            updated = 0
+            sso_users = User.query.filter(
+                User.sso_provider.isnot(None), User.organization_id == g.current_org_id
+            ).all()
             for user in sso_users:
                 # Re-evaluate via sso_service which now reads DB mappings.
                 # We pass the user's stored external groups claim if available;
@@ -2270,7 +2338,14 @@ def jira_settings():
     class JiraSettingsForm(FlaskForm):
         base_url = StringField("Jira Base URL", validators=[DataRequired()])
         username = StringField("Username / Email", validators=[DataRequired()])
-        api_token = PasswordField("API Token")
+        api_token = PasswordField("API Token",
+        # A third-party secret, not the user's password. Without this,
+        # Chrome pattern-matches the preceding text field plus this one as a
+        # login and offers a SAVED EMAIL AND PASSWORD -- an administrator who
+        # misses the autofill highlight submits their own credentials as an
+        # API key, which the backend then stores and uses. Seen live 30 Aug 2026.
+        render_kw={"autocomplete": "new-password"},
+    )
         project_key = StringField("Project Key", validators=[DataRequired()])
         issue_type = StringField("Issue Type", default="Task")
         filter_countries = StringField("Country Filter", default="United Kingdom")
@@ -2351,7 +2426,7 @@ def jira_settings():
     # Any non-empty JIRA_BASE_URL indicates env-based config; JIRA_API_TOKEN may load at boot
     env_jira_url = os.environ.get("JIRA_BASE_URL", "").strip()
     env_jira_user = os.environ.get("JIRA_USERNAME", "").strip()
-    env_jira_token = os.environ.get("JIRA_API_TOKEN", "").strip()
+    os.environ.get("JIRA_API_TOKEN", "").strip()
     env_jira_project = os.environ.get("JIRA_PROJECT_KEY", "").strip()
     # Fallback: check if the connector can initialize (handles .env loading internally)
     env_configured = bool(env_jira_url and env_jira_user and env_jira_project)
@@ -3082,8 +3157,8 @@ def api_list_users():
     """Paginated user list API for canonical data table."""
     from sqlalchemy.orm import joinedload
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     role_filter = request.args.get("role", "")
     sort_by = request.args.get("sort", "id")
@@ -3093,7 +3168,7 @@ def api_list_users():
     if sort_by not in ALLOWED_SORT:
         sort_by = "id"
 
-    query = User.query.options(joinedload(User.role))
+    query = User.query.options(joinedload(User.role)).filter(User.organization_id == g.current_org_id)
     if search:
         term = f"%{search}%"
         query = query.filter(
@@ -3142,7 +3217,9 @@ def api_bulk_delete_users():
     if not ids or not isinstance(ids, list):
         return jsonify({"error": "ids list required"}), 400
     safe_ids = [i for i in ids if i != current_user.id]
-    deleted = User.query.filter(User.id.in_(safe_ids)).delete(synchronize_session=False)
+    deleted = User.query.filter(
+        User.id.in_(safe_ids), User.organization_id == g.current_org_id
+    ).delete(synchronize_session=False)
     db.session.commit()
     return jsonify({"deleted": deleted})
 
@@ -3158,7 +3235,7 @@ def api_list_roles():
     roles = Role.query.order_by(Role.name).all()
     items = []
     for role in roles:
-        users = User.query.filter_by(role_id=role.id).all()
+        users = User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).all()
         items.append({
             "id": role.id,
             "name": role.name,
@@ -3184,7 +3261,7 @@ def api_list_roles():
 def api_get_role(role_id):
     """Get a single role by ID."""
     role = Role.query.get_or_404(role_id)
-    users = User.query.filter_by(role_id=role.id).all()
+    users = User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).all()
     return jsonify({
         "success": True,
         "role": {
@@ -3249,7 +3326,9 @@ def api_delete_role(role_id):
     if role.name in ("Administrator", "User"):
         return jsonify({"success": False, "error": "System roles cannot be deleted"}), 403
     default_role = Role.query.filter_by(default=True).first()
-    User.query.filter_by(role_id=role.id).update({"role_id": default_role.id if default_role else None})
+    User.query.filter_by(role_id=role.id, organization_id=g.current_org_id).update(
+        {"role_id": default_role.id if default_role else None}
+    )
     db.session.delete(role)
     db.session.commit()
     return jsonify({"success": True})
@@ -3266,7 +3345,7 @@ def api_list_enterprise_roles():
     from app.models.user import VALID_ROLES
     role_counts = {}
     for r in VALID_ROLES:
-        role_counts[r] = User.query.filter_by(enterprise_role=r).count()
+        role_counts[r] = User.query.filter_by(enterprise_role=r, organization_id=g.current_org_id).count()
 
     items = []
     for r in VALID_ROLES:
@@ -3291,7 +3370,7 @@ def api_list_enterprise_roles():
 @admin_required
 def api_enterprise_role_users():
     """List all users with their enterprise role assignments."""
-    users = User.query.order_by(User.last_name, User.first_name).all()
+    users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.last_name, User.first_name).all()
     items = []
     for u in users:
         items.append({
@@ -3318,7 +3397,7 @@ def api_assign_enterprise_role():
         return jsonify({"success": False, "error": "user_id and role are required"}), 400
     if role not in VALID_ROLES:
         return jsonify({"success": False, "error": f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}"}), 400
-    user = User.query.get_or_404(user_id)
+    user = User.query.filter_by(id=user_id, organization_id=g.current_org_id).first_or_404()
     user.enterprise_role = role
     db.session.commit()
     return jsonify({"success": True, "user_id": user_id, "role": role})
@@ -3339,8 +3418,8 @@ def audit_log_viewer():
 
     logger = logging.getLogger(__name__)
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     date_from = request.args.get("date_from", "")
     date_to = request.args.get("date_to", "")
     user_email = request.args.get("user_email", "").strip()
@@ -3357,46 +3436,62 @@ def audit_log_viewer():
     try:
         from app.models.audit_log import AuditLog
 
-        query = AuditLog.query.filter_by(is_deleted=False)
+        # NOTE: AuditLog's real columns are created_at / user_id / table_name /
+        # record_id (no timestamp/user_email/entity_type/description/is_deleted).
+        # Filters below use the real columns; the model exposes the old names as
+        # read-only display properties for the template/CSV.
+        # admin_required is org-scoped admin, not platform_admin — restrict to
+        # the current org's audit trail.
+        query = AuditLog.query.filter_by(organization_id=g.current_org_id)
 
         if date_from:
             try:
-                query = query.filter(AuditLog.timestamp >= dt.fromisoformat(date_from))
+                query = query.filter(AuditLog.created_at >= dt.fromisoformat(date_from))
             except ValueError:
                 logger.debug("PLT-032: invalid date_from: %s", date_from)
 
         if date_to:
             try:
                 to_dt = dt.fromisoformat(date_to).replace(hour=23, minute=59, second=59)
-                query = query.filter(AuditLog.timestamp <= to_dt)
+                query = query.filter(AuditLog.created_at <= to_dt)
             except ValueError:
                 logger.debug("PLT-032: invalid date_to: %s", date_to)
 
         if user_email:
-            query = query.filter(AuditLog.user_email.ilike(f"%{user_email}%"))
+            # AuditLog stores user_id, not email — resolve matching users first.
+            from app.models.user import User
+
+            _uids = [
+                u.id
+                for u in User.query.filter(
+                    User.email.ilike(f"%{user_email}%"),
+                    User.organization_id == g.current_org_id,
+                ).all()
+            ]
+            query = query.filter(AuditLog.user_id.in_(_uids or [-1]))
 
         if action_filter:
             query = query.filter(AuditLog.action == action_filter)
 
         if entity_type_filter:
-            query = query.filter(AuditLog.entity_type == entity_type_filter)
+            query = query.filter(AuditLog.table_name == entity_type_filter)
 
         if search_q:
             query = query.filter(
                 db.or_(
-                    AuditLog.description.ilike(f"%{search_q}%"),
-                    AuditLog.entity_name.ilike(f"%{search_q}%"),
+                    AuditLog.table_name.ilike(f"%{search_q}%"),
+                    AuditLog.action.ilike(f"%{search_q}%"),
                 )
             )
 
-        query = query.order_by(AuditLog.timestamp.desc())
+        query = query.order_by(AuditLog.created_at.desc())
 
-        # Get distinct action types and entity types for filter dropdowns
+        # Get distinct action types and entity types (table names) for dropdowns
         action_types = [
             r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all() if r[0]
         ]
         entity_types = [
-            r[0] for r in db.session.query(AuditLog.entity_type).distinct().order_by(AuditLog.entity_type).all() if r[0]
+            r[0] for r in db.session.query(AuditLog.table_name).distinct().order_by(AuditLog.table_name).all() if r[0]
         ]
 
         if export_csv:
@@ -3475,8 +3570,8 @@ def report_builder():
 
     logger = logging.getLogger(__name__)
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     lifecycle = request.args.get("lifecycle", "").strip()
     vendor_filter = request.args.get("vendor", "").strip()
     search_q = request.args.get("q", "").strip()
@@ -3487,7 +3582,6 @@ def report_builder():
     apps = []
     total = 0
     lifecycle_options = []
-    vendor_options = []
 
     try:
         from app.models.application_portfolio import ApplicationComponent
@@ -3531,7 +3625,6 @@ def report_builder():
                 ApplicationComponent.lifecycle_status
             ).all() if r[0]
         ]
-        vendor_options = []  # Populated from VendorOrganization if needed
 
         if export_csv:
             import csv
@@ -3739,8 +3832,8 @@ def connection_gaps():
     from flask import Response
     from app.models.solution_models import Solution
 
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
     domain_filter = request.args.get("domain", "").strip()
     type_filter = request.args.get("type", "").strip()
     score_min = request.args.get("score_min", None, type=int)
@@ -4054,9 +4147,9 @@ tr:nth-child(even) { background: #f9fafb; }
 <p class="subtitle">Generated {data['generated_at']} &mdash; CONFIDENTIAL</p>
 
 <div class="kpi-row">
-  <div class="kpi"><div class="value">{data['total_solutions']}</div><div class="label">Total Solutions</div></div>
+  <div class="kpi"><div class="value">{escape(str(data['total_solutions']))}</div><div class="label">Total Solutions</div></div>
   <div class="kpi"><div class="value">{data['avg_completeness']}%</div><div class="label">Avg Completeness</div></div>
-  <div class="kpi"><div class="value">{len(data['solutions_by_status'])}</div><div class="label">Status Categories</div></div>
+  <div class="kpi"><div class="value">{escape(str(len(data['solutions_by_status'])))}</div><div class="label">Status Categories</div></div>
 </div>
 """)
 
@@ -4065,7 +4158,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["solutions_by_status"]:
         for status, count in sorted(data["solutions_by_status"].items()):
             label = status.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{count}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(count))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='2'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4074,7 +4167,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Highest Completeness</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["top10"]:
         for i, s in enumerate(data["top10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4083,7 +4176,7 @@ tr:nth-child(even) { background: #f9fafb; }
     html_parts.append("<h2>Top 10 Gaps (Lowest Completeness)</h2><table><tr><th>#</th><th>Solution</th><th>Score</th></tr>")
     if data["bottom10"]:
         for i, s in enumerate(data["bottom10"], 1):
-            html_parts.append(f"<tr><td>{i}</td><td>{s['name']}</td><td>{s['score']}%</td></tr>")
+            html_parts.append(f"<tr><td>{escape(str(i))}</td><td>{escape(s['name'])}</td><td>{escape(str(s['score']))}%</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4093,7 +4186,7 @@ tr:nth-child(even) { background: #f9fafb; }
     if data["junction_coverage"]:
         for jname, jdata in data["junction_coverage"].items():
             label = jname.replace("_", " ").title()
-            html_parts.append(f"<tr><td>{label}</td><td>{jdata['with']}</td><td>{jdata['without']}</td></tr>")
+            html_parts.append(f"<tr><td>{escape(label)}</td><td>{escape(str(jdata['with']))}</td><td>{escape(str(jdata['without']))}</td></tr>")
     else:
         html_parts.append("<tr><td colspan='3'>No data available</td></tr>")
     html_parts.append("</table>")
@@ -4117,7 +4210,7 @@ def export_portfolio_pptx():
 
     try:
         from pptx import Presentation
-        from pptx.util import Inches, Pt, Emu
+        from pptx.util import Inches, Pt, Emu  # noqa: F401 — availability probe: the import IS the test
         from pptx.dml.color import RGBColor
         from pptx.enum.text import PP_ALIGN
     except ImportError:
@@ -4140,10 +4233,10 @@ def export_portfolio_pptx():
 
     BRAND_BLUE = RGBColor(0x1E, 0x3A, 0x5F)
     ACCENT_BLUE = RGBColor(0x3B, 0x82, 0xF6)
-    WHITE = RGBColor(0xFF, 0xFF, 0xFF)
-    DARK = RGBColor(0x1A, 0x1A, 0x2E)
+    RGBColor(0xFF, 0xFF, 0xFF)
+    RGBColor(0x1A, 0x1A, 0x2E)
     GRAY = RGBColor(0x6B, 0x72, 0x80)
-    HEADER_BG = RGBColor(0xF1, 0xF5, 0xF9)
+    RGBColor(0xF1, 0xF5, 0xF9)
 
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -4544,6 +4637,9 @@ def solution_prompts_data():
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt if override else config["prompt_text"],
             "has_override": override is not None,
+            "updated_by_id": override.updated_by_id if override else None,
+            "updated_at": override.updated_at.isoformat() if override and override.updated_at else None,
+            "version": override.version if override else None,
         })
 
     return jsonify({"prompts": prompts})
@@ -4575,11 +4671,28 @@ def solution_prompt_update(prompt_key):
             system_prompt=prompt_text,
             user_prompt_template="",
             category="solution_prompt",
+            updated_by_id=current_user.id,
+            version=1,
         )
         db.session.add(override)
     else:
+        # A-05: snapshot the state being replaced before mutating — see the
+        # equivalent legacy-blueprint route in solution_prompt_admin.py for
+        # the full rationale. This admin/v2 copy is the one actually
+        # registered at boot (USE_ADMIN_GUARDRAILS defaults on, see
+        # CLAUDE.md "Two parallel code layouts"), so the history/diff/
+        # rollback endpoints below live here, not only in the legacy module.
+        db.session.add(AIPromptTemplateVersion(
+            template_name=override.name,
+            version=override.version or 1,
+            system_prompt=override.system_prompt,
+            change_type="update",
+            updated_by_id=override.updated_by_id,
+        ))
         override.system_prompt = prompt_text
         override.updated_at = datetime.utcnow()
+        override.updated_by_id = current_user.id
+        override.version = (override.version or 1) + 1
 
     try:
         db.session.commit()
@@ -4601,6 +4714,9 @@ def solution_prompt_update(prompt_key):
             "default_prompt": config["prompt_text"],
             "current_prompt": override.system_prompt,
             "has_override": True,
+            "updated_by_id": override.updated_by_id,
+            "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+            "version": override.version,
         },
     })
 
@@ -4620,6 +4736,13 @@ def solution_prompt_reset(prompt_key):
 
     if override:
         try:
+            db.session.add(AIPromptTemplateVersion(
+                template_name=override.name,
+                version=override.version or 1,
+                system_prompt=override.system_prompt,
+                change_type="reset",
+                updated_by_id=current_user.id,
+            ))
             db.session.delete(override)
             db.session.commit()
             logger.info("Solution prompt override reset for %s by user %s", prompt_key, current_user.id)
@@ -4640,6 +4763,170 @@ def solution_prompt_reset(prompt_key):
             "default_prompt": config["prompt_text"],
             "current_prompt": config["prompt_text"],
             "has_override": False,
+        },
+    })
+
+
+def _version_content_v2(prompt_key, version, override_name):
+    if version == "current":
+        override = AIPromptTemplate.query.filter_by(name=override_name).first()
+        return override.system_prompt if override else None
+    row = (
+        AIPromptTemplateVersion.query.filter_by(template_name=override_name, version=int(version))
+        .order_by(AIPromptTemplateVersion.id.desc())
+        .first()
+    )
+    return row.system_prompt if row else None
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/history")
+@login_required
+@admin_required
+def solution_prompt_history(prompt_key):
+    """A-05: version history for a prompt override, newest first."""
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    override_name = _override_key(prompt_key)
+    override = AIPromptTemplate.query.filter_by(name=override_name).first()
+    history = (
+        AIPromptTemplateVersion.query.filter_by(template_name=override_name)
+        .order_by(AIPromptTemplateVersion.version.desc(), AIPromptTemplateVersion.id.desc())
+        .all()
+    )
+
+    versions = []
+    if override:
+        versions.append({
+            "version": override.version,
+            "system_prompt": override.system_prompt,
+            "change_type": "current",
+            "updated_by_id": override.updated_by_id,
+            "created_at": override.updated_at.isoformat() if override.updated_at else None,
+            "is_current": True,
+        })
+    for h in history:
+        versions.append({
+            "version": h.version,
+            "system_prompt": h.system_prompt,
+            "change_type": h.change_type,
+            "updated_by_id": h.updated_by_id,
+            "created_at": h.created_at.isoformat() if h.created_at else None,
+            "is_current": False,
+        })
+
+    return jsonify({"key": prompt_key, "has_override": override is not None, "versions": versions})
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/diff")
+@login_required
+@admin_required
+def solution_prompt_diff(prompt_key):
+    """A-05: unified diff between two versions (or a version and "current").
+
+    ?from=<version|current>&to=<version|current>
+    """
+    import difflib
+
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    from_v = request.args.get("from", "current")
+    to_v = request.args.get("to", "current")
+    override_name = _override_key(prompt_key)
+
+    try:
+        from_text = _version_content_v2(prompt_key, from_v, override_name)
+        to_text = _version_content_v2(prompt_key, to_v, override_name)
+    except (TypeError, ValueError):
+        return jsonify({"error": "from/to must be an integer version or 'current'"}), 400
+
+    if from_text is None or to_text is None:
+        return jsonify({"error": "One or both versions were not found"}), 404
+
+    diff_lines = list(
+        difflib.unified_diff(
+            from_text.splitlines(),
+            to_text.splitlines(),
+            fromfile=f"{prompt_key} v{from_v}",
+            tofile=f"{prompt_key} v{to_v}",
+            lineterm="",
+        )
+    )
+    return jsonify({
+        "key": prompt_key,
+        "from": from_v,
+        "to": to_v,
+        "identical": from_text == to_text,
+        "diff": diff_lines,
+    })
+
+
+@admin_bp_v2.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
+@login_required
+@admin_required
+@audit_log("rollback_solution_prompt")
+def solution_prompt_rollback(prompt_key, version):
+    """A-05: restore a prior version's content as the live override."""
+    defaults = _get_prompt_defaults()
+    if prompt_key not in defaults:
+        return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
+
+    override_name = _override_key(prompt_key)
+    target = AIPromptTemplateVersion.query.filter_by(
+        template_name=override_name, version=version
+    ).order_by(AIPromptTemplateVersion.id.desc()).first()
+    if not target:
+        return jsonify({"error": f"No version {version} found for {prompt_key}"}), 404
+
+    override = AIPromptTemplate.query.filter_by(name=override_name).first()
+
+    try:
+        if override:
+            db.session.add(AIPromptTemplateVersion(
+                template_name=override.name,
+                version=override.version or 1,
+                system_prompt=override.system_prompt,
+                change_type="update",
+                updated_by_id=current_user.id,
+            ))
+            override.system_prompt = target.system_prompt
+            override.updated_at = datetime.utcnow()
+            override.updated_by_id = current_user.id
+            override.version = (override.version or 1) + 1
+        else:
+            override = AIPromptTemplate(
+                name=override_name,
+                description=defaults[prompt_key]["description"],
+                system_prompt=target.system_prompt,
+                user_prompt_template="",
+                category="solution_prompt",
+                updated_by_id=current_user.id,
+                version=1,
+            )
+            db.session.add(override)
+        db.session.commit()
+        logger.info(
+            "Solution prompt %s rolled back to version %s by user %s",
+            prompt_key, version, current_user.id,
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Failed to roll back solution prompt %s to version %s", prompt_key, version)
+        return jsonify({"error": "Database error rolling back prompt"}), 500
+
+    return jsonify({
+        "success": True,
+        "prompt": {
+            "key": prompt_key,
+            "current_prompt": override.system_prompt,
+            "has_override": True,
+            "updated_by_id": override.updated_by_id,
+            "updated_at": override.updated_at.isoformat() if override.updated_at else None,
+            "version": override.version,
+            "rolled_back_from_version": version,
         },
     })
 
@@ -4856,7 +5143,7 @@ def pricing_analytics():
 @admin_bp_v2.route("/governance-gates")
 @timed_route
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates():
     """Governance gates configuration page."""
     from app.modules.solutions_strategic.v2.services.governance_gate_service import (
@@ -4866,13 +5153,14 @@ def governance_gates():
     return render_template(
         "admin/governance_gates.html",
         default_gates=DEFAULT_GATES,
+        can_manage_governance_gates=current_user.can(Permission.ADMINISTER),
     )
 
 
 @admin_bp_v2.route("/api/governance-gates", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@governance_gate_reader_required
 def governance_gates_list():
     """List all governance gates from DB."""
     from app.models.governance_gates import GovernanceGate
@@ -5010,7 +5298,11 @@ def organization_create():
         name = request.form.get("name", "").strip()
         slug = request.form.get("slug", "").strip() or name.lower().replace(" ", "-")
         plan = request.form.get("plan", "free")
-        max_users = int(request.form.get("max_users") or 10)
+        try:
+            max_users = int(request.form.get("max_users") or 10)
+        except (ValueError, TypeError):
+            flash("Max users must be a whole number.", "error")
+            return render_template("admin/organizations/form.html", org=None)
 
         if not name:
             flash("Organization name is required.", "error")
@@ -5029,15 +5321,37 @@ def organization_create():
     return render_template("admin/organizations/form.html", org=None)
 
 
+_ORG_USER_SORT_COLUMNS = {
+    "name": (User.first_name, User.last_name),
+    "email": (User.email,),
+    "persona": (User.enterprise_role,),
+    "org_admin": (User.is_org_admin,),
+}
+
+
 @admin_bp_v2.route("/organizations/<int:org_id>")
 @timed_route
 @login_required
 @platform_admin_required
 def organization_detail(org_id):
     """View organization details and its users."""
+    from app.utils.role_access import get_role_display_name
+
     org = Organization.query.get_or_404(org_id)
-    users = User.query.filter_by(organization_id=org.id).all()
-    return render_template("admin/organizations/detail.html", org=org, users=users)
+    # T-14 (2 Sep 2026 audit): another of the six no-sort tables. Real columns
+    # only; "name" sorts by first then last name since full_name() is a
+    # Python method, not a column SQL can order by.
+    sort_key = request.args.get("sort", "name")
+    direction = request.args.get("dir", "asc")
+    columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
+    order = [c.desc() if direction == "desc" else c.asc() for c in columns]
+    users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
+    return render_template(
+        "admin/organizations/detail.html", org=org, users=users,
+        get_role_display_name=get_role_display_name,
+        current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
+        current_dir=direction if direction in ("asc", "desc") else "asc",
+    )
 
 
 @admin_bp_v2.route("/organizations/<int:org_id>/edit", methods=["GET", "POST"])
@@ -5058,7 +5372,12 @@ def organization_edit(org_id):
                 return render_template("admin/organizations/form.html", org=org)
             org.slug = new_slug
         org.plan = request.form.get("plan", org.plan)
-        org.max_users = int(request.form.get("max_users") or org.max_users)
+        try:
+            org.max_users = int(request.form.get("max_users") or org.max_users)
+        except (ValueError, TypeError):
+            db.session.rollback()
+            flash("Max users must be a whole number.", "error")
+            return render_template("admin/organizations/form.html", org=org)
         db.session.commit()
         flash(f'Organization "{org.name}" updated.', "success")
         return redirect(url_for("admin.organization_detail", org_id=org.id))
@@ -5179,8 +5498,15 @@ def _sf_settings_row():
 @admin_bp_v2.route("/integrations/salesforce", methods=["GET"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_integration():
-    """GET /admin/integrations/salesforce — org discovery configuration UI."""
+    """GET /admin/integrations/salesforce — org discovery configuration UI.
+
+    DEF-038, Capgemini dry-run: this GET page (Instance URL, Consumer Key,
+    Consumer Secret form) had no @admin_required, unlike every POST action
+    on it — any authenticated user could reach it. Only the read differed;
+    added the same guard the writes already carry.
+    """
     row = _sf_settings_row()
     sf_config = {}
     if row:
@@ -5202,6 +5528,7 @@ def salesforce_integration():
 @admin_bp_v2.route("/integrations/salesforce/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_save_credentials():
     """POST /admin/integrations/salesforce/save — persist credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5213,13 +5540,21 @@ def salesforce_save_credentials():
     client_secret = (data.get("client_secret") or "").strip()
     if not instance_url or not client_id:
         return jsonify({"status": "error", "error": "instance_url and client_id are required"}), 400
-    SalesforceDiscoveryService.save_settings(instance_url, client_id, client_secret)
+    # F-08: the form's type="url" is browser-side only and this endpoint is
+    # callable directly, so the host allow-list is enforced here.
+    from app.utils.ssrf_guard import BlockedOutboundURL
+
+    try:
+        SalesforceDiscoveryService.save_settings(instance_url, client_id, client_secret)
+    except BlockedOutboundURL as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 400
     return jsonify({"success": True, "status": "ok", "message": "Credentials saved."})
 
 
 @admin_bp_v2.route("/integrations/salesforce/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_test_connection():
     """POST /admin/integrations/salesforce/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.salesforce_discovery_service import (
@@ -5231,6 +5566,14 @@ def salesforce_test_connection():
     client_secret = (data.get("client_secret") or "").strip()
     if not all([instance_url, client_id, client_secret]):
         return jsonify({"status": "error", "error": "instance_url, client_id, and client_secret are required"}), 400
+    # F-08: reject a non-Salesforce / non-public host before any fetch is made,
+    # so the response cannot be used as a reachability oracle for internal hosts.
+    from app.utils.ssrf_guard import BlockedOutboundURL, validate_salesforce_instance_url
+
+    try:
+        validate_salesforce_instance_url(instance_url)
+    except BlockedOutboundURL as exc:
+        return jsonify({"status": "error", "message": str(exc)}), 400
     result = SalesforceDiscoveryService.test_connection(instance_url, client_id, client_secret)
     return jsonify(result), 200 if result.get("status") == "ok" else 400
 
@@ -5238,6 +5581,7 @@ def salesforce_test_connection():
 @admin_bp_v2.route("/integrations/salesforce/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_discover():
     """POST /admin/integrations/salesforce/discover — list org apps + packages."""
     from app.models.application_portfolio import ApplicationComponent
@@ -5269,6 +5613,7 @@ def salesforce_discover():
 @admin_bp_v2.route("/integrations/salesforce/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def salesforce_import():
     """POST /admin/integrations/salesforce/import — import selected app_ids
     with optional programme_initiative_id baseline linkage."""
@@ -5311,8 +5656,13 @@ def _pp_settings_row():
 @admin_bp_v2.route("/integrations/power-platform", methods=["GET"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_integration():
-    """GET /admin/integrations/power-platform — CoE configuration and discovery UI."""
+    """GET /admin/integrations/power-platform — CoE configuration and discovery UI.
+
+    DEF-038: same gap as salesforce_integration above — this GET page (Azure
+    Tenant ID / service principal form) had no @admin_required.
+    """
     row = _pp_settings_row()
     config = {}
     if row:
@@ -5328,6 +5678,7 @@ def power_platform_integration():
 @admin_bp_v2.route("/integrations/power-platform/save", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_save_credentials():
     """POST /admin/integrations/power-platform/save — persist credentials to api_settings."""
     from app.models.models import APISettings
@@ -5352,6 +5703,7 @@ def power_platform_save_credentials():
 @admin_bp_v2.route("/integrations/power-platform/test", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_test_connection():
     """POST /admin/integrations/power-platform/test — test credentials."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5372,6 +5724,7 @@ def power_platform_test_connection():
 @admin_bp_v2.route("/integrations/power-platform/discover", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_discover():
     """POST /admin/integrations/power-platform/discover — trigger discovery, return app list."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5385,7 +5738,7 @@ def power_platform_discover():
     client_secret = row.api_key or ""
     apps = PowerPlatformCoeService.discover_apps(tenant_id, client_id, client_secret)
 
-    # Annotate with ARCHIE link status (same as v1)
+    # Annotate with Entelim link status (same as v1)
     from app.models.application_portfolio import ApplicationComponent
     linked_ids = {
         r.source_identifier
@@ -5405,6 +5758,7 @@ def power_platform_discover():
 @admin_bp_v2.route("/integrations/power-platform/import", methods=["POST"])
 @timed_route
 @login_required
+@admin_required
 def power_platform_import():
     """POST /admin/integrations/power-platform/import — import selected app_ids."""
     from app.modules.solutions_strategic.v2.services.power_platform_coe_service import (
@@ -5569,7 +5923,14 @@ def sap_clean_core_dashboard():
 @admin_required
 def sap_clean_core_solution(solution_id):
     """GET /admin/sap-clean-core/<id> — validate a single solution."""
+    from app.models.solution_models import Solution
     from app.services.sap_clean_core_service import SAPCleanCoreService
+    from app.utils.route_guards import require_entity
+
+    # The service already reports "not found" in the body, but returning it with
+    # a 200 tells every caller that checks status only — including fetch(), which
+    # does not reject on 404 — that the validation succeeded.
+    require_entity(Solution, solution_id, description="Solution not found")
     result = SAPCleanCoreService.validate_solution(solution_id)
     return jsonify(result)
 

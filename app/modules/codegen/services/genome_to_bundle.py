@@ -12,11 +12,11 @@ existing Jinja2 template rendering system. It translates genome concepts
 Pipeline position:
   Genome → GenomeToBundle → ProductSpecBundle → DeterministicCodeGenerator → Code
 """
+from app.modules.solutions_product.services.product_spec_bundle import ProductSpecBundle
 import hashlib
 import json
 import logging
 import re
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -126,15 +126,9 @@ def genome_to_bundle(genome: dict) -> "ProductSpecBundle":
         ProductSpecBundle ready for DeterministicCodeGenerator.generate().
     """
     from app.modules.solutions_product.services.product_spec_bundle import (
-        BusinessRuleDef,
         DeploymentDef,
-        EventDef,
-        FieldDef,
         InfraContext,
-        PathDef,
         ProductSpecBundle,
-        ServiceDef,
-        StateMachineDef,
     )
 
     modules = genome.get("modules", {})
@@ -674,7 +668,7 @@ def _build_services(modules: dict) -> list:
     Pipeline modules (module_type == "pipeline") get pipeline-specific endpoints
     instead of generic CRUD.
     """
-    from app.modules.solutions_product.services.product_spec_bundle import PathDef, ServiceDef
+    from app.modules.solutions_product.services.product_spec_bundle import ServiceDef
 
     services = []
     for mod_key, mod_def in modules.items():
@@ -802,7 +796,7 @@ def _build_pipeline_paths(mod_key, mod_def, svc_name, resource_path, x_source):
     paths.append(PathDef(
         path=f"{resource_path}/{{id}}/status", method="GET",
         operation_id=f"get_{mod_key}_status",
-        summary=f"Get processing status",
+        summary="Get processing status",
         request_schema=None,
         response_schema=svc_name,
         archimate_source_id=x_source,
@@ -812,7 +806,7 @@ def _build_pipeline_paths(mod_key, mod_def, svc_name, resource_path, x_source):
     paths.append(PathDef(
         path=f"{resource_path}/{{id}}/result", method="GET",
         operation_id=f"get_{mod_key}_result",
-        summary=f"Get processing result",
+        summary="Get processing result",
         request_schema=None,
         response_schema=svc_name,
         archimate_source_id=x_source,

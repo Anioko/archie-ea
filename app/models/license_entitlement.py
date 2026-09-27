@@ -12,11 +12,20 @@ from datetime import datetime
 from decimal import Decimal
 
 from .. import db
+from .mixins import TenantMixin
 
 
-class LicenseEntitlement(db.Model):
+class LicenseEntitlement(TenantMixin, db.Model):
     """
     License entitlement tracking for Procurement workflows.
+
+    Tenant-scoped: inherits TenantMixin so the automatic org filter applies.
+    It held organization_id but not the mixin, so nothing filtered its SELECTs
+    and isolation depended on every caller remembering .filter_by(organization_id=)
+    - the same shape of gap that let one tenant delete another's documents. The
+    explicit organization_id column below overrides the mixin's declared_attr with
+    an identical definition, exactly as VendorContract does, so this is a
+    behavioural change only and needs no migration.
 
     Tracks:
     - License type (named user, concurrent, device, etc.)
@@ -53,6 +62,13 @@ class LicenseEntitlement(db.Model):
         nullable=False,
         index=True,
     )
+
+    # What the licence is for. license_detail.html renders this as the page title
+    # and compliance_dashboard.html as the row heading, but the column did not
+    # exist - so every licence displayed a blank name. Nullable, because
+    # reconcile-schema only adds nullable columns and existing rows have no value
+    # to backfill from; the UI falls back to the linked application's name.
+    product_name = db.Column(db.String(200), nullable=True)
 
     # License details
     license_type = db.Column(

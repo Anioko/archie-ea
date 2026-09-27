@@ -22,6 +22,22 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate CLI commands: {e}")
 
+    # Traceability report CLI command (ARCH-126)
+    try:
+        from app.commands.traceability_report_command import register_traceability_report_command
+        register_traceability_report_command(app)
+        app.logger.info("✅ Traceability report CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register traceability report CLI command: {e}")
+
+    # Lucidchart import CLI command
+    try:
+        from app.commands.lucid_import_commands import register_lucid_import_commands
+        register_lucid_import_commands(app)
+        app.logger.info("✅ Lucidchart import CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register Lucidchart import CLI command: {e}")
+
     # Capabilities seed CLI commands
     try:
         from app.commands.seed_capabilities import register_capabilities_commands
@@ -61,6 +77,22 @@ def init_cli(app):
         app.logger.info("\u2705 ArchiMate backfill CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ArchiMate backfill CLI: {e}")
+
+    # Demo tenant relationship seeder
+    try:
+        from app.commands import seed_demo_mappings
+        seed_demo_mappings.init_app(app)
+        app.logger.info("✅ Demo mapping seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo mapping seed CLI: {e}")
+
+    # ADR-0003: layer-wide tenancy backfill/harden (runs on boot after reconcile-schema)
+    try:
+        from app.commands.backfill_layer_tenancy import init_app as init_layer_tenancy
+        init_layer_tenancy(app)
+        app.logger.info("✅ Layer tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register layer tenancy backfill CLI: {e}")
 
     # BIZBOK Strategy & Motivation backfill CLI command
     try:
@@ -112,11 +144,14 @@ def init_cli(app):
         from flask import current_app
 
         click.echo("Generating data maturity digest...")
-        data = send_data_maturity_digest(current_app._get_current_object())
+        run = send_data_maturity_digest(current_app._get_current_object())
+        # Per-tenant now (JobRun), not a single global dict: report the
+        # organisations attempted and the recipients reached across them.
+        recipients = sum((r.value or {}).get("recipients", 0)
+                         for r in run.results if r.ok)
         click.echo(
-            f"Done: {data['total']} solutions, "
-            f"{data['avg_score']}% avg completeness, "
-            f"{len(data['zero_connections'])} with zero connections."
+            f"Done: sent to {run.succeeded} organisation(s), "
+            f"{recipients} recipient(s); {run.failed} failed."
         )
 
     # PLT-031: Executive summary CLI command
@@ -127,11 +162,27 @@ def init_cli(app):
         from flask import current_app
 
         click.echo("Generating executive summary...")
-        data = send_executive_summary(current_app._get_current_object())
+        run = send_executive_summary(current_app._get_current_object())
+        recipients = sum((r.value or {}).get("recipients", 0)
+                         for r in run.results if r.ok)
         click.echo(
-            f"Done: {data['total_solutions']} solutions, "
-            f"{data['new_solutions_count']} new this week, "
-            f"{data['arb_decisions_count']} ARB decisions."
+            f"Done: sent to {run.succeeded} organisation(s), "
+            f"{recipients} recipient(s); {run.failed} failed."
+        )
+
+    # Error digest CLI command: read-only, emails platform admins a summary
+    # of new unresolved error_events rows since the last run.
+    @app.cli.command("send-error-digest")
+    def send_error_digest_cmd():
+        """Send the unresolved-error digest email now (read-only)."""
+        from app._bootstrap._digest_emails import send_error_digest
+        from flask import current_app
+
+        click.echo("Checking for new unresolved errors...")
+        result = send_error_digest(current_app._get_current_object())
+        click.echo(
+            f"Done: {result['new_events']} new event(s), "
+            f"{result['recipients']} recipient(s)."
         )
 
     # ACM-001: Cloud pricing API sync CLI commands
@@ -182,6 +233,129 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register integration flow columns CLI: {e}")
 
     try:
+        from app.commands.reconcile_schema import init_app as init_reconcile_schema
+        init_reconcile_schema(app)
+        app.logger.info("\u2705 Schema reconcile CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register schema reconcile CLI: {e}")
+
+    try:
+        from app.commands.backfill_ai_chat_approval_org import init_app as init_ai_approval_org
+        init_ai_approval_org(app)
+        app.logger.info("AI chat approval tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register AI chat approval tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_review_queue_org import init_app as init_review_queue_org
+        init_review_queue_org(app)
+        app.logger.info("Review queue tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.dedupe_entities import init_app as init_dedupe_entities
+        init_dedupe_entities(app)
+        app.logger.info("\u2705 Dedupe entities CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register dedupe entities CLI: {e}")
+
+    try:
+        from app.commands.clean_test_artefacts import init_app as init_clean_test_artefacts
+        init_clean_test_artefacts(app)
+        app.logger.info("\u2705 Clean test artefacts CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register clean test artefacts CLI: {e}")
+
+    try:
+        from app.commands.backfill_value_stream_tenancy import init_app as init_vs_tenancy
+        init_vs_tenancy(app)
+        app.logger.info("✅ Value-stream tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register value-stream tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_value_stream_archimate import init_app as init_vs_archimate
+        init_vs_archimate(app)
+        app.logger.info("✅ Value-stream ArchiMate backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register value-stream ArchiMate backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_data_archimate import init_app as init_data_archimate
+        init_data_archimate(app)
+        app.logger.info("✅ Data-entity ArchiMate backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register data-entity ArchiMate backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_archimate_layer_casing import init_app as init_layer_casing
+        init_layer_casing(app)
+        app.logger.info("✅ ArchiMate layer-casing backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register ArchiMate layer-casing backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_principle_org import init_app as init_principle_org
+        init_principle_org(app)
+        app.logger.info("✅ Principle tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register principle tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_outcome_org import init_app as init_outcome_org
+        init_outcome_org(app)
+        app.logger.info("✅ Outcome tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register outcome tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_architect_role import init_app as init_backfill_architect
+        init_backfill_architect(app)
+        app.logger.info("\u2705 Architect-role backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
+
+    try:
+        from app.commands.cutover_capability_tenancy import init_app as init_capability_cutover
+        init_capability_cutover(app)
+        app.logger.info("Capability tenancy cutover CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability tenancy cutover CLI: {e}")
+
+    try:
+        from app.commands.project_capabilities import init_app as init_capability_projection
+        init_capability_projection(app)
+        app.logger.info("Capability projection CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability projection CLI: {e}")
+
+    try:
+        from app.commands.apply_unified_capability_provenance_migration import (
+            init_app as init_capability_provenance_migration,
+        )
+        init_capability_provenance_migration(app)
+        app.logger.info("Capability provenance migration CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
+
+    # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
+    try:
+        from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy
+        init_saved_diagram_tenancy(app)
+        app.logger.info("\u2705 Saved-diagram tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register saved-diagram tenancy backfill CLI: {e}")
+
+    # CMP-03: drop the wrong archimate_audit_logs.viewpoint_id FK
+    try:
+        from app.commands.drop_audit_log_viewpoint_fk import init_app as init_drop_audit_fk
+        init_drop_audit_fk(app)
+        app.logger.info("\u2705 Audit-log viewpoint-FK drop CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register audit-log viewpoint-FK drop CLI: {e}")
+
+    try:
         from app.commands.seed_minimal_vendor_products import seed_minimal_vendor_products
         app.cli.add_command(seed_minimal_vendor_products)
         app.logger.info("\u2705 Minimal vendor products seed CLI command registered")
@@ -189,8 +363,68 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register minimal vendor products seed CLI: {e}")
 
     try:
+        from app.commands.seed_sap_products import seed_sap_products
+        app.cli.add_command(seed_sap_products)
+        app.logger.info("\u2705 SAP products seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register SAP products seed CLI: {e}")
+
+    try:
         from app.commands.codegen_drift_commands import register_codegen_drift_commands
         register_codegen_drift_commands(app)
         app.logger.info("\u2705 Codegen drift detection CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register codegen drift CLI: {e}")
+
+    # Motivation bridge CLI command (journey Solution* motivation -> enterprise layer)
+    try:
+        from app.commands.bridge_motivation import init_app as init_bridge_motivation
+        init_bridge_motivation(app)
+        app.logger.info("\u2705 Motivation bridge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register motivation bridge CLI: {e}")
+
+    # Wave 4 Phase A: ARB/EA-workflow tenancy backfill (derives org from FK parents)
+    try:
+        from app.commands.backfill_arb_ea_tenancy import init_app as init_arb_ea_tenancy
+        init_arb_ea_tenancy(app)
+        app.logger.info("\u2705 ARB/EA tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"\u26a0\ufe0f  Failed to register ARB/EA tenancy backfill CLI: {e}")
+
+    try:
+        from app.commands.process_arb_waiver_expiries import init_app as init_arb_expiry
+        init_arb_expiry(app)
+        app.logger.info("Typed ARB waiver expiry CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register typed ARB waiver expiry CLI: {e}")
+
+    try:
+        from app.commands.purge_sessions import init_app as init_purge_sessions
+        init_purge_sessions(app)
+        app.logger.info("✅ Session registry purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")
+
+    try:
+        from app.commands.purge_copilot_insights import init_app as init_purge_copilot_insights
+        init_purge_copilot_insights(app)
+        app.logger.info("Copilot insights purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
+    # T-S1: strategic surface demonstration data set (value streams at risk)
+    try:
+        from app.commands import seed_strategic_demo
+        seed_strategic_demo.init_app(app)
+        app.logger.info("✅ Strategic demo seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register strategic demo seed CLI: {e}")
+
+    # T-DEMO-1: Lantern Quay demonstration company
+    try:
+        from app.commands import seed_demo_company
+        seed_demo_company.init_app(app)
+        app.logger.info("✅ Demo company seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo company seed CLI: {e}")

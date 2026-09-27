@@ -7,17 +7,14 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
-from sqlalchemy import and_, or_, text  # dead-code-ok
+from sqlalchemy import text  # dead-code-ok
 
 from app import db
 from app.models.roadmap_models import (  # dead-code-ok
     ImplementationGap,
-    ImplementationPlateau,
     PlanningDeliverable,
-    RoadmapResource,
-    RoadmapScenario,
     RoadmapWorkPackage,
 )
 
@@ -802,8 +799,11 @@ class RoadmapAutomationEngine:
         result = db.session.execute(  # tenant-filtered: scoped via application_id FK
             text(
                 """
+            -- application_capability_mapping names its capability FK
+            -- business_capability_id; there is no capability_id column on that
+            -- table, so this join raised UndefinedColumn.
             SELECT uc.name FROM unified_capabilities uc
-            JOIN application_capability_mapping acm ON uc.id = acm.capability_id
+            JOIN application_capability_mapping acm ON uc.id = acm.business_capability_id
             WHERE acm.application_id = :app_id
             LIMIT 1
         """
@@ -1139,7 +1139,7 @@ class RoadmapAutomationEngine:
     ) -> List[Dict[str, Any]]:
         """Generate sub work packages for a roadmap item."""
         work_packages = []
-        capability_name = gap.get("capability_name", "Capability")
+        gap.get("capability_name", "Capability")
         app_name = recommendation.get("recommended_application_name", "Application")
 
         if action_type == "reuse_existing":

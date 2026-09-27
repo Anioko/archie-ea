@@ -9,9 +9,8 @@ records for persistent mitigation tracking.
 """
 
 from datetime import date, datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
-from sqlalchemy import and_
 
 from app import db
 from app.models.business_capabilities import BusinessCapability

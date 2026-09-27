@@ -1401,11 +1401,11 @@ def seed_microsoft_power(link_capabilities: bool = True):
 
             print("✅ Microsoft Power Platform template seeded successfully!")
             print(f"   - Vendor: {template.vendor_name}")
-            print(f"   - Data & Analytics Capabilities: 32")
+            print("   - Data & Analytics Capabilities: 32")
             print(
-                f"   - Primary Focus: Power BI, Power Apps, Power Automate, Dataverse, AI Builder"
+                "   - Primary Focus: Power BI, Power Apps, Power Automate, Dataverse, AI Builder"
             )
-            print(f"   - Total ArchiMate Coverage: 100%")
+            print("   - Total ArchiMate Coverage: 100%")
 
         except Exception as e:
             db.session.rollback()

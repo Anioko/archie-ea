@@ -6,7 +6,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
 
 
 <!-- html2canvas library for image export -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="/static/vendor/html2canvas.min.js"></script>
 
 <div class="min-w-full overflow-x-auto" x-data="ganttChartManager()" x-init="initializeGantt()">
     <!-- Gantt Chart Header -->
@@ -18,7 +18,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
         <div class="flex items-center gap-2">
             <!-- Timeline Selector -->
             <select x-model="selectedTimeline" @change="updateTimeline()" 
-                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Selected Timeline">
                 <option value="1">1 Year</option>
                 <option value="2">2 Years</option>
                 <option value="3" selected>3 Years</option>
@@ -27,12 +27,12 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- View Mode -->
             <div class="flex border border-input rounded-md">
-                <button @click="viewMode = 'gantt'" 
+                <button type="button" @click="viewMode = 'gantt'" 
                         :class="viewMode === 'gantt' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
                         class="px-3 py-1 text-sm rounded-l-md" aria-label="Switch to Gantt view">
                     Gantt
                 </button>
-                <button @click="viewMode = 'list'" 
+                <button type="button" @click="viewMode = 'list'" 
                         :class="viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-background text-foreground'"
                         class="px-3 py-1 text-sm rounded-r-md border-l border-input" aria-label="Switch to list view">
                     List
@@ -41,7 +41,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- Export Options -->
             <div class="relative" x-data="{ exportOpen: false }">
-                <button @click="exportOpen = !exportOpen" 
+                <button type="button" @click="exportOpen = !exportOpen" 
                         class="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90" aria-label="Export options">
                     <i data-lucide="download" class="h-4 w-4"></i>
                     Export
@@ -54,13 +54,13 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                      x-transition:leave-start="opacity-100 transform scale-100"
                      x-transition:leave-end="opacity-0 transform scale-95"
                      class="absolute right-0 mt-2 w-48 bg-popover border border-border rounded-md shadow-lg z-50">
-                    <button @click="exportToCSV()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to CSV">
+                    <button type="button" @click="exportToCSV()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to CSV">
                         Export to CSV
                     </button>
-                    <button @click="exportToPNG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to PNG">
+                    <button type="button" @click="exportToPNG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to PNG">
                         Export to PNG
                     </button>
-                    <button @click="exportToJPG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to JPG">
+                    <button type="button" @click="exportToJPG()" class="w-full text-left px-3 py-2 text-sm hover:bg-accent" aria-label="Export to JPG">
                         Export to JPG
                     </button>
                 </div>
@@ -69,6 +69,12 @@ ArchiMate 3.2 Compatible with 5-year timeline support
     </div>
 
     <!-- Filter Controls -->
+    <div x-show="loadError" x-cloak
+         class="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0 mt-0.5" aria-hidden="true"></i>
+        <p class="text-sm text-destructive-emphasis" x-text="loadError"></p>
+    </div>
+
     <div class="mb-6 p-4 bg-card border border-border rounded-lg">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <!-- Search -->
@@ -81,7 +87,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- Status Filter -->
             <select x-model="statusFilter" @change="filterWorkPackages()" 
-                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Filter by Status">
                 <option value="">All Statuses</option>
                 <option value="planned">Planned</option>
                 <option value="in_progress">In Progress</option>
@@ -91,21 +97,21 @@ ArchiMate 3.2 Compatible with 5-year timeline support
             
             <!-- Business Capability Filter -->
             <select x-model="capabilityFilter" @change="filterWorkPackages()" 
-                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Filter by Capability">
                 <option value="">All Capabilities</option>
                 <option value="customer-management">Customer Management</option>
                 <option value="financial-services">Financial Services</option>
                 <option value="supply-chain">Supply Chain Management</option>
                 <option value="human-resources">Human Resources</option>
                 <option value="operations">Operations Management</option>
-                <option value="analytics">Analytics & Intelligence</option>
-                <option value="risk-compliance">Risk & Compliance</option>
+                <option value="analytics">Analytics &amp; Intelligence</option>
+                <option value="risk-compliance">Risk &amp; Compliance</option>
                 <option value="digital-platform">Digital Platform</option>
             </select>
             
             <!-- Layer Filter -->
             <select x-model="layerFilter" @change="filterWorkPackages()" 
-                    class="px-3 py-2 border border-input bg-background rounded-md text-sm">
+                    class="px-3 py-2 border border-input bg-background rounded-md text-sm" aria-label="Filter by Layer">
                 <option value="">All Layers</option>
                 <option value="business">Business</option>
                 <option value="application">Application</option>
@@ -273,12 +279,12 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center gap-2">
-                                    <button @click="editWorkPackage(workPackage)" 
+                                    <button type="button" @click="editWorkPackage(workPackage)" 
                                             class="text-primary hover:text-primary/80" aria-label="Edit">
                                         <i data-lucide="edit" class="h-4 w-4"></i>
                                     </button>
-                                    <button @click="deleteWorkPackage(workPackage)" 
-                                            class="text-destructive hover:text-destructive/80" aria-label="Delete">
+                                    <button type="button" @click="deleteWorkPackage(workPackage)" 
+                                            class="text-destructive-emphasis hover:text-destructive-emphasis/80" aria-label="Delete">
                                         <i data-lucide="trash-2" class="h-4 w-4"></i>
                                     </button>
                                 </div>
@@ -292,7 +298,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
 
     <!-- Add Work Package Button -->
     <div class="fixed bottom-6 right-6">
-        <button @click="showAddModal = true" 
+        <button type="button" @click="showAddModal = true" 
                 class="flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-full shadow-lg hover:bg-primary/90" aria-label="Add work package">
             <i data-lucide="plus" class="h-5 w-5"></i>
             Add Work Package
@@ -300,7 +306,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
     </div>
 
     <!-- Add/Edit Work Package Modal -->
-    <div x-show="showAddModal" x-cloak  <!-- modal-a11y-ok -->
+    <div x-show="showAddModal" x-cloak
          x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
@@ -330,7 +336,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                     <div>
                         <label class="block text-sm font-medium text-foreground mb-1">Status</label>
                         <select x-model="formData.status"
-                                class="w-full px-3 py-2 border border-input bg-background rounded-md">
+                                class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Status">
                             <option value="planned">Planned</option>
                             <option value="in_progress">In Progress</option>
                             <option value="completed">Completed</option>
@@ -341,14 +347,14 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                     <div>
                         <label class="block text-sm font-medium text-foreground mb-1">Business Capability</label>
                         <select x-model="formData.business_capability"
-                                class="w-full px-3 py-2 border border-input bg-background rounded-md">
+                                class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Business Capability">
                             <option value="customer-management">Customer Management</option>
                             <option value="financial-services">Financial Services</option>
                             <option value="supply-chain">Supply Chain Management</option>
                             <option value="human-resources">Human Resources</option>
                             <option value="operations">Operations Management</option>
-                            <option value="analytics">Analytics & Intelligence</option>
-                            <option value="risk-compliance">Risk & Compliance</option>
+                            <option value="analytics">Analytics &amp; Intelligence</option>
+                            <option value="risk-compliance">Risk &amp; Compliance</option>
                             <option value="digital-platform">Digital Platform</option>
                         </select>
                     </div>
@@ -368,7 +374,7 @@ ArchiMate 3.2 Compatible with 5-year timeline support
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-foreground mb-1">Description</label>
                         <textarea x-model="formData.description" rows="3"
-                                  class="w-full px-3 py-2 border border-input bg-background rounded-md"></textarea>
+                                  class="w-full px-3 py-2 border border-input bg-background rounded-md" aria-label="Description"></textarea>
                     </div>
                     
                     <div>
@@ -412,6 +418,7 @@ function ganttChartManager() {
         editingWorkPackage: null,
         workPackages: [],
         filteredWorkPackages: [],
+        loadError: null,
         timelineMonths: [],
         formData: {
             name: '',
@@ -438,94 +445,26 @@ function ganttChartManager() {
             this.updateStats();
         },
         
-        loadWorkPackages() {
-            // Load work packages from API
-            fetch('/implementation/api/work-packages')
-                .then(response => response.json())
-                .then(data => {
-                    this.workPackages = data.work_packages || [];
-                    this.filteredWorkPackages = [...this.workPackages];
-                })
-                .catch(error => {
-                    console.error('Error loading work packages:', error);
-                    // Sample data for demonstration
-                    this.workPackages = this.getSampleWorkPackages();
-                    this.filteredWorkPackages = [...this.workPackages];
-                });
-        },
-        
-        getSampleWorkPackages() {
-            const today = new Date();
-            return [
-                {
-                    id: 1,
-                    name: 'Legacy System Migration',
-                    description: 'Migrate legacy CRM system to new platform',
-                    assigned_to: 'IT Infrastructure Team',
-                    status: 'in_progress',
-                    business_capability: 'customer-management',
-                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 6, 30).toISOString().split('T')[0],
-                    progress_percentage: 35,
-                    estimated_cost: 250000,
-                    milestones: [
-                        { id: 1, name: 'Requirements Complete', date: new Date(today.getFullYear(), today.getMonth() + 1, 15) },
-                        { id: 2, name: 'Development Complete', date: new Date(today.getFullYear(), today.getMonth() + 4, 30) }
-                    ]
-                },
-                {
-                    id: 2,
-                    name: 'Cloud Infrastructure Setup',
-                    description: 'Setup cloud infrastructure for new applications',
-                    assigned_to: 'Cloud Team',
-                    status: 'planned',
-                    business_capability: 'digital-platform',
-                    start_date: new Date(today.getFullYear(), today.getMonth() + 2, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 5, 31).toISOString().split('T')[0],
-                    progress_percentage: 0,
-                    estimated_cost: 150000,
-                    milestones: []
-                },
-                {
-                    id: 3,
-                    name: 'Business Process Reengineering',
-                    description: 'Redesign customer onboarding process',
-                    assigned_to: 'Business Process Team',
-                    status: 'completed',
-                    business_capability: 'customer-management',
-                    start_date: new Date(today.getFullYear(), today.getMonth() - 3, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth(), 31).toISOString().split('T')[0],
-                    progress_percentage: 100,
-                    estimated_cost: 75000,
-                    milestones: []
-                },
-                {
-                    id: 4,
-                    name: 'Financial Analytics Platform',
-                    description: 'Implement advanced financial analytics and reporting',
-                    assigned_to: 'Analytics Team',
-                    status: 'planned',
-                    business_capability: 'financial-services',
-                    start_date: new Date(today.getFullYear(), today.getMonth() + 1, 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 4, 30).toISOString().split('T')[0],
-                    progress_percentage: 0,
-                    estimated_cost: 200000,
-                    milestones: []
-                },
-                {
-                    id: 5,
-                    name: 'Supply Chain Optimization',
-                    description: 'Optimize supply chain management and inventory systems',
-                    assigned_to: 'Operations Team',
-                    status: 'in_progress',
-                    business_capability: 'supply-chain',
-                    start_date: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-                    end_date: new Date(today.getFullYear(), today.getMonth() + 3, 31).toISOString().split('T')[0],
-                    progress_percentage: 25,
-                    estimated_cost: 180000,
-                    milestones: []
-                }
-            ];
+        async loadWorkPackages() {
+            // The catch below used to render five invented work packages (~$855k of
+            // fabricated budget, dated relative to today so they never looked stale).
+            // That fallback is gone; failures are now surfaced.
+            // Was /implementation/api/work-packages, which resolves but serves
+            // WorkPackage.to_dict() — wrong field names for this component
+            // (target_date/percent_complete vs end_date/progress_percentage, and no
+            // assigned_to/business_capability/layer/milestones), so bars drew with
+            // undefined dates. This endpoint serves the contract below.
+            try {
+                // Platform.fetch throws on non-ok responses, returns parsed JSON directly
+                const data = await Platform.fetch('/enterprise/api/work-packages/gantt', { silent: true });
+                this.workPackages = data.work_packages || [];
+                this.filteredWorkPackages = [...this.workPackages];
+                this.loadError = null;
+            } catch (error) {
+                this.workPackages = [];
+                this.filteredWorkPackages = [];
+                this.loadError = 'Work packages could not be loaded: ' + error.message;
+            }
         },
         
         generateTimeline() {
@@ -750,8 +689,7 @@ function ganttChartManager() {
                 link.href = canvas.toDataURL();
                 link.click();
             }).catch(error => {
-                console.error('Error generating PNG:', error);
-                Platform.toast.error('Error generating PNG export');
+                Platform.toast.error('Error generating PNG export: ' + (error.message || error));
             });
         },
         
@@ -773,8 +711,7 @@ function ganttChartManager() {
                 link.href = canvas.toDataURL('image/jpeg', 0.9);
                 link.click();
             }).catch(error => {
-                console.error('Error generating JPG:', error);
-                Platform.toast.error('Error generating JPG export');
+                Platform.toast.error('Error generating JPG export: ' + (error.message || error));
             });
         }
     };

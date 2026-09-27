@@ -1,35 +1,33 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
-{% block title %}{{ 'Edit' if entity else 'Create' }} Data Entity — A.R.C.H.I.E.{% endblock %}
+{% block title %}{{ 'Edit' if entity else 'Create' }} Data Entity — {{ config.APP_NAME }}{% endblock %}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Technology Layer'},
-    {'text': 'Data Architecture'},
+    {'text': 'Technology Layer', 'href': url_for('archimate_crud.dashboard') + '#technology'},
+    {'text': 'Data Architecture', 'href': url_for('data_architecture.data_architecture_dashboard')},
     {'text': 'Entity Form', 'current': true}
 ]) }}
 {% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto space-y-6">
-    <div>
-        <a href="{{ url_for('data_architecture.data_entity_catalog') }}" class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-4">
-            <i data-lucide="arrow-left" class="w-3.5 h-3.5" aria-hidden="true"></i> Back to Catalog
-        </a>
-        <h1 class="text-2xl font-bold text-foreground">{{ 'Edit' if entity else 'Create' }} Data Entity</h1>
-        <p class="text-sm text-muted-foreground mt-1">{{ 'Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.' }}</p>
-    </div>
+    {{ page_shell(
+        title=('Edit' if entity else 'Create') ~ ' Data Entity',
+        subtitle=('Update this data entity definition.' if entity else 'Define a new business data entity in the catalog.')
+    ) }}
 
-    <form method="post" class="space-y-6">
+    <form method="post" action="{{ request.path }}" class="space-y-6">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="rounded-lg border bg-card p-6 space-y-4">
             <h2 class="text-sm font-semibold text-foreground uppercase tracking-wide">Identity</h2>
 
             <div>
-                <label for="name" class="block text-sm font-medium text-foreground mb-1">Name <span class="text-destructive">*</span></label>
+                <label for="name" class="block text-sm font-medium text-foreground mb-1">Name <span class="text-destructive-emphasis">*</span></label>
                 <input type="text" id="name" name="name" required value="{{ entity.name if entity else '' }}"
                     class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="e.g., Customer Master, Sales Order, Product Catalog">
@@ -127,7 +125,7 @@
 
     {% if entity %}
     <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-6">
-        <h2 class="text-sm font-semibold text-destructive mb-2">Danger Zone</h2>
+        <h2 class="text-sm font-semibold text-destructive-emphasis mb-2">Danger Zone</h2>
         <p class="text-sm text-muted-foreground mb-4">Deleting this data entity removes it permanently from the catalog.</p>
         <form id="delete-entity-form" method="post" action="{{ url_for('data_architecture.delete_data_entity', entity_id=entity.id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -142,7 +140,7 @@
             let btn = document.getElementById('btn-delete-entity');
             if (btn) {
                 btn.addEventListener('click', async function() {
-                    if ((await Platform.modal.confirm('Delete data entity \'' + btn.dataset.entityName + '\'? This cannot be undone.'))) {
+                    if ((await Platform.modal.confirm('Delete data entity \'' + btn.dataset.entityName + '\'? This cannot be undone.', { returnFocus: btn }))) {
                         document.getElementById('delete-entity-form').submit();
                     }
                 });

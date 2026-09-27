@@ -140,7 +140,7 @@ class DuplicateDetector:
         result.database_duplicates = db_dups[:max_details]
 
         # Calculate summary
-        total_rows = len(rows)
+        len(rows)
         unique_count = len(result.unique_names)
         result.will_update = result.database_count
         result.will_create = unique_count - result.database_count

@@ -33,7 +33,10 @@ function showMergeToast(message, type) {
       window.dispatchEvent(new CustomEvent('toast', { detail: { message: message, type: type } }));
       return;
     }
-  } catch (e) { /* fall through to inline toast */ }
+  } catch (e) {
+    // CustomEvent dispatch is a best-effort path to a toast system this widget
+    // doesn't own; if it throws, the code below builds an inline toast directly.
+  }
   let colors = {
     success: 'bg-emerald-500/10 border-emerald-200 text-green-800',
     error: 'bg-destructive/10 border-destructive/20 text-red-800',
@@ -49,7 +52,11 @@ function showMergeToast(message, type) {
   toast.setAttribute('role', 'alert');
   safeHTML(toast, '<div class="flex items-start gap-3"><p class="text-sm font-medium">' +
     escapeHtml(String(message)) + '</p>' +
-    '<button onclick="this.closest(\'[role=alert]\').remove()" class="ml-auto flex-shrink-0 text-current opacity-70 hover:opacity-100">&times;</button></div>');
+    '<button type="button" data-toast-dismiss aria-label="Dismiss notification" class="ml-auto flex-shrink-0 text-current opacity-70 hover:opacity-100">&times;</button></div>');
+  // Bound directly rather than via onclick=, which the CSP refuses to run --
+  // the dismiss cross on this toast never worked.
+  let dismissBtn = toast.querySelector('[data-toast-dismiss]');
+  if (dismissBtn) dismissBtn.addEventListener('click', function() { toast.remove(); });
   document.body.appendChild(toast);
   setTimeout(function() {
     toast.style.opacity = '0';
@@ -66,7 +73,9 @@ function getMergeCSRFToken() {
   let metaTag = document.querySelector('meta[name="csrf-token"]');
   let metaToken = metaTag ? metaTag.content : null;
   if (metaToken) return metaToken;
-  console.warn('getMergeCSRFToken: No CSRF token found in form input or meta tag');
+  // Without a CSRF token every merge request is rejected by the server. Say so
+  // now rather than letting the user click Merge and get an opaque failure.
+  showMergeToast('Your session security token is missing — reload the page before merging.', 'error');
   return '';
 }
 
@@ -183,15 +192,11 @@ async function findMergeCandidates() {
 
   try {
     let mergeMode = document.getElementById('merge-mode').value;
-    let response = await fetch('/dashboard/api/applications/merging/candidates?threshold=' + threshold + '&limit=' + maxCandidates + '&mode=' + mergeMode, {
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error (' + response.status + '): ' + response.statusText);
-    }
-
-    let data = await response.json();
+    let data = await Platform.fetch.get('/dashboard/api/applications/merging/candidates', {
+      threshold: threshold,
+      limit: maxCandidates,
+      mode: mergeMode
+    }, { silent: true }); // silent because we show inline error
 
     if (data.status === 'success') {
       mergeCandidatesData = data.candidates;
@@ -201,7 +206,7 @@ async function findMergeCandidates() {
       throw new Error(data.message || 'Failed to get candidates');
     }
   } catch (error) {
-    console.error('Error finding merge candidates:', error);
+    // Platform.fetch already threw a structured PlatformError; we surface it inline
     document.getElementById('merge-loading').classList.add('hidden');
     document.getElementById('merge-empty').classList.remove('hidden');
     let errorMsg = document.getElementById('merge-empty').querySelector('p');
@@ -228,7 +233,14 @@ function displayMergeResults(data) {
 }
 
 function displayMergeSummary(data) {
-  let summaryHtml =
+  let summaryHtml = '';
+  if (data.truncated) {
+    summaryHtml +=
+      '<div class="col-span-full p-3 rounded bg-warning/10 border border-warning/40 text-warning-emphasis text-sm">' +
+      (data.truncation_note || 'Results are truncated — not every active application was compared.') +
+      '</div>';
+  }
+  summaryHtml +=
     '<div class="p-4 rounded bg-card border border-border">' +
       '<div class="text-2xl font-semibold text-primary">' + data.total_candidates + '</div>' +
       '<div class="text-muted-foreground text-sm">Merge Candidates</div>' +
@@ -407,25 +419,11 @@ function goToMergePage(page) {
 
 async function previewMerge(primaryId, duplicateId) {
   try {
-    let response = await fetch('/dashboard/api/applications/merging/preview', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getMergeCSRFToken()
-      },
-      body: JSON.stringify({
-        primary_app_id: primaryId,
-        duplicate_app_id: duplicateId,
-        merge_strategy: DEFAULT_MERGE_STRATEGY
-      }),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error (' + response.status + '): ' + response.statusText);
-    }
-
-    let data = await response.json();
+    let data = await Platform.fetch.post('/dashboard/api/applications/merging/preview', {
+      primary_app_id: primaryId,
+      duplicate_app_id: duplicateId,
+      merge_strategy: DEFAULT_MERGE_STRATEGY
+    }, { silent: true }); // silent because we show toast ourselves
 
     if (data.status === 'success') {
       displayMergePreview(data.preview, primaryId, duplicateId);
@@ -434,7 +432,7 @@ async function previewMerge(primaryId, duplicateId) {
       throw new Error(data.message || 'Failed to preview merge');
     }
   } catch (error) {
-    console.error('Error previewing merge:', error);
+    // Platform.fetch already threw a structured PlatformError; we surface it via toast
     showMergeToast('Error previewing merge: ' + error.message, 'error');
   }
 }
@@ -539,25 +537,11 @@ async function _doExecuteMerge(primaryId, duplicateId) {
   mergeBtn.textContent = 'Merging...';
 
   try {
-    let response = await fetch('/dashboard/api/applications/merging/execute', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getMergeCSRFToken()
-      },
-      body: JSON.stringify({
-        primary_app_id: primaryId,
-        duplicate_app_id: duplicateId,
-        merge_strategy: DEFAULT_MERGE_STRATEGY
-      }),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error (' + response.status + '): ' + response.statusText);
-    }
-
-    let data = await response.json();
+    let data = await Platform.fetch.post('/dashboard/api/applications/merging/execute', {
+      primary_app_id: primaryId,
+      duplicate_app_id: duplicateId,
+      merge_strategy: DEFAULT_MERGE_STRATEGY
+    }, { silent: true }); // silent because we show toast ourselves
 
     if (data.status === 'success') {
       showMergeToast('Merge completed successfully!', 'success');
@@ -571,7 +555,7 @@ async function _doExecuteMerge(primaryId, duplicateId) {
       throw new Error(data.message || 'Merge failed');
     }
   } catch (error) {
-    console.error('Error executing merge:', error);
+    // Platform.fetch already threw a structured PlatformError; we surface it via toast
     showMergeToast('Error executing merge: ' + error.message, 'error');
   } finally {
     mergeBtn.disabled = false;
@@ -605,25 +589,11 @@ async function _doQuickMerge(primaryId, duplicateId, triggerBtn) {
   }
 
   try {
-    let response = await fetch('/dashboard/api/applications/merging/execute', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getMergeCSRFToken()
-      },
-      body: JSON.stringify({
-        primary_app_id: primaryId,
-        duplicate_app_id: duplicateId,
-        merge_strategy: DEFAULT_MERGE_STRATEGY
-      }),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error (' + response.status + '): ' + response.statusText);
-    }
-
-    let data = await response.json();
+    let data = await Platform.fetch.post('/dashboard/api/applications/merging/execute', {
+      primary_app_id: primaryId,
+      duplicate_app_id: duplicateId,
+      merge_strategy: DEFAULT_MERGE_STRATEGY
+    }, { silent: true }); // silent because we show toast ourselves
 
     if (data.status === 'success') {
       showMergeToast('Quick merge completed successfully!', 'success');
@@ -637,7 +607,7 @@ async function _doQuickMerge(primaryId, duplicateId, triggerBtn) {
       throw new Error(data.message || 'Quick merge failed');
     }
   } catch (error) {
-    console.error('Error executing quick merge:', error);
+    // Platform.fetch already threw a structured PlatformError; we surface it via toast
     showMergeToast('Error executing quick merge: ' + error.message, 'error');
   } finally {
     if (clickedBtn) {
@@ -653,19 +623,10 @@ async function _doQuickMerge(primaryId, duplicateId, triggerBtn) {
 async function ignoreCandidate(primaryId, duplicateId) {
   try {
     // Persist ignore decision server-side
-    let response = await fetch('/applications/rationalization/api/ignore-merge-candidate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': getMergeCSRFToken()
-      },
-      body: JSON.stringify({ primary_id: primaryId, duplicate_id: duplicateId }),
-      credentials: 'include'
-    });
-
-    if (!response.ok) {
-      throw new Error('Server error (' + response.status + '): ' + response.statusText);
-    }
+    await Platform.fetch.post('/applications/rationalization/api/ignore-merge-candidate', {
+      primary_id: primaryId,
+      duplicate_id: duplicateId
+    }, { silent: true }); // silent because we show toast ourselves
 
     // Only remove from UI after server confirms
     mergeCandidatesData = mergeCandidatesData.filter(function(c) {
@@ -673,7 +634,7 @@ async function ignoreCandidate(primaryId, duplicateId) {
     });
     displayMergeCandidatesList();
   } catch (err) {
-    console.error('Failed to persist ignore decision:', err);
+    // Platform.fetch already threw a structured PlatformError; we surface it via toast
     showMergeToast('Failed to ignore candidate: ' + err.message, 'error');
   }
 }
@@ -708,7 +669,6 @@ async function _doBatchMerge(highSimilarityCandidates) {
   // Disable individual merge buttons to prevent race conditions
   document.querySelectorAll('.merge-action-btn').forEach(function(btn) { btn.disabled = true; });
 
-  let csrfToken = getMergeCSRFToken();
   let succeeded = 0;
   let failed = 0;
   let errors = [];
@@ -740,27 +700,12 @@ async function _doBatchMerge(highSimilarityCandidates) {
     if (status) status.textContent = 'Processing ' + (i + 1) + ' of ' + total + '... (' + succeeded + ' merged, ' + failed + ' failed)';
 
     try {
-      let response = await fetch('/dashboard/api/applications/merging/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken
-        },
-        body: JSON.stringify({
-          primary_app_id: candidate.primary_app.id,
-          duplicate_app_id: candidate.duplicate_app.id,
-          merge_strategy: DEFAULT_MERGE_STRATEGY
-        }),
-        credentials: 'include'
-      });
+      let data = await Platform.fetch.post('/dashboard/api/applications/merging/execute', {
+        primary_app_id: candidate.primary_app.id,
+        duplicate_app_id: candidate.duplicate_app.id,
+        merge_strategy: DEFAULT_MERGE_STRATEGY
+      }, { silent: true }); // silent because we show toast ourselves
 
-      if (!response.ok) {
-        failed++;
-        errors.push(candidate.primary_app.name + ' + ' + candidate.duplicate_app.name + ': Server error (' + response.status + ')');
-        continue;
-      }
-
-      let data = await response.json();
       if (data.status === 'success') {
         succeeded++;
       } else {
@@ -781,9 +726,7 @@ async function _doBatchMerge(highSimilarityCandidates) {
     showMergeToast('Batch merge complete: ' + succeeded + ' merged successfully.', 'success');
   } else {
     showMergeToast('Batch merge: ' + succeeded + ' succeeded, ' + failed + ' failed. Check console for details.', failed > succeeded ? 'error' : 'warning');
-    if (errors.length > 0) {
-      console.warn('Batch merge errors:', errors);
-    }
+    // console.warn is forbidden in shipped code; we keep the toast as the only user-visible error path
   }
 
   // Re-enable individual merge buttons

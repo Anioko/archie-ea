@@ -7,7 +7,6 @@ Intelligent caching for expensive LLM operations to reduce API costs and improve
 """
 
 import hashlib
-import json
 import logging
 import time
 from typing import Any, Dict, Optional

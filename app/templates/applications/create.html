@@ -9,7 +9,7 @@
 {% block content %}
 <div class="space-y-6">
     {{ page_header(
-        title='Create Application',
+        title='Create Application', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Create Application'}],
         description='Add a new application to the portfolio',
         actions=[
             {'text': 'Back to Applications', 'icon': 'arrow-left', 'href': url_for('unified_applications.application_list'), 'variant': 'outline'}
@@ -61,15 +61,26 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {% for field_id, field_label in [('business_owner', 'Business Owner'), ('technical_owner', 'Technical Owner')] %}
                     <div class="space-y-2" x-data="{
-                        ures: [], ushow: false,
-                        async usearch() {
+                        ures: [], ushow: false, uErrorShown: false,
+                        usearch() {
+                            const self = this;
                             const q = document.getElementById('{{ field_id }}').value;
-                            if (q.length < 2) { this.ures = []; this.ushow = false; return; }
-                            try {
-                                const r = await fetch('/api/users', { headers: { 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || '' } });
-                                const d = await r.json();
-                                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-                            } catch (e) {}
+                            if (q.length < 2) { this.ures = []; this.ushow = false; return Promise.resolve(); }
+                            return Platform.fetch.get('/api/users', {}, { silent: true })
+                                .then(function (d) {
+                                    if (d.success) { const lq = q.toLowerCase(); self.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); self.ushow = self.ures.length > 0; }
+                                    self.uErrorShown = false;
+                                })
+                                .catch(function (e) {
+                                    // Debounced on every keystroke — toast once per outage, not on every retry.
+                                    // The field still accepts free text, so this only disables suggestions.
+                                    self.ures = [];
+                                    self.ushow = false;
+                                    if (!self.uErrorShown) {
+                                        self.uErrorShown = true;
+                                        if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+                                    }
+                                });
                         },
                         uselect(u) { document.getElementById('{{ field_id }}').value = u.name; this.ushow = false; this.ures = []; }
                     }" @click.outside="ushow = false">

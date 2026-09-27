@@ -5,7 +5,7 @@
 {% block title %}Audit Log{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl">
+<div class="p-6 space-y-6 mx-auto max-w-7xl">
     {{ page_header(
         title='Audit Log',
         description='Query and filter audit trail entries for compliance review',
@@ -114,10 +114,10 @@
                         <td class="px-4 py-3 whitespace-nowrap">{{ entry.user_email or '-' }}</td>
                         <td class="px-4 py-3">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                                {% if entry.action == 'create' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                                {% elif entry.action == 'delete' %}bg-red-500/10 text-destructive border border-red-500/30
-                                {% elif entry.action == 'update' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-                                {% elif entry.action == 'login' %}bg-blue-500/10 text-primary border border-blue-500/30
+                                {% if entry.action == 'create' %}bg-success/10 text-success-emphasis border border-success/30
+                                {% elif entry.action == 'delete' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
+                                {% elif entry.action == 'update' %}bg-warning/10 text-warning-emphasis border border-warning/30
+                                {% elif entry.action == 'login' %}bg-info/10 text-primary border border-info/30
                                 {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                                 {{ entry.action }}
                             </span>
@@ -135,9 +135,9 @@
                         </td>
                         <td class="px-4 py-3">
                             {% if entry.status == 'success' %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">success</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">success</span>
                             {% else %}
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30">{{ entry.status }}</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">{{ entry.status }}</span>
                             {% endif %}
                         </td>
                     </tr>
@@ -163,7 +163,7 @@
                                 <div class="col-span-2 flex gap-6 text-xs text-muted-foreground border-t border-border pt-3 mt-1">
                                     {% if entry.ip_address %}<span>IP: {{ entry.ip_address }}</span>{% endif %}
                                     {% if entry.request_id %}<span>Request ID: {{ entry.request_id }}</span>{% endif %}
-                                    {% if entry.error_message %}<span class="text-destructive">Error: {{ entry.error_message }}</span>{% endif %}
+                                    {% if entry.error_message %}<span class="text-destructive-emphasis">Error: {{ entry.error_message }}</span>{% endif %}
                                 </div>
                             </div>
                         </td>
@@ -171,8 +171,22 @@
                     {% else %}
                     <tr>
                         <td colspan="7">
+                            {% if date_from or date_to or user_email or action_filter or entity_type_filter or search_q %}
                             {{ empty_state(icon='file-search', title='No audit log entries found matching your filters.',
+                                           description='Widen the date range or drop a filter to see the entries that were recorded.',
+                                           cta_text='Clear filters',
+                                           cta_href=url_for('admin.audit_log_viewer'),
+                                           cta_icon='x',
                                            class='py-8') }}
+                            {% else %}
+                            {# The audit log is written by the system as people act on the platform,
+                               so there is nothing for the reader to create; an empty log on a new
+                               tenant is the correct reading, not a dead end.
+                               empty-state-ok: system-written record, no user create action exists #}
+                            {{ empty_state(icon='file-search', title='No audit log entries recorded yet.',
+                                           description='Entries are written automatically as people create, change and delete records. The first ones appear here as soon as that happens.',
+                                           class='py-8') }}
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

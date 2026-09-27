@@ -5,16 +5,15 @@ Provides comprehensive audit logging for all ADM activities.
 Orchestrates audit event recording, querying, and reporting.
 """
 
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from flask import has_request_context, request
-from sqlalchemy import and_, func
+from sqlalchemy import func
 
 from app import db
-from app.models.adm_audit_log import ADMAuditAction, ADMAuditLog, ADMAuditSummary
+from app.models.adm_audit_log import ADMAuditAction, ADMAuditLog
 from app.models.adm_kanban import ADMPhase, KanbanBoard, KanbanCard
 from app.models.user import User
 

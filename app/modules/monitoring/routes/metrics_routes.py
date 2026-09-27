@@ -9,7 +9,7 @@ URLs preserved: /metrics, /debug/metrics, /debug/metrics/json
 
 import re
 
-from flask import Blueprint, Response, jsonify, render_template
+from flask import Blueprint, jsonify, render_template
 from flask_login import login_required
 
 from app.services.prometheus_metrics import get_metrics_response

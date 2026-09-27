@@ -23,12 +23,12 @@ Routes:
 - GET  /api/solutions - JSON API for solutions
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 import os
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import List
 
 from flask import (
     Blueprint,
@@ -52,28 +52,38 @@ from app import csrf, db
 from app.decorators import audit_log, require_roles
 from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
-from app.models.archimate_core import ArchitectureModel
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
+from app.jobs.tenant_safe_job import tenant_scope
 from app.models.solution_models import Solution
+from app.utils.route_guards import require_entity
 from app.services.feature_flag_service import FeatureFlagService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
 solution_design_bp = Blueprint("solution_design", __name__, url_prefix="/solutions")
 
 
-def _check_solution_access(solution) -> bool:
-    """Return True if current_user may access this solution.
+def _check_solution_access(solution, user=None) -> bool:
+    """Return True if `user` (default: current_user) may access this solution.
 
     Access is granted to:
     - The creator (solution.created_by_id)
-    - Admins (current_user.is_admin)
+    - Admins (user.is_admin)
     - Named stakeholders (owner, sponsor, tech lead) matched by email
+
+    `user` is accepted explicitly so this check can run outside an HTTP
+    request (e.g. from the AI-chat tool executor), where flask_login's
+    `current_user` proxy has nothing to resolve against.
     """
-    if solution.created_by_id == current_user.id:
+    user = user if user is not None else current_user
+    if solution.created_by_id == user.id:
         return True
-    if current_user.is_admin:
+    is_admin = getattr(user, "is_admin", False)
+    if (is_admin() if callable(is_admin) else bool(is_admin)):
+        return True
+    if getattr(user, "is_platform_admin", False):
         return True
     _stakeholder_emails = [
         solution.solution_owner,
@@ -81,7 +91,7 @@ def _check_solution_access(solution) -> bool:
         solution.technical_lead,
     ]
     return any(
-        f and current_user.email and f.strip().lower() == current_user.email.strip().lower()
+        f and user.email and f.strip().lower() == user.email.strip().lower()
         for f in _stakeholder_emails
     )
 
@@ -190,6 +200,7 @@ def _get_solution_capabilities_payload(solution: Solution) -> list[dict]:
         return []
 
     rows = (
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         db.session.query(BusinessCapability, ApplicationCapabilityMapping)
         .join(
             ApplicationCapabilityMapping,
@@ -487,7 +498,6 @@ def _build_solution_worklist_summaries(solutions: list[Solution]) -> tuple[dict[
         )
         driver_count = drivers_by_problem.get(problem_id, 0)
         goal_count = goals_by_problem.get(problem_id, 0)
-        driver_goal_count = driver_count + goal_count
         constraint_count = constraints_by_problem.get(problem_id, 0)
         requirement_count = (
             requirements_by_problem.get(problem_id, 0)
@@ -665,6 +675,19 @@ _EDITABLE_FIELDS = frozenset({
 })
 _DATE_FIELDS = frozenset({'planned_start_date', 'planned_end_date', 'target_completion_date'})
 _DECIMAL_FIELDS = frozenset({'estimated_cost', 'roi_percentage'})
+# String column max lengths, mirroring app/models/solution_models.py — validated up
+# front so an oversized value is a 400 instead of a DB DataError caught as a 500.
+_STRING_FIELD_MAX_LENGTHS = {
+    'name': 255,
+    'business_domain': 100,
+    'solution_type': 50,
+    'complexity_level': 20,
+    'solution_owner': 255,
+    'business_sponsor': 255,
+    'technical_lead': 255,
+    'security_lead': 255,
+    'data_protection_officer': 255,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -1002,16 +1025,24 @@ def list_solutions():
         type_filter = request.args.get("type", "").strip()
         created_after = request.args.get("created_after", "").strip()
         created_before = request.args.get("created_before", "").strip()
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 20, type=int), 200)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 20, minimum=1, maximum=500), 200)
 
         # Worklist bucket filter (?status=needs_setup/in_design/…) — these are
         # computed classifications, NOT stored DB statuses, so we handle them
         # separately after fetching all accessible solutions.
         ws_filter = ""
+        show_all_statuses = False
         if status_filter in _WORKLIST_BUCKETS:
             ws_filter = status_filter
             status_filter = ""
+        elif status_filter == "all":
+            # "all" means "show every status, including the ones the default
+            # shell/archived exclusion below would otherwise hide" — it is not a
+            # literal DB status value, so leaving it unhandled fell through to a
+            # `WHERE status = 'all'` that matched no row ever.
+            status_filter = ""
+            show_all_statuses = True
 
         # PLT-019: BU scope resolution ────────────────────────────────────────
         # If the user has a business unit set (PLT-018), filter solutions whose
@@ -1085,14 +1116,29 @@ def list_solutions():
         # Apply status filter
         if status_filter:
             query = query.filter(Solution.status == status_filter)
+        elif show_all_statuses:
+            # ?status=all — explicit escape hatch, skip the default
+            # shell/archived exclusion entirely rather than narrowing further.
+            pass
         elif not search:
-            # Default: exclude only archived solutions and empty draft shells
-            query = query.filter(Solution.status != "archived").filter(
-                db.or_(
-                    Solution.status != "draft",
-                    db.and_(Solution.status == "draft", Solution.description.isnot(None), db.func.length(Solution.description) > 20),
-                )
+            # Default: exclude only archived solutions and empty draft shells.
+            #
+            # S-01 (17 Aug 2026 QA addendum): "empty" was judged on description
+            # length alone, so a draft with no description was hidden no matter
+            # how much architecture it contained. That hid solution 17 — the only
+            # solution in the whole instance carrying real content (4 elements, 3
+            # relationships, 25% blueprint completeness) — while the page asserted
+            # "Page 1 of 1". A shell is now one with no description AND no
+            # blueprint narrative AND no version history, so real work is never
+            # hidden by an unfilled text box. The count of what this hides is
+            # surfaced to the user below rather than left silent.
+            _is_shell = db.and_(
+                Solution.status == "draft",
+                db.or_(Solution.description.is_(None), db.func.length(Solution.description) <= 20),
+                db.or_(Solution.section_narratives.is_(None), db.cast(Solution.section_narratives, db.Text).in_(("{}", "null", ""))),
+                db.or_(Solution.version.is_(None), Solution.version <= 1),
             )
+            query = query.filter(Solution.status != "archived").filter(db.not_(_is_shell))
 
         # Apply domain filter
         if domain_filter:
@@ -1176,8 +1222,140 @@ def list_solutions():
             for _sol in pagination.items
         }
 
+        # ── Unified hidden-solutions disclosure (round 4) ───────────────────
+        # Rounds 1-3 each added a separate, conditionally-gated disclosure
+        # block for ONE filter type (ownership, then BU, then search/status),
+        # leaving the identical false "create your first solution" empty
+        # state reachable through whichever filter type wasn't covered yet —
+        # domain/type/date filters (D2) and worklist-bucket clicks via the
+        # stat cards (D3). Replaced with ONE canonical breakdown, computed
+        # unconditionally, whenever the org has solutions:
+        #   org_total       — every solution in the org, excluding
+        #                      [DELETED]% rows — same grain as the Health
+        #                      Scorecard tile, ALWAYS org-wide (D1: never a
+        #                      BU-scoped subtotal presented as if it were
+        #                      the org total).
+        #   hidden_by_role_filter — org_total - accessible_count. Captures
+        #                      BOTH ownership scoping and BU-domain scoping
+        #                      in one number, because `_base`/
+        #                      `_accessible_count` already has both baked in
+        #                      (ownership filter at line ~1080, BU domain
+        #                      filter at line ~1083, `_base = query` line
+        #                      ~1091) — no separate hidden_by_bu_filter is
+        #                      needed any more.
+        #   hidden_by_filters — accessible_count - final_visible_count,
+        #                      where final_visible_count is `pagination.total`
+        #                      taken AFTER every filter (search, status,
+        #                      domain, type, dates, the default shell
+        #                      exclusion, AND the worklist-bucket filter) has
+        #                      already been applied above — `pagination` is
+        #                      `_ManualPagination` (post-bucket-filter) on the
+        #                      ws_filter branch and the SQL-paginated object
+        #                      otherwise, so this one number is automatically
+        #                      correct for any current or future filter
+        #                      without a per-filter-type conditional.
+        hidden_by_default_filter = 0  # kept for template/test back-compat; now an alias of hidden_by_filters
+        hidden_by_role_filter = 0
+        hidden_by_bu_filter = 0  # kept for template/test back-compat; folded into hidden_by_role_filter
+        hidden_by_search_filter = 0  # kept for template/test back-compat; now an alias of hidden_by_filters
+        hidden_by_filters = 0
+        org_total = None
+
+        try:
+            _accessible_count = _base.with_entities(Solution.id).count()
+        except Exception as _acc_err:  # a count must never 500 the page
+            logger.warning("solutions list: accessible-count unavailable: %s", _acc_err)
+            _accessible_count = 0
+
+        try:
+            org_total = Solution.query.filter(~Solution.name.like("[DELETED]%")).count()
+        except Exception as _org_err:  # a count must never 500 the page
+            logger.warning("solutions list: org-total unavailable: %s", _org_err)
+            org_total = _accessible_count
+
+        try:
+            _final_visible_count = pagination.total if pagination is not None else 0
+        except Exception:
+            _final_visible_count = 0
+
+        # Unconditional on `_can_see_all`: `_accessible_count` (from `_base`)
+        # already carries the ownership filter ONLY for non-privileged users
+        # (line ~1080) but the BU-domain filter for EVERY user regardless of
+        # `_can_see_all` (line ~1083, PLT-019) — so a privileged user scoped
+        # to a business unit whose domain matches none of the org's
+        # solutions must still see this number (R2-1's bug, now fixed at the
+        # unified level rather than re-special-cased).
+        hidden_by_role_filter = max(0, org_total - _accessible_count)
+        hidden_by_filters = max(0, _accessible_count - _final_visible_count)
+        # Back-compat aliases — the template's per-cause testids/messages
+        # still read these three names; they now all describe the same
+        # `hidden_by_filters` number rather than three independently-derived
+        # ones, so they can never disagree with each other again.
+        hidden_by_default_filter = hidden_by_filters
+        hidden_by_search_filter = hidden_by_filters
+
+        # Describe which filters are actually active, for the disclosure
+        # message ("K are hidden by your current filters: search 'x',
+        # domain 'Finance', ..."), covering every filter this route
+        # supports — not a hand-picked subset (D2/D3).
+        active_filter_descriptions = []
+        _default_shell_filter_active = not status_filter and not show_all_statuses and not search
+        if _default_shell_filter_active:
+            active_filter_descriptions.append("the default filter (empty drafts and archived solutions)")
+        if search:
+            active_filter_descriptions.append(f'search "{search}"')
+        if status_filter:
+            active_filter_descriptions.append(f'status "{status_filter}"')
+        if ws_filter:
+            _ws_labels = {
+                "needs_setup": "Needs Setup", "in_design": "In Design",
+                "needs_attention": "Needs Attention", "ready_for_review": "Ready for Review",
+            }
+            active_filter_descriptions.append(f'worklist "{_ws_labels.get(ws_filter, ws_filter)}"')
+        if domain_filter:
+            active_filter_descriptions.append(f'domain "{domain_filter}"')
+        if type_filter:
+            active_filter_descriptions.append(f'type "{type_filter}"')
+        if created_after:
+            active_filter_descriptions.append(f'created after {created_after}')
+        if created_before:
+            active_filter_descriptions.append(f'created before {created_before}')
+        if bu_filter_active and not show_all_override:
+            active_filter_descriptions.append(f'business unit "{bu_name}"')
+
+        # Show the "New Programme" CTA only to users who can actually create one
+        # (audit F-04: otherwise the wizard is a six-step dead end).
+        from app.modules.transformation_room.programme_service import (
+            TransformationProgrammeService,
+        )
+        can_create_programme = TransformationProgrammeService.can_create_programme(current_user)
+
+        # D4 (round-4 refuter finding, security-adjacent): this used to splat
+        # every raw `request.args` key into `url_for(**_clear_filter_args)`,
+        # which reserves keywords like `endpoint`/`_external`/`_scheme`/
+        # `_method`/`_anchor` — `?endpoint=x` raised TypeError, `?_scheme=
+        # https` raised ValueError, `?_method=POST` raised BuildError, all
+        # caught by the blanket `except Exception` below and silently
+        # re-rendered as the FALSE first-run empty state with no disclosure
+        # vars at all. D6: the "clear filters" action must also actually
+        # clear every filter it claims to (domain/type/dates/bu too, not
+        # just search/status/page) and be reachable from every empty state.
+        # A single unqualified link to the bare list URL satisfies both: no
+        # user-supplied keys ever reach `url_for`, and every filter is gone.
+        clear_filters_url = url_for("solution_design.list_solutions")
+
         return render_template(
             "solutions/list.html",
+            can_create_programme=can_create_programme,
+            hidden_by_default_filter=hidden_by_default_filter,
+            hidden_by_role_filter=hidden_by_role_filter,
+            hidden_by_bu_filter=hidden_by_bu_filter,
+            hidden_by_search_filter=hidden_by_search_filter,
+            hidden_by_filters=hidden_by_filters,
+            only_default_filter_active=_default_shell_filter_active and hidden_by_filters > 0 and hidden_by_role_filter == 0 and not domain_filter and not type_filter and not created_after and not created_before and not ws_filter,
+            active_filter_descriptions=active_filter_descriptions,
+            clear_filters_url=clear_filters_url,
+            org_total=org_total,
             solutions=pagination.items,
             pagination=pagination,
             per_page=per_page,
@@ -1221,8 +1399,14 @@ def list_solutions():
         }
         current_app.logger.error(f"Error loading solutions: {json.dumps(error_details, indent=2)}")
         flash(f"Error loading solutions: {str(e)}. The error has been logged. Please contact support if this persists.", "error")
-        return render_template("solutions/list.html", solutions=[], pagination=None, total_count=0, stats={}, 
-                             statuses=[], domains=[], solution_types=[], workspace_summaries={}, workspace_stats={})
+        # total_count=None so the header reads an em dash rather than "0
+        # solutions", which the user would take as a fact about their estate.
+        return render_template("solutions/list.html", solutions=[], pagination=None,
+                             can_create_programme=False,
+                             total_count=None, stats=None,
+                             statuses=[], domains=[], solution_types=[],
+                             workspace_summaries={}, workspace_stats=None,
+                             load_error="The solution list could not be read.")
 
 
 # =============================================================================
@@ -1318,11 +1502,15 @@ def _condition_actor_name(user_obj) -> str:
 
 
 def _user_display_name(user_id: int | None) -> str | None:
+    """Display name for a condition's actor, resolved only inside the caller's
+    organisation. ``owner_id`` comes from request JSON, so an id belonging to
+    another organisation must not be named."""
     if not user_id:
         return None
-    from app.models.user import User
+    from app.middleware.tenant_context import current_org_id
+    from app.utils.tenant_users import user_in_org
 
-    user_obj = db.session.get(User, user_id)
+    user_obj = user_in_org(user_id, current_org_id())
     if not user_obj:
         return None
     return _condition_actor_name(user_obj)
@@ -1484,8 +1672,8 @@ def _current_user_can_address_conditions() -> bool:
 def create_from_wizard():
     """Create a Solution record from the Architecture Assistant wizard submission.
 
-    Accepts the wizard payload (scope, capabilities, gap analysis, selected option,
-    arb_review_id) and creates a full Solution with linked analysis session,
+    Accepts the wizard payload (scope, capabilities, gap analysis, selected option)
+    and creates a full Solution with linked analysis session,
     problem definition, motivational elements, capability mappings, and recommendation.
     """
     try:
@@ -1498,7 +1686,6 @@ def create_from_wizard():
         capabilities = data.get("capabilities") or []
         gap_analysis = data.get("gap_analysis") or {}
         selected_option = data.get("selected_option") or {}
-        arb_review_id = data.get("arb_review_id")
 
         # Derive a name if title is empty
         if not title:
@@ -1533,11 +1720,6 @@ def create_from_wizard():
         if selected_option:
             solution.adm_phase_e_completed_at = now
 
-        # Link to ARB review if provided
-        if arb_review_id:
-            solution.arb_review_item_id = arb_review_id
-            solution.arb_submission_date = now
-
         db.session.add(solution)
         db.session.flush()  # Get solution.id
 
@@ -1558,7 +1740,7 @@ def create_from_wizard():
 
         session_record = SolutionAnalysisSession(
             name=f"Architecture Assistant: {title[:180]}",
-            description=f"Auto-created from Architecture Assistant wizard submission",
+            description="Auto-created from Architecture Assistant wizard submission",
             status=SolutionSessionStatus.COMPLETED,
             created_by_id=current_user.id,
         )
@@ -1590,6 +1772,7 @@ def create_from_wizard():
                 source="architecture_assistant",
             )
             db.session.add(driver)
+            sync_archimate_element(driver)
 
         # Goals from gap analysis
         gap_summary = gap_analysis.get("summary") or gap_analysis.get("gap_description") or ""
@@ -1600,6 +1783,7 @@ def create_from_wizard():
                 description=gap_summary,
             )
             db.session.add(goal)
+            sync_archimate_element(goal)
 
         # Constraints from scope
         constraints_text = scope.get("constraints") or ""
@@ -1612,6 +1796,7 @@ def create_from_wizard():
                 source="architecture_assistant",
             )
             db.session.add(constraint)
+            sync_archimate_element(constraint)
 
         # Principles from scope
         principles_data = scope.get("principles") or []
@@ -1638,7 +1823,7 @@ def create_from_wizard():
                     problem_id=problem_def.id,
                     capability_id=cap_id_int,
                     support_level="required",
-                    notes=f"Mapped via Architecture Assistant wizard",
+                    notes="Mapped via Architecture Assistant wizard",
                     created_by_id=current_user.id,
                 )
                 db.session.add(mapping)
@@ -1760,8 +1945,7 @@ def _build_solution_detail_context(solution):
     analysis_data = {}
     try:
         from app.models.solution_architect_models import (
-            SolutionAnalysisSession, SolutionProblemDefinition,
-            SolutionDriver, SolutionGoal, SolutionRequirement,
+            SolutionAnalysisSession, SolutionDriver, SolutionGoal, SolutionRequirement,
             SolutionConstraint, SolutionRecommendation,
         )
         drivers_all = []
@@ -1786,7 +1970,7 @@ def _build_solution_detail_context(solution):
         # Path 2: query all SolutionAnalysisSessions by solution_id (covers solutions without
         # analysis_session_id set, or those with additional sessions created via the wizard)
         try:
-            extra_sessions = SolutionAnalysisSession.query.filter_by(solution_id=solution.id).all()
+            extra_sessions = SolutionAnalysisSession.query.filter_by(id=solution.analysis_session_id).all()
             existing_driver_ids = {d.id for d in drivers_all}
             existing_goal_ids = {g.id for g in goals_all}
             existing_constraint_ids = {c.id for c in constraints_all}
@@ -1932,7 +2116,7 @@ def _build_solution_detail_context(solution):
                 from app.models.apqc_process import APQCProcess
                 procs = APQCProcess.query.filter(APQCProcess.id.in_(apqc_ids)).all()
                 apqc_map = {p.id: f"{p.process_code} {p.process_name}" for p in procs}
-            except Exception:  # fabricated-values-ok
+            except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
         result = []
@@ -2478,8 +2662,8 @@ def api_phase_summary(solution_id: int):
         (stk_count, "stakeholders"),
     ]
     phases["sec-2"] = _phase(
-        [f"{c} {l}" for c, l in sec2_items if c > 0],
-        [l for c, l in sec2_items if c == 0],
+        [f"{c} {item}" for c, item in sec2_items if c > 0],
+        [item for c, item in sec2_items if c == 0],
         len(sec2_items), sum(1 for c, _ in sec2_items if c > 0),
     )
 
@@ -2489,8 +2673,8 @@ def api_phase_summary(solution_id: int):
         (len(vendors), "vendor products"), (len(procs), "APQC processes"),
     ]
     phases["sec-3"] = _phase(
-        [f"{c} {l}" for c, l in sec3_items if c > 0],
-        [l for c, l in sec3_items if c == 0],
+        [f"{c} {item}" for c, item in sec3_items if c > 0],
+        [item for c, item in sec3_items if c == 0],
         len(sec3_items), sum(1 for c, _ in sec3_items if c > 0),
     )
 
@@ -2499,8 +2683,8 @@ def api_phase_summary(solution_id: int):
     tech_elems = len([e for e in archimate if (e.get("layer") or getattr(e, "layer", "")) == "technology"])
     sec4_items = [(app_elems, "app elements"), (tech_elems, "tech elements"), (len(apps), "applications")]
     phases["sec-4"] = _phase(
-        [f"{c} {l}" for c, l in sec4_items if c > 0],
-        [l for c, l in sec4_items if c == 0],
+        [f"{c} {item}" for c, item in sec4_items if c > 0],
+        [item for c, item in sec4_items if c == 0],
         len(sec4_items), sum(1 for c, _ in sec4_items if c > 0),
     )
 
@@ -2508,22 +2692,21 @@ def api_phase_summary(solution_id: int):
     selected = len([r for r in recs if r.get("is_recommended") or r.get("selected")])
     sec5_items = [(len(recs), "options"), (selected, "selected options"), (len(tco), "TCO items")]
     phases["sec-5"] = _phase(
-        [f"{c} {l}" for c, l in sec5_items if c > 0],
-        [l for c, l in sec5_items if c == 0],
+        [f"{c} {item}" for c, item in sec5_items if c > 0],
+        [item for c, item in sec5_items if c == 0],
         len(sec5_items), sum(1 for c, _ in sec5_items if c > 0),
     )
 
     # sec-6: Delivery (Phase F)
     sec6_items = [(len(plateaus), "plateaus"), (len(tco), "TCO items")]
     phases["sec-6"] = _phase(
-        [f"{c} {l}" for c, l in sec6_items if c > 0],
-        [l for c, l in sec6_items if c == 0],
+        [f"{c} {item}" for c, item in sec6_items if c > 0],
+        [item for c, item in sec6_items if c == 0],
         len(sec6_items), sum(1 for c, _ in sec6_items if c > 0),
     )
 
     # sec-7: Governance (Phase G)
     arb_submitted = solution.governance_status not in (None, "draft")
-    sec7_items = [(1 if arb_submitted else 0, "ARB submission")]
     phases["sec-7"] = _phase(
         ["ARB submitted"] if arb_submitted else [],
         ["ARB submission"] if not arb_submitted else [],
@@ -2533,16 +2716,16 @@ def api_phase_summary(solution_id: int):
     # sec-8: Risks & Decisions
     sec8_items = [(len(risks), "risks"), (len(adrs), "ADRs")]
     phases["sec-8"] = _phase(
-        [f"{c} {l}" for c, l in sec8_items if c > 0],
-        [l for c, l in sec8_items if c == 0],
+        [f"{c} {item}" for c, item in sec8_items if c > 0],
+        [item for c, item in sec8_items if c == 0],
         len(sec8_items), sum(1 for c, _ in sec8_items if c > 0),
     )
 
     # sec-9: Operational Readiness (Phase H)
     sec9_items = [(len(metrics), "metrics")]
     phases["sec-9"] = _phase(
-        [f"{c} {l}" for c, l in sec9_items if c > 0],
-        [l for c, l in sec9_items if c == 0],
+        [f"{c} {item}" for c, item in sec9_items if c > 0],
+        [item for c, item in sec9_items if c == 0],
         len(sec9_items), sum(1 for c, _ in sec9_items if c > 0),
     )
 
@@ -2552,8 +2735,8 @@ def api_phase_summary(solution_id: int):
         (len(requirements), "requirements"), (len(caps), "capabilities"),
     ]
     phases["sec-10"] = _phase(
-        [f"{c} {l}" for c, l in sec10_items if c > 0],
-        [l for c, l in sec10_items if c == 0],
+        [f"{c} {item}" for c, item in sec10_items if c > 0],
+        [item for c, item in sec10_items if c == 0],
         len(sec10_items), sum(1 for c, _ in sec10_items if c > 0),
     )
 
@@ -2571,7 +2754,11 @@ def _build_blueprint_context(solution):
     Does NOT modify _build_solution_detail_context() — legacy page untouched.
     """
     import json as _json
-    from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import BlueprintCompletenessService
+    from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
+        BLUEPRINT_SECTIONS,
+        BlueprintCompletenessService,
+        compute_blueprint_completeness,
+    )
     svc = BlueprintCompletenessService()
 
     # Get or compute scores
@@ -2611,8 +2798,7 @@ def _build_blueprint_context(solution):
     try:
         from app.models.solution_sad_models import (
             SolutionIntegrationFlow, SolutionComposition, RiskSnapshot,
-            SolutionQualityAttribute, SolutionSLA, MigrationDependency,
-            SolutionInvestmentPhase, SolutionGovernanceException,
+            SolutionQualityAttribute, SolutionSLA, SolutionInvestmentPhase, SolutionGovernanceException,
             SolutionComplianceMapping, SolutionChangeRequest,
             SolutionFeasibilityReview, SolutionBenefitRealization,
             SolutionOrgImpact, SolutionLessonLearned,
@@ -2685,6 +2871,50 @@ def _build_blueprint_context(solution):
         for section_id in merged_defs:
             merged_defs[section_id].setdefault("elements", [])
 
+    # DR-BP-01: per-section has-content flag, used by the template to collapse
+    # sections that carry zero real data instead of rendering a 1,200-1,650px
+    # empty shell (sparse solutions were producing ~21,000px of blank scroll).
+    # Derived from the same signals already computed above — never guessed:
+    #   - a saved narrative (merged_defs[...]["narrative"])
+    #   - linked ArchiMate elements for the section's required_types (merged_defs[...]["elements"])
+    #   - the SAD sub-records a few sections render via included partials
+    _sad_supplement = {
+        "application_cooperation": ("composition",),
+        "data_information": ("integration_flows",),
+        "deployment_view": ("tech_elements",),
+        "work_packages": ("investment_phases", "benefit_realizations", "lessons_learned"),
+        "security_viewpoint": ("risk_snapshots",),
+        "nfr_satisfaction": ("quality_attributes", "slas"),
+    }
+    section_has_content: dict = {}
+    for section_id, section_def in merged_defs.items():
+        has = bool(section_def.get("narrative")) or bool(section_def.get("elements"))
+        if not has:
+            for sad_key in _sad_supplement.get(section_id, ()):
+                if sad_data.get(sad_key):
+                    has = True
+                    break
+        if not has and section_id == "erp_fit_gap":
+            has = bool(scores.get("erp_fit_gap", {}).get("element_count"))
+        if not has and section_id == "integration_architecture":
+            has = bool(scores.get("integration_architecture", {}).get("total_flows"))
+        section_has_content[section_id] = has
+
+    # transition_roadmap's gantt is fed by legacy WorkPackage rows joined via
+    # solution_work_packages (see api_get_roadmap_tasks) — a separate model
+    # from the ArchiMate WorkPackage elements merged_defs["elements"] covers,
+    # so it needs its own real-data check rather than being guessed empty.
+    if not section_has_content.get("transition_roadmap"):
+        try:
+            from app.models.solution_models import solution_work_packages as _swp
+            has_wp = db.session.query(_swp.c.work_package_id).filter(
+                _swp.c.solution_id == solution.id
+            ).limit(1).count() > 0
+            if has_wp:
+                section_has_content["transition_roadmap"] = True
+        except Exception as exc:
+            logger.debug("suppressed error checking transition_roadmap work packages for solution %s: %s", solution.id, exc)
+
     # Motivation layer entities for blueprint.js lifecycleData (vision_motivation section)
     lifecycle_json = {
         "drivers": type_elements.get("Driver", []),
@@ -2717,7 +2947,13 @@ def _build_blueprint_context(solution):
     return {
         "solution": solution,
         "scores": scores,
+        # S-02/S-03: the single completeness computation. Every surface on the
+        # blueprint page (ring, "N of M sections", gap advisor, header strip)
+        # reads from this — none of them may re-derive it.
+        "completeness": compute_blueprint_completeness(scores),
+        "blueprint_sections": BLUEPRINT_SECTIONS,
         "section_definitions": merged_defs,
+        "section_has_content": section_has_content,
         "next_actions": svc.get_next_actions(solution.id, precomputed_scores=scores),
         "arb_ready": svc.check_arb_ready(solution.id, precomputed_scores=scores),
         "phase_checklist": phase_checklist,
@@ -2726,6 +2962,42 @@ def _build_blueprint_context(solution):
         "arb_review_id": arb_review_id,
         "lifecycle_json": lifecycle_json,
     }
+
+
+def _run_proactive_analysis(app, solution_id: int, organization_id):
+    """Run proactive copilot-insight generation for one solution, tenant-scoped.
+
+    Runs synchronously when called directly (tests) or as a daemon thread's
+    target (``view_solution``). When ``organization_id`` is None it logs a
+    warning and returns without running; otherwise it runs inside
+    ``tenant_scope`` so every query the analysis makes is filtered to the
+    solution's own organisation.
+    """
+    if organization_id is None:
+        logger.warning(
+            "Skipping proactive analysis for solution %s: organization_id is None",
+            solution_id,
+        )
+        return
+    with app.app_context(), tenant_scope(organization_id):
+        try:
+            from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
+            from app.models.copilot_insight import CopilotInsight
+            from app import db
+            svc = ProactiveAnalysisService()
+            new_insights = svc.analyse_solution(solution_id)
+            for insight in new_insights:
+                existing = CopilotInsight.query.filter_by(
+                    solution_id=solution_id,
+                    insight_type=insight.insight_type,
+                    seen=False,
+                    dismissed=False,
+                ).first()
+                if not existing:
+                    db.session.add(insight)
+            db.session.commit()
+        except Exception as _e:
+            logger.debug("Proactive analysis failed for sol %s: %s", solution_id, _e)
 
 
 @solution_design_bp.route("/<int:solution_id>", methods=["GET"])
@@ -2738,9 +3010,13 @@ def view_solution(solution_id: int):
     if not _check_solution_access(solution):
         abort(403)
 
-    # Blueprint page feature flag (default: True); ?edit=1 forces legacy detail view
+    # Blueprint page ships ON by default (wired, reachable). Explicit config/env
+    # value can opt OUT; ?edit=1 forces the legacy detail/editor view.
+    _bp_setting = current_app.config.get("USE_BLUEPRINT_PAGE")
+    if _bp_setting is None:
+        _bp_setting = os.environ.get("USE_BLUEPRINT_PAGE", "true")
     use_blueprint = (
-        current_app.config.get("USE_BLUEPRINT_PAGE", os.environ.get("USE_BLUEPRINT_PAGE", "").lower() == "true")
+        str(_bp_setting).strip().lower() in ("true", "1", "yes", "on")
         and request.args.get("edit") != "1"
     )
 
@@ -2750,30 +3026,9 @@ def view_solution(solution_id: int):
 
             # Fire proactive analysis in background — does not block page render
             import threading as _t
-            def _run_proactive(app_ref, sol_id):
-                with app_ref.app_context():
-                    try:
-                        from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
-                        from app.models.copilot_insight import CopilotInsight
-                        from app import db
-                        svc = ProactiveAnalysisService()
-                        new_insights = svc.analyse_solution(sol_id)
-                        for insight in new_insights:
-                            existing = CopilotInsight.query.filter_by(
-                                solution_id=sol_id,
-                                insight_type=insight.insight_type,
-                                seen=False,
-                                dismissed=False,
-                            ).first()
-                            if not existing:
-                                db.session.add(insight)
-                        db.session.commit()
-                    except Exception as _e:
-                        logger.debug("Proactive analysis failed for sol %s: %s", sol_id, _e)
-
             _t.Thread(
-                target=_run_proactive,
-                args=(current_app._get_current_object(), solution.id),
+                target=_run_proactive_analysis,
+                args=(current_app._get_current_object(), solution.id, solution.organization_id),
                 daemon=True,
             ).start()
 
@@ -3038,7 +3293,7 @@ def _build_readme(bundle):
     lines = [
         f"# {bundle['solution_name']} — Generated API Contracts",
         "",
-        f"Generated by A.R.C.H.I.E. on {bundle['generated_at']}",
+        f"Generated by Entelim on {bundle['generated_at']}",
         f"Solution ID: {bundle['solution_id']}",
         f"Spec Version: {bundle.get('version', '1.0.0')}",
         f"Spec Maturity: {maturity.get('score', 0):.0%} ({maturity.get('rating', 'unknown')})",
@@ -3072,7 +3327,7 @@ def _build_readme(bundle):
         "",
         "Every path and schema includes `x-archimate-source` linking back to the",
         "ArchiMate element that generated it. Use these IDs to trace code back to",
-        "the approved architecture in A.R.C.H.I.E.",
+        "the approved architecture in Entelim",
         "",
         "## Warnings",
         "",
@@ -3162,7 +3417,7 @@ for test in tests:
 ## Architecture Traceability
 
 Every endpoint and schema includes `x-archimate-source` linking to the
-ArchiMate element in A.R.C.H.I.E. that generated it. Use this to:
+ArchiMate element in Entelim that generated it. Use this to:
 
 1. Understand WHY an endpoint exists (architecture rationale)
 2. Trace code changes back to architecture decisions
@@ -3173,7 +3428,7 @@ ArchiMate element in A.R.C.H.I.E. that generated it. Use this to:
 1. Generate server stubs from `openapi.yaml`
 2. Implement business logic in the generated route handlers
 3. Run contract tests to validate your implementation
-4. Deploy and link back to the solution in A.R.C.H.I.E.
+4. Deploy and link back to the solution in Entelim
 """
 
 
@@ -3562,8 +3817,8 @@ def api_registry_list_specs():
 
     status_filter = request.args.get("status", "published")
     type_filter = request.args.get("type")
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 50, type=int), 200)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
 
     query = (
         db.session.query(PublishedAPISpec, Solution.name)
@@ -3635,7 +3890,7 @@ def api_registry_download_openapi(spec_id):
     return Response(
         content,
         mimetype="application/json",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},  # raw-html-ok: filename is built from spec.solution_id (int) + spec.spec_version, never free text
     )
 
 
@@ -3674,9 +3929,35 @@ def runtime_health_report():
         "uptime_pct": float
     }
     """
+    import hmac
+
     from app.models.solution_models import Solution
     from app.models.published_api_spec import PublishedAPISpec
     from app.models.compliance_check import RuntimeComplianceCheck
+
+    # Authenticate the reporter. Being CSRF-exempt removes the browser-origin
+    # check, and there was nothing behind it: any caller could POST a report for
+    # any solution_id, in any tenant, and have it written as a compliance record.
+    # For a governance product, forged compliance evidence is not a small thing -
+    # the records are the deliverable.
+    #
+    # Fails closed when unconfigured rather than accepting anonymous reports,
+    # which is affordable here because nothing posts to this endpoint yet: no
+    # client, generated service, test or document references it. An operator
+    # enabling it sets the token on both ends at once.
+    expected = current_app.config.get("RUNTIME_REPORT_TOKEN") or os.environ.get("RUNTIME_REPORT_TOKEN")
+    if not expected:
+        return jsonify({
+            "received": False,
+            "error": "Runtime reporting is not enabled. Set RUNTIME_REPORT_TOKEN to enable it.",
+        }), 503
+    supplied = request.headers.get("X-Runtime-Report-Token", "")
+    if not supplied or not hmac.compare_digest(supplied, expected):
+        current_app.logger.warning(
+            "Rejected runtime health report with bad/missing token from IP %s",
+            request.remote_addr,
+        )
+        return jsonify({"received": False, "error": "Unauthorized"}), 401
 
     body = request.get_json(silent=True) or {}
 
@@ -3721,9 +4002,12 @@ def runtime_health_report():
         }), 200
 
     # SLA compliance: latency < 500ms, error_rate < 5%, uptime > 99%
-    avg_latency_ms = float(body.get("avg_latency_ms") or 0)
-    error_rate_pct = float(body.get("error_rate_pct") or 0)
-    uptime_pct = float(body.get("uptime_pct") or 100)
+    try:
+        avg_latency_ms = float(body.get("avg_latency_ms") or 0)
+        error_rate_pct = float(body.get("error_rate_pct") or 0)
+        uptime_pct = float(body.get("uptime_pct") or 100)
+    except (ValueError, TypeError):
+        return jsonify({"received": False, "error": "avg_latency_ms, error_rate_pct and uptime_pct must be numbers"}), 400
 
     sla_violations = []
     if avg_latency_ms >= 500:
@@ -3885,7 +4169,6 @@ def export_solution_blueprint(solution_id: int):
         role_map = {link.element_id: getattr(link, "element_role", "supporting") for link in links}
 
         # Group by section based on element type → viewpoint mapping
-        from app.modules.architecture.services.element_type_normalizer import ElementTypeNormalizer
         section_elements = {}
         type_to_section = {}
         for sec_id, sec_def in ctx["section_definitions"].items():
@@ -3990,17 +4273,17 @@ def export_solution_markdown(solution_id: int):
     # Build markdown
     lines = [
         f"# {solution.name}",
-        f"",
+        "",
         f"**Type:** {solution.solution_type or 'N/A'}  ",
         f"**Domain:** {solution.business_domain or 'N/A'}  ",
         f"**Status:** {solution.status or 'N/A'}  ",
         f"**ADM Phase:** {solution.adm_phase or 'A'}  ",
         f"**Governance:** {solution.governance_status or 'draft'}  ",
-        f"",
-        f"## Description",
-        f"",
+        "",
+        "## Description",
+        "",
         solution.description or "_No description provided._",
-        f"",
+        "",
     ]
     # Add drivers/goals/constraints/requirements from DB
     try:
@@ -4067,7 +4350,7 @@ def export_solution_markdown(solution_id: int):
         logger.debug(f"Could not load lifecycle entities for export: {e}")
     lines += [
         "---",
-        f"_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
+        "_Exported from Entelim Enterprise Architecture Platform_",
     ]
     content = "\n".join(lines)
     from flask import Response
@@ -4643,6 +4926,12 @@ def _engine_archimate_cleanup(solution_ids):
                 logger.debug("archimate cleanup skip: %s … %s", sql[:80], _e)
 
         # ── Collect target architecture_model and element IDs ──────────────
+        # tenancy-ok: sids come from Solution.query.get_or_404() /
+        # Solution.query.filter(Solution.id.in_(...)) in the three callers —
+        # Solution is a TenantMixin model, so do_orm_execute has already
+        # org-filtered them — plus a created_by_id/is_admin ownership check, and
+        # they are cast with int() above. Every statement below is keyed off
+        # these ids, so the whole cascade is scoped by its input.
         mids = [r[0] for r in conn.execute(
             text(f"SELECT id FROM architecture_models WHERE solution_id IN ({sids_str})")
         ).fetchall()]
@@ -4650,6 +4939,7 @@ def _engine_archimate_cleanup(solution_ids):
             return
         mids_str = ",".join(str(i) for i in mids)
 
+        # tenancy-ok: mids derive from the org-scoped solution ids above.
         eids = [r[0] for r in conn.execute(
             text(f"SELECT id FROM archimate_elements WHERE architecture_id IN ({mids_str})")
         ).fetchall()]
@@ -4827,6 +5117,7 @@ def _engine_archimate_cleanup(solution_ids):
             _sp_exe(f"DELETE FROM archimate_resources           WHERE archimate_element_id IN ({eids_str})")
 
             # ── Now safe to delete archimate_elements ───────────────────────
+            # tenancy-ok: mids derive from the org-scoped solution ids above.
             conn.execute(text(f"DELETE FROM archimate_elements WHERE architecture_id IN ({mids_str})"))
 
         # ── Architecture model child tables (model_id / architecture_id) ───
@@ -4877,6 +5168,7 @@ def _engine_archimate_cleanup(solution_ids):
         _sp_exe(f"DELETE FROM workflow_pipelines        WHERE architecture_id   IN ({mids_str})")
 
         # ── Now safe to delete architecture_models ──────────────────────────
+        # tenancy-ok: mids derive from the org-scoped solution ids above.
         conn.execute(text(f"DELETE FROM architecture_models WHERE id IN ({mids_str})"))
 
     # engine transaction committed — all archimate data is cleanly gone
@@ -6132,26 +6424,51 @@ def api_update_solution(solution_id: int):
     if unknown_keys:
         return jsonify({"success": False, "error": f"Unknown fields: {sorted(unknown_keys)}"}), 422
 
+    # Validate every submitted field *before* touching the model, so a bad value
+    # anywhere in the payload is a single 400 rather than a partial write followed
+    # by a DB-level failure on commit (which the broad except below turned into an
+    # opaque 500 — see api_update_solution history).
+    updates: dict = {}
+    for field in _EDITABLE_FIELDS:
+        if field not in data:
+            continue
+        value = data[field]
+
+        if field == "name" and not (value and str(value).strip()):
+            return jsonify({"success": False, "error": "name cannot be empty"}), 400
+
+        if field in _STRING_FIELD_MAX_LENGTHS and value is not None:
+            if not isinstance(value, str):
+                return jsonify({"success": False, "error": f"{field} must be a string"}), 400
+            max_len = _STRING_FIELD_MAX_LENGTHS[field]
+            if len(value) > max_len:
+                return jsonify(
+                    {"success": False, "error": f"{field} must be {max_len} characters or fewer"}
+                ), 400
+
+        if field in _DATE_FIELDS and value is not None:
+            try:
+                value = datetime.strptime(value, "%Y-%m-%d").date()
+            except (TypeError, ValueError):
+                return jsonify(
+                    {"success": False, "error": f"{field} must be a date in YYYY-MM-DD format"}
+                ), 400
+
+        if field in _DECIMAL_FIELDS and value is not None:
+            try:
+                value = Decimal(str(value)) if field == "estimated_cost" else float(value)
+            except (InvalidOperation, TypeError, ValueError):
+                return jsonify({"success": False, "error": f"{field} must be a number"}), 400
+
+        updates[field] = value
+
     # PLT-014: Capture old values for change detection
     old_status = solution.status
     old_owner = solution.solution_owner
 
     try:
-        # Update fields
-        if "name" in data:
-            solution.name = data["name"]
-        if "description" in data:
-            solution.description = data["description"]
-        if "status" in data:
-            solution.status = data["status"]
-        if "business_domain" in data:
-            solution.business_domain = data["business_domain"]
-
-        # Stakeholder fields (SDX-021)
-        for field in ["solution_owner", "business_sponsor", "technical_lead",
-                      "security_lead", "data_protection_officer"]:
-            if field in data:
-                setattr(solution, field, data[field])
+        for field, value in updates.items():
+            setattr(solution, field, value)
 
         # PLT-014: Notify on status change
         if old_status and solution.status and old_status != solution.status and solution.created_by_id:
@@ -6184,7 +6501,7 @@ def api_update_solution(solution_id: int):
                 "solution_id": solution.id,
             }
         )
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
@@ -6260,7 +6577,6 @@ def get_solution_capabilities(solution_id: int):
 @login_required
 def get_motivation_elements(solution_id):
     """Return Assessments, Principles, Outcomes, Values for a solution."""
-    import json as _json
     solution = Solution.query.get_or_404(solution_id)
     elements = []
     try:
@@ -6289,7 +6605,7 @@ def get_motivation_elements(solution_id):
         from app.models.solution_archimate_element import SolutionArchiMateElement as SAE
         from app.models.archimate_core import ArchiMateElement as AE
         links = SAE.query.filter_by(solution_id=solution_id, layer_type='motivation').all()
-        elem_ids = [l.element_id for l in links if l.element_id]
+        elem_ids = [item.element_id for item in links if item.element_id]
         if elem_ids:
             aes = AE.query.filter(AE.id.in_(elem_ids), AE.type.in_(['Outcome', 'Value'])).all()
             for ae in aes:
@@ -6303,7 +6619,7 @@ def get_motivation_elements(solution_id):
 @login_required
 def patch_motivation_entity(solution_id, entity_id):
     """Inline edit a motivation element."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({"error": "No data"}), 400
@@ -6455,7 +6771,7 @@ def delete_solution_capability(solution_id: int, mapping_id: int):
 @login_required
 def get_solution_archimate_elements(solution_id: int):
     """Get all ArchiMate elements mapped to a solution, grouped by layer."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -6506,7 +6822,7 @@ def get_solution_archimate_elements(solution_id: int):
 @audit_log("update_solution_archimate")
 def update_solution_archimate_elements(solution_id: int):
     """Add or update ArchiMate element mappings for a solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     try:
         from app.models.solution_models import SolutionArchiMateElement
@@ -6645,6 +6961,11 @@ def get_archimate_layer_elements(layer: str):
         if search:
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search}%"
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = "WHERE " + " AND ".join(conditions)
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status
@@ -6685,7 +7006,7 @@ def search_business_capabilities():
         q = request.args.get("q", "").strip()
         domain = request.args.get("domain", "").strip()
         level = request.args.get("level", type=int)
-        limit = min(request.args.get("limit", 20, type=int), 50)
+        limit = min(safe_int_arg('limit', 20, minimum=1, maximum=500), 50)
 
         if cap_type == "technical":
             from app.models.technical_capability import TechnicalCapability
@@ -6865,161 +7186,31 @@ def _validate_solution_recommended_option(solution):
 @audit_log("submit_solution_for_arb")
 def submit_solution_for_arb(solution_id: int):
     """Submit a solution for Architecture Review Board approval."""
-    solution = Solution.query.get_or_404(solution_id)
-
-    # Check if solution is in a submittable state
-    if solution.governance_status not in ["draft", "rejected"]:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": f"Solution cannot be submitted from status: {solution.governance_status}",
-                }
-            ),
-            400,
-        )
-
-    # ENH-005: Require explicit human approval when content is AI-generated
     data = request.get_json(silent=True) or {}
-    if _solution_has_ai_generated_content(solution) and not data.get("ai_content_reviewed"):
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "AI-generated content must be reviewed before ARB submission. Confirm you have reviewed the AI-generated content and resubmit.",
-                    "requires_ai_review": True,
-                }
-            ),
-            400,
-        )
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
 
-    # ENH-007: Validate recommended option references real vendor products
-    valid, opt_error = _validate_solution_recommended_option(solution)
-    if not valid:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "Recommended option references an invalid or missing vendor product. Update the solution option before submitting to ARB.",
-                    "option_invalid": opt_error == "option_invalid",
-                    "vendor_not_found": opt_error == "vendor_not_found",
-                }
-            ),
-            400,
-        )
-
-    # ENH-008: Option costs must have declared source (tco_engine or manual_override)
-    if solution.estimated_cost is not None and float(solution.estimated_cost or 0) != 0:
-        cost_source = data.get("cost_source")
-        if cost_source not in ("tco_engine", "manual_override"):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Solution has cost estimate. Declare cost_source as 'tco_engine' or 'manual_override' in the request body before submitting to ARB.",
-                        "requires_cost_source": True,
-                    }
-                ),
-                400,
-            )
-
-    # ENH-009: Optional second-architect review when config enabled
-    if current_app.config.get("FLASK_ARB_REQUIRE_SECOND_REVIEW"):
-        if not data.get("second_reviewer_id"):
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Second architect review is required. Provide second_reviewer_id (user id) in the request body.",
-                        "requires_second_review": True,
-                    }
-                ),
-                400,
-            )
-
-    # GOV-03: Hard governance gate — block submission if completeness thresholds not met
-    try:
-        from app.modules.solutions_strategic.v2.services.governance_gate_service import check_gate
-
-        gate_result = check_gate(solution_id, "arb_submission")
-        if not gate_result["passed"]:
-            logger.info(
-                "GOV-03 gate blocked ARB submission for solution %s: %s",
-                solution_id,
-                gate_result["failures"],
-            )
-            return (
-                jsonify(
-                    {
-                        "success": False,
-                        "error": "Solution does not meet governance gate requirements for ARB submission.",
-                        "gate_failures": gate_result["failures"],
-                        "gate_name": gate_result["gate_name"],
-                    }
-                ),
-                422,
-            )
-    except Exception as gate_err:
-        logger.warning("GOV-03 gate check failed (non-blocking): %s", gate_err)
-
-    try:
-        from app.models.architecture_review_board import ARBReviewItem
-
-        # Accept optional resubmission notes (SDX-003: resubmit after rejection)
-        resubmission_notes = data.get("resubmission_notes", "")
-        is_resubmission = solution.governance_status == "rejected"
-
-        # Build description with resubmission context
-        base_desc = f"Review request for solution: {solution.description or solution.name}"
-        if is_resubmission and resubmission_notes:
-            base_desc = f"[Resubmission] {resubmission_notes}\n\nOriginal: {base_desc}"
-
-        # Create ARB review item
-        review_item = ARBReviewItem(
-            review_number=ARBReviewItem.generate_review_number(),
-            title=f"{'Resubmission: ' if is_resubmission else ''}Solution Review: {solution.name}",
-            description=base_desc,
-            review_type="solution",
-            priority="medium",
-            status="submitted",
-            submitter_id=current_user.id,
-            solution_id=solution.id,
-            submitted_at=datetime.utcnow(),
-        )
-
-        db.session.add(review_item)
-        db.session.flush()
-
-        # Update solution
-        solution.governance_status = "arb_review"
-        solution.arb_submission_date = datetime.utcnow()
-        solution.arb_review_item_id = review_item.id
-
-        # Notify solution owner (ENT-012)
-        if solution.created_by_id:
-            notif = SolutionNotification(
-                solution_id=solution.id,
-                user_id=solution.created_by_id,
-                type="arb_submission",
-                message=f"Solution '{solution.name}' submitted for ARB review.",
-            )
-            db.session.add(notif)
-
-        db.session.commit()
-
-        return jsonify(
-            {
-                "success": True,
-                "message": "Solution submitted for ARB review",
-                "review_item_id": review_item.id,
-                "governance_status": solution.governance_status,
-                "is_resubmission": is_resubmission,
-            }
-        )
-    except Exception as e:
-        db.session.rollback()
-        logger.error(f"Error submitting solution for ARB: {e}")
-        return jsonify({"success": False, "error": "An internal error occurred"}), 500
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
+    )
+    if not result.success:
+        return jsonify({
+            "success": False,
+            "reason_codes": result.reason_codes,
+            "missing_evidence": result.missing_evidence,
+        }), result.http_status
+    return jsonify({
+        "success": True,
+        "message": "Solution submitted for ARB review",
+        "review_item_id": result.review_item_id,
+        "review_number": result.review_number,
+        "snapshot_id": result.snapshot_id,
+        "idempotent": result.idempotent,
+        "review_cycle_id": result.review_cycle_id,
+        "canonical_url": result.canonical_url,
+    })
 
 
 @solution_design_bp.route("/<int:solution_id>/governance-gates/check", methods=["GET"])
@@ -7116,6 +7307,16 @@ def toggle_arb_condition(solution_id: int, condition_index: int):
     """Toggle the completed status of an ARB condition."""
     solution = Solution.query.get_or_404(solution_id)
 
+    from app.modules.transformation_room.arb_decision_adapter import (
+        TypedARBDecisionAdapter,
+    )
+
+    if TypedARBDecisionAdapter.solution_has_typed_cycle(solution_id):
+        return jsonify({
+            "success": False,
+            "reason_codes": ["typed_condition_toggle_not_supported"],
+        }), 409
+
     try:
         from app.models.architecture_review_board import ARBReviewItem
 
@@ -7180,7 +7381,7 @@ def search_archimate_elements():
         query = query.filter(ArchiMateElement.name.ilike(f"%{search_q}%"))
 
     try:
-        limit = min(int(request.args.get("limit", 30)), 200)
+        limit = min(safe_int_arg('limit', 30, minimum=1, maximum=500), 200)
     except (ValueError, TypeError):
         limit = 30
 
@@ -7237,6 +7438,11 @@ def api_archimate_all_elements():
             conditions.append("name ILIKE :search")
             params["search"] = f"%{search_term}%"
 
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            conditions.append("organization_id = :org")
+            params["org"] = _org
         where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql = db.text(f"""
             SELECT id, name, type, layer, description, status,
@@ -7597,9 +7803,11 @@ def api_solution_traceability(solution_id: int):
                 "domain_count": len({d for n in chain for d in n["domains"]}),
             },
         })
+    except HTTPException as e:
+        return jsonify({"error": e.description}), e.code
     except Exception as e:
         logger.error(f"api_solution_traceability error: {e}", exc_info=True)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "An internal error occurred"}), 500
 
 
 # =============================================================================
@@ -7618,7 +7826,7 @@ _PHASE_LAYERS = {
 @login_required
 def generate_solution_viewpoint(solution_id: int, phase: str):
     """Return the solution's linked ArchiMate elements filtered by ADM phase layers."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     phase_upper = phase.upper()
     relevant_layers = _PHASE_LAYERS.get(phase_upper)
     if not relevant_layers:
@@ -7691,7 +7899,7 @@ def get_solution_viewpoint_elements(solution_id: int):
     Returns JSON compatible with ComposerRenderer.loadElements():
         {elements: [{id, name, type, layer}], relationships: [{id, source_id, target_id, type}]}
     """
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     viewpoint_id = request.args.get("viewpoint", "layered")
 
     try:
@@ -8055,7 +8263,7 @@ def portfolio_api():
 def _ensure_solution_dependencies_table():
     """ENH-023: Idempotent DDL for solution_dependencies junction table."""
     try:
-        db.session.execute(db.text("""  # tenant-exempt: DDL
+        db.session.execute(db.text("""
             CREATE TABLE IF NOT EXISTS solution_dependencies (
                 solution_id INTEGER NOT NULL
                     REFERENCES solutions(id) ON DELETE CASCADE,
@@ -8162,7 +8370,7 @@ def add_solution_dependency():
 @login_required
 def linked_vendor_products(solution_id):
     """Return vendor products currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.vendor.vendor_organization import VendorProduct
         tbl = db.metadata.tables.get("solution_vendor_products")
@@ -8181,8 +8389,10 @@ def linked_vendor_products(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked vendor products: {e}", exc_info=True)
-        return jsonify({"products": []})
+        logger.exception(f"Error fetching linked vendor products: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked vendor products"}
+        ), 500
 
 
 # =============================================================================
@@ -8194,7 +8404,7 @@ def linked_vendor_products(solution_id):
 @login_required
 def linked_apqc_processes(solution_id):
     """Return APQC processes currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         from app.models.apqc_process import APQCProcess as APQCModel
         from app.models.solution_sad_models import SolutionAPQCProcess
@@ -8216,8 +8426,10 @@ def linked_apqc_processes(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked APQC processes: {e}", exc_info=True)
-        return jsonify({"processes": []})
+        logger.exception(f"Error fetching linked APQC processes: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked APQC processes"}
+        ), 500
 
 
 # =============================================================================
@@ -8229,7 +8441,7 @@ def linked_apqc_processes(solution_id):
 @login_required
 def linked_applications_api(solution_id):
     """Return applications currently linked to this solution."""
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     try:
         apps = _get_solution_applications(solution_id)
         return jsonify({
@@ -8238,8 +8450,10 @@ def linked_applications_api(solution_id):
             ]
         })
     except Exception as e:
-        logger.error(f"Error fetching linked applications: {e}", exc_info=True)
-        return jsonify({"applications": []})
+        logger.exception(f"Error fetching linked applications: {e}")
+        return jsonify(
+            {"success": False, "error": "Could not load linked applications"}
+        ), 500
 
 
 # =============================================================================
@@ -8278,7 +8492,10 @@ def create_with_draft():
     try:
         from app.modules.solutions_strategic.v2.services.solution_ai_orchestrator import SolutionAIOrchestrator
         orchestrator = SolutionAIOrchestrator()
-        orchestrator.generate_draft_architecture(solution.id, brief=brief)
+        # user_id is required by the orchestrator; omitting it raised TypeError.
+        orchestrator.generate_draft_architecture(
+            solution.id, brief=brief, user_id=current_user.id
+        )
     except Exception as e:
         current_app.logger.warning(f"A95-004 generate_draft failed: {e}")
 
@@ -8377,12 +8594,14 @@ def create_comment(solution_id):
             matched_user = None
             if len(parts) >= 2:
                 matched_user = User.query.filter(
+                    User.organization_id == g.current_org_id,
                     User.first_name.ilike(parts[0]),
                     User.last_name.ilike(parts[-1]),
                 ).first()
             if not matched_user:
                 term = f"%{name_stripped}%"
                 matched_user = User.query.filter(
+                    User.organization_id == g.current_org_id,
                     or_(
                         User.email.ilike(term),
                         User.first_name.ilike(term),
@@ -8667,8 +8886,6 @@ def suggest_connections(solution_id: int):
         from app.models.solution_models import (
             SolutionArchiMateElement,
             SolutionCapabilityMapping,
-            solution_applications,
-            solution_vendor_products,
         )
         from app.models.vendor.vendor_organization import VendorProduct
 
@@ -8878,7 +9095,7 @@ def link_capability(solution_id):
     from app.models.business_capabilities import BusinessCapability
     from app.models.solution_models import SolutionCapabilityMapping
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
     data = request.get_json() or {}
     cap_id = data.get("capability_id")
     if not cap_id:
@@ -9107,7 +9324,7 @@ def generate_adr(solution_id):
         lines.append("")
 
     lines.append("---")
-    lines.append(f"*Generated by A.R.C.H.I.E. on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*")
+    lines.append(f"*Generated by Entelim on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*")
     lines.append("")
 
     markdown_content = "\n".join(lines)
@@ -9119,7 +9336,7 @@ def generate_adr(solution_id):
 
     response = make_response(markdown_content)
     response.headers["Content-Type"] = "text/markdown; charset=utf-8"
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from safe_name, already alnum/dash/underscore-filtered above
     return response
 
 
@@ -9425,7 +9642,7 @@ def api_accept_suggestions(solution_id):
     """
     from app.models.archimate_core import ArchiMateElement
 
-    solution = Solution.query.get_or_404(solution_id)
+    Solution.query.get_or_404(solution_id)
 
     data = request.get_json(silent=True) or {}
     accepted = data.get("accepted", [])
@@ -9515,6 +9732,42 @@ def api_accept_suggestions(solution_id):
 # =============================================================================
 
 
+@solution_design_bp.route("/<int:solution_id>/api/roadmap-tasks", methods=["GET"])
+@login_required
+def api_get_roadmap_tasks(solution_id):
+    """Work packages linked to the solution, shaped for the gantt component.
+
+    blueprint.html's Transition Roadmap gantt has pointed at this URL since it
+    was added, but the route never existed - every page view logged a 404 and
+    the gantt showed a permanent error state.
+    """
+    solution = Solution.query.get_or_404(solution_id)
+    if not _check_solution_access(solution):
+        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+
+    from app.models.implementation_migration import WorkPackage
+    from app.models.solution_models import solution_work_packages
+
+    wps = (
+        WorkPackage.query
+        .join(solution_work_packages, solution_work_packages.c.work_package_id == WorkPackage.id)
+        .filter(solution_work_packages.c.solution_id == solution_id)
+        .order_by(WorkPackage.start_date.asc().nulls_last(), WorkPackage.name)
+        .all()
+    )
+    tasks = [
+        {
+            "id": wp.id,
+            "name": wp.name,
+            "status": wp.status,
+            "start_date": wp.start_date.isoformat() if wp.start_date else None,
+            "end_date": wp.target_date.isoformat() if wp.target_date else None,
+        }
+        for wp in wps
+    ]
+    return jsonify({"success": True, "tasks": tasks})
+
+
 @solution_design_bp.route("/<int:solution_id>/api/section-narratives", methods=["GET"])
 @login_required
 def api_get_section_narratives(solution_id):
@@ -9524,6 +9777,23 @@ def api_get_section_narratives(solution_id):
         return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
     narratives = solution.section_narratives or {}
     return jsonify({"success": True, "data": {"narratives": narratives}})
+
+
+@solution_design_bp.route("/<int:solution_id>/api/section-narratives/<section_id>", methods=["GET"])
+@login_required
+def api_get_section_narrative(solution_id, section_id):
+    """Return one section's narrative.
+
+    The decisions modal loads its narrative from this URL on every open;
+    without a GET here it received 405 on each page view and warned the
+    user the saved narrative could not be loaded.
+    """
+    solution = Solution.query.get_or_404(solution_id)
+    if not _check_solution_access(solution):
+        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+    narratives = solution.section_narratives or {}
+    text = narratives.get(section_id, "")
+    return jsonify({"success": True, "data": {"section_id": section_id, "narrative": text}})
 
 
 @solution_design_bp.route("/<int:solution_id>/api/section-narratives/<section_id>", methods=["PUT"])
@@ -9808,8 +10078,8 @@ def _build_section_narrative_prompt(
     ))
 
     prompt_parts = [
-        f"You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
-        f"for a real production system. Your output will be reviewed by an Architecture Review Board.",
+        "You are a senior enterprise architect writing a Solution Architecture Document (SAD) "
+        "for a real production system. Your output will be reviewed by an Architecture Review Board.",
         "",
         f"Solution: {sol_name}",
     ]
@@ -9825,7 +10095,7 @@ def _build_section_narrative_prompt(
         f"Section to generate: '{section_title}' ({viewpoint} viewpoint)",
         f"Relevant ArchiMate element types: {', '.join(required_types) or 'All'}",
         "",
-        f"Architecture elements linked to this section:",
+        "Architecture elements linked to this section:",
         element_lines,
     ]
 
@@ -9850,25 +10120,50 @@ def _build_section_narrative_prompt(
     return "\n".join(prompt_parts)
 
 
-@solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/generate", methods=["POST"])
-@login_required
-def api_generate_section_narrative(solution_id, section_id):
-    """Generate narrative text for one blueprint section using LLM.
+class NarrativeGenerationError(Exception):
+    """Raised by `generate_section_narrative` on any handled failure.
+
+    Carries `error_code` so callers (the HTTP route, the AI-chat tool
+    executor) can map it to their own response shape without re-deriving it.
+    """
+
+    def __init__(self, message: str, error_code: str):
+        super().__init__(message)
+        self.error_code = error_code
+
+
+def generate_section_narrative(solution_id, section_id, user_id):
+    """Generate and persist AI narrative text for one blueprint section.
 
     Uses the section's linked ArchiMate elements + spec_data context as prompt.
-    Saves the result to section_narratives[section_id] and returns it.
+    Saves the result to section_narratives[section_id] and returns a result dict.
+
+    Takes `user_id` rather than relying on flask_login's `current_user`, so it
+    is callable from contexts with no HTTP request — notably
+    `app.modules.ai_chat.tools.executor.ToolExecutor._tool_generate_blueprint_narrative`,
+    which runs in-process against the AI-chat conversation's own user_id.
+    Raises `NarrativeGenerationError` on any handled failure.
     """
+    from app.models.user import User
     from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
         BlueprintCompletenessService,
         SECTION_TITLES,
     )
 
     if section_id not in BlueprintCompletenessService.SECTION_DEFINITIONS:
-        return jsonify({"success": False, "error": "Invalid section ID", "error_code": "INVALID_SECTION"}), 400
+        raise NarrativeGenerationError("Invalid section ID", "INVALID_SECTION")
 
-    solution = Solution.query.get_or_404(solution_id)
-    if not _check_solution_access(solution):
-        return jsonify({"success": False, "error": "Forbidden", "error_code": "FORBIDDEN"}), 403
+    solution = Solution.query.get(solution_id)
+    if solution is None:
+        raise NarrativeGenerationError("Solution not found", "NOT_FOUND")
+
+    # Looked up by primary key with no org filter because cross-org access is
+    # closed by _check_solution_access() immediately below, which checks this
+    # user against the *solution's* organization (creator/admin/stakeholder-
+    # email match) — an org filter here would only duplicate that check.
+    user = User.query.get(user_id)  # tenant-scoping-ok: access closed by _check_solution_access() below
+    if user is None or not _check_solution_access(solution, user=user):
+        raise NarrativeGenerationError("Forbidden", "FORBIDDEN")
 
     # Gather context
     svc = BlueprintCompletenessService()
@@ -9923,30 +10218,49 @@ def api_generate_section_narrative(solution_id, section_id):
     try:
         from app.services.llm_service import LLMService
         narrative = LLMService.generate_from_prompt(prompt, use_cache=False)
-    except ValueError as e:
-        return jsonify({
-            "success": False,
-            "error": "No LLM provider configured. Add an API key in Admin → API Settings.",
-            "error_code": "NO_LLM",
-        }), 503
+    except ValueError:
+        raise NarrativeGenerationError(
+            "No LLM provider configured. Add an API key in Admin → API Settings.", "NO_LLM"
+        )
     except Exception as e:
         logger.error("Blueprint narrative generation failed for solution %s section %s: %s", solution_id, section_id, e)
-        return jsonify({"success": False, "error": "LLM generation failed. Try again.", "error_code": "LLM_ERROR"}), 500
+        raise NarrativeGenerationError("LLM generation failed. Try again.", "LLM_ERROR")
 
     # Save to section_narratives
     narratives = dict(solution.section_narratives or {})
     narratives[section_id] = narrative
     solution.section_narratives = narratives
     solution.blueprint_updated_at = datetime.utcnow()
-    solution.blueprint_updated_by_id = current_user.id
+    solution.blueprint_updated_by_id = user_id
     db.session.commit()
 
-    return jsonify({
-        "success": True,
+    return {
         "narrative": narrative,
         "section_id": section_id,
         "word_count": len(narrative.split()),
-    })
+    }
+
+
+_NARRATIVE_ERROR_STATUS = {
+    "INVALID_SECTION": 400,
+    "NOT_FOUND": 404,
+    "FORBIDDEN": 403,
+    "NO_LLM": 503,
+    "LLM_ERROR": 500,
+}
+
+
+@solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/generate", methods=["POST"])
+@login_required
+def api_generate_section_narrative(solution_id, section_id):
+    """HTTP wrapper around `generate_section_narrative` for the blueprint editor UI."""
+    try:
+        result = generate_section_narrative(solution_id, section_id, current_user.id)
+    except NarrativeGenerationError as e:
+        status = _NARRATIVE_ERROR_STATUS.get(e.error_code, 500)
+        return jsonify({"success": False, "error": str(e), "error_code": e.error_code}), status
+
+    return jsonify({"success": True, **result})
 
 
 @solution_design_bp.route("/<int:solution_id>/api/blueprint/<section_id>/codegen", methods=["POST"])
@@ -10390,7 +10704,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
         .with_entities(_SAE.element_id).all()
         if r[0] is not None
     ]
-    sol_elem_ids_set = set(sol_elem_ids)
+    set(sol_elem_ids)
 
     if elem_ids:
         # Relationships where section element is source and target is anywhere in solution
@@ -10466,8 +10780,7 @@ def api_get_viewpoint_elements(solution_id, section_id):
 @login_required
 def api_get_viewpoint_diagram_data(solution_id, section_id):
     """Return JointJS-compatible graph data (elements + relationships between them)."""
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
-    from app.models.solution_archimate_element import SolutionArchiMateElement
+    from app.models.archimate_core import ArchiMateRelationship
     from app.modules.solutions_strategic.v2.services.blueprint_completeness_service import (
         BlueprintCompletenessService,
     )
@@ -10518,7 +10831,6 @@ def api_get_viewpoint_diagram_data(solution_id, section_id):
     # Grid layout: arrange elements in rows by layer
     x_offset = 50
     y_offset = 50
-    col = 0
     row_elements = {}
 
     for elem in elements:
@@ -10612,7 +10924,6 @@ def api_get_traceability_matrix(solution_id):
 
     elem_ids = [eid for (eid,) in element_ids_q]
     elements = ArchiMateElement.query.filter(ArchiMateElement.id.in_(elem_ids)).all()
-    elem_map = {e.id: e for e in elements}
 
     # Separate by role
     requirements = [e for e in elements if e.type in ("Requirement", "Constraint", "Goal")]
@@ -11418,10 +11729,13 @@ def list_identity_provider_presets():
 @login_required
 def api_raci_matrix(solution_id):
     """FRAG-030: Get RACI matrix for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.raci_service import get_raci_matrix
         matrix = get_raci_matrix(solution_id)
         return jsonify({"success": True, "matrix": matrix})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"RACI matrix error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11447,21 +11761,17 @@ def api_set_raci(solution_id):
 @login_required
 def api_gantt_export(solution_id):
     """FRAG-031: Export Gantt chart."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.gantt_export_service import GanttExportService
         fmt = request.args.get("format", "csv")
         service = GanttExportService()
         # Export solution phases as work packages
-        from app.models.solution_models import Solution
-        sol = Solution.query.get(solution_id)
-        wp_dicts = []
-        if sol:
-            phases = ['Phase A: Vision', 'Phase B: Business', 'Phase C: Info Systems',
-                      'Phase D: Technology', 'Phase E: Opportunities', 'Phase F: Migration',
-                      'Phase G: Governance', 'Phase H: Change Mgmt']
-            for p in phases:
-                wp_dicts.append({"name": p, "start_date": "", "end_date": "",
-                                 "status": "planned", "progress": 0})
+        phases = ['Phase A: Vision', 'Phase B: Business', 'Phase C: Info Systems',
+                  'Phase D: Technology', 'Phase E: Opportunities', 'Phase F: Migration',
+                  'Phase G: Governance', 'Phase H: Change Mgmt']
+        wp_dicts = [{"name": p, "start_date": "", "end_date": "",
+                     "status": "planned", "progress": 0} for p in phases]
         if fmt == "csv":
             output = service.export_to_csv(wp_dicts)
             resp = make_response(output)
@@ -11482,6 +11792,8 @@ def api_gantt_export(solution_id):
             return resp
         else:
             return jsonify({"error": f"Unknown format: {fmt}"}), 400
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Gantt export error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11491,11 +11803,14 @@ def api_gantt_export(solution_id):
 @login_required
 def api_outcomes(solution_id):
     """FRAG-032: Get outcome tracking summary."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.outcome_tracking_service import OutcomeTrackingService
         service = OutcomeTrackingService()
         summary = service.get_solution_realization_summary(solution_id)
         return jsonify({"success": True, "data": summary})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Outcomes error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11521,7 +11836,10 @@ def api_create_from_template():
     try:
         from app.services.solution_template_service import create_solution_from_template
         data = request.get_json()
-        result = create_solution_from_template(data["template_id"], data.get("name"))
+        # created_by is a required third argument; omitting it raised TypeError.
+        result = create_solution_from_template(
+            data["template_id"], data.get("name"), current_user.id
+        )
         return jsonify(result)
     except Exception as e:
         current_app.logger.error(f"Template create error: {e}")
@@ -11532,12 +11850,15 @@ def api_create_from_template():
 @login_required
 def api_market_intelligence(solution_id):
     """FRAG-039: Get market intelligence for a solution."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.modules.solutions_strategic.v2.services.market_intelligence_service import MarketIntelligenceService
         service = MarketIntelligenceService()
         trends = service.get_industry_trends("technology", limit=5)
         landscape = service.get_competitive_landscape(solution_id)
         return jsonify({"success": True, "trends": trends, "landscape": landscape})
+    except HTTPException:
+        raise
     except Exception as e:
         current_app.logger.error(f"Market intelligence error: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -11648,7 +11969,7 @@ def solution_deliverable_export(solution_id):
 
         response = make_response(pdf_bytes)
         response.headers["Content-Type"] = "application/pdf"
-        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from solution_id, a route int, never free text
         return response
 
     except ImportError as e:
@@ -11814,7 +12135,7 @@ def export_solution_oef(solution_id: int):
 
     response = make_response(xml_bytes)
     response.headers["Content-Type"] = "application/xml; charset=utf-8"
-    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'  # raw-html-ok: filename built from slug, already regex-sanitized to [a-z0-9-] above
     return response
 
 

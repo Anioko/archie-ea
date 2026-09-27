@@ -4,11 +4,20 @@ ADR (Architecture Decision Record) Routes
 Provides UI for managing architecture decisions with ARB workflow.
 
 Routes:
-- GET /architecture/adrs - List all ADRs
-- GET /architecture/adrs/new - Create new ADR form
+- GET /architecture/adrs - Redirects to the canonical `arch_decisions` listing
+- GET /architecture/adrs/new - Redirects to the canonical creation form
 - POST /architecture/adrs - Create new ADR
-- GET /architecture/adrs/<id> - View ADR detail
-- GET /architecture/adrs/<id>/edit - Edit ADR form
+- GET /architecture/adrs/<id> - Redirects to the canonical detail page
+- GET /architecture/adrs/<id>/edit - Redirects to the canonical edit form
+
+None of this blueprint's GET *pages* render their own template any more. All
+four pointed at `app/templates/architecture/adrs/`, a directory that does not
+exist in the tree, so each one raised TemplateNotFound and returned 500. The
+`arch_decisions` blueprint (app/main/routes_architecture_decisions.py) serves
+the same `architecture_decisions` table through the TenantMixin mapping and
+has real templates, so it is both the working and the tenant-safe surface —
+these URLs are kept as redirects into it rather than deleted, so existing
+links and bookmarks keep working.
 - POST /architecture/adrs/<id> - Update ADR
 - POST /architecture/adrs/<id>/approve - Approve ADR
 - POST /architecture/adrs/<id>/reject - Reject ADR
@@ -16,10 +25,12 @@ Routes:
 
 import logging
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, request, url_for
 from flask_login import current_user, login_required
 
+from app import db
 from app.decorators import admin_required
+from app.models.adr import ArchitectureDecisionRecord
 from app.services.adr_service import ADRService
 
 logger = logging.getLogger(__name__)
@@ -30,45 +41,40 @@ adr_bp = Blueprint("adrs", __name__, url_prefix="/architecture/adrs")
 @adr_bp.route("/", methods=["GET"])
 @login_required
 def list_adrs():
-    """List all ADRs with filtering."""
-    status_filter = request.args.get("status")
-    type_filter = request.args.get("type")
-    solution_id = request.args.get("solution_id", type=int)
-    
-    adrs = ADRService.list_adrs(
-        solution_id=solution_id,
-        status=status_filter,
-        decision_type=type_filter
-    )
-    
-    stats = ADRService.get_adr_statistics()
-    
-    return render_template(
-        "architecture/adrs/list.html",
-        adrs=adrs,
-        stats=stats,
-        status_filter=status_filter,
-        type_filter=type_filter
-    )
+    """Redirect to the canonical Architecture Decisions list (S-11).
+
+    Two listings existed over the *same* `architecture_decisions` table:
+    this one and `arch_decisions.list_decisions`
+    (app/main/routes_architecture_decisions.py). They are backed by two
+    model classes mapping that table via `extend_existing` —
+    `app/models/architecture_decisions.py:ArchitectureDecision`, used here
+    through ADRService, is a plain `db.Model` with **no TenantMixin**, so
+    this listing was not tenant-filtered; `app/models/architecture_decision.py`
+    (singular), used by `arch_decisions`, carries TenantMixin. That makes
+    `arch_decisions.list_decisions` the canonical, tenant-safe listing, and
+    it is the one every template links to — nothing linked here.
+
+    The ADR module's remaining routes (create/detail/edit/approve/reject/
+    statistics) are untouched; only the duplicate *listing* is retired.
+    """
+    return redirect(url_for("arch_decisions.list_decisions", **request.args.to_dict()))
 
 
 @adr_bp.route("/new", methods=["GET"])
 @login_required
 def new_adr():
-    """Show ADR creation form."""
-    solution_id = request.args.get("solution_id", type=int)
-    decision_type = request.args.get("type", "technology_choice")
-    
-    templates = ADRService.get_adr_templates()
-    template = next((t for t in templates if t['type'] == decision_type), templates[0])
-    
-    return render_template(
-        "architecture/adrs/form.html",
-        adr=None,
-        template=template,
-        decision_types=[(t['type'], t['title'].split(':')[0]) for t in templates],
-        solution_id=solution_id
-    )
+    """Redirect to the canonical Architecture Decision creation form.
+
+    This view used to render `architecture/adrs/form.html`, a template that
+    does not exist anywhere in the tree — so every GET /architecture/adrs/new
+    raised TemplateNotFound and 500'd. There is nothing to restore: the form
+    was never shipped, and the duplicate *listing* on this blueprint was
+    already retired in favour of `arch_decisions` (see `list_adrs` above),
+    whose `architecture_decisions/form.html` is the real, tenant-safe
+    creation form over the same `architecture_decisions` table. Sending the
+    URL there keeps the entry point working instead of leaving a dead one.
+    """
+    return redirect(url_for("arch_decisions.create_decision"))
 
 
 @adr_bp.route("/", methods=["POST"])
@@ -124,32 +130,49 @@ def create_adr():
 @adr_bp.route("/<int:adr_id>", methods=["GET"])
 @login_required
 def view_adr(adr_id: int):
-    """View ADR detail."""
-    adr = ADRService.get_adr(adr_id)
-    if not adr:
-        flash("ADR not found", "error")
-        return redirect(url_for("adrs.list_adrs"))
-    
-    return render_template("architecture/adrs/detail.html", adr=adr)
+    """Redirect to the canonical Architecture Decision detail page.
+
+    Same defect and same fix as `new_adr` above: this rendered
+    `architecture/adrs/detail.html`, which does not exist, so every request
+    raised TemplateNotFound. The id carries across unchanged — both
+    `ArchitectureDecision` classes map the *same* `architecture_decisions`
+    table via `extend_existing`, so `adr_id` is the same row `arch_decisions`
+    addresses as `decision_id`.
+
+    Redirecting also closes a tenancy hole rather than just a 500: the
+    `ADRService.get_adr` lookup this replaces goes through the **non-**
+    TenantMixin mapping of that table, so it was never org-scoped, while
+    `arch_decisions.view_decision` resolves the row through the TenantMixin
+    mapping and 404s a foreign id.
+    """
+    return redirect(url_for("arch_decisions.view_decision", decision_id=adr_id))
+
+
+@adr_bp.route("/records/<int:adr_id>", methods=["GET"])
+@login_required
+def view_record(adr_id: int):
+    """View the canonical tenant-scoped ArchitectureDecisionRecord."""
+    adr = db.session.execute(
+        db.select(ArchitectureDecisionRecord).where(
+            ArchitectureDecisionRecord.id == adr_id,
+            ArchitectureDecisionRecord.organization_id == current_user.organization_id,
+        )
+    ).scalar_one_or_none()
+    if adr is None:
+        abort(404)
+    return jsonify({"adr": adr.to_dict(include_content=True)})
 
 
 @adr_bp.route("/<int:adr_id>/edit", methods=["GET"])
 @login_required
 def edit_adr(adr_id: int):
-    """Show ADR edit form."""
-    adr = ADRService.get_adr(adr_id)
-    if not adr:
-        flash("ADR not found", "error")
-        return redirect(url_for("adrs.list_adrs"))
-    
-    templates = ADRService.get_adr_templates()
-    
-    return render_template(
-        "architecture/adrs/form.html",
-        adr=adr,
-        template=None,
-        decision_types=[(t['type'], t['title'].split(':')[0]) for t in templates]
-    )
+    """Redirect to the canonical Architecture Decision edit form.
+
+    `architecture/adrs/form.html` does not exist (see `new_adr`), so this
+    500'd on every request. `arch_decisions.edit_decision` renders the real
+    `architecture_decisions/form.html` over the same row, tenant-scoped.
+    """
+    return redirect(url_for("arch_decisions.edit_decision", decision_id=adr_id))
 
 
 @adr_bp.route("/<int:adr_id>", methods=["POST"])

@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/modal.html' import modal %}
 
 {% block title %}AI Chat Persona Management{% endblock %}
@@ -6,38 +7,33 @@
 {% block content %}
 <div x-data="personaAdmin()" x-init="loadPersonas()">
     <!-- Page Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">AI Chat Persona Management</h1>
-            <p class="text-sm text-muted-foreground mt-1">
-                View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.
-            </p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2">
             <span x-show="loading" x-cloak class="text-sm text-muted-foreground">Loading...</span>
             <button type="button" @click="loadPersonas()"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                           ring-offset-background transition-colors
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
-                           h-9 px-3"
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-input bg-background hover:bg-accent hover:text-accent-foreground
+ h-9 px-3"
                     aria-label="Refresh persona list">
                 <i data-lucide="refresh-cw" class="h-4 w-4 mr-2" aria-hidden="true"></i>
                 Refresh
             </button>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='AI Chat Persona Management', breadcrumb=[('Home', '/'), ('AI Chat Persona Management', none)], subtitle='View and override AI chat persona configurations. Overrides are stored in the database and take precedence over defaults.', actions_caller=_ps_actions) }}
 
     <!-- Error banner -->
     <div x-show="errorMsg" x-cloak
-         class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
+         class="mb-4 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive-emphasis"
          role="alert">
         <span x-text="errorMsg"></span>
     </div>
 
     <!-- Success banner -->
     <div x-show="successMsg" x-cloak
-         class="mb-4 rounded-md border border-green-500/50 bg-green-500/10 p-3 text-sm text-emerald-700 dark:text-green-400"
+         class="mb-4 rounded-md border border-success/50 bg-success/10 p-3 text-sm text-success-emphasis"
          role="status">
         <span x-text="successMsg"></span>
     </div>
@@ -66,7 +62,7 @@
                             </td>
                             <td class="px-4 py-3">
                                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                                             bg-primary/10 text-primary border border-primary/30"
+ bg-primary/10 text-primary border border-primary/30"
                                       x-text="persona.default_domain">
                                 </span>
                             </td>
@@ -74,12 +70,12 @@
                             <td class="px-4 py-3">
                                 <span x-show="persona.has_override" x-cloak
                                       class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                                             bg-amber-500/10 text-amber-600 border border-amber-500/30">
+ bg-warning/10 text-warning-emphasis border border-warning/30">
                                     Overridden
                                 </span>
                                 <span x-show="!persona.has_override" x-cloak
                                       class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                                             bg-green-500/10 text-emerald-600 border border-green-500/30">
+ bg-success/10 text-success-emphasis border border-success/30">
                                     Default
                                 </span>
                             </td>
@@ -87,10 +83,10 @@
                                 <div class="flex items-center justify-end gap-2">
                                     <button type="button" @click="openEdit(persona)"
                                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                                                   ring-offset-background transition-colors
-                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                                                   border border-input bg-background hover:bg-accent hover:text-accent-foreground
-                                                   h-8 px-3"
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-input bg-background hover:bg-accent hover:text-accent-foreground
+ h-8 px-3"
                                             :aria-label="'Edit ' + persona.name">
                                         <i data-lucide="pencil" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
                                         Edit
@@ -98,10 +94,10 @@
                                     <button type="button" x-show="persona.has_override" x-cloak
                                             @click="openReset(persona)"
                                             class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                                                   ring-offset-background transition-colors
-                                                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                                                   border border-destructive/50 text-destructive hover:bg-destructive/10
-                                                   h-8 px-3"
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-destructive/50 text-destructive-emphasis hover:bg-destructive/10
+ h-8 px-3"
                                             :aria-label="'Reset ' + persona.name + ' to defaults'">
                                         <i data-lucide="rotate-ccw" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
                                         Reset
@@ -147,8 +143,8 @@
             <textarea id="edit-description"
                       rows="2"
                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground
-                             placeholder:text-muted-foreground
-                             focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+ placeholder:text-muted-foreground
+ focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
                       placeholder="Persona description..."
                       x-model="$root.closest('[x-data]')._x_dataStack ? '' : ''"
                       aria-label="Persona description"></textarea>
@@ -163,8 +159,8 @@
             <textarea id="edit-system-prompt"
                       rows="6"
                       class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground font-mono
-                             placeholder:text-muted-foreground
-                             focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+ placeholder:text-muted-foreground
+ focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
                       placeholder="You are an enterprise architect specializing in..."
                       aria-label="System prompt override"></textarea>
         </div>
@@ -180,10 +176,10 @@
             </div>
             <button type="button" id="btn-add-sample-prompt"
                     class="mt-2 inline-flex items-center justify-center rounded-md text-sm font-medium
-                           ring-offset-background transition-colors
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
-                           h-8 px-3"
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-input bg-background hover:bg-accent hover:text-accent-foreground
+ h-8 px-3"
                     aria-label="Add sample prompt">
                 <i data-lucide="plus" class="h-3.5 w-3.5 mr-1.5" aria-hidden="true"></i>
                 Add Prompt
@@ -195,19 +191,19 @@
             <button type="button"
                     data-modal-close="edit-persona-modal"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                           ring-offset-background transition-colors
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                           border border-input bg-background hover:bg-accent hover:text-accent-foreground
-                           h-9 px-4">
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-input bg-background hover:bg-accent hover:text-accent-foreground
+ h-9 px-4">
                 Cancel
             </button>
             <button type="submit"
                     id="btn-save-persona"
                     class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                           ring-offset-background transition-colors
-                           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                           bg-primary text-primary-foreground hover:bg-primary/90
-                           h-9 px-4">
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ bg-primary text-primary-foreground hover:bg-primary/90
+ h-9 px-4">
                 Save Changes
             </button>
         </div>
@@ -226,19 +222,19 @@
         <button type="button"
                 data-modal-close="reset-persona-modal"
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                       ring-offset-background transition-colors
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                       border border-input bg-background hover:bg-accent hover:text-accent-foreground
-                       h-9 px-4">
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ border border-input bg-background hover:bg-accent hover:text-accent-foreground
+ h-9 px-4">
             Cancel
         </button>
         <button type="button"
                 id="btn-confirm-reset"
                 class="inline-flex items-center justify-center rounded-md text-sm font-medium
-                       ring-offset-background transition-colors
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
-                       bg-destructive text-destructive-foreground hover:bg-destructive/90
-                       h-9 px-4">
+ ring-offset-background transition-colors
+ focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+ bg-destructive text-destructive-foreground hover:bg-destructive/90
+ h-9 px-4">
             Reset to Defaults
         </button>
     </div>
@@ -269,21 +265,18 @@ document.addEventListener('alpine:init', function() {
                 this.loading = true;
                 this.errorMsg = '';
                 try {
-                    const resp = await fetch('/ai-chat/admin/prompts/data');
-                    if (!resp.ok) {
-                        if (resp.status === 403) {
-                            this.errorMsg = 'Access denied. Admin privileges required.';
-                            return;
-                        }
-                        throw new Error('Failed to load personas');
-                    }
-                    const data = await resp.json();
+                    const data = await Platform.fetch.get('/ai-chat/admin/prompts/data', null, { silent: true });
                     this.personas = data.personas || [];
                     this.$nextTick(function() {
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                     });
                 } catch (err) {
-                    this.errorMsg = err.message || 'Failed to load persona data';
+                    // Platform.fetch throws on non-ok responses; err.status is available
+                    if (err.status === 403) {
+                        this.errorMsg = 'Access denied. Admin privileges required.';
+                    } else {
+                        this.errorMsg = err.message || 'Failed to load persona data';
+                    }
                 } finally {
                     this.loading = false;
                 }
@@ -368,16 +361,7 @@ document.addEventListener('alpine:init', function() {
                 };
 
                 try {
-                    let resp = await fetch('/ai-chat/admin/prompts/' + this.editForm.key + '/update', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(payload)
-                    });
-                    let data = await resp.json();
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to save changes';
-                        return;
-                    }
+                    const data = await Platform.fetch.post('/ai-chat/admin/prompts/' + this.editForm.key + '/update', payload, { silent: true });
                     /* Update local state */
                     let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
                     if (idx >= 0) this.personas[idx] = data.persona;
@@ -385,7 +369,8 @@ document.addEventListener('alpine:init', function() {
                     this.successMsg = 'Persona "' + this.editForm.name + '" updated successfully.';
                     setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error saving persona';
+                    // Platform.fetch throws on non-ok responses; err.data may contain error details
+                    this.errorMsg = (err.data && err.data.error) || err.message || 'Network error saving persona';
                 }
             },
 
@@ -401,22 +386,15 @@ document.addEventListener('alpine:init', function() {
 
             async confirmReset() {
                 try {
-                    let resp = await fetch('/ai-chat/admin/prompts/' + this.resetKey + '/reset', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'}
-                    });
-                    let data = await resp.json();
-                    if (!resp.ok) {
-                        this.errorMsg = data.error || 'Failed to reset persona';
-                        return;
-                    }
+                    const data = await Platform.fetch.post('/ai-chat/admin/prompts/' + this.resetKey + '/reset', null, { silent: true });
                     let idx = this.personas.findIndex(function(p) { return p.key === data.persona.key; });
                     if (idx >= 0) this.personas[idx] = data.persona;
                     Platform.modal.close('reset-persona-modal');
                     this.successMsg = 'Persona "' + this.resetName + '" reset to defaults.';
                     setTimeout(function() { this.successMsg = ''; }.bind(this), 4000);
                 } catch (err) {
-                    this.errorMsg = err.message || 'Network error resetting persona';
+                    // Platform.fetch throws on non-ok responses; err.data may contain error details
+                    this.errorMsg = (err.data && err.data.error) || err.message || 'Network error resetting persona';
                 }
             }
         };

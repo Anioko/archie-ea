@@ -5,21 +5,26 @@ Legacy file preserved at original location.
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required
-from app import csrf
 from app.decorators import audit_log
 from app.extensions import db
 from app.modules.vendors.services.analysis_service import (
     CapabilityService,
     ExportService,
-    VendorAnalysisService,
     VendorService,
+)
+from app.modules.architecture.services.options_analysis_service import (
+    OptionsAnalysisService,
 )
 
 # Create blueprint
 vendor_analysis_bp = Blueprint("vendor_analysis", __name__, url_prefix="/vendor-analysis")
 
-# Service instances
-analysis_service = VendorAnalysisService()
+# Service instances. The create/run/get-analysis/comparison endpoints in this
+# module were written against OptionsAnalysisService's API (create_analysis,
+# run_analysis, get_analysis, get_comparison_data) — the previously-wired
+# VendorAnalysisService has none of those methods, so every one of them raised
+# AttributeError.
+analysis_service = OptionsAnalysisService()
 capability_service = CapabilityService()
 vendor_service = VendorService()
 export_service = ExportService()
@@ -115,6 +120,8 @@ def get_comparison(analysis_id):
     try:
         comparison_data = analysis_service.get_comparison_data(analysis_id)
         return jsonify(comparison_data)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting comparison data: {e}")
         return jsonify({"error": "Failed to load comparison data"}), 500
@@ -126,6 +133,8 @@ def get_results(analysis_id):
     try:
         results = analysis_service.get_comparison_data(analysis_id)
         return jsonify(results)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 404
     except Exception as e:
         current_app.logger.error(f"Error getting results: {e}")
         return jsonify({"error": "Failed to load results"}), 500
@@ -135,6 +144,14 @@ def get_results(analysis_id):
 def export_analysis(analysis_id, format_type):
     """Export analysis results."""
     try:
+        from app.models.vendor_analysis import OptionsAnalysis
+        from app.utils.route_guards import require_entity_json
+
+        # Existence guard: an empty export for a nonexistent analysis is fabricated data.
+        _analysis, missing = require_entity_json(OptionsAnalysis, analysis_id, label="Analysis")
+        if missing:
+            return missing
+
         data = export_service.export_analysis(analysis_id, format_type)
         return jsonify({"data": data})
     except Exception as e:

@@ -22,7 +22,7 @@
         {# Title #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-title">
-                Title <span class="text-destructive" aria-hidden="true">*</span>
+                Title <span class="text-destructive-emphasis" aria-hidden="true">*</span>
             </label>
             <input id="adr-title" type="text"
                    x-data
@@ -52,7 +52,7 @@
         {# Context #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-context">Context</label>
-            <p class="text-[11px] text-muted-foreground mb-1">Why was this decision needed? What forces are at play?</p>
+            <p class="text-2xs text-muted-foreground mb-1">Why was this decision needed? What forces are at play?</p>
             <textarea id="adr-context"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.context : ''"
@@ -65,9 +65,9 @@
         {# Decision #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-decision">
-                Decision <span class="text-destructive" aria-hidden="true">*</span>
+                Decision <span class="text-destructive-emphasis" aria-hidden="true">*</span>
             </label>
-            <p class="text-[11px] text-muted-foreground mb-1">What was decided? State it clearly and unambiguously.</p>
+            <p class="text-2xs text-muted-foreground mb-1">What was decided? State it clearly and unambiguously.</p>
             <textarea id="adr-decision"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.decision : ''"
@@ -81,7 +81,7 @@
         {# Rationale #}
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-rationale">Rationale</label>
-            <p class="text-[11px] text-muted-foreground mb-1">Why was this option chosen over the alternatives?</p>
+            <p class="text-2xs text-muted-foreground mb-1">Why was this option chosen over the alternatives?</p>
             <textarea id="adr-rationale"
                       x-data
                       :value="window._decisionsSection ? window._decisionsSection.form.rationale : ''"
@@ -109,7 +109,7 @@
                 <label class="text-xs font-medium text-foreground">Alternatives Considered</label>
                 <button type="button"
                         @click="_s.addAlternative()"
-                        class="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 transition-colors">
+                        class="inline-flex items-center gap-1 text-2xs font-medium text-primary hover:text-primary/80 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                     Add option
                 </button>
@@ -121,25 +121,25 @@
                             <input type="text"
                                    x-model="alt.name"
                                    :placeholder="'Option ' + (idx + 1) + ' name'"
-                                   class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring">
-                            <button type="button"
+                                   class="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Name">
+                            <button aria-label="Remove alternative" type="button"
                                     @click="_s.removeAlternative(idx)"
-                                    class="text-muted-foreground hover:text-destructive transition-colors">
+                                    class="text-muted-foreground hover:text-destructive-emphasis transition-colors">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
-                                <label class="block text-[10px] font-medium text-emerald-600 mb-1">Pros</label>
+                                <label class="block text-xs font-medium text-success-emphasis mb-1">Pros</label>
                                 <textarea x-model="alt.pros" rows="2"
                                           placeholder="Advantages..."
-                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Pros"></textarea>
                             </div>
                             <div>
-                                <label class="block text-[10px] font-medium text-destructive mb-1">Cons</label>
+                                <label class="block text-xs font-medium text-destructive-emphasis mb-1">Cons</label>
                                 <textarea x-model="alt.cons" rows="2"
                                           placeholder="Disadvantages..."
-                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                          class="w-full rounded-md border border-input bg-background px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Cons"></textarea>
                             </div>
                         </div>
                     </div>
@@ -152,7 +152,7 @@
         {# Form error #}
         <div x-data
              x-show="window._decisionsSection && window._decisionsSection.formError" x-cloak
-             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive-emphasis"
              x-text="window._decisionsSection ? window._decisionsSection.formError : ''"></div>
 
         {# Actions #}
@@ -188,7 +188,7 @@
           class="space-y-4">
         <div>
             <label class="block text-xs font-medium text-foreground mb-1.5" for="adr-reject-reason">
-                Rejection Reason <span class="text-destructive" aria-hidden="true">*</span>
+                Rejection Reason <span class="text-destructive-emphasis" aria-hidden="true">*</span>
             </label>
             <textarea id="adr-reject-reason"
                       :value="window._decisionsSection ? window._decisionsSection.rejectReason : ''"
@@ -200,7 +200,7 @@
         </div>
 
         <div x-show="window._decisionsSection && window._decisionsSection.rejectError" x-cloak
-             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+             class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive-emphasis"
              x-text="window._decisionsSection ? window._decisionsSection.rejectError : ''"></div>
 
         <div class="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -229,7 +229,7 @@
         const cfg        = window.__BLUEPRINT_CONFIG__ || {};
         const solutionId = cfg.solutionId;
         const csrfToken  = cfg.csrfToken
-                           || document.querySelector('meta[name="csrf-token"]')?.content
+                           || document.querySelector('meta[name=csrf-token]')?.content
                            || '';
         const baseUrl    = '/solutions/' + solutionId + '/decisions';
 
@@ -313,46 +313,53 @@
 
             async loadNarrative() {
                 try {
-                    const resp = await fetch(
+                    const json = await Platform.fetch(
                         '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
-                        { headers: { 'X-CSRFToken': csrfToken, 'Accept': 'application/json' } }
+                        { headers: { 'Accept': 'application/json' }, silent: true }
                     );
-                    if (!resp.ok) return;
-                    const json = await resp.json();
-                    this.narrative = json.narrative || '';
-                } catch (_) {}
+                    this.narrative = (json.data ?? json).narrative || '';
+                } catch (e) {
+                    // The textarea below is empty either way — without this,
+                    // the user can't tell "no narrative saved yet" from "load
+                    // failed", and typing + autosave would then silently
+                    // overwrite whatever narrative was actually saved.
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Failed to load the saved narrative — reload before editing to avoid overwriting it');
+                    }
+                }
             },
 
             async autoSave(value) {
                 this.narrativeSaving = 'saving';
                 try {
-                    await fetch(
+                    // The raw fetch this replaced never checked the response, so a
+                    // rejected save still flipped the indicator to 'saved' and the
+                    // catch discarded network failures without a word - the user was
+                    // shown a saved narrative that the server had not stored.
+                    await Platform.fetch.put(
                         '/solutions/' + solutionId + '/api/section-narratives/architecture_decisions',
-                        {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                            body: JSON.stringify({ narrative: value !== undefined ? value : this.narrative }),
-                        }
+                        { narrative: value !== undefined ? value : this.narrative },
+                        { silent: true }
                     );
                     this.narrativeSaving = 'saved';
                     setTimeout(() => { if (this.narrativeSaving === 'saved') this.narrativeSaving = 'idle'; }, 2000);
-                } catch (_) { this.narrativeSaving = 'idle'; }
+                } catch (e) {
+                    this.narrativeSaving = 'idle';
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Narrative not saved: ' + (e.message || 'save failed'));
+                    }
+                }
             },
 
             async generateNarrative() {
                 if (this.generatingNarrative) return;
                 this.generatingNarrative = true;
                 try {
-                    const resp = await fetch(
+                    const json = await Platform.fetch.post(
                         '/solutions/' + solutionId + '/api/blueprint/architecture_decisions/generate',
-                        {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
-                            body: JSON.stringify({ force_regenerate: false }),
-                        }
+                        { force_regenerate: false },
+                        { silent: true }
                     );
-                    const json = await resp.json();
-                    if (!resp.ok) throw new Error(json.error || 'Generate failed');
                     this.narrative = json.narrative || this.narrative;
                     await this.autoSave();
                 } catch (e) {
@@ -367,14 +374,10 @@
                 this.loading = true;
                 this.error   = null;
                 try {
-                    const resp = await fetch(baseUrl, {
-                        headers: {
-                            'X-CSRFToken': csrfToken,
-                            'Accept':      'application/json',
-                        },
+                    const json = await Platform.fetch(baseUrl, {
+                        headers: { 'Accept': 'application/json' },
+                        silent: true,
                     });
-                    if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Load failed');
                     this.decisions = json.data || [];
                 } catch (e) {
@@ -389,6 +392,7 @@
                 if (!d.alternatives) return null;
                 if (Array.isArray(d.alternatives)) return d.alternatives;
                 if (typeof d.alternatives === 'object') return null;
+                // swallow-ok: not a network path — parses a stored text field; null means "no renderable alternatives", and the decision itself still renders
                 try { return JSON.parse(d.alternatives); } catch (_) { return null; }
             },
 
@@ -475,16 +479,12 @@
                         : baseUrl;
                     const method = this.editingDecision ? 'PUT' : 'POST';
 
-                    const resp = await fetch(url, {
+                    const json = await Platform.fetch(url, {
                         method,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken':  csrfToken,
-                            'Accept':       'application/json',
-                        },
-                        body: JSON.stringify(payload),
+                        headers: { 'Accept': 'application/json' },
+                        body: payload,
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Save failed');
 
                     // Patch local list in-place
@@ -515,14 +515,11 @@
             async approveDecision(id) {
                 this.actionLoading = { ...this.actionLoading, [id]: true };
                 try {
-                    const resp = await fetch(baseUrl + '/' + id + '/approve', {
+                    const json = await Platform.fetch(baseUrl + '/' + id + '/approve', {
                         method:  'POST',
-                        headers: {
-                            'X-CSRFToken': csrfToken,
-                            'Accept':      'application/json',
-                        },
+                        headers: { 'Accept': 'application/json' },
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Approve failed');
                     const idx = this.decisions.findIndex(d => d.id === id);
                     if (idx >= 0) {
@@ -553,16 +550,12 @@
                 this.submitting   = true;
                 try {
                     const id   = this.rejectingDecision.id;
-                    const resp = await fetch(baseUrl + '/' + id + '/reject', {
+                    const json = await Platform.fetch(baseUrl + '/' + id + '/reject', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken':  csrfToken,
-                            'Accept':       'application/json',
-                        },
-                        body: JSON.stringify({ reason: this.rejectReason.trim() }),
+                        headers: { 'Accept': 'application/json' },
+                        body: { reason: this.rejectReason.trim() },
+                        silent: true,
                     });
-                    const json = await resp.json();
                     if (!json.success) throw new Error(json.error || 'Reject failed');
 
                     const idx = this.decisions.findIndex(d => d.id === id);

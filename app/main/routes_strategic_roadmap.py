@@ -1,16 +1,15 @@
 """Strategic Roadmap Routes - Strategic Planning & Vision"""
 
-from datetime import datetime, timedelta  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 
-from flask import flash, g, jsonify, redirect, render_template, request, url_for  # dead-code-ok
+from flask import current_app, flash, g, jsonify, render_template, request  # dead-code-ok
 from flask_login import current_user, login_required
-from sqlalchemy import func, text  # dead-code-ok
+from sqlalchemy import text  # dead-code-ok
 
 from app import db
 from app.main.views import main
-from app.models.implementation_migration import Gap, Plateau, WorkPackage  # dead-code-ok
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-from app.models.unified_capability import BusinessDomain, UnifiedCapability  # dead-code-ok
+from app.models.unified_capability import UnifiedCapability  # dead-code-ok
 from app.models.unified_work_package import UnifiedWorkPackage
 
 
@@ -168,9 +167,13 @@ def strategic_roadmap():
             selected_importance=selected_importance or "",  # Ensure always defined
         )
 
-    except Exception as e:
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Error loading strategic roadmap")
         flash("Error loading strategic roadmap. Please try again.", "error")
-        # Provide default timeline dates even in error case (use current year)
+        # The timeline axis is a display range, not a measurement, so it stays.
+        # Coverage figures become None - a zeroed coverage would be read as a
+        # finding about the portfolio rather than a failed query.
         current_year = datetime.now().year
         start_date = datetime(current_year, 1, 1)
         end_date = datetime(current_year + 5, 12, 31)
@@ -182,15 +185,16 @@ def strategic_roadmap():
             work_packages=[],
             months=[],
             unmapped_capabilities=[],
-            total_capabilities=0,
-            mapped_capabilities=0,
-            mapping_coverage=0,
+            total_capabilities=None,
+            mapped_capabilities=None,
+            mapping_coverage=None,
             start_date=start_date,
             end_date=end_date,
             selected_levels=["L1", "L2", "L3"],  # Ensure always defined
             selected_domain="",  # Ensure always defined
-            selected_importance="",
-        )  # Ensure always defined
+            selected_importance="",  # Ensure always defined
+            load_error="The strategic roadmap could not be read.",
+        )
 
 
 @main.route("/api/strategic-work-packages")
@@ -200,15 +204,15 @@ def get_strategic_work_packages():
     try:
         # Get filter parameters
         selected_levels = request.args.getlist("levels") or ["L1", "L2", "L3"]
-        selected_domain = request.args.get("domain", "")
-        selected_importance = request.args.get("importance", "")
+        request.args.get("domain", "")
+        request.args.get("importance", "")
 
         # Convert level strings to integers
-        level_ints = [
+        ([
             int(level[1])
             for level in selected_levels
             if level.startswith("L") and level[1:].isdigit()
-        ]
+        ])
 
         # Use ORM without backend filtering (let frontend handle filtering)
         work_packages_query = UnifiedWorkPackage.query.filter(
@@ -255,7 +259,7 @@ def get_strategic_work_packages():
             )
 
         return jsonify({"work_packages": work_packages_list})
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -318,7 +322,7 @@ def create_strategic_work_package():
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -388,7 +392,7 @@ def update_strategic_work_package(wp_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -407,6 +411,6 @@ def delete_strategic_work_package(wp_id):
 
         return jsonify({"success": True, "message": f"Strategic work package {wp_id} deleted"})
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500

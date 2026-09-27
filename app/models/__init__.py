@@ -58,6 +58,9 @@ if _FAST_INIT:
     from .miscellaneous import *  # noqa
     from .technology_stack import *  # noqa - TechnologyStack for fast init
     from .user import *  # noqa
+    # Session registry is read on every authenticated request via
+    # app/_bootstrap/session_policy.py -- must exist even under fast init.
+    from .user_session import UserSession  # noqa: F401
 else:
     from .adr import *  # noqa - ArchitectureDecisionRecord (Solution Architecture governance)
     from .ai_audit_log import *  # noqa - AIAuditLog (ai_audit_logs table; needed by create_all)
@@ -67,10 +70,22 @@ else:
     # Feature models that were defined but never imported here, so create_all() skipped
     # their tables -> routes querying them returned UndefinedTable 500s on a fresh install.
     from .import_history import *  # noqa
+    # BA-B1: artefact_share_links. Imported here so create_all() builds the
+    # table on a fresh install and reconcile-schema sees the mapped model on an
+    # existing one — every column below the primary key is nullable or has a
+    # default, so an ADD-only reconcile can apply it.
+    from .artefact_share import ArtefactShareLink  # noqa: F401
     from .sso_config import *  # noqa
+    # Session registry (server-side revocation on logout / password change).
+    from .user_session import UserSession  # noqa: F401
+    from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa
+    # conversation_threads / conversation_messages existed only in an Alembic
+    # revision, and deploys do not run `flask db upgrade` — so a fresh database
+    # had no chat history tables at all and /ai-chat/threads 500'd.
+    from .conversation import ConversationMessageRecord, ConversationThreadRecord  # noqa
     from .consulting_partner import *  # noqa
     from .capability_archimate_mapping import *  # noqa
     from .copilot_insight import *  # noqa
@@ -169,6 +184,8 @@ else:
     from .archimate_technology import *  # noqa - TechnologyCollaborationFull, TechnologyFunction, TechnologyProcess, TechnologyInteraction, TechnologyEvent, Resource (ArchiMate 3.2 Technology Layer behavioral elements)
     from .archimate_viewpoint import *  # noqa - ArchiMateViewpoint, ViewpointStakeholderMapping, ViewpointView (ArchiMate 3.2 Viewpoint Catalog)
     from .architecture_session import *  # noqa - ArchitectureSession (undo/rollback capability for bulk operations)
+    from .architecture_journey import *  # noqa - purpose-led architecture journey aggregate
+    from .architecture_journey_link import *  # noqa - journey edges: links and members
 
     # from app.wizards.models import ApplicationRationalizationWizard, RequirementsToCodeWizard, ComplianceAccelerationWizard  # Commented out: wizards module doesn't exist
     from .autogen import *  # noqa
@@ -180,6 +197,18 @@ else:
 
     # Capability to Vendor/Application Mapping Models - Cross-specialization type relationships
     from .capability_to_vendor_mapping import *  # noqa - TechnicalCapabilityVendorMapping, UnifiedCapabilityApplicationMapping, UnifiedCapabilityVendorOrganizationMapping, ApplicationVendorProductMapping
+
+    # Register the complete vendor catalogue graph before a worker can serve a
+    # request. Without this eager import, a concurrent first request can
+    # configure VendorProductDetail while its string-related VendorProductAlias
+    # class is still being imported, leaving the worker's mapper registry
+    # permanently invalid. Keep this after the canonical capability mapping;
+    # vendor_product re-exports that mapping for legacy callers.
+    from .vendor.vendor_product import (  # noqa: F401
+        VendorProductAlias,
+        VendorProductDetail,
+        VendorProductFamily,
+    )
 
     # Consolidation Module - Application consolidation and savings tracking
     from .consolidation import *  # noqa - ConsolidationCandidate, ConsolidationOpportunity, SavingsRealization
@@ -245,6 +274,15 @@ else:
 
     # Strategic Module - Strategic initiatives, milestones, and roadmap management
     from .strategic import *  # noqa - StrategicInitiative, StrategicMilestone, RoadmapItem
+    from .transformation_programme import *  # noqa - canonical programme aggregate children
+    from .transformation_execution import *  # noqa - fenced commands and immutable results
+    from .transformation_evidence import *  # noqa - candidates, signals, and evidence requests
+    from .transformation_decision import *  # noqa - immutable options and decision briefs
+    from .arb_submission_event import *  # noqa - immutable typed ARB submission receipt
+    from .arb_decision_event import *  # noqa - immutable typed ARB decisions and conditions
+    from .arb_condition_evidence import *  # noqa - immutable condition-scoped evidence
+    from .arb_condition_event import *  # noqa - immutable ARB condition lifecycle
+    from . import transformation_db_guards  # noqa: F401 - registers PostgreSQL guards
     from .strategy_layer import *  # noqa - StrategyResource, CourseOfAction, ValueStream (Strategy Layer completion)
     from .structural_elements import *  # noqa - Grouping, Junction, Location (Structural/Composite elements)
 
@@ -290,6 +328,24 @@ else:
     # Risk model for TPM-013 risk heat map
     from .risk import Risk, RiskStatus  # noqa: F401
 
+    # H1: Risk <-> Application/Solution/Programme links
+    from .risk_entity_link import RiskEntityLink  # noqa: F401
+
+    # RAID: Assumption/Issue/Dependency (Risk above already covers the "R")
+    from .raid_item import RaidItem, RaidKind, RaidStatus  # noqa: F401
+
+    # Approved-technology register behind the governance dashboard's Standards tab
+    from .technology_standard import TechnologyStandard  # noqa: F401
+
+    # Measurable initiative outcomes (replaces the expected_benefits JSON blob)
+    from .benefit import Benefit  # noqa: F401
+
+    # Demand intake (the front door) and Assumption (completes RAID)
+    from .demand import Assumption, Demand  # noqa: F401
+
+    # Hourly rates, so logged effort can be costed into initiative spend
+    from .rate_card import RateCard  # noqa: F401
+
     # SA-009: TOGAF ADM deliverable checklists per phase
     from .adm_deliverable import ADMDeliverable, ADMDeliverableCheck  # noqa: F401
 
@@ -314,12 +370,27 @@ else:
     from .solution_domain_spec import SolutionDomainSpec  # noqa: F401
     from .acm_property_template import AcmPropertyTemplate  # noqa: F401
 
+    # T-003: derived-fact store (DE-2) — rule-derived ArchiMate relationships
+    from app.modules.intelligence.models.derived_relationship import (  # noqa: F401
+        DerivedRelationship,
+    )
+
+    # T-005 (D7): derivation run-record store (DE-11) — the only producer of
+    # "did derivation run for this tenant, when, and how long did it take".
+    from app.modules.intelligence.models.derivation_run import (  # noqa: F401
+        DerivationRun,
+    )
+
     # Solution Workflow & Governance — FK dependency: governance references workflow_tasks
     from .solution_workflow import *  # noqa: F401
     # solution_reasoning defines solution_ai_reasoning_states, which solution_governance
     # references via FK; it must be in metadata for create_all() to resolve that FK.
     from .solution_reasoning import *  # noqa: F401
     from .solution_governance import *  # noqa: F401
+    from .arb_submission_evidence import (  # noqa: F401
+        ARBSubmissionEvidenceSnapshot,
+        WorkbenchArtifactEvidence,
+    )
 
     # GOV-02: Architecture Decision Records (uses original architecture_decision.py, imported at line 61)
     # Duplicate architecture_decisions.py removed — original has richer schema
@@ -355,3 +426,23 @@ else:
 
     # INTARCH-001: Integration Pattern library — SAP↔Microsoft governance
     from .integration_pattern import IntegrationPattern  # noqa: F401
+
+    # BMC-001: Business Model Canvas + Operating Model (Business-Architect artifact)
+    from .business_model import BusinessModelCanvas  # noqa: F401
+
+    # ORG-001: enterprise RACI assignments (Business-Architect org modeling)
+    from .organization_model import EnterpriseRaciAssignment  # noqa: F401
+
+    # BC-001: consolidated Business Case artifact (Business-Architect)
+    from .business_case import BusinessCase  # noqa: F401
+
+    # ARCH-124: Tech Radar — adopt/trial/assess/hold classification over the
+    # existing Technology-layer ArchiMateElement catalogue.
+    from .tech_radar import TechRadarEntry  # noqa: F401
+
+    # ARCH-123 (Data Lineage) builds entirely on the existing
+    # ArchiMateRelationship model (type="DataFlow" between DataObject
+    # elements) — no new table required; see
+    # app/modules/data_lineage/services.py.
+    from .waitlist_signup import WaitlistSignup  # noqa: F401
+    from .pending_invitation import PendingInvitation  # noqa: F401

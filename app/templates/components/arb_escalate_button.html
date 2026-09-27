@@ -8,23 +8,36 @@
 {% macro arb_escalate(f, solution_id='') %}
 <span x-data="{
         done: false, busy: false, num: '',
-        async go() {
+        /* .then()/.catch(), not async/await: this body is an Alpine attribute
+           expression, run by the CSP-safe interpreter
+           (app/static/js/csp/csp-evaluator.js), which cannot await. */
+        go() {
+            const self = this;
             this.busy = true;
-            try {
-                const ds = this.$root.dataset;
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
-                const r = await fetch('/solutions/arb/escalate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf },
-                    body: JSON.stringify({
-                        title: ds.title, detail: ds.detail,
-                        category: ds.category, severity: ds.severity,
-                        solution_id: ds.solution || null,
-                    }),
+            const ds = this.$root.dataset;
+            return Platform.fetch.post('/solutions/arb/escalate', {
+                    title: ds.title,
+                    detail: ds.detail,
+                    category: ds.category,
+                    severity: ds.severity,
+                    solution_id: ds.solution || null,
+                }, { silent: true })
+                .then(function (d) {
+                    // Platform.fetch.post throws on non-ok responses, so reaching here means success
+                    if (d.success) {
+                        self.done = true;
+                        self.num = d.review_number;
+                    }
+                    self.busy = false;
+                })
+                .catch(function (error) {
+                    // Nothing was escalated and no review number exists — say so rather
+                    // than leaving the button silently un-busy.
+                    self.done = false;
+                    self.num = '';
+                    self.busy = false;
+                    Platform.toast.error('Escalation to ARB failed: ' + (error && error.message ? error.message : 'unknown error'));
                 });
-                const d = await r.json();
-                if (r.ok && d.success) { this.done = true; this.num = d.review_number; }
-            } finally { this.busy = false; }
         }
      }"
      data-title="{{ f.title }}"
@@ -34,11 +47,11 @@
      data-solution="{{ solution_id }}"
      class="shrink-0">
     <button type="button" x-show="!done" @click="go()" :disabled="busy"
-            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium border border-input bg-background hover:bg-accent transition-colors disabled:opacity-50">
+            class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium border border-input bg-background hover:bg-accent transition-colors disabled:opacity-50">
         <i data-lucide="gavel" class="h-3 w-3"></i>
         <span x-text="busy ? 'Escalating…' : 'Escalate to ARB'"></span>
     </button>
-    <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+    <span x-show="done" x-cloak class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-success/10 text-success-emphasis border border-success/30">
         <i data-lucide="check" class="h-3 w-3"></i> Escalated · <span x-text="num"></span>
     </span>
 </span>

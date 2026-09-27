@@ -15,6 +15,7 @@ from datetime import datetime
 
 from flask import (
     Blueprint,
+    current_app,
     flash,
     jsonify,
     redirect,
@@ -23,10 +24,12 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.decorators import audit_log
 from app.services.ea_workflow_engine import EAWorkflowEngine
+from app.utils.pagination import safe_int_arg
 
 integration_bp = Blueprint("integration", __name__, url_prefix="/integration")
 
@@ -76,12 +79,17 @@ def workflow_dashboard():
             },
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflow dashboard: %s", e)
         flash(f"Error loading workflow dashboard: {str(e)}", "error")
+        # stats=None so the cards render an em dash; {} left them blank, which
+        # is just as misleading as a zero once the flash has faded.
         return render_template(
             "integration/dashboard.html",
             definitions=[],
             active_instances=[],
-            stats={},
+            stats=None,
+            load_error="Workflow statistics could not be read.",
         )
 
 
@@ -111,11 +119,14 @@ def list_workflows():
             selected_category=category,
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflows: %s", e)
         flash(f"Error loading workflows: {str(e)}", "error")
         return render_template(
             "integration/workflow_list.html",
             workflows_by_category={},
             selected_category=None,
+            load_error="The workflow catalog could not be read.",
         )
 
 
@@ -134,7 +145,12 @@ def list_instances():
         if status != "all":
             query = query.filter_by(status=status)
         if workflow_code:
-            query = query.filter_by(workflow_code=workflow_code)
+            # workflow_code lives on EAWorkflowDefinition, not EAWorkflowInstance —
+            # resolve it to the definition id and filter by the real FK column.
+            from app.models.workflow_models import EAWorkflowDefinition
+
+            _defn = EAWorkflowDefinition.query.filter_by(workflow_code=workflow_code).first()
+            query = query.filter_by(workflow_definition_id=_defn.id if _defn else -1)
 
         instances = query.order_by(EAWorkflowInstance.started_at.desc()).limit(50).all()
 
@@ -150,6 +166,8 @@ def list_instances():
             selected_workflow=workflow_code,
         )
     except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error loading workflow instances: %s", e)
         flash(f"Error loading workflow instances: {str(e)}", "error")
         return render_template(
             "integration/instance_list.html",
@@ -157,6 +175,7 @@ def list_instances():
             definitions=[],
             selected_status="all",
             selected_workflow=None,
+            load_error="Workflow instances could not be read.",
         )
 
 
@@ -384,7 +403,7 @@ def api_list_instances():
         from app.models.workflow_models import EAWorkflowInstance
 
         status = request.args.get("status")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         query = EAWorkflowInstance.query
         if status:
@@ -400,7 +419,7 @@ def api_list_instances():
                 "instances": [
                     {
                         "id": i.id,
-                        "workflow_code": i.workflow_code,
+                        "workflow_code": i.definition.workflow_code if i.definition else None,
                         "status": i.status,
                         "started_at": i.started_at.isoformat()
                         if i.started_at
@@ -408,7 +427,7 @@ def api_list_instances():
                         "completed_at": i.completed_at.isoformat()
                         if i.completed_at
                         else None,
-                        "current_step": i.current_step,
+                        "current_step": i.current_step_id,
                         "progress_percent": i.progress_percent,
                     }
                     for i in instances
@@ -423,11 +442,18 @@ def api_list_instances():
 @login_required
 def api_instance_status(instance_id):
     """API: Get detailed status of a workflow instance."""
+    from app.models.workflow_models import EAWorkflowInstance
+    from app.utils.route_guards import require_entity
+
+    require_entity(EAWorkflowInstance, instance_id, description="Workflow instance not found")
+
     try:
         engine = EAWorkflowEngine()
         status = engine.get_instance_status(instance_id)
 
         return jsonify({"success": True, "status": status})
+    except HTTPException:
+        raise
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

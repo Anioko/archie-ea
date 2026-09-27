@@ -13,7 +13,7 @@
 
 <div class="space-y-4">
     <div>
-        <label for="al-target" class="block text-sm font-medium mb-1.5">Target Element <span class="text-destructive">*</span></label>
+        <label for="al-target" class="block text-sm font-medium mb-1.5">Target Element <span class="text-destructive-emphasis">*</span></label>
         <select id="al-target" name="target_element_id" required
                 class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
             <option value="">Select an element...</option>
@@ -25,7 +25,7 @@
 
     <div class="grid grid-cols-2 gap-4">
         <div>
-            <label for="al-type" class="block text-sm font-medium mb-1.5">Relationship Type <span class="text-destructive">*</span></label>
+            <label for="al-type" class="block text-sm font-medium mb-1.5">Relationship Type <span class="text-destructive-emphasis">*</span></label>
             <select id="al-type" name="relationship_type" required
                     class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                 {% for val, label in archimate_form_config.relationship_types %}

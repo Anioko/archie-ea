@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import requests
+from html import escape
 
 
 class TestAlertConfig:
@@ -319,20 +320,20 @@ class TestAlertManager:
             <html>
             <body style="font-family: Arial, sans-serif; padding: 20px;">
                 <h2 style="color: {'#d32f2f' if alert['severity'] == 'critical' else '#f57c00'};">
-                    {alert['message']}
+                    {escape(str(alert['message']))}
                 </h2>
                 <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
                     <tr>
                         <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Type</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">{alert['type']}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{escape(str(alert['type']))}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Severity</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">{alert['severity']}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{escape(str(alert['severity']))}</td>
                     </tr>
                     <tr>
                         <td style="padding: 10px; border: 1px solid #ddd; font-weight: bold;">Time</td>
-                        <td style="padding: 10px; border: 1px solid #ddd;">{alert['timestamp']}</td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{escape(str(alert['timestamp']))}</td>
                     </tr>
                 </table>
                 <p>View the dashboard: <a href="http://localhost:5000/testing/dashboard">

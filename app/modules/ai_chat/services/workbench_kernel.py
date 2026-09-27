@@ -17,6 +17,7 @@ All workspace state is persisted via SolutionAnalysisSession.custom_metadata
 and Flask session, so it survives page refreshes and session resumes.
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import enum
 import logging
 import re
@@ -290,6 +291,23 @@ class WorkbenchKernel:
             meta["artifacts"] = artifacts
             session.custom_metadata = meta
             session.updated_at = datetime.utcnow()
+            if (
+                new_state in {ArtifactState.PERSISTED, ArtifactState.APPROVED}
+                and meta.get("solution_id")
+                and session.organization_id
+            ):
+                from app.models.arb_submission_evidence import WorkbenchArtifactEvidence
+
+                solution_id = meta.get("solution_id")
+                WorkbenchArtifactEvidence.capture(
+                    organization_id=session.organization_id,
+                    workspace_id=session.id,
+                    solution_id=solution_id,
+                    name=artifact_key,
+                    state=new_state.value,
+                    payload=artifacts[artifact_key]["data"],
+                    actor_id=self.user_id or session.created_by_id,
+                )
             db.session.commit()
             return True
         except Exception as e:
@@ -564,7 +582,11 @@ class WorkbenchKernel:
                         _sync_archimate_element,
                     )
                     _sync_archimate_element(
-                        solution_id, element_type, layer, element_name[:100], description,
+                        solution_id,
+                        ae_type=element_type,
+                        ae_layer=layer,
+                        name=element_name[:100],
+                        description=description,
                     )
                 except Exception as link_err:
                     logger.debug("_sync_archimate_element skipped: %s", link_err)
@@ -874,62 +896,75 @@ class WorkbenchKernel:
             return {"success": False, "error": str(e)}
 
     def submit_to_arb(self, workspace_id: int) -> Dict[str, Any]:
-        """Submit workspace artifacts to the Architecture Review Board.
-
-        Validates that minimum required artifacts exist (brief, scope,
-        recommendation), then records the submission as an artifact.
-        """
-        ws = self.load_workspace(workspace_id)
-        if not ws:
-            return {"success": False, "error": "Workspace not found"}
-
-        artifacts = ws.get("artifacts", {})
-        solution_id = ws.get("solution_id")
-
-        # Check required artifacts
-        required = ["brief", "scope", "recommendation"]
-        missing = [r for r in required if r not in artifacts]
-        if missing:
+        """Submit through the canonical ARB service using trusted workspace state."""
+        if workspace_id is None:
             return {
                 "success": False,
-                "missing_artifacts": missing,
-                "error": f"Missing required artifacts: {', '.join(missing)}",
+                "reason_codes": ["trusted_workspace_required"],
+                "missing_evidence": [
+                    {"code": "trusted_workspace_required", "action": "Open a solution workbench"}
+                ],
             }
-
-        # Try calling ARB submission endpoint if solution exists
-        submitted = False
-        if solution_id:
-            try:
-                from flask import current_app
-                with current_app.test_client() as client:
-                    resp = client.post(
-                        f"/solutions/{solution_id}/arb-submission",
-                        json={"workspace_id": workspace_id},
-                    )
-                    if resp.status_code == 200:
-                        submitted = True
-                        logger.info("AIC-316: ARB submission for solution %s via endpoint", solution_id)
-            except Exception as arb_err:
-                logger.debug("AIC-316: ARB endpoint call skipped: %s", arb_err)
-
-        # Track as artifact
-        self.set_artifact_state(
-            workspace_id, "arb_submission",
-            ArtifactState.DRAFT.value,
-            {"solution_id": solution_id, "submitted": submitted},
+        ws = self.load_workspace(workspace_id)
+        if not ws:
+            return {
+                "success": False,
+                "reason_codes": ["workspace_not_found"],
+                "missing_evidence": [{"code": "workspace_not_found"}],
+            }
+        solution_id = ws.get("solution_id")
+        if not solution_id:
+            return {
+                "success": False,
+                "reason_codes": ["workspace_solution_missing"],
+                "missing_evidence": [{"code": "workspace_solution_missing"}],
+            }
+        from app.modules.transformation_room.arb_submission_adapter import (
+            TypedARBSubmissionAdapter,
         )
 
-        self.add_evidence(
-            workspace_id, "arb_submission",
-            f"ARB submission initiated for workspace {workspace_id}",
-            f"solution_id={solution_id}",
+        submission = TypedARBSubmissionAdapter.submit_solution_for_actor(
+            actor_id=self.user_id,
+            solution_id=solution_id,
+            trusted_workspace_id=workspace_id,
+            trusted_human_reviewed=False,
         )
+        if not submission.success:
+            blocked = {
+                "success": False,
+                "reason_codes": submission.reason_codes,
+                "missing_evidence": submission.missing_evidence,
+            }
+            if "cost_source_required" in submission.reason_codes:
+                from app.modules.solutions_strategic.v2.services.arb_submission_service import (
+                    architect_cost_provenance_recovery,
+                )
 
-        return {
-            "success": True,
-            "submitted": submitted,
+                blocked["recovery"] = architect_cost_provenance_recovery(solution_id)
+            return blocked
+
+        artifact_data = {
             "solution_id": solution_id,
+            "review_item_id": submission.review_item_id,
+            "review_number": submission.review_number,
+            "snapshot_id": submission.snapshot_id,
+            "idempotent": submission.idempotent,
+            "review_cycle_id": submission.review_cycle_id,
+            "canonical_url": submission.canonical_url,
         }
+        for state in (
+            ArtifactState.DRAFT.value,
+            ArtifactState.CONFIRMED.value,
+            ArtifactState.PERSISTED.value,
+        ):
+            if not self.set_artifact_state(workspace_id, "arb_submission", state, artifact_data):
+                return {
+                    "success": True,
+                    **artifact_data,
+                    "artifact_recorded": False,
+                    "warnings": ["submission_artifact_persistence_failed"],
+                }
+        return {"success": True, **artifact_data, "artifact_recorded": True, "warnings": []}
 
     # ------------------------------------------------------------------
     # AIC-318: Evidence gate enforcement
@@ -1189,8 +1224,7 @@ class GreenfieldWorkflow:
         """Execute a specific greenfield workflow step."""
         workspace_id = wf.get("workspace_id")
         accumulated = wf.get("accumulated", {})
-        brief = accumulated.get("brief", "")
-        target = brief[:80]
+        accumulated.get("brief", "")
 
         step_handlers = {
             "SCOPE": self._execute_scope_step,
@@ -1288,7 +1322,7 @@ class GreenfieldWorkflow:
                 session_obj = SolutionAnalysisSession.query.get(workspace_id)
                 if session_obj:
                     problem = SolutionProblemDefinition(
-                        session_id=session_obj.id, description=brief,
+                        session_id=session_obj.id, problem_description=brief,
                         business_context=user_feedback or brief,
                     )
                     db.session.add(problem)
@@ -1382,9 +1416,19 @@ class GreenfieldWorkflow:
                 try:
                     from app.modules.solutions_strategic.v2.routes.solution_phase_routes import _sync_archimate_element
                     for d in scope.get("drivers", [])[:5]:
-                        _sync_archimate_element(solution_id, "Driver", "Motivation", d["name"][:200])
+                        _sync_archimate_element(
+                            solution_id,
+                            ae_type="Driver",
+                            ae_layer="Motivation",
+                            name=d["name"][:200],
+                        )
                     for g in scope.get("goals", [])[:5]:
-                        _sync_archimate_element(solution_id, "Goal", "Motivation", g["name"][:200])
+                        _sync_archimate_element(
+                            solution_id,
+                            ae_type="Goal",
+                            ae_layer="Motivation",
+                            name=g["name"][:200],
+                        )
                 except Exception as _ae:
                     logger.debug("AIC-313: ArchiMate sync skipped: %s", _ae)
 
@@ -1442,7 +1486,7 @@ class GreenfieldWorkflow:
         """Step 4: Options analysis with real portfolio data."""
         brief = wf["accumulated"].get("brief", "")
         apps = wf["accumulated"].get("resolved_apps", [])
-        caps = wf["accumulated"].get("resolved_caps", [])
+        wf["accumulated"].get("resolved_caps", [])
 
         # Load real vendor data
         vendor_ctx = ""
@@ -1451,7 +1495,7 @@ class GreenfieldWorkflow:
             vendors = VendorOrganization.query.limit(10).all()
             if vendors:
                 vendor_ctx = "Available vendors: " + ", ".join(v.name for v in vendors if v.name)
-        except Exception as _ve:  # fabricated-values-ok: graceful fallback
+        except Exception as _ve:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug("Vendor context load failed: %s", _ve)
             vendor_ctx = ""
 
@@ -1486,7 +1530,7 @@ class GreenfieldWorkflow:
         brief = wf["accumulated"].get("brief", "")
         feedback = wf["accumulated"].get("user_feedback", {})
         workspace_id = wf.get("workspace_id")
-        solution_id = wf.get("accumulated", {}).get("solution_id")
+        wf.get("accumulated", {}).get("solution_id")
 
         # Try StructuredDeliverableService first (AC-313-3)
         rec_count = 0
@@ -1662,6 +1706,7 @@ class GreenfieldWorkflow:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 packages.append(wp)
 
             db.session.commit()
@@ -1978,7 +2023,7 @@ class BrownfieldWorkflow:
     def _execute_gap_analysis(self, wf: Dict, requested_model: str = None) -> Dict:
         """Step 3: Gap analysis + AI gap detection service integration."""
         target = wf["accumulated"].get("target_domain", "")
-        portfolio = wf["accumulated"].get("portfolio", {})
+        wf["accumulated"].get("portfolio", {})
         workspace_id = wf.get("workspace_id")
 
         # Call AIGapDetectionService for real gap data (AIC-314)
@@ -2172,6 +2217,7 @@ class BrownfieldWorkflow:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 packages.append(wp)
 
             db.session.commit()
@@ -2195,7 +2241,7 @@ class BrownfieldWorkflow:
             return response_text or "Analysis generated."
         except Exception as e:
             logger.error("LLM call failed: %s", e)
-            return f"*AI analysis unavailable. Type 'next' to continue.*"
+            return "*AI analysis unavailable. Type 'next' to continue.*"
 
 
 # ============================================================================
@@ -2799,6 +2845,7 @@ class DeliveryPlanningService:
                     owner_id=self.user_id,
                 )
                 db.session.add(wp)
+                sync_archimate_element(wp)
                 db.session.flush()
                 created_packages.append({"id": wp.id, "name": name, "summary": summary})
 

@@ -14,7 +14,7 @@ Provides:
 
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user, login_required
 
 from app.decorators import audit_log
@@ -310,7 +310,6 @@ def create_board():
         board = KanbanBoard(
             name=data["name"],
             description=data.get("description"),
-            architecture_id=data.get("architecture_id"),
             project_name=data.get("project_name"),
             created_by_id=current_user.id,
         )
@@ -511,7 +510,6 @@ def create_card(board_id):
             try:
                 # Import ARB models (lazy import to avoid circular dependencies)
                 from app.models.arb_models import ARBReviewItem
-                from app.models.user import User
 
                 # Get board creator as submitter (architect)
                 submitter = board.created_by
@@ -850,7 +848,7 @@ def assign_reviewer(approval_id):
     if not reviewer_id:
         return jsonify({"success": False, "error": "reviewer_id is required"}), 400
 
-    reviewer = User.query.get(reviewer_id)
+    reviewer = User.query.filter_by(id=reviewer_id, organization_id=g.current_org_id).first()
     if not reviewer:
         return jsonify({"success": False, "error": "Reviewer not found"}), 404
 

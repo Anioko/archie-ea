@@ -1,19 +1,11 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}Jira Push Integration{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-    <!-- Breadcrumbs -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-        <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Admin</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">Jira Push Settings</span>
-    </nav>
-
     {{ page_header(
-        title='Jira Push Integration',
+        title='Jira Push Integration', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Jira Push Integration'}],
         description='Push enriched application portfolio data to Jira for cross-team collaboration on architecture decisions.'
     ) }}
 
@@ -22,7 +14,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive{% else %}bg-accent border-border text-foreground{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground{% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis{% else %}bg-accent border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -47,7 +39,7 @@
                                     <span class="font-medium text-foreground">Connected</span>
                                 {% elif jira_config.connection_status == 'error' %}
                                     <div class="h-3 w-3 rounded-full bg-destructive"></div>
-                                    <span class="font-medium text-destructive">Error</span>
+                                    <span class="font-medium text-destructive-emphasis">Error</span>
                                 {% else %}
                                     <div class="h-3 w-3 rounded-full bg-muted-foreground"></div>
                                     <span class="font-medium text-muted-foreground">Not Tested</span>
@@ -68,8 +60,8 @@
 
                         {% if jira_config.last_error %}
                             <div class="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                <p class="text-sm text-destructive font-medium mb-1">Last Error:</p>
-                                <p class="text-xs text-destructive/80">{{ jira_config.last_error }}</p>
+                                <p class="text-sm text-destructive-emphasis font-medium mb-1">Last Error:</p>
+                                <p class="text-xs text-destructive-emphasis/80">{{ jira_config.last_error }}</p>
                             </div>
                         {% endif %}
 
@@ -93,12 +85,12 @@
                         <div>
                             <p class="text-sm text-muted-foreground mb-2">Status</p>
                             <div class="flex items-center gap-2">
-                                <div class="h-3 w-3 rounded-full bg-amber-500"></div>
+                                <div class="h-3 w-3 rounded-full bg-warning"></div>
                                 <span class="font-medium text-foreground">Configured via .env</span>
                             </div>
                         </div>
-                        <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                            <p class="text-xs text-amber-700 dark:text-amber-400">Credentials loaded from environment variables. Save settings to persist to database for full management.</p>
+                        <div class="p-3 bg-warning/10 border border-warning/20 rounded-md">
+                            <p class="text-xs text-warning-emphasis">Credentials loaded from environment variables. Save settings to persist to database for full management.</p>
                         </div>
                         <!-- Save to Database -->
                         <div class="pt-4 border-t space-y-3">
@@ -143,15 +135,15 @@
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-muted-foreground">Pending</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-yellow-500/30" id="ps-pending">{{ push_status.pending }}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30" id="ps-pending">{{ push_status.pending }}</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-muted-foreground">Drift Detected</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-orange-500/10 text-orange-600 border border-orange-500/30" id="ps-drift">{{ push_status.drift_detected }}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" id="ps-drift">{{ push_status.drift_detected }}</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-muted-foreground">Failed</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" id="ps-failed">{{ push_status.failed }}</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30" id="ps-failed">{{ push_status.failed }}</span>
                             </div>
                             {% if push_status.get('last_webhook_at') %}
                             <div class="flex items-center justify-between">
@@ -197,11 +189,11 @@
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-muted-foreground">Pending</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-yellow-500/30" id="kps-pending">—</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30" id="kps-pending">—</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-muted-foreground">Failed</span>
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30" id="kps-failed">—</span>
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30" id="kps-failed">—</span>
                             </div>
                         </div>
                     </div>
@@ -267,7 +259,7 @@
                             <div class="space-y-4">
                                 <div>
                                     <label for="base_url" class="block text-sm font-medium mb-2">
-                                        Jira Base URL <span class="text-destructive">*</span>
+                                        Jira Base URL <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="base_url"
@@ -281,7 +273,7 @@
 
                                 <div>
                                     <label for="username" class="block text-sm font-medium mb-2">
-                                        Username / Email <span class="text-destructive">*</span>
+                                        Username / Email <span class="text-destructive-emphasis">*</span>
                                     </label>
                                     <input type="text"
                                            id="username"
@@ -295,7 +287,7 @@
 
                                 <div>
                                     <label for="api_token" class="block text-sm font-medium mb-2">
-                                        API Token {% if not jira_config %}<span class="text-destructive">*</span>{% endif %}
+                                        API Token {% if not jira_config %}<span class="text-destructive-emphasis">*</span>{% endif %}
                                     </label>
                                     <input type="password"
                                            id="api_token"
@@ -303,7 +295,7 @@
                                            value=""
                                            placeholder="{% if jira_config %}Leave blank to keep existing{% else %}Your Jira API token{% endif %}"
                                            class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                           {% if not jira_config %}required{% endif %}>
+                                           {% if not jira_config %}required{% endif %} autocomplete="new-password">
                                     <p class="text-xs text-muted-foreground mt-1">Generate at <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" rel="noopener" class="text-primary hover:underline">Atlassian API tokens</a></p>
                                 </div>
                             </div>
@@ -316,7 +308,7 @@
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
                                         <label for="project_key" class="block text-sm font-medium mb-2">
-                                            Project Key <span class="text-destructive">*</span>
+                                            Project Key <span class="text-destructive-emphasis">*</span>
                                         </label>
                                         <input type="text"
                                                id="project_key"
@@ -376,7 +368,7 @@
                                            value="true"
                                            {% if form.enabled.data or not jira_config %}checked{% endif %}
                                            class="sr-only peer">
-                                    <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                                    <div class="w-11 h-6 bg-muted peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-ring/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-background after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-background after:border-border after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                                 </label>
                             </div>
                         </div>
@@ -450,8 +442,8 @@
                     <h4 class="font-medium text-primary mb-2">A.R.C.I.E Wins</h4>
                     <p class="text-sm text-muted-foreground">Enrichment: criticality, TCO, rationalization score, vendor, technology stack</p>
                 </div>
-                <div class="p-4 rounded-md bg-orange-500/5 border border-orange-500/20">
-                    <h4 class="font-medium text-orange-600 mb-2">Jira Wins</h4>
+                <div class="p-4 rounded-md bg-warning/5 border border-warning/20">
+                    <h4 class="font-medium text-warning-emphasis mb-2">Jira Wins</h4>
                     <p class="text-sm text-muted-foreground">Workflow: status, assignee, sprint, resolution (never overwritten by push)</p>
                 </div>
             </div>
@@ -463,7 +455,6 @@
 <script>
     lucide.createIcons();
 
-    const csrfToken = '{{ csrf_token() }}';
     let pollInterval = null;
     let kanbanPollInterval = null;
 
@@ -473,16 +464,8 @@
         btn.disabled = true;
         btn.textContent = 'Testing...';
 
-        fetch('{{ url_for("admin.jira_test_connection") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_test_connection") }}', undefined,
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="wifi" class="w-4 h-4"></i> Test Connection';
@@ -509,17 +492,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_trigger_push") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({force: false}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_trigger_push") }}', {force: false},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="upload" class="w-4 h-4"></i> Push to Jira';
@@ -546,10 +520,8 @@
         btn.disabled = true;
         btn.textContent = 'Discovering...';
 
-        fetch('{{ url_for("admin.jira_field_discovery") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => r.json())
+        Platform.fetch('{{ url_for("admin.jira_field_discovery") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="search" class="w-4 h-4"></i> Discover Jira Custom Fields';
@@ -570,19 +542,33 @@
     });
 
     // Kanban push status polling
+    let kanbanStatusFailing = false;
     function refreshKanbanStatus() {
-        fetch('{{ url_for("admin.jira_kanban_push_status") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => r.json())
+        const el = (id) => document.getElementById(id);
+        // Platform.fetch throws on a non-ok response, so the 4xx/5xx case that a
+        // bare request would silently resolve lands in the .catch below.
+        Platform.fetch('{{ url_for("admin.jira_kanban_push_status") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
-            const ks = (data.success && data.kanban_status) ? data.kanban_status : {};
-            const el = (id) => document.getElementById(id);
+            if (!data.success || !data.kanban_status) throw new Error(data.message || 'kanban status unavailable');
+            const ks = data.kanban_status;
             if (el('kps-pushed')) el('kps-pushed').textContent = ks.pushed !== undefined ? ks.pushed : '—';
             if (el('kps-pending')) el('kps-pending').textContent = ks.pending !== undefined ? ks.pending : '—';
             if (el('kps-failed')) el('kps-failed').textContent = ks.failed !== undefined ? ks.failed : '—';
+            kanbanStatusFailing = false;
         })
-        .catch(() => {});
+        .catch(() => {
+            // Blank the counters rather than leaving the last good poll on
+            // screen: "unknown" must not be readable as a current figure.
+            ['kps-pushed', 'kps-pending', 'kps-failed'].forEach(id => {
+                if (el(id)) el(id).textContent = '—';
+            });
+            // Polls every 5s: one toast per outage, not one per tick.
+            if (!kanbanStatusFailing) {
+                kanbanStatusFailing = true;
+                Platform.toast.error('Could not load Kanban push status.');
+            }
+        });
     }
 
     // Push Kanban Tasks button
@@ -592,17 +578,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_trigger_kanban_push") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_trigger_kanban_push") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Kanban Tasks';
@@ -628,17 +605,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_push_epics") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_epics") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="layers" class="w-4 h-4"></i> Push Phase Epics';
@@ -662,14 +630,8 @@
         const btn = this;
         btn.disabled = true;
         btn.textContent = 'Pushing...';
-        fetch('{{ url_for("admin.jira_push_dependencies") }}', {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('input[name=csrf_token]')?.value || '',
-                'X-Requested-With': 'XMLHttpRequest',
-            },
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_dependencies") }}', undefined,
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="git-merge" class="w-4 h-4"></i> Push Dependencies';
@@ -688,19 +650,23 @@
     });
 
     // Poll push status
+    let pushStatusFailing = false;
     function refreshPushStatus() {
-        fetch('{{ url_for("admin.jira_push_status") }}', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        })
-        .then(r => r.json())
+        const el = (id) => document.getElementById(id);
+        // Platform.fetch throws on a non-ok response, so the 4xx/5xx case that a
+        // bare request would silently resolve lands in the .catch below.
+        Platform.fetch('{{ url_for("admin.jira_push_status") }}',
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             const ps = data.push_status || {};
-            const el = (id) => document.getElementById(id);
-            if (el('ps-total')) el('ps-total').textContent = ps.total_tracked || 0;
-            if (el('ps-pushed')) el('ps-pushed').textContent = ps.pushed || 0;
-            if (el('ps-pending')) el('ps-pending').textContent = ps.pending || 0;
-            if (el('ps-drift')) el('ps-drift').textContent = ps.drift_detected || 0;
-            if (el('ps-failed')) el('ps-failed').textContent = ps.failed || 0;
+            // `?? '—'`, not `|| 0`: a counter the server did not send is
+            // unknown, and a 0 there is indistinguishable from a real zero.
+            if (el('ps-total')) el('ps-total').textContent = ps.total_tracked ?? '—';
+            if (el('ps-pushed')) el('ps-pushed').textContent = ps.pushed ?? '—';
+            if (el('ps-pending')) el('ps-pending').textContent = ps.pending ?? '—';
+            if (el('ps-drift')) el('ps-drift').textContent = ps.drift_detected ?? '—';
+            if (el('ps-failed')) el('ps-failed').textContent = ps.failed ?? '—';
+            pushStatusFailing = false;
 
             const job = data.latest_job;
             const ind = el('job-indicator');
@@ -715,7 +681,7 @@
                 completed: 'bg-primary',
                 in_progress: 'bg-primary animate-pulse',
                 failed: 'bg-destructive',
-                pending: 'bg-amber-500',
+                pending: 'bg-warning',
             };
             if (ind) ind.className = 'h-3 w-3 rounded-full ' + (statusColors[job.status] || 'bg-muted-foreground');
             if (txt) txt.textContent = (job.status || 'unknown').replace('_', ' ');
@@ -728,7 +694,24 @@
             if (job.error) detail += ' | Error: ' + job.error;
             if (det) det.textContent = detail;
         })
-        .catch(() => {});
+        .catch(() => {
+            ['ps-total', 'ps-pushed', 'ps-pending', 'ps-drift', 'ps-failed'].forEach(id => {
+                if (el(id)) el(id).textContent = '—';
+            });
+            const ind = el('job-indicator');
+            const txt = el('job-text');
+            const det = el('job-details');
+            // Distinct from "No push jobs yet" — a failed status read must not
+            // be mistaken for a confirmed absence of jobs.
+            if (ind) ind.className = 'h-3 w-3 rounded-full bg-destructive';
+            if (txt) txt.textContent = 'status unavailable';
+            if (det) det.textContent = '';
+            // Polls every 5s: one toast per outage, not one per tick.
+            if (!pushStatusFailing) {
+                pushStatusFailing = true;
+                Platform.toast.error('Could not load Jira push status.');
+            }
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {
@@ -745,17 +728,8 @@
         btn.disabled = true;
         btn.textContent = 'Pushing...';
 
-        fetch('{{ url_for("admin.jira_push_applications") }}', {
-            method: 'POST',
-            headers: {
-                'X-Requested-With': 'XMLHttpRequest',
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfToken,
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify({}),
-        })
-        .then(r => r.json())
+        Platform.fetch.post('{{ url_for("admin.jira_push_applications") }}', {},
+            { silent: true, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(data => {
             btn.disabled = false;
             btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Push Applications';

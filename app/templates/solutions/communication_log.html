@@ -6,8 +6,8 @@
 {% block content %}
 <!-- modal-a11y-ok -->
 <div
-    class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-4xl"
-    x-data="commLog({{ solution_id }}, {{ entries | tojson }})"
+    class="p-6 space-y-6 mx-auto max-w-4xl"
+    x-data='commLog({{ solution_id }}, {{ entries | tojson }})'
 >
     {{ page_header(
         title='Communication Log',
@@ -99,7 +99,7 @@
                     placeholder="Decisions made, next steps…"></textarea>
             </div>
 
-            <div x-show="formError" x-cloak class="text-sm text-destructive" x-text="formError" role="alert"></div>
+            <div x-show="formError" x-cloak class="text-sm text-destructive-emphasis" x-text="formError" role="alert"></div>
 
             <div class="flex gap-3">
                 <button type="submit"
@@ -123,10 +123,10 @@
                     class="absolute -left-3 flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-background"
                     :class="{
                         'bg-primary':   entry.comm_type === 'meeting',
-                        'bg-emerald-500':  entry.comm_type === 'email',
+                        'bg-success':  entry.comm_type === 'email',
                         'bg-primary': entry.comm_type === 'decision',
                         'bg-destructive':    entry.comm_type === 'escalation',
-                        'bg-amber-500':  entry.comm_type === 'status_update'
+                        'bg-warning':  entry.comm_type === 'status_update'
                     }"
                     aria-hidden="true"
                 >
@@ -139,10 +139,10 @@
                             class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold"
                             :class="{
                                 'bg-primary/10 text-primary/90':   entry.comm_type === 'meeting',
-                                'bg-emerald-500/10 text-green-800':  entry.comm_type === 'email',
-                                'bg-purple-100 text-purple-800': entry.comm_type === 'decision',
-                                'bg-destructive/10 text-red-800':    entry.comm_type === 'escalation',
-                                'bg-amber-100 text-amber-800':  entry.comm_type === 'status_update'
+                                'bg-success/10 text-success-emphasis':  entry.comm_type === 'email',
+                                'bg-info/10 text-info-emphasis': entry.comm_type === 'decision',
+                                'bg-destructive/10 text-destructive-emphasis':    entry.comm_type === 'escalation',
+                                'bg-warning/10 text-warning-emphasis':  entry.comm_type === 'status_update'
                             }"
                             x-text="entry.comm_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())"
                         ></span>
@@ -257,22 +257,15 @@ function commLog(solutionId, initialEntries) {
             };
 
             try {
-                const resp = await fetch('/api/communications', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                });
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    this.formError = err.error || 'Failed to save entry.';
-                    return;
-                }
-                const entry = await resp.json();
+                // Platform.fetch.post returns the parsed response directly, throws on error
+                const entry = await Platform.fetch.post('/api/communications', payload, { silent: true });
                 this.entries = [...this.entries, entry];
                 this.showForm = false;
                 this.form = { comm_type: '', stakeholder_id: '', subject: '', summary: '', outcome: '' };
-            } catch (e) {
-                this.formError = 'Network error. Please try again.';
+            } catch (error) {
+                // Platform.fetch throws a structured PlatformError for network or HTTP errors
+                // Its message is already user‑friendly (built from errData.message/error or flattened field errors)
+                this.formError = error.message || 'Failed to save entry.';
             }
         }
     };

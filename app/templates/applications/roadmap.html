@@ -4,6 +4,7 @@
 {% from 'components/button.html' import button %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
+{% from 'components/modal.html' import modal %}
 
 {% block title %}{{ application.name }} Roadmap{% endblock %}
 
@@ -83,31 +84,23 @@
             </tr>
           </thead>
           <tbody>
-            <template x-if="filteredItems.length === 0">
-              <tr>
-                <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
-                  No work packages for this filter.
-                </td>
-              </tr>
-            </template>
+            <tr x-show="filteredItems.length === 0">
+              <td colspan="6" class="px-4 py-10 text-center text-muted-foreground">
+                No work packages for this filter.
+              </td>
+            </tr>
             <template x-for="item in filteredItems" :key="item.id">
               <tr class="border-t">
                 <td class="px-4 py-3 align-top">
                   <p class="font-medium text-foreground" x-text="item.name"></p>
                   <p class="mt-1 text-xs text-muted-foreground" x-text="item.description || 'No description'"></p>
                   <div class="mt-1 flex flex-wrap gap-1.5">
-                    <template x-if="item.plateau_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-blue-500/10 text-primary border border-blue-500/30"
+                    <span x-show="item.plateau_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-primary border border-info/30"
                         x-text="'Plateau: ' + item.plateau_name"></span>
-                    </template>
-                    <template x-if="item.archimate_element_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                    <span x-show="item.archimate_element_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                         x-text="item.archimate_element_name"></span>
-                    </template>
-                    <template x-if="item.capability_name">
-                      <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+                    <span x-show="item.capability_name" class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                         x-text="'Cap: ' + item.capability_name"></span>
-                    </template>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-top" x-text="formatLabel(item.transformation_type || 'Modernization')"></td>
@@ -128,7 +121,7 @@
                       @click="openEditModal(item)">
                       Edit
                     </button>
-                    <button type="button" class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive hover:bg-destructive/10"
+                    <button type="button" class="rounded-md border border-destructive/30 px-2.5 py-1.5 text-xs text-destructive-emphasis hover:bg-destructive/10"
                       @click="deleteItem(item)">
                       Delete
                     </button>
@@ -142,24 +135,19 @@
     {% endcall %}
   {% endcall %}
 
-  <div id="roadmap-work-package-modal"
-       hidden
-       class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-       role="dialog" aria-modal="true" aria-labelledby="roadmap-modal-title">
-    <div class="w-full max-w-2xl rounded-xl border bg-card shadow-xl">
-      <div class="flex items-center justify-between border-b px-6 py-4">
-        <h3 id="roadmap-modal-title" class="text-lg font-semibold" x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
-        <button type="button" class="rounded-md border px-2 py-1 text-sm hover:bg-muted" data-modal-close="roadmap-work-package-modal">Close</button>
-      </div>
-      <form class="space-y-4 p-6" @submit.prevent="submitForm()">
+  {# The shared macro keeps display:flex off the closed root: a flex utility
+     overrides native hidden and would intercept the Add button's first click. #}
+  {% call modal(id='roadmap-work-package-modal', size='lg', labelledby='roadmap-modal-title') %}
+      <h3 id="roadmap-modal-title" class="text-lg font-semibold pr-8 mb-4" x-text="isEditing ? 'Edit Work Package' : 'Create Work Package'"></h3>
+      <form class="space-y-4" @submit.prevent="submitForm()">
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Name</label>
-            <input type="text" x-model="form.name" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="text" x-model="form.name" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Name">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Transformation Type</label>
-            <select x-model="form.transformation_type" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.transformation_type" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Transformation Type">
               <option value="Modernization">Modernization</option>
               <option value="Integration">Integration</option>
               <option value="Migration">Migration</option>
@@ -168,7 +156,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Status</label>
-            <select x-model="form.status" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.status" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Status">
               <option value="planned">Planned</option>
               <option value="in_progress">In Progress</option>
               <option value="blocked">Blocked</option>
@@ -177,7 +165,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Priority</label>
-            <select x-model="form.priority" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model="form.priority" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Priority">
               <option value="low">Low</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
@@ -186,11 +174,11 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Application Phase</label>
-            <input type="text" x-model="form.application_phase" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="text" x-model="form.application_phase" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Application Phase">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Target Plateau</label>
-            <select x-model.number="form.plateau_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.plateau_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Plateau">
               <option :value="null">— None —</option>
               <template x-for="p in plateaus" :key="p.id">
                 <option :value="p.id" x-text="p.name"></option>
@@ -199,7 +187,7 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Linked Capability</label>
-            <select x-model.number="form.capability_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.capability_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Linked Capability">
               <option :value="null">— None —</option>
               <template x-for="c in capabilities" :key="c.id">
                 <option :value="c.id" x-text="c.name"></option>
@@ -208,7 +196,7 @@
           </div>
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Target Architecture Element</label>
-            <select x-model.number="form.archimate_element_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <select x-model.number="form.archimate_element_id" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Architecture Element">
               <option :value="null">-- Auto (ApplicationComponent) --</option>
               <template x-for="el in archiElements" :key="el.id">
                 <option :value="el.id" x-text="el.name + ' (' + el.type + ')'"></option>
@@ -217,19 +205,19 @@
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Start Date</label>
-            <input type="date" x-model="form.start_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="date" x-model="form.start_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Start Date">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Target Date</label>
-            <input type="date" x-model="form.target_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="date" x-model="form.target_date" required class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Target Date">
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">Estimated Effort Hours</label>
-            <input type="number" min="0" step="1" x-model.number="form.estimated_effort_hours" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+            <input type="number" min="0" step="1" x-model.number="form.estimated_effort_hours" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Estimated Effort Hours">
           </div>
           <div class="sm:col-span-2">
             <label class="mb-1 block text-sm font-medium">Description</label>
-            <textarea x-model="form.description" rows="3" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"></textarea>
+            <textarea x-model="form.description" rows="3" class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" aria-label="Description"></textarea>
           </div>
         </div>
         <div class="flex items-center justify-end gap-2 border-t pt-4">
@@ -241,8 +229,7 @@
           </button>
         </div>
       </form>
-    </div>
-  </div>
+  {% endcall %}
 </div>
 {% endblock %}
 
@@ -273,15 +260,18 @@
     const serverArchiElements = {{ target_arch_elements|map(attribute='id')|list|tojson|safe }};
     const serverArchiNames = {{ target_arch_elements|map(attribute='name')|list|tojson|safe }};
     const serverArchiTypes = {{ target_arch_elements|map(attribute='type')|list|tojson|safe }};
-    const archiElementsInit = serverArchiElements.map((id, i) => ({
-      id, name: serverArchiNames[i] || '', type: serverArchiTypes[i] || ''
-    }));
+    const archiElementsInit = [...new Map(
+      serverArchiElements
+        .map((id, i) => ({ id, name: serverArchiNames[i] || '', type: serverArchiTypes[i] || '' }))
+        .filter(e => e.id != null)
+        .map(e => [e.id, e])
+    ).values()];
 
     return {
-      items: initialItems,
+      items: Array.isArray(initialItems) ? initialItems : [],
       plateaus: [],
       capabilities: [],
-      archiElements: archiElementsInit,
+      archiElements: Array.isArray(archiElementsInit) ? archiElementsInit : [],
       statusFilter: '',
       isModalOpen: false,
       isEditing: false,
@@ -290,21 +280,22 @@
 
       async init() {
         try {
-          const [pr, cr] = await Promise.all([
-            fetch('/capability-map/api/roadmap/plateaus'),
-            fetch('/api/capabilities/grouped'),
+          const [pd, cd] = await Promise.all([
+            Platform.fetch.get('/capability-map/api/roadmap/plateaus'),
+            Platform.fetch.get('/api/capabilities/grouped'),
           ]);
-          if (pr.ok) {
-            const pd = await pr.json();
-            this.plateaus = pd.plateaus || [];
-          }
-          if (cr.ok) {
-            const cd = await cr.json();
-            const grouped = cd.capabilities || cd;
-            this.capabilities = Object.values(grouped).flat();
-          }
-        } catch {
-          // Plateau/capability loading is non-critical; form still works without them
+          this.plateaus = pd.plateaus || [];
+          const grouped = cd.capabilities || cd;
+          // Dedupe by id (a capability can appear in multiple groups, and Alpine
+          // x-for :key must be unique/defined — duplicate keys crash the render).
+          this.capabilities = [...new Map(
+            Object.values(grouped).flat().filter(c => c && c.id != null).map(c => [c.id, c])
+          ).values()];
+        } catch (e) {
+          // Plateau/capability lists are optional for the form, so this is a
+          // heads-up rather than a blocker — but the user must still be told
+          // the dropdowns may be incomplete.
+          Platform.toast.warning(e.message + ' — some dropdown options may be unavailable.');
         }
       },
 
@@ -346,7 +337,7 @@
       statusClass(status) {
         switch ((status || '').toLowerCase()) {
           case 'completed':
-            return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-600';
+            return 'border-success/30 bg-success/10 text-success-emphasis';
           case 'in_progress':
             return 'border-primary/30 bg-primary/5 text-primary';
           case 'blocked':
@@ -390,7 +381,7 @@
 
       async submitForm() {
         if (!this.form.name || !this.form.start_date || !this.form.target_date) {
-          window.alert('Name, start date, and target date are required.');
+          Platform.alert('Name, start date, and target date are required.');
           return;
         }
 
@@ -410,24 +401,12 @@
           archimate_element_id: this.form.archimate_element_id || null,
         };
 
-        const method = this.isEditing ? 'PUT' : 'POST';
         const url = this.isEditing ? `${endpointBase}/${this.form.id}` : endpointBase;
 
         try {
-          const response = await fetch(url, {
-            method,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-CSRFToken': csrfToken
-            },
-            body: JSON.stringify(payload)
-          });
-
-          const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Unable to save work package');
-          }
-
+          const data = this.isEditing
+            ? await Platform.fetch.put(url, payload)
+            : await Platform.fetch.post(url, payload);
           const saved = data.work_package;
           if (this.isEditing) {
             this.items = this.items.map(item => item.id === saved.id ? saved : item);
@@ -436,31 +415,24 @@
           }
           this.closeModal();
         } catch (error) {
-          window.alert(error.message || 'Unable to save work package');
+          Platform.alert(error.message || 'Unable to save work package');
           this.isSubmitting = false;
         }
       },
 
       async deleteItem(item) {
-        const confirmed = window.confirm(`Delete work package "${item.name}"?`);
+        const confirmed = await Platform.confirm({ title: `Delete work package "${item.name}"?`,
+                message: 'This cannot be undone.', confirmText: 'Delete',
+                variant: 'destructive' });
         if (!confirmed) {
           return;
         }
 
         try {
-          const response = await fetch(`${endpointBase}/${item.id}`, {
-            method: 'DELETE',
-            headers: {
-              'X-CSRFToken': csrfToken
-            }
-          });
-          const data = await response.json();
-          if (!response.ok || data.error) {
-            throw new Error(data.error || 'Unable to delete work package');
-          }
+          await Platform.fetch.delete(`${endpointBase}/${item.id}`);
           this.items = this.items.filter(current => current.id !== item.id);
         } catch (error) {
-          window.alert(error.message || 'Unable to delete work package');
+          Platform.alert(error.message || 'Unable to delete work package');
         }
       }
     };

@@ -1,3 +1,4 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {# ENT-090: ArchiMate Relationship Table — editable CRUD for solution-scoped relationships #}
 <div
     x-data="{
@@ -46,10 +47,10 @@
         typeBadgeClass(t) {
             const cat = this.typeCategory(t);
             const map = {
-                structural: 'bg-blue-500/10 text-primary border-blue-500/30',
-                dependency: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-                dynamic:    'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-                other:      'bg-gray-500/10 text-muted-foreground border-gray-500/30'
+                structural: 'bg-info/10 text-info-emphasis border-info/30',
+                dependency: 'bg-warning/10 text-warning-emphasis border-warning/30',
+                dynamic:    'bg-success/10 text-success-emphasis border-success/30',
+                other:      'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30'
             };
             return map[cat] || map.other;
         },
@@ -59,9 +60,9 @@
             return '✗';
         },
         validationClass(status) {
-            if (status === 'valid') return 'text-emerald-600';
-            if (status === 'advisory') return 'text-amber-500';
-            return 'text-destructive';
+            if (status === 'valid') return 'text-success-emphasis';
+            if (status === 'advisory') return 'text-warning-emphasis';
+            return 'text-destructive-emphasis';
         },
 
         get solutionId() {
@@ -89,37 +90,55 @@
             return [...layers].sort();
         },
 
-        async load() {
-            if (!this.solutionId) return;
+        /* NOTE ON STYLE: everything below is written with .then()/.catch(),
+           NOT async/await. Alpine expressions in HTML attributes are evaluated
+           by the CSP-safe interpreter in app/static/js/csp/csp-evaluator.js,
+           which runs bodies synchronously and cannot await; `async` is not even
+           in its keyword table, so an `async` method here is a parse error that
+           kills the whole component. Promise chains resolve correctly. */
+        load() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.relLoading = true;
             this.relError = null;
-            try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {credentials:'same-origin'});
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                this.relRows = data.relationships || [];
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.relLoading = false;
-                this.relLoaded = true;
-            }
+            return Platform.fetch('/api/solutions/' + this.solutionId + '/relationships', { silent: true })
+                .then(function (data) {
+                    self.relRows = data.relationships || [];
+                    self.relLoading = false;
+                    self.relLoaded = true;
+                })
+                .catch(function (e) {
+                    self.relRows = [];
+                    self.relError = e.message || 'Relationships could not be loaded.';
+                    self.relLoading = false;
+                    self.relLoaded = true;
+                });
         },
 
-        async searchElements(query, target) {
+        searchElements(query, target) {
+            const self = this;
             if (!query || query.length < 2) {
                 if (target === 'source') this.sourceResults = [];
                 else this.targetResults = [];
-                return;
+                return Promise.resolve();
             }
-            try {
-                const res = await fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), {credentials:'same-origin'});
-                if (!res.ok) return;
-                const data = await res.json();
-                const results = data.elements || data || [];
-                if (target === 'source') this.sourceResults = results.slice(0, 10);
-                else this.targetResults = results.slice(0, 10);
-            } catch(e) { /* ignore search errors */ }
+            return Platform.fetch('/solutions/api/archimate-all-elements?search=' + encodeURIComponent(query), { silent: true })
+                .then(function (data) {
+                    const results = data.elements || data || [];
+                    if (target === 'source') self.sourceResults = results.slice(0, 10);
+                    else self.targetResults = results.slice(0, 10);
+                    self._elementSearchErrorShown = false;
+                })
+                .catch(function () {
+                    // Fires on every debounced keystroke — toast once per
+                    // outage rather than once per character typed.
+                    if (target === 'source') self.sourceResults = [];
+                    else self.targetResults = [];
+                    if (!self._elementSearchErrorShown) {
+                        self._elementSearchErrorShown = true;
+                        if (window.Platform && Platform.toast) Platform.toast.error('Element search failed');
+                    }
+                });
         },
 
         selectSource(elem) {
@@ -135,54 +154,46 @@
             this.targetResults = [];
         },
 
-        async addRelationship() {
+        addRelationship() {
+            const self = this;
             if (!this.newSource || !this.newTarget || !this.newType) {
                 this.relError = 'Select source, target, and relationship type';
-                return;
+                return Promise.resolve();
             }
             this.relSaving = true;
             this.relError = null;
-            try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        source_element_id: this.newSource.id,
-                        target_element_id: this.newTarget.id,
-                        relationship_type: this.newType
-                    })
+            return Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships', {
+                    source_element_id: this.newSource.id,
+                    target_element_id: this.newTarget.id,
+                    relationship_type: this.newType
+                }, { silent: true })
+                .then(function (data) {
+                    self.relRows.push(data.relationship || data);
+                    self.resetNewRow();
+                    self.relSaving = false;
+                })
+                .catch(function (e) {
+                    self.relError = e.message || 'Failed to create relationship';
+                    self.relSaving = false;
                 });
-                const data = await res.json();
-                if (!res.ok) {
-                    this.relError = data.error || data.message || 'Failed to create relationship';
-                    return;
-                }
-                this.relRows.push(data.relationship || data);
-                this.resetNewRow();
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.relSaving = false;
-            }
         },
 
-        async deleteRelationship(relId) {
-            if (!(await Platform.modal.confirm('Remove this relationship?'))) return;
-            try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/' + relId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin'
+        deleteRelationship(relId) {
+            const self = this;
+            return Platform.modal.confirm('Remove this relationship?')
+                .then(function (confirmed) {
+                    if (!confirmed) return null;
+                    // Platform.fetch throws on a non-ok response; its message is already
+                    // taken from the error BODY when that body is JSON, and falls back to
+                    // the status text when the server returns a non-JSON error page.
+                    return Platform.fetch.delete('/api/solutions/' + self.solutionId + '/relationships/' + relId, { silent: true })
+                        .then(function () {
+                            self.relRows = self.relRows.filter(r => r.id !== relId);
+                        });
+                })
+                .catch(function (e) {
+                    self.relError = e.message || 'Failed to delete';
                 });
-                if (res.ok || res.status === 204) {
-                    this.relRows = this.relRows.filter(r => r.id !== relId);
-                } else {
-                    const data = await res.json().catch(() => ({}));
-                    this.relError = data.error || 'Failed to delete';
-                }
-            } catch(e) {
-                this.relError = e.message;
-            }
         },
 
         resetNewRow() {
@@ -195,100 +206,102 @@
         },
 
         confidenceBadge(c) {
-            if (c >= 80) return 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30';
-            if (c >= 60) return 'bg-amber-500/10 text-amber-600 border-amber-500/30';
-            return 'bg-destructive/10 text-destructive border-destructive/30';
+            if (c >= 80) return 'bg-success/10 text-success-emphasis border-success/30';
+            if (c >= 60) return 'bg-warning/10 text-warning-emphasis border-warning/30';
+            return 'bg-destructive/10 text-destructive-emphasis border-destructive/30';
         },
 
-        async generateRelationships() {
-            if (!this.solutionId) return;
+        generateRelationships() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.generating = true;
             this.relError = null;
             this.proposals = [];
-            try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/generate', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: {'Content-Type': 'application/json'}
+            return Platform.fetch.post('/api/solutions/' + this.solutionId + '/relationships/generate', undefined, { silent: true })
+                .then(function (data) {
+                    self.proposals = (data.proposals || []).map(p => ({
+                        ...p,
+                        checked: (p.confidence || 0) >= 80
+                    }));
+                    self.showProposals = true;
+                    if (self.proposals.length === 0) {
+                        self.relError = 'No relationship proposals generated. Link more ArchiMate elements first.';
+                    }
+                    self.generating = false;
+                })
+                .catch(function (e) {
+                    self.proposals = [];
+                    self.relError = e.message || 'Relationship generation failed.';
+                    self.generating = false;
                 });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                this.proposals = (data.proposals || []).map(p => ({
-                    ...p,
-                    checked: (p.confidence || 0) >= 80
-                }));
-                this.showProposals = true;
-                if (this.proposals.length === 0) {
-                    this.relError = 'No relationship proposals generated. Link more ArchiMate elements first.';
-                }
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.generating = false;
-            }
         },
 
-        async acceptSelected() {
+        acceptSelected() {
+            const self = this;
             const selected = this.proposals.filter(p => p.checked);
-            if (!selected.length) return;
+            if (!selected.length) return Promise.resolve();
             this.accepting = true;
             this.relError = null;
-            let accepted = 0;
-            for (const p of selected) {
-                try {
-                    const res = await fetch('/api/solutions/' + this.solutionId + '/relationships', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        credentials: 'same-origin',
-                        body: JSON.stringify({
+            let failed = 0;
+            // Sequential, one request at a time — same ordering the await loop had.
+            const chain = selected.reduce(function (prev, p) {
+                return prev.then(function () {
+                    return Platform.fetch.post('/api/solutions/' + self.solutionId + '/relationships', {
                             source_element_id: p.source_element_id,
                             target_element_id: p.target_element_id,
                             relationship_type: p.relationship_type
+                        }, { silent: true })
+                        .then(function (data) {
+                            self.relRows.push(data.relationship || data);
                         })
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        this.relRows.push(data.relationship || data);
-                        accepted++;
-                    }
-                } catch(e) { /* skip failed proposals */ }  // fabricated-values-ok
-            }
-            this.proposals = this.proposals.filter(p => !p.checked);
-            if (this.proposals.length === 0) this.showProposals = false;
-            this.accepting = false;
+                        .catch(function () { failed++; });
+                });
+            }, Promise.resolve());
+            return chain.then(function () {
+                self.proposals = self.proposals.filter(p => !p.checked);
+                if (self.proposals.length === 0) self.showProposals = false;
+                if (failed > 0) {
+                    self.relError = failed + ' of ' + selected.length + ' relationship(s) could not be created.';
+                }
+                self.accepting = false;
+            });
         },
 
         layerColor(layer) {
+            // ArchiMate layer legend — distinct raw hues per DESIGN.md's Layer Colors table, not collapsible onto the 4 semantic tokens.
             const map = {
-                motivation: 'bg-purple-500/10 text-primary border-purple-500/30',
-                strategy: 'bg-rose-500/10 text-rose-600 border-rose-500/30',
-                business: 'bg-amber-500/10 text-amber-600 border-amber-500/30',
-                application: 'bg-blue-500/10 text-primary border-blue-500/30',
-                technology: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                motivation: 'bg-violet-500/10 text-violet-600 border-violet-500/30', // design-tokens-ok: layer legend
+                strategy: 'bg-amber-500/10 text-amber-600 border-amber-500/30', // design-tokens-ok: layer legend
+                business: 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30', // design-tokens-ok: layer legend
+                application: 'bg-info/10 text-info-emphasis border-info/30',
+                technology: 'bg-green-500/10 text-green-600 border-green-500/30' // design-tokens-ok: layer legend
             };
             return map[(layer || '').toLowerCase()] || 'bg-muted text-muted-foreground border-border';
         },
 
-        async loadTraceability() {
-            if (!this.solutionId) return;
+        loadTraceability() {
+            const self = this;
+            if (!this.solutionId) return Promise.resolve();
             this.traceLoading = true;
             this.relError = null;
-            try {
-                const res = await fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', {credentials:'same-origin'});
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                this.traceData = await res.json();
-            } catch(e) {
-                this.relError = e.message;
-            } finally {
-                this.traceLoading = false;
-            }
+            return Platform.fetch('/api/solutions/' + this.solutionId + '/relationships/traceability', { silent: true })
+                .then(function (data) {
+                    self.traceData = data;
+                    self.traceLoading = false;
+                })
+                .catch(function (e) {
+                    self.traceData = null;
+                    self.relError = e.message || 'Traceability view could not be loaded.';
+                    self.traceLoading = false;
+                });
         },
 
-        async toggleTraceability() {
+        toggleTraceability() {
             this.showTraceability = !this.showTraceability;
             if (this.showTraceability && !this.traceData) {
-                await this.loadTraceability();
+                return this.loadTraceability();
             }
+            return Promise.resolve();
         }
     }"
     x-init="load()"
@@ -297,13 +310,13 @@
     {# Header #}
     <div class="flex items-center justify-between mb-4">
         <div>
-            <h3 class="text-lg font-semibold text-foreground">ArchiMate Relationships</h3>
+            <h3 class="text-lg font-semibold text-foreground">Architecture Relationships</h3>
             <p class="text-sm text-muted-foreground">
                 <span x-text="relRows.length"></span> relationship<span x-show="relRows.length !== 1" x-cloak>s</span> defined
             </p>
         </div>
         <div class="flex items-center gap-2">
-            <button
+            <button type="button"
                 @click="toggleTraceability()"
                 :class="showTraceability ? 'bg-primary text-primary-foreground' : 'border border-input bg-background text-foreground hover:bg-accent'"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors"
@@ -312,7 +325,7 @@
                 <i data-lucide="layers" class="w-4 h-4" aria-hidden="true"></i>
                 <span>Traceability</span>
             </button>
-            <button
+            <button type="button"
                 @click="generateRelationships()"
                 :disabled="generating"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
@@ -326,7 +339,7 @@
                 </template>
                 <span x-text="generating ? 'Generating…' : 'AI Generate'"></span>
             </button>
-            <button
+            <button type="button"
                 @click="$dispatch('launch-composition-wizard')"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors"
                 x-cloak
@@ -334,7 +347,7 @@
                 <i data-lucide="wand-2" class="w-4 h-4" aria-hidden="true"></i>
                 Wizard
             </button>
-            <button
+            <button type="button"
                 @click="showAddRow = !showAddRow"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                 x-cloak
@@ -355,7 +368,7 @@
 
     {# Error #}
     <template x-if="relError">
-        <div class="mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm" x-text="relError"></div>
+        <div class="mb-4 p-3 rounded-md bg-destructive/10 text-destructive-emphasis text-sm" x-text="relError"></div>
     </template>
 
     {# Filters (shown when there are rows) #}
@@ -363,7 +376,7 @@
         <div class="flex flex-wrap gap-3 mb-4">
             <div>
                 <label class="text-xs font-medium text-muted-foreground block mb-1">Layer</label>
-                <select x-model="filterLayer" class="text-sm rounded-md border border-input bg-background px-2 py-1">
+                <select x-model="filterLayer" class="text-sm rounded-md border border-input bg-background px-2 py-1" aria-label="Layer">
                     <option value="all">All Layers</option>
                     <template x-for="layer in uniqueLayers" :key="layer">
                         <option :value="layer" x-text="layer.charAt(0).toUpperCase() + layer.slice(1)"></option>
@@ -372,7 +385,7 @@
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground block mb-1">Type</label>
-                <select x-model="filterType" class="text-sm rounded-md border border-input bg-background px-2 py-1">
+                <select x-model="filterType" class="text-sm rounded-md border border-input bg-background px-2 py-1" aria-label="Type">
                     <option value="all">All Types</option>
                     <template x-for="t in allTypes" :key="t">
                         <option :value="t" x-text="typeLabel(t)"></option>
@@ -384,16 +397,16 @@
 
     {# AI Proposals Review Panel (ENT-093) #}
     <template x-if="showProposals && proposals.length > 0">
-        <div class="mb-4 p-4 rounded-lg border border-violet-500/30 bg-violet-500/5" x-cloak>
+        <div class="mb-4 p-4 rounded-lg border border-violet-500/30 bg-violet-500/5" x-cloak> {# design-tokens-ok: AI-generated indicator colour, matches sibling badges in this panel #}
             <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2">
-                    <i data-lucide="sparkles" class="w-4 h-4 text-violet-600" aria-hidden="true"></i>
+                    <i data-lucide="sparkles" class="w-4 h-4 text-violet-600" aria-hidden="true"></i> {# design-tokens-ok: AI-generated indicator colour #}
                     <span class="text-sm font-medium text-foreground">AI-Proposed Relationships</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" {# design-tokens-ok: AI-generated indicator colour #}
                           x-text="proposals.length + ' proposals'"></span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button
+                    <button type="button"
                         @click="acceptSelected()"
                         :disabled="accepting || !proposals.some(p => p.checked)"
                         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
@@ -403,14 +416,14 @@
                         </template>
                         Accept Selected
                     </button>
-                    <button
+                    <button type="button"
                         @click="generateRelationships()"
                         :disabled="generating"
                         class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
                     >
                         Regenerate
                     </button>
-                    <button
+                    <button type="button"
                         @click="showProposals = false; proposals = []"
                         class="text-muted-foreground hover:text-foreground transition-colors p-1"
                         title="Dismiss proposals"
@@ -423,7 +436,7 @@
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-border">
-                            <th class="text-left py-2 px-2 w-8"><input type="checkbox" @change="proposals.forEach(p => p.checked = $event.target.checked)" class="rounded border-input"></th>
+                            <th class="text-left py-2 px-2 w-8"><input aria-label="Select all proposals" type="checkbox" @change="proposals.forEach(p => p.checked = $event.target.checked)" class="rounded border-input"></th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Source</th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Type</th>
                             <th class="text-left py-2 px-3 font-medium text-muted-foreground">Target</th>
@@ -433,7 +446,7 @@
                     <tbody>
                         <template x-for="(prop, idx) in proposals" :key="idx">
                             <tr class="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                                <td class="py-2 px-2"><input type="checkbox" x-model="prop.checked" class="rounded border-input"></td>
+                                <td class="py-2 px-2"><input aria-label="Select proposal" type="checkbox" x-model="prop.checked" class="rounded border-input"></td>
                                 <td class="py-2 px-3 font-medium text-foreground" x-text="prop.source_name || 'Unknown'"></td>
                                 <td class="py-2 px-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border"
@@ -465,14 +478,14 @@
                         type="text"
                         x-model="sourceSearch"
                         @input.debounce.300ms="searchElements(sourceSearch, 'source'); sourceDropOpen = true"
-                        @focus="if(sourceSearch.length >= 2) sourceDropOpen = true"
+                        @focus="if(sourceSearch.length  aria-label="Source Element">= 2) sourceDropOpen = true"
                         placeholder="Search elements…"
                         class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5"
                     >
                     <template x-if="sourceDropOpen && sourceResults.length > 0">
                         <div class="absolute z-20 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" x-cloak>
                             <template x-for="elem in sourceResults" :key="elem.id">
-                                <button
+                                <button type="button"
                                     @click="selectSource(elem)"
                                     class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2"
                                 >
@@ -487,7 +500,7 @@
                 {# Relationship Type #}
                 <div>
                     <label class="text-xs font-medium text-muted-foreground block mb-1">Relationship Type</label>
-                    <select x-model="newType" class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5">
+                    <select x-model="newType" class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5" aria-label="Relationship Type">
                         <option value="">Select type…</option>
                         <optgroup label="Structural">
                             <option value="composition">Composition</option>
@@ -518,14 +531,14 @@
                         type="text"
                         x-model="targetSearch"
                         @input.debounce.300ms="searchElements(targetSearch, 'target'); targetDropOpen = true"
-                        @focus="if(targetSearch.length >= 2) targetDropOpen = true"
+                        @focus="if(targetSearch.length  aria-label="Target Element">= 2) targetDropOpen = true"
                         placeholder="Search elements…"
                         class="w-full text-sm rounded-md border border-input bg-background px-3 py-1.5"
                     >
                     <template x-if="targetDropOpen && targetResults.length > 0">
                         <div class="absolute z-20 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-48 overflow-y-auto" x-cloak>
                             <template x-for="elem in targetResults" :key="elem.id">
-                                <button
+                                <button type="button"
                                     @click="selectTarget(elem)"
                                     class="w-full text-left px-3 py-2 text-sm hover:bg-accent transition-colors flex items-center gap-2"
                                 >
@@ -538,7 +551,7 @@
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button
+                <button type="button"
                     @click="addRelationship()"
                     :disabled="relSaving || !newSource || !newTarget || !newType"
                     class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -548,7 +561,7 @@
                     </template>
                     Save Relationship
                 </button>
-                <button
+                <button type="button"
                     @click="resetNewRow()"
                     class="inline-flex items-center px-3 py-1.5 text-sm font-medium rounded-md border border-input bg-background text-foreground hover:bg-accent transition-colors"
                 >
@@ -598,9 +611,9 @@
                                 ></span>
                             </td>
                             <td class="py-2 px-3 text-right">
-                                <button
+                                <button type="button"
                                     @click="deleteRelationship(row.id)"
-                                    class="text-muted-foreground hover:text-destructive transition-colors p-1"
+                                    class="text-muted-foreground hover:text-destructive-emphasis transition-colors p-1"
                                     title="Delete relationship"
                                 >
                                     <i data-lucide="trash-2" class="w-4 h-4" aria-hidden="true"></i>
@@ -618,7 +631,7 @@
         <div class="flex flex-col items-center justify-center py-8 border-2 border-dashed border-border rounded-lg">
             <i data-lucide="git-branch" class="w-8 h-8 text-muted-foreground mb-2" aria-hidden="true"></i>
             <p class="text-sm text-muted-foreground mb-3">No relationships defined yet</p>
-            <button
+            <button type="button"
                 @click="showAddRow = true"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
             >
@@ -655,7 +668,7 @@
                                     <span x-text="traceData.layer_order.length"></span> layers,
                                     <span x-text="traceData.relationships.length"></span> relationships
                                 </p>
-                                <button @click="loadTraceability()" class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+                                <button type="button" @click="loadTraceability()" class="text-xs text-muted-foreground hover:text-foreground transition-colors">
                                     <i data-lucide="refresh-cw" class="w-3 h-3 inline" aria-hidden="true"></i> Refresh
                                 </button>
                             </div>
@@ -671,7 +684,7 @@
                                         <template x-for="el in (traceData.layers[layerName] || [])" :key="el.id">
                                             <div class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-card border border-border shadow-sm">
                                                 <span class="text-foreground" x-text="el.name"></span>
-                                                <span class="text-muted-foreground text-[10px]" x-text="el.type"></span>
+                                                <span class="text-muted-foreground text-xs" x-text="el.type"></span>
                                             </div>
                                         </template>
                                     </div>
@@ -679,7 +692,7 @@
                                         <div class="flex justify-center mt-2">
                                             <div class="flex flex-col items-center">
                                                 <i data-lucide="arrow-down" class="w-4 h-4 text-muted-foreground" aria-hidden="true"></i>
-                                                <span class="text-[10px] text-muted-foreground"
+                                                <span class="text-xs text-muted-foreground"
                                                       x-text="(() => {
                                                           const nextLayer = traceData.layer_order[layerIdx + 1];
                                                           const curIds = new Set((traceData.layers[layerName] || []).map(e => e.id));

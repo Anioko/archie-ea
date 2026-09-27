@@ -1,5 +1,8 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {# Phase A — Principles, Assessments, Stakeholders (ArchiMate 3.2 Motivation layer)
-   Included in solutions/detail.html within solutionDetail() x-data scope #}
+   Included from solutions/blueprint.html. (The legacy solutionDetail()/
+   detail.js component was removed 15 Aug 2026; the page's inline Alpine
+   components own this scope now.) #}
 
 {# Principles #}
 <div class="mb-4">
@@ -30,8 +33,8 @@
                                 <p class="text-xs text-muted-foreground mt-0.5 line-clamp-1" x-text="item.description" x-cloak x-show="item.description"></p>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive' : item.priority === 'high' ? 'bg-amber-500/10 text-amber-600' : item.priority === 'medium' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                      :class="item.priority === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' : item.priority === 'high' ? 'bg-warning/10 text-warning-emphasis' : item.priority === 'medium' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'"
                                       x-text="item.priority"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[200px] truncate" x-text="item.rationale || '\u2014'"></td>
@@ -41,7 +44,7 @@
                                     <button type="button" @click="openEntityModal('principle', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="confirmDeleteEntity('principle', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <button type="button" @click="confirmDeleteEntity('principle', item)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -84,13 +87,13 @@
                         <tr class="group hover:bg-muted/30 transition-colors">
                             <td class="px-3 py-2 font-semibold text-foreground" x-text="item.name"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-indigo-500/30" x-text="item.assessment_type"></span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/30" x-text="item.assessment_type"></span>
                             </td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[150px] truncate" x-text="item.current_state || '\u2014'"></td>
                             <td class="px-3 py-2 text-muted-foreground text-xs max-w-[150px] truncate" x-text="item.target_state || '\u2014'"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.severity >= 4 ? 'bg-destructive/10 text-destructive' : item.severity === 3 ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                      :class="item.severity >= 4 ? 'bg-destructive/10 text-destructive-emphasis' : item.severity === 3 ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                       x-text="item.severity + '/5'"></span>
                             </td>
                             <td class="px-3 py-2">
@@ -98,7 +101,7 @@
                                     <button type="button" @click="openEntityModal('assessment', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="confirmDeleteEntity('assessment', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <button type="button" @click="confirmDeleteEntity('assessment', item)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -144,23 +147,23 @@
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.role"></td>
                             <td class="px-3 py-2 text-muted-foreground" x-text="item.organization || '\u2014'"></td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.influence_level === 'high' ? 'bg-destructive/10 text-destructive' : item.influence_level === 'medium' ? 'bg-amber-500/10 text-amber-600' : 'bg-primary/10 text-primary'"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                      :class="item.influence_level === 'high' ? 'bg-destructive/10 text-destructive-emphasis' : item.influence_level === 'medium' ? 'bg-warning/10 text-warning-emphasis' : 'bg-primary/10 text-primary'"
                                       x-text="item.influence_level"></span>
                             </td>
                             <td class="px-3 py-2">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                      :class="item.interest_level === 'high' ? 'bg-emerald-500/10 text-emerald-600' : item.interest_level === 'medium' ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground'"
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                      :class="item.interest_level === 'high' ? 'bg-success/10 text-success-emphasis' : item.interest_level === 'medium' ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
                                       x-text="item.interest_level"></span>
                             </td>
                             <td class="px-3 py-2">
                                 <template x-if="item.concerns && item.concerns.length > 0">
                                     <div class="flex flex-wrap gap-1">
                                         <template x-for="(concern, ci) in (Array.isArray(item.concerns) ? item.concerns.slice(0, 3) : [])" :key="ci">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/20" x-text="concern"></span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="concern"></span>
                                         </template>
                                         <span x-show="Array.isArray(item.concerns) && item.concerns.length > 3" x-cloak
-                                              class="text-[10px] text-muted-foreground" x-text="'+' + (item.concerns.length - 3) + ' more'"></span>
+                                              class="text-xs text-muted-foreground" x-text="'+' + (item.concerns.length - 3) + ' more'"></span>
                                     </div>
                                 </template>
                                 <template x-if="!item.concerns || item.concerns.length === 0">
@@ -172,7 +175,7 @@
                                     <button type="button" @click="openEntityModal('stakeholder_sad', item)" class="text-muted-foreground hover:text-foreground p-1 rounded-md" title="Edit">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
-                                    <button type="button" @click="confirmDeleteEntity('stakeholder_sad', item)" class="text-muted-foreground hover:text-destructive p-1 rounded-md" title="Delete">
+                                    <button type="button" @click="confirmDeleteEntity('stakeholder_sad', item)" class="text-muted-foreground hover:text-destructive-emphasis p-1 rounded-md" title="Delete">
                                         <i data-lucide="trash-2" class="w-3.5 h-3.5" aria-hidden="true"></i>
                                     </button>
                                 </div>
@@ -188,7 +191,7 @@
             <p class="text-sm text-muted-foreground italic">No stakeholders documented yet.</p>
             <p class="text-xs text-muted-foreground mt-2 italic">
                 <i data-lucide="sparkles" class="h-3 w-3 inline-block mr-1 text-primary/60"></i>
-                A.R.C.H.I.E. suggests: Define at least 1 goal and 2 stakeholders to establish your solution's motivation layer.
+                Entelim suggests: Define at least 1 goal and 2 stakeholders to establish your solution's motivation layer.
             </p>
         </div>
     </template>
@@ -197,7 +200,7 @@
 {# ArchiMate Model Elements #}
 <div class="mt-6 border-t border-border pt-4">
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-sm font-semibold text-foreground">ArchiMate Model Elements</h3>
+        <h3 class="text-sm font-semibold text-foreground">Architecture Model Elements</h3>
         <button type="button" @click="$dispatch('open-archimate-modal', {phase: 'A'})"
             class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             <i data-lucide="link" class="w-3 h-3" aria-hidden="true"></i> Link Element
@@ -223,7 +226,7 @@
                             <tr class="hover:bg-muted/30 transition-colors">
                                 <td class="px-3 py-2">
                                     <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-indigo-500/20" x-text="el.element_type"></span>
+                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20" x-text="el.element_type"></span>
                                 </td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.baseline_state || '\u2014'"></td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.target_state || '\u2014'"></td>
@@ -258,7 +261,7 @@
                             <tr class="hover:bg-muted/30 transition-colors">
                                 <td class="px-3 py-2">
                                     <span class="font-semibold text-foreground" x-text="el.name"></span>
-                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/20" x-text="el.element_type"></span>
+                                    <span class="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/20" x-text="el.element_type"></span>
                                 </td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.baseline_state || '\u2014'"></td>
                                 <td class="px-3 py-2 text-muted-foreground text-xs max-w-[160px] truncate" x-text="el.target_state || '\u2014'"></td>

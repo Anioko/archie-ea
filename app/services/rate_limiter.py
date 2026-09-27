@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from typing import Callable, Optional
 
-from flask import current_app, jsonify, request
+from flask import current_app, request
 from flask_login import current_user
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,6 @@ Supports multi-stage pipeline progress tracking.
 import json
 import threading
 import time
-from collections import defaultdict
 from datetime import datetime
 from typing import Dict, Generator, Optional
 
@@ -193,14 +192,14 @@ class ProgressTracker:
         while True:
             # Check timeout
             if time.time() - start_time > timeout:
-                yield f'event: error\ndata: {{"error": "Stream timeout"}}\n\n'
+                yield 'event: error\ndata: {"error": "Stream timeout"}\n\n'
                 break
 
             # Get current progress
             current_progress = self.get_progress(task_id)
 
             if current_progress is None:
-                yield f'event: error\ndata: {{"error": "Task not found"}}\n\n'
+                yield 'event: error\ndata: {"error": "Task not found"}\n\n'
                 break
 
             # Send update if progress changed

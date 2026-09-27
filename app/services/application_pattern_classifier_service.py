@@ -15,14 +15,89 @@ Primary entry points:
       Classifies the full portfolio in batches; returns aggregate statistics.
 """
 
+import concurrent.futures
 import json
 import logging
+import time
 from typing import Dict, List, Optional
+
+from flask import current_app, g
 
 from app import db
 from app.models.application_portfolio import ApplicationComponent
 
 logger = logging.getLogger(__name__)
+
+# Hard ceiling on how long the LLM call behind classify_portfolio()/classify_applications()
+# is allowed to take, end to end (including any internal retries/cross-provider failover in
+# LLMService). Bounds the request regardless of which provider is configured or how it is
+# misbehaving — see Task 4, P0 wave: this endpoint previously hung a worker indefinitely.
+LLM_CLASSIFY_TIMEOUT_SECONDS = 60
+
+# A dedicated small pool so a stalled call leaves an orphaned thread here rather than
+# blocking (or competing for) the request-handling thread.
+_llm_classify_executor = concurrent.futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="llm-classify"
+)
+
+
+class LLMClassificationTimeoutError(RuntimeError):
+    """Raised when the LLM call behind application pattern classification exceeds
+    LLM_CLASSIFY_TIMEOUT_SECONDS. Callers must surface this as an error response —
+    never silently substitute fabricated/fallback data for a timed-out call."""
+
+
+def _log_orphaned_future_exception(future: "concurrent.futures.Future") -> None:
+    """Done-callback for the classify-batch future.
+
+    Once the caller times out (route already returned a 504), nobody else
+    ever calls .result()/.exception() on this future — so without this
+    callback, any exception the background call eventually raises (e.g. the
+    LLMInteraction/cache writes in llm_service_impl.py failing without an app
+    context) is silently dropped: exactly the "73 catch blocks that told
+    nobody" anti-pattern CLAUDE.md calls out. Log it instead so it is at
+    least observable, even though the request it belonged to is long gone.
+    """
+    if future.cancelled():
+        return
+    exc = future.exception()
+    if exc is not None:
+        logger.error(
+            "Orphaned application-pattern LLM call failed after the request "
+            "that started it had already timed out: %s",
+            exc,
+            exc_info=exc,
+        )
+
+
+def _call_generate_from_prompt_in_app_context(app, prompt: str, org_id) -> str:
+    """Run LLMService.generate_from_prompt inside *app*'s application context.
+
+    The executor thread has no Flask context of its own. generate_from_prompt
+    (and the interaction-logging/cache-write paths it calls into) use
+    db.session and current_app, which raise "working outside of application
+    context" without one — previously this ran bare, so a call that completed
+    after its request had already timed out raised inside the thread pool
+    with nothing ever observing it (see _log_orphaned_future_exception).
+
+    org_id must be captured on the request thread and passed in explicitly —
+    app/middleware/tenant_context.py sets g.current_org_id in a before_request
+    handler that never runs for this executor thread. Without it,
+    app/middleware/tenant_isolation.py skips tenant filtering entirely (it
+    returns unfiltered when g.current_org_id is absent), so the
+    APISettings.query.filter_by(enabled=True) lookup inside
+    _call_llm_with_key_failover would see every organisation's enabled API
+    keys and could bill this call to another tenant's provider account. Same
+    fix as app/modules/ai_chat/routes/chat_core.py's run_agent() worker.
+    """
+    from app.services.llm_service import LLMService  # lazy import to avoid circular
+
+    with app.app_context():
+        g.current_org_id = org_id
+        return LLMService.generate_from_prompt(
+            prompt, use_cache=True, timeout=LLM_CLASSIFY_TIMEOUT_SECONDS
+        )
+
 
 VALID_PATTERNS = frozenset(
     {"monolith", "modular_monolith", "microservice", "saas", "legacy", "api_gateway", "unknown"}
@@ -97,37 +172,37 @@ def _rule_based_classify(app: ApplicationComponent) -> tuple:
 
     # Rule 1 – SaaS deployment model is a high-confidence signal
     if deployment in ("saas", "cloud_saas"):
-        return "saas", 0.90, ["deployment_model=saas"]  # fabricated-values-ok: confidence bound for saas rule
+        return "saas", 0.90, ["deployment_model=saas"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 2 – explicit API gateway signals
     if any(kw in joined_tech for kw in _API_GATEWAY_KEYWORDS) or "api_gateway" in _safe_lower(
         app.application_type or ""
     ):
-        return "api_gateway", 0.85, ["api_gateway_keyword"]  # fabricated-values-ok: confidence bound for api_gateway rule
+        return "api_gateway", 0.85, ["api_gateway_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 3 – microservice keywords in tech stack
     if any(kw in joined_tech for kw in _MICROSERVICE_KEYWORDS):
-        return "microservice", 0.80, ["microservice_keyword"]  # fabricated-values-ok: confidence bound for microservice rule
+        return "microservice", 0.80, ["microservice_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 4 – legacy technology detected
     if any(kw in joined_tech for kw in _LEGACY_KEYWORDS):
-        return "legacy", 0.85, ["legacy_keyword"]  # fabricated-values-ok: confidence bound for legacy rule
+        return "legacy", 0.85, ["legacy_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 5 – explicit monolith keyword
     if any(kw in joined_tech for kw in _MONOLITH_KEYWORDS):
-        return "monolith", 0.80, ["monolith_keyword"]  # fabricated-values-ok: confidence bound for monolith rule
+        return "monolith", 0.80, ["monolith_keyword"]  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 6 – enterprise ERP/CRM category → monolith
     if category in _ERP_CRM_CATEGORIES:
         signals.append(f"category={category}")
-        return "monolith", 0.70, signals  # fabricated-values-ok: confidence bound for ERP/CRM monolith rule
+        return "monolith", 0.70, signals  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
     # Rule 7 – on-premise commercial apps without microservice signal → monolith
     if deployment in ("on_premise", "on-premise", "on_prem") and app.vendor_name:
         signals.append("on_premise_commercial")
-        return "monolith", 0.60, signals  # fabricated-values-ok: confidence bound for on-premise monolith rule
+        return "monolith", 0.60, signals  # fabricated-ok: designed confidence weight for this deterministic classifier rule
 
-    return "unknown", 0.40, ["no_signal"]  # fabricated-values-ok: default confidence for unknown
+    return "unknown", 0.40, ["no_signal"]  # fabricated-ok: designed confidence weight for the no-signal classifier fallthrough
 
 
 def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
@@ -137,8 +212,6 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
     Returns a list of dicts with keys: id, arch_pattern, confidence, source='llm'.
     Falls back to rule-based on any LLM failure.
     """
-    from app.services.llm_service import LLMService  # lazy import to avoid circular
-
     app_summaries = []
     for app in apps:
         tech_preview = ""
@@ -179,7 +252,23 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
     )
 
     try:
-        raw = LLMService.generate_from_prompt(prompt, use_cache=True)
+        app = current_app._get_current_object()
+        # Capture the tenant on the request thread before handing off to the
+        # executor - see _call_generate_from_prompt_in_app_context for why.
+        from app.middleware.tenant_context import current_org_id as _current_org_id
+
+        org_id = _current_org_id()
+        future = _llm_classify_executor.submit(
+            _call_generate_from_prompt_in_app_context, app, prompt, org_id
+        )
+        future.add_done_callback(_log_orphaned_future_exception)
+        try:
+            raw = future.result(timeout=LLM_CLASSIFY_TIMEOUT_SECONDS)
+        except concurrent.futures.TimeoutError as exc:
+            raise LLMClassificationTimeoutError(
+                f"LLM classification call exceeded the "
+                f"{LLM_CLASSIFY_TIMEOUT_SECONDS}s timeout"
+            ) from exc
         # Extract JSON array from response (LLM may wrap in markdown fences)
         raw = raw.strip()
         if raw.startswith("```"):
@@ -217,6 +306,11 @@ def _llm_classify_batch(apps: List[ApplicationComponent]) -> List[Dict]:
                 })
         return output
 
+    except LLMClassificationTimeoutError:
+        # Never silently substitute rule-based data for a call that timed out — the
+        # caller (classify_applications/classify_portfolio) must let this propagate so
+        # the route can return an explicit 5xx instead of a fabricated 200.
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.warning("LLM batch classification failed (%s); falling back to rules", exc)
         return [
@@ -239,11 +333,17 @@ class ApplicationPatternClassifierService:
     cannot be reached via LLM or when no LLM provider is configured.
     """
 
+    def __init__(self):
+        # True when a time budget stopped LLM classification partway; the
+        # remaining apps were classified by rules and labelled as such.
+        self.llm_truncated = False
+
     def classify_applications(
         self,
         app_ids: Optional[List[int]] = None,
         batch_size: int = 50,
         use_llm: bool = True,
+        time_budget_seconds: Optional[float] = None,
     ) -> List[Dict]:
         """
         Classify applications and persist arch_pattern to the database.
@@ -265,12 +365,28 @@ class ApplicationPatternClassifierService:
         apps: List[ApplicationComponent] = query.all()
 
         results: List[Dict] = []
+        self.llm_truncated = False
+        deadline = (
+            time.monotonic() + time_budget_seconds
+            if time_budget_seconds is not None
+            else None
+        )
 
-        # Process in batches
+        # Process in batches. Each LLM batch is one outbound call with a client
+        # timeout in the 60-90s range — but 920 apps at batch_size=50 is ~19
+        # sequential calls, which is what stalled this endpoint for 10+ minutes.
+        # The optional wall-clock budget stops issuing LLM calls once spent;
+        # remaining apps get the service's documented deterministic fallback,
+        # and every record says which engine produced it.
         for batch_start in range(0, len(apps), batch_size):
             batch = apps[batch_start: batch_start + batch_size]
 
-            if use_llm:
+            llm_this_batch = use_llm
+            if llm_this_batch and deadline is not None and time.monotonic() > deadline:
+                llm_this_batch = False
+                self.llm_truncated = True
+
+            if llm_this_batch:
                 classified = _llm_classify_batch(batch)
                 id_map = {r["id"]: r for r in classified}
             else:
@@ -280,8 +396,10 @@ class ApplicationPatternClassifierService:
                 if app.id in id_map:
                     pattern = id_map[app.id]["arch_pattern"]
                     confidence = id_map[app.id]["confidence"]
+                    source = id_map[app.id].get("source", "llm")
                 else:
                     pattern, confidence, _ = _rule_based_classify(app)
+                    source = "rules"
 
                 # Persist
                 app.arch_pattern = pattern
@@ -290,6 +408,7 @@ class ApplicationPatternClassifierService:
                     "app_name": app.name,
                     "arch_pattern": pattern,
                     "confidence": round(confidence, 4),
+                    "source": source,
                 })
 
         try:
@@ -300,25 +419,35 @@ class ApplicationPatternClassifierService:
 
         return results
 
-    def classify_portfolio(self, batch_size: int = 50) -> Dict:
+    def classify_portfolio(
+        self, batch_size: int = 50, time_budget_seconds: Optional[float] = None
+    ) -> Dict:
         """
         Classify the full application portfolio in batches.
 
         Returns aggregate statistics:
             {classified: N, by_pattern: {pattern: count},
-             confidence_distribution: {high/medium/low: count}}
+             confidence_distribution: {high/medium/low: count},
+             by_source: {llm/rules: count}, llm_truncated: bool}
         """
-        records = self.classify_applications(app_ids=None, batch_size=batch_size)
+        records = self.classify_applications(
+            app_ids=None,
+            batch_size=batch_size,
+            time_budget_seconds=time_budget_seconds,
+        )
 
         by_pattern: Dict[str, int] = {}
+        by_source: Dict[str, int] = {}
         confidence_distribution: Dict[str, int] = {"high": 0, "medium": 0, "low": 0}
 
         for rec in records:
             pattern = rec["arch_pattern"]
             by_pattern[pattern] = by_pattern.get(pattern, 0) + 1
+            source = rec["source"]
+            by_source[source] = by_source.get(source, 0) + 1
 
             confidence = rec["confidence"]
-            if confidence >= 0.75:  # fabricated-values-ok: confidence band thresholds (high/medium/low)
+            if confidence >= 0.75:  # fabricated-ok: threshold constant for bucketing, not a displayed value
                 confidence_distribution["high"] += 1
             elif confidence >= 0.50:
                 confidence_distribution["medium"] += 1
@@ -328,5 +457,7 @@ class ApplicationPatternClassifierService:
         return {
             "classified": len(records),
             "by_pattern": by_pattern,
+            "by_source": by_source,
+            "llm_truncated": self.llm_truncated,
             "confidence_distribution": confidence_distribution,
         }

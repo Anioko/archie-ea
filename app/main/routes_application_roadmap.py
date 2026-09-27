@@ -1,6 +1,7 @@
 """Application-Specific Roadmap Routes - Application Transformation Roadmaps"""
 
-from datetime import datetime, timedelta
+from app.services.archimate_backbone import sync_archimate_element
+from datetime import datetime
 
 from flask import flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
@@ -137,7 +138,7 @@ def application_roadmap(id):
             months=months,
         )
 
-    except Exception as e:
+    except Exception:
         flash("Error loading application roadmap. Please try again.", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
 
@@ -208,6 +209,7 @@ def create_application_work_package(id):
         )
 
         db.session.add(new_wp)
+        sync_archimate_element(new_wp)
         db.session.commit()
 
         return jsonify(
@@ -245,7 +247,7 @@ def create_application_work_package(id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -361,7 +363,7 @@ def update_application_work_package(id, wp_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500
 
@@ -386,6 +388,6 @@ def delete_application_work_package(id, wp_id):
             {"success": True, "message": f"Application work package {wp_id} deleted"}
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return jsonify({"error": "An internal error occurred"}), 500

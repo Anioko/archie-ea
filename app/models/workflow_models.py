@@ -15,6 +15,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import attributes
 
 from app import db
+from app.models.mixins import TenantMixin
 
 _state_logger = logging.getLogger(__name__ + ".state_machine")
 
@@ -493,6 +494,7 @@ class WorkflowNodeType(db.Model):
 # =============================================================================
 
 
+# Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
 class EAWorkflowDefinition(db.Model):
     """
     Enterprise Architecture Workflow Definition.
@@ -509,6 +511,8 @@ class EAWorkflowDefinition(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Global reference data (shared across tenants) — intentionally NOT TenantMixin; org column unused. See wave-4 Task-2 review.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Workflow identity
     workflow_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
@@ -598,7 +602,7 @@ class EAWorkflowDefinition(db.Model):
         return f"<EAWorkflowDefinition {self.workflow_code}: {self.workflow_name}>"
 
 
-class EAWorkflowInstance(db.Model):
+class EAWorkflowInstance(TenantMixin, db.Model):
     """
     Running or completed instance of an EA workflow.
 
@@ -609,6 +613,8 @@ class EAWorkflowInstance(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Instance identification
     instance_code = db.Column(db.String(100), unique=True, nullable=False)
@@ -710,7 +716,7 @@ class EAWorkflowInstance(db.Model):
         return f"<EAWorkflowInstance {self.instance_code}: {self.status}>"
 
 
-class EAWorkflowStepExecution(db.Model):
+class EAWorkflowStepExecution(TenantMixin, db.Model):
     """
     Execution record for individual workflow steps.
 
@@ -721,6 +727,8 @@ class EAWorkflowStepExecution(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Link to instance
     instance_id = db.Column(
@@ -791,7 +799,7 @@ class EAWorkflowStepExecution(db.Model):
         return f"<EAWorkflowStepExecution {self.step_id}: {self.status}>"
 
 
-class EAWorkflowSchedule(db.Model):
+class EAWorkflowSchedule(TenantMixin, db.Model):
     """
     Schedule configuration for automated workflow execution.
 
@@ -802,6 +810,8 @@ class EAWorkflowSchedule(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
 
     # Link to definition
     workflow_definition_id = db.Column(
@@ -895,7 +905,7 @@ def _validate_workflow_status(target, value, oldvalue, initiator):
 event.listen(EAWorkflowInstance.status, "set", _validate_workflow_status, retval=True)
 
 
-class EAWorkflowNotification(db.Model):
+class EAWorkflowNotification(TenantMixin, db.Model):
     """
     Notification record for EA workflow events.
     Persists every notification for audit trail and in-app display.
@@ -904,6 +914,8 @@ class EAWorkflowNotification(db.Model):
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.Integer, primary_key=True)
+    # Phase B (Wave 4): TenantMixin enabled — backfill completed in Phase A.
+    organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=True, index=True)
     workflow_instance_id = db.Column(db.Integer, db.ForeignKey("ea_workflow_instances.id"), nullable=False, index=True)
     recipient_id = db.Column(db.Integer, db.ForeignKey("users.id"))
 

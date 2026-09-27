@@ -10,6 +10,7 @@ import logging
 from datetime import datetime, timedelta
 
 from flask import jsonify, render_template, request
+from werkzeug.exceptions import HTTPException
 from flask_login import current_user, login_required
 
 from app import db
@@ -20,6 +21,7 @@ from app.services.archimate.agentic_gap_implementation_service import (
 
 # Import main blueprint - use relative import to avoid circular dependency
 from .views import main
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +118,9 @@ def get_implementation_status():
         # Check system architecture
         try:
             from app.models.system_architecture import (
-                SystemBoundary,
-                SystemHierarchy,
-                SystemInterface,
+                SystemBoundary,  # noqa: F401 — availability probe: the import IS the test
+                SystemHierarchy,  # noqa: F401 — availability probe: the import IS the test
+                SystemInterface,  # noqa: F401 — availability probe: the import IS the test
             )
 
             status["system_architecture"]["available"] = True
@@ -134,7 +136,7 @@ def get_implementation_status():
 
         # Check data governance
         try:
-            from app.models.data_governance import DataCatalog, DataQualityMetrics
+            from app.models.data_governance import DataCatalog, DataQualityMetrics  # noqa: F401 — availability probe: the import IS the test
 
             status["data_governance"]["available"] = True
             status["data_governance"]["models"] = [
@@ -149,7 +151,7 @@ def get_implementation_status():
 
         # Check application lifecycle
         try:
-            from app.models.application_lifecycle import ApplicationVersioning, DeploymentPipeline
+            from app.models.application_lifecycle import ApplicationVersioning, DeploymentPipeline  # noqa: F401 — availability probe: the import IS the test
 
             status["application_lifecycle"]["available"] = True
             status["application_lifecycle"]["models"] = [
@@ -162,7 +164,7 @@ def get_implementation_status():
 
         # Check software quality
         try:
-            from app.models.software_quality import CodeQualityMetrics, TechnicalDebt
+            from app.models.software_quality import CodeQualityMetrics, TechnicalDebt  # noqa: F401 — availability probe: the import IS the test
 
             status["software_quality"]["available"] = True
             status["software_quality"]["models"] = [
@@ -175,7 +177,7 @@ def get_implementation_status():
 
         # Check solution deployment
         try:
-            from app.models.solution_deployment import SolutionDeploymentArchitecture
+            from app.models.solution_deployment import SolutionDeploymentArchitecture  # noqa: F401 — availability probe: the import IS the test
 
             status["solution_deployment"]["available"] = True
             status["solution_deployment"]["models"] = [
@@ -188,7 +190,7 @@ def get_implementation_status():
         # Check viewpoint export
         try:
             from app.services.archimate.archimate_xml_export_service import (
-                ArchiMateXMLExportService,
+                ArchiMateXMLExportService,  # noqa: F401 — availability probe: the import IS the test
             )
 
             status["viewpoint_export"]["available"] = True
@@ -247,7 +249,7 @@ def get_execution_history():
     try:
         architecture_id = request.args.get("architecture_id", type=int)
         agent_name = request.args.get("agent_name")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         service = AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
@@ -426,7 +428,6 @@ def manage_schedules():
 
 def _calculate_next_run(schedule_type: str, schedule_config: dict):
     """Calculate next run time based on schedule type."""
-    from typing import Optional
 
     now = datetime.utcnow()
 
@@ -519,9 +520,9 @@ def get_agent_recommendations():
     try:
         architecture_id = request.args.get("architecture_id", 1, type=int)
 
-        service = AgenticGapImplementationService(
+        (AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
-        )
+        ))
 
         # Analyze architecture to recommend agents
         recommendations = []
@@ -967,6 +968,17 @@ def get_audit_trail(execution_id):
         - Error details if any
     """
     try:
+        from app.models.agentic_gaps import AgentExecutionHistory
+        from app.utils.route_guards import require_entity_json
+
+        # No such execution -> 404, rather than a 200 carrying an empty trail.
+        # The `main` blueprint renders an HTML 404 page, so return JSON directly.
+        _execution, missing = require_entity_json(
+            AgentExecutionHistory, execution_id, label="Execution"
+        )
+        if missing:
+            return missing
+
         service = AgenticGapImplementationService(
             user_id=current_user.id if current_user.is_authenticated else None
         )
@@ -975,6 +987,8 @@ def get_audit_trail(execution_id):
 
         return jsonify(result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get audit trail for execution {execution_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
@@ -1001,7 +1015,7 @@ def get_decision_logs():
         from app.services.llm_service import LLMService
 
         decision_type = request.args.get("decision_type")
-        limit = request.args.get("limit", 100, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
         days = request.args.get("days", type=int)
 
         since = None

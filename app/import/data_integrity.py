@@ -5,16 +5,14 @@ Provides comprehensive data integrity checks for import workflows.
 """
 
 import logging
-import hashlib
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Tuple, Set
+from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass
 from enum import Enum
 import threading
 
 from flask import current_app
-from app import db
 
 logger = logging.getLogger(__name__)
 
@@ -660,6 +658,13 @@ class DataIntegrityChecker:
         """Get set of existing emails."""
         try:
             from app.models import User
+            # User.email carries a global UNIQUE constraint (app/models/user.py)
+            # — one email can only ever belong to one User row platform-wide,
+            # regardless of organization_id. Import dedup against a per-org
+            # subset would miss real collisions (another org's email would
+            # insert fine here, then fail on flush anyway). Global scan is the
+            # correct behaviour here, not a leak.
+            # tenant-scoping-ok: dedup key (User.email) is globally unique, not org-scoped
             users = User.query.with_entities(User.email).all()
             return set(user.email for user in users)
         except Exception as e:

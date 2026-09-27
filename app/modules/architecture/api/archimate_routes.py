@@ -568,7 +568,6 @@ def get_element_types():
         STRATEGY_ELEMENTS,
         TECHNOLOGY_ELEMENTS,
     )
-    from app.services.archimate.relationship_validator import get_relationship_validator
 
     try:
         layer_filter = request.args.get("layer", "").lower()

@@ -15,10 +15,10 @@ document.addEventListener("alpine:init", function () {
                 this.loading = true;
                 this.error = null;
                 try {
-                    const resp = await fetch("/architecture/api/health-scorecard");
-                    if (!resp.ok) throw new Error("HTTP " + resp.status);
-                    this.data = await resp.json();
+                    // Platform.fetch returns parsed JSON directly, throws on non-ok
+                    this.data = await Platform.fetch("/architecture/api/health-scorecard");
                 } catch (e) {
+                    // Platform.fetch throws a structured PlatformError; preserve inline error state
                     this.error = e.message || "Unknown error";
                 } finally {
                     this.loading = false;
@@ -33,22 +33,21 @@ document.addEventListener("alpine:init", function () {
                 this.repairing = testName;
                 this.repairResult = null;
                 try {
-                    let resp = await fetch("/architecture/api/health-scorecard/repair", {
-                        method: "POST",
-                        headers: {"Content-Type": "application/json"},
-                        body: JSON.stringify({test: testName}),
-                    });
-                    if (!resp.ok) {
-                        const err = await resp.json();
-                        this.repairResult = {error: err.error || "Repair failed"};
-                        return;
-                    }
-                    const result = await resp.json();
+                    // Platform.fetch.post serializes plain object to JSON, injects CSRF token
+                    // Pass { silent: true } to suppress global toast because we handle inline error state
+                    const result = await Platform.fetch.post(
+                        "/architecture/api/health-scorecard/repair",
+                        { test: testName },
+                        { silent: true }
+                    );
                     this.repairResult = result;
                     // Refresh scorecard to show updated results
                     await this.loadScorecard();
                 } catch (e) {
-                    this.repairResult = {error: e.message || "Unknown error"};
+                    // Platform.fetch throws on non-ok; preserve inline error state
+                    // The error may have a .data property with server details
+                    const errorDetail = e.data && (e.data.error || e.data.message) ? e.data.error || e.data.message : null;
+                    this.repairResult = { error: errorDetail || e.message || "Unknown error" };
                 } finally {
                     this.repairing = null;
                     this.$nextTick(function () {

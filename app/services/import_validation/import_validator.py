@@ -5,7 +5,7 @@ Main import validator class - public API for validation framework.
 from typing import Any, Dict, List, Optional, Tuple
 
 from .validation_pipeline import ValidationPipeline
-from .validation_result import ImportValidationResult, RowValidationResult
+from .validation_result import ImportValidationResult
 from .validation_schemas import (
     APPLICATION_COMPONENT_SCHEMA,
     BUSINESS_CRITICALITY_VALUES,

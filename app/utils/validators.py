@@ -32,6 +32,7 @@ def validate_string(
     allow_none: bool = True,
     pattern: str = None,
     strip_whitespace: bool = True,
+    strip_tags: bool = False,
 ) -> Tuple[bool, Optional[str], Optional[str]]:
     """
     Validate string inputs with configurable constraints.
@@ -45,6 +46,11 @@ def validate_string(
         allow_none: Whether None values are allowed (when not required)
         pattern: Optional regex pattern to match
         strip_whitespace: Whether to strip leading/trailing whitespace
+        strip_tags: Remove HTML tags (finding ARCH-071). This is *not* entity
+            escaping — `<script>x</script>` becomes `x`, angle brackets are
+            simply dropped, so it does not double-escape on Jinja autoescape
+            the way sanitize_html()'s `&`-entity encoding would on a name field
+            that is rendered through `{{ }}` elsewhere.
 
     Returns:
         Tuple of (is_valid, sanitized_value, error_message)
@@ -63,6 +69,9 @@ def validate_string(
             value = str(value)
         except (TypeError, ValueError):
             return False, None, f"{field_name} must be a string"
+
+    if strip_tags:
+        value = re.sub(r"<[^>]*>", "", value)
 
     # Strip whitespace if configured
     if strip_whitespace:
@@ -651,8 +660,13 @@ PATTERNS = {
 
 # Pre-configured validators for common use cases
 def validate_application_name(value):
-    """Validate application name field."""
-    return validate_string(value, max_length=255, min_length=1, field_name="name", required=True)
+    """Validate application name field. Strips HTML tags (ARCH-071) — an
+    application name is an identifier, not a rich-text field, and stored
+    markup is a data-hygiene problem even when render paths encode it
+    correctly on their own."""
+    return validate_string(
+        value, max_length=255, min_length=1, field_name="name", required=True, strip_tags=True
+    )
 
 
 def validate_description(value, required=False):

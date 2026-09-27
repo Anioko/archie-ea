@@ -99,22 +99,17 @@ let ComposerGraph = (function() {
                 return;
             }
 
-            fetch('/archimate/api/relationships', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    source_element_id: self.relPickerSourceId,
-                    target_element_id: self.relPickerTargetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                    access_mode: relType === 'access' ? self.accessMode : undefined,
-                    flow_label: relType === 'flow' ? self.flowLabel : undefined,
-                    description: pendingLink.get('description') || undefined,
-                    custom_label: pendingLink.get('customLabel') || undefined,
-                }),
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.post('/archimate/api/relationships', {
+                source_element_id: self.relPickerSourceId,
+                target_element_id: self.relPickerTargetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
+                access_mode: relType === 'access' ? self.accessMode : undefined,
+                flow_label: relType === 'flow' ? self.flowLabel : undefined,
+                description: pendingLink.get('description') || undefined,
+                custom_label: pendingLink.get('customLabel') || undefined,
+            }, { silent: true })
+                .then(function(data) {
                 if (data.id) {
                     let style = REL_STYLES[relType] || REL_STYLES.association;
                     let mp = markerPath(style.targetMarker);
@@ -276,13 +271,12 @@ let ComposerGraph = (function() {
             self.logAuditEvent('relationship_removed', 'relationship', relId, relType, srcName + ' → ' + tgtName, null);
 
             if (relId) {
-                fetch('/archimate/api/relationships/' + relId, {
-                    method: 'DELETE',
-                    credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                }).catch(function(err) {
-                    console.warn('Failed to delete relationship ' + relId + ' from server:', err);
-                });
+                Platform.fetch.delete('/archimate/api/relationships/' + relId, { silent: true })
+                    .catch(function(err) {
+                        /* The link is already gone from the canvas — the user needs to know the
+                           delete did NOT persist, or it will silently reappear on next reload. */
+                        _toast('error', 'Relationship removed on canvas but not saved — it may reappear on reload');
+                    });
             }
         },
 
@@ -339,7 +333,7 @@ let ComposerGraph = (function() {
                         ]
                     });
                     view.addTools(tools);
-                } catch(e) { /* graceful degradation */ }
+                } catch(e) { /* swallow-ok: optional JointJS vertex and segment tools; without them the line is simply not reshapeable, which is the view-mode behaviour anyway */ }
             }
         },
 
@@ -356,7 +350,7 @@ let ComposerGraph = (function() {
                 line.removeAttribute('data-original-stroke');
             }
             /* Remove link tools on deselect */
-            try { view.removeTools(); } catch(e) {}
+            try { view.removeTools(); } catch(e) { /* swallow-ok: cosmetic removal of link tools on deselect */ }
         },
 
         renameElement: function() {
@@ -414,12 +408,8 @@ let ComposerGraph = (function() {
             // Wave 7: Propagate stale to downstream dependents
             if (elId && this.solutionId) {
                 let self = this;
-                fetch('/api/solutions/' + self.solutionId + '/elements/' + elId + '/propagate-stale', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: '{}',
-                }).then(function(r) { return r.json(); })
-                .then(function(data) {
+                Platform.fetch.post('/api/solutions/' + self.solutionId + '/elements/' + elId + '/propagate-stale', {})
+                    .then(function(data) {
                     if (data.stale_count > 0) {
                         self._staleElementIds = data.stale_ids || [];
                         self.staleCount = data.stale_count;
@@ -434,7 +424,12 @@ let ComposerGraph = (function() {
                             }
                         });
                     }
-                }).catch(function() {});
+                }).catch(function() {
+                    /* The element was already removed from the canvas — this call only
+                       checks for downstream impact, but a silent failure here leaves the
+                       architect unaware that dependents might now be stale. */
+                    _toast('error', 'Could not check downstream impact of removing "' + name + '"');
+                });
             }
         },
 
@@ -776,17 +771,10 @@ let ComposerGraph = (function() {
         /* BUG-CMP-002: Persist a single metadata field on a relationship via PUT */
         _persistRelMetadata: function(relId, payload) {
             if (!relId) return;
-            fetch('/archimate/api/relationships/' + relId, {
-                method: 'PUT', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(payload),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-            })
-            .catch(function(err) {
-                _toast('error', 'Failed to save relationship property: ' + (err.message || err));
-            });
+            Platform.fetch.put('/archimate/api/relationships/' + relId, payload, { silent: true })
+                .catch(function(err) {
+                    _toast('error', 'Failed to save relationship property: ' + (err.message || err));
+                });
         },
 
         /* GAP-INT-001: Persist connection specification to backend + update annotation */
@@ -976,11 +964,11 @@ let ComposerGraph = (function() {
             this.relPickerOpen = true;
 
             let self = this;
-            fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/valid-relationship-types', {
+                source_id: srcElementId,
+                target_id: tgtElementId,
+            }, { silent: true })
+                .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0
                     ? validDetailed
@@ -999,6 +987,7 @@ let ComposerGraph = (function() {
                     return !validSet[t];
                 });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];
@@ -1057,11 +1046,7 @@ let ComposerGraph = (function() {
                 self.statusText = 'Presentation: slide 1 of ' + slides.length;
             }
 
-            fetch('/archimate/api/saved-viewpoints', { credentials: 'same-origin' })
-                .then(function(r) {
-                    if (!r.ok) throw new Error('HTTP ' + r.status);
-                    return r.json();
-                })
+            Platform.fetch.get('/archimate/api/saved-viewpoints', {}, { silent: true })
                 .then(function(data) {
                     let vps = data.viewpoints || data || [];
                     let slides = vps.map(function(v) {
@@ -1195,21 +1180,34 @@ let ComposerGraph = (function() {
                 self.customStyleTemplates.push(tmpl);
             }
 
+            let persisted = true;
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) { persisted = false; }
 
             self.newStyleTemplateName = '';
             self.styleTemplateSaveOpen = false;
-            self._toast('Style template "' + tmpl.name + '" saved', 'info');
+            if (persisted) {
+                _toast('info', 'Style template "' + tmpl.name + '" saved');
+            } else {
+                /* Template is only in memory now — it looked saved but will vanish on
+                   reload, so the user has to be told rather than finding out later. */
+                _toast('error', 'Could not save style template "' + tmpl.name + '" — storage unavailable');
+            }
         },
 
         deleteCustomStyleTemplate: function(name) {
             let self = this;
             self.customStyleTemplates = (self.customStyleTemplates || []).filter(function(t) { return t.name !== name; });
+            /* The row vanishes from the list the moment this runs, so a storage
+               failure read as "deleted" — and the template came back on the next
+               reload. saveStyleTemplate() above already reports the mirror-image
+               failure; this one has to as well. */
             try {
                 localStorage.setItem('composer_style_templates', JSON.stringify(self.customStyleTemplates));
-            } catch(e) {}
+            } catch(e) {
+                _toast('error', 'Could not delete style template "' + name + '" — storage unavailable, it will reappear on reload');
+            }
         },
 
         resetElementStyles: function() {
@@ -1456,15 +1454,45 @@ let ComposerGraph = (function() {
             self.statusText = 'Sugiyama layout applied to ' + elements.length + ' elements';
         },
 
-        /* ── New Diagram: clears canvas + resets saved viewpoint state ── */
+        /* ── New Diagram: clears canvas + resets saved viewpoint state ──
+         * C-04: the confirm dialog now names exactly what will be lost
+         * (element/relationship counts), and the clear is pushed onto
+         * UndoStack as a single undoable action instead of wiping undo
+         * history — Ctrl+Z (or the Undo toolbar button) restores the
+         * cleared canvas. The server-side SavedDiagram row for a
+         * previously-saved diagram (currentSavedVpId) is NOT deleted by
+         * this action — it stays retrievable from "Open" regardless of
+         * undo. */
         newDiagram: async function() {
             if (this.mode === 'view') return;
-            const hasContent = this.graph && this.graph.getElements().length > 0;
-            if (hasContent && this.viewpointDirty) {
-                if (!(await Platform.modal.confirm('You have unsaved changes. Start a new diagram anyway?'))) return;
-            } else if (hasContent) {
-                if (!(await Platform.modal.confirm('Start a new blank diagram? Current canvas will be cleared.'))) return;
+            let self = this;
+            const elementCount = this.graph ? this.graph.getElements().length : 0;
+            const linkCount = this.graph ? this.graph.getLinks().length : 0;
+            const hasContent = elementCount > 0;
+            if (hasContent) {
+                const unsavedPrefix = this.viewpointDirty ? 'You have unsaved changes. ' : '';
+                const msg = unsavedPrefix + elementCount + ' element' + (elementCount === 1 ? '' : 's') +
+                    ' and ' + linkCount + ' relationship' + (linkCount === 1 ? '' : 's') +
+                    ' will be cleared from the canvas. This can be undone with Ctrl+Z. Continue?';
+                /* C-04: destructive path is styled as destructive (not the
+                 * prominent primary button), and Cancel — the safe default —
+                 * receives focus, per Platform.confirm's showCancel behavior. */
+                const ok = await Platform.modal.confirm({
+                    title: 'Clear canvas?',
+                    message: msg,
+                    confirmText: 'Clear canvas',
+                    cancelText: 'Keep working',
+                    variant: 'destructive',
+                });
+                if (!ok) return;
             }
+
+            let preClearSnapshot = (hasContent && this.graph) ? this.graph.toJSON() : null;
+            let preClearVpId = this.currentSavedVpId;
+            let preClearTabId = this.activeTabId;
+            let preClearVpName = this.activeViewpointName;
+            let preClearDirty = this.viewpointDirty;
+
             if (this.graph) { this.graph.clear(); }
             this.canvasElements = {};
             this.elementCount = 0;
@@ -1478,10 +1506,33 @@ let ComposerGraph = (function() {
             this.selectedLink = null;
             this._selectedCells = [];
             this.statusText = 'New diagram — drag elements from the palette to start';
-            if (typeof UndoStack !== 'undefined') UndoStack.clear();
             let url = new URL(window.location);
             url.searchParams.delete('viewpoint_id');
             window.history.replaceState({}, '', url);
+
+            if (preClearSnapshot && typeof UndoStack !== 'undefined') {
+                UndoStack.push({
+                    undo: function() {
+                        self.graph.fromJSON(preClearSnapshot);
+                        self.currentSavedVpId = preClearVpId;
+                        self.activeTabId = preClearTabId;
+                        self.activeViewpointName = preClearVpName;
+                        self.viewpointDirty = preClearDirty;
+                        self.elementCount = self.graph.getElements().length;
+                        self.relCount = self.graph.getLinks().length;
+                        self.statusText = 'Restored the diagram cleared by "New diagram"';
+                    },
+                    redo: function() {
+                        self.graph.clear();
+                        self.currentSavedVpId = null;
+                        self.activeTabId = null;
+                        self.activeViewpointName = '';
+                        self.viewpointDirty = false;
+                        self.elementCount = 0;
+                        self.relCount = 0;
+                    },
+                });
+            }
         },
 
         /* ── Auto-detect existing relationships between canvas elements ── */
@@ -1511,11 +1562,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
             self.statusText = 'Scanning for existing relationships...';
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1579,11 +1630,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
 
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1613,9 +1664,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on drop, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* CMP2-003: Debounced wrapper (500ms) to avoid hammering API on bulk imports */
@@ -1661,11 +1711,11 @@ let ComposerGraph = (function() {
                 if (eid) cellMap[eid] = el;
             });
 
-            fetch('/archimate/api/relationships?per_page=200&element_ids=' + elementIds.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/relationships', {
+                per_page: 200,
+                element_ids: elementIds.join(','),
+            }, { silent: true })
+                .then(function(data) {
                 let rels = data.relationships || data.items || [];
                 let added = 0;
                 rels.forEach(function(rel) {
@@ -1693,9 +1743,8 @@ let ComposerGraph = (function() {
                     self._pushUndo();
                 }
             })
-            .catch(function() {
-                /* Silent fail — auto-detect is best-effort */
-            });
+            /* swallow-ok: automatic relationship auto-detect the user never asked for — it runs on bulk import, adds links when it can, and claims nothing when it cannot */
+            .catch(function() {});
         },
 
         /* ── CMP2-002: Bulk import from portfolio ───────────── */
@@ -1721,13 +1770,13 @@ let ComposerGraph = (function() {
                 return;
             }
             self.bulkImportLoading = true;
-            let url = '/archimate/api/elements/search?limit=100';
-            if (q.length > 0) url += '&q=' + encodeURIComponent(q);
-            if (self.bulkImportLayerFilter) url += '&layer=' + encodeURIComponent(self.bulkImportLayerFilter);
-            if (self.solutionId) url += '&solution_id=' + encodeURIComponent(self.solutionId);
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            Platform.fetch.get('/archimate/api/elements/search', {
+                limit: 100,
+                q: q.length > 0 ? q : undefined,
+                layer: self.bulkImportLayerFilter || undefined,
+                solution_id: self.solutionId || undefined,
+            }, { silent: true })
+                .then(function(data) {
                 const items = data.elements || data.items || data.results || [];
                 /* Mark items already on canvas as disabled */
                 items.forEach(function(el) {

@@ -27,7 +27,11 @@ function issueBoard() {
       this.currentUserId = this.getCurrentUserId();
       
       if (!this.solutionId) {
-        console.warn('No solution ID found');
+        // The board cannot address any solution — say so rather than render an
+        // empty board that reads as "no issues".
+        if (window.Platform && Platform.toast && Platform.toast.error) {
+          Platform.toast.error('Issue board unavailable: no solution identified in this page URL.');
+        }
         return;
       }
 
@@ -43,12 +47,17 @@ function issueBoard() {
      */
     async loadIssues() {
       try {
-        const response = await fetch(`/api/solutions/${this.solutionId}/issues`);
-        if (response.ok) {
-          this.issues = await response.json();
-        }
+        this.issues = await Platform.fetch(`/api/solutions/${this.solutionId}/issues`, { silent: true });
+        this._issuesLoadErrorShown = false;
       } catch (error) {
-        console.error('Failed to load issues:', error);
+        // setupPolling() calls this every 5s — only surface the failure once
+        // per outage, not on every retry, to avoid a toast every 5 seconds.
+        if (!this._issuesLoadErrorShown) {
+          this._issuesLoadErrorShown = true;
+          if (window.Platform && Platform.toast && Platform.toast.error) {
+            Platform.toast.error('Failed to load issues. Please try again.');
+          }
+        }
       }
     },
 
@@ -129,30 +138,21 @@ function issueBoard() {
      */
     async transitionIssue(issue, newStatus) {
       try {
-        const response = await fetch(
+        const updated = await Platform.fetch.put(
           `/api/solutions/${this.solutionId}/issues/${issue.id}`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              status: newStatus
-            })
-          }
+          { status: newStatus },
+          { silent: true }
         );
-
-        if (response.ok) {
-          const updated = await response.json();
-          // Update issue in list
-          const index = this.issues.findIndex(i => i.id === issue.id);
-          if (index !== -1) {
-            this.issues[index] = updated;
-            this.selectedIssue = { ...updated };
-          }
+        // Update issue in list
+        const index = this.issues.findIndex(i => i.id === issue.id);
+        if (index !== -1) {
+          this.issues[index] = updated;
+          this.selectedIssue = { ...updated };
         }
       } catch (error) {
-        console.error('Failed to transition issue:', error);
+        if (window.Platform && Platform.toast && Platform.toast.error) {
+          Platform.toast.error('Failed to update issue status. Please try again.');
+        }
       }
     },
 
@@ -161,26 +161,20 @@ function issueBoard() {
      */
     async manuallyEscalate(issue) {
       try {
-        const response = await fetch(
+        const updated = await Platform.fetch.post(
           `/api/solutions/${this.solutionId}/issues/${issue.id}/escalate`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            }
-          }
+          null,
+          { silent: true }
         );
-
-        if (response.ok) {
-          const updated = await response.json();
-          const index = this.issues.findIndex(i => i.id === issue.id);
-          if (index !== -1) {
-            this.issues[index] = updated;
-            this.selectedIssue = { ...updated };
-          }
+        const index = this.issues.findIndex(i => i.id === issue.id);
+        if (index !== -1) {
+          this.issues[index] = updated;
+          this.selectedIssue = { ...updated };
         }
       } catch (error) {
-        console.error('Failed to escalate issue:', error);
+        if (window.Platform && Platform.toast && Platform.toast.error) {
+          Platform.toast.error('Failed to escalate issue. Please try again.');
+        }
       }
     },
 

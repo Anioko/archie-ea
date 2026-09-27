@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}AI Extraction Corrections{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
@@ -20,7 +21,7 @@
         {% if messages %}
             <div class="mb-6 space-y-2">
                 {% for category, message in messages %}
-                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
+                    <div class="rounded-md border p-4 {% if category == 'success' %}bg-success/5 border-success/20 text-success-emphasis{% elif category == 'error' %}bg-destructive/5 border-destructive/20 text-destructive-emphasis{% else %}bg-primary/5 border-primary/20 text-primary{% endif %}">
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -41,11 +42,11 @@
             value=correction_count|string,
             icon='check-circle',
             description='Total corrections submitted',
-            value_class='text-success' if correction_count > 0 else 'text-muted-foreground'
+            value_class=('text-success' if correction_count > 0 else 'text-muted-foreground')
         ) }}
         {{ metrics_card(
             title='Pending Review',
-            value=(total_with_elements - correction_count if total_with_elements > correction_count else 0)|string,
+            value=((total_with_elements - correction_count) if total_with_elements > correction_count else 0)|string,
             icon='clock',
             description='Elements awaiting confirmation'
         ) }}
@@ -110,8 +111,8 @@
                                         <!-- Correct button -->
                                         <button
                                             type="button"
-                                            onclick="markCorrect({{ row.element_id }}, {{ row.app_id }})"
-                                            class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
+                                            data-action="markCorrect" data-eid="{{ row.element_id }}"
+                                            class="inline-flex items-center gap-1 rounded-md bg-success/10 border border-success/30 text-success-emphasis px-2.5 py-1 text-xs font-medium hover:bg-success/20 transition-colors"
                                             aria-label="Mark element {{ row.element_id }} as correct">
                                             <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i>
                                             Correct
@@ -120,8 +121,8 @@
                                         <!-- Fix inline form -->
                                         <button
                                             type="button"
-                                            onclick="toggleFixForm({{ row.element_id }})"
-                                            class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
+                                            data-action="toggleFixForm" data-eid="{{ row.element_id }}"
+                                            class="inline-flex items-center gap-1 rounded-md bg-warning/10 border border-warning/30 text-warning-emphasis px-2.5 py-1 text-xs font-medium hover:bg-warning/20 transition-colors"
                                             aria-label="Fix element {{ row.element_id }}">
                                             <i data-lucide="edit-2" class="h-3 w-3" aria-hidden="true"></i>
                                             Fix
@@ -154,14 +155,14 @@
                                             <div class="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    onclick="submitFix({{ row.element_id }}, {{ row.app_id }})"
+                                                    data-action="submitFix" data-eid="{{ row.element_id }}"
                                                     class="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-2.5 py-1 text-xs font-medium hover:bg-primary/90 transition-colors"
                                                     aria-label="Submit fix for element {{ row.element_id }}">
                                                     Submit Fix
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onclick="toggleFixForm({{ row.element_id }})"
+                                                    data-action="toggleFixForm" data-eid="{{ row.element_id }}"
                                                     class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium hover:bg-accent transition-colors"
                                                     aria-label="Cancel fix for element {{ row.element_id }}">
                                                     Cancel
@@ -193,37 +194,33 @@
 </div>
 
 <script>
-const CSRF_TOKEN = "{{ csrf_token() }}";
+function reportCorrectionError(message) {
+    if (window.Platform && Platform.toast) {
+        Platform.toast.error(message);
+    } else {
+        // If Platform.toast is not available, throw an error to ensure the failure is not swallowed.
+        throw new Error('Platform.toast not available: ' + message);
+    }
+}
 
-function markCorrect(elementId, appId) {
-    fetch(`/api/archimate-elements/${elementId}/correct`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': CSRF_TOKEN,
-        },
-        body: JSON.stringify({
-            app_id: appId,
-            correction_type: 'confirm',
-        }),
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success !== false) {
-            const row = document.getElementById(`row-${elementId}`);
-            if (row) {
-                row.classList.add('opacity-50');
-                const actionsEl = document.getElementById(`actions-${elementId}`);
-                if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
-                    if (window.lucide) { lucide.createIcons(); }
+function markCorrect(elementId) {
+    Platform.fetch.post(`/dashboard/api/archimate-elements/${elementId}/correct`, { action: 'approve' }, { silent: true })
+        .then(data => {
+            if (data.success !== false) {
+                const row = document.getElementById(`row-${elementId}`);
+                if (row) {
+                    row.classList.add('opacity-50');
+                    const actionsEl = document.getElementById(`actions-${elementId}`);
+                    if (actionsEl) {
+                        actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-success-emphasis font-medium"><i data-lucide="check-circle" class="h-3 w-3"></i>Confirmed</span>';
+                        if (window.lucide) { lucide.createIcons(); }
+                    }
                 }
+            } else {
+                reportCorrectionError(data.error || 'Could not confirm this element. It has not been changed.');
             }
-        } else {
-            console.error('Correction failed:', data.error || data);
-        }
-    })
-    .catch(err => console.error('Request failed:', err));
+        })
+        .catch(() => reportCorrectionError('Could not reach the server to confirm this element. It has not been changed.'));
 }
 
 function toggleFixForm(elementId) {
@@ -233,7 +230,7 @@ function toggleFixForm(elementId) {
     }
 }
 
-function submitFix(elementId, appId) {
+function submitFix(elementId) {
     const nameInput = document.getElementById(`fix-name-${elementId}`);
     const typeInput = document.getElementById(`fix-type-${elementId}`);
 
@@ -244,40 +241,41 @@ function submitFix(elementId, appId) {
         return;
     }
 
-    fetch(`/api/archimate-elements/${elementId}/correct`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': CSRF_TOKEN,
-        },
-        body: JSON.stringify({
-            app_id: appId,
-            correction_type: 'fix',
-            corrected_element: {
-                name: correctedName,
-                type: correctedType,
-            },
-        }),
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.success !== false) {
-            const row = document.getElementById(`row-${elementId}`);
-            if (row) {
-                row.classList.add('bg-warning/5');
-                const actionsEl = document.getElementById(`actions-${elementId}`);
-                if (actionsEl) {
-                    actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
-                    if (window.lucide) { lucide.createIcons(); }
+    // Only send the fields the user actually filled in — the endpoint falls back to
+    // the element's current value for any key that is absent, so sending an explicit
+    // null would blank it.
+    const payload = { action: 'correct' };
+    if (correctedName) { payload.name = correctedName; }
+    if (correctedType) { payload.type = correctedType; }
+
+    Platform.fetch.post(`/dashboard/api/archimate-elements/${elementId}/correct`, payload, { silent: true })
+        .then(data => {
+            if (data.success !== false) {
+                const row = document.getElementById(`row-${elementId}`);
+                if (row) {
+                    row.classList.add('bg-warning/5');
+                    const actionsEl = document.getElementById(`actions-${elementId}`);
+                    if (actionsEl) {
+                        actionsEl.innerHTML = '<span class="inline-flex items-center gap-1 text-xs text-warning-emphasis font-medium"><i data-lucide="edit-2" class="h-3 w-3"></i>Corrected</span>';
+                        if (window.lucide) { lucide.createIcons(); }
+                    }
+                    const fixForm = document.getElementById(`fix-form-${elementId}`);
+                    if (fixForm) { fixForm.classList.add('hidden'); }
                 }
-                const fixForm = document.getElementById(`fix-form-${elementId}`);
-                if (fixForm) { fixForm.classList.add('hidden'); }
+            } else {
+                reportCorrectionError(data.error || 'Could not save this correction. It has not been applied.');
             }
-        } else {
-            console.error('Fix submission failed:', data.error || data);
-        }
-    })
-    .catch(err => console.error('Request failed:', err));
+        })
+        .catch(() => reportCorrectionError('Could not reach the server to save this correction. It has not been applied.'));
 }
+
+/* CSP-safe: delegate the row actions instead of inline onclick= (DESIGN.md). */
+document.addEventListener('click', function (e) {
+    var el = e.target.closest('[data-action]');
+    if (!el) return;
+    var fns = { markCorrect: markCorrect, toggleFixForm: toggleFixForm, submitFix: submitFix };
+    var fn = fns[el.getAttribute('data-action')];
+    if (fn) fn(el.getAttribute('data-eid'));
+});
 </script>
 {% endblock %}

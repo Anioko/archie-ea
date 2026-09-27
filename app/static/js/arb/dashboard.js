@@ -22,7 +22,8 @@ function arbReviewCreateModal() {
       architecture_model_id: '',
       application_ids: [],
       capability_ids: [],
-      capability_impact_type: 'modifies'
+      capability_impact_type: 'modifies',
+      acknowledge_no_subject: false
     },
     formOptions: {
       solutions: [],
@@ -51,28 +52,44 @@ function arbReviewCreateModal() {
 
     loadFormData() {
       const url = window.__ARB_CONFIG__?.formDataUrl;
-      if (!url || this.formDataLoaded) return;
-      fetch(url, {
-        method: 'GET',
-        headers: { 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' }
-      })
-        .then(r => r.json())
+      if (this.formDataLoaded) return;
+      // A missing URL used to be a SILENT return, so a page that included this
+      // modal without declaring formDataUrl rendered permanently empty Review
+      // Type and Decision Type dropdowns with loadError false -- the app could
+      // not tell it had failed, and neither could the user. That is how ARB
+      // review creation was blocked on /arb/reviews for as long as it was.
+      // Absent configuration is a failure, and it says so.
+      if (!url) {
+        this.formOptions.loadError = true;
+        this.errorMsg = 'This page did not provide the review form data URL, so the '
+          + 'review options could not be loaded. Please report this.';
+        return;
+      }
+      // Platform.fetch throws on non-ok responses; we catch to paint inline error state
+      Platform.fetch.get(url, { silent: true })
         .then(data => {
-          if (data.success) {
-            this.formOptions.solutions = data.solutions || [];
-            this.formOptions.review_types = data.review_types || [];
-            this.formOptions.adrs = data.adrs || [];
-            this.formOptions.architecture_models = data.architecture_models || [];
-            this.formOptions.capabilities = data.capabilities || [];
-            this.formOptions.applications = data.applications || [];
-            this.formOptions.decision_types = data.decision_types || [];
-            this.formOptions.impact_types = data.impact_types || [{ value: 'modifies', label: 'Modifies' }];
-            this.formOptions.capability_required_review_types = data.capability_required_review_types || [];
-            if (data.impact_types && data.impact_types.length > 0) {
-              this.formData.capability_impact_type = data.impact_types[0].value;
-            }
-            this.formDataLoaded = true;
+          // An envelope that is not success:true is a failure, not a no-op. This
+          // branch had no else, so an unexpected shape left every dropdown empty
+          // and loadError false.
+          if (!data || !data.success) {
+            this.formOptions.loadError = true;
+            this.errorMsg = (data && data.error)
+              || 'The review form options could not be loaded. Please refresh.';
+            return;
           }
+          this.formOptions.solutions = data.solutions || [];
+          this.formOptions.review_types = data.review_types || [];
+          this.formOptions.adrs = data.adrs || [];
+          this.formOptions.architecture_models = data.architecture_models || [];
+          this.formOptions.capabilities = data.capabilities || [];
+          this.formOptions.applications = data.applications || [];
+          this.formOptions.decision_types = data.decision_types || [];
+          this.formOptions.impact_types = data.impact_types || [{ value: 'modifies', label: 'Modifies' }];
+          this.formOptions.capability_required_review_types = data.capability_required_review_types || [];
+          if (data.impact_types && data.impact_types.length > 0) {
+            this.formData.capability_impact_type = data.impact_types[0].value;
+          }
+          this.formDataLoaded = true;
         })
         .catch(() => {
           this.formOptions.loadError = true;
@@ -91,6 +108,13 @@ function arbReviewCreateModal() {
         : [];
       if (this.isCapabilityRequired() && capIds.length === 0) {
         this.errorMsg = 'At least one capability is required for this review type.';
+        return;
+      }
+      // F-06 (2 Sep 2026): without a linked ADR/Architecture Model the review
+      // can never reach the board — require the explicit acknowledgement shown
+      // in the warning banner rather than letting it through silently.
+      if (!this.formData.adr_id && !this.formData.architecture_model_id && !this.formData.acknowledge_no_subject) {
+        this.errorMsg = 'Link an ADR or Architecture Model, or confirm you understand this will be a record-only item the board cannot act on.';
         return;
       }
       this.submitting = true;
@@ -123,16 +147,8 @@ function arbReviewCreateModal() {
         capability_impacts: capability_impacts,
         capability_impact_type: impactType
       };
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(payload)
-      })
-        .then(r => r.json())
+      // Platform.fetch.post serialises plain‑object body to JSON and injects CSRF automatically
+      Platform.fetch.post(url, payload, { silent: true })
         .then(data => {
           this.submitting = false;
           if (!data.success) {
@@ -145,9 +161,23 @@ function arbReviewCreateModal() {
           }
           setTimeout(() => window.location.reload(), 800);
         })
-        .catch(() => {
+        .catch(err => {
           this.submitting = false;
-          this.errorMsg = 'Network error. Please try again.';
+          // Platform.fetch throws a structured HttpError on a non-ok response:
+          // err.data is the parsed JSON body, err.message the flattened field
+          // errors, err.status the HTTP code. A real 400 (e.g. the solution
+          // evidence-gate rejection) must reach the user verbatim, not be
+          // relabelled as a network failure. Only a genuine transport error
+          // (no response) falls through to the generic message.
+          if (err && err.type === 'HttpError') {
+            const data = err.data || {};
+            this.errorMsg = Object.values(data.errors || {}).join(' ')
+              || data.error
+              || err.message
+              || ('Request failed (HTTP ' + (err.status || '?') + ').');
+          } else {
+            this.errorMsg = (err && err.message) || 'Network error. Please try again.';
+          }
         });
     }
   };

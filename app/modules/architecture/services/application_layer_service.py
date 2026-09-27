@@ -23,12 +23,12 @@ ArchiMate 3.2 Application Layer Elements:
 import json
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 from app import db
-from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
+from app.models import ArchiMateElement, ArchiMateRelationship
 from app.services.llm_service import LLMService
 
 
@@ -86,7 +86,7 @@ class ApplicationLayerService:
             components = []
             for comp_info in components_data.get("components", []):
                 component = self._create_application_element(
-                    comp_info, architecture_id, type="ApplicationComponent"
+                    comp_info, architecture_id, element_type="ApplicationComponent"
                 )
                 components.append(component)
 
@@ -173,7 +173,7 @@ class ApplicationLayerService:
             services = []
             for service_info in services_data.get("services", []):
                 service = self._create_application_element(
-                    service_info, component.architecture_id, type="ApplicationService"
+                    service_info, component.architecture_id, element_type="ApplicationService"
                 )
 
                 # Component realizes Service
@@ -224,7 +224,7 @@ class ApplicationLayerService:
             data_objects = []
             for obj_info in data_objects_data.get("data_objects", []):
                 data_obj = self._create_application_element(
-                    obj_info, architecture_id, type="DataObject"
+                    obj_info, architecture_id, element_type="DataObject"
                 )
 
                 # If component specified, create composition relationship
@@ -279,11 +279,11 @@ class ApplicationLayerService:
         relationships.append(flow_rel)
 
         # Link data objects to flow (via properties)
-        flow_props = {
+        ({
             "data_objects": data_object_ids,
             "flow_type": "data_transfer",
             "created_at": datetime.utcnow().isoformat(),
-        }
+        })
 
         # Store data flow metadata
         for data_obj_id in data_object_ids:
@@ -332,7 +332,7 @@ class ApplicationLayerService:
             interface_data = json.loads(response)
 
             interface = self._create_application_element(
-                interface_data, component.architecture_id, type="ApplicationInterface"
+                interface_data, component.architecture_id, element_type="ApplicationInterface"
             )
 
             # Component assigned to Interface

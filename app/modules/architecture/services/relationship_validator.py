@@ -10,7 +10,7 @@ Provides:
 """
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from app.config.archimate_relationship_matrix import (
     ALL_ELEMENTS,
@@ -27,9 +27,7 @@ from app.config.archimate_relationship_matrix import (
     get_all_valid_sources_for_target,
     get_all_valid_targets_for_source,
     get_cardinality,
-    get_element_layer,
     get_valid_relationships,
-    is_valid_relationship,
 )
 
 logger = logging.getLogger(__name__)
@@ -246,7 +244,7 @@ class RelationshipValidator:
                 f"Current count: {existing_count}"
             )
             suggestions.append(
-                f"Consider using a different relationship type or restructuring the model"
+                "Consider using a different relationship type or restructuring the model"
             )
 
         # Warning for minimum cardinality (informational)
@@ -516,7 +514,7 @@ class RelationshipValidator:
         # Serving typically flows upward (lower serves higher)
         if relationship_type == "serving":
             if source_idx < target_idx:
-                return f"Note: 'serving' typically flows from lower layers to higher layers"
+                return "Note: 'serving' typically flows from lower layers to higher layers"
 
         # Realization typically flows upward (lower realizes higher)
         if relationship_type == "realization":

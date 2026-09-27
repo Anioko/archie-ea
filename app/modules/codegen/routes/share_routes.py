@@ -166,7 +166,7 @@ def public_share_download(token):
         from flask import abort
         abort(404)
 
-    solution = Solution.query.get(gen.solution_id)
+    Solution.query.get(gen.solution_id)
     config = gen.config or {}
     repo_name = config.get("repo_name", f"solution-{gen.solution_id}")
     import re as _re

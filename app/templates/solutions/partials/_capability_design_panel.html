@@ -26,7 +26,7 @@
                 <p class="text-sm text-muted-foreground mb-3">Select target business capabilities for this solution.</p>
                 <div class="flex gap-2 mb-3">
                     <input type="text" x-model="capSearch" placeholder="Search capabilities..."
-                           class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
+                           class="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Search capabilities...">
                     <button @click="loadCapabilities()" type="button"
                             class="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
                         Load
@@ -53,7 +53,7 @@
             <div x-show="mode === 'discover'" x-cloak>
                 <p class="text-sm text-muted-foreground mb-3">Describe the business problem -- AI will map it to relevant capabilities.</p>
                 <textarea x-model="problemText" rows="3" placeholder="E.g., We need to consolidate our customer onboarding across 3 legacy systems..."
-                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"></textarea>
+                          class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary" aria-label="E.g., We need to consolidate our customer onboarding across 3 legacy systems..."></textarea>
                 <button @click="discoverCapabilities()" type="button" :disabled="discovering || !problemText.trim()"
                         class="mt-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
                     <span x-show="!discovering" x-cloak>Discover Capabilities</span>
@@ -81,7 +81,7 @@
                 <template x-for="cap in selectedCapabilities" :key="cap.capability_id">
                     <span class="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium">
                         <span x-text="cap.capability_name"></span>
-                        <button @click="removeCapability(cap.mapping_id)" type="button" class="hover:text-destructive">&times;</button>
+                        <button @click="removeCapability(cap.mapping_id)" type="button" class="hover:text-destructive-emphasis">&times;</button>
                     </span>
                 </template>
             </div>
@@ -113,7 +113,7 @@
                                                 <div class="font-medium text-foreground" x-text="app.application_name"></div>
                                                 <div class="mt-1 flex flex-wrap gap-1.5">
                                                     <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs"
-                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-emerald-500/10 text-emerald-600' : (app.coverage_percentage || 0) >= 40 ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-destructive'"
+                                                          :class="(app.coverage_percentage || 0) >= 70 ? 'bg-success/10 text-success-emphasis' : (app.coverage_percentage || 0) >= 40 ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'"
                                                           x-text="(app.coverage_percentage || 0) + '% coverage'"></span>
                                                     <span x-show="app.support_level" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-xs" x-text="app.support_level"></span>
                                                 </div>
@@ -122,7 +122,7 @@
                                     </div>
                                 </template>
                                 <template x-if="row.applications.length === 0">
-                                    <p class="text-xs text-destructive italic">No applications currently support this capability -- gap identified</p>
+                                    <p class="text-xs text-destructive-emphasis italic">No applications currently support this capability -- gap identified</p>
                                 </template>
                             </div>
                         </template>
@@ -147,21 +147,21 @@
                             <div class="rounded-lg border border-border p-3">
                                 <div class="flex items-center justify-between mb-2">
                                     <span class="text-sm font-medium text-foreground" x-text="domain.domain"></span>
-                                    <span class="text-xs" :class="domain.coverage_percentage >= 70 ? 'text-emerald-600' : domain.coverage_percentage >= 40 ? 'text-amber-600' : 'text-destructive'"
+                                    <span class="text-xs" :class="domain.coverage_percentage >= 70 ? 'text-success-emphasis' : domain.coverage_percentage >= 40 ? 'text-warning-emphasis' : 'text-destructive'"
                                           x-text="(domain.coverage_percentage || 0) + '% covered'"></span>
                                 </div>
                                 <div class="w-full h-2 rounded-full bg-muted overflow-hidden">
                                     <div class="h-full rounded-full transition-all"
-                                         :class="domain.coverage_percentage >= 70 ? 'bg-emerald-500' : domain.coverage_percentage >= 40 ? 'bg-amber-500' : 'bg-destructive'"
+                                         :class="domain.coverage_percentage >= 70 ? 'bg-success' : domain.coverage_percentage >= 40 ? 'bg-warning' : 'bg-destructive'"
                                          :style="'width: ' + (domain.coverage_percentage || 0) + '%'"></div>
                                 </div>
                                 <template x-if="domain.gaps && domain.gaps.length > 0">
                                     <div class="mt-2 space-y-1">
                                         <template x-for="gap in domain.gaps" :key="gap.id || gap.name">
                                             <div class="text-xs text-muted-foreground flex items-center gap-1.5">
-                                                <span class="w-1.5 h-1.5 rounded-full bg-red-400 flex-shrink-0"></span>
+                                                <span class="w-1.5 h-1.5 rounded-full bg-destructive flex-shrink-0"></span>
                                                 <span x-text="gap.name"></span>
-                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-500/10 text-destructive text-xs" x-text="gap.severity"></span>
+                                                <span x-show="gap.severity" x-cloak class="inline-flex items-center px-1.5 py-0.5 rounded bg-destructive/10 text-destructive-emphasis text-xs" x-text="gap.severity"></span>
                                             </div>
                                         </template>
                                     </div>
@@ -172,8 +172,8 @@
                 </template>
 
                 {# Unknown Factors Disclosure (ARC-005) #}
-                <div x-show="analysisData.unknown_factors" x-cloak class="mt-4 rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 p-4">
-                    <h4 class="text-xs font-semibold text-amber-700 mb-2">Factors Not Assessed -- Architect Review Required</h4>
+                <div x-show="analysisData.unknown_factors" x-cloak class="mt-4 rounded-lg border border-dashed border-warning/30 bg-warning/5 p-4">
+                    <h4 class="text-xs font-semibold text-warning-emphasis mb-2">Factors Not Assessed -- Architect Review Required</h4>
                     <div class="grid gap-1.5 sm:grid-cols-2">
                         <template x-for="uf in analysisData.unknown_factors" :key="uf.factor">
                             <div class="text-xs text-muted-foreground">
@@ -199,7 +199,7 @@
                     <div class="flex flex-wrap gap-2">
                         <template x-for="iq in analysisData.input_quality_report" :key="iq.application_id">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-emerald-500/10 text-emerald-600' : iq.data_freshness_tier === 'stale' ? 'bg-amber-500/10 text-amber-600' : 'bg-red-500/10 text-destructive'">
+                                  :class="iq.data_freshness_tier === 'fresh' ? 'bg-success/10 text-success-emphasis' : iq.data_freshness_tier === 'stale' ? 'bg-warning/10 text-warning-emphasis' : 'bg-destructive/10 text-destructive-emphasis'">
                                 <span x-text="iq.application_name"></span>
                                 <span x-text="iq.completeness_score + '%'"></span>
                             </span>
@@ -251,10 +251,10 @@
                             <div class="flex items-center gap-2 mt-1">
                                 <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
                                     <div class="h-full rounded-full transition-all"
-                                         :class="(dh.health_score || 0) >= 80 ? 'bg-emerald-500' : (dh.health_score || 0) >= 60 ? 'bg-amber-500' : 'bg-destructive'"
+                                         :class="(dh.health_score || 0) >= 80 ? 'bg-success' : (dh.health_score || 0) >= 60 ? 'bg-warning' : 'bg-destructive'"
                                          :style="'width: ' + (dh.health_score || 0) + '%'"></div>
                                 </div>
-                                <span class="text-xs font-medium" :class="(dh.health_score || 0) >= 80 ? 'text-emerald-600' : (dh.health_score || 0) >= 60 ? 'text-amber-600' : 'text-destructive'"
+                                <span class="text-xs font-medium" :class="(dh.health_score || 0) >= 80 ? 'text-success-emphasis' : (dh.health_score || 0) >= 60 ? 'text-warning-emphasis' : 'text-destructive'"
                                       x-text="(dh.health_score || 0) + '%'"></span>
                             </div>
                         </div>
@@ -292,13 +292,11 @@ function capabilityDesignPanel() {
 
         async loadCapabilities() {
             try {
-                const resp = await fetch(`/solutions/capabilities/search?q=${encodeURIComponent(this.capSearch)}&limit=50`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.availableCapabilities = data.capabilities || data.results || data || [];
-                }
+                const data = await Platform.fetch.get(`/solutions/capabilities/search`, { q: this.capSearch, limit: 50 });
+                this.availableCapabilities = data.capabilities || data.results || data || [];
             } catch (e) {
-                console.error('Failed to load capabilities:', e);
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capabilities');
             }
         },
 
@@ -314,28 +312,16 @@ function capabilityDesignPanel() {
         async addCapability(cap) {
             if (this.selectedCapabilities.find(s => s.capability_id === cap.id)) return;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capabilities`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({capability_id: cap.id})
-                });
-                if (resp.ok) {
-                    const result = await resp.json();
-                    this.selectedCapabilities.push({
-                        mapping_id: result.mapping_id || Date.now(),
-                        capability_id: cap.id,
-                        capability_name: cap.name,
-                    });
-                    this.loadAnalysis();
-                }
-            } catch (e) {
-                console.error('Failed to add capability:', e);
-                // Add locally even if API fails
+                const result = await Platform.fetch.post(`/solutions/${solutionId}/capabilities`, { capability_id: cap.id });
                 this.selectedCapabilities.push({
-                    mapping_id: Date.now(),
+                    mapping_id: result.mapping_id || Date.now(),
                     capability_id: cap.id,
                     capability_name: cap.name,
                 });
+                this.loadAnalysis();
+            } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to add capability');
             }
         },
 
@@ -351,17 +337,11 @@ function capabilityDesignPanel() {
         async discoverCapabilities() {
             this.discovering = true;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capabilities/discover`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({problem_description: this.problemText})
-                });
-                if (resp.ok) {
-                    const data = await resp.json();
-                    this.discoveredCapabilities = data.suggestions || [];
-                }
+                const data = await Platform.fetch.post(`/solutions/${solutionId}/capabilities/discover`, { problem_description: this.problemText });
+                this.discoveredCapabilities = data.suggestions || [];
             } catch (e) {
-                console.error('Failed to discover capabilities:', e);
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to discover capabilities');
             } finally {
                 this.discovering = false;
             }
@@ -374,16 +354,14 @@ function capabilityDesignPanel() {
             }
             this.analysisLoading = true;
             try {
-                const resp = await fetch(`/solutions/${solutionId}/capability-analysis`);
-                if (resp.ok) {
-                    this.analysisData = await resp.json();
-                    // Sync selected capabilities from server
-                    if (this.analysisData.selected_capabilities) {
-                        this.selectedCapabilities = this.analysisData.selected_capabilities;
-                    }
+                this.analysisData = await Platform.fetch.get(`/solutions/${solutionId}/capability-analysis`);
+                // Sync selected capabilities from server
+                if (this.analysisData.selected_capabilities) {
+                    this.selectedCapabilities = this.analysisData.selected_capabilities;
                 }
             } catch (e) {
-                console.error('Failed to load analysis:', e);
+                // Platform.fetch already shows a toast unless silent:true; preserve existing inline error handling
+                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Failed to load capability analysis');
             } finally {
                 this.analysisLoading = false;
             }

@@ -49,6 +49,17 @@ def _env_bool(name: str, default: bool) -> bool:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _env_optional_positive_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    try:
+        parsed = int(value.strip())
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
 # Load environment variables from .env file
 from dotenv import load_dotenv
 
@@ -63,6 +74,16 @@ else:
     print("Loaded environment from default location")
 
 # Verify critical API keys are loaded
+#
+# This list must track LLMService's own provider_priority
+# (app/modules/ai_chat/services/llm_service_impl.py) - it previously omitted
+# OPENROUTER_API_KEY and AZURE_OPENAI_API_KEY, so this printed "no LLM API
+# keys found" even when _get_configured_provider() had already found and was
+# using a real OpenRouter key from the environment. Two independent checks
+# disagreeing, with the wrong one printed first and loudest, is what made
+# every session reading this log line report "no provider configured" as
+# fact without verifying against the function that actually gates AI
+# features.
 _api_keys_loaded = []
 for key in [
     "OPENAI_API_KEY",
@@ -70,6 +91,8 @@ for key in [
     "GEMINI_API_KEY",
     "DEEPSEEK_API_KEY",
     "HUGGINGFACE_API_KEY",
+    "OPENROUTER_API_KEY",
+    "AZURE_API_KEY",
 ]:
     if os.getenv(key):
         _api_keys_loaded.append(key)
@@ -80,7 +103,7 @@ else:
 
 
 class Config:
-    APP_NAME = os.environ.get("APP_NAME", "A.R.C.H.I.E.")
+    APP_NAME = os.environ.get("APP_NAME", "Entelim")
     SECRET_KEY = os.environ.get("SECRET_KEY")
     if not SECRET_KEY:
         import secrets
@@ -92,17 +115,82 @@ class Config:
             "Set SECRET_KEY in your .env file for production use."
         )
     SQLALCHEMY_COMMIT_ON_TEARDOWN = True
+    # Separate from SECRET_KEY so database command capabilities can be rotated
+    # without invalidating sessions. This value is shared only by the schema
+    # owner (which installs the verifier key) and application processes (which
+    # sign exact command documents); it is never exposed through database SQL.
+    TRANSFORMATION_COMMAND_CAPABILITY_SECRET = os.environ.get(
+        "TRANSFORMATION_COMMAND_CAPABILITY_SECRET", ""
+    )
+    TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = os.environ.get(
+        "TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS", ""
+    )
+    # Typed ARB waiver expiry is disabled until tenants, one service principal
+    # per tenant, and a scheduler capability are explicitly configured.
+    ARB_CONDITION_EXPIRY_CAPABILITY = os.environ.get(
+        "ARB_CONDITION_EXPIRY_CAPABILITY", ""
+    )
+    ARB_CONDITION_EXPIRY_PRINCIPALS = os.environ.get(
+        "ARB_CONDITION_EXPIRY_PRINCIPALS", "{}"
+    )
+    ARB_CONDITION_EXPIRY_ORGANIZATION_IDS = os.environ.get(
+        "ARB_CONDITION_EXPIRY_ORGANIZATION_IDS", ""
+    )
+    ARB_CONDITION_EXPIRY_BATCH_SIZE = os.environ.get(
+        "ARB_CONDITION_EXPIRY_BATCH_SIZE", "100"
+    )
+    ARB_CONDITION_EXPIRY_INTERVAL_MINUTES = os.environ.get(
+        "ARB_CONDITION_EXPIRY_INTERVAL_MINUTES", "5"
+    )
+
+    # T-002: capability maturity projection — recurring interval, configurable
+    # downward. Default 15 minutes per the task brief.
+    CAPABILITY_PROJECTION_INTERVAL_MINUTES = os.environ.get(
+        "CAPABILITY_PROJECTION_INTERVAL_MINUTES", "15"
+    )
+
+    # T-003: derived-fact recompute (DE-4) — recurring interval, configurable
+    # downward. Default 10 minutes per the task brief (ADR-003).
+    DERIVED_RECOMPUTE_INTERVAL_MINUTES = os.environ.get(
+        "DERIVED_RECOMPUTE_INTERVAL_MINUTES", "10"
+    )
 
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    # F-07: the 8 hours above is an ABSOLUTE cap; it is not an idle timeout and
+    # never was. SESSION_IDLE_TIMEOUT is the separate, server-enforced limit on
+    # how long a session may sit unused before it is torn down
+    # (app/_bootstrap/session_policy.py). 30 minutes is the enterprise-typical
+    # value; set to 0 to disable.
+    SESSION_IDLE_TIMEOUT = timedelta(
+        minutes=int(os.environ.get("SESSION_IDLE_TIMEOUT_MINUTES", "30") or 30)
+    )
     REMEMBER_COOKIE_DURATION = timedelta(days=30)
     SESSION_REFRESH_EACH_REQUEST = True  # FAR-012: Ensure session is refreshed on every request
     REMEMBER_COOKIE_REFRESH_EACH_REQUEST = True  # FAR-012: Refresh remember-me cookie on activity
+
+    # Cookie attributes — set explicitly at the base class rather than relying on
+    # Flask/Flask-Login's own defaults (finding A-04/ARCH-051/C-10). Flask's
+    # built-in defaults happen to match most of this (HttpOnly=True,
+    # SameSite=Lax) but that is an implicit fact about the framework version in
+    # use, not a control this app owns — it silently stops matching the moment
+    # a dependency bump changes the default, or SameSite=None is ever needed
+    # for a specific integration. ProductionConfig overrides SECURE to True.
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", False)
+    REMEMBER_COOKIE_HTTPONLY = True
+    REMEMBER_COOKIE_SAMESITE = "Lax"
+    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", False)
 
     # JWT Configuration
     JWT_TOKEN_LOCATION = ["headers"]
     JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY") or SECRET_KEY
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+
+    # MCP server — OAuth-protected endpoint for AI assistants
+    MCP_ALLOWED_ORIGIN = os.environ.get("MCP_ALLOWED_ORIGIN", "")
+    MCP_ENDPOINT_URL = os.environ.get("MCP_ENDPOINT_URL", "")
 
     # Email
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.sendgrid.net")
@@ -128,6 +216,11 @@ class Config:
             "Set ADMIN_PASSWORD in your .env file for production use."
         )
     ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "flask-base-admin@example.com")
+    # Optional same-tenant, confirmed user who owns generated application-owner
+    # evidence requests. Invalid/unavailable IDs fall back to the workstream lead.
+    TRANSFORMATION_PORTFOLIO_STEWARD_ID = _env_optional_positive_int(
+        "TRANSFORMATION_PORTFOLIO_STEWARD_ID"
+    )
     EMAIL_SUBJECT_PREFIX = "[{}]".format(APP_NAME)
     EMAIL_SENDER = "{app_name} Admin <{email}>".format(
         app_name=APP_NAME, email=MAIL_USERNAME
@@ -135,6 +228,14 @@ class Config:
 
     # ARCHIE Deploy: Credential encryption + Coolify PaaS + n8n connector sync
     CREDENTIAL_ENCRYPTION_KEY = os.environ.get("CREDENTIAL_ENCRYPTION_KEY", "")
+    if not CREDENTIAL_ENCRYPTION_KEY:
+        print(
+            "WARNING: CREDENTIAL_ENCRYPTION_KEY env var not set. Any connector "
+            "credential save (M365, Jira, DevOps, Lucidchart) will refuse to "
+            "store the secret rather than store it unencrypted. Generate one: "
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"'
+        )
     COOLIFY_API_URL = os.environ.get("COOLIFY_API_URL", "http://localhost:8000")
     COOLIFY_API_TOKEN = os.environ.get("COOLIFY_API_TOKEN", "")
     COOLIFY_DOMAIN_SUFFIX = os.environ.get("COOLIFY_DOMAIN_SUFFIX", "archie.example.com")
@@ -152,6 +253,15 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
     STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO", "")
     STRIPE_PRICE_ENTERPRISE = os.environ.get("STRIPE_PRICE_ENTERPRISE", "")
+
+    # Jira inbound webhook (TPM-008). POST /webhooks/jira is unauthenticated and
+    # csrf-exempt by necessity, so this HMAC secret is its ONLY access control.
+    # The handler read this key before it was ever declared here, so it always
+    # resolved to "" - and the signature check treated an empty secret as
+    # "skip verification". Left unset the endpoint now rejects every request
+    # (fail closed); set it to the secret configured on the Jira webhook to
+    # enable the integration.
+    JIRA_WEBHOOK_SECRET = os.environ.get("JIRA_WEBHOOK_SECRET", "")
 
     # Parse the REDIS_URL to set RQ config variables
     urllib.parse.uses_netloc.append("redis")
@@ -174,7 +284,7 @@ class Config:
     CELERY_ENABLE_UTC = True
 
     # SSO / Enterprise Identity (S0-01)
-    # Supports Azure AD, Okta (OIDC) and any SAML 2.0 IdP (PLT-030).
+    # Supports Azure AD and Okta (OIDC).
     # Feature-flagged: SSO routes only active when FeatureFlag(key='sso_authentication') is enabled.
     SSO_PROVIDERS = {
         "azure": {
@@ -196,21 +306,6 @@ class Config:
         },
     }
 
-    # SAML 2.0 IdP configuration (PLT-030)
-    # Set SAML_IDP_SSO_URL + SAML_SP_ENTITY_ID to enable SAML alongside OIDC.
-    # Supported IdPs: ADFS, PingFederate, Shibboleth, Okta (SAML), Azure AD (SAML).
-    # Routes registered at /account/saml/login, /account/saml/acs, /account/saml/metadata.
-    SAML_IDP_SSO_URL = os.environ.get("SAML_IDP_SSO_URL", "")
-    # IdP Entity ID / Issuer URI (validated against Assertion Issuer element)
-    SAML_IDP_ENTITY_ID = os.environ.get("SAML_IDP_ENTITY_ID", "")
-    # IdP X.509 signing certificate — PEM body without -----BEGIN/END----- headers.
-    # Required for production signature validation (via xmlsec / python3-saml).
-    SAML_IDP_CERT = os.environ.get("SAML_IDP_CERT", "")
-    # SP Entity ID — typically the platform's base URL
-    SAML_SP_ENTITY_ID = os.environ.get("SAML_SP_ENTITY_ID", "")
-    # SP ACS URL — leave empty to auto-derive from url_for('account.saml_acs')
-    SAML_SP_ACS_URL = os.environ.get("SAML_SP_ACS_URL", "")
-
     # Internationalization (S2-01) — date/number/currency formatting
     # Full string translation (gettext) is Phase 2.
     BABEL_DEFAULT_LOCALE = os.environ.get("BABEL_DEFAULT_LOCALE", "en")
@@ -227,7 +322,44 @@ class Config:
 
     # AI-originated CRUD approval gate (A95-008)
     # When true, AI CRUD endpoints return 202 pending_approval instead of writing directly.
-    REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "false").lower() == "true"
+    # Defaults ON (governance wave, Aug 2026): the @require_ai_approval-decorated
+    # /ai-chat/data/* endpoints (app/modules/ai_chat/routes/workflow_routes.py) and the
+    # LLM-agent mutating-tool queue are AI-*initiated* writes — an LLM decided to make
+    # them, so they go through a human approval queue by default. This does NOT gate
+    # the ai_chat slash commands (/link-capability, /generate-from-capabilities in
+    # command_parser_service.py): those are parsed verbatim from the user's own typed
+    # message, not proposed by the LLM, so they execute directly regardless of this
+    # flag — see the comments at their write sites. Set REQUIRE_AI_APPROVAL=false to
+    # restore the pre-Aug-2026 direct-write behaviour for the LLM-agent paths.
+    #
+    # This comment described the intent, not the behaviour, until 31 Aug 2026:
+    # the agent tool loop never read this key. Its queue decision came from the
+    # per-session `agent_auto_execute` preference alone, which any authenticated
+    # user could flip via POST /session/toggle-auto-execute — so an operator who
+    # set this true still had every tier:"auto" mutating tool executing without
+    # an approval row. Both agent call sites now resolve through
+    # chat_core._agent_auto_execute_allowed(), which fails closed, and the
+    # ai-approval-honoured gate keeps them there.
+    REQUIRE_AI_APPROVAL = os.environ.get("REQUIRE_AI_APPROVAL", "true").lower() == "true"
+
+    # Outbound calls to third-party APIs (GitHub, Crunchbase, G2) from
+    # app/services/api_clients/. Default FALSE, which is the air-gapped posture
+    # ADR-0005 commits this product to.
+    #
+    # Nothing enforced this until 31 Aug 2026: the air-gap gate checks that UI
+    # assets are not fetched from a CDN and says nothing about the server making
+    # its own calls. An adversarial sweep found /api/pipeline/market-analysis/
+    # <category> reaching https://api.github.com inside a logged-in request and
+    # echoing third-party repository text back as this product's "market
+    # analysis" -- including, for a nonsense category, the description of a
+    # credential-phishing script, returned with success:true.
+    #
+    # Set ALLOW_EXTERNAL_API_CALLS=true only where egress is understood and
+    # permitted. With it false the clients return an honest failure rather than
+    # fabricated analysis.
+    ALLOW_EXTERNAL_API_CALLS = (
+        os.environ.get("ALLOW_EXTERNAL_API_CALLS", "false").lower() == "true"
+    )
 
     # North Star Navigation (NORTH-STAR-001)
     # Enterprise-grade navigation for Fortune 500 TOGAF/ArchiMate practitioners.
@@ -246,6 +378,10 @@ class Config:
     # Page-aware AI guide is fail-closed by default and only activates when
     # this flag is explicitly enabled and an LLM provider is configured.
     AI_PAGE_GUIDE_ENABLED = _env_bool("AI_PAGE_GUIDE_ENABLED", False)
+
+    # Architecture monitoring API is off by default; mounted only when this
+    # flag is explicitly enabled.
+    ARCHITECTURE_MONITORING_API_ENABLED = _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
 
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
@@ -314,6 +450,16 @@ class Config:
                 "set it to this deployment's absolute origin (e.g. "
                 "https://app.example.com) or set MCP_ENABLED=false."
             )
+        # Behind a TLS-terminating reverse proxy (Caddy/nginx/Traefik), trust the
+        # X-Forwarded-* headers so request.scheme/host reflect the real https URL.
+        # Without this the app builds http:// URLs behind https, causing
+        # mixed-content blocking. Opt-in via TRUST_PROXY so forged headers are not
+        # trusted when the app is exposed directly.
+        if os.environ.get("TRUST_PROXY", "false").lower() in ("1", "true", "yes") \
+                and not getattr(app, "_proxyfix_applied", False):
+            from werkzeug.middleware.proxy_fix import ProxyFix
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+            app._proxyfix_applied = True
         return
 
 
@@ -369,6 +515,30 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
+    TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
+    TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
+
+    # credential_encryption.py raises RuntimeError when this is unset, by
+    # design (it must not silently store a credential in plaintext). Generated
+    # at import time rather than a literal, so nothing here reads as a real key.
+    from cryptography.fernet import Fernet as _Fernet
+    CREDENTIAL_ENCRYPTION_KEY = _Fernet.generate_key().decode()
+
+    # Brute-force protection is a production control; under test it throttles the
+    # suite instead of an attacker. /account/login is capped at 10 POSTs per
+    # minute keyed on IP, and every smoke test signs in from 127.0.0.1 — so as
+    # the suite grows it is structurally guaranteed to refuse its own logins.
+    #
+    # It did. A full single-process run failed 31 tests and errored 9 more, every
+    # one of them a sign-in refused with "Rate limit exceeded: 10 per 1m", across
+    # the authorisation matrix, the archetype journeys and the AI chat journey.
+    # The archetype that lost varied by timing, which made it read as a race.
+    #
+    # tests/test_rate_limiting.py covers the limiter directly, below this switch,
+    # and asserts the login route still carries the decorator — so disabling it
+    # here costs no coverage of the control. It only stops the control from
+    # deciding the outcome of tests that are not about it.
+    RATE_LIMITING_ENABLED = False
 
     # PostgreSQL REQUIRED for tests (matches production behavior)
     # SQLite is NOT supported - tests must use PostgreSQL for consistency
@@ -377,11 +547,21 @@ class TestingConfig(Config):
         "postgresql://postgres:postgres@127.0.0.1:5432/archie_test",  # secrets-safety-ok
     )
 
-    # PostgreSQL connection options for testing
+    # PostgreSQL connection options for testing.
+    #
+    # NullPool, not a sized pool: many older test modules hand-roll a module-
+    # scoped `app` fixture (each builds its own engine) and never dispose it, so
+    # a pooled engine keeps up to pool_size+max_overflow connections open per
+    # module. Across the ~2350-test suite that accumulated past Postgres's
+    # default max_connections=100 and the run died mid-way with "FATAL: sorry,
+    # too many clients already" (15 errors on CI). NullPool opens a connection
+    # per checkout and closes it on return, so nothing idle is held between
+    # tests and the count stays flat regardless of how many engines exist.
+    from sqlalchemy.pool import NullPool as _NullPool  # noqa: PLC0415
+
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
-        "pool_size": 5,
-        "max_overflow": 10,
+        "poolclass": _NullPool,
     }
 
     @classmethod
@@ -397,9 +577,21 @@ class TestingConfig(Config):
                 "Example: postgresql://postgres:postgres@localhost:5432/flask_test"  # secrets-safety-ok
             )
 
-        if not db_uri:
+        # The guard used to be `if not db_uri`, which can never be true: the
+        # default above always fills it in. So the one warning that would tell
+        # you which database you are actually on was dead code, and the silent
+        # fallback is expensive - it sends pytest at a long-lived `archie_test`
+        # on the default port, which drifts from the models over time. That cost
+        # a real misdiagnosis: a run against the stale fallback failed with
+        # UniqueViolation on ix_value_streams_code, an index that does not exist
+        # in a database built from the current models, and the failures were
+        # initially read as a code defect.
+        if not os.environ.get("TEST_DATABASE_URL"):
             app.logger.warning(
-                "No TEST_DATABASE_URL provided; using default local PostgreSQL test database."
+                "TEST_DATABASE_URL is not set; falling back to %s. "
+                "A long-lived fallback database drifts from the models - set "
+                "TEST_DATABASE_URL explicitly before trusting a failure.",
+                db_uri,
             )
 
         print("THIS APP IS IN TESTING MODE. YOU SHOULD NOT SEE THIS IN PRODUCTION.")
@@ -409,13 +601,26 @@ class ProductionConfig(Config):
     DEBUG = False
     USE_RELOADER = False
 
-    # Session cookie security
-    _cookie_secure_default = os.environ.get("PREFERRED_URL_SCHEME", "http").lower() == "https"
-    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", _cookie_secure_default)
+    # Session cookie security.
+    #
+    # Secure defaults to TRUE here. It used to be derived from
+    # PREFERRED_URL_SCHEME, which ProductionConfig never sets (only
+    # DevelopmentConfig does), so the default resolved to "http" -> False and a
+    # production deployment shipped session and remember-me cookies over plain
+    # HTTP unless an operator happened to set the env var. A security default
+    # that depends on a variable this class does not define is not a default.
+    #
+    # Set SESSION_COOKIE_SECURE=false explicitly for the rare TLS-terminated-
+    # nowhere deployment; that is now a visible decision rather than the
+    # accident.
+    SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", True)
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", _cookie_secure_default)
+    REMEMBER_COOKIE_SECURE = _env_bool("REMEMBER_COOKIE_SECURE", True)
     REMEMBER_COOKIE_HTTPONLY = True
+    # Was unset, so the remember-me cookie had no SameSite protection at all
+    # while the session cookie did.
+    REMEMBER_COOKIE_SAMESITE = "Lax"
 
     # PostgreSQL for production (REQUIRED - validated at runtime)
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL")
@@ -423,11 +628,16 @@ class ProductionConfig(Config):
     JIRA_AUTO_PUSH = os.environ.get("JIRA_AUTO_PUSH", "false").lower() == "true"
 
     # PostgreSQL connection options (optimized for production)
+    # Sized per-process, not per-deployment: preload_app=True plus the
+    # post_fork db.engine.dispose() hook means every gunicorn worker and the
+    # RQ worker gets its own full pool. The hardcoded 20+30 let 2 workers +
+    # RQ worker demand 150 connections against max_connections=100. Env-
+    # overridable so the pool can track GUNICORN_THREADS without a code change.
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
-        "pool_size": 20,
-        "max_overflow": 30,
+        "pool_size": int(os.environ.get("SQLALCHEMY_POOL_SIZE", 20)),
+        "max_overflow": int(os.environ.get("SQLALCHEMY_MAX_OVERFLOW", 30)),
         "pool_timeout": 30,
         "connect_args": {
             "client_encoding": "utf8",
@@ -446,6 +656,10 @@ class ProductionConfig(Config):
 
         Config.init_app(app)
         assert os.environ.get("SECRET_KEY"), "SECRET_KEY IS NOT SET!"
+        if not app.config.get("TRANSFORMATION_COMMAND_CAPABILITY_SECRET"):
+            raise ValueError(
+                "TRANSFORMATION_COMMAND_CAPABILITY_SECRET is required in production"
+            )
 
         # Trust the nginx reverse proxy's forwarded headers (X-Forwarded-Proto /
         # -For) so request.scheme/host reflect the real client-facing protocol.
@@ -556,6 +770,32 @@ class CurrencyConfig:
             config = cls.SUPPORTED_CURRENCIES.get(cls.DEFAULT_CURRENCY)
 
         return config
+
+    @classmethod
+    def get_org_currency_code(cls, organization=None):
+        """H-04: single source of truth for "which currency does this org use".
+
+        Reads `organization.settings['currency_code']` (a plain JSON field
+        already on Organization — no schema change) and falls back to
+        DEFAULT_CURRENCY. Every server-rendered money figure AND the client
+        currencyManager default should both come from this, not from a
+        hardcoded '$' or '£' baked into a template.
+        """
+        code = None
+        try:
+            if organization is not None:
+                settings = getattr(organization, "settings", None) or {}
+                code = settings.get("currency_code")
+        except Exception:
+            code = None
+        if not code or not cls.is_supported(code):
+            code = cls.DEFAULT_CURRENCY
+        return code
+
+    @classmethod
+    def get_org_currency_config(cls, organization=None):
+        """Currency config dict for the given organization (see get_org_currency_code)."""
+        return cls.get_currency_config(cls.get_org_currency_code(organization))
 
     @classmethod
     def is_supported(cls, currency_code):

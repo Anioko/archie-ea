@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-from sqlalchemy import and_, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 
 from app import db
@@ -31,7 +31,6 @@ from app.models import (
     ADRCapabilityLink,
     ArchiMateElement,
     ArchiMateRelationship,
-    ArchitectureModel,
     BusinessCapability,
     ComplianceGap,
     ComplianceRequirement,
@@ -616,6 +615,7 @@ class CapabilityGapAnalysisService:
         )
 
         from app.models.application_capability import ApplicationCapabilityMapping
+        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
         app_mappings = ApplicationCapabilityMapping.query.filter_by(business_capability_id=capability.id).all()
         applications = [ApplicationComponent.query.get(m.application_component_id) for m in app_mappings if m.application_component_id]
         applications = [a for a in applications if a is not None]
@@ -632,7 +632,9 @@ class CapabilityGapAnalysisService:
         else:
             try:
                 if hasattr(compliance_rel, "all"):
-                    compliance_count = len(compliance_rel.all())
+                    # .count() aggregates in the database; len(.all()) built an
+                    # ORM object per row only to discard it.
+                    compliance_count = compliance_rel.count()
                 elif hasattr(compliance_rel, "count") and callable(
                     getattr(compliance_rel, "count")
                 ):
@@ -1015,7 +1017,7 @@ class CapabilityGapAnalysisService:
 
         for gap in gaps:
             props = json.loads(gap.properties) if gap.properties else {}
-            gap_type = props.get("gap_type")
+            props.get("gap_type")
 
             # Generate AI recommendation
             recommendation = self._generate_gap_recommendation(gap, props)

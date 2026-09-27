@@ -268,17 +268,17 @@
                             class="text-2xl font-bold"
                             :class="{
                                 'text-destructive': roi !== null && roi < 0,
-                                'text-warning': roi !== null && roi >= 0 && roi < 20,
-                                'text-success': roi !== null && roi >= 20
+                                'text-warning-emphasis': roi !== null && roi >= 0 && roi < 20,
+                                'text-success-emphasis': roi !== null && roi >= 20
                             }"
                             x-text="roi !== null ? formatPercentage(roi) : 'N/A'"
                         ></span>
                         <span
                             class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium"
                             :class="{
-                                'bg-destructive/10 text-destructive border border-destructive/30': roi !== null && roi < 0,
-                                'bg-warning/10 text-warning border border-warning/30': roi !== null && roi >= 0 && roi < 20,
-                                'bg-success/10 text-success border border-success/30': roi !== null && roi >= 20
+                                'bg-destructive/10 text-destructive-emphasis border border-destructive/30': roi !== null && roi < 0,
+                                'bg-warning/10 text-warning-emphasis border border-warning/30': roi !== null && roi >= 0 && roi < 20,
+                                'bg-success/10 text-success-emphasis border border-success/30': roi !== null && roi >= 20
                             }"
                             x-text="roi !== null ? (roi < 0 ? 'Loss' : roi < 20 ? 'Low' : 'High') : ''"
                         ></span>
@@ -317,14 +317,14 @@
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border">
-        <button
+        <button type="button"
             @click="saveCurrentScenario()"
             class="inline-flex items-center gap-2 px-4 py-2 border border-input text-foreground font-medium rounded-lg hover:bg-accent transition-colors"
          aria-label="Save">
             <i data-lucide="save" class="h-4 w-4"></i>
             Save as Scenario
         </button>
-        <button
+        <button type="button"
             @click="Platform.modal.close('roi-calculator')"
             class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground font-medium rounded-lg hover:bg-primary/90 transition-colors"
          aria-label="Close">

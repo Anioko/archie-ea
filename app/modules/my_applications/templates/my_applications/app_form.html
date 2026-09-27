@@ -1,0 +1,111 @@
+{% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
+{% block title %}Edit {{ app.name }}{% endblock %}
+
+{% block content %}
+<div class="p-6 space-y-6 mx-auto max-w-3xl">
+
+  {{ page_shell(
+      title='Edit ' ~ app.name,
+      subtitle='You are recorded as an owner of this application. Changes here feed your dashboard and the health overview.',
+      breadcrumb=[
+          ('My Applications', url_for('my_applications.dashboard')),
+          (app.name, url_for('my_applications.app_detail', app_id=app.id)),
+          ('Edit', None)
+      ]
+  ) }}
+
+  <form method="POST" action="{{ url_for('my_applications.app_edit', app_id=app.id) }}" class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Description</h2>
+      <div>
+        <label for="description" class="block text-sm font-medium mb-1.5">What this application does</label>
+        <textarea id="description" name="description" rows="4"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none">{{ app.description or '' }}</textarea>
+      </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Status</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="lifecycle_status" class="block text-sm font-medium mb-1.5">Lifecycle</label>
+          <select id="lifecycle_status" name="lifecycle_status"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="">Not set</option>
+            {% set preselected_lifecycle = suggested_lifecycle or app.lifecycle_status %}
+            {% for value in statuses %}
+            <option value="{{ value }}" {% if preselected_lifecycle == value %}selected{% endif %}>
+              {{ value | replace('_', ' ') | title }}
+            </option>
+            {% endfor %}
+          </select>
+          {% if suggested_lifecycle and suggested_lifecycle != app.lifecycle_status %}
+          <p class="text-xs text-muted-foreground mt-1">AI-suggested value shown - review before saving.</p>
+          {% endif %}
+        </div>
+        <div>
+          <label for="deployment_status" class="block text-sm font-medium mb-1.5">Deployment</label>
+          <select id="deployment_status" name="deployment_status"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="">Not set</option>
+            {% for value in deployment_statuses %}
+            <option value="{{ value }}" {% if app.deployment_status == value %}selected{% endif %}>
+              {{ value | title }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="health_status" class="block text-sm font-medium mb-1.5">Health</label>
+          <select id="health_status" name="health_status"
+                  class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+            <option value="">Not assessed</option>
+            {% set preselected_health = suggested_health or app.health_status %}
+            {% for value in health_statuses %}
+            <option value="{{ value }}" {% if preselected_health == value %}selected{% endif %}>
+              {{ value | replace('_', ' ') | title }}
+            </option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-muted-foreground mt-1">Drives the health overview.</p>
+          {% if suggested_health and suggested_health != app.health_status %}
+          <p class="text-xs text-muted-foreground mt-1">AI-suggested value shown - review before saving.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-6 space-y-4">
+      <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Accountability</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="business_owner" class="block text-sm font-medium mb-1.5">Business owner</label>
+          <input type="text" id="business_owner" name="business_owner" maxlength="255"
+                 value="{{ app.business_owner or '' }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+        <div>
+          <label for="technical_owner" class="block text-sm font-medium mb-1.5">Technical lead</label>
+          <input type="text" id="technical_owner" name="technical_owner" maxlength="255"
+                 value="{{ app.technical_owner or '' }}"
+                 class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring">
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between">
+      <button type="submit"
+              class="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+        <i data-lucide="save" class="w-4 h-4"></i> Save changes
+      </button>
+      <a href="{{ url_for('my_applications.app_detail', app_id=app.id) }}"
+         class="text-sm text-muted-foreground hover:text-foreground">Cancel</a>
+    </div>
+  </form>
+
+</div>
+<script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+{% endblock %}

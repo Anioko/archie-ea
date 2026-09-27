@@ -5,6 +5,21 @@
  */
 'use strict';
 
+/**
+ * Coerce a score the server sent into a number, or null when it sent nothing.
+ *
+ * `|| 0` used to stand in here, which turned an absent dimension into a
+ * measured zero — the worst possible score, plotted next to real applications
+ * and impossible to tell apart from one. null instead: the template renders an
+ * em dash and Chart.js skips the point rather than pulling the polygon to the
+ * centre.
+ */
+function workbenchScore(value) {
+    return (value === null || value === undefined || value === '' || isNaN(Number(value)))
+        ? null
+        : Math.round(Number(value));
+}
+
 function workbenchApp() {
     let csrfToken = document.querySelector('meta[name="csrf-token"]');
     csrfToken = csrfToken ? csrfToken.getAttribute('content') : '';
@@ -74,86 +89,85 @@ function workbenchApp() {
                 }
             }
 
-            fetch('/applications/rationalization/api/portfolio-workbench?' + params.toString(), {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                const dispDefinitions = {
-                    'retain': 'Keep as-is, no action needed',
-                    'rehost': 'Move to new infrastructure without code changes',
-                    'replatform': 'Move with minor optimizations',
-                    'refactor': 'Re-architect for cloud-native or modernization',
-                    'replace': 'Substitute with a different product or service',
-                    'consolidate': 'Merge functionality into another application',
-                    'retire': 'Decommission and remove from portfolio',
-                    'insufficient_evidence': 'Not enough data for a recommendation'
-                };
-
-                self.results = (data.applications || data.results || []).map(function(app) {
-                    const dispKey = (app.disposition_action || '').toLowerCase();
-                    let dispLabel = dispKey.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-                    let dispDesc = dispDefinitions[dispKey] || '';
-                    const confValue = app.confidence_score || app.disposition_confidence || null;
-
-                    /* RAT-001: Show actionable label when data is missing */
-                    if (dispKey === 'insufficient_evidence' && (!confValue || confValue === 'none')) {
-                        dispLabel = 'Needs Data Enrichment';
-                        dispDesc = 'Enrich this application with cost, owner, and criticality data to enable scoring';
-                    }
-
-                    return {
-                        id: app.id || app.app_id || app.application_id,
-                        name: app.name || app.app_name || app.application_name || 'Unknown',
-                        health: app.overall_health_score || 0,
-                        disposition_label: app.disposition_label || dispLabel || '—',
-                        disposition_desc: dispDesc,
-                        is_ready: app.is_decision_ready || false,
-                        review_status: app.review_status || 'draft',
-                        confidence: confValue,
-                        business_unit: app.business_unit || null
+            // Use Platform.fetch.get for automatic query‑param handling and error handling.
+            // The component already paints its own inline error state (self.error), so we
+            // suppress the global toast with { silent: true } to avoid duplicate messages.
+            Platform.fetch.get('/applications/rationalization/api/portfolio-workbench', Object.fromEntries(params), { silent: true })
+                .then(function(data) {
+                    const dispDefinitions = {
+                        'retain': 'Keep as-is, no action needed',
+                        'rehost': 'Move to new infrastructure without code changes',
+                        'replatform': 'Move with minor optimizations',
+                        'refactor': 'Re-architect for cloud-native or modernization',
+                        'replace': 'Substitute with a different product or service',
+                        'consolidate': 'Merge functionality into another application',
+                        'retire': 'Decommission and remove from portfolio',
+                        'insufficient_evidence': 'Not enough data for a recommendation'
                     };
+
+                    self.results = (data.applications || data.results || []).map(function(app) {
+                        const dispKey = (app.disposition_action || '').toLowerCase();
+                        let dispLabel = dispKey.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); });
+                        let dispDesc = dispDefinitions[dispKey] || '';
+                        const confValue = app.confidence_score || app.disposition_confidence || null;
+
+                        /* RAT-001: Show actionable label when data is missing */
+                        if (dispKey === 'insufficient_evidence' && (!confValue || confValue === 'none')) {
+                            dispLabel = 'Needs Data Enrichment';
+                            dispDesc = 'Enrich this application with cost, owner, and criticality data to enable scoring';
+                        }
+
+                        return {
+                            id: app.id || app.app_id || app.application_id,
+                            name: app.name || app.app_name || app.application_name || 'Unknown',
+                            health: app.overall_health_score || 0,
+                            disposition_label: app.disposition_label || dispLabel || '—',
+                            disposition_desc: dispDesc,
+                            is_ready: app.is_decision_ready || false,
+                            review_status: app.review_status || 'draft',
+                            confidence: confValue,
+                            business_unit: app.business_unit || null
+                        };
+                    });
+
+                    self.totalCount = data.total || self.results.length;
+                    self.totalPages = Math.ceil(self.totalCount / self.perPage) || 1;
+
+                    if (data.facets) {
+                        /* API returns dispositions as {key: count} dict — convert to array */
+                        const rawDisp = data.facets.dispositions || {};
+                        if (Array.isArray(rawDisp)) {
+                            self.facets.dispositions = rawDisp;
+                        } else {
+                            self.facets.dispositions = Object.keys(rawDisp).map(function(k) {
+                                return { value: k, label: k.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }), count: rawDisp[k] };
+                            });
+                        }
+                        const rawBu = data.facets.business_units || {};
+                        if (Array.isArray(rawBu)) {
+                            self.facets.business_units = rawBu;
+                        } else {
+                            self.facets.business_units = Object.keys(rawBu).map(function(k) {
+                                return { value: k, label: k, count: rawBu[k] };
+                            });
+                        }
+                        self.facets.lifecycle_statuses = data.facets.lifecycle_statuses || {};
+                    }
+
+                    self.loading = false;
+
+                    /* Re-initialize Lucide icons for dynamically rendered content */
+                    if (window.lucide) {
+                        self.$nextTick(function() { window.lucide.createIcons(); });
+                    }
+                })
+                .catch(function(err) {
+                    // Platform.fetch already logged the error internally; we must not
+                    // call console.error. Surface the failure to the user via the
+                    // component's inline error state.
+                    self.loading = false;
+                    self.error = true;
                 });
-
-                self.totalCount = data.total || self.results.length;
-                self.totalPages = Math.ceil(self.totalCount / self.perPage) || 1;
-
-                if (data.facets) {
-                    /* API returns dispositions as {key: count} dict — convert to array */
-                    const rawDisp = data.facets.dispositions || {};
-                    if (Array.isArray(rawDisp)) {
-                        self.facets.dispositions = rawDisp;
-                    } else {
-                        self.facets.dispositions = Object.keys(rawDisp).map(function(k) {
-                            return { value: k, label: k.replace(/_/g, ' ').replace(/\b\w/g, function(c) { return c.toUpperCase(); }), count: rawDisp[k] };
-                        });
-                    }
-                    const rawBu = data.facets.business_units || {};
-                    if (Array.isArray(rawBu)) {
-                        self.facets.business_units = rawBu;
-                    } else {
-                        self.facets.business_units = Object.keys(rawBu).map(function(k) {
-                            return { value: k, label: k, count: rawBu[k] };
-                        });
-                    }
-                    self.facets.lifecycle_statuses = data.facets.lifecycle_statuses || {};
-                }
-
-                self.loading = false;
-
-                /* Re-initialize Lucide icons for dynamically rendered content */
-                if (window.lucide) {
-                    self.$nextTick(function() { window.lucide.createIcons(); });
-                }
-            })
-            .catch(function(err) {
-                console.error('Workbench load failed:', err);
-                self.loading = false;
-                self.error = true;
-            });
         },
 
         /* ── Selection ────────────────────────────────── */
@@ -192,28 +206,25 @@ function workbenchApp() {
             const payload = { action: action, app_ids: ids };
             if (action === 'set_disposition') payload.disposition = self.bulkDisposition;
 
-            fetch('/applications/rationalization/api/bulk-review', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken
-                },
-                body: JSON.stringify(payload)
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.selectedIds = {};
-                    self.bulkDisposition = '';
-                    self.load();
-                } else {
-                    Platform.toast.error('Bulk action failed: ' + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(function(err) {
-                console.error('Bulk action error:', err);
-                Platform.toast.error('Bulk action request failed.');
-            });
+            // Platform.fetch.post automatically injects CSRF token and serialises
+            // the plain‑object payload to JSON. No manual headers needed.
+            Platform.fetch.post('/applications/rationalization/api/bulk-review', payload)
+                .then(function(data) {
+                    if (data.success) {
+                        self.selectedIds = {};
+                        self.bulkDisposition = '';
+                        self.load();
+                    } else {
+                        Platform.toast.error('Bulk action failed: ' + (data.error || 'Unknown error'));
+                    }
+                })
+                .catch(function(err) {
+                    // Platform.fetch already shows a user‑visible toast for the error,
+                    // and logs internally. No console call allowed.
+                    // The component does not have an inline error state for this action,
+                    // so we rely on the global toast (which Platform.fetch already displayed).
+                    // No fallback value is introduced.
+                });
         },
 
         /* ── RATA-019: App comparison ────────────────── */
@@ -233,27 +244,33 @@ function workbenchApp() {
                     return;
                 }
                 self.compareIds.push(app.id);
-                // Fetch evidence trail for this app
-                fetch('/applications/rationalization/api/evidence-trail/' + app.id, {
-                    headers: { 'Accept': 'application/json' }
-                })
-                .then(function(r) { return r.ok ? r.json() : {}; })
-                .then(function(data) {
-                    const scores = data.scores || {};
-                    self.compareApps.push({
-                        id: app.id,
-                        name: app.name,
-                        dims: {
-                            'Technical Health': Math.round(scores.technical_health || 0),
-                            'Business Value': Math.round(scores.business_value || 0),
-                            'Cost Efficiency': Math.round(scores.cost_efficiency || 0),
-                            'Vendor Risk': Math.round(scores.vendor_risk || 0)
+                // Fetch evidence trail for this app using Platform.fetch.
+                // The component paints its own error toast, so we pass { silent: true }
+                // to avoid duplicate global toasts.
+                Platform.fetch.get('/applications/rationalization/api/evidence-trail/' + app.id, null, { silent: true })
+                    .then(function(data) {
+                        const scores = data.scores || {};
+                        self.compareApps.push({
+                            id: app.id,
+                            name: app.name,
+                            dims: {
+                                'Technical Health': workbenchScore(scores.technical_health),
+                                'Business Value': workbenchScore(scores.business_value),
+                                'Cost Efficiency': workbenchScore(scores.cost_efficiency),
+                                'Vendor Risk': workbenchScore(scores.vendor_risk)
+                            }
+                        });
+                        if (self.compareApps.length >= 2) {
+                            self.$nextTick(function() { self.renderComparisonChart(); });
                         }
+                    })
+                    .catch(function(err) {
+                        // Drop the selection rather than charting an application whose
+                        // scores we do not have.
+                        const pending = self.compareIds.indexOf(app.id);
+                        if (pending >= 0) { self.compareIds.splice(pending, 1); }
+                        Platform.toast.error('Could not load scores for ' + (app.name || 'this application') + ': ' + (err.message || 'request failed') + '. It was left out of the comparison rather than plotted at zero.');
                     });
-                    if (self.compareApps.length >= 2) {
-                        self.$nextTick(function() { self.renderComparisonChart(); });
-                    }
-                });
             }
             if (self.compareApps.length >= 2) {
                 self.$nextTick(function() { self.renderComparisonChart(); });
@@ -284,7 +301,9 @@ function workbenchApp() {
                 const c = colors[i % colors.length];
                 return {
                     label: ca.name,
-                    data: labels.map(function(l) { return ca.dims[l] || 0; }),
+                    // null, not 0: Chart.js skips an unknown dimension rather than
+                    // plotting it at the origin as if it had been measured.
+                    data: labels.map(function(l) { return ca.dims[l] != null ? ca.dims[l] : null; }),
                     backgroundColor: c.bg,
                     borderColor: c.border,
                     borderWidth: 2,
@@ -319,64 +338,71 @@ function workbenchApp() {
             self.breakdownLoading = true;
             self.breakdownData = null;
 
-            fetch('/applications/rationalization/api/evidence-trail/' + appId, {
-                headers: { 'Accept': 'application/json' }
-            })
-            .then(function(r) { return r.ok ? r.json() : {}; })
-            .then(function(data) {
-                const scores = data.scores || {};
-                const dims = [
-                    { name: 'technical', label: 'Technical Health', score: Math.round(scores.technical_health || 0) },
-                    { name: 'business', label: 'Business Value', score: Math.round(scores.business_value || 0) },
-                    { name: 'cost', label: 'Cost Efficiency', score: Math.round(scores.cost_efficiency || 0) },
-                    { name: 'vendor', label: 'Vendor Risk', score: Math.round(scores.vendor_risk || 0) }
-                ];
+            // Use Platform.fetch.get for automatic error handling.
+            // The component paints its own error toast, so we pass { silent: true } to avoid duplicate global toasts.
+            Platform.fetch.get('/applications/rationalization/api/evidence-trail/' + appId, null, { silent: true })
+                .then(function(data) {
+                    const scores = data.scores || {};
+                    const dims = [
+                        { name: 'technical', label: 'Technical Health', score: workbenchScore(scores.technical_health) },
+                        { name: 'business', label: 'Business Value', score: workbenchScore(scores.business_value) },
+                        { name: 'cost', label: 'Cost Efficiency', score: workbenchScore(scores.cost_efficiency) },
+                        { name: 'vendor', label: 'Vendor Risk', score: workbenchScore(scores.vendor_risk) }
+                    ];
 
-                // Extract top 3 factors per dimension
-                const topFactors = (data.evidence_trail || []).map(function(dim) {
-                    const factors = (dim.sub_factors || dim.factors || [])
-                        .sort(function(a, b) { return Math.abs(b.contribution || 0) - Math.abs(a.contribution || 0); })
-                        .slice(0, 3)
-                        .map(function(f) {
-                            return { name: f.factor || f.name || '—', raw_value: f.raw_value, contribution: f.contribution || f.points || 0 };
-                        });
-                    return { dimension: dim.dimension || dim.name || '—', factors: factors };
-                });
-
-                self.breakdownData = { dimensions: dims, top_factors: topFactors };
-                self.breakdownLoading = false;
-
-                // Render mini radar
-                self.$nextTick(function() {
-                    const ctx = document.getElementById('breakdownRadarChart');
-                    if (!ctx || typeof Chart === 'undefined') return;
-                    if (self.breakdownRadarChart) self.breakdownRadarChart.destroy();
-                    self.breakdownRadarChart = new Chart(ctx, {
-                        type: 'radar',
-                        data: {
-                            labels: dims.map(function(d) { return d.label; }),
-                            datasets: [{
-                                data: dims.map(function(d) { return d.score; }),
-                                backgroundColor: 'rgba(59, 130, 246, 0.15)',
-                                borderColor: 'rgba(59, 130, 246, 0.8)',
-                                borderWidth: 2,
-                                pointBackgroundColor: 'rgba(59, 130, 246, 1)',
-                                pointRadius: 3
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: true,
-                            scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, display: false }, grid: { color: 'rgba(128,128,128,0.15)' } } },
-                            plugins: { legend: { display: false } }
-                        }
+                    // Extract top 3 factors per dimension
+                    const topFactors = (data.evidence_trail || []).map(function(dim) {
+                        const factors = (dim.sub_factors || dim.factors || [])
+                            .sort(function(a, b) { return Math.abs(b.contribution || 0) - Math.abs(a.contribution || 0); })
+                            .slice(0, 3)
+                            .map(function(f) {
+                                return {
+                                    name: f.factor || f.name || '—',
+                                    raw_value: f.raw_value,
+                                    contribution: f.contribution != null ? f.contribution : (f.points != null ? f.points : null)
+                                };
+                            });
+                        return { dimension: dim.dimension || dim.name || '—', factors: factors };
                     });
+
+                    self.breakdownData = { dimensions: dims, top_factors: topFactors };
+                    self.breakdownLoading = false;
+
+                    // Render mini radar
+                    self.$nextTick(function() {
+                        const ctx = document.getElementById('breakdownRadarChart');
+                        if (!ctx || typeof Chart === 'undefined') return;
+                        if (self.breakdownRadarChart) self.breakdownRadarChart.destroy();
+                        self.breakdownRadarChart = new Chart(ctx, {
+                            type: 'radar',
+                            data: {
+                                labels: dims.map(function(d) { return d.label; }),
+                                datasets: [{
+                                    data: dims.map(function(d) { return d.score; }),
+                                    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                    borderColor: 'rgba(59, 130, 246, 0.8)',
+                                    borderWidth: 2,
+                                    pointBackgroundColor: 'rgba(59, 130, 246, 1)',
+                                    pointRadius: 3
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: true,
+                                scales: { r: { min: 0, max: 100, ticks: { stepSize: 25, display: false }, grid: { color: 'rgba(128,128,128,0.15)' } } },
+                                plugins: { legend: { display: false } }
+                            }
+                        });
+                    });
+                })
+                .catch(function(err) {
+                    // breakdownData stays null so the panel renders nothing rather than
+                    // a zeroed radar the user would read as a measured score.
+                    self.breakdownData = null;
+                    self.breakdownLoading = false;
+                    self.breakdownOpen = false;
+                    Platform.toast.error('Could not load the score breakdown for ' + (self.breakdownAppName || 'this application') + ': ' + (err.message || 'request failed') + '.');
                 });
-            })
-            .catch(function(err) {
-                console.error('Breakdown load failed:', err);
-                self.breakdownLoading = false;
-            });
         },
 
         /* ── Navigation ───────────────────────────────── */

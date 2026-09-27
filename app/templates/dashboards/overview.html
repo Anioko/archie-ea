@@ -1,7 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
-{% from 'components/page_header.html' import page_header %}
 {% from 'components/metrics_card.html' import metrics_card %}
 {% import 'components/card.html' as card %}
+{% from 'macros/page_shell.html' import page_shell, empty_state, section_card %}
 
 {% block title %}Dashboard{% endblock %}
 
@@ -15,103 +15,169 @@
 </script>
 {% endblock %}
 
-{% from 'components/inline_hint.html' import inline_hint %}
-{% block page_hint %}
-{{ inline_hint(
-    hint_id='dashboard_overview',
-    text='Your architecture health at a glance — live counts for apps, solutions, capabilities, and ArchiMate elements.',
-    action_text='View health scorecard',
-    action_href='/dashboard/health'
-) }}
-{% endblock %}
+{# page_hint removed — the "Start here" welcome card below covers first-run
+   guidance; the blue hint was redundant with it. #}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Dashboards', 'current': true}
+    {'text': 'Dashboard', 'current': true}
 ]) }}
 {% endblock %}
 
 {% block content %}
-<div class="space-y-6" x-data="{ activeRole: 'overview' }">
+{% set role = enterprise_role|default('platform_admin') %}
+{% set mode = dashboard_mode|default('data') %}
+{# Open the dashboard on the lens that matches the signed-in user's role rather
+   than always on Overview — the tabs previously ignored enterprise_role entirely.
+   The architecture tabs are the ArchiMate 3.2 layers (Motivation/Strategy/
+   Business/Application/Technology/Implementation & Migration), which replaced the
+   ambiguous "Architect"/"Business" persona tabs; each role opens on the layer it
+   primarily owns. Overview/CTO/CFO remain executive summary lenses. #}
+{% set _tab_for_role = {
+    'business_architect': 'business',
+    'enterprise_architect': 'strategy',
+    'solution_architect': 'application',
+    'security_architect': 'motivation',
+    'data_architect': 'application',
+    'cto': 'cto',
+} %}
+{% set default_tab = _tab_for_role.get(role, 'overview') %}
+<div class="space-y-6" x-data="{ activeRole: '{{ default_tab }}' }">
 
-    {# ── PLT-040: Your Workspace — role-based quick-access cards ─────── #}
-    {% set role = enterprise_role|default('platform_admin') %}
+    {{ page_shell(
+        title="Dashboard",
+        subtitle="Architecture health, portfolio insights, and actions needed" if mode == 'data' else "Let's get your workspace ready."
+    ) }}
+
+    {# ── Welcome — one dismissible line, persisted server-side per user, once
+       ever (User.welcome_banner_dismissed_at). Deliberately NOT
+       /dashboard/api/onboarding-complete: that endpoint also rewrites
+       enterprise_role, a side effect this plain dismiss click shouldn't carry.
+       Gated server-side (absent from the DOM once dismissed, not CSS-hidden)
+       so a reload never flashes it back. ─────── #}
+    {% if not current_user.welcome_banner_dismissed_at %}
+    <div x-data="{ show: true, dismiss() {
+                this.show = false;
+                // Use Platform.fetch for automatic CSRF and error handling
+                // silent: true because we don't want a toast if the request fails (banner will reappear on next load)
+                (window.Platform?.fetch || window.apiFetch || fetch)('/dashboard/api/welcome-dismiss', {
+                    method: 'POST',
+                    body: {}, // empty object ensures JSON serialization
+                    silent: true,
+                }).catch(() => { /* swallow-ok: best-effort persist; the banner is already hidden for this visit and simply reappears next load if the POST failed, which is not worth an error toast */ });
+             } }"
+         x-show="show"
+         data-testid="welcome-banner"
+         class="flex items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5">
+        <p class="text-sm text-foreground min-w-0">
+            <span class="font-medium">Welcome to {{ config.APP_NAME }}</span>
+            <span class="text-muted-foreground"> — <a href="/ai-chat" class="text-primary hover:underline">ask the AI architect</a> anytime, no setup needed.</span>
+        </p>
+        <button type="button"
+                @click="dismiss()"
+                class="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                aria-label="Dismiss welcome message">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+    </div>
+    {% endif %}
+
+    {% if mode == 'guided' %}
+    {# ══════════════════════════════════════════════════════════════════════
+       GUIDED MODE — sparse org: a setup journey, not a failing report card.
+       ══════════════════════════════════════════════════════════════════════ #}
+    {% call section_card(title="Set up your workspace") %}
+    <div class="space-y-4" data-testid="guided-setup">
+        <p class="text-sm text-muted-foreground max-w-[60ch]">
+            A few steps to get real signal into your dashboards — health score and
+            visualizations appear once your portfolio has data.
+        </p>
+        <ol class="space-y-3">
+            {% for step in guided_steps %}
+            <li class="flex items-start gap-3 rounded-lg border border-border p-4">
+                <span class="mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full {% if step.done %}bg-success/15 text-success-emphasis{% else %}bg-muted text-muted-foreground{% endif %}">
+                    <i data-lucide="{{ 'check' if step.done else 'circle' }}" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-sm font-medium text-foreground">{{ step.title }}</p>
+                    <p class="text-xs text-muted-foreground mt-0.5">{{ step.description }}</p>
+                </div>
+                <a href="{{ step.href }}" class="shrink-0 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    {{ 'Done' if step.done else 'Start' }} <i data-lucide="arrow-right" class="h-3 w-3" aria-hidden="true"></i>
+                </a>
+            </li>
+            {% endfor %}
+        </ol>
+    </div>
+    {% endcall %}
+    {% else %}
+    {# ══════════════════════════════════════════════════════════════════════
+       DATA MODE — established org: the data leads.
+       ══════════════════════════════════════════════════════════════════════ #}
+
+    {# ── PLT-040: Your Workspace — role-based quick-access cards.
+       This section used to be skipped for platform_admin, on a comment
+       claiming its cards "duplicate the sidebar's Admin zone verbatim". Read
+       directly against role_access.py's ROLE_PLATFORM_ADMIN _MY_WORK_LINKS
+       entry (2026-09-22): it is Solutions, Portfolio, Architecture Journey,
+       plus the shared Ask link every role gets -- none of the four Admin-zone
+       links (Organizations/Users/API Settings/Governance Gates etc.) are in
+       it. The comment described the OLD, hand-maintained per-role card list
+       this section had before the Wave 2 refactor below switched it onto
+       get_sidebar_zones()'s my_work zone; the exclusion was never revisited
+       against the new data source. Since platform_admin is "the default
+       enterprise_role for every user who has not picked one" (role_access.py's
+       own comment), this stale guard hid Ask -- and every other My-work card
+       -- from most real accounts. Confirmed before removing it: across every
+       role, only one my_work/admin overlap exists at all
+       (admin.governance_gates, in security_architect's zone, already
+       rendered here unexcluded without issue) -- nothing platform_admin-
+       specific would start double-rendering. ─────── #}
     <div class="space-y-3">
         <div class="flex items-center gap-2">
             <i data-lucide="layout-grid" class="h-4 w-4 text-primary" aria-hidden="true"></i>
             <h2 class="text-sm font-semibold text-foreground">Your Workspace</h2>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {% if role == 'solution_architect' %}
-                {% set cards = [
-                    ('compass', 'Architecture Journey', 'Start a guided TOGAF ADM journey', '/architecture-journey/'),
-                    ('wrench', 'My Solutions', 'View and manage your solutions', '/solutions/'),
-                    ('pen-tool', 'ArchiMate Composer', 'Build architecture diagrams', '/archimate/composer'),
-                    ('map', 'Capability Map', 'Explore business capabilities', '/capability-map/'),
-                ] %}
-            {% elif role == 'enterprise_architect' %}
-                {% set cards = [
-                    ('package', 'Application Portfolio', 'Manage all applications', '/applications/'),
-                    ('map', 'Capability Map', 'Business capability landscape', '/capability-map/'),
-                    ('table', 'ArchiMate Elements', 'Browse architecture elements', '/architecture/dashboard'),
-                    ('compass', 'Architecture Journey', 'Guided TOGAF ADM workflow', '/architecture-journey/'),
-                ] %}
-            {% elif role == 'arb_member' %}
-                {% set cards = [
-                    ('shield-check', 'ARB Reviews', 'Pending architecture reviews', '/arb/reviews'),
-                    ('wrench', 'Recent Solutions', 'Browse solution designs', '/solutions/'),
-                    ('shield', 'Governance Gates', 'Manage governance gates', '/admin/governance-gates'),
-                    ('git-branch', 'Decision Log', 'Architecture decisions', '/architecture/decisions'),
-                ] %}
-            {% elif role == 'portfolio_manager' %}
-                {% set cards = [
-                    ('git-merge', 'Rationalization', 'Application rationalization', '/dashboard/rationalization'),
-                    ('building-2', 'Vendor Dashboard', 'Manage vendors', '/vendors'),
-                    ('package', 'Application Portfolio', 'All applications', '/applications/'),
-                    ('bar-chart-2', 'Cost Analysis', 'Portfolio cost overview', '/dashboard/overview'),
-                ] %}
-            {% else %}
-                {% set cards = [
-                    ('building-2', 'Organizations', 'Manage tenant organizations', '/admin/organizations'),
-                    ('users', 'Users', 'Manage platform users', '/admin/users'),
-                    ('key', 'API Settings', 'Configure API keys', '/admin/api-settings'),
-                    ('heart-pulse', 'System Health', 'Platform health status', '/dashboard/health'),
-                ] %}
-            {% endif %}
-            {% for icon, title, desc, href in cards %}
-            <a href="{{ href }}"
+            {# Shell-overhaul Wave 2 (Task 5): these used to be a hand-maintained
+               per-role card list here, parallel to (and drifting from)
+               get_sidebar_zones()'s "my_work" zone -- the actual single source
+               of truth for a role's primary-work links (app/utils/role_access.py).
+               Render straight from that zone instead so there is exactly one
+               place that defines a role's quick-access links. Zone link dicts
+               carry label/endpoint/icon only (no description) -- render without
+               one rather than inventing per-card copy. #}
+            {% set my_work_zone = (get_sidebar_zones(current_user) | selectattr('zone', 'equalto', 'my_work') | first) %}
+            {% for link in (my_work_zone.links if my_work_zone else []) %}
+            {% if link.endpoint in flask.current_app.view_functions %}
+            <a href="{{ url_for(link.endpoint, **(link.query_params or {})) }}"
                class="group border border-border rounded-xl bg-card p-5 hover:border-primary/30 transition-colors">
                 <div class="flex items-start gap-3">
                     <div class="shrink-0 w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <i data-lucide="{{ icon }}" class="h-4.5 w-4.5 text-primary" aria-hidden="true"></i>
+                        <i data-lucide="{{ link.icon }}" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                     </div>
                     <div class="min-w-0">
-                        <p class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{{ title }}</p>
-                        <p class="text-xs text-muted-foreground mt-0.5 line-clamp-2">{{ desc }}</p>
+                        <p class="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{{ link.label }}</p>
                     </div>
                 </div>
             </a>
+            {% endif %}
             {% endfor %}
         </div>
     </div>
 
-    {# ── Page Header + Persona Tabs ────────────────────────────────────── #}
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-            <p class="text-sm text-muted-foreground mt-0.5">Architecture health, portfolio insights, and actions needed</p>
-        </div>
-        <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1">
-            {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('architect', 'Architect')] %}
-            <button @click="activeRole = '{{ role_key }}'"
-                    :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
-                    class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
-                {{ role_label }}
-            </button>
-            {% endfor %}
-        </div>
+    {# ── Persona Tabs ────────────────────────────────────── #}
+    <div class="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 w-fit">
+        {% for role_key, role_label in [('overview', 'Overview'), ('cto', 'CTO'), ('cfo', 'CFO'), ('motivation', 'Motivation'), ('strategy', 'Strategy'), ('business', 'Business'), ('application', 'Application'), ('technology', 'Technology'), ('implementation', 'Implementation & Migration')] %}
+        <button type="button" @click="activeRole = '{{ role_key }}'"
+                data-testid="layer-tab-{{ role_key }}"
+                :class="activeRole === '{{ role_key }}' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                class="px-3 py-1.5 rounded-md text-xs font-medium transition-all">
+            {{ role_label }}
+        </button>
+        {% endfor %}
     </div>
 
     {# ══════════════════════════════════════════════════════════════════════
@@ -120,142 +186,92 @@
     <div x-show="activeRole === 'overview'" x-cloak>
         <div class="space-y-6">
 
-            {# ── HERO: Architecture Health Score ─────────────────────────────── #}
-            {% call card.card(class='border-l-4 border-l-primary') %}
-                {% call card.card_content(class='py-6') %}
-                    <div class="flex flex-col md:flex-row md:items-center gap-6">
-                        {# Score #}
-                        <div class="shrink-0 flex items-center gap-5">
-                            <div class="relative">
-                                <div class="text-7xl font-black tracking-tighter {% if health_score >= 70 %}text-emerald-600{% elif health_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}" data-testid="health-score-value">
-                                    {{ health_score }}
-                                </div>
-                                <div class="text-xs font-bold uppercase tracking-widest text-muted-foreground mt-1">Health Score</div>
-                            </div>
-                            <div class="hidden md:block w-px h-16 bg-border"></div>
+            {# ── Architecture Health Score ────────────────────────────────────
+               4 Sep 2026, corrected same day: the first pass replaced the
+               bespoke hero (giant 7xl number, rainbow bars) with metrics_card
+               boxes, but kept coloured left-border accents, icons and a
+               description line — still a distinct visual language from the
+               one true flat pattern the user pointed at explicitly (the CTO
+               tab's Executive Summary fragment). This now uses that fragment's
+               EXACT markup (rounded-lg border border-border bg-background p-3,
+               text-xs muted label, text-lg font-bold value, nothing else — no
+               colour, no icon, no bar) so there is one pattern, not a second
+               approximation of it. Also fixes the bg-{{ color }}-500 dynamic-
+               class construction that shipped DESIGN.md-banned raw colours
+               invisible to the design-tokens gate. #}
+            {% call card.card() %}
+                {% call card.card_header(class='pb-2') %}
+                    {% call card.card_title() %}Architecture Health{% endcall %}
+                {% endcall %}
+                {% call card.card_content() %}
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-xs text-muted-foreground">Health Score</p>
+                            <p class="text-lg font-bold text-foreground" data-testid="health-score-value">{{ health_score_text|default("—") }}</p>
                         </div>
-
-                        {# Component Breakdown #}
-                        <div class="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {% for key, label, weight, color in [
-                                ('phase_maturity', 'Phase Maturity', '40%', 'violet'),
-                                ('risk_health', 'Risk Posture', '30%', 'red'),
-                                ('capability_coverage', 'Capability Coverage', '20%', 'emerald'),
-                                ('governance', 'Governance', '10%', 'blue'),
-                            ] %}
-                            {% set val = (health_components or {}).get(key, 0) %}
-                            <div class="space-y-1.5">
-                                <div class="flex items-center justify-between">
-                                    <span class="text-xs font-medium text-muted-foreground">{{ label }}</span>
-                                    <span class="text-sm font-bold text-foreground">{{ val }}%</span>
-                                </div>
-                                <div class="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                    <div class="h-full rounded-full transition-all duration-700 bg-{{ color }}-500"
-                                         style="width: {{ val }}%"></div><!-- inline-style-ok -->
-                                </div>
-                                <span class="text-[10px] text-muted-foreground">Weight: {{ weight }}</span>
-                            </div>
-                            {% endfor %}
+                        {% for key, label in [
+                            ('phase_maturity', 'Phase Maturity'),
+                            ('risk_health', 'Risk Posture'),
+                            ('capability_coverage', 'Capability Coverage'),
+                            ('governance', 'Governance'),
+                        ] %}
+                        {# .get(key, 0) reported "not measured" as a confident 0%. #}
+                        {% set val = (health_components or {}).get(key) %}
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-xs text-muted-foreground">{{ label }}</p>
+                            <p class="text-lg font-bold text-foreground">{{ (val ~ "%") if val is not none else "—" }}</p>
+                            {% if key == 'phase_maturity' %}
+                            <p class="mt-1 text-xs text-muted-foreground">Share of solutions with a recorded ADM phase that are in phase C or later</p>
+                            {% endif %}
                         </div>
-                    </div>
-
-                    {# Data Coverage Strip — integrated into hero #}
-                    <div class="mt-5 pt-4 border-t border-border">
-                        <div class="flex items-center gap-2 mb-3">
-                            <i data-lucide="database" class="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true"></i>
-                            <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Data Coverage</span>
-                        </div>
-                        {% if data_coverage is defined and data_coverage.query_error is defined %}
-                        <p class="text-xs text-destructive mb-2">Coverage error: {{ data_coverage.query_error }}</p>
-                        {% endif %}
-                        <div class="grid grid-cols-5 gap-3">
-                            {% for field, label in [('owner', 'Owner'), ('vendor', 'Vendor'), ('cost', 'Cost'), ('risk', 'Risk'), ('criticality', 'Criticality')] %}
-                            {% set pct = data_coverage[field] if data_coverage is defined and data_coverage[field] is defined else 0 %}
-                            {% set pct_int = pct|int %}
-                            <div>
-                                <div class="flex items-center justify-between mb-1">
-                                    <span class="text-[11px] text-muted-foreground">{{ label }}</span>
-                                    <span class="text-[11px] font-semibold {% if pct_int >= 50 %}text-emerald-600{% elif pct_int >= 20 %}text-amber-600{% else %}text-destructive{% endif %}">{{ pct }}%</span>
-                                </div>
-                                <div class="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                                    <div class="h-full rounded-full {% if pct_int >= 50 %}bg-emerald-500{% elif pct_int >= 20 %}bg-amber-500{% else %}bg-destructive{% endif %}"
-                                         style="width: {{ [pct_int, 3]|max }}%"></div><!-- inline-style-ok -->
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
+                        {% endfor %}
                     </div>
                 {% endcall %}
             {% endcall %}
 
-            {# ── BIZBOK: Mini Layered Viewpoint — cross-layer element health ──── #}
-            {# Loader retries until the renderer stack (ComposerRenderer + JointJS) is
-               ready; if it never becomes ready, the panel shows an honest summary
-               instead of a blank box. Never fail silently on an executive dashboard. #}
-            <div x-data="{
-                    diagramState: 'loading',
-                    elementCount: 0,
-                    async loadDiagram() {
-                        let d = null;
-                        try {
-                            const resp = await fetch('/api/archimate/viewpoints/layered/diagram?limit=20');
-                            d = await resp.json();
-                        } catch (e) { console.error('layered diagram fetch failed', e); }
-                        if (!d || !d.success || !d.elements || !d.elements.length) {
-                            this.diagramState = 'empty';
-                            return;
-                        }
-                        this.elementCount = d.count || d.elements.length;
-                        // With no relationships the layered diagram lays out as
-                        // disconnected nodes and reads as a blank canvas; the
-                        // element-count summary is a cleaner, intentional state.
-                        if (!d.relationships || !d.relationships.length) {
-                            this.diagramState = 'fallback';
-                            return;
-                        }
-                        for (let attempt = 0; attempt < 20; attempt++) {
-                            if (typeof ComposerRenderer !== 'undefined' && window.joint && window.joint.dia) {
-                                try {
-                                    const el = document.getElementById('dashboard-layered-diagram');
-                                    const r = ComposerRenderer.create(el, {mode:'view', width:'100%', height:200});
-                                    r.loadElements(d.elements, d.relationships || []);
-                                    r.fitToContent();
-                                    this.diagramState = 'ready';
-                                    return;
-                                } catch (e) {
-                                    console.error('layered diagram render failed', e);
-                                    break;
-                                }
-                            }
-                            await new Promise(res => setTimeout(res, 250));
-                        }
-                        this.diagramState = 'fallback';
-                    }
-                 }"
-                 x-intersect.once="loadDiagram()">
-                <div class="rounded-xl border border-border bg-card overflow-hidden">
-                    <div class="bg-muted/20 px-5 py-2 border-b border-border flex items-center justify-between">
-                        <span class="text-xs font-medium text-muted-foreground">Architecture Overview — Layered Viewpoint</span>
-                        <a href="/archimate/composer" class="text-[10px] text-primary hover:underline">Open Composer →</a>
+            {# ── Data Coverage ───────────────────────────────────────────── #}
+            {% call card.card() %}
+                {% call card.card_header(class='pb-2') %}
+                    {% call card.card_title() %}Data Coverage{% endcall %}
+                {% endcall %}
+                {% call card.card_content() %}
+                    {% if data_coverage is defined and data_coverage.query_error is defined %}
+                    <p class="text-xs text-destructive-emphasis mb-2">Coverage error: {{ data_coverage.query_error }}</p>
+                    {% endif %}
+                    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {% for field, label in [('owner', 'Owner'), ('vendor', 'Vendor'), ('cost', 'Cost'), ('risk', 'Risk'), ('criticality', 'Criticality')] %}
+                        {% set pct = data_coverage[field] if data_coverage is defined and data_coverage[field] is defined else 0 %}
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-xs text-muted-foreground">{{ label }}</p>
+                            <p class="text-lg font-bold text-foreground">{{ pct }}%</p>
+                        </div>
+                        {% endfor %}
                     </div>
-                    <div id="dashboard-layered-diagram" class="w-full" x-show="diagramState === 'ready' || diagramState === 'loading'" style="min-height:200px;"></div>
-                    <div x-cloak x-show="diagramState === 'fallback'" class="flex flex-col items-center justify-center gap-3 py-12">
-                        <span class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <i data-lucide="network" class="h-6 w-6"></i>
-                        </span>
-                        <p class="text-sm text-foreground font-medium">
-                            {{ '{:,}'.format(nav_stats.elements) if nav_stats and nav_stats.elements else 'Your' }} architecture elements modelled across all layers
+                {% endcall %}
+            {% endcall %}
+
+            {# ── Architecture Overview — Layered Viewpoint ───────────────────────
+               Was a live ComposerRenderer/JointJS render in view mode: the same
+               renderer the interactive composer uses, retaining its default
+               selection-handle chrome (there is no separate static/pre-rendered
+               preview mechanism — grepped api/archimate/viewpoints/layered — so
+               per the Task 5 brief this becomes real counts + a link, not a
+               thumbnail. #}
+            {% call section_card() %}
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-sm font-semibold text-foreground">Architecture Overview — Layered Viewpoint</h2>
+                        <p class="text-xs text-muted-foreground mt-1">
+                            {{ '{:,}'.format(nav_stats.elements) if nav_stats and nav_stats.elements else '0' }} elements ·
+                            {{ '{:,}'.format(nav_stats.relationships) if nav_stats and nav_stats.relationships else '0' }} relationships across all ArchiMate layers
                         </p>
-                        <a href="/archimate/composer"
-                           class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                            <i data-lucide="git-fork" class="h-3.5 w-3.5"></i> Explore the interactive model
-                        </a>
                     </div>
-                    <div x-cloak x-show="diagramState === 'empty'" class="flex items-center justify-center py-10">
-                        <p class="text-sm text-muted-foreground">No ArchiMate elements to display yet.</p>
-                    </div>
+                    <a href="/archimate/composer?viewpoint=layered"
+                       class="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-3.5 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+                        Open Composer <i data-lucide="arrow-right" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    </a>
                 </div>
-            </div>
+            {% endcall %}
 
             {# ── KPI Strip (4-up) ────────────────────────────────────────────── #}
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -264,32 +280,28 @@
                     value=(metrics.applications or 0)|string,
                     icon='package',
                     description='Active applications in portfolio',
-                    href='/applications/',
-                    class='border-l-4 border-l-blue-500'
+                    href='/applications/'
                 ) }}
                 {{ metrics_card(
                     title='Vendors',
                     value=(metrics.vendors or 0)|string,
                     icon='building',
                     description='Registered vendor organizations',
-                    href='/applications/vendors',
-                    class='border-l-4 border-l-emerald-500'
+                    href='/applications/vendors'
                 ) }}
                 {{ metrics_card(
                     title='Solutions',
                     value=(nav_stats.solutions or 0)|string,
                     icon='puzzle',
                     description='Solution designs in portfolio',
-                    href='/solutions/',
-                    class='border-l-4 border-l-violet-500'
+                    href='/solutions/'
                 ) }}
                 {{ metrics_card(
                     title='ArchiMate Elements',
                     value=(nav_stats.elements or 0)|string,
                     icon='boxes',
                     description='Architecture elements catalogued',
-                    href='/architecture/dashboard',
-                    class='border-l-4 border-l-sky-500'
+                    href='/architecture/dashboard'
                 ) }}
             </div>
 
@@ -302,30 +314,30 @@
                         <h2 class="text-sm font-semibold text-foreground">AI governance</h2>
                     </div>
                     {% if governance_alerts.briefing_flagged %}
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                         <i data-lucide="alert-triangle" class="h-3 w-3"></i> {{ governance_alerts.briefing_flagged }} need attention
                     </span>
                     {% else %}
-                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">
+                    <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                         <i data-lucide="check" class="h-3 w-3"></i> No flagged findings
                     </span>
                     {% endif %}
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-border">
                     <a href="/solutions/briefings" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">EA briefing — flagged</p>
-                        <p class="text-2xl font-bold mt-1 {% if governance_alerts.briefing_flagged %}text-amber-600{% else %}text-foreground{% endif %}">{{ governance_alerts.briefing_flagged }}</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">of {{ governance_alerts.briefing_findings }} findings · view briefings →</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">EA briefing — flagged</p>
+                        <p class="text-2xl font-bold mt-1 {% if governance_alerts.briefing_flagged %}text-warning-emphasis{% else %}text-foreground{% endif %}">{{ governance_alerts.briefing_flagged }}</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">of {{ governance_alerts.briefing_findings }} findings · view briefings →</p>
                     </a>
                     <a href="/solutions/data-stewardship" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Data stewardship</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">Data stewardship</p>
                         <p class="text-2xl font-bold mt-1 text-foreground">Review</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">PII · canonical · lineage →</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">PII · canonical · lineage →</p>
                     </a>
                     <a href="/solutions/architect-synthesis" class="p-4 hover:bg-accent/40 transition-colors block">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground">Chief Architect</p>
+                        <p class="text-xs uppercase tracking-wider text-muted-foreground">Chief Architect</p>
                         <p class="text-2xl font-bold mt-1 text-foreground">Synthesis</p>
-                        <p class="text-[10px] text-muted-foreground mt-0.5">portfolio conformance →</p>
+                        <p class="text-xs text-muted-foreground mt-0.5">portfolio conformance →</p>
                     </a>
                 </div>
             </div>
@@ -345,7 +357,7 @@
                             <div class="flex items-center gap-3">
                                 <span class="text-xs text-muted-foreground w-[140px] truncate shrink-0" title="{{ item.status }}">{{ item.status }}</span>
                                 <div class="flex-1 h-5 bg-muted rounded-full overflow-hidden">
-                                    <div class="h-full rounded-full {% if '5.' in item.status or 'DECOM' in item.status or 'SUNSET' in item.status or 'STOPPED' in item.status or 'READ' in item.status %}bg-destructive/60{% elif 'STRATEGIC' in item.status %}bg-emerald-500{% elif 'TACTICAL' in item.status %}bg-amber-500{% else %}bg-primary{% endif %}"
+                                    <div class="h-full rounded-full {% if '5.' in item.status or 'DECOM' in item.status or 'SUNSET' in item.status or 'STOPPED' in item.status or 'READ' in item.status %}bg-destructive/60{% elif 'STRATEGIC' in item.status %}bg-success{% elif 'TACTICAL' in item.status %}bg-warning{% else %}bg-primary{% endif %}"
                                          style="width: {{ item.pct }}%"></div><!-- inline-style-ok -->
                                 </div>
                                 <span class="text-xs font-semibold text-foreground w-[50px] text-right">{{ item.count }}</span>
@@ -369,7 +381,18 @@
                         {% call card.card_title() %}Solution Pipeline{% endcall %}
                     {% endcall %}
                     {% call card.card_content() %}
-                        {% if solution_pipeline %}
+                        {# solution_pipeline always has one row per ADM phase A-H (see the
+                           route); the defect was drawing all 8 as zero-width bars when the
+                           org simply has no solutions yet -- gate on the total, not list
+                           truthiness. A second, related defect: a portfolio bunched entirely
+                           in one phase is 7 more zero-width bars plus one full one, which
+                           reads the same way -- collapse that case too (spec 3's own example:
+                           "Nothing past Vision yet — 70 solutions are in phase A"). #}
+                        {% set solution_pipeline_total = solution_pipeline|map(attribute='count')|sum if solution_pipeline else 0 %}
+                        {% set nonzero_phases = solution_pipeline|selectattr('count', 'gt', 0)|list if solution_pipeline else [] %}
+                        {% if solution_pipeline is none %}
+                        {{ empty_state('workflow', 'Pipeline unavailable', 'Solution phase data could not be loaded. Reload the page to try again.') }}
+                        {% elif solution_pipeline_total > 0 and nonzero_phases|length > 1 %}
                         {% set max_count = solution_pipeline|map(attribute='count')|max or 1 %}
                         <div class="space-y-2">
                             {% for item in solution_pipeline %}
@@ -383,13 +406,35 @@
                             </div>
                             {% endfor %}
                         </div>
+                        {% elif solution_pipeline_total > 0 %}
+                        {# Concentrated in a single ADM phase — one sentence, not 8 bars. #}
+                        {% set concentrated = nonzero_phases[0] %}
+                        {% if concentrated.phase is none %}
+                        {{ empty_state(
+                            'workflow', 'ADM phase not recorded',
+                            solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' without a recorded ADM phase. Open the pipeline to review them.',
+                            cta_label='Open the pipeline', cta_href=url_for('solution_design.list_solutions')
+                        ) }}
                         {% else %}
-                        {# PLT-040: role-aware empty state #}
-                        {% if current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
-                        <p class="text-sm text-muted-foreground">No solutions yet. <a href="/solutions/" class="text-primary hover:underline">Create your first solution</a>.</p>
-                        {% else %}
-                        <p class="text-sm text-muted-foreground">No solutions in pipeline yet.</p>
+                        {% set phase_letter, phase_name = concentrated.label.split(': ', 1) %}
+                        {{ empty_state(
+                            'workflow',
+                            'Nothing past ' ~ phase_name ~ ' yet',
+                            'All ' ~ solution_pipeline_total ~ ' solution' ~ ('s' if solution_pipeline_total != 1 else '') ~ ' ' ~ ('are' if solution_pipeline_total != 1 else 'is') ~ ' in phase ' ~ phase_letter ~ ' — nothing further yet.',
+                            cta_label='Open the pipeline',
+                            cta_href=url_for('solution_design.list_solutions')
+                        ) }}
                         {% endif %}
+                        {% elif current_user.enterprise_role in ('solution_architect', 'enterprise_architect', 'platform_admin') %}
+                        {# PLT-040: role-aware empty state #}
+                        {{ empty_state('workflow', 'No solutions yet', 'Blueprint your first initiative to start tracking ADM phase progress.', cta_label='Create your first solution', cta_href='/solutions/') }}
+                        {% else %}
+                        {# The branch immediately above gives solution/enterprise architects and
+                           platform admins the "Create your first solution" CTA (PLT-040); this
+                           branch is everyone else, who cannot start one. Pointing them at a
+                           route they are not the persona for is a dead end wearing a button.
+                           empty-state-ok: role-scoped, non-architects cannot create solutions #}
+                        {{ empty_state('workflow', 'No solutions in pipeline yet', 'Architects have not blueprinted any solutions yet. Phase progress will appear here once they do.') }}
                         {% endif %}
                     {% endcall %}
                 {% endcall %}
@@ -405,9 +450,9 @@
                         {% set partial_count = capability_health | selectattr('coverage_status', 'equalto', 'partial') | list | length %}
                         {% set gap_count = capability_health | selectattr('coverage_status', 'equalto', 'gap') | list | length %}
                         <div class="flex items-center gap-3 text-xs" data-testid="capability-health-widget">
-                            <span class="text-emerald-600 font-medium">{{ covered_count }} covered</span>
-                            <span class="text-amber-600 font-medium">{{ partial_count }} partial</span>
-                            <span class="text-destructive font-medium">{{ gap_count }} gaps</span>
+                            <span class="text-success-emphasis font-medium">{{ covered_count }} covered</span>
+                            <span class="text-warning-emphasis font-medium">{{ partial_count }} partial</span>
+                            <span class="text-destructive-emphasis font-medium">{{ gap_count }} gaps</span>
                         </div>
                     </div>
                 {% endcall %}
@@ -416,7 +461,7 @@
                         {% for cap in capability_health %}
                         <a href="{{ url_for('capability_map.index') }}?cap={{ cap.id }}"
                            class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium border transition-colors
-                                  {% if cap.coverage_status == 'covered' %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/20{% elif cap.coverage_status == 'partial' %}bg-amber-500/10 text-amber-600 border-amber-500/30 hover:bg-amber-500/20{% else %}bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20{% endif %}"
+                                  {% if cap.coverage_status == 'covered' %}bg-success/10 text-success-emphasis border-success/30 hover:bg-success/20{% elif cap.coverage_status == 'partial' %}bg-warning/10 text-warning-emphasis border-warning/30 hover:bg-warning/20{% else %}bg-destructive/10 text-destructive-emphasis border-destructive/30 hover:bg-destructive/20{% endif %}"
                            title="{{ cap.app_count }} application{{ 's' if cap.app_count != 1 else '' }}">
                             {{ cap.name }}
                         </a>
@@ -437,12 +482,13 @@
             {# CTO sees the health score hero too #}
             
             {# FRAG-035: Executive Summary (lazy-loaded) #}
-            <div x-data="{ execData: null, execLoading: true }" x-init="
-                fetch('/dashboard/api/executive-summary')
-                    .then(r => r.json())
-                    .then(d => { execData = d.data; execLoading = false; })
-                    .catch(() => { execLoading = false; })
+            <div x-data="{ execData: null, execLoading: true, execError: '' }" x-init="
+                Platform.fetch.get('/dashboard/api/executive-summary')
+                    .then(data => { execData = data.data; })
+                    .catch(() => { execError = 'Executive summary is currently unavailable.'; })
+                    .finally(() => { execLoading = false; })
             ">
+            <p x-show="execError" x-cloak class="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" x-text="execError"></p>
             <template x-if="execData">
                 <div class="rounded-xl border border-border bg-card p-5 mb-6">
                     <h3 class="text-sm font-semibold text-foreground mb-3">Executive Summary</h3>  <!-- frontend-quality-ok -->
@@ -450,7 +496,7 @@
                         <template x-for="(val, key) in execData" :key="key">
                             <div class="rounded-lg border border-border bg-background p-3">
                                 <p class="text-xs text-muted-foreground capitalize" x-text="key.replace(/_/g, ' ')"></p>
-                                <p class="text-lg font-bold text-foreground" x-text="typeof val === 'number' ? val.toLocaleString() : val"></p>
+                                <p class="text-lg font-bold text-foreground" x-text="typeof val === 'number' ? val.toLocaleString() : (val ?? '—')"></p>
                             </div>
                         </template>
                     </div>
@@ -459,12 +505,12 @@
             </div>
 
 <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/', class='border-l-4 border-l-blue-500') }}
-                {{ metrics_card(title='Health Score', value=health_score|string ~ '/100', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
-                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/', class='border-l-4 border-l-violet-500') }}
-                {{ metrics_card(title='ArchiMate', value=(nav_stats.elements or 0)|string, icon='boxes', description='Elements catalogued', href='/architecture/dashboard', class='border-l-4 border-l-sky-500') }}
+                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/') }}
+                {{ metrics_card(title='Health Score', value=health_score_text|default('—'), value_testid='cto-health-score-value', icon='heart-pulse', description='Architecture health', href='/dashboard/health') }}
+                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/') }}
+                {{ metrics_card(title='ArchiMate', value=(nav_stats.elements or 0)|string, icon='boxes', description='Elements catalogued', href='/architecture/dashboard') }}
             </div>
-            {% call card.card(class='border-l-4 border-l-red-500') %}
+            {% call card.card() %}
                 {% call card.card_header(class='pb-3') %}
                     {% call card.card_title(class='text-lg') %}Portfolio Risk &amp; ARB Pipeline{% endcall %}
                 {% endcall %}
@@ -473,9 +519,9 @@
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
                         {% for level, bg, text in [
                             ('critical', 'bg-destructive/10 border-destructive/30', 'text-destructive'),
-                            ('high', 'bg-amber-500/10 border-amber-500/30', 'text-amber-600'),
-                            ('medium', 'bg-blue-500/10 border-blue-500/30', 'text-primary'),
-                            ('low', 'bg-emerald-500/10 border-emerald-500/30', 'text-emerald-600'),
+                            ('high', 'bg-warning/10 border-warning/30', 'text-warning-emphasis'),
+                            ('medium', 'bg-info/10 border-info/30', 'text-primary'),
+                            ('low', 'bg-success/10 border-success/30', 'text-success-emphasis'),
                         ] %}
                         {% set count = (persona_metrics.get('cto') or {}).get('risk_counts', {}).get(level, 0) %}
                         <div class="rounded-lg border p-4 {{ bg }}">
@@ -487,8 +533,8 @@
                     <h4 class="text-sm font-semibold text-foreground mb-3">ARB Pipeline</h4>
                     <div class="grid grid-cols-3 gap-3">
                         {% for status_key, label, bg, text in [
-                            ('pending', 'Pending', 'bg-amber-500/10 border-amber-500/30', 'text-amber-600'),
-                            ('approved', 'Approved', 'bg-emerald-500/10 border-emerald-500/30', 'text-emerald-600'),
+                            ('pending', 'Pending', 'bg-warning/10 border-warning/30', 'text-warning-emphasis'),
+                            ('approved', 'Approved', 'bg-success/10 border-success/30', 'text-success-emphasis'),
                             ('rejected', 'Rejected', 'bg-destructive/10 border-destructive/30', 'text-destructive'),
                         ] %}
                         {% set count = (persona_metrics.get('cto') or {}).get('arb_pipeline', {}).get(status_key, 0) %}
@@ -509,16 +555,20 @@
     <div x-show="activeRole === 'cfo'" x-cloak>
         <div class="space-y-6">
             <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/', class='border-l-4 border-l-blue-500') }}
-                {{ metrics_card(title='Vendors', value=(metrics.vendors or 0)|string, icon='building', description='Vendor organizations', href='/applications/vendors', class='border-l-4 border-l-emerald-500') }}
-                {{ metrics_card(title='Health Score', value=health_score|string ~ '/100', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
-                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/', class='border-l-4 border-l-violet-500') }}
+                {{ metrics_card(title='Applications', value=(metrics.applications or 0)|string, icon='package', description='In portfolio', href='/applications/') }}
+                {{ metrics_card(title='Vendors', value=(metrics.vendors or 0)|string, icon='building', description='Vendor organizations', href='/applications/vendors') }}
+                {{ metrics_card(title='Health Score', value=health_score_text|default('—'), value_testid='cfo-health-score-value', icon='heart-pulse', description='Architecture health', href='/dashboard/health') }}
+                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/') }}
             </div>
-            {% call card.card(class='border-l-4 border-l-emerald-500') %}
+            {% call card.card() %}
                 {% call card.card_header(class='pb-3') %}
                     {% call card.card_title(class='text-lg') %}Total Cost of Ownership{% endcall %}
                 {% endcall %}
                 {% call card.card_content() %}
+                    {# Guard: persona_metrics may arrive partial (e.g. a metrics query
+                       failed) — degrade to an empty TCO table instead of 500-ing the
+                       whole Enterprise Architect landing page. #}
+                    {% set cfo = (persona_metrics or {}).get('cfo') or {} %}
                     <div class="rounded-lg border border-border bg-background overflow-hidden">
                         <table class="w-full text-sm">
                             <thead class="bg-muted/50">
@@ -528,7 +578,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for cat, amount in (persona_metrics.cfo.tco_by_category or {}).items() %}
+                                {% for cat, amount in (cfo.get('tco_by_category') or {}).items() %}
                                 <tr class="border-t border-border">
                                     <td class="px-4 py-2 text-foreground capitalize">{{ cat }}</td>
                                     <td class="px-4 py-2 text-right text-foreground font-medium">${{ '{:,.0f}'.format(amount) }}</td>
@@ -541,9 +591,9 @@
                             </tbody>
                         </table>
                     </div>
-                    {% if persona_metrics.cfo.total_tco %}
+                    {% if cfo.get('total_tco') %}
                     <div class="mt-3 flex justify-end">
-                        <span class="text-sm font-semibold text-foreground">Total: ${{ '{:,.0f}'.format(persona_metrics.cfo.total_tco) }}</span>
+                        <span class="text-sm font-semibold text-foreground">Total: ${{ '{:,.0f}'.format(cfo.get('total_tco')) }}</span>
                     </div>
                     {% endif %}
                 {% endcall %}
@@ -554,133 +604,62 @@
     {# ══════════════════════════════════════════════════════════════════════
        ARCHITECT TAB — Coverage focus
        ══════════════════════════════════════════════════════════════════════ #}
-    <div x-show="activeRole === 'architect'" x-cloak>
+    {# ── Architecture by ArchiMate 3.2 layer ─────────────────────────────
+       Replaces the ambiguous "Architect"/"Business" persona tabs with the
+       canonical ArchiMate 3.2 layer decomposition. One panel, driven by the
+       active layer key; per-layer element counts come from `layer_breakdown`
+       (route). ArchiMate 3.2 folds Physical into Technology, so six layers. #}
+    <div x-show="Object.keys(_layers).includes(activeRole)" x-cloak
+         x-data="{
+           _layers: {
+             motivation:     { label: 'Motivation',   count: {{ layer_breakdown.motivation|default(0) }},     blurb: 'Drivers, goals, outcomes, requirements, constraints and principles — WHY the architecture changes.' },
+             strategy:       { label: 'Strategy',     count: {{ layer_breakdown.strategy|default(0) }},         blurb: 'Capabilities, value streams, resources and courses of action — WHAT the enterprise must be able to do.' },
+             business:       { label: 'Business',     count: {{ layer_breakdown.business|default(0) }},         blurb: 'Actors, roles, processes, services and business objects — HOW the business operates.' },
+             application:    { label: 'Application',  count: {{ layer_breakdown.application|default(0) }},      blurb: 'Application components, services, interfaces and data objects — the software realizing the business.' },
+             technology:     { label: 'Technology',  count: {{ layer_breakdown.technology|default(0) }},       blurb: 'Nodes, system software, technology services and physical equipment — the platform the software runs on.' },
+             implementation: { label: 'Implementation & Migration', count: {{ layer_breakdown.implementation|default(0) }}, blurb: 'Work packages, deliverables, plateaus and gaps — the transition from the as-is to the to-be architecture.' }
+           }
+         }">
         <div class="space-y-6">
-            <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {{ metrics_card(title='ArchiMate', value=(nav_stats.elements or 0)|string, icon='boxes', description='Elements catalogued', href='/architecture/dashboard', class='border-l-4 border-l-sky-500') }}
-                {{ metrics_card(title='Solutions', value=(nav_stats.solutions or 0)|string, icon='puzzle', description='Active designs', href='/solutions/', class='border-l-4 border-l-violet-500') }}
-                {{ metrics_card(title='Capabilities', value=(nav_stats.capabilities or 0)|string, icon='layers', description='Business capabilities', href='/capability-map/', class='border-l-4 border-l-emerald-500') }}
-                {{ metrics_card(title='Health Score', value=health_score|string ~ '/100', icon='heart-pulse', description='Architecture health', href='/dashboard/health', class='border-l-4 border-l-red-500') }}
-            </div>
-            {# ── Governance Stats (lazy-loaded from ARB API) ── #}
-            <div x-data="{ govData: null, govLoading: true }" x-init="
-                fetch('/arb/api/dashboard')
-                    .then(r => r.json())
-                    .then(d => { govData = d.data; govLoading = false; })
-                    .catch(() => { govLoading = false; })
-            ">
-            {% call card.card(class='border-l-4 border-l-amber-500') %}
-                {% call card.card_header(class='pb-3') %}
-                    {% call card.card_title(class='text-lg') %}Governance{% endcall %}
-                {% endcall %}
-                {% call card.card_content() %}
-                    <div x-show="govLoading" class="py-4 text-sm text-muted-foreground">Loading governance data...</div>
-                    <template x-if="govData">
-                        <div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                                <div class="rounded-lg border border-border bg-background p-4">
-                                    <p class="text-xs text-muted-foreground">Pending Reviews</p>
-                                    <p class="text-3xl font-bold text-amber-600" x-text="govData.metrics.pending_items"></p>
-                                </div>
-                                <div class="rounded-lg border border-border bg-background p-4">
-                                    <p class="text-xs text-muted-foreground">Approval Rate</p>
-                                    <p class="text-3xl font-bold text-foreground" x-text="(Math.round((govData.metrics.approval_rate || 0) * 10) / 10) + '%'"></p>
-                                </div>
-                                <div class="rounded-lg border border-border bg-background p-4">
-                                    <p class="text-xs text-muted-foreground">Total Reviews</p>
-                                    <p class="text-3xl font-bold text-foreground" x-text="govData.metrics.total_items"></p>
-                                </div>
-                                <div class="rounded-lg border border-border bg-background p-4">
-                                    <p class="text-xs text-muted-foreground">Approved</p>
-                                    <p class="text-3xl font-bold text-emerald-600" x-text="govData.metrics.approved_items"></p>
-                                </div>
-                            </div>
-                            <template x-if="govData.recent_reviews && govData.recent_reviews.length > 0">
-                                <div>
-                                    <h4 class="text-sm font-semibold text-foreground mb-3">Recent Reviews</h4>
-                                    <div class="rounded-lg border border-border bg-background overflow-hidden">
-                                        <table class="w-full text-sm">
-                                            <thead class="bg-muted/50">
-                                                <tr>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Title</th>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Status</th>
-                                                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Phase</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                <template x-for="review in govData.recent_reviews.slice(0, 5)" :key="review.id">
-                                                    <tr class="border-t border-border">
-                                                        <td class="px-4 py-2 text-foreground" x-text="review.title || review.name || 'Untitled'"></td>
-                                                        <td class="px-4 py-2">
-                                                            <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
-                                                                :class="review.status === 'approved' ? 'bg-emerald-500/10 text-emerald-600' : review.status === 'pending' ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground'"
-                                                                x-text="review.status"></span>
-                                                        </td>
-                                                        <td class="px-4 py-2 text-muted-foreground text-xs" x-text="review.togaf_phase || '-'"></td>
-                                                    </tr>
-                                                </template>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </template>
-                            <a href="/arb/" class="inline-flex items-center gap-1.5 mt-4 text-xs font-medium text-primary hover:underline">
-                                View all ARB Reviews <i data-lucide="arrow-right" class="h-3 w-3"></i>
-                            </a>
-                        </div>
-                    </template>
-                {% endcall %}
-            {% endcall %}
-            </div>
-
-            {% call card.card(class='border-l-4 border-l-sky-500') %}
-                {% call card.card_header(class='pb-3') %}
-                    {% call card.card_title(class='text-lg') %}Architecture Coverage{% endcall %}
-                {% endcall %}
-                {% call card.card_content() %}
-                    <div class="grid grid-cols-2 gap-4 mb-6">
-                        <div class="rounded-lg border border-border bg-background p-4">
-                            <p class="text-xs text-muted-foreground">Avg Solution Maturity</p>
-                            <p class="text-3xl font-bold text-foreground">{{ persona_metrics.architect.avg_maturity }}%</p>
-                        </div>
-                        <div class="rounded-lg border border-border bg-background p-4">
-                            <p class="text-xs text-muted-foreground">ArchiMate Elements</p>
-                            <p class="text-3xl font-bold text-foreground">{{ persona_metrics.architect.total_archimate }}</p>
-                        </div>
+            <div class="rounded-lg border border-border bg-card p-6">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground" x-text="(_layers[activeRole]||{label:''}).label + ' layer'"></h2>
+                        <p class="mt-1 max-w-2xl text-sm text-muted-foreground" x-text="(_layers[activeRole]||{blurb:''}).blurb"></p>
                     </div>
-                    {% if persona_metrics.architect.archimate_counts %}
-                    <h4 class="text-sm font-semibold text-foreground mb-3">Elements by Type</h4>
-                    <div class="rounded-lg border border-border bg-background overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-muted/50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-muted-foreground">Element Type</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-muted-foreground">Count</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for elem_type, count in persona_metrics.architect.archimate_counts.items() %}
-                                <tr class="border-t border-border">
-                                    <td class="px-4 py-2 text-foreground capitalize">{{ elem_type }}</td>
-                                    <td class="px-4 py-2 text-right text-foreground font-medium">{{ count }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                    <div class="shrink-0 text-right">
+                        <div class="text-3xl font-bold text-foreground" x-text="((_layers[activeRole]||{count:0}).count).toLocaleString()"></div>
+                        <div class="text-xs text-muted-foreground">elements</div>
                     </div>
-                    {% else %}
-                    <p class="text-sm text-muted-foreground">No ArchiMate elements linked to solutions yet.</p>
-                    {% endif %}
-                {% endcall %}
-            {% endcall %}
+                </div>
+                <div class="mt-5 flex flex-wrap gap-2">
+                    <a :href="'/archimate/composer?viewpoint=layered&layer=' + activeRole" class="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90">
+                        Open in composer <i data-lucide="pen-tool" class="h-3.5 w-3.5"></i>
+                    </a>
+                    <a href="/architecture/dashboard" class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                        Browse elements <i data-lucide="boxes" class="h-3.5 w-3.5"></i>
+                    </a>
+                    <a href="/capability-map/" x-show="activeRole === 'strategy' || activeRole === 'business'" class="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
+                        Capability map <i data-lucide="layers" class="h-3.5 w-3.5"></i>
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
+
+    {% endif %}{# mode == 'guided' / 'data' #}
 
 </div>
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.js" crossorigin="anonymous"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jointjs@3.7.7/dist/joint.min.css" crossorigin="anonymous">
+<!-- JointJS peer deps (jQuery → Lodash → Backbone) MUST load before joint.min.js,
+     otherwise joint throws "Cannot read properties of undefined (reading 'Model')"
+     and the Layered Viewpoint diagram silently fails to render. -->
+<script src="/static/vendor/jquery.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/lodash.min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/backbone-min.js" crossorigin="anonymous"></script>
+<script src="/static/vendor/joint.min.js" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="/static/vendor/joint.min.css" crossorigin="anonymous">
 <script src="{{ url_for('static', filename='js/archimate/composer_renderer.js') }}"></script>
 {% endblock %}

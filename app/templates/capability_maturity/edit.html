@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Edit Capability Maturity{% endblock %}
 
@@ -16,18 +17,15 @@
 <div class="mx-auto px-4 py-6">
     <!-- Header -->
     <div class="mb-8">
-        <div class="flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-bold text-foreground mb-2">Edit Capability Maturity</h1>
-                <p class="text-muted-foreground">Update maturity levels for: {{ capability.name }}</p>
-            </div>
-            <div class="flex space-x-4">
+        {% macro _ps_actions() %}
+<div class="flex space-x-4">
                 <a href="{{ url_for('maturity_management.search_capabilities') }}" 
                    class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors">
                     ← Back to Search
                 </a>
             </div>
-        </div>
+        {% endmacro %}
+        {{ page_shell(title='Edit Capability Maturity', subtitle='Update maturity levels for: ' ~ (capability.name), actions_caller=_ps_actions) }}
     </div>
 
     <!-- Capability Details -->
@@ -54,10 +52,10 @@
                             <dd class="text-sm text-foreground">
                                 {% if capability.strategic_importance %}
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
-                                        {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive
-                                        {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning dark:text-warning/80
-                                        {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning dark:text-warning/60
-                                        {% else %}bg-muted text-foreground{% endif %}">
+ {% if capability.strategic_importance == 'critical' %}bg-destructive/10 text-destructive-emphasis
+ {% elif capability.strategic_importance == 'high' %}bg-warning/10 text-warning-emphasis
+ {% elif capability.strategic_importance == 'medium' %}bg-warning/10 text-warning-emphasis
+ {% else %}bg-muted text-foreground{% endif %}">
                                         {{ capability.strategic_importance }}
                                     </span>
                                 {% else %}
@@ -125,14 +123,14 @@
             <h2 class="text-lg font-semibold text-foreground">Update Maturity Levels</h2>
         </div>
         <div class="p-6">
-            <form method="POST" class="space-y-6">
-                {{ csrf_token() }}
+            <form method="POST" action="{{ url_for('maturity_management.edit_capability_maturity', capability_id=capability.id) }}" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <!-- Maturity Level Reference -->
                 <div class="bg-primary/5 border border-primary/20 rounded-lg p-4">
                     <h3 class="text-sm font-semibold text-foreground mb-2">Maturity Level Reference</h3>
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-xs">
                         <div class="text-center">
-                            <div class="font-medium text-destructive">Level 1</div>
+                            <div class="font-medium text-destructive-emphasis">Level 1</div>
                             <div class="text-muted-foreground">Initial/Ad Hoc</div>
                         </div>
                         <div class="text-center">
@@ -232,7 +230,7 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
+                <div class="mb-4 p-4 rounded-lg {% if category == 'error' %}bg-destructive/10 border border-destructive/20 text-destructive-emphasis{% else %}bg-primary/10 border border-primary/20 text-foreground{% endif %}">
                     {{ message }}
                 </div>
             {% endfor %}

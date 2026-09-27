@@ -10,17 +10,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.models import (
-    ConstraintType,
-    DriverType,
-    RequirementType,
-    SolutionAssessment,
-    SolutionConstraint,
-    SolutionDriver,
-    SolutionGoal,
-    SolutionPrinciple,
-    SolutionRequirement,
-)
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
@@ -76,7 +65,7 @@ class MotivationalElementGenerator:
 
             return elements
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty element collections are the honest result of a generation failure; no value invented
             logger.error(f"Error generating motivational elements: {e}")
             # Return empty structure on error
             return {
@@ -485,7 +474,7 @@ Return ONLY valid JSON with this structure:
 
             return result
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty element collections are the honest result of a parse failure; no value invented
             logger.error(f"Error parsing comprehensive response: {e}")
             return {
                 "drivers": [],

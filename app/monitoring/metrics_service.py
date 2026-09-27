@@ -5,13 +5,10 @@ Provides comprehensive metrics collection and aggregation for system monitoring.
 """
 
 import logging
-import time  # dead-code-ok
-from datetime import datetime, timedelta  # dead-code-ok
-from typing import Dict, List, Any, Optional  # dead-code-ok
+from typing import Dict, Any, Optional  # dead-code-ok
 from collections import defaultdict, deque
 import threading
 
-from flask import current_app  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +275,7 @@ class MetricsService:
                 try:
                     result = db.session.execute(db.text(f"SELECT COUNT(*) FROM {table}"))  # tenant-exempt: metrics monitoring
                     count = result.scalar()
-                    metrics[f'database_table_rows{{table="{table}"}}'] = {
+                    metrics[f'database_table_rows{{table="{table}"}}'] = {  # raw-html-ok: Prometheus metric label syntax (dict key), not HTML; table is from a static allow-list, never user input (see comment above)
                         'type': 'gauge',
                         'value': count,
                         'help': f'Number of rows in {table} table'

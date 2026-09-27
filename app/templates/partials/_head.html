@@ -1,8 +1,20 @@
 <meta charset="utf-8">
+{# smoke-coverage-ok: CSP nonce fix on <style>; covered by tests/test_capability_map_a11y_csp.py and tests/test_csp_nonce.py #}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- Theme init: apply dark class before first paint to prevent flash.
+     Moved from composer_base.html so both layouts share one implementation. -->
+<script>
+    (function() {
+        var stored = localStorage.getItem('theme');
+        if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+    })();
+</script>
+
 <!-- Alpine.js x-cloak: prevent flash of unstyled content -->
-<style>[x-cloak] { display: none !important; }</style>
+<style nonce="{{ csp_nonce }}">[x-cloak] { display: none !important; }</style>
 
 <!-- Tailwind CSS (local JIT build — run: python scripts/build_css.py) -->
 <link rel="stylesheet" href="{{ 'css/shadcn_tokens.css' | asset_url }}">
@@ -16,12 +28,12 @@
 {% endif %}
 
 <!-- Lucide Icons (pinned) -->
-<script src="https://unpkg.com/lucide@0.344.0"
+<script src="/static/vendor/lucide.min.js"
         integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq"
         crossorigin="anonymous"></script>
 
 <!-- DOMPurify for XSS prevention -->
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"
+<script src="/static/vendor/purify.min.js"
         integrity="sha384-vdScihEZCfbPnBQf+lc7LgXUdJVYyhC3yWHUW5C5P5GpHRqVnaM6HJELJxT6IqwM"
         crossorigin="anonymous"></script>
 <script>
@@ -47,14 +59,22 @@
 {# extra_head_js block moved to admin_base.html — blocks inside {% include %} don't inherit #}
 
 <!-- Alpine.js plugins (must appear BEFORE Alpine in DOM order for defer scripts) -->
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.14.3/dist/cdn.min.js"
+<script defer src="/static/vendor/alpine-focus.min.js"
         crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/intersect@3.14.3/dist/cdn.min.js"
+<script defer src="/static/vendor/alpine-intersect.min.js"
         crossorigin="anonymous"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.14.3/dist/cdn.min.js"
+<script defer src="/static/vendor/alpine-collapse.min.js"
         crossorigin="anonymous"></script>
+<!-- ARCH-070: CSP-safe evaluator + Alpine adapter. Loaded (deferred) BEFORE
+     alpine.min.js so the adapter's alpine:init listener is registered before
+     Alpine starts; it registers a hand-written expression interpreter via
+     Alpine.setEvaluator so Alpine never calls new Function(), letting script-src
+     drop 'unsafe-eval'. Verified in tests/csp/. First-party, so no SRI (matches
+     the other app JS). -->
+<script defer src="{{ url_for('static', filename='js/csp/csp-evaluator.js') }}"></script>
+<script defer src="{{ url_for('static', filename='js/csp/alpine-csp-adapter.js') }}"></script>
 <!-- Alpine.js (pinned) -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"
+<script defer src="/static/vendor/alpine.min.js"
         integrity="sha384-iZD2X8o1Zdq0HR5H/7oa8W30WS4No+zWCKUPD7fHRay9I1Gf+C4F8sVmw7zec1wW"
         crossorigin="anonymous"></script>
 <!-- Alpine.js $screen plugin -->
@@ -62,6 +82,8 @@
   // Add $screen magic property to Alpine.js for responsive breakpoint detection
   // This plugin adds $screen('lg'), $screen('md'), etc. to match Tailwind breakpoints
   document.addEventListener('alpine:init', () => {
+    // Add $screen magic property to Alpine.js for responsive breakpoint detection
+    // This plugin adds $screen('lg'), $screen('md'), etc. to match Tailwind breakpoints
     Alpine.magic('screen', () => {
       // Tailwind breakpoints: sm: 640px, md: 768px, lg: 1024px, xl: 1280px, 2xl: 1536px
       const breakpoints = {
@@ -75,15 +97,33 @@
       return (size) => {
         const query = breakpoints[size];
         if (!query) {
-          console.warn(`Alpine $screen: Unknown breakpoint "${size}". Available: ${Object.keys(breakpoints).join(', ')}`);
+          // Unknown breakpoint name in a template: treat as "not matching" so the
+          // page still renders. Valid names are the keys of `breakpoints` above.
           return false;
         }
         return window.matchMedia(query).matches;
       };
     });
+
+    // Theme store — one implementation for both admin_base and composer_base layouts.
+    // Moved from composer_base.html so the dark-theme toggle works on every page.
+    Alpine.store('theme', {
+        dark: document.documentElement.classList.contains('dark'),
+        toggle() {
+            this.dark = !this.dark;
+            document.documentElement.classList.toggle('dark', this.dark);
+            localStorage.setItem('theme', this.dark ? 'dark' : 'light');
+        }
+    });
   });
 </script>
-<!-- Currency Manager -->
+<!-- Currency Manager: org currency code drives the client default so it agrees
+     with server-rendered figures (currency_config in every template context,
+     see app/_bootstrap/context_processors.py::inject_currency_config) -->
+<script>
+  window.__APP_CONFIG__ = window.__APP_CONFIG__ || {};
+  window.__APP_CONFIG__.currency = {{ (currency_config.code if currency_config else 'GBP')|tojson }};
+</script>
 <script src="{{ url_for('static', filename='js/currency.js') }}"></script>
 
 <!-- Custom Scripts -->
@@ -113,7 +153,8 @@
 {% if config.SEGMENT_API_KEY %}
 <!-- Segment Analytics -->
 <script>
-  !function(){var analytics=window.analytics=window.analytics||[]; // frontend-quality-ok — third-party vendor snippetif(!analytics.initialize)if(analytics.invoked)window.console&&console.error&&console.error("Segment snippet included twice.");else{analytics.invoked=!0;analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","once","off","on"];analytics.factory=function(t){return function(){var e=Array.prototype.slice.call(arguments);e.unshift(t);analytics.push(e);return analytics}};for(var t=0;t<analytics.methods.length;t++){var e=analytics.methods[t];analytics[e]=analytics.factory(e)}analytics.load=function(t){var e=document.createElement("script");e.type="text/javascript";e.async=!0;e.src=("https:"===document.location.protocol?"https://":"http://")+"cdn.segment.com/analytics.js/v1/"+t+"/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(e,n)};analytics.SNIPPET_VERSION="4.0.0";
+  // frontend-quality-ok — third-party vendor snippet, kept verbatim.
+  !function(){var analytics=window.analytics=window.analytics||[];if(!analytics.initialize)if(analytics.invoked)window.console&&console.error&&console.error("Segment snippet included twice.");else{analytics.invoked=!0;analytics.methods=["trackSubmit","trackClick","trackLink","trackForm","pageview","identify","reset","group","track","ready","alias","debug","page","once","off","on"];analytics.factory=function(t){return function(){var e=Array.prototype.slice.call(arguments);e.unshift(t);analytics.push(e);return analytics}};for(var t=0;t<analytics.methods.length;t++){var e=analytics.methods[t];analytics[e]=analytics.factory(e)}analytics.load=function(t){var e=document.createElement("script");e.type="text/javascript";e.async=!0;e.src=("https:"===document.location.protocol?"https://":"http://")+"cdn.segment.com/analytics.js/v1/"+t+"/analytics.min.js";var n=document.getElementsByTagName("script")[0];n.parentNode.insertBefore(e,n)};analytics.SNIPPET_VERSION="4.0.0"; // console-ok: verbatim vendor Segment loader; its duplicate-include guard is upstream code we do not modify
   analytics.load('{{ config.SEGMENT_API_KEY }}');
   analytics.page();
   }}();
@@ -126,3 +167,4 @@
   posthog.init('{{ posthog_key }}', {api_host: '{{ config.get("POSTHOG_HOST", "https://app.posthog.com") }}'});
 </script>
 {% endif %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">

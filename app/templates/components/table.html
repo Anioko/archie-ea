@@ -37,6 +37,10 @@
     </td>
 {% endmacro %}
 
+{# A macro DEFINITION, not a screen. It renders whatever message its caller passes and
+   has no idea which table it is filling, so it cannot know the next action; that product
+   judgement belongs at each call site. The gate matches it only on the name suffix.
+   empty-state-ok: generic macro definition, next action is the caller's to supply #}
 {% macro table_empty_state(message='No data available', icon='inbox', class='') %}
     <tr class="{{ class }}">
         <td colspan="99" class="px-6 py-12 text-center">

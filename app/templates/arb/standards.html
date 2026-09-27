@@ -60,7 +60,10 @@
         </div>
         {% else %}
         {{ empty_state(icon='book-open', title='No governance standards defined',
-                        description='Create standards to enforce architecture governance') }}
+                        description='Standards are the rules the board reviews against — security, integration, data and platform. Load the built-in starter set to give reviews something to check against.',
+                        cta_text='Load the default standards',
+                        cta_href=url_for('arb.initialize_standards'), cta_method='post',
+                        cta_icon='download') }}
         {% endif %}
     </div>
 </div>

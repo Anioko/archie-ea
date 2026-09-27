@@ -1,14 +1,12 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}Capability Consolidation - Abacus Integration{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8" x-data="consolidationManager()">
+<div class="p-6 space-y-6 mx-auto" x-data="consolidationManager()">
     <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground mb-2">Capability Consolidation</h1>
-        <p class="text-muted-foreground">Review and merge duplicate capabilities from Abacus and manual sources</p>
-    </div>
+    {{ page_shell(title='Capability Consolidation', breadcrumb=[('Home', '/'), ('Capability Consolidation', none)], subtitle='Review and merge duplicate capabilities from Abacus and manual sources') }}
 
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -23,12 +21,12 @@
         </div>
 
         <div class="bg-success/5 rounded-lg shadow p-6">
-            <div class="text-sm text-success mb-1">Manual Entries</div>
+            <div class="text-sm text-success-emphasis mb-1">Manual Entries</div>
             <div class="text-3xl font-bold text-success">{{ manual_capabilities }}</div>
         </div>
 
         <div class="bg-warning/5 rounded-lg shadow p-6">
-            <div class="text-sm text-warning mb-1">Potential Duplicates</div>
+            <div class="text-sm text-warning-emphasis mb-1">Potential Duplicates</div>
             <div class="text-3xl font-bold text-warning" x-text="duplicates.length">{{ duplicate_candidates|length }}</div>
         </div>
     </div>
@@ -63,7 +61,7 @@
                 <select
                     x-model="mergeStrategy"
                     class="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                 aria-label="Merge Strategy">
                     <option value="keep_target">Keep Manual (Migrate Abacus)</option>
                     <option value="keep_source">Keep Abacus (Migrate Manual)</option>
                     <option value="merge_fields">Smart Merge (Field-level)</option>
@@ -72,7 +70,7 @@
 
             <!-- Actions -->
             <div class="flex gap-2">
-                <button
+                <button type="button"
                     @click="bulkMergeSelected()"
                     :disabled="selectedPairs.length === 0"
                     class="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary disabled:bg-muted disabled:cursor-not-allowed"
@@ -80,9 +78,10 @@
                     Merge Selected (<span x-text="selectedPairs.length"></span>)
                 </button>
 
-                <button
+                <button type="button"
                     @click="autoMergeHighConfidence()"
-                    class="px-4 py-2 bg-success text-primary-foreground rounded-md hover:bg-success"
+                    :disabled="duplicates.filter(d => d.similarity > 95).length === 0"
+                    class="px-4 py-2 bg-success text-success-foreground rounded-md hover:bg-success/80 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Auto-Merge (>95%)
                 </button>
@@ -149,7 +148,7 @@
                                          x-text="candidate.similarity + '%'">
                                     </div>
                                     <template x-if="candidate.similarity > 95">
-                                        <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                        <span class="px-2 py-1 text-xs font-semibold text-success-emphasis bg-success/10 rounded-full">
                                             Auto
                                         </span>
                                     </template>
@@ -173,7 +172,7 @@
                             <!-- Code Match -->
                             <td class="px-6 py-4">
                                 <template x-if="candidate.code_match">
-                                    <span class="px-2 py-1 text-xs font-semibold text-success bg-success/10 rounded-full">
+                                    <span class="px-2 py-1 text-xs font-semibold text-success-emphasis bg-success/10 rounded-full">
                                         ✓ Match
                                     </span>
                                 </template>
@@ -193,15 +192,15 @@
                                     >
                                         Compare
                                     </a>
-                                    <button
+                                    <button type="button"
                                         @click="mergePair(candidate.abacus_id, candidate.manual_id)"
-                                        class="text-success hover:text-success text-sm font-medium"
+                                        class="text-success-emphasis hover:text-success-emphasis text-sm font-medium"
                                     >
                                         Merge
                                     </button>
-                                    <button
+                                    <button type="button"
                                         @click="rejectPair(candidate.abacus_id, candidate.manual_id)"
-                                        class="text-destructive hover:text-destructive text-sm font-medium"
+                                        class="text-destructive-emphasis hover:text-destructive-emphasis text-sm font-medium"
                                      aria-label="Reject">
                                         Reject
                                     </button>
@@ -214,7 +213,7 @@
         </div>
 
         <!-- Empty State -->
-        <div x-show="duplicates.length === 0" x-cloak class="px-6 py-12 text-center">
+        <div x-show="duplicates.length === 0 && !loadError" x-cloak class="px-6 py-12 text-center">
             <svg class="mx-auto h-12 w-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
             </svg>
@@ -222,6 +221,20 @@
             <p class="mt-1 text-sm text-muted-foreground">
                 Try lowering the similarity threshold to find more potential matches.
             </p>
+        </div>
+
+        <!-- Load Failure — deliberately NOT the empty state: "none found" and
+             "we could not look" must not read the same. -->
+        <div x-show="loadError" x-cloak class="px-6 py-12 text-center bg-destructive/5 border-t border-destructive/20">
+            <svg class="mx-auto h-12 w-12 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-destructive-emphasis">Candidates could not be loaded</h3>
+            <p class="mt-1 text-sm text-muted-foreground" x-text="loadError"></p>
+            <button type="button" @click="loadCandidates()"
+                    class="mt-4 inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2">
+                Retry
+            </button>
         </div>
     </div>
 
@@ -248,7 +261,7 @@
             </div>
             <div class="ml-3">
                 <p class="text-sm font-medium"
-                   :class="{'text-success': statusType === 'success', 'text-destructive': statusType === 'error'}"
+                   :class="{'text-success-emphasis': statusType === 'success', 'text-destructive-emphasis': statusType === 'error'}"
                    x-text="statusMessage">
                 </p>
             </div>
@@ -265,12 +278,20 @@ function consolidationManager() {
         selectedPairs: [],
         statusMessage: '',
         statusType: 'success',
+        loadError: null,
 
         loadCandidates() {
-            fetch('{{ url_for("abacus_consolidation.get_candidates") }}?threshold=' + this.threshold)
-                .then(res => res.json())
+            this.loadError = null;
+            Platform.fetch.get('{{ url_for("abacus_consolidation.get_candidates") }}', { threshold: this.threshold }, { silent: true })
                 .then(data => {
-                    this.duplicates = data.candidates;
+                    this.duplicates = data.candidates || [];
+                })
+                .catch(err => {
+                    // Empty, not stale, and flagged: the list below must never
+                    // pass off the previous threshold's results as this one's.
+                    this.duplicates = [];
+                    this.loadError = err.message;
+                    Platform.toast.error(err.message);
                 });
         },
 
@@ -286,17 +307,11 @@ function consolidationManager() {
             if (!(await Platform.modal.confirm('Are you sure you want to merge these capabilities?'))) return;
 
             try {
-                const response = await fetch('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({
-                        source_id: abacusId,
-                        target_id: manualId,
-                        strategy: this.mergeStrategy
-                    })
-                });
-
-                const result = await response.json();
+                const result = await Platform.fetch.post('{{ url_for("abacus_consolidation.merge_capabilities") }}', {
+                    source_id: abacusId,
+                    target_id: manualId,
+                    strategy: this.mergeStrategy
+                }, { silent: true });
 
                 if (result.success) {
                     this.showStatus(result.message, 'success');
@@ -322,16 +337,10 @@ function consolidationManager() {
             });
 
             try {
-                const response = await fetch('{{ url_for("abacus_consolidation.bulk_merge") }}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({
-                        pairs: pairs,
-                        strategy: this.mergeStrategy
-                    })
-                });
-
-                const result = await response.json();
+                const result = await Platform.fetch.post('{{ url_for("abacus_consolidation.bulk_merge") }}', {
+                    pairs: pairs,
+                    strategy: this.mergeStrategy
+                }, { silent: true });
 
                 if (result.success) {
                     this.showStatus(`Successfully merged ${result.merged} pairs`, 'success');
@@ -361,16 +370,15 @@ function consolidationManager() {
 
         async rejectPair(abacusId, manualId) {
             const rejectUrlTemplate = '{{ url_for("abacus_consolidation.reject_merge", abacus_id=0, manual_id=0) }}';
-            const response = await fetch(rejectUrlTemplate.replace('/0/0', '/' + abacusId + '/' + manualId), {
-                method: 'POST',
-                headers: {'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''}
-            });
+            try {
+                await Platform.fetch.post(rejectUrlTemplate.replace('/0/0', '/' + abacusId + '/' + manualId), null, { silent: true });
 
-            if (response.ok) {
                 this.duplicates = this.duplicates.filter(
                     d => !(d.abacus_id === abacusId && d.manual_id === manualId)
                 );
                 this.showStatus('Marked as not a duplicate', 'success');
+            } catch (error) {
+                this.showStatus('Failed to mark as not a duplicate: ' + error.message, 'error');
             }
         },
 

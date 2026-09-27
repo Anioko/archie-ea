@@ -192,6 +192,7 @@ class AWSPricingConnector(BaseCloudPricingConnector):
                     instance_type = attrs.get("instanceType", "default")
                     tier_name = f"OnDemand-{instance_type}"
 
+                    # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
                     existing = VendorProductPricing.query.filter_by(
                         product_id=product.id, tier_name=tier_name
                     ).first()

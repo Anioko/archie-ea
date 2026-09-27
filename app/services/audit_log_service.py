@@ -87,6 +87,9 @@ class AuditLogService:
     @staticmethod
     def get_for_record(table_name: str, record_id: int):
         """Return the full audit history for a specific record."""
+        # tenant-scoping-ok: record_id is a specific row's PK (globally
+        # unique) -- caller is responsible for having authorized access to
+        # that record; this only ever returns that one record's history.
         return (
             AuditLog.query
             .filter_by(table_name=table_name, record_id=record_id)

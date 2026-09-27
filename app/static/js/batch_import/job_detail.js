@@ -249,7 +249,7 @@ function jobDetail(jobId) {
             });
 
             this.eventSource.onerror = function(error) {
-                console.error('SSE connection error:', error);
+                self.addStreamMessage('error', 'Live progress updates stopped (connection lost). Refreshing job status.');
                 self.stopStream();
                 self.loadJob(true);
             };
@@ -313,8 +313,10 @@ function jobDetail(jobId) {
             if (type === undefined) type = 'info';
             if (window.showToast) {
                 window.showToast(message, type);
-            } else {
-
+            } else if (window.Platform && Platform.toast) {
+                // Without this the notification reached nobody when the page-local
+                // showToast helper was absent.
+                (Platform.toast[type] || Platform.toast.info)(message);
             }
         }
     };

@@ -14,6 +14,25 @@ from flask import current_app, jsonify, render_template, request
 from flask_login import current_user, login_required
 
 from app import db
+from app.utils.pagination import safe_int_arg
+
+
+def _sort_iteration_keys(keys):
+    """Sort iteration keys, placing None last to ensure None-safe ordering.
+
+    When grouping workflow instances by iteration_number, some real data may
+    have None as a key. Python's sorted() cannot compare None with integers,
+    so we use a custom key function: (k is None, k) converts None to (True, None)
+    and integers to (False, n), ensuring None sorts after all numeric keys
+    while preserving numeric ordering.
+
+    Args:
+        keys: An iterable of iteration number keys (may include None)
+
+    Returns:
+        A sorted list with None values (if any) at the end
+    """
+    return sorted(keys, key=lambda k: (k is None, k))
 
 
 def _build_arch_review_report(exec_steps, instance_data):
@@ -253,14 +272,23 @@ def register_ea_workflow_routes(main_blueprint):
                 if _group_defns:
                     workflow_groups.append({"label": _label, "description": _desc, "definitions": _group_defns})
 
-            bp = current_app.blueprints
-            phase_available = {
-                "phase_d": "phase_d" in bp,
-                "phase_e": "phase_e" in bp,
-                "phase_f": "phase_f" in bp,
-                "phase_g": "phase_g" in bp,
-                "phase_h": "phase_h" in bp,
-            }
+            # Resolve the real page URL per phase, or None.
+            #
+            # This used to test `"phase_d" in current_app.blueprints`, which is
+            # true whenever the blueprint loads -- but those blueprints register
+            # only JSON endpoints under /api/ea/phase-d/*. There is no page at
+            # /ea-workflows/phase-d, so the guard passed, the template rendered a
+            # hardcoded href, and the product linked to its own 404. Asking the
+            # url_map for a rule that actually serves the path cannot make that
+            # mistake, and a phase page added later lights up on its own.
+            phase_links = {}
+            for _letter in ("d", "e", "f", "g", "h"):
+                _path = f"/ea-workflows/phase-{_letter}"
+                _match = any(
+                    str(_rule) == _path and "GET" in (_rule.methods or set())
+                    for _rule in current_app.url_map.iter_rules()
+                )
+                phase_links[f"phase_{_letter}"] = _path if _match else None
 
             return render_template(
                 "ea_workflows/dashboard.html",
@@ -274,22 +302,27 @@ def register_ea_workflow_routes(main_blueprint):
                 compliance_posture=compliance_posture,
                 phase_counts=phase_counts,
                 togaf_phases=engine.TOGAF_PHASES,
-                phase_available=phase_available,
+                phase_links=phase_links,
             )
         except Exception as e:
+            db.session.rollback()
+            current_app.logger.exception("Error loading EA workflow dashboard: %s", e)
+            # status_counts=None, not {}: `{{ status_counts.running or 0 }}`
+            # turned an empty dict into a confident "0 running workflows".
             return render_template(
                 "ea_workflows/dashboard.html",
                 definitions=[],
                 workflow_groups=[],
                 featured_definitions=[],
                 recent_instances=[],
-                status_counts={},
+                status_counts=None,
                 applications=[],
                 linkable_instances=[],
-                phase_counts={},
+                phase_counts=None,
                 togaf_phases=[],
-                phase_available={"phase_d": False, "phase_e": False, "phase_f": False, "phase_g": False, "phase_h": False},
+                phase_links={"phase_d": None, "phase_e": None, "phase_f": None, "phase_g": None, "phase_h": None},
                 error=str(e),
+                load_error="Workflow status counts could not be read.",
             )
 
     @main_blueprint.route("/ea-workflows/definitions")
@@ -323,7 +356,7 @@ def register_ea_workflow_routes(main_blueprint):
                 phase_counts=phase_counts,
                 togaf_phases=engine.TOGAF_PHASES,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/definitions/<workflow_code>")
@@ -375,7 +408,7 @@ def register_ea_workflow_routes(main_blueprint):
                 instances=instances,
                 applications=applications,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/deliverables/vision")
@@ -704,7 +737,7 @@ def register_ea_workflow_routes(main_blueprint):
                 per_page=per_page,
                 now=datetime.utcnow(),
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/schedules")
@@ -736,7 +769,7 @@ def register_ea_workflow_routes(main_blueprint):
                 per_page=per_page,
                 definitions=definitions,
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/ea-workflows/journeys")
@@ -744,7 +777,6 @@ def register_ea_workflow_routes(main_blueprint):
     def ea_workflows_journeys():
         """Cross-workflow journey view grouping instances by ADM iteration cycle."""
         try:
-            from sqlalchemy import func
             from sqlalchemy.orm import joinedload
 
             from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
@@ -768,7 +800,7 @@ def register_ea_workflow_routes(main_blueprint):
                 iterations[inst.iteration_number].append(inst)
 
             journeys = []
-            for iter_num in sorted(iterations.keys()):
+            for iter_num in _sort_iteration_keys(iterations.keys()):
                 phases = iterations[iter_num]
                 completed = sum(1 for p in phases if p.status == "completed")
                 total = len(phases)
@@ -780,8 +812,8 @@ def register_ea_workflow_routes(main_blueprint):
                         {
                             "id": p.id,
                             "workflow_code": p.definition.workflow_code if p.definition else "unknown",
-                            "workflow_name": p.definition.name if p.definition else "Unknown",
-                            "togaf_phase": p.definition.togaf_phase if p.definition else None,
+                            "workflow_name": p.definition.workflow_name if p.definition else "Unknown",
+                            "togaf_phase": p.definition.adm_phase if p.definition else None,
                             "status": p.status,
                             "created_at": p.created_at.isoformat() if p.created_at else None,
                             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
@@ -823,7 +855,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total": len(definitions),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/phase-counts")
@@ -840,7 +872,7 @@ def register_ea_workflow_routes(main_blueprint):
                 for p, n in engine.TOGAF_PHASES
             ]
             return jsonify({"success": True, "phase_counts": counts, "phases": phases})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/definitions/<workflow_code>")
@@ -857,7 +889,7 @@ def register_ea_workflow_routes(main_blueprint):
                 return jsonify({"success": False, "error": "Workflow not found"}), 404
 
             return jsonify({"success": True, "definition": definition.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/definitions", methods=["POST"])
@@ -884,7 +916,7 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"success": True, "definition": definition.to_dict()})
         except KeyError as e:
             return jsonify({"success": False, "error": f"Missing required field: {e}"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/seed-defaults", methods=["POST"])
@@ -907,7 +939,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total_created": len(created),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -1000,7 +1032,7 @@ def register_ea_workflow_routes(main_blueprint):
             )
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
         except Exception as e:
             import traceback
@@ -1027,7 +1059,7 @@ def register_ea_workflow_routes(main_blueprint):
             ).first() is not None
 
             return jsonify({"success": True, "is_watched": is_watched, **status})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/resume", methods=["POST"])
@@ -1046,9 +1078,9 @@ def register_ea_workflow_routes(main_blueprint):
             )
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/cancel", methods=["POST"])
@@ -1065,9 +1097,9 @@ def register_ea_workflow_routes(main_blueprint):
             instance = engine.cancel_workflow(instance_id=instance_id, reason=reason)
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except ValueError as e:
+        except ValueError:
             return jsonify({"success": False, "error": "Invalid request parameters"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/reject", methods=["POST"])
@@ -1111,7 +1143,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/artifacts")
@@ -1151,7 +1183,7 @@ def register_ea_workflow_routes(main_blueprint):
 
             all_artifacts.sort(key=lambda a: (a.get("created_at") or "")[:19])
             return jsonify({"success": True, "artifacts": all_artifacts, "total": len(all_artifacts)})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/artifacts/export")
@@ -1259,7 +1291,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "approved_count": approved_count,
                 "errors": errors,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/retry", methods=["POST"])
@@ -1286,7 +1318,7 @@ def register_ea_workflow_routes(main_blueprint):
             engine._execute_workflow(instance)
 
             return jsonify({"success": True, "instance": instance.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances")
@@ -1294,7 +1326,6 @@ def register_ea_workflow_routes(main_blueprint):
     def api_list_workflow_instances():
         """API: List workflow instances with filtering, sorting, and pagination."""
         try:
-            from sqlalchemy import func
             from sqlalchemy.orm import joinedload
 
             from app.models.workflow_models import EAWorkflowDefinition, EAWorkflowInstance
@@ -1303,8 +1334,8 @@ def register_ea_workflow_routes(main_blueprint):
             workflow_code = request.args.get("workflow_code")
             application_id = request.args.get("application_id", type=int)
             q = request.args.get("q", "").strip()
-            page = request.args.get("page", 1, type=int)
-            per_page = min(request.args.get("per_page", 20, type=int), 100)
+            page = safe_int_arg('page', 1, minimum=1)
+            per_page = min(safe_int_arg('per_page', 20, minimum=1, maximum=500), 100)
             sort_by = request.args.get("sort_by", "created_at")
             sort_order = request.args.get("sort_order", "desc")
 
@@ -1347,7 +1378,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "per_page": per_page,
                 "pages": (total + per_page - 1) // per_page,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -1380,7 +1411,7 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"success": True, "schedule": schedule.to_dict()})
         except KeyError as e:
             return jsonify({"success": False, "error": f"Missing required field: {e}"}), 400
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/schedules")
@@ -1399,7 +1430,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "total": len(schedules),
                 }
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/schedules/<int:schedule_id>/toggle", methods=["POST"])
@@ -1418,7 +1449,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True, "schedule": schedule.to_dict()})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     # =========================================================================
@@ -1438,7 +1469,6 @@ def register_ea_workflow_routes(main_blueprint):
             from app.models.workflow_models import (
                 EAWorkflowDefinition,
                 EAWorkflowInstance,
-                EAWorkflowStepExecution,
             )
 
             status_counts = (
@@ -1531,7 +1561,7 @@ def register_ea_workflow_routes(main_blueprint):
                     "avg_approval_hours": avg_approval_time,
                 },
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/instances/<int:instance_id>/watch", methods=["POST", "DELETE"])
@@ -1652,7 +1682,7 @@ def register_ea_workflow_routes(main_blueprint):
                 mimetype="text/csv",
                 headers={"Content-Disposition": "attachment; filename=ea_workflow_instances.csv"},
             )
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/notifications")
@@ -1678,7 +1708,7 @@ def register_ea_workflow_routes(main_blueprint):
                 "notifications": [n.to_dict() for n in notifications],
                 "unread_count": unread_count,
             })
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea-workflows/notifications/<int:notif_id>/read", methods=["POST"])
@@ -1699,7 +1729,7 @@ def register_ea_workflow_routes(main_blueprint):
             db.session.commit()
 
             return jsonify({"success": True})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea/workflow-adm-lifecycle")
@@ -1731,7 +1761,7 @@ def register_ea_workflow_routes(main_blueprint):
             try:
                 rows = (
                     db.session.query(EAWorkflowDefinition.workflow_code, func.count(EAWorkflowInstance.id))
-                    .join(EAWorkflowInstance, EAWorkflowInstance.definition_id == EAWorkflowDefinition.id)
+                    .join(EAWorkflowInstance, EAWorkflowInstance.workflow_definition_id == EAWorkflowDefinition.id)
                     .filter(EAWorkflowDefinition.workflow_code.in_(list(phase_code_map.values())))
                     .group_by(EAWorkflowDefinition.workflow_code)
                     .all()
@@ -1770,7 +1800,7 @@ def register_ea_workflow_routes(main_blueprint):
             engine = EAWorkflowEngine()
             result = engine.run_due_schedules()
             return jsonify({"success": True, **result})
-        except Exception as e:
+        except Exception:
             return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
     @main_blueprint.route("/api/ea/phases/archimate-summary", methods=["GET"])
@@ -1798,8 +1828,8 @@ def register_ea_workflow_routes(main_blueprint):
             return jsonify({"phases": phases})
         except Exception as e:
             import logging
-            logging.getLogger(__name__).debug("AV-008 archimate summary error: %s", e)
-            return jsonify({"phases": []}), 200
+            logging.getLogger(__name__).exception("AV-008 archimate summary error: %s", e)
+            return jsonify({"success": False, "error": "Failed to load ArchiMate phase summary"}), 500
 
     @main_blueprint.route("/ea-workflows/phase/<string:phase_code>/viewpoint", methods=["GET"])
     @login_required
@@ -1847,6 +1877,10 @@ def register_ea_workflow_routes(main_blueprint):
                 relationship_count=viewpoint.get("relationship_count", 0),
             )
         except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "Error loading phase viewpoint %s", phase_code
+            )
             return render_template(
                 "ea_workflows/phase_viewpoint.html",
                 phase_code=phase_code,
@@ -1857,6 +1891,7 @@ def register_ea_workflow_routes(main_blueprint):
                 input_types=[],
                 derived_types=[],
                 elements=[],
-                element_count=0,
-                relationship_count=0,
+                element_count=None,
+                relationship_count=None,
+                load_error="The phase viewpoint could not be read.",
             )

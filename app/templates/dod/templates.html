@@ -1,18 +1,17 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 <!-- modal-a11y-ok -->
 
 {% block title %}Definition of Done Templates{% endblock %}
 
 {% block content %}
 <div class="p-6 max-w-4xl mx-auto" x-data="dodTemplates()" x-init="init()">
-  <div class="flex items-center justify-between mb-6">
-    <h1 class="text-2xl font-bold text-foreground">Definition of Done Templates</h1>
-  </div>
+  {{ page_shell(title='Definition of Done Templates', breadcrumb=[('Home', '/'), ('Definition of Done Templates', none)]) }}
 
   <!-- Scope Tabs -->
   <div class="flex border-b border-border mb-6" role="tablist" aria-label="DoD scope tabs">
     <template x-for="scope in scopes" :key="scope.key">
-      <button
+      <button type="button"
         role="tab"
         :id="`tab-${scope.key}`"
         :aria-selected="activeScope === scope.key"
@@ -50,7 +49,7 @@
                 <span class="flex-1 text-sm text-foreground" x-text="criterion.text"></span>
                 <span
                   x-show="criterion.mandatory" x-cloak
-                  class="px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive rounded-full">
+                  class="px-2 py-0.5 text-xs font-medium bg-destructive/10 text-destructive-emphasis rounded-full">
                   mandatory
                 </span>
                 <span
@@ -79,12 +78,12 @@
               </label>
             </div>
             <div class="flex gap-2">
-              <button
+              <button type="button"
                 @click="addCriterion(scope.key)"
                 class="px-3 py-1.5 bg-primary text-primary-foreground text-sm rounded hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary">
                 Add
               </button>
-              <button
+              <button type="button"
                 @click="addingTo = null; newCriterionText = ''; newCriterionMandatory = false"
                 class="px-3 py-1.5 bg-muted text-muted-foreground text-sm rounded hover:bg-muted/80">
                 Cancel
@@ -92,7 +91,7 @@
             </div>
           </div>
 
-          <button
+          <button type="button"
             x-show="addingTo !== scope.key" x-cloak
             @click="addingTo = scope.key; newCriterionText = ''"
             class="mt-3 px-3 py-1.5 text-sm text-primary border border-primary/30 rounded hover:bg-primary/5 focus:outline-none focus:ring-2 focus:ring-primary">
@@ -111,7 +110,7 @@
 
   <!-- Status message -->
   <p x-show="statusMsg" x-text="statusMsg" x-cloak
-     class="mt-4 text-sm text-emerald-600"
+     class="mt-4 text-sm text-success-emphasis"
      role="status" aria-live="polite"></p>
 </div>
 
@@ -150,12 +149,8 @@ function dodTemplates() {
       }]);
 
       let self = this;
-      fetch('/api/dod/templates/' + tmpl.id + '/criteria', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ criteria: updated }),
-      })
-        .then(function(r) { return r.json(); })
+      // Use Platform.fetch.patch for automatic CSRF, JSON serialization, and error handling
+      Platform.fetch.patch('/api/dod/templates/' + tmpl.id + '/criteria', { criteria: updated }, { silent: true })
         .then(function(data) {
           tmpl.criteria = data.criteria;
           self.addingTo = null;
@@ -164,7 +159,9 @@ function dodTemplates() {
           self.statusMsg = 'Criterion added.';
           setTimeout(function() { self.statusMsg = ''; }, 2500);
         })
-        .catch(function() {
+        .catch(function(err) {
+          // Platform.fetch already threw a structured PlatformError; we surface it via inline statusMsg
+          // The global toast is suppressed with { silent: true } to avoid duplicate user messages.
           self.statusMsg = 'Failed to save criterion.';
         });
     },

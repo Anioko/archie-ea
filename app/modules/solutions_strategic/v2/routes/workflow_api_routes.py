@@ -8,12 +8,11 @@ POST /api/solutions/<id>/workflow/estimate
 
 from flask import Blueprint, jsonify, request
 from functools import wraps
-from sqlalchemy.orm import joinedload  # dead-code-ok
 import logging
 
 from app import db
 from app.models.solution_models import Solution
-from app.models.solution_workflow import SolutionWorkflow, SolutionWorkflowTask  # dead-code-ok
+from app.models.solution_workflow import SolutionWorkflow  # dead-code-ok
 from app.modules.solutions_strategic.v2.services.workflow_orchestrator_service import WorkflowOrchestratorService
 from app.modules.solutions_strategic.v2.services.critical_path_analyzer import CriticalPathAnalyzer
 from app.modules.solutions_strategic.v2.services.gantt_chart_generator import GanttChartGenerator

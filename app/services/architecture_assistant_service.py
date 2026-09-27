@@ -29,6 +29,7 @@ Usage:
     draft = service.generate_arb_draft(option_id=1)
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import hashlib
 import json
 import logging
@@ -118,6 +119,10 @@ class SolutionOption:
     risk_factors: List[Dict[str, Any]] = field(default_factory=list)
     strategic_fit_score: float = 0.0
     recommendation_rank: int = 0
+    # Governance alignment against retrieved architecture context. Both stay at
+    # their defaults when no context is supplied, so ranking is unchanged.
+    governance_alignment: float = 0.0
+    governance_notes: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -208,6 +213,7 @@ class ArchitectureAssistantService:
         requirements: Optional[Dict[str, Any]] = None,
         constraints: Optional[Dict[str, Any]] = None,
         include_vendor_analysis: bool = True,
+        rag_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Design a solution for a specific capability.
@@ -217,6 +223,10 @@ class ArchitectureAssistantService:
             requirements: Optional requirements dictionary
             constraints: Optional constraints (budget, timeline, etc.)
             include_vendor_analysis: Include vendor options analysis
+            rag_context: Retrieved architecture context (principles, prior ARB
+                decisions, reference architectures, established patterns) as
+                returned by ArchitectureRAGService.get_context_for_solution().
+                Optional — omitted, ranking is unchanged.
 
         Returns:
             Dictionary with solution design including options and recommendations
@@ -249,7 +259,7 @@ class ArchitectureAssistantService:
                 options.append(hybrid_option)
 
             # Rank options
-            ranked_options = self._rank_options(options, constraints)
+            ranked_options = self._rank_options(options, constraints, rag_context)
 
             # Generate recommendation
             recommendation = self._generate_recommendation(capability, ranked_options)
@@ -801,7 +811,6 @@ class ArchitectureAssistantService:
             from ..models.unified_application_capability_mapping import (
                 UnifiedApplicationCapabilityMapping,
             )
-            from ..models.unified_capability import UnifiedCapability
 
             # Normalize input to list
             if not isinstance(capability_ids, list):
@@ -993,7 +1002,9 @@ class ArchitectureAssistantService:
                 description=f"Target coverage: {round(target_coverage, 1)}%",
             )
             db.session.add(baseline)
+            sync_archimate_element(baseline)
             db.session.add(target_p)
+            sync_archimate_element(target_p)
             db.session.flush()
 
             gap = Gap(
@@ -1182,6 +1193,83 @@ class ArchitectureAssistantService:
 
         return options
 
+
+    # How much retrieved governance context may move an option's score, as a
+    # fraction of the 0-100 scale the other components use. Deliberately modest:
+    # alignment with a principle is a tie-breaker between comparable options, not
+    # a reason to promote an otherwise poor one above a strong one.
+    GOVERNANCE_WEIGHT = 15.0
+
+    # Words too generic to constitute evidence of alignment.
+    _GOVERNANCE_STOPWORDS = frozenset("""
+        the a an and or of to for in on with by is are be as at from that this it
+        must should will shall we our all any use used using can may not no non
+        system systems solution solutions service services data application
+        applications architecture architectures technology technologies business
+        platform platforms new existing standard standards approach approaches
+    """.split())
+
+    @classmethod
+    def _significant_terms(cls, text: str) -> set:
+        """Lowercased words of 4+ characters that are not stopwords."""
+        import re as _re
+
+        return {
+            w for w in _re.findall(r"[a-z][a-z0-9\-]{3,}", (text or "").lower())
+            if w not in cls._GOVERNANCE_STOPWORDS
+        }
+
+    def _score_governance_alignment(self, option: "SolutionOption", rag_context: Optional[Dict]):
+        """Return (0.0-1.0 alignment, [human-readable reasons]) for *option*.
+
+        Deliberately term-overlap rather than embeddings. get_context_for_solution
+        returns plain rows from four SQL queries, there is no vector index behind
+        it, and an opaque similarity number would be worse than useless here: an
+        architect has to be able to see WHICH principle or prior decision moved an
+        option up the list, or the ranking cannot be defended in an ARB.
+        """
+        if not rag_context:
+            return 0.0, []
+
+        option_terms = self._significant_terms(
+            " ".join(filter(None, [
+                option.name, option.description, option.vendor_name,
+                " ".join(option.pros or []), " ".join(option.cons or []),
+            ]))
+        )
+        if not option_terms:
+            return 0.0, []
+
+        sources = [
+            ("principle", rag_context.get("principles") or []),
+            ("prior ARB decision", rag_context.get("prior_decisions") or []),
+            ("reference architecture", rag_context.get("reference_architectures") or []),
+            ("established pattern", rag_context.get("existing_patterns") or []),
+        ]
+
+        matches, notes = 0, []
+        for label, rows in sources:
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                name = row.get("name") or row.get("title") or ""
+                body = row.get("description") or row.get("summary") or ""
+                shared = option_terms & self._significant_terms(f"{name} {body}")
+                # Two shared significant terms: one is coincidence often enough
+                # that a single overlap would make every option look aligned.
+                if len(shared) >= 2:
+                    matches += 1
+                    notes.append(
+                        f"aligns with {label} '{name or 'unnamed'}' "
+                        f"({', '.join(sorted(shared)[:3])})"
+                    )
+
+        if not matches:
+            return 0.0, []
+        # Saturating: three corroborating sources is full alignment. Without a cap
+        # an option matching many near-duplicate principles would dominate.
+        return min(1.0, matches / 3.0), notes[:5]
+
     def _calculate_option_score(self, option: SolutionOption, weights: Dict[str, float]) -> float:
         """Calculate weighted score for an option."""
         score = 0.0
@@ -1211,14 +1299,30 @@ class ArchitectureAssistantService:
         return round(score, 2)
 
     def _rank_options(
-        self, options: List[SolutionOption], constraints: Optional[Dict] = None
+        self,
+        options: List[SolutionOption],
+        constraints: Optional[Dict] = None,
+        rag_context: Optional[Dict] = None,
     ) -> List[SolutionOption]:
-        """Rank options based on scores and constraints."""
+        """Rank options based on scores, constraints and governance alignment.
+
+        With no rag_context this is byte-for-byte the previous behaviour: the
+        alignment term is zero and nothing is added. That matters because the
+        endpoint retrieves context best-effort and swallows failures, so ranking
+        must not depend on retrieval having succeeded.
+        """
         # Score all options
         for option in options:
             if option.total_score == 0:
                 option.total_score = self._calculate_option_score(
                     option, self.DEFAULT_SCORING_WEIGHTS
+                )
+            alignment, notes = self._score_governance_alignment(option, rag_context)
+            if alignment:
+                option.governance_alignment = round(alignment, 3)
+                option.governance_notes = notes
+                option.total_score = round(
+                    option.total_score + alignment * self.GOVERNANCE_WEIGHT, 2
                 )
 
         # Sort by score
@@ -1547,7 +1651,7 @@ The implementation will follow a phased approach to minimize risk and ensure suc
     def _estimate_gap_investment(self, gap: float, capability) -> float:
         """Estimate investment needed to close a capability gap."""
         # Simple estimation model — baseline figure for gap investment calculation
-        base_cost = 50000  # fabricated-values-ok
+        base_cost = 50000  # fabricated-ok: baseline parameter of the documented gap-investment estimation model, not a measured figure
 
         # Adjust based on gap size
         if gap > 75:

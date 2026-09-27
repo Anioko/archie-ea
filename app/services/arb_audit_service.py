@@ -8,7 +8,7 @@ with before/after values and user attribution.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from flask import has_request_context, request
 from sqlalchemy import and_, desc
@@ -18,10 +18,9 @@ from app.models.architecture_review_board import (
     ARBAuditAction,
     ARBAuditLog,
     ARBException,
-    ARBGovernanceStandard,
     ARBReviewItem,
-    ArchitectureReviewBoard,
 )
+from app.models.audit_log import AuditLog
 
 logger = logging.getLogger(__name__)
 
@@ -133,8 +132,9 @@ class ARBAuditService:
         """
         from app.models.user import User
 
-        # Get user email for denormalization
-        user = db.session.get(User, user_id)
+        # Get user email for denormalization. user_id may legitimately be
+        # None for a system/refusal event (e.g. "no resolvable approver").
+        user = db.session.get(User, user_id) if user_id is not None else None
         user_email = user.email if user else None
 
         # Get request context if available
@@ -169,6 +169,32 @@ class ARBAuditService:
         db.session.commit()
 
         logger.info(f"Audit log: {action} on {entity_type}:{entity_id} by user {user_id}")
+
+        # F-01: /admin/audit-log (soc2_audit_log) never queried ARBAuditLog,
+        # so ARB decisions were recorded but invisible on the compliance
+        # page. Mirror the two decision-recording actions onto AuditLog —
+        # ARBAuditLog keeps the richer before/after detail, this just makes
+        # "who approved this change" answerable from one page.
+        if action in (ARBAuditAction.DECISION.value, ARBAuditAction.EXCEPTION_DECISION.value):
+            try:
+                org_id = getattr(audit_log, "organization_id", None)
+                AuditLog.log(
+                    action=str(action)[:20],
+                    table_name=f"arb:{entity_type}",
+                    record_id=entity_id,
+                    organization_id=org_id,
+                    user_id=user_id,
+                    new_value={
+                        "entity_reference": entity_reference,
+                        "description": description,
+                        "new_value": new_value,
+                    },
+                )
+            except Exception:
+                logger.warning(
+                    "AuditLog mirror-write failed for ARB action %s on %s:%s (non-blocking)",
+                    action, entity_type, entity_id, exc_info=True,
+                )
 
         return audit_log
 

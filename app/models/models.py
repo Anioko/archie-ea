@@ -7,6 +7,7 @@ from flask import current_app  # dead-code-ok
 from flask_login import current_user  # dead-code-ok
 from sqlalchemy import types
 from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.orm import validates
 
 from .. import db  # main SQLAlchemy object
 from .mixins import TenantMixin
@@ -78,6 +79,112 @@ class _EncryptedString(types.TypeDecorator):
             _key_log.warning("Failed to decrypt api_key value — returning raw (may be legacy plaintext)")
             return value
 
+
+# ---------------------------------------------------------------------------
+# ArchiMate layer names — one canonical casing, two accepted conventions
+# ---------------------------------------------------------------------------
+# `archimate_elements.layer` accumulated both casings, and Postgres `=` is
+# case-sensitive, so the column silently partitioned itself:
+#
+#     [Application] 47   [application] 52
+#     [Strategy]   274   [strategy]      4
+#     [Motivation]   8   [motivation]   13
+#     [Technology]   1   [technology]   24
+#     [business]    11   <- no capitalised "Business" row ever existed
+#
+# The code disagrees with itself the same way: ~70 call sites spell the layer
+# in lower case and ~30 capitalise it. So the nine sites querying "Business"
+# returned nothing at all, and the thirteen querying "strategy" saw 4 rows out
+# of 278. Writers disagreed too — strategy_layer.py writes "Strategy".
+#
+# Normalising the stored data alone would have *created* a second outage: every
+# capitalised comparison would go from partly-working to never-working. So the
+# canonical form is enforced at three points, and each one only ever widens
+# what matches:
+#
+#   1. `process_bind_param` canonicalises the value SQLAlchemy sends to the
+#      database. That covers INSERT/UPDATE values *and* the literal in
+#      `layer == "Business"`, `filter_by(layer="Strategy")` and
+#      `layer.in_([...])` — so a query keeps its own spelling in the source and
+#      still matches canonical rows. This is what lets ~100 existing call sites
+#      stay exactly as they are, including modules this change does not touch.
+#   2. `@validates` canonicalises assignment, so the in-Python value is correct
+#      before a flush ever happens.
+#   3. `process_result_value` hands back a str that compares case-insensitively,
+#      so `element.layer == "Strategy"` stays true for a row stored as
+#      "strategy". Without this, normalising storage would break the ~30
+#      capitalised in-memory comparisons.
+#
+# Lower case is canonical because it is the majority convention in this
+# codebase (~70 vs ~30 in Python, 44 vs 30 in templates/JS) and it matches the
+# sibling `scope` column.
+#
+# Existing rows are repaired by `flask backfill-archimate-layer-casing`
+# (app/commands/backfill_archimate_layer_casing.py). Until that has run, step 1
+# already makes both conventions agree on every newly written row.
+
+
+class _LayerName(str):
+    """An ArchiMate layer name that compares equal regardless of casing.
+
+    A plain ``str`` subclass, so templates render it, ``json.dumps`` serialises
+    it and ``.lower()``/``.title()`` behave normally. Its hash is the hash of
+    the canonical (lower-case) text it already holds, so dict and set behaviour
+    is byte-identical to a plain lower-case ``str``. The only difference is
+    that ``==`` is case-insensitive, which can turn a False into a True but
+    never the reverse — no comparison that succeeds today can start failing.
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return str.__eq__(str.lower(self), other.lower())
+        return NotImplemented
+
+    def __ne__(self, other):
+        result = self.__eq__(other)
+        if result is NotImplemented:
+            return result
+        return not result
+
+    def __hash__(self):
+        return str.__hash__(str.lower(self))
+
+
+def canonical_archimate_layer(value):
+    """Return the canonical spelling of an ArchiMate layer name.
+
+    Returns a :class:`_LayerName` so a value read back from the database still
+    compares equal to either convention. Non-strings (and ``None``) pass
+    through untouched — this normalises casing, it does not invent data.
+    """
+    if not isinstance(value, str):
+        return value
+    return _LayerName(value.strip().lower())
+
+
+class _ArchiMateLayerType(types.TypeDecorator):
+    """VARCHAR column whose values *and bind parameters* are canonicalised.
+
+    Canonicalising the bind parameter is the load-bearing part: it makes
+    ``layer == "Business"`` and ``layer == "business"`` emit identical SQL, so
+    both spellings match the same rows without editing either call site.
+    """
+
+    impl = types.String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if not isinstance(value, str):
+            return value
+        # Deliberately a plain str — the DBAPI should never see a subclass.
+        return value.strip().lower()
+
+    def process_result_value(self, value, dialect):
+        return canonical_archimate_layer(value)
+
+
 _FAST_INIT = os.getenv("APP_FAST_INIT", "0") == "1"
 
 
@@ -126,10 +233,19 @@ else:
         )
 
         def generate_outputs(self):
-            """Generate requirements and code artifacts for this architecture model."""
-            for element in self.elements:  # elements backref from ArchiMateElement
-                apply_transformation(element)  # implement this function elsewhere
-            return True
+            """Generate requirements and code artifacts for this architecture model.
+
+            Not implemented. `apply_transformation` was never written ("implement
+            this function elsewhere"), so this method could only ever raise
+            NameError — a confusing failure that reads like a missing import rather
+            than unfinished work. It has no call sites anywhere in the codebase.
+            Raising explicitly states the real situation, and keeps the placeholder
+            visible instead of silently deleting an intended feature.
+            """
+            raise NotImplementedError(
+                "ArchitectureModel.generate_outputs requires apply_transformation(), "
+                "which has never been implemented."
+            )
 
         def __repr__(self):
             return f"<ArchitectureModel {self.name} v{self.version}>"
@@ -144,7 +260,9 @@ else:
         id = db.Column(db.Integer, primary_key=True)
         name = db.Column(db.String(100), nullable=False)
         type = db.Column(db.String(50), index=True)
-        layer = db.Column(db.String(30), index=True)
+        # VARCHAR(30) on the database side, exactly as before — see
+        # _ArchiMateLayerType above for why the casing is mediated here.
+        layer = db.Column(_ArchiMateLayerType(30), index=True)
         description = db.Column(db.Text, nullable=True)
 
         # Scope for Enterprise vs Application level filtering
@@ -197,6 +315,20 @@ else:
         last_reviewed_date = db.Column(db.DateTime)
 
         reviewer_notes = db.Column(db.Text)
+
+        # Soft delete (fix/qa-register-100): the bulk-delete path soft-deletes
+        # its ApplicationComponent (see deleted_at above on that model) so the
+        # delete is recoverable, but originally left the ArchiMate mirror
+        # element untouched — reintroducing finding C-02 (orphaned element
+        # visible in the composer palette, relationship matrix, OEF export,
+        # AI context) on that one path. Mirroring deleted_at/deleted_by here,
+        # nullable per ADR-0002 (reconcile-schema is add-only/nullable), lets
+        # the mirror be hidden the same way ApplicationComponent already is —
+        # via the unconditional do_orm_execute filter in
+        # app/middleware/tenant_isolation.py — and restored by clearing both
+        # columns together instead of recreating the element from scratch.
+        deleted_at = db.Column(db.DateTime, nullable=True)
+        deleted_by = db.Column(db.Integer, nullable=True)
 
         # Relationship tracking
         parent_id = db.Column(db.Integer, db.ForeignKey("archimate_elements.id"), nullable=True)
@@ -300,19 +432,47 @@ else:
             "UMLElement", back_populates="archimate_element", lazy="dynamic"
         )
 
+        @validates("layer")
+        def _canonicalise_layer(self, key, value):
+            """Canonicalise the layer at assignment time.
+
+            The column type already canonicalises what reaches the database, but
+            an unflushed object would otherwise report back whatever casing the
+            caller passed — so ``el = ArchiMateElement(layer="Strategy")`` and a
+            later ``el.layer == "strategy"`` would disagree until the next
+            flush. Doing it here as well means the in-memory object and the row
+            never differ.
+            """
+            return canonical_archimate_layer(value)
+
         def __repr__(self):
             return f"<ArchiMateElement {self.name} ({self.type})>"
 
         def to_dict(self):
             """JSON-safe dict of all columns. Several CRUD routes call
             element.to_dict() (edit/view/search element); without it they 500
-            with AttributeError 'ArchiMateElement has no attribute to_dict'."""
+            with AttributeError 'ArchiMateElement has no attribute to_dict'.
+
+            Reads each column's value through the ORM-mapped attribute name
+            (mapper.get_property_by_column), not col.name, because togaf_plateau
+            is declared with an explicit DB column name ("plateau") that
+            collides with the unrelated Plateau.archimate_element backref of
+            the same name on this class. getattr(self, col.name) would read
+            that backref (a list of Plateau rows, not JSON-serializable) instead
+            of the scalar column - dropping the real classification value at
+            best, raising TypeError from json.dump at worst, for any element
+            linked to a Plateau row.
+            """
             from datetime import date, datetime
             from decimal import Decimal
 
+            from sqlalchemy import inspect as sa_inspect
+
             out = {}
+            mapper = sa_inspect(self.__class__)
             for col in self.__table__.columns:
-                val = getattr(self, col.name)
+                attr_name = mapper.get_property_by_column(col).key
+                val = getattr(self, attr_name)
                 if isinstance(val, (datetime, date)):
                     val = val.isoformat()
                 elif isinstance(val, Decimal):
@@ -345,6 +505,33 @@ else:
         # GAP-INT-001: Structured connection specification
         connection_spec = db.Column(db.JSON, nullable=True, default=dict)
 
+        # How this relationship came to exist, when it was not drawn explicitly:
+        # "notation" (read from arrowhead and stroke), "stroke-stripped-label"
+        # (inferred from a line's label because the export discarded the stroke),
+        # "nesting" (one shape drawn inside another). NULL means stated outright,
+        # by a person or an explicit connector, and is what every pre-existing
+        # row correctly reads.
+        #
+        # Element provenance already survived in custom_properties; relationship
+        # provenance was computed on import and then dropped on the way into the
+        # database, which left the import review queue with nothing to triage.
+        derived_from = db.Column(db.String(40), nullable=True, index=True)
+
+        # When a person confirmed an inferred relationship. NULL with a
+        # derived_from set means "still to be looked at" - that pair is the whole
+        # import review queue. Kept as a timestamp rather than a boolean so the
+        # queue can show what was reviewed recently and by implication what has
+        # been sitting there.
+        reviewed_at = db.Column(db.DateTime, nullable=True)
+
+        # Step number for the Composer's Sequence View (a lifeline/message render
+        # of the ArchiMate elements and relationships already on the canvas — no
+        # separate sequence-diagram store; see ADR 0008). NULL means "not
+        # explicitly ordered yet" and the Sequence View falls back to created_at,
+        # so every pre-existing relationship still renders instead of being
+        # dropped for lacking a value reconcile-schema cannot backfill.
+        sequence_order = db.Column(db.Integer, nullable=True)
+
         architecture = db.relationship("ArchitectureModel", backref="archimate_relationships")
         source = db.relationship(
             "ArchiMateElement", foreign_keys=[source_id], backref="outgoing_relationships"
@@ -355,6 +542,31 @@ else:
 
         def __repr__(self):
             return f"<ArchiMateRelationship {self.source_id} -> {self.target_id}>"
+
+        def to_dict(self):
+            """JSON-safe dict of all columns. Mirrors ArchiMateElement.to_dict()
+            immediately above (including reading each column's value through
+            its ORM-mapped attribute name rather than assuming it equals the DB
+            column name - no current column on this class needs that, but a
+            future one might). Several CRUD routes call relationship.to_dict()
+            (e.g. update_relationship); without it they 500 with AttributeError
+            'ArchiMateRelationship has no attribute to_dict'."""
+            from datetime import date, datetime
+            from decimal import Decimal
+
+            from sqlalchemy import inspect as sa_inspect
+
+            out = {}
+            mapper = sa_inspect(self.__class__)
+            for col in self.__table__.columns:
+                attr_name = mapper.get_property_by_column(col).key
+                val = getattr(self, attr_name)
+                if isinstance(val, (datetime, date)):
+                    val = val.isoformat()
+                elif isinstance(val, Decimal):
+                    val = float(val)
+                out[col.name] = val
+            return out
 
 
 class WorkflowInstanceArchiMateElement(db.Model):
@@ -1393,7 +1605,7 @@ class SecurityScan(db.Model):
 # ============================================================================
 
 
-class Outcome(db.Model):
+class Outcome(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Outcome element.
 
@@ -1401,9 +1613,23 @@ class Outcome(db.Model):
     It realizes Goals and is measured through KPIs.
 
     Follows Basecoat pattern: archimate_element_id links to ArchiMateElement.
+
+    TenantMixin declares organization_id NOT NULL, but `outcomes` is an
+    existing table and reconcile-schema can only ADD nullable columns (ADR
+    0002). Override to nullable so the column can land on deployed databases
+    without a maintenance window -- same pattern as Principle below.
+    Consequence: pre-existing rows have organization_id NULL until backfilled.
+    Run: flask --app manage backfill-outcome-org
     """
 
     __tablename__ = "outcomes"
+
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
@@ -1458,7 +1684,7 @@ class Outcome(db.Model):
         return None
 
 
-class Principle(db.Model):
+class Principle(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Principle element.
 
@@ -1474,6 +1700,23 @@ class Principle(db.Model):
     """
 
     __tablename__ = "principles"
+
+    # TenantMixin declares organization_id NOT NULL, but `principles` is an
+    # existing table and `reconcile-schema` can only ADD nullable columns
+    # (see CLAUDE.md / ADR 0002). Override to nullable so the column can land on
+    # deployed databases without a maintenance window. Inheriting TenantMixin is
+    # what actually switches on isolation — tenant_isolation filters on
+    # isinstance(TenantMixin), not on the column's nullability.
+    #
+    # Consequence: pre-existing rows have organization_id NULL and are filtered
+    # out of every tenant-scoped query until backfilled. Run:
+    #     flask --app manage backfill-principle-org
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(255), nullable=False)
@@ -1839,7 +2082,8 @@ from .application_layer import (  # noqa: E402,F401  # dead-code-ok
 # DataObject is re-exported from application_layer.py (tablename: application_data_objects).
 # DataFlow and DataStore are new models.
 
-class DataStore(db.Model):
+# ADR-0003: tenant-scoped — organization_id backfilled/hardened by flask backfill-layer-tenancy
+class DataStore(TenantMixin, db.Model):
     """ArchiMate Data Layer — Data Store element representing persistent data storage."""
     __tablename__ = "data_stores"
     __table_args__ = {"extend_existing": True}

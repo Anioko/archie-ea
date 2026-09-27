@@ -8,8 +8,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Application Architecture', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -20,10 +20,6 @@
     {{ page_header(
         title='Application Architecture',
         description='ArchiMate 3.2 Application Layer — Components, Services &amp; Interfaces',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Application Architecture'}
-        ],
         actions=[
             {'text': 'ArchiMate Elements', 'icon': 'boxes', 'href': url_for('archimate_crud.dashboard'), 'variant': 'outline'}
         ]
@@ -31,10 +27,10 @@
 
     <!-- Metrics Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {{ metrics_card(title='Application Components', value=component_count or 0, icon='layout-grid') }}
-        {{ metrics_card(title='Application Services', value=service_count or 0, icon='zap') }}
-        {{ metrics_card(title='Application Interfaces', value=interface_count or 0, icon='plug') }}
-        {{ metrics_card(title='App-to-App Dependencies', value=dependency_count or 0, icon='git-merge') }}
+        {{ metrics_card(title='Application Components', value=component_count|dash, icon='layout-grid') }}
+        {{ metrics_card(title='Application Services', value=service_count|dash, icon='zap') }}
+        {{ metrics_card(title='Application Interfaces', value=interface_count|dash, icon='plug') }}
+        {{ metrics_card(title='App-to-App Dependencies', value=dependency_count|dash, icon='git-merge') }}
     </div>
 
     <!-- ArchiMate Layer Context Banner -->
@@ -66,7 +62,12 @@
                 <i data-lucide="cpu" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">Technology Architecture</span>
             </a>
-            <a href="{{ url_for('implementation_planning.implementation_dashboard') }}"
+            {# implementation_planning is deprecated and its before_request aborts 404
+               unless a feature-flag row exists, which it never does on a fresh database,
+               so this tile offered a destination the app always refuses. The live
+               Enterprise Roadmap is main.capability_roadmap — the same target
+               architect_ui.roadmap_builder already redirects to. #}
+            <a href="{{ url_for('main.capability_roadmap') }}"
                class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
                 <i data-lucide="milestone" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">Implementation Roadmap</span>
@@ -109,13 +110,13 @@
                         <td class="px-6 py-3">
                             <div class="font-medium text-foreground">{{ component.name }}</div>
                             {% if component.vendor_name %}
-                            <div class="text-[11px] text-muted-foreground mt-0.5">{{ component.vendor_name }}</div>
+                            <div class="text-2xs text-muted-foreground mt-0.5">{{ component.vendor_name }}</div>
                             {% endif %}
                         </td>
                         <!-- Type badge -->
                         <td class="px-6 py-3">
                             {% if component.component_type %}
-                            <span class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-[11px] border border-border whitespace-nowrap">
+                            <span class="px-2 py-0.5 bg-muted text-muted-foreground rounded text-2xs border border-border whitespace-nowrap">
                                 {{ component.component_type | replace('_', ' ') | title }}
                             </span>
                             {% else %}
@@ -126,19 +127,19 @@
                         <td class="px-6 py-3">
                             {% set ls = component.lifecycle_status %}
                             {% if ls in ('production', 'operational') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-green-500/10 text-emerald-700 border-emerald-200">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-success/10 text-success-emphasis border-success/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('development', 'testing', 'planning') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-blue-500/10 text-primary border-primary/20">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-info/10 text-primary border-primary/20">
                                 {{ ls | title }}
                             </span>
                             {% elif ls in ('deprecated', 'retirement', 'retired') %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-warning/10 text-warning-emphasis border-warning/30">
                                 {{ ls | title }}
                             </span>
                             {% elif ls %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">
                                 {{ ls | title }}
                             </span>
                             {% else %}
@@ -155,15 +156,15 @@
                         <td class="px-6 py-3">
                             <div class="flex flex-wrap gap-1">
                                 {% for tech in component.technology_stack[:3] %}
-                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">{{ tech }}</span>
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-xs border border-border">{{ tech }}</span>
                                 {% endfor %}
                                 {% if component.technology_stack | length > 3 %}
-                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-[10px] border border-border">
+                                <span class="px-1.5 py-0.5 bg-muted text-muted-foreground rounded text-xs border border-border">
                                     +{{ component.technology_stack | length - 3 }} more
                                 </span>
                                 {% endif %}
                                 {% if not component.technology_stack %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                                 {% endif %}
                             </div>
                         </td>
@@ -171,15 +172,16 @@
                         <td class="px-6 py-3">
                             {% set crit = component.criticality %}
                             {% if crit == 'mission_critical' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-red-500/10 text-destructive border-destructive/20">Mission Critical</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-destructive/10 text-destructive-emphasis border-destructive/20">Mission Critical</span>
+                            {# 4-tier criticality RAG (mission_critical/high/medium/low) — high and medium kept as distinct raw shades since both would otherwise collapse onto the single warning token #}
                             {% elif crit == 'high' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-orange-500/10 text-orange-700 border-orange-200">High</span> {# token-migration-ok #}
                             {% elif crit == 'medium' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-yellow-500/10 text-amber-700 border-amber-200">Medium</span> {# token-migration-ok #}
                             {% elif crit == 'low' %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">Low</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">Low</span>
                             {% elif crit %}
-                            <span class="px-2 py-0.5 rounded text-[11px] font-medium border bg-muted text-muted-foreground border-border">{{ crit | title }}</span>
+                            <span class="px-2 py-0.5 rounded text-2xs font-medium border bg-muted text-muted-foreground border-border">{{ crit | title }}</span>
                             {% else %}
                             <span class="text-muted-foreground italic text-xs">—</span>
                             {% endif %}

@@ -29,27 +29,21 @@ Usage:
     service.fulfill_condition(condition_id=1, evidence="...")
 """
 
-import json  # dead-code-ok
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, Optional  # dead-code-ok
 
 from flask import current_app
-from sqlalchemy import and_, func, or_  # dead-code-ok
+from sqlalchemy import func  # dead-code-ok
 
 from .. import db
-from ..models.archimate_metamodel import ArchiMateRelationshipRule, MetamodelViolation  # dead-code-ok
+from ..models.archimate_metamodel import MetamodelViolation  # dead-code-ok
 from ..models.architecture_review_board import (  # dead-code-ok
-    DEFAULT_WORKFLOW_STAGES,
     ARBReviewItem,
     ARBReviewStatus,
     ARBWorkflowStage,
-    ArchitectureReviewBoard,
-    ReviewType,
-    TOGAFPhase,
     create_default_workflow_stages,
 )
-from ..models.models import ArchiMateElement, ArchiMateRelationship  # dead-code-ok
 
 logger = logging.getLogger(__name__)
 
@@ -946,22 +940,15 @@ class ARBWorkflowService:
         if existing:
             return {"error": f"Stage with code '{code}' already exists"}
 
+        # ARBWorkflowStage is intentionally lightweight (see its
+        # evaluate_gate_conditions docstring — gate rules are not persisted): the
+        # table has only code/name/order/is_active. The extra stage-config args are
+        # accepted for API compatibility but not stored, so pass only real columns
+        # (the old code passed 11 non-existent kwargs and TypeError'd on every call).
         stage = ARBWorkflowStage(
             name=name,
             code=code,
-            description=description,
             order=order,
-            is_initial=is_initial,
-            is_terminal=is_terminal,
-            color=color,
-            icon=icon,
-            required_approvers=required_approvers,
-            approver_roles=approver_roles,
-            gate_conditions=gate_conditions,
-            allowed_transitions=allowed_transitions,
-            sla_hours=sla_hours,
-            notify_on_enter=notify_on_enter,
-            created_by_id=created_by_id,
             is_active=True,
         )
 
@@ -1940,8 +1927,6 @@ class ARBWorkflowService:
             "blocking_approval": blocking,
         }
 
-        return analytics  # dead-code-ok
-
     def _validate_probe_answers(
         self,
         probe_questions: List[Dict],
@@ -2024,7 +2009,6 @@ class ARBWorkflowService:
         Returns:
             List of probe questions with expected answers
         """
-        import random
         import hashlib
 
         probes = []

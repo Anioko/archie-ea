@@ -47,6 +47,7 @@ def with_retry(max_retries: int = 3, base_delay: float = 0.1):
                     if attempt == max_retries:
                         raise e
 
+                    # fabricated-ok: retry backoff jitter, not a displayed value
                     delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
                     logger.warning(
                         f"Database error, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries + 1})"

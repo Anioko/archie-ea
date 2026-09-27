@@ -96,6 +96,18 @@
 
         log.error(label + msg, err);
 
+        // HttpError/NetworkError are server-visible failures already (the
+        // server logged the request); only ship genuinely client-only errors
+        // (a thrown JS bug) to avoid double-recording the same failure twice.
+        const isServerVisible = err && (err.type === 'HttpError' || err.type === 'NetworkError');
+        if (!isServerVisible) {
+            _reportToServer({
+                message: label + msg,
+                location: context || (global.location ? global.location.pathname : 'unknown'),
+                stack: (err instanceof Error) ? err.stack : null
+            });
+        }
+
         // Platform.fetch already shows a toast for HttpError / NetworkError.
         // Avoid double-toasting those.
         const alreadyToasted = (
@@ -141,8 +153,123 @@
 
     // ── Global unhandled error listeners ────────────────────────────────────
     // Log silently — do NOT show toasts for unhandled errors (too noisy).
+    //
+    // P-07: these handlers used to pass the raw Error/rejection value
+    // straight to log.error() as a positional arg. The browser devtools log itself
+    // renders an Error fine interactively, but anything downstream that
+    // stringifies the arguments (log capture, a headless test harness
+    // reading console text, a future log-shipping hook) calls String()/
+    // JSON.stringify() on it — and Error.message/.stack are *non-enumerable*,
+    // so both produce the literal word "Object" / "[object Object]" with the
+    // real diagnostic content silently dropped. Serialise explicitly instead
+    // so the logged string always carries message, stack, and context.
+    function _serialiseRejectionReason(reason) {
+        if (reason instanceof Error) {
+            return {
+                message: reason.message || String(reason),
+                stack: reason.stack || null,
+                name: reason.name || 'Error'
+            };
+        }
+        if (reason && typeof reason === 'object') {
+            try {
+                return { message: normalise(reason), stack: null, detail: JSON.parse(JSON.stringify(reason)) };
+            } catch (e) {
+                return { message: normalise(reason), stack: null };
+            }
+        }
+        return { message: String(reason), stack: null };
+    }
+
+    // Alpine rejects a transition promise with {isFromCancelledTransition: true}
+    // whenever one transition supersedes another -- a toast replacing a toast, an
+    // x-show toggled twice before the first finished. That is Alpine's internal
+    // "superseded" signal, not a failure: nothing went wrong and there is nothing
+    // for anyone to act on. Reporting it as [Platform][error] invents an error
+    // that did not happen, which is the same sin as inventing data, and it buries
+    // real rejections in noise that scales with how much the UI is used.
+    function _isCancelledAlpineTransition(reason) {
+        return Boolean(reason)
+            && typeof reason === 'object'
+            && reason.isFromCancelledTransition === true;
+    }
+
+    // WebKit rejects some cancelled transitions and aborted resource loads with
+    // a bare DOM Event (no message, no stack) rather than an Error; Chromium
+    // does not, which is why the browser-compatibility gate saw '[object Event]'
+    // only under webkit. A genuine application error always rejects with an
+    // Error, so a rejection whose reason IS an Event carries nothing actionable
+    // and is the same benign noise as a cancelled transition — suppress it
+    // rather than let it surface as an uncatchable '[object Event]'.
+    function _isBareEventRejection(reason) {
+        if (!reason || typeof reason !== 'object') return false;
+        if (typeof Event !== 'undefined' && reason instanceof Event) return true;
+        // Cross-realm safety: an Event from another frame fails instanceof.
+        return Object.prototype.toString.call(reason) === '[object Event]';
+    }
+
+    // ── Ship errors to the server so silent client-side breakage is visible
+    // somewhere other than a browser console nobody is watching ─────────────
+    //
+    // Deliberately a bare XHR-free `fetch`, not Platform.fetch: Platform.fetch
+    // itself calls Platform.error.handle on failure, and reporting an error
+    // via the same pipe that can itself throw is the infinite-loop case this
+    // guards against below with _reporting.
+    let _reporting = false;
+    let _reportedFingerprints = Object.create(null);
+
+    function _reportToServer(payload) {
+        if (_reporting) return; // never let a failed report re-enter this function
+        // Client-side dedup mirrors the server's fingerprinting so a tight
+        // error loop (e.g. a broken render firing every animation frame)
+        // sends one report, not thousands, before the server even sees it.
+        let key = (payload.location || '') + ':' + String(payload.message || '').slice(0, 120);
+        if (_reportedFingerprints[key]) return;
+        _reportedFingerprints[key] = true;
+
+        _reporting = true;
+        try {
+            global.fetch('/api/client-error', { // raw-fetch-ok: Platform.fetch itself calls Platform.error.handle on failure; using it here to report an error would be able to re-enter this very function
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: payload.message,
+                    location: payload.location,
+                    stack: payload.stack || null,
+                    level: 'ERROR',
+                    url: global.location ? global.location.href : ''
+                }),
+                credentials: 'same-origin',
+                keepalive: true
+            }).catch(function () { /* swallow-ok: best-effort telemetry; reporting a failure here would re-enter this reporter */ })
+              .finally(function () { _reporting = false; });
+        } catch (e) {
+            _reporting = false;
+        }
+    }
+
     global.window.addEventListener('unhandledrejection', function (event) {
-        log.error('Unhandled promise rejection', event.reason);
+        if (_isCancelledAlpineTransition(event.reason) || _isBareEventRejection(event.reason)) {
+            // Always prevented, dev included. The usual reason to let a rejection
+            // through in dev is so devtools still shows it -- but there is nothing
+            // here worth showing, and leaving it unprevented surfaces a bare
+            // "Object" / "[object Event]" in the console and in Playwright's
+            // pageerror channel, which is what made the browser gates fail on
+            // pages that merely animate or abort an in-flight load.
+            event.preventDefault();
+            return;
+        }
+        const serialised = _serialiseRejectionReason(event.reason);
+        log.error(
+            'Unhandled promise rejection: ' + serialised.message,
+            'stack=' + (serialised.stack || 'n/a'),
+            serialised.detail !== undefined ? serialised.detail : ''
+        );
+        _reportToServer({
+            message: 'Unhandled promise rejection: ' + serialised.message,
+            location: global.location ? global.location.pathname : 'unknown',
+            stack: serialised.stack
+        });
         // Prevent the browser from logging a duplicate uncaught error
         // only in development (so devtools still shows it).
         if (!global.Platform.isDev) {
@@ -152,7 +279,14 @@
 
     const _origOnError = global.window.onerror;
     global.window.onerror = function (message, source, lineno, colno, error) {
-        log.error('Uncaught error', message, source + ':' + lineno + ':' + colno, error);
+        const loc = source + ':' + lineno + ':' + colno;
+        const stack = (error && error.stack) ? error.stack : 'n/a';
+        log.error('Uncaught error: ' + message, 'at ' + loc, 'stack=' + stack);
+        _reportToServer({
+            message: 'Uncaught error: ' + message,
+            location: loc,
+            stack: stack !== 'n/a' ? stack : null
+        });
         if (typeof _origOnError === 'function') {
             return _origOnError.apply(this, arguments);
         }

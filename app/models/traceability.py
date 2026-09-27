@@ -107,6 +107,32 @@ class ImpactAnalysisResult(db.Model):
     def __repr__(self):
         return f"<ImpactAnalysisResult {self.analysis_type} - {self.overall_severity}>"
 
+    @classmethod
+    def for_organization(cls, organization_id):
+        """Query over the results created by users of ``organization_id``.
+
+        This table has no organisation column and the model does not take part
+        in the automatic tenant filter, so ownership is derived from the user
+        who ran the analysis. Every read of this model must start here.
+
+        Results with no creator, or whose creator is not in the organisation,
+        are never returned. A missing organisation matches nothing: comparing
+        against NULL must not be read as "creators without an organisation".
+        """
+        from sqlalchemy import false, select
+
+        from app.models.user import User
+
+        if organization_id is None:
+            return cls.query.filter(false())
+        creators = select(User.id).where(User.organization_id == organization_id)
+        return cls.query.filter(cls.created_by_id.in_(creators))
+
+    @classmethod
+    def get_for_organization(cls, analysis_id, organization_id):
+        """One result by id, or None when it is unknown or another organisation's."""
+        return cls.for_organization(organization_id).filter(cls.id == analysis_id).first()
+
     def to_dict(self):
         return {
             "id": self.id,

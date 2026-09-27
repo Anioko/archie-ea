@@ -23,7 +23,6 @@ Enterprise Architecture Benefits:
 """
 
 import logging
-from datetime import datetime
 
 from app import db
 from app.models.models import ArchiMateElement, ArchiMateRelationship

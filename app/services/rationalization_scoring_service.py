@@ -104,9 +104,7 @@ class RationalizationScoringService:
         """
         from app.models.application_rationalization import (
             RationalizationBenefitsTracker,
-            ApplicationRationalizationScore,
         )
-        from app import db
 
         query = RationalizationBenefitsTracker.query.filter(
             RationalizationBenefitsTracker.tracking_status.in_(["measured", "validated"])
@@ -1831,14 +1829,28 @@ class RationalizationScoringService:
         # Apps covering more business capabilities are more valuable to the organization.
         try:
             from app import db as _db
+            from app.utils.tenant_sql import org_scope
+
+            # Dual-use path: `flask rationalization score-all` walks every
+            # organisation's applications in one session with no request
+            # context, so g.current_org_id is None here and reaching for it
+            # would leave the query global. Scope on the application being
+            # scored instead — same predicate under a request and under the CLI.
+            #
+            # bc, not acm: application_capability_mapping has an organization_id
+            # column but it is NULL on every row, so a predicate there would
+            # score every application as covering zero capabilities.
+            _org_clause, _org_params = org_scope(
+                prefix="bc.", org_id=getattr(app, "organization_id", None)
+            )
             cap_row = _db.session.execute(_db.text(
                 "SELECT COUNT(*) as cap_count, "
                 "SUM(CASE WHEN bc.level = 1 THEN 1 ELSE 0 END) as l1_count, "
                 "SUM(CASE WHEN bc.level = 2 THEN 1 ELSE 0 END) as l2_count "
                 "FROM application_capability_mapping acm "
                 "JOIN business_capability bc ON bc.id = acm.business_capability_id "
-                "WHERE acm.application_component_id = :app_id"
-            ), {"app_id": app.id}).fetchone()
+                "WHERE acm.application_component_id = :app_id" + _org_clause
+            ), {"app_id": app.id, **_org_params}).fetchone()
             cap_count = cap_row[0] if cap_row else 0
             l1_count = cap_row[1] if cap_row else 0
             l2_count = cap_row[2] if cap_row else 0
@@ -2053,6 +2065,7 @@ class RationalizationScoringService:
             if cap_ids:
                 from app.models.application_capability import ApplicationCapabilityMapping
                 sibling_count = (
+                    # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                     ApplicationCapabilityMapping.query.filter(
                         ApplicationCapabilityMapping.business_capability_id.in_(cap_ids),
                         ApplicationCapabilityMapping.application_component_id != app.id,
@@ -2727,6 +2740,7 @@ class RationalizationScoringService:
                 if cap_mappings:
                     cap_ids = [m.business_capability_id for m in cap_mappings]
                     sibling_count = (
+                        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                         ApplicationCapabilityMapping.query.filter(
                             ApplicationCapabilityMapping.business_capability_id.in_(cap_ids),
                             ApplicationCapabilityMapping.application_component_id != app.id,
@@ -3777,7 +3791,7 @@ class RationalizationScoringService:
             criticality = (getattr(app, "criticality", "") or "").lower()  # model-safety-ok
             business_criticality = (getattr(app, "business_criticality", "") or "").lower()  # model-safety-ok
             pii_processed = getattr(app, "pii_data_processed", False) or False  # model-safety-ok
-            gdpr_compliant = getattr(app, "gdpr_compliant", False) or False  # model-safety-ok
+            getattr(app, "gdpr_compliant", False) or False
 
             # Compliance tags — stored as JSON text
             compliance_tags_raw = getattr(app, "compliance_tags", None)  # model-safety-ok

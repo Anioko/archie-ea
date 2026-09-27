@@ -437,6 +437,7 @@ function composerApp() {
     let createNode = ComposerRenderer.createNode;
     let createContainerNode = ComposerRenderer.createContainerNode;
     let createLink = ComposerRenderer.createLink;
+    let humanizeRelTypeLabel = ComposerRenderer.humanizeRelType;
 
     /* ── Helper: get CSRF token ───────────────────────────── */
     function csrfToken() {
@@ -603,7 +604,12 @@ function composerApp() {
         capabilityFilter: '',
 
         /* Mini-map state */
-        miniMapExpanded: true,
+        miniMapExpanded: (function() {
+            try {
+                let stored = window.localStorage.getItem('archie.composer.miniMapExpanded');
+                return stored === null ? true : stored === 'true';
+            } catch (e) { return true; }
+        })(),
         _miniMapDragging: false,
         _miniMapRAF: null,
 
@@ -639,6 +645,14 @@ function composerApp() {
         _autosaveLabel: '',
         _saveFailed: false,
         _saving: false,
+
+        /* Sequence View: a lifeline/message render of the elements + relationships
+           already on the canvas (no separate sequence-diagram store — see
+           layoutSequence()). sequenceMessages holds the ordered list shown in the
+           reorder panel; sequencePanelOpen toggles that panel. */
+        sequenceViewActive: false,
+        sequencePanelOpen: false,
+        sequenceMessages: [],
 
         /* Detail panel */
         selectedNode: null,
@@ -735,6 +749,11 @@ function composerApp() {
         srUseRegex: false,
         srMatches: [],
         srCurrentIndex: -1,
+        /* Rendered under the Find box. An unparseable regex used to abort the
+           search silently, which read as "0 matches" — the same answer a valid
+           pattern with no hits gives. Inline rather than a toast because the
+           search runs debounced on every keystroke. */
+        srRegexError: null,
 
         /* Zoom preset dropdown */
         zoomDropdownOpen: false,
@@ -984,6 +1003,27 @@ function composerApp() {
             return '';
         },
 
+        /* CMP-07: ONE authoritative save indicator. The status bar previously
+           showed up to five competing strings ("Unsaved changes", "Autosave:
+           just now", "Save paused", "Autosave: 1 min ago", plus the toolbar
+           "Save*") and the user could not tell whether their work was safe. This
+           getter maps _saveState to a single {icon, text, tone}; the footer and
+           toolbar both render it, so there is exactly one source of truth. */
+        get saveIndicator() {
+            switch (this._saveState) {
+                case 'failed':
+                    return { icon: 'alert-circle', text: 'Not saved — retrying', tone: 'text-destructive' };
+                case 'saving':
+                    return { icon: 'loader', text: 'Saving…', tone: 'text-muted-foreground' };
+                case 'dirty':
+                    return { icon: 'circle', text: 'Unsaved changes', tone: 'text-warning' };
+                case 'saved':
+                    return { icon: 'check', text: 'Saved' + (this._autosaveLabel ? ' · ' + this._autosaveLabel : ''), tone: 'text-success' };
+                default:
+                    return { icon: 'circle', text: 'Ready', tone: 'text-muted-foreground' };
+            }
+        },
+
         get filteredPalette() {
             let self = this;
             let vpKey = self.activeViewpoint || '';
@@ -1079,8 +1119,13 @@ function composerApp() {
 
             /* ── Pan / rubber-band select: drag on blank canvas ── */
             this.paper.on('blank:pointerdown', function(evt) {
-                /* Space+drag or view mode = pan */
-                if (self._spaceDown || self.mode === 'view') {
+                /* CMP-06: middle-mouse drag always pans, in any mode. Plain
+                   left-drag in edit mode is rubber-band select (below), so
+                   off-screen content was only reachable via Space+drag — an
+                   undiscoverable gesture. Middle-mouse pan is the universal
+                   diagram-tool convention and conflicts with nothing. */
+                if (evt.button === 1 || self._spaceDown || self.mode === 'view') {
+                    if (evt.button === 1 && evt.preventDefault) evt.preventDefault();
                     self._isPanning = true;
                     self._panStart = { x: evt.clientX, y: evt.clientY };
                     self.paper.el.style.cursor = 'grabbing';
@@ -1474,7 +1519,7 @@ function composerApp() {
                                 attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '4,3' },
                             }},
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic lock highlight replayed 50ms after render; the lock itself is already recorded on the cell, so a view that is not up yet is nothing to act on */ }
                 }, 50);
             });
 
@@ -1504,6 +1549,53 @@ function composerApp() {
             });
 
             /* ── Event: link connected → show relationship type picker ── */
+            /* F-05(c), Capgemini dry-run: a template-loaded element's id is a
+               client-only string ("__builtin__sh1"), never written to the
+               database. Connecting two of these sent that fake id straight to
+               valid-relationship-types (400) and then to POST /api/relationships
+               (500 — a string into an Integer FK). Materialize on demand here,
+               before either lookup — the common case (both ids already real
+               integers) makes zero network calls and behaves exactly as before. */
+            function isMaterializedId(id) {
+                return /^\d+$/.test(String(id));
+            }
+
+            this._materializeConnectEnds = function(srcCell, tgtCell, srcElementId, tgtElementId) {
+                if (isMaterializedId(srcElementId) && isMaterializedId(tgtElementId)) {
+                    return Promise.resolve({ srcElementId: srcElementId, tgtElementId: tgtElementId });
+                }
+                let toMaterialize = [];
+                if (!isMaterializedId(srcElementId)) {
+                    toMaterialize.push({
+                        element_id: srcElementId,
+                        name: srcCell.get('elName') || srcCell.get('name') || '',
+                        el_type: srcCell.get('elType') || 'ApplicationComponent',
+                        layer: srcCell.get('layer') || 'application',
+                    });
+                }
+                if (!isMaterializedId(tgtElementId)) {
+                    toMaterialize.push({
+                        element_id: tgtElementId,
+                        name: tgtCell.get('elName') || tgtCell.get('name') || '',
+                        el_type: tgtCell.get('elType') || 'ApplicationComponent',
+                        layer: tgtCell.get('layer') || 'application',
+                    });
+                }
+                return Platform.fetch.post('/archimate/api/elements/materialize', { elements: toMaterialize }, { silent: true })
+                    .then(function(data) {
+                        let map = data.element_id_map || {};
+                        let realSrc = map[String(srcElementId)] || srcElementId;
+                        let realTgt = map[String(tgtElementId)] || tgtElementId;
+                        // Adopt the new DB ids on the canvas cells — same pattern the
+                        // full-diagram save flow already uses (composer_persistence.js) —
+                        // so a later save or a second connect from the same cell also
+                        // sees a real id, not a repeat materialize.
+                        if (map[String(srcElementId)]) srcCell.set('elementId', realSrc);
+                        if (map[String(tgtElementId)]) tgtCell.set('elementId', realTgt);
+                        return { srcElementId: realSrc, tgtElementId: realTgt };
+                    });
+            };
+
             this.paper.on('link:connect', function(linkView) {
                 if (self.mode === 'view') return;
                 let link = linkView.model;
@@ -1515,9 +1607,20 @@ function composerApp() {
                 let tgtCell = self.graph.getCell(targetId);
                 if (!srcCell || !tgtCell) return;
 
-                let srcElementId = srcCell.get('elementId');
-                let tgtElementId = tgtCell.get('elementId');
-                if (!srcElementId || !tgtElementId) return;
+                let rawSrcElementId = srcCell.get('elementId');
+                let rawTgtElementId = tgtCell.get('elementId');
+                if (!rawSrcElementId || !rawTgtElementId) return;
+
+                self._materializeConnectEnds(srcCell, tgtCell, rawSrcElementId, rawTgtElementId)
+                .catch(function() {
+                    // Materialization failed — proceed with the raw ids so the existing
+                    // error handling below (400/500 -> fallback association + toast)
+                    // still fires, rather than silently dropping the connect gesture.
+                    return { srcElementId: rawSrcElementId, tgtElementId: rawTgtElementId };
+                })
+                .then(function(resolved) {
+                let srcElementId = resolved.srcElementId;
+                let tgtElementId = resolved.tgtElementId;
 
                 self._pendingLink = link;
                 self.relPickerSourceCell = srcCell;
@@ -1568,10 +1671,7 @@ function composerApp() {
                     return;
                 }
 
-                fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                    credentials: 'same-origin',
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true })
                 .then(function(data) {
                     let validDetailed = data.valid_types_detailed || [];
                     self.relPickerTypes = validDetailed.length > 0
@@ -1592,10 +1692,12 @@ function composerApp() {
                         return !validSet[t];
                     });
                 })
+                // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                 .catch(function() {
                     self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                     self.relPickerInvalidTypes = [];
                     _toast('error', 'Failed to load relationship types');
+                });
                 });
             });
 
@@ -1670,10 +1772,29 @@ function composerApp() {
                     self.statusText = 'Pick relationship type…';
 
                     let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-                    fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                        credentials: 'same-origin',
+                    /* DEF-006, Capgemini dry-run (browser-verified live): this is
+                       the keyboard 'C' connect-mode gesture (click source, click
+                       target) — a SEPARATE code path from the drag-a-link
+                       'link:connect' handler above, which F-05(c) already fixed.
+                       This one still sent template placeholder ids
+                       ("__builtin__ba1") straight to valid-relationship-types,
+                       confirmed live: 400, "Failed to load relationship types".
+                       Reuse the same _materializeConnectEnds helper before the
+                       lookup, updating srcElementId/tgtElementId and the picker's
+                       stored ids to the real, materialized ones so the
+                       subsequent POST /api/relationships (on picking a type)
+                       also gets real integer ids. */
+                    self._materializeConnectEnds(sourceCell, targetCell, srcElementId, tgtElementId)
+                    .catch(function() {
+                        return { srcElementId: srcElementId, tgtElementId: tgtElementId };
                     })
-                    .then(function(r) { return r.json(); })
+                    .then(function(resolved) {
+                        srcElementId = resolved.srcElementId;
+                        tgtElementId = resolved.tgtElementId;
+                        self.relPickerSourceId = srcElementId;
+                        self.relPickerTargetId = tgtElementId;
+                        return Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true });
+                    })
                     .then(function(data) {
                         let validDetailed = data.valid_types_detailed || [];
                         self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -1682,6 +1803,7 @@ function composerApp() {
                         self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                         self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
                     })
+                    // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
                     .catch(function() {
                         self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                         self.relPickerInvalidTypes = [];
@@ -1734,8 +1856,7 @@ function composerApp() {
 
                 /* Fetch rich detail from API (skip __builtin__ template elements) */
                 if (elId && parseInt(elId, 10) > 0) {
-                    fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-                    .then(function(r) { if (r.ok) return r.json(); throw new Error('not found'); })
+                    Platform.fetch('/archimate/api/elements/' + elId + '/detail', { silent: true })
                     .then(function(data) {
                         if (self.selectedNode && self.selectedNode.elementId === elId) {
                             self.selectedNode.description = data.description || '';
@@ -2036,6 +2157,20 @@ function composerApp() {
             /* ── Port affordance discovery hint (ENT-120) ── */
             this.paper.on('element:mouseenter', function(cellView) {
                 if (self.mode === 'view') return;
+                /* CMP-14 (revised): only raise the hovered element when it
+                   ACTUALLY overlaps a neighbour — the case where its ports would
+                   otherwise sit under another box. Raising on every hover (the
+                   first version) reshuffled z-order across the whole diagram as
+                   the mouse moved and pushed elements above the relationship
+                   links, so arrows blinked out under whatever box was hovered.
+                   We also keep links on top afterward so relationships never hide
+                   behind a raised element, and use a shallow toFront (no deep) to
+                   avoid dragging embedded children around. */
+                if (cellView && cellView.model && !self._lockedCells[cellView.model.id]
+                        && self._overlapsAnyElement(cellView.model)) {
+                    cellView.model.toFront();
+                    self._raiseLinks();
+                }
                 let el = cellView.el;
                 if (el) {
                     el.classList.add('port-discover');
@@ -2337,9 +2472,11 @@ function composerApp() {
                 }
             });
 
-            /* ── Auto-save every 30s if dirty + saved viewpoint exists ── */
+            /* ── Auto-save every 30s if dirty (C-03: also creates the
+             * SavedDiagram server-side on first tick if the canvas has
+             * never been manually saved — see _autoSave / _autoCreateSavedDiagram) ── */
             this._autoSaveTimer = setInterval(function() {
-                if (self.viewpointDirty && self.currentSavedVpId) {
+                if (self.viewpointDirty) {
                     self._autoSave();
                 }
             }, 30000);
@@ -2359,7 +2496,7 @@ function composerApp() {
                     self._pendingAutosaveRestore = savedData;
                     self._showAutosavePrompt = true;
                 }
-            } catch(_) {}
+            } catch(_) { /* swallow-ok: reading the localStorage crash-recovery snapshot throws in private mode; there is then simply no restore prompt, which promised the user nothing */ }
             setInterval(function() {
                 if (!self.graph || !self.viewpointDirty) return;
                 if (self.graph.getElements().length === 0) return;
@@ -2368,17 +2505,31 @@ function composerApp() {
                         graph: self.graph.toJSON(),
                         timestamp: Date.now(),
                         elementCount: self.elementCount,
-                        solutionId: self.solutionId
+                        solutionId: self.solutionId,
+                        // Preserve the diagram's identity so a restore updates the
+                        // existing row rather than POSTing a duplicate on the next save.
+                        currentSavedVpId: self.currentSavedVpId || null
                     }));
-                } catch (e) { console.warn('Auto-persist failed:', e.message); }
+                } catch (e) {
+                    /* C-03: this used to warn only to the console — invisible
+                     * to the user. The primary autosave is server-side (see
+                     * _autoSave above); this localStorage snapshot is only a
+                     * secondary crash-recovery fallback, so a single quota
+                     * failure is not an emergency, but the user must be told
+                     * once rather than never — surfaced once per session,
+                     * not every 10s. */
+                    if (!self._localAutosaveWarned) {
+                        self._localAutosaveWarned = true;
+                        _toast('warning', 'Local browser backup is full or unavailable — your work is still being saved to the server.');
+                    }
+                }
             }, 10000);
 
             /* ── Wave 10: Load quality score for solution ── */
             if (self.solutionId) {
-                fetch('/api/solutions/' + self.solutionId + '/quality-score', { credentials: 'same-origin' })
-                    .then(function(r) { return r.ok ? r.json() : null; })
+                Platform.fetch('/api/solutions/' + self.solutionId + '/quality-score', { silent: true })
                     .then(function(data) { if (data) self.qualityScore = data; })
-                    .catch(function() {});
+                    .catch(function() { /* swallow-ok: unrequested enrichment fetched on canvas open; qualityScore stays null so the toolbar badge (x-if="qualityScore") is simply absent — it never shows a made-up percentage — and a network failure or non-ok response while opening the canvas must not interrupt the modelling task with a toast about a badge */ });
             }
 
             /* ── Check for saved viewpoint_id in URL ── */
@@ -2393,8 +2544,19 @@ function composerApp() {
 
             /* ── Check for initial viewpoint from URL ── */
             let initialVp = (window.__COMPOSER_CONFIG__ || {}).initialViewpoint;
+            let initialLayer = (window.__COMPOSER_CONFIG__ || {}).initialLayer;
+            /* A composer link can legitimately pass `layer` with no `viewpoint`
+             * (e.g. traceability_chain.html's "+ Add" buttons, which only know
+             * which layer to seed). Without a fallback here that layer was
+             * silently dropped and the composer opened generically — default
+             * to the 'layered' viewpoint so a layer-only link still does
+             * something sensible, matching the `?viewpoint=layered&layer=X`
+             * convention used everywhere else in this codebase. */
+            if (!initialVp && initialLayer) {
+                initialVp = 'layered';
+            }
             if (initialVp) {
-                this.selectViewpoint(initialVp, initialVp);
+                this.selectViewpoint(initialVp, initialVp, initialLayer);
                 return;
             }
 
@@ -2449,7 +2611,7 @@ function composerApp() {
                         _toast('info', 'ArchiMate elements' + appName + ' loaded from AI Chat — review and accept to place on canvas');
                         return;
                     }
-                } catch (_) { /* malformed sessionStorage — skip */ }
+                } catch (_) { /* swallow-ok: defensive parse of our own sessionStorage prefill; malformed or absent simply means no prefill and the composer opens as normal */ }
             }
 
             /* ── Load existing data ── */
@@ -2490,7 +2652,8 @@ function composerApp() {
             let params = new URLSearchParams(window.location.search);
             if (!params.has('prefill')) return;
             let raw = null;
-            try { raw = sessionStorage.getItem('composer_prefill'); } catch (_) {}
+            /* sessionStorage throws in private/incognito mode — best-effort, no prefill if unavailable */
+            try { raw = sessionStorage.getItem('composer_prefill'); } catch (_) { /* swallow-ok: sessionStorage throws in private mode; raw stays null and the prefill is skipped, which is the no-prefill path the user already expects */ }
             if (!raw) return;
             let payload = null;
             try { payload = JSON.parse(raw); } catch (_) { return; }
@@ -2498,8 +2661,8 @@ function composerApp() {
             if (!payload || !payload.elements || !Array.isArray(payload.elements)) return;
             if (payload.timestamp && (Date.now() - payload.timestamp) > 300000) return;
 
-            /* Clear so refresh doesn't re-trigger */
-            try { sessionStorage.removeItem('composer_prefill'); } catch (_) {}
+            /* Clear so refresh doesn't re-trigger — best-effort, same private-mode caveat as above */
+            try { sessionStorage.removeItem('composer_prefill'); } catch (_) { /* swallow-ok: best-effort cleanup so a refresh does not re-trigger the prefill; same private-mode caveat as the read above */ }
 
             /* Normalise element shape to match composer_ai.js expectations */
             let elements = payload.elements.map(function(e) {
@@ -2557,7 +2720,7 @@ function composerApp() {
                 { name: 'dot', args: { color: '#dde1e6', thickness: 1 } },
                 { name: 'dot', args: { color: '#c8cdd3', thickness: 1, scaleFactor: 5 } },
             ] : false;
-            try { this.paper.drawGrid(); } catch(e) {}
+            try { this.paper.drawGrid(); } catch(e) { /* swallow-ok: cosmetic grid redraw; statusText below still reports whether the grid is on or off */ }
             this.statusText = this.showGrid ? 'Grid visible' : 'Grid hidden';
         },
 
@@ -2608,7 +2771,7 @@ function composerApp() {
                                 }},
                             });
                         }
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic lock border; the lock state itself is already applied to the cell and counted in lockedCount */ }
                 }
             });
 
@@ -2957,10 +3120,7 @@ function composerApp() {
             let self = this;
             self.statusText = 'Loading...';
 
-            fetch('/archimate/viewpoints-api/basic/data?solution_id=' + this.solutionId, {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/viewpoints-api/basic/data?solution_id=' + this.solutionId, { silent: true })
             .then(function(data) {
                 let elements = data.elements || [];
                 let relationships = data.relationships || [];
@@ -3019,8 +3179,7 @@ function composerApp() {
                 });
             })
             .catch(function(err) {
-                console.error('[Composer] load error:', err);
-                _toast('error', 'Failed to load diagram: ' + (err.message || err));
+                _toast('error', 'Failed to load diagram: ' + ((err && err.message) || err));
                 self.statusText = 'Error loading data';
             });
         },
@@ -3100,10 +3259,68 @@ function composerApp() {
         },
 
         /* ── Pick element → place on canvas ───────────────── */
+        /* CMP-08: keyboard quick-add (Ctrl+K) has no drag, so dropX/dropY stay at
+           their last value and consecutive adds stack on the exact same spot.
+           Cascade off any element already occupying the target so each new
+           element lands somewhere visible. Deliberate drag-drops keep their
+           cursor coordinates unless they'd land exactly on an existing node. */
+        _placementFor: function(x, y) {
+            /* CMP-08 (revised): nudge a new element off an ALREADY-OCCUPIED spot
+               so consecutive keyboard quick-adds don't stack. Kept deliberately
+               conservative after the first version could walk an element up to
+               ~1900px off-screen: only treat a near-exact coincidence (12px) as
+               occupied, cascade at most a few steps, and if it still can't find a
+               clear spot, return the ORIGINAL point rather than flinging the
+               element far away. */
+            // STEP/NEAR must be sized against the actual node footprint (180x64,
+            // see createNode) or the cascade "succeeds" while every element still
+            // visually overlaps. QA (10 Sep 2026) found 3 quick-added elements
+            // landing almost fully stacked with the previous STEP=28/NEAR=12:
+            // occupied() only ever caught an exact-ish coincidence, so a 28px
+            // nudge counted as "clear" while still covering ~85% of the previous
+            // node. STEP now clears a node's width; NEAR is set to catch any
+            // point that would still visually overlap one, not just a near-exact
+            // hit.
+            const STEP = 200;     // diagonal cascade step — clears node width (180)
+            const NEAR = 60;      // treat anything within ~half a node's footprint as occupied
+            const MAX_STEPS = 6;  // cap the cascade (~1200px)
+            const els = (this.graph && this.graph.getElements) ? this.graph.getElements() : [];
+            const occupied = function(cx, cy) {
+                return els.some(function(el) {
+                    const p = el.position();
+                    return Math.abs(p.x - cx) < NEAR && Math.abs(p.y - cy) < NEAR;
+                });
+            };
+            let px = x, py = y, guard = 0;
+            while (occupied(px, py) && guard < MAX_STEPS) { px += STEP; py += STEP; guard++; }
+            if (occupied(px, py)) return { x: x, y: y };  // gave up — keep the intended point
+            return { x: px, y: py };
+        },
+
+        /* CMP-14: does this element's bbox intersect any other element's bbox? */
+        _overlapsAnyElement: function(model) {
+            if (!this.graph) return false;
+            let b = model.getBBox();
+            return this.graph.getElements().some(function(other) {
+                if (other.id === model.id) return false;
+                let o = other.getBBox();
+                return b.x < o.x + o.width && b.x + b.width > o.x &&
+                       b.y < o.y + o.height && b.y + b.height > o.y;
+            });
+        },
+
+        /* CMP-14: keep relationship links painted above elements so a raised
+           element never hides the arrows terminating at or crossing it. */
+        _raiseLinks: function() {
+            if (!this.graph) return;
+            this.graph.getLinks().forEach(function(link) { link.toFront(); });
+        },
+
         pickElement: function(item) {
             this.closeSearch();
             let layer = (item.layer || '').toLowerCase() || guessLayer(item.type);
-            let node = createNode(item.id, item.name, item.type, layer, this.dropX, this.dropY);
+            let pos = this._placementFor(this.dropX, this.dropY);
+            let node = createNode(item.id, item.name, item.type, layer, pos.x, pos.y);
             this.graph.addCell(node);
             this.canvasElements[item.id] = item;
             this.elementCount++;
@@ -3151,10 +3368,7 @@ function composerApp() {
             let targetName = overlappingCell.get('elName') || '';
 
             /* Fetch valid relationship types for this pair */
-            fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), {
-                credentials: 'same-origin'
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/api/archimate/valid-relationships/' + encodeURIComponent(newType) + '/' + encodeURIComponent(targetType), { silent: true })
             .then(function(data) {
                 let validTypes = (data.data || {}).valid_relationship_types || [];
                 if (validTypes.length === 0) {
@@ -3182,6 +3396,7 @@ function composerApp() {
             .catch(function() {
                 /* On error, just offset to avoid overlap */
                 newNode.position(newBBox.x + 220, newBBox.y);
+                _toast('error', 'Could not check valid relationships for this drop');
             });
         },
 
@@ -3194,11 +3409,10 @@ function composerApp() {
             }
             self.capabilitiesLoading = true;
             self.capabilitiesError = '';
-            fetch('/solutions/' + self.solutionId + '/all-capabilities', {
-                credentials: 'same-origin',
+            Platform.fetch('/solutions/' + self.solutionId + '/all-capabilities', {
                 headers: { 'Accept': 'application/json' },
+                silent: true,
             })
-            .then(function(r) { return r.json(); })
             .then(function(data) {
                 let caps = data.capabilities || data.data || [];
                 self.sidebarCapabilities = caps;
@@ -3210,7 +3424,7 @@ function composerApp() {
             .catch(function(err) {
                 self.capabilitiesLoading = false;
                 self.capabilitiesError = 'Failed to load capabilities';
-                _toast('error', 'Failed to load capabilities: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Failed to load capabilities: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -3220,16 +3434,7 @@ function composerApp() {
             if (!self.solutionId) return;
             self.statusText = 'Generating elements from capability...';
 
-            fetch('/solutions/' + self.solutionId + '/generate-from-capabilities', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken(),
-                },
-                body: JSON.stringify({ capability_ids: [capId] }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/solutions/' + self.solutionId + '/generate-from-capabilities', { capability_ids: [capId] }, { silent: true })
             .then(function(data) {
                 if (!data.success) {
                     self.statusText = 'Generation failed: ' + (data.error || 'unknown');
@@ -3266,7 +3471,7 @@ function composerApp() {
             })
             .catch(function(err) {
                 self.statusText = 'Generation failed';
-                _toast('error', 'Generation failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Generation failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -3283,8 +3488,7 @@ function composerApp() {
             self._reuseDebounceTimer = setTimeout(function() {
                 self.checkingReuse = true;
                 let url = '/archimate/api/elements/search?q=' + encodeURIComponent(name) + '&limit=5';
-                fetch(url, { credentials: 'same-origin' })
-                    .then(function(r) { return r.json(); })
+                Platform.fetch(url, { silent: true })
                     .then(function(resp) {
                         let data = resp.data || resp || [];
                         self.similarElements = Array.isArray(data) ? data.filter(function(el) {
@@ -3317,12 +3521,7 @@ function composerApp() {
             });
             if (ids.length === 0) return;
 
-            fetch('/archimate/api/element-maturity', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ element_ids: ids }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/element-maturity', { element_ids: ids }, { silent: true })
             .then(function(data) {
                 let maturity = data.maturity || {};
                 elements.forEach(function(cell) {
@@ -3541,10 +3740,7 @@ function composerApp() {
         checkRelationshipHealth: function() {
             let self = this;
             if (!self.currentSavedVpId) return;
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/relationship-health', {
-                headers: { 'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '' },
-            })
-            .then(function(r) { return r.ok ? r.json() : null; })
+            Platform.fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/relationship-health', { silent: true })
             .then(function(data) {
                 if (!data || !data.stale_relationships || !data.stale_relationships.length) return;
                 let dismissed = sessionStorage.getItem('ent111_dismissed_vp' + self.currentSavedVpId);
@@ -3552,21 +3748,27 @@ function composerApp() {
                 self.staleRelationships = data.stale_relationships;
                 self.showStalenessReview = true;
             })
-            .catch(function() {});
+            .catch(function() { /* swallow-ok: unsolicited background staleness advisory; on failure the review panel just does not open, the viewpoint itself is unaffected, and the user was never told the check would run */ });
         },
 
         keepAsIntent: function(relId) {
             let self = this;
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': (document.cookie.match(/csrf_token=([^;]+)/) || [])[1] || '',
-                },
-                body: JSON.stringify({ relationship_intent: { rel_id: relId, is_architectural_intent: true } }),
-            }).catch(function() {});
-            self.staleRelationships = self.staleRelationships.filter(function(r) { return r.rel_id !== relId; });
-            if (!self.staleRelationships.length) { self.showStalenessReview = false; }
+            /* The row used to be struck from the review list — and the whole panel
+               closed — the instant the PATCH was FIRED, before any response came
+               back. A 403/500, or no network at all, therefore looked exactly like
+               "marked as architectural intent"; the flag was never persisted and
+               the relationship reappeared as stale on the next check. Only remove
+               the row once the server has confirmed the write. */
+            Platform.fetch.patch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId, {
+                relationship_intent: { rel_id: relId, is_architectural_intent: true },
+            }, { silent: true })
+            .then(function() {
+                self.staleRelationships = self.staleRelationships.filter(function(x) { return x.rel_id !== relId; });
+                if (!self.staleRelationships.length) { self.showStalenessReview = false; }
+            })
+            .catch(function(err) {
+                _toast('error', 'Could not mark the relationship as architectural intent — ' + ((err && err.message) || 'the change was not saved'));
+            });
         },
 
         removeStalenessRel: function(relId) {
@@ -3748,7 +3950,29 @@ function composerApp() {
         /* ── Toolbar actions ──────────────────────────────── */
         fitCanvas: function() {
             if (!this.paper) return;
-            this.paper.scaleContentToFit({ padding: 40, maxScale: 1.5 });
+            /* CMP: fit must not fit content behind a floating right-hand slide-out panel
+               (validation / plateau / comments / audit) — those are absolutely positioned
+               over the canvas, not flex siblings, so scaleContentToFit's own geometry has
+               no idea they cover part of the paper. Widen the right padding to match
+               whichever one is currently open. */
+            let rightPanelOpen = this.validationPanelOpen
+                || (this.deltaMode && this.plateauSuggestions && this.plateauSuggestions.length > 0)
+                || this.commentPanelOpen
+                || this.auditPanelOpen;
+            let rightPadding = rightPanelOpen ? 40 + 320 : 40;
+            /* CMP-05: fit was unreliable in the narrow side-panel — it zoomed to
+               150% with the element half off the left edge. Two causes fixed:
+               (1) maxScale 1.5 let a small selection zoom IN past the viewport;
+               cap at 1 like every other fit call site. (2) scaleContentToFit read
+               rendered geometry, which is stale while the panel is mid-resize;
+               useModelGeometry reads the model bboxes instead, which are always
+               current. */
+            this.paper.scaleContentToFit({
+                padding: { top: 40, bottom: 40, left: 40, right: rightPadding },
+                maxScale: 1,
+                minScale: 0.1,
+                useModelGeometry: true
+            });
             this.zoomPercent = Math.round(this.paper.scale().sx * 100);
             this._scheduleMiniMapUpdate();
         },
@@ -3889,10 +4113,22 @@ function composerApp() {
             self.statusText = 'Pick relationship type\u2026';
 
             let ALL_REL = ['composition','aggregation','assignment','realization','serving','access','influence','triggering','flow','specialization','association'];
-            fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, {
-                credentials: 'same-origin',
+            /* DEF-006, Capgemini dry-run (browser-verified live): third
+               unfixed call site sending template placeholder ids straight to
+               valid-relationship-types — this one backs both the R-shortcut
+               and connect-mode via _openRelPickerForPair. Same materialize-
+               first fix as the other two call sites. */
+            self._materializeConnectEnds(sourceCell, targetCell, srcElementId, tgtElementId)
+            .catch(function() {
+                return { srcElementId: srcElementId, tgtElementId: tgtElementId };
             })
-            .then(function(r) { return r.json(); })
+            .then(function(resolved) {
+                srcElementId = resolved.srcElementId;
+                tgtElementId = resolved.tgtElementId;
+                self.relPickerSourceId = srcElementId;
+                self.relPickerTargetId = tgtElementId;
+                return Platform.fetch('/archimate/api/valid-relationship-types?source_id=' + srcElementId + '&target_id=' + tgtElementId, { silent: true });
+            })
             .then(function(data) {
                 let validDetailed = data.valid_types_detailed || [];
                 self.relPickerTypes = validDetailed.length > 0 ? validDetailed
@@ -3901,6 +4137,7 @@ function composerApp() {
                 self.relPickerTypes.forEach(function(v) { validSet[v.type || v] = true; });
                 self.relPickerInvalidTypes = ALL_REL.filter(function(t) { return !validSet[t]; });
             })
+            // fabricated-ok: falls back to a single type tagged tier:'fallback' and raises an error toast
             .catch(function() {
                 self.relPickerTypes = [{ type: 'association', tier: 'fallback', description: '' }];
                 self.relPickerInvalidTypes = [];
@@ -3993,15 +4230,20 @@ function composerApp() {
 
             this.statusText = 'Copied ' + this._clipboard.length + ' element(s)'
                 + (self._clipboardLinks.length ? ' and ' + self._clipboardLinks.length + ' relationship(s)' : '');
-            try { localStorage.setItem('archimate_clipboard', JSON.stringify(this._clipboard)); } catch(e) {}
+            /* Cross-tab clipboard persistence is a bonus — in-memory this._clipboard is
+               already set above, so a private-mode/quota failure here is harmless. */
+            try { localStorage.setItem('archimate_clipboard', JSON.stringify(this._clipboard)); } catch(e) { /* swallow-ok: cross-tab clipboard mirror; the in-memory _clipboard is already set above, so paste works in this tab either way */ }
         },
 
         _pasteClipboard: function(atPoint) {
             if (this._clipboard.length === 0) {
+                /* Best-effort restore from a previous tab/session — if this throws
+                   or the stored value is malformed, _clipboard just stays empty
+                   and the paste below is a no-op. */
                 try {
                     let stored = localStorage.getItem('archimate_clipboard');
                     if (stored) this._clipboard = JSON.parse(stored);
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: optional restore of a clipboard from another tab; on failure _clipboard stays empty and the paste below is a no-op */ }
             }
             if (this._clipboard.length === 0) return;
             let self = this;
@@ -4111,13 +4353,7 @@ function composerApp() {
             /* GAP-CMP-005: Sync name to catalog so other diagrams see the change */
             let elId = cell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: newName }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { name: newName }, { silent: true })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4132,13 +4368,7 @@ function composerApp() {
             let elId = this._currentSelectedCell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
                 let desc = this.selectedNode.description || '';
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ description: desc }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { description: desc }, { silent: true })
                 .then(function(data) {
                     if (data.error) _toast('error', data.error);
                 })
@@ -4160,17 +4390,12 @@ function composerApp() {
             const pii = this.selectedNode._containsPII || false;
 
             /* Update custom_properties on the server via PATCH */
-            fetch('/archimate/api/elements/' + elId, {
-                method: 'PATCH', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    custom_properties: {
-                        data_classification: classification,
-                        contains_pii: pii,
-                    }
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.patch('/archimate/api/elements/' + elId, {
+                custom_properties: {
+                    data_classification: classification,
+                    contains_pii: pii,
+                }
+            }, { silent: true })
             .catch(function() { _toast('error', 'Failed to save classification'); });
 
             /* Update visual badge on the JointJS node */
@@ -4186,12 +4411,7 @@ function composerApp() {
             /* Persist via custom_properties */
             let elId = this.selectedNode.elementId;
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ custom_properties: { zone_type: zoneType } }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { zone_type: zoneType } }, { silent: true })
                 .catch(function() { _toast('error', 'Failed to save zone type'); });
             }
             this.statusText = 'Zone type: ' + zoneType;
@@ -4281,17 +4501,12 @@ function composerApp() {
                 let srcId = parent.get('elementId');
                 let tgtId = child.get('elementId');
                 if (srcId && tgtId) {
-                    fetch('/archimate/api/relationships', {
-                        method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                        body: JSON.stringify({
-                            source_element_id: srcId,
-                            target_element_id: tgtId,
-                            relationship_type: relType,
-                            solution_id: self.solutionId || null,
-                        }),
-                    })
-                    .then(function(r) { return r.json(); })
+                    Platform.fetch.post('/archimate/api/relationships', {
+                        source_element_id: srcId,
+                        target_element_id: tgtId,
+                        relationship_type: relType,
+                        solution_id: self.solutionId || null,
+                    }, { silent: true })
                     .then(function(data) {
                         if (data.id) {
                             self.relCount++;
@@ -4522,6 +4737,174 @@ function composerApp() {
             this.statusText = 'Hierarchical layout applied (' + direction + ')';
         },
 
+        /* ── Sequence View ──────────────────────────────────────────────
+           A lifeline/message render of the elements + relationships already
+           on the canvas. Deliberately not a new element/table: per ADR 0008
+           (one system of record per concept) the messages ARE the existing
+           ArchiMate relationships, ordered by relationship.sequence_order
+           (a nullable step number persisted on archimate_relationships — see
+           app/models/archimate_core.py). No sequence_order yet falls back to
+           the order the relationships were created in, so every relationship
+           on the canvas renders instead of being dropped for lacking a step.
+           Only ArchiMate-typed elements can ever be lifelines here — there is
+           no free-form UML actor/object, on purpose: it keeps every message
+           traceable back to a real element in the architecture repository,
+           which a Lucidchart sequence diagram cannot offer. */
+        layoutSequence: function() {
+            let self = this;
+            let allLinks = self.graph.getLinks().filter(function(l) { return !l.get('isAnnotation'); });
+            if (!allLinks.length) {
+                self.statusText = 'Sequence View needs at least one relationship between elements';
+                _toast('info', 'Add relationships between elements first, then apply Sequence View.');
+                return;
+            }
+
+            let messages = allLinks.map(function(link, idx) {
+                let src = link.get('source'), tgt = link.get('target');
+                return {
+                    link: link,
+                    srcId: src && src.id,
+                    tgtId: tgt && tgt.id,
+                    relId: link.get('relId'),
+                    relType: link.get('relType'),
+                    seq: (typeof link.get('sequenceOrder') === 'number') ? link.get('sequenceOrder') : null,
+                    createdAt: link.get('createdAt') || 0,
+                    _idx: idx,
+                };
+            }).filter(function(m) { return m.srcId && m.tgtId && self.graph.getCell(m.srcId) && self.graph.getCell(m.tgtId); });
+
+            if (!messages.length) {
+                self.statusText = 'Sequence View needs relationships between two placed elements';
+                return;
+            }
+
+            messages.sort(function(a, b) {
+                if (a.seq != null && b.seq != null) return a.seq - b.seq;
+                if (a.seq != null) return -1;
+                if (b.seq != null) return 1;
+                if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+                return a._idx - b._idx;
+            });
+
+            let lifelineOrder = [];
+            let seen = {};
+            messages.forEach(function(m) {
+                if (!seen[m.srcId]) { seen[m.srcId] = true; lifelineOrder.push(m.srcId); }
+                if (!seen[m.tgtId]) { seen[m.tgtId] = true; lifelineOrder.push(m.tgtId); }
+            });
+
+            let colGap = 220, rowGap = 70, rowStart = 220, headerY = 90;
+            let xById = {};
+
+            UndoStack.pause();
+
+            /* Drop any guide lines left from a previous Sequence View pass. */
+            self.graph.getCells().filter(function(c) { return c.get('isSequenceGuide'); })
+                .forEach(function(c) { c.remove(); });
+
+            lifelineOrder.forEach(function(id, i) {
+                let cell = self.graph.getCell(id);
+                if (!cell) return;
+                let w = cell.size().width;
+                let x = 60 + i * colGap;
+                xById[id] = x + w / 2;
+                cell.position(x, headerY);
+            });
+
+            let lastRowY = rowStart;
+            messages.forEach(function(m, i) {
+                let rowY = rowStart + i * rowGap;
+                lastRowY = rowY;
+                let sx = xById[m.srcId], tx = xById[m.tgtId];
+                if (sx == null || tx == null) return;
+                m.link.router(null);
+                m.link.connector({ name: 'normal' });
+                m.link.vertices([{ x: sx, y: rowY }, { x: tx, y: rowY }]);
+                let existing = m.link.label(0);
+                let baseText = (existing && existing.attrs && existing.attrs.text && existing.attrs.text.text) || humanizeRelTypeLabel(m.relType);
+                baseText = baseText.replace(/^\d+\.\s*/, '');
+                m.link.label(0, { attrs: { text: { text: (i + 1) + '. ' + baseText } } });
+            });
+
+            lifelineOrder.forEach(function(id) {
+                let cell = self.graph.getCell(id);
+                if (!cell) return;
+                let pos = cell.position(), size = cell.size();
+                let x = pos.x + size.width / 2;
+                let guide = new joint.shapes.standard.Link({
+                    source: { x: x, y: pos.y + size.height },
+                    target: { x: x, y: lastRowY + 40 },
+                    attrs: {
+                        line: { stroke: '#94a3b8', strokeWidth: 1, strokeDasharray: '4,4', targetMarker: { d: '' } },
+                    },
+                    router: null,
+                    connector: { name: 'normal' },
+                });
+                guide.set('isSequenceGuide', true);
+                guide.set('isAnnotation', true);
+                self.graph.addCell(guide);
+                guide.toBack();
+            });
+
+            UndoStack.resume();
+
+            self.sequenceViewActive = true;
+            self.sequencePanelOpen = true;
+            self.sequenceMessages = messages.map(function(m, i) {
+                let srcCell = self.graph.getCell(m.srcId);
+                let tgtCell = self.graph.getCell(m.tgtId);
+                return {
+                    relId: m.relId,
+                    order: i,
+                    label: (i + 1) + '. ' + humanizeRelTypeLabel(m.relType),
+                    srcName: srcCell ? srcCell.get('elName') : '',
+                    tgtName: tgtCell ? tgtCell.get('elName') : '',
+                };
+            });
+
+            self.paper.scaleContentToFit({ padding: 40, maxScale: 1 });
+            self.zoomPercent = Math.round(self.paper.scale().sx * 100);
+            self._scheduleMiniMapUpdate();
+            self.statusText = 'Sequence View — ' + lifelineOrder.length + ' lifelines, ' + messages.length + ' messages';
+        },
+
+        /* Reorder one message in the sequence panel and persist the new step
+           numbers to the owning relationships, then re-run the layout so the
+           canvas reflects the saved order — never a client-only reorder that
+           a reload would silently discard. */
+        moveMessage: function(index, direction) {
+            let self = this;
+            let arr = self.sequenceMessages.slice();
+            let j = index + direction;
+            if (j < 0 || j >= arr.length) return;
+            let tmp = arr[index];
+            arr[index] = arr[j];
+            arr[j] = tmp;
+            self.sequenceMessages = arr;
+
+            let updates = arr.map(function(m, i) { return { relId: m.relId, order: i }; });
+            Promise.all(updates.map(function(u) {
+                if (!u.relId) return Promise.resolve();
+                return Platform.fetch.put('/archimate/api/relationships/' + u.relId,
+                    { sequence_order: u.order }, { silent: true });
+            })).then(function() {
+                updates.forEach(function(u) {
+                    let link = self.graph.getLinks().find(function(l) { return l.get('relId') === u.relId; });
+                    if (link) link.set('sequenceOrder', u.order);
+                });
+                self.layoutSequence();
+            }).catch(function() {
+                _toast('error', 'Failed to save message order — reload and try again');
+            });
+        },
+
+        exitSequenceView: function() {
+            this.sequenceViewActive = false;
+            this.sequencePanelOpen = false;
+            this.graph.getCells().filter(function(c) { return c.get('isSequenceGuide'); })
+                .forEach(function(c) { c.remove(); });
+            this.layoutDagre('TB');
+        },
 
         exportXml: function() {
             if (!this.currentSavedVpId) {
@@ -4530,7 +4913,7 @@ function composerApp() {
             }
             let self = this;
             self.statusText = 'Exporting ArchiMate XML...';
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/export?format=archimate_exchange')
+            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/export?format=archimate_exchange') // raw-fetch-ok: blob download, Platform.fetch always parses JSON/text
                 .then(function(resp) {
                     if (!resp.ok) throw new Error('Export failed: ' + resp.status);
                     return resp.blob();
@@ -4605,7 +4988,7 @@ function composerApp() {
             }
             vp.format = fmt;
             self.statusText = 'Exporting ' + label + '…';
-            fetch('/archimate/api/composer/export', {
+            fetch('/archimate/api/composer/export', { // raw-fetch-ok: blob download, Platform.fetch always parses JSON/text
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
                 body: JSON.stringify(vp),
@@ -4646,12 +5029,7 @@ function composerApp() {
                 const formData = new FormData();
                 formData.append('file', file);
                 self.statusText = 'Importing ' + file.name + '...';
-                fetch('/archimate/api/import/oef', {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                    body: formData,
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/archimate/api/import/oef', formData, { silent: true })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); self.statusText = 'Import failed'; return; }
                     let elements = data.elements || [];
@@ -4692,7 +5070,7 @@ function composerApp() {
                     });
                 })
                 .catch(function(err) {
-                    _toast('error', 'Import failed: ' + (err.message || err));
+                    _toast('error', 'Import failed: ' + ((err && err.message) || err));
                     self.statusText = 'Import failed';
                 });
             };
@@ -4754,30 +5132,66 @@ function composerApp() {
         },
 
         doQuickAddSearch: function() {
-            let q = (this.quickAddQuery || '').trim().toLowerCase();
+            let self = this;
+            let q = (this.quickAddQuery || '').trim();
             if (!q) { this.quickAddResults = []; return; }
+            let ql = q.toLowerCase();
 
-            /* Filter the local PALETTE catalog (same source as Components palette) */
-            let results = [];
+            /* CMP-11: the placeholder promises "search catalog" by element NAME,
+               but this only ever filtered the PALETTE (element TYPE labels), so
+               typing a real element name returned "no matching element types" and
+               forced the create path. Now it searches the actual catalog by name
+               (existing elements to REUSE) and still offers matching element
+               TYPES to create — the two are visually distinguished and dispatched
+               differently in quickAddPick. */
+            let paletteMatches = [];
             let layers = Object.keys(PALETTE);
             for (let i = 0; i < layers.length; i++) {
-                let layer = layers[i];
-                let items = PALETTE[layer];
+                let items = PALETTE[layers[i]];
                 for (let j = 0; j < items.length; j++) {
                     let t = items[j];
-                    if (t.label.toLowerCase().indexOf(q) !== -1 ||
-                        t.type.toLowerCase().indexOf(q) !== -1) {
-                        results.push({
-                            id: t.type,
-                            name: t.label,
-                            type: t.type,
-                            layer: layer
+                    if (t.label.toLowerCase().indexOf(ql) !== -1 ||
+                        t.type.toLowerCase().indexOf(ql) !== -1) {
+                        paletteMatches.push({
+                            id: t.type, name: t.label, type: t.type,
+                            layer: layers[i], _existing: false,
                         });
                     }
                 }
-                if (results.length >= 15) break;
             }
-            this.quickAddResults = results.slice(0, 15);
+
+            /* CMP-11 (revised): show the synchronous PALETTE matches IMMEDIATELY
+               so the results panel is never empty while the catalog request is in
+               flight — the first version left quickAddResults empty during the
+               fetch, so the "No matching elements" empty-state + create UI flashed
+               on every keystroke. We also set quickAddLoading and carry a request
+               token so a slow earlier response can't overwrite a newer query. */
+            self.quickAddResults = paletteMatches.slice(0, 15);
+            self.quickAddLoading = true;
+            let token = (self._quickAddToken = (self._quickAddToken || 0) + 1);
+            let url = '/archimate/api/elements/search?limit=10&q=' + encodeURIComponent(q);
+            Platform.fetch.get(url, null, { silent: true })
+            .then(function(resp) {
+                if (token !== self._quickAddToken) return;  /* stale response — ignore */
+                let data = (resp && resp.data) || resp || [];
+                let existing = (Array.isArray(data) ? data : [])
+                    .filter(function(el) { return el && el.id && !self.canvasElements[el.id]; })
+                    .map(function(el) {
+                        return {
+                            id: el.id, name: el.name, type: el.type,
+                            layer: (el.layer || '').toLowerCase(), _existing: true,
+                        };
+                    });
+                /* Existing elements first (reuse beats duplicate), then types. */
+                self.quickAddResults = existing.concat(paletteMatches).slice(0, 15);
+                self.quickAddLoading = false;
+            })
+            .catch(function() {
+                if (token !== self._quickAddToken) return;
+                /* Catalog unreachable — keep the palette types already shown. */
+                self.quickAddResults = paletteMatches.slice(0, 15);
+                self.quickAddLoading = false;
+            });
         },
 
         quickAddPick: function(item) {
@@ -4796,15 +5210,27 @@ function composerApp() {
             let GRID = 12;
             cx = Math.round((cx - 100) / GRID) * GRID;
             cy = Math.round((cy - 65) / GRID) * GRID;
+            let placed = self._placementFor(cx, cy);
+            cx = placed.x; cy = placed.y;
+
+            /* CMP-11: an existing catalog element is placed directly — creating a
+               new one would duplicate the record. */
+            if (item._existing && item.id) {
+                let elx = { id: item.id, name: name, type: type, layer: layer };
+                let nodex = createNode(elx.id, elx.name, elx.type, elx.layer, cx, cy);
+                self.graph.addCell(nodex);
+                self.canvasElements[elx.id] = elx;
+                self.elementCount++;
+                if (self.solutionId) self.linkElementToSolution(elx.id);
+                self.statusText = 'Added: ' + elx.name;
+                self.logAuditEvent('element_added', 'element', elx.id, elx.name, null, elx.type);
+                self.refreshMaturityOverlay();
+                return;
+            }
 
             /* Create element in the repository, then place on canvas */
             self.statusText = 'Creating ' + name + '...';
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: name, type: type, layer: layer }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: name, type: type, layer: layer }, { silent: true })
             .then(function(data) {
                 let elem = data.element || data;
                 if (elem.id) {
@@ -4837,7 +5263,7 @@ function composerApp() {
 
             /* If already linked, navigate to the sub-diagram */
             if (existingId) {
-                window.open('/archimate/composer?viewpoint=' + existingId, '_blank');
+                window.open('/archimate/composer?viewpoint_id=' + existingId, '_blank');
                 return;
             }
 
@@ -4848,16 +5274,11 @@ function composerApp() {
 
             self.statusText = 'Creating sub-diagram for ' + elementName + '...';
 
-            fetch('/api/architecture-assistant/viewpoints', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: elementName + ' \u2014 Detail',
-                    description: 'Sub-diagram for ' + elementName + ' (auto-created from composer)',
-                    parent_element_id: elementId,
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/viewpoints', {
+                name: elementName + ' \u2014 Detail',
+                description: 'Sub-diagram for ' + elementName + ' (auto-created from composer)',
+                parent_element_id: elementId,
+            }, { silent: true })
             .then(function(data) {
                 let vpId = data.id || (data.data && data.data.id);
                 if (vpId) {
@@ -4878,11 +5299,21 @@ function composerApp() {
             })
             .catch(function(err) {
                 self.statusText = 'Error creating sub-diagram';
-                _toast('error', err.message || 'Failed');
+                _toast('error', (err && err.message) || 'Failed');
             });
         },
 
         /* ── Delete element from repository ──────────────── */
+        /* GAP-DEL-001 (10 Sep 2026): this control has never worked. It called
+           DELETE /architecture/elements/<id> -- no such route exists (the
+           real one is archimate_crud's /architecture/api/elements/<id>,
+           missing the /api segment here) -- and read data.viewpoint_count /
+           data.solution_count from /archimate/api/elements/<id>/detail,
+           whose response carries neither key, so the confirmation always
+           read "0 viewpoint(s), 0 solution(s)" regardless of real usage.
+           Both fixed: real usage endpoint, real delete endpoint, and the
+           server (not this client) is the one that decides whether an
+           in-use element may be force-deleted -- only an admin may. */
         deleteFromRepository: function() {
             this.ctxMenuOpen = false;
             if (this.mode === 'view') return;
@@ -4894,55 +5325,61 @@ function composerApp() {
             if (!elId) return;
 
             let self = this;
-            /* Fetch usage count before confirming */
-            fetch('/archimate/api/elements/' + elId + '/detail', { credentials: 'same-origin' })
-            .then(function(r) { return r.ok ? r.json() : { viewpoint_count: 0, solution_count: 0 }; })
+            let deleteUrl = '/applications/api/elements/' + elId;
+            // Exclude the diagram currently open: being on THIS diagram is
+            // not "in use elsewhere", it's the normal reason you'd be
+            // right-clicking it at all. Without this every delete looks
+            // in-use and the safe, no-force path is never reachable.
+            let diagramQuery = self.currentSavedVpId ? ('diagram_id=' + self.currentSavedVpId) : '';
+
+            let removeFromCanvas = function() {
+                cell.remove();
+                delete self.canvasElements[elId];
+                self.elementCount = Math.max(0, self.elementCount - 1);
+                self.statusText = 'Deleted from repository: ' + name;
+            };
+
+            let attemptDelete = function(force) {
+                let qs = [diagramQuery, force ? 'force=true' : ''].filter(Boolean).join('&');
+                return fetch(deleteUrl + (qs ? '?' + qs : ''), { // raw-fetch-ok: needs the raw status code (409/403) to branch, Platform.fetch treats non-2xx as a thrown error
+                    method: 'DELETE',
+                    headers: { 'X-CSRFToken': csrfToken() },
+                }).then(function(resp) {
+                    return resp.json().then(function(body) { return { status: resp.status, body: body }; });
+                });
+            };
+
+            Platform.fetch('/applications/api/elements/' + elId + '/usage' + (diagramQuery ? '?' + diagramQuery : ''), { silent: true })
             .then(async function(data) {
-                let vpCount = data.viewpoint_count || 0;
-                let solCount = data.solution_count || 0;
-                let msg = 'DELETE "' + name + '" from the ArchiMate repository?\n\n'
-                    + 'This element is referenced by:\n'
-                    + '  • ' + vpCount + ' viewpoint(s)\n'
-                    + '  • ' + solCount + ' solution(s)\n\n'
-                    + 'This action CANNOT be undone.';
+                let usage = data.usage || { relationships: 0, diagrams: 0 };
+                let inUse = usage.relationships > 0 || usage.diagrams > 0;
+                let msg = inUse
+                    ? ('DELETE "' + name + '" from the ArchiMate repository?\n\n'
+                        + 'This element is referenced by:\n'
+                        + '  • ' + usage.relationships + ' relationship(s)\n'
+                        + '  • ' + usage.diagrams + ' other diagram(s)\n\n'
+                        + 'Deleting it will remove those relationships too. This action CANNOT be undone.')
+                    : ('DELETE "' + name + '" from the ArchiMate repository?\n\n'
+                        + 'Not referenced by any relationship or other diagram.\n\n'
+                        + 'This action CANNOT be undone.');
                 if (!(await Platform.modal.confirm(msg))) return;
 
-                fetch('/architecture/elements/' + elId, {
-                    method: 'DELETE', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                })
-                .then(function(r) {
-                    if (r.ok) {
-                        cell.remove();
-                        delete self.canvasElements[elId];
-                        self.elementCount = Math.max(0, self.elementCount - 1);
-                        self.statusText = 'Deleted from repository: ' + name;
-                    } else {
-                        self.statusText = 'Delete failed';
-                    }
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+                let result = await attemptDelete(inUse);
+                if (result.status === 200) {
+                    removeFromCanvas();
+                    return;
+                }
+                if (result.status === 403) {
+                    _toast('error', 'Only an admin can delete an element still in use elsewhere.');
+                    self.statusText = 'Delete blocked — element in use, admin required';
+                    return;
+                }
+                _toast('error', (result.body && result.body.error) || 'Delete failed');
+                self.statusText = 'Delete failed: ' + name;
             })
-            .catch(async function() {
-                /* Fallback — no usage data available, still allow delete */
-                _toast('warning', 'Could not check element usage — proceeding without usage info');
-                if (!(await Platform.modal.confirm('DELETE "' + name + '" from the ArchiMate repository?\n\nThis action CANNOT be undone.'))) return;
-                fetch('/architecture/elements/' + elId, {
-                    method: 'DELETE', credentials: 'same-origin',
-                    headers: { 'X-CSRFToken': csrfToken() },
-                })
-                .then(function(r) {
-                    if (r.ok) {
-                        cell.remove();
-                        delete self.canvasElements[elId];
-                        self.elementCount = Math.max(0, self.elementCount - 1);
-                        self.statusText = 'Deleted from repository: ' + name;
-                    } else {
-                        self.statusText = 'Delete failed';
-                        _toast('error', 'Delete failed: server returned an error');
-                    }
-                })
-                .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', 'Delete failed: ' + (err.message || 'Unknown error')); });
+            .catch(function(err) {
+                self.statusText = 'Error: ' + (err && err.message);
+                _toast('error', (err && err.message) || 'Could not check element usage');
             });
         },
 
@@ -4972,21 +5409,20 @@ function composerApp() {
                 let m = { level: level, label: 'M' + level, pct: pct, source: 'manual' };
                 self._applyMaturityToCell(cell, m);
                 self.statusText = name + ' → ' + m.label + ' (' + pct + '%)';
-                fetch('/archimate/api/elements/' + elId + '/alignment-score', {
-                    method: 'PUT', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ score: pct }),
-                }).catch(function() { _toast('error', 'Failed to save maturity score'); });
+                Platform.fetch.put('/archimate/api/elements/' + elId + '/alignment-score', { score: pct }, { silent: true })
+                    .catch(function() { _toast('error', 'Failed to save maturity score'); });
             };
         },
 
         /* ── GAP-INT-004: Event badge on elements ───────────── */
-        setEventBadge: function() {
+        setEventBadge: async function() {
             this.ctxMenuOpen = false;
             if (!this.ctxMenuCell || this.mode === 'view') return;
             let cell = this.ctxMenuCell;
             let existing = cell.get('eventSchedule') || '';
-            const schedule = prompt('Enter schedule/event (e.g. "Monthly 27th at 12:45 AM EST"):', existing);
+            const schedule = await Platform.modal.promptText('Enter schedule/event (e.g. "Monthly 27th at 12:45 AM EST"):', {
+                title: 'Event badge', defaultValue: existing
+            });
             if (schedule === null) return; // cancelled
             if (schedule.trim()) {
                 cell.set('eventSchedule', schedule.trim());
@@ -4997,11 +5433,10 @@ function composerApp() {
                 cell.attr('intelligenceBadge/fontWeight', 600);
                 let elId = cell.get('elementId');
                 if (elId && parseInt(elId, 10) > 0) {
-                    fetch('/archimate/api/elements/' + elId, {
-                        method: 'PATCH', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                        body: JSON.stringify({ custom_properties: { event_schedule: schedule.trim() } }),
-                    }).catch(function() {});
+                    Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { event_schedule: schedule.trim() } }, { silent: true })
+                    .catch(function() {
+                        _toast('error', 'Failed to save event schedule — it will be lost on reload');
+                    });
                 }
             }
         },
@@ -5015,11 +5450,10 @@ function composerApp() {
             cell.attr('intelligenceBadge/display', 'none');
             let elId = cell.get('elementId');
             if (elId && parseInt(elId, 10) > 0) {
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH', credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ custom_properties: { event_schedule: '' } }),
-                }).catch(function() {});
+                Platform.fetch.patch('/archimate/api/elements/' + elId, { custom_properties: { event_schedule: '' } }, { silent: true })
+                .catch(function() {
+                    _toast('error', 'Failed to clear event schedule on the server — it may reappear on reload');
+                });
             }
         },
 
@@ -5031,7 +5465,7 @@ function composerApp() {
          *   phasing_out  — amber dashed border
          *   retired      — red dotted border, reduced opacity
          */
-        setLifecycleFromCtx: function(lifecycle) {
+        setLifecycleFromCtx: async function(lifecycle) {
             this.ctxMenuOpen = false;
             let cell = this.ctxMenuCell;
             if (!cell) return;
@@ -5056,7 +5490,7 @@ function composerApp() {
             let previousLifecycle = cell.get('elLifecycle') || '';
             let reason = '';
             if (previousLifecycle && previousLifecycle !== lifecycle) {
-                reason = prompt('Optional reason for lifecycle change (' + previousLifecycle.replace('_', ' ') + ' \u2192 ' + lifecycle.replace('_', ' ') + '):') || '';
+                reason = await Platform.modal.promptText('Optional reason for lifecycle change (' + previousLifecycle.replace('_', ' ') + ' \u2192 ' + lifecycle.replace('_', ' ') + '):', { title: 'Lifecycle change', multiline: true }) || '';
             }
 
             /* Store on cell for save/load */
@@ -5073,18 +5507,12 @@ function composerApp() {
                     changed_at: new Date().toISOString(),
                     reason: reason,
                 };
-                fetch('/archimate/api/elements/' + elId, {
-                    method: 'PATCH',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({
-                        custom_properties: {
-                            lifecycle_current: lifecycle,
-                            _lifecycle_history_append: historyEntry,
-                        },
-                    }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.patch('/archimate/api/elements/' + elId, {
+                    custom_properties: {
+                        lifecycle_current: lifecycle,
+                        _lifecycle_history_append: historyEntry,
+                    },
+                }, { silent: true })
                 .then(function(data) {
                     if (data.error) { _toast('error', data.error); return; }
                     /* Update selectedNode if this element is currently selected */
@@ -5104,11 +5532,7 @@ function composerApp() {
             let self = this;
             if (!(await Platform.modal.confirm('Submit this diagram to the Architecture Review Board for review?'))) return;
 
-            fetch('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/submit-review', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/saved-viewpoints/' + self.currentSavedVpId + '/submit-review', undefined, { silent: true })
             .then(function(data) {
                 if (data.error) { _toast('error', data.error); return; }
                 self.viewpointReviewStatus = 'submitted';
@@ -5131,8 +5555,7 @@ function composerApp() {
             if (self.currentSavedVpId) {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.comments = data.comments || [];
                     self.commentsLoading = false;
@@ -5148,16 +5571,10 @@ function composerApp() {
             let text = (self.newCommentText || '').trim();
             if (!text || !self.commentElementId) return;
 
-            fetch('/archimate/api/elements/' + self.commentElementId + '/comments', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    comment_text: text,
-                    viewpoint_id: self.currentSavedVpId || null,
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/elements/' + self.commentElementId + '/comments', {
+                comment_text: text,
+                viewpoint_id: self.currentSavedVpId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     self.comments.push(data);
@@ -5185,8 +5602,7 @@ function composerApp() {
             if (self.currentSavedVpId) {
                 url += '?viewpoint_id=' + self.currentSavedVpId;
             }
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.auditLog = data.entries || [];
                     self.auditLoading = false;
@@ -5208,13 +5624,13 @@ function composerApp() {
                 old_value: oldVal || null,
                 new_value: newVal || null,
             };
-            /* Fire-and-forget — do not block the UI */
-            fetch('/archimate/api/audit-log', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(payload),
-            }).catch(function() { /* silently ignore audit failures */ _toast('error', 'Failed to log audit event'); });
+            /* Fire-and-forget — do not block the UI. CMP-03: an audit write must
+               never nag the user; the toast here contradicted the non-blocking
+               intent and fired on every removal because the server FK was broken.
+               Requests that reach the server are logged there; requests that fail
+               in transit remain visible through the platform logger. */
+            Platform.fetch.post('/archimate/api/audit-log', payload, { silent: true })
+                .catch(function(err) { Platform.log.error('Failed to record composer audit event', err); });
         },
 
         /* ── CMP-059: Validation API ─────────────────────────────── */
@@ -5251,21 +5667,12 @@ function composerApp() {
                 });
             });
 
-            fetch('/archimate/api/composer/validate', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    phase: self.validationPhase || '',
-                    viewpoint_type: '',
-                }),
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            Platform.fetch.post('/archimate/api/composer/validate', {
+                elements: elements,
+                relationships: relationships,
+                phase: self.validationPhase || '',
+                viewpoint_type: '',
+            }, { silent: true })
             .then(function(data) {
                 self.validationReport = {
                     passed: data.passed || [],
@@ -5279,7 +5686,7 @@ function composerApp() {
                 self.validationReport = {
                     passed: [],
                     warnings: [],
-                    errors: [{ check: 'fetch_error', message: 'Validation request failed: ' + err.message, element_ids: [] }],
+                    errors: [{ check: 'fetch_error', message: 'Validation request failed: ' + ((err && err.message) || err), element_ids: [] }],
                 };
                 _toast('error', 'Validation request failed');
             });
@@ -5509,7 +5916,7 @@ function composerApp() {
                 let self = this;
                 setTimeout(function() {
                     if (self.canvasSearchMatches.indexOf(cell) !== -1) {
-                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                        try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic flash highlight on a search match; the match is still selected and centred */ }
                     }
                 }, 100);
             }
@@ -5521,7 +5928,7 @@ function composerApp() {
             this.canvasSearchMatches.forEach(function(cell) {
                 let view = self.paper.findViewByModel(cell);
                 if (view) {
-                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.unhighlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 8, attrs: { stroke: '#ec5b13', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing search matches */ }
                 }
             });
         },
@@ -5586,9 +5993,11 @@ function composerApp() {
         },
 
         _saveCustomPropsToStorage: function() {
+            /* Local cache only — _syncCustomPropsToServer() is the real persistence
+               path and reports its own failures, so a storage failure here is harmless. */
             try {
                 localStorage.setItem(this._customPropsKey(), JSON.stringify(this.customProperties));
-            } catch(e) {}
+            } catch(e) { /* swallow-ok: local cache only; _syncCustomPropsToServer is the real persistence path and reports its own failures */ }
         },
 
         /** CMP-043: Persist custom properties to server API for a real DB element. */
@@ -5599,11 +6008,8 @@ function composerApp() {
             /* Convert [{key,value}] array to {key: value} dict for the API */
             let payload = {};
             props.forEach(function(p) { payload[p.key] = p.value; });
-            fetch('/archimate/api/elements/' + id + '/properties', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            }).catch(function() { /* silent — localStorage is fallback */ _toast('error', 'Failed to sync viewpoint state'); });
+            Platform.fetch.put('/archimate/api/elements/' + id + '/properties', payload, { silent: true })
+            .catch(function() { _toast('error', 'Failed to save custom properties to the server — they are only in this browser.'); });
         },
 
         /** CMP-043: Load custom properties from server API for a real DB element. */
@@ -5611,8 +6017,9 @@ function composerApp() {
             let self = this;
             let id = parseInt(elementId, 10);
             if (!id || id <= 0) return;
-            fetch('/archimate/api/elements/' + id + '/properties')
-                .then(function(r) { return r.ok ? r.json() : null; })
+            Platform.fetch('/archimate/api/elements/' + id + '/properties', { silent: true })
+                /* A failed load must not leave the stale localStorage copy on screen
+                   as though it were what the server holds — the catch below toasts. */
                 .then(function(data) {
                     if (!data) return;
                     /* Convert {key: value} dict to [{key, value}] array */
@@ -5624,7 +6031,7 @@ function composerApp() {
                     self.customProperties = Object.assign({}, self.customProperties);
                     self._saveCustomPropsToStorage();
                 })
-                .catch(function() { /* silent */ _toast('error', 'Failed to load custom properties'); });
+                .catch(function() { _toast('error', 'Failed to load custom properties from the server; any shown here are a local cache.'); });
         },
 
         getCustomProps: function(elementId) {
@@ -5672,8 +6079,7 @@ function composerApp() {
             self.linkViewpointTargetCell = self._currentSelectedCell;
             self.linkViewpointModalOpen = true;
             /* Fetch saved viewpoints for picker */
-            fetch('/archimate/api/saved-viewpoints', { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/saved-viewpoints', { silent: true })
                 .then(function(data) {
                     self.linkViewpointList = (data.viewpoints || data || []).map(function(v) {
                         return { id: v.id, name: v.name || v.viewpoint_name || 'Unnamed' };
@@ -5817,7 +6223,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 6, rx: 8, attrs: { stroke: '#dc2626', 'stroke-width': 3 } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else if (el.id in downIds) {
                     /* Downstream: orange tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - downIds[el.id] * 0.15) });
@@ -5825,7 +6231,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#f97316', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else if (el.id in upIds) {
                     /* Upstream: blue tint */
                     vel.attr({ opacity: Math.max(0.4, 1 - upIds[el.id] * 0.15) });
@@ -5833,7 +6239,7 @@ function composerApp() {
                         view.highlight(null, {
                             highlighter: { name: 'stroke', options: { padding: 4, rx: 6, attrs: { stroke: '#3b82f6', 'stroke-width': 2, 'stroke-dasharray': '4,2' } } }
                         });
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: cosmetic dependency-chain outline; the opacity tint and the statusText summary still convey the result */ }
                 } else {
                     /* Unrelated: dim to 20% */
                     vel.attr({ opacity: 0.2 });
@@ -5867,7 +6273,7 @@ function composerApp() {
                 let view = self.paper.findViewByModel(el);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) {}
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing the dependency overlay */ }
             });
 
             /* Reset all link visuals */
@@ -5894,17 +6300,14 @@ function composerApp() {
         loadLandscapeData: function() {
             let self = this;
             self.landscapeLoading = true;
-            fetch('/archimate/api/landscape?row_type=' + encodeURIComponent(self.landscapeRowType) + '&col_type=' + encodeURIComponent(self.landscapeColType), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/landscape?row_type=' + encodeURIComponent(self.landscapeRowType) + '&col_type=' + encodeURIComponent(self.landscapeColType), { silent: true })
             .then(function(data) {
                 self.landscapeData = data;
                 self.landscapeLoading = false;
             })
             .catch(function(e) {
                 self.landscapeLoading = false;
-                self.statusText = 'Landscape load failed: ' + e.message;
+                self.statusText = 'Landscape load failed: ' + ((e && e.message) || e);
                 _toast('error', self.statusText);
             });
         },
@@ -5946,8 +6349,7 @@ function composerApp() {
             let url = '/archimate/api/matrix?row_type=' + encodeURIComponent(self.matrixRowType) +
                       '&col_type=' + encodeURIComponent(self.matrixColType);
 
-            fetch(url, { credentials: 'same-origin' })
-                .then(function(r) { return r.json(); })
+            Platform.fetch(url, { silent: true })
                 .then(function(data) {
                     self.matrixRows = data.rows || [];
                     self.matrixCols = data.columns || [];
@@ -5956,7 +6358,7 @@ function composerApp() {
                 })
                 .catch(function(e) {
                     self.matrixLoading = false;
-                    self.statusText = 'Matrix load failed: ' + e.message;
+                    self.statusText = 'Matrix load failed: ' + ((e && e.message) || e);
                     _toast('error', self.statusText);
                 });
         },
@@ -6376,15 +6778,7 @@ function composerApp() {
             self.statusText = 'Loading intelligence data…';
 
             let url = '/archimate/api/composer/intelligence?element_ids=' + elementIds.join(',');
-            fetch(url, {
-                method: 'GET',
-                credentials: 'same-origin',
-                headers: { 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 self.intelligenceData = data.enrichment || data || {};
                 self.intelligenceEnabled = true;
@@ -6396,7 +6790,7 @@ function composerApp() {
             .catch(function(err) {
                 self.intelligenceLoading = false;
                 self.statusText = 'Intelligence failed';
-                _toast('error', 'Enterprise Intelligence failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Enterprise Intelligence failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 
@@ -6558,10 +6952,7 @@ function composerApp() {
             self.graph.getElements().forEach(function(c) { let e = c.get('elementId'); if (e) ids.push(e); });
             if (!ids.length) { self.heatmapLoading = false; _toast('warning', 'No elements on canvas'); return; }
 
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin', headers: { 'X-CSRFToken': csrfToken() },
-            })
-            .then(function(r) { return r.ok ? r.json() : Promise.reject('HTTP ' + r.status); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 let enrichment = data.enrichment || {};
                 let HEAT = { maturity: ['#ef4444','#f97316','#eab308','#84cc16','#22c55e'],
@@ -6586,7 +6977,7 @@ function composerApp() {
             .catch(function(e) {
                 self.heatmapLoading = false;
                 self.heatmapEnabled = false;
-                _toast('error', 'Heatmap failed: ' + e);
+                _toast('error', 'Heatmap failed: ' + ((e && e.message) || e));
             });
         },
 
@@ -6632,13 +7023,7 @@ function composerApp() {
             self.explanationLoading = true;
             self.statusText = 'Generating explanation…';
 
-            fetch('/archimate/api/composer/explain', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ element_ids: elementIds }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain', { element_ids: elementIds }, { silent: true })
             .then(function(data) {
                 self.explanationLoading = false;
                 let text = data.explanation || data.message || 'No explanation returned';
@@ -6650,7 +7035,7 @@ function composerApp() {
             .catch(function(err) {
                 self.explanationLoading = false;
                 self.statusText = 'Explain failed';
-                _toast('error', 'Diagram explanation failed: ' + (err.message || 'Unknown error'));
+                _toast('error', 'Diagram explanation failed: ' + ((err && err.message) || 'Unknown error'));
             });
         },
 

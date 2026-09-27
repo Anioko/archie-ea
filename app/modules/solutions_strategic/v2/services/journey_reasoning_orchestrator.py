@@ -528,6 +528,7 @@ class JourneyReasoningOrchestrator:
 
         try:
             mappings = (
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 ApplicationCapabilityMapping.query
                 .filter(ApplicationCapabilityMapping.business_capability_id.in_(confirmed_ids))
                 .all()
@@ -762,7 +763,7 @@ class JourneyReasoningOrchestrator:
 
         data = self._get_journey_data()
         landscape = data.get("landscape", [])
-        confirmed = data.get("confirmed_capabilities", [])
+        data.get("confirmed_capabilities", [])
 
         cost_by_capability = {}
         total_annual = 0.0
@@ -886,7 +887,7 @@ class JourneyReasoningOrchestrator:
                             f"'{da['app_name']}' serves capability '{cap['name']}' "
                             f"but has lifecycle status '{da['lifecycle_status']}' (decommissioning)"
                         ),
-                        evidence=f"lifecycle_status='{da['lifecycle_status']}' on app_id={da['app_id']}",
+                        evidence=f"lifecycle_status='{da['lifecycle_status']}' on app_id={da['app_id']}",  # raw-html-ok: internal evidence string field, never rendered as HTML/browser output
                         recommended_mitigation=f"Plan migration from '{da['app_name']}' before decommission date",
                     ))
 
@@ -1027,7 +1028,7 @@ class JourneyReasoningOrchestrator:
         landscape = data.get("landscape", [])
         gaps = data.get("gaps", [])
         recommendation = data.get("recommendation", {})
-        selected = recommendation.get("selected_option", {})
+        recommendation.get("selected_option", {})
 
         # Build section narratives from graph data
         narratives = {}
@@ -1504,7 +1505,6 @@ Do not use placeholder text or generic language.
         # Also link DataObject elements related to the confirmed capabilities
         # The Code Workbench needs DataObjects for class diagram generation
         try:
-            from app.models.archimate_core import ArchiMateElement as AE
             from sqlalchemy import text as sa_text
 
             confirmed = self._get_journey_data().get("confirmed_capabilities", [])

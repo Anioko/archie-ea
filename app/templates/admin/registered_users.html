@@ -1,13 +1,20 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}Registered Users{% endblock %}
 {% from "components/page_header.html" import page_header %}
 {% from "components/filter_bar.html" import filter_bar %}
 {% from "components/card.html" import card, card_content %}
 
 {% block content %}
 <div class="space-y-6">
+    {# A-02: this directory is scoped to the current organisation (deliberately —
+       see the tenant-scoping-ok note in admin_routes.py::registered_users). State
+       that scope explicitly so "2 users" here and "22 users" summed across
+       /admin/organizations read as the same number viewed at two scopes, not a
+       drift or a leak. #}
     {{ page_header(
         title='Registered Users',
-        description='View and manage currently registered users.',
+        description='View and manage users registered to ' ~ (current_org.name if current_org else 'this organization')
+            ~ ' (' ~ users|length ~ ' of ' ~ platform_total_users ~ ' users platform-wide — see Organizations for the full breakdown).',
         breadcrumbs=[
             {'label': 'Admin', 'href': url_for('admin.index')},
             {'label': 'Registered Users'}
@@ -68,12 +75,16 @@
                                         Set password
                                     </a>
                                     <a href="{{ url_for('admin.delete_user_request', user_id=u.id) }}"
-                                       class="inline-flex items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 transition-colors {% if current_user.id == u.id %}pointer-events-none opacity-50{% endif %}"
+                                       class="inline-flex items-center justify-center rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive-emphasis hover:bg-destructive/20 transition-colors {% if current_user.id == u.id %}pointer-events-none opacity-50{% endif %}"
                                        aria-disabled="{{ 'true' if current_user.id == u.id else 'false' }}">
                                         Delete
                                     </a>
                                 </div>
                             </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="p-6 text-center text-sm text-muted-foreground">No registered users found.</td>
                         </tr>
                     {% endfor %}
                     </tbody>

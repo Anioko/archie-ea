@@ -8,6 +8,19 @@
  * Template uses: x-data="blueprintPage()"
  */
 
+// F500-062: the four Governance & Compliance controls that have a real editor
+// (solutions/partials/_blueprint_governance_editor.html). Required fields
+// mirror _register_crud() in solution_sad_routes.py.
+const GOVERNANCE_EDITOR_ID = 'bp-governance-editor';
+const COMPOSITION_EDITOR_ID = 'bp-composition-editor';
+const DELETE_CONFIRMATION_ID = 'bp-delete-confirmation';
+const GOVERNANCE_EDITOR_TYPES = {
+    governance_exception: { label: 'Governance Exception', required: [['exception_description', 'Exception description']] },
+    compliance_mapping:   { label: 'Compliance Mapping',   required: [['framework', 'Framework'], ['control_id', 'Control ID']] },
+    change_request:       { label: 'Change Request',       required: [['change_type', 'Change type'], ['title', 'Title']] },
+    feasibility_review:   { label: 'Feasibility Review',   required: [['review_type', 'Review type']] }
+};
+
 function blueprintPage() {
     const cfg = window.__BLUEPRINT_CONFIG__ || {};
 
@@ -16,11 +29,16 @@ function blueprintPage() {
         csrfToken: cfg.csrfToken || '',
         narratives: {},
         scores: cfg.scores || {},
+        // Declared so the shared solution partials (_technology_elements,
+        // _phase_a_elements, …) that reference archimateElements don't throw a
+        // ReferenceError on the blueprint page. Empty is handled by their guards.
+        archimateElements: cfg.archimateElements || [],
         riskImporting: false,
         riskImportResult: null,
         sectionElements: {},
         sectionRelationships: {},
         diagramsLoaded: {},
+        diagramErrors: {},
         renderers: {},
         saving: {},
         narrativeSaving: {},   // 'idle' | 'saving' | 'saved' | 'error' per section
@@ -55,7 +73,21 @@ function blueprintPage() {
         formData: {},
         activeModal: null,
         deleteTarget: null,
+        deleteType: '',
+        deleteError: '',
+        deleteSaving: false,
+        deleteRevision: 0,
+        pendingDeletes: [],
+        completedDeletes: [],
+        _deleteHooked: false,
         modalSaving: false,
+        entityError: '',
+        entityNotice: '',
+        entityRevision: 0,
+        govPicker: { query: '', results: [], error: '' },
+        _govEditorHooked: false,
+        compositionPicker: { query: '', results: [], error: '', loading: false, searched: false },
+        _compositionEditorHooked: false,
         apiBase: '/solutions/' + (cfg.solutionId || ''),
         
         // Compliance gap analysis state
@@ -144,22 +176,20 @@ function blueprintPage() {
 
         /* ── narrative auto-save (debounce handled by Alpine @input.debounce) ── */
 
-        autoSave: function (sectionId) {
+        autoSave: async function (sectionId) {
             let self = this;
             if (self.saving[sectionId]) return;
             self.saving[sectionId] = true;
             self.narrativeSaving[sectionId] = 'saving';
 
-            fetch('/solutions/' + self.solutionId + '/api/section-narratives/' + sectionId, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({ narrative: self.narratives[sectionId] })
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Save failed: ' + r.status);
+            try {
+                // Platform.fetch will throw on non-ok responses; we rely on that to go to catch.
+                // It also automatically injects CSRF and serializes plain objects.
+                await Platform.fetch('/solutions/' + self.solutionId + '/api/section-narratives/' + sectionId, {
+                    method: 'PUT',
+                    body: { narrative: self.narratives[sectionId] },
+                    silent: true   // We paint our own inline error state (narrativeSaving[sectionId] = 'error')
+                });
                 self.narrativeSaving[sectionId] = 'saved';
                 self._refreshScores();
                 // Clear the "Saved" indicator after 3 seconds
@@ -168,34 +198,28 @@ function blueprintPage() {
                         self.narrativeSaving[sectionId] = 'idle';
                     }
                 }, 3000);
-            })
-            .catch(function (e) {
-                console.error('[blueprint] autoSave error:', e);
+            } catch (e) {
+                // Platform.fetch already shows a toast unless silent:true; we passed silent:true,
+                // so we must surface the failure to the user via our inline state.
                 self.narrativeSaving[sectionId] = 'error';
-            })
-            .finally(function () {
+            } finally {
                 self.saving[sectionId] = false;
-            });
+            }
         },
 
-        generateNarrative: function (sectionId) {
+        generateNarrative: async function (sectionId) {
             let self = this;
             if (self.generatingNarrative[sectionId]) return;
             self.generatingNarrative[sectionId] = true;
 
-            fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
+                    method: 'POST',
+                    body: {},
+                    // No need to pass CSRF token or Content-Type header; Platform.fetch handles them.
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (!data.success && data.error) throw new Error(data.error);
                 if (data.narrative) {
                     self.narratives[sectionId] = data.narrative;
@@ -210,14 +234,13 @@ function blueprintPage() {
                 if (window.Platform && Platform.toast) {
                     Platform.toast.success('Narrative generated (' + (data.word_count || 0) + ' words)');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateNarrative error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error(e.message || 'Generation failed');
-            })
-            .finally(function () {
+            } catch (e) {
+                // Platform.fetch already shows a toast (silent:false), but we must still
+                // rethrow to ensure the error is not swallowed.
+                throw e;
+            } finally {
                 self.generatingNarrative[sectionId] = false;
-            });
+            }
         },
 
         /* ── diagram lazy-loading (called via x-intersect.once) ────── */
@@ -234,7 +257,7 @@ function blueprintPage() {
             self._renderDiagram(sectionId);
         },
 
-        _renderDiagram: function (sectionId) {
+        _renderDiagram: async function (sectionId) {
             let self = this;
 
             if (typeof joint === 'undefined' || !joint.dia || typeof ComposerRenderer === 'undefined') return;
@@ -244,23 +267,32 @@ function blueprintPage() {
 
             // Destroy existing renderer if present
             if (self.renderers[sectionId]) {
-                try { self.renderers[sectionId].destroy(); } catch (e) {}
+                // Best-effort teardown of the previous JointJS instance before
+                // replacing it — a throw here (e.g. paper already detached)
+                // must not block rendering the new one.
+                try { self.renderers[sectionId].destroy(); } catch (e) { /* swallow-ok: teardown of the previous JointJS paper before it is replaced; a throw on an already-detached paper must not stop the new diagram rendering */ }
                 delete self.renderers[sectionId];
             }
 
-            // Always fetch so relationships are included alongside elements
-            fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
+            self.diagramErrors[sectionId] = false;
+
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements', {
+                    silent: true   // We paint our own error state (diagramErrors[sectionId] = true)
+                });
                 const elements = (data.data && data.data.elements) || [];
                 const relationships = (data.data && data.data.relationships) || [];
                 self.sectionElements[sectionId] = elements;
                 self.sectionRelationships[sectionId] = relationships;
                 self._doRenderDiagram(sectionId, container, elements, relationships);
-            })
-            .catch(function (e) {
-                console.warn('[blueprint] diagram fetch failed for ' + sectionId + ':', e);
-            });
+            } catch (e) {
+                // Platform.fetch throws on non-ok responses. We must surface the failure
+                // via our inline error state.
+                self.diagramErrors[sectionId] = true;
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         _doRenderDiagram: function (sectionId, container, elements, relationships) {
@@ -311,7 +343,7 @@ function blueprintPage() {
                     }));
                 });
             } catch (e) {
-                console.warn('[blueprint] diagram render failed for ' + sectionId + ':', e);
+                self.diagramErrors[sectionId] = true;
             }
         },
 
@@ -319,7 +351,11 @@ function blueprintPage() {
 
         openComposer: function (sectionId) {
             let self = this;
-            window.open('/archimate/composer?solution=' + self.solutionId + '&section=' + sectionId, '_blank');
+            /* The composer reads `solution_id`, not `solution` — and has no
+             * mechanism to scroll to a specific blueprint section, so
+             * `section` is dropped rather than passed as a param that does
+             * nothing. */
+            window.open('/archimate/composer?solution_id=' + self.solutionId, '_blank');
         },
 
         exportPng: function (sectionId) {
@@ -327,6 +363,8 @@ function blueprintPage() {
             let renderer = self.renderers[sectionId];
             if (renderer && typeof renderer.exportPng === 'function') {
                 renderer.exportPng();
+            } else if (window.Platform && Platform.toast) {
+                Platform.toast.error('No diagram is available to export for this section.');
             }
         },
 
@@ -336,23 +374,16 @@ function blueprintPage() {
             }));
         },
 
-        generateFromJourney: function (sectionId) {
+        generateFromJourney: async function (sectionId) {
             let self = this;
 
-            // POST to the section-level generate endpoint (added in PLT-040+)
-            fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({})
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                // Platform.fetch returns the parsed response body directly.
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint/' + sectionId + '/generate', {
+                    method: 'POST',
+                    body: {},
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.elements && data.elements.length) {
                     self.sectionElements[sectionId] = data.elements;
                 }
@@ -361,14 +392,15 @@ function blueprintPage() {
                 if (window.Platform && Platform.toast) {
                     Platform.toast.success(data.narrative ? 'Narrative generated (' + (data.word_count || 0) + ' words)' : 'Generation complete');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateFromJourney error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Generation failed: ' + e.message);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        generateAll: function () {
+        generateAll: async function () {
             let self = this;
             const desc = ((window.__BLUEPRINT_CONFIG__ || {}).sadData || {}).description ||
                        (window.__BLUEPRINT_CONFIG__ || {}).solutionName || '';
@@ -380,19 +412,12 @@ function blueprintPage() {
 
             if (window.Platform && Platform.toast) Platform.toast.success('Generating — this takes 20-40 seconds…');
 
-            fetch('/solutions/' + self.solutionId + '/generate-draft', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify({ problem_statement: desc })
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Generate failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/generate-draft', {
+                    method: 'POST',
+                    body: { problem_statement: desc },
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.success) {
                     self._refreshScores();
                     if (window.Platform && Platform.toast) Platform.toast.success('Created ' + (data.total || 0) + ' entities — reloading…');
@@ -400,27 +425,191 @@ function blueprintPage() {
                 } else {
                     if (window.Platform && Platform.toast) Platform.toast.error(data.error || 'Generation failed');
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateAll error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Generation failed: ' + e.message);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         /* ── entity CRUD (ported from detail-phase-crud.js) ─────────── */
 
         openEntityModal: function (type, entity) {
+            this.entityRevision += 1;
             this.entityType = type;
             this.editingEntity = entity || null;
             this.formData = entity ? Object.assign({}, entity) : this._defaults(type);
+            this.entityError = '';
+            this.govPicker = { query: '', results: [], error: '' };
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
             this.activeModal = type;
+            // F500-062: the four Governance & Compliance controls render in the
+            // Platform.modal editor (_blueprint_governance_editor.html). Other
+            // Composition has its own editor below; other types remain unchanged.
+            if (GOVERNANCE_EDITOR_TYPES[type]) {
+                if (type === 'feasibility_review') {
+                    // <select> models strings; the API returns true/false/null.
+                    this.formData.feasible = this.formData.feasible === true ? 'true'
+                        : this.formData.feasible === false ? 'false' : '';
+                }
+                if (window.Platform && Platform.modal) {
+                    if (!this._govEditorHooked) {
+                        this._govEditorHooked = true;
+                        let self = this;
+                        // Escape / backdrop / × close through Platform.modal, not closeModal():
+                        // reset the shared state so the next click opens clean.
+                        Platform.modal.on(GOVERNANCE_EDITOR_ID, 'close', function () {
+                            if (self.activeModal) self._resetEntityState();
+                        });
+                    }
+                    Platform.modal.open(GOVERNANCE_EDITOR_ID);
+                }
+            } else if (type === 'composition' && window.Platform && Platform.modal) {
+                if (!this._compositionEditorHooked) {
+                    this._compositionEditorHooked = true;
+                    const self = this;
+                    Platform.modal.on(COMPOSITION_EDITOR_ID, 'close', function () {
+                        if (self.activeModal === 'composition') self._resetEntityState();
+                    });
+                }
+                Platform.modal.open(COMPOSITION_EDITOR_ID);
+            }
         },
 
-        closeModal: function () {
+        governanceEditorTitle: function () {
+            const def = GOVERNANCE_EDITOR_TYPES[this.entityType];
+            if (!def) return '';
+            return (this.editingEntity && this.editingEntity.id ? 'Edit ' : 'Add ') + def.label;
+        },
+
+        _resetEntityState: function () {
+            this.entityRevision += 1;
             this.activeModal = null;
             this.editingEntity = null;
             this.formData = {};
+            this.entityError = '';
+            this.govPicker = { query: '', results: [], error: '' };
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
             this.modalSaving = false;
+        },
+
+        closeModal: function () {
+            if (this.entityType === 'composition' && window.Platform && Platform.modal &&
+                Platform.modal.isOpen(COMPOSITION_EDITOR_ID)) {
+                Platform.modal.close(COMPOSITION_EDITOR_ID);
+            }
+            if (GOVERNANCE_EDITOR_TYPES[this.entityType] && window.Platform && Platform.modal &&
+                Platform.modal.isOpen(GOVERNANCE_EDITOR_ID)) {
+                Platform.modal.close(GOVERNANCE_EDITOR_ID); // close hook resets state
+            }
+            this._resetEntityState();
+        },
+
+        clearCompositionComponent: function () {
+            this.formData.component_id = null;
+            this.formData.component_name = '';
+            this.entityError = '';
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
+        },
+
+        searchCompositionComponents: async function () {
+            const self = this;
+            const picker = self.compositionPicker;
+            const q = picker.query.trim();
+            const revision = self.entityRevision;
+            const type = self.formData.component_type;
+            picker.results = [];
+            picker.error = '';
+            picker.searched = false;
+            if (q.length < 2 || !['application', 'archimate_element'].includes(type)) return;
+            picker.loading = true;
+            const current = function () {
+                return revision === self.entityRevision && picker === self.compositionPicker &&
+                    picker.query.trim() === q && self.formData.component_type === type;
+            };
+            try {
+                // The DESIGN.md decision-search URL was retired; this is the
+                // current ArchiMate search route used by the architecture forms.
+                const url = type === 'application'
+                    ? '/applications/api/list?search=' + encodeURIComponent(q) + '&limit=10&per_page=10'
+                    : '/archimate/api/elements/search?q=' + encodeURIComponent(q) + '&limit=10';
+                const data = await Platform.fetch(url, { silent: true });
+                const items = type === 'application' ? data.applications
+                    : (Array.isArray(data) ? data : data.data);
+                if (!Array.isArray(items) || items.some(function (item) {
+                    return !item || !Number.isInteger(Number(item.id)) || Number(item.id) <= 0 ||
+                        typeof item.name !== 'string' || !item.name.trim();
+                })) throw new Error('Component search returned an invalid response.');
+                if (!current()) return;
+                picker.results = items.map(function (item) { return { id: Number(item.id), name: item.name }; });
+                picker.searched = true;
+            } catch (err) {
+                if (!current()) return;
+                picker.error = (err && err.message) || 'Component search failed. Try again.';
+            } finally {
+                if (current()) picker.loading = false;
+            }
+        },
+
+        pickCompositionComponent: function (item) {
+            this.formData.component_id = item.id;
+            this.formData.component_name = item.name;
+            this.compositionPicker = { query: '', results: [], error: '', loading: false, searched: false };
+            this.entityError = '';
+        },
+
+        /* ── governance element picker (principle / mapped element) ── */
+
+        searchGovElements: async function () {
+            let self = this;
+            const q = (self.govPicker.query || '').trim();
+            if (q.length < 2) { self.govPicker.results = []; return; }
+            try {
+                const typeFilter = self.entityType === 'governance_exception' ? '&type=Principle' : '';
+                const data = await Platform.fetch('/archimate/api/elements/search?q=' + encodeURIComponent(q) + '&limit=10' + typeFilter, { silent: true });
+                const payload = Array.isArray(data) ? data : (data && (data.data || data.items));
+                if (!Array.isArray(payload)) throw new Error('Element search returned an invalid response.');
+                self.govPicker.results = payload.map(function (el) {
+                    return { id: el.id, name: el.name, element_type: el.element_type || el.type || '' };
+                });
+                self.govPicker.error = '';
+            } catch (e) {
+                self.govPicker.results = [];
+                self.govPicker.error = (e && e.message) || 'Element search failed';
+            }
+        },
+
+        pickGovElement: function (el) {
+            if (this.entityType === 'governance_exception') {
+                this.formData.principle_id = el.id;
+                this.formData.principle_name = el.name;
+            } else if (this.entityType === 'compliance_mapping') {
+                this.formData.archimate_element_id = el.id;
+                this.formData.element_name = el.name;
+            }
+            this.govPicker = { query: '', results: [], error: '' };
+        },
+
+        clearGovElement: function () {
+            if (this.entityType === 'governance_exception') {
+                this.formData.principle_id = null;
+                this.formData.principle_name = '';
+            } else if (this.entityType === 'compliance_mapping') {
+                this.formData.archimate_element_id = null;
+                this.formData.element_name = '';
+            }
+        },
+
+        _governancePayload: function () {
+            const body = Object.assign({}, this.formData);
+            if (this.entityType === 'feasibility_review') {
+                body.feasible = body.feasible === 'true' ? true : body.feasible === 'false' ? false : null;
+            }
+            ['expiry_date', 'approval_date', 'affected_phase', 'review_phase'].forEach(function (k) {
+                if (body[k] === '') body[k] = null;
+            });
+            return body;
         },
 
         _defaults: function (type) {
@@ -519,84 +708,192 @@ function blueprintPage() {
             return '';
         },
 
-        submitEntity: function () {
+        submitEntity: async function () {
             let self = this;
-            self.modalSaving = true;
             let type = self.entityType;
+            const govDef = GOVERNANCE_EDITOR_TYPES[type];
+            const hasEditor = !!govDef || type === 'composition';
+            const revision = self.entityRevision;
+            if (self.modalSaving) return;
+            if (type === 'composition') {
+                if (!Number.isInteger(Number(self.formData.component_id)) || Number(self.formData.component_id) <= 0 ||
+                    !self.formData.component_name || !self.formData.component_name.trim()) {
+                    self.entityError = 'Select a component from the search results.';
+                    return;
+                }
+                self.entityError = '';
+            }
+            if (govDef) {
+                // Mirror the server's required-field check so a blank submit
+                // gets a field-specific message without a round trip.
+                for (let i = 0; i < govDef.required.length; i++) {
+                    const v = self.formData[govDef.required[i][0]];
+                    if (v === null || v === undefined || (typeof v === 'string' && !v.trim())) {
+                        self.entityError = govDef.required[i][1] + ' is required.';
+                        return;
+                    }
+                }
+                self.entityError = '';
+            }
+            self.modalSaving = true;
             const isEdit = self.editingEntity && self.editingEntity.id;
             let url = self.apiBase + self._apiPath(type) + (isEdit ? '/' + self.editingEntity.id : '');
             const method = isEdit ? 'PUT' : 'POST';
+            let writeSucceeded = false;
 
-            fetch(url, {
-                method: method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                },
-                body: JSON.stringify(self.formData)
-            })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return self.refreshEntityData(type);
-            })
-            .then(function () {
+            try {
+                // Platform.fetch will throw on non-ok responses.
+                const res = await Platform.fetch(url, {
+                    method: method,
+                    body: govDef ? self._governancePayload() : self.formData,
+                    silent: true   // We paint our own error state below.
+                });
+                // A 200 with {success:false} is still a failed save.
+                if (res && typeof res === 'object' && res.success === false) {
+                    throw new Error(res.error || res.message || 'Save failed');
+                }
+                writeSucceeded = true;
+                await self.refreshEntityData(type);
+                if (hasEditor && revision !== self.entityRevision) return;
+                if (hasEditor) self.entityNotice = '';
                 self.closeModal();
-            })
-            .catch(function (err) {
-                console.error('[blueprint] submitEntity error:', err);
+            } catch (err) {
+                if (hasEditor && revision !== self.entityRevision) {
+                    self.entityNotice = writeSucceeded
+                        ? 'Saved, but the list could not be refreshed — reload the page to see the latest data'
+                        : 'The dismissed editor could not save: ' + ((err && err.message) || 'Save failed');
+                    return;
+                }
                 self.modalSaving = false;
+                if (hasEditor) {
+                    if (writeSucceeded) {
+                        // The POST succeeded. A retry would create a duplicate.
+                        self.closeModal();
+                        self.entityNotice = 'Saved, but the list could not be refreshed — reload the page to see the latest data';
+                        return;
+                    }
+                    // Keep the editor open with the user's input; show the server's reason.
+                    self.entityError = (err && err.message) || 'Save failed';
+                    return;
+                }
                 if (window.Platform && Platform.toast) Platform.toast.error('Save failed');
-            });
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
+            }
         },
 
         confirmDeleteEntity: function (type, entity) {
-            this.entityType = type;
-            this.deleteTarget = entity;
-            this.activeModal = 'delete';
+            const path = this._apiPath(type);
+            if (!path || !entity || entity.id === null || entity.id === undefined) return;
+            const key = type + ':' + entity.id;
+            if (this.pendingDeletes.includes(key)) {
+                this.entityNotice = 'Deletion is already in progress for this item.';
+                return;
+            }
+            if (this.completedDeletes.includes(key)) {
+                this.entityNotice = 'This item was already deleted. Reload the page to see the latest data.';
+                return;
+            }
+            this.deleteRevision += 1;
+            this.deleteType = type;
+            this.deleteTarget = Object.assign({}, entity);
+            this.deleteError = '';
+            this.deleteSaving = false;
+            if (!this._deleteHooked) {
+                this._deleteHooked = true;
+                const self = this;
+                Platform.modal.on(DELETE_CONFIRMATION_ID, 'close', function () {
+                    self.deleteRevision += 1;
+                    self.deleteTarget = null;
+                    self.deleteType = '';
+                    self.deleteError = '';
+                    self.deleteSaving = false;
+                });
+            }
+            Platform.modal.open(DELETE_CONFIRMATION_ID);
         },
 
-        executeDeleteEntity: function () {
-            let self = this;
-            if (!self.deleteTarget) return;
-            self.modalSaving = true;
-            let type = self.entityType;
-            let url = self.apiBase + self._apiPath(type) + '/' + self.deleteTarget.id;
-
-            fetch(url, {
-                method: 'DELETE',
-                headers: { 'X-CSRFToken': self.csrfToken }
-            })
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return self.refreshEntityData(type);
-            })
-            .then(function () {
-                self.closeModal();
-            })
-            .catch(function (err) {
-                console.error('[blueprint] executeDeleteEntity error:', err);
-                self.modalSaving = false;
-                if (window.Platform && Platform.toast) Platform.toast.error('Delete failed');
-            });
+        deleteTargetName: function () {
+            const target = this.deleteTarget || {};
+            return target.component_name || target.name || target.title || target.exception_description ||
+                target.control_id || target.review_type || ('Item ' + (target.id || ''));
         },
 
-        refreshEntityData: function (type) {
+        closeDeleteConfirmation: function () {
+            Platform.modal.close(DELETE_CONFIRMATION_ID);
+        },
+
+        executeDeleteEntity: async function () {
+            const self = this;
+            if (!self.deleteTarget || self.deleteSaving) return;
+            const type = self.deleteType;
+            const id = self.deleteTarget.id;
+            const key = type + ':' + id;
+            if (self.pendingDeletes.includes(key) || self.completedDeletes.includes(key)) return;
+            const revision = self.deleteRevision;
+            const url = self.apiBase + self._apiPath(type) + '/' + encodeURIComponent(id);
+            self.deleteSaving = true;
+            self.deleteError = '';
+            self.pendingDeletes.push(key);
+            let deleted = false;
+
+            try {
+                const response = await Platform.fetch(url, {
+                    method: 'DELETE',
+                    silent: true
+                });
+                if (response && (response.success === false || response.data?.success === false)) {
+                    throw new Error(response.error || response.message || response.data?.error || 'Delete failed');
+                }
+                deleted = true;
+                self.completedDeletes.push(key);
+                if (self.entityNotice === 'Deletion is already in progress for this item.') self.entityNotice = '';
+                // The DELETE is confirmed. Remove this known-deleted row even
+                // if the following refresh fails, so stale UI cannot repeat it.
+                const listKey = self._listKey(type);
+                if (Array.isArray(self[listKey])) {
+                    self[listKey] = self[listKey].filter(item => String(item.id) !== String(id));
+                }
+                await self.refreshEntityData(type, 'Deleted');
+                if (revision === self.deleteRevision) self.closeDeleteConfirmation();
+            } catch (err) {
+                if (deleted) {
+                    if (revision === self.deleteRevision) self.closeDeleteConfirmation();
+                    self.entityNotice = 'Deleted, but the list could not be refreshed — reload the page to see the latest data';
+                } else if (revision === self.deleteRevision) {
+                    self.deleteError = (err && err.message) || 'Delete failed';
+                } else {
+                    self.entityNotice = 'The dismissed confirmation could not delete: ' + ((err && err.message) || 'Delete failed');
+                }
+            } finally {
+                self.pendingDeletes = self.pendingDeletes.filter(item => item !== key);
+                if (revision === self.deleteRevision) self.deleteSaving = false;
+            }
+        },
+
+        refreshEntityData: async function (type, action) {
             let self = this;
             let url = self.apiBase + self._apiPath(type);
 
-            return fetch(url)
-            .then(function (resp) {
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
-                return resp.json();
-            })
-            .then(function (json) {
+            try {
+                const json = await Platform.fetch(url, { silent: true });
                 const listKey = self._listKey(type);
+                if ((type === 'composition' || action === 'Deleted') && (!json || json.success === false ||
+                    !Array.isArray(json.data || json.items))) {
+                    throw new Error('Component list returned an invalid response.');
+                }
                 const items = json.data || json.items || [];
                 self[listKey] = items;
-            })
-            .catch(function (err) {
-                console.error('[blueprint] refreshEntityData error:', err);
-            });
+            } catch (err) {
+                // The write that triggered this refresh already succeeded —
+                // don't tell the user the save/delete failed. Tell them the
+                // list on screen may be stale instead.
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error((action || 'Saved') + ', but the list could not be refreshed — reload the page to see the latest data');
+                }
+                // Rethrow to ensure the error is not swallowed.
+                throw err;
+            }
         },
 
         /* ── export / spec actions ───────────────────────────────────── */
@@ -606,51 +903,40 @@ function blueprintPage() {
             window.open('/solutions/' + self.solutionId + '/api/export/blueprint-pdf', '_blank');
         },
 
-        generateSpecs: function () {
+        generateSpecs: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/generate-specs', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                }
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Spec generation failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/generate-specs', {
+                    method: 'POST',
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
                 if (data.download_url) {
                     window.open(data.download_url, '_blank');
                 }
                 if (window.Platform && Platform.toast) Platform.toast.success('Specs generated');
-            })
-            .catch(function (e) {
-                console.error('[blueprint] generateSpecs error:', e);
-                if (window.Platform && Platform.toast) Platform.toast.error('Spec generation failed');
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        inferCodeSpecs: function () {
+        inferCodeSpecs: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/infer-code-specs', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': self.csrfToken
-                }
-            })
-            .then(function (r) {
-                if (!r.ok) throw new Error('Code spec inference failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
-            })
-            .catch(function (e) {
-                console.error('[blueprint] inferCodeSpecs error:', e);
-            });
+            try {
+                await Platform.fetch('/solutions/' + self.solutionId + '/api/infer-code-specs', {
+                    method: 'POST',
+                    silent: false   // Let Platform.fetch show a toast on error.
+                });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         /* ── internal helpers ────────────────────────────────────────── */
@@ -667,40 +953,48 @@ function blueprintPage() {
             });
         },
 
-        _reloadSectionElements: function (sectionId) {
+        _reloadSectionElements: async function (sectionId) {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements')
-            .then(function (r) {
-                if (!r.ok) throw new Error('Elements fetch failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/viewpoint/' + sectionId + '/elements', {
+                    silent: true   // We paint our own error toast below.
+                });
                 self.sectionElements[sectionId] = (data.data && data.data.elements) || data.elements || [];
+                self._sectionElementsErrorShown = false;
                 // Re-render diagram if the container is already visible
                 if (self.diagramsLoaded[sectionId]) {
                     self._renderDiagram(sectionId);
                 }
-            })
-            .catch(function (e) {
-                console.error('[blueprint] _reloadSectionElements error for ' + sectionId + ':', e);
-            });
+            } catch (e) {
+                // Called once per section on initial load plus after every
+                // link/unlink and AI-copilot write — toast once per outage
+                // rather than once per section/event.
+                if (!self._sectionElementsErrorShown) {
+                    self._sectionElementsErrorShown = true;
+                    if (window.Platform && Platform.toast) {
+                        Platform.toast.error('Some section data could not be refreshed — reload the page to see the latest data');
+                    }
+                }
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
-        _refreshScores: function () {
+        _refreshScores: async function () {
             let self = this;
 
-            fetch('/solutions/' + self.solutionId + '/api/blueprint-scores')
-            .then(function (r) {
-                if (!r.ok) throw new Error('Scores fetch failed: ' + r.status);
-                return r.json();
-            })
-            .then(function (data) {
+            try {
+                const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/blueprint-scores', {
+                    silent: true   // No need for a toast; failure is not user‑visible.
+                });
                 self.scores = data.scores || data;
-            })
-            .catch(function (e) {
-                console.error('[blueprint] _refreshScores error:', e);
-            });
+            } catch (e) {
+                // Platform.fetch surfaced this failure before it threw; the
+                // catch only stops it becoming an unhandled rejection.
+                // Rethrow to ensure the error is not swallowed.
+                throw e;
+            }
         },
 
         _setupScrollObserver: function () {
@@ -750,11 +1044,17 @@ function blueprintPage() {
         const fd = new FormData();
         fd.append('file', file);
         try {
-            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', {
+            // Platform.fetch cannot handle FormData automatically (it would JSON‑stringify).
+            // We must use raw fetch and inspect raw headers.
+            const r = await fetch('/solutions/' + this.solutionId + '/risks/import', { // raw-fetch-ok: FormData cannot be auto-serialized by Platform.fetch
                 method: 'POST',
                 headers: { 'X-CSRFToken': this.csrfToken },
                 body: fd
             });
+            /* Unchecked, a 500 parsed to `{}`: `d.created` was undefined, so the else
+               branch fired and told the user "No risks imported" — an import that
+               never ran, reported as an import that found nothing. */
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
             this.riskImportResult = d;
             if (d.created > 0) {
@@ -769,7 +1069,8 @@ function blueprintPage() {
                 window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: errMsg, type: 'error' } }));
             }
         } catch(e) {
-            window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: 'Import failed', type: 'error' } }));
+            this.riskImportResult = null;
+            window.dispatchEvent(new CustomEvent('bp-toast', { detail: { message: 'Risk import failed — nothing was imported (' + ((e && e.message) || 'request failed') + ')', type: 'error' } }));
         } finally {
             this.riskImporting = false;
             event.target.value = '';
@@ -789,22 +1090,32 @@ function blueprintPage() {
     };
     
     // Compliance gap analysis loader
-    base.loadComplianceGap = function() {
+    base.loadComplianceGap = async function() {
         const self = this;
         self.complianceGapLoading = true;
-        fetch('/solutions/' + self.solutionId + '/api/compliance-gap')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.success) {
-                    self.complianceGap = data.gap;
-                }
-                self.complianceGapLoaded = true;
-                self.complianceGapLoading = false;
-            })
-            .catch(function() {
-                self.complianceGapLoaded = true;
-                self.complianceGapLoading = false;
+        try {
+            const data = await Platform.fetch('/solutions/' + self.solutionId + '/api/compliance-gap', {
+                silent: true   // We paint our own error toast below.
             });
+            if (!data.success) throw new Error(data.error || 'the analysis did not complete');
+            self.complianceGap = data.gap;
+            self.complianceGapLoaded = true;
+            self.complianceGapLoading = false;
+        } catch (e) {
+            /* This used to set complianceGapLoaded = true with complianceGap still
+               null. The panel's only two branches are "loading" and
+               "loaded && complianceGap", and the Run Analysis button hides once
+               loaded — so a failure erased the whole section and left no way to
+               retry. Staying "not loaded" puts the button back. */
+            self.complianceGap = null;
+            self.complianceGapLoaded = false;
+            self.complianceGapLoading = false;
+            if (window.Platform && Platform.toast) {
+                Platform.toast.error('Compliance gap analysis failed — nothing was assessed. Use Run Analysis to try again.');
+            }
+            // Rethrow to ensure the error is not swallowed.
+            throw e;
+        }
     };
 
     // Merge spec panel mixins (component specs, integration contracts, deployment specs)

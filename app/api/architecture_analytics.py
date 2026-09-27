@@ -11,17 +11,13 @@ Provides comprehensive architectural analysis endpoints for:
 - Architectural governance
 """
 
-from datetime import datetime, timedelta  # dead-code-ok
 import logging
 
 from flask import Blueprint, jsonify, request
-from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import desc, func  # dead-code-ok
+from flask_login import login_required  # dead-code-ok
 
-from ..extensions import db  # dead-code-ok
 from ..models.base_models import Application, Solution
-from ..models.capability_mapping import ApplicationCapabilityMapping, UnifiedToApplicationMapping  # dead-code-ok
-from ..models.technical_capability import TechnicalCapability  # dead-code-ok
+from ..models.capability_mapping import UnifiedToApplicationMapping  # dead-code-ok
 from ..models.unified_capability import UnifiedCapability
 
 architecture_analytics_bp = Blueprint(

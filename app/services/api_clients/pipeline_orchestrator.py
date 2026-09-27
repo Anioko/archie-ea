@@ -8,7 +8,7 @@ Provides unified interface for vendor intelligence, market analysis, and technic
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .crunchbase_client import CrunchbaseAPIClient
 from .g2_crowd_client import G2CrowdAPIClient

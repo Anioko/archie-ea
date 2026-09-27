@@ -1,4 +1,5 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}ArchiMate Roadmap{% endblock %}
 
@@ -15,10 +16,7 @@
 {% block content %}
 <div x-data="archimateRoadmapApp()">
     <!-- Header -->
-    <div class="mb-8">
-        <h1 class="text-3xl font-bold text-foreground mb-2">ArchiMate Roadmap</h1>
-        <p class="text-muted-foreground">Strategic ArchiMate capability evolution and work package planning</p>
-    </div>
+    {{ page_shell(title='ArchiMate Roadmap', subtitle='Strategic ArchiMate capability evolution and work package planning') }}
 
     <!-- Filters Section -->
     <div class="bg-background rounded-lg shadow-md p-6 mb-8">
@@ -41,7 +39,7 @@
             <!-- Domain Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Domain</label>
-                <select x-model="selectedDomain" class="w-full p-2 border border-border rounded-md">
+                <select x-model="selectedDomain" class="w-full p-2 border border-border rounded-md" aria-label="Domain">
                     <option value="">All Domains</option>
                     <template x-for="domain in availableDomains" :key="domain">
                         <option :value="domain" x-text="domain"></option>
@@ -52,7 +50,7 @@
             <!-- Strategic Importance Filter -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Strategic Importance</label>
-                <select x-model="selectedImportance" class="w-full p-2 border border-border rounded-md">
+                <select x-model="selectedImportance" class="w-full p-2 border border-border rounded-md" aria-label="Strategic Importance">
                     <option value="">All Levels</option>
                     <option value="High">High</option>
                     <option value="Medium">Medium</option>
@@ -63,7 +61,7 @@
             <!-- Timeline View Mode -->
             <div>
                 <label class="block text-sm font-medium text-foreground/80 mb-2">Timeline View</label>
-                <select x-model="timelineMode" class="w-full p-2 border border-border rounded-md">
+                <select x-model="timelineMode" class="w-full p-2 border border-border rounded-md" aria-label="Timeline View">
                     <option value="quarters">Quarters</option>
                     <option value="years">Years</option>
                     <option value="compact">Compact</option>
@@ -73,46 +71,55 @@
 
         <!-- Action Buttons -->
         <div class="mt-6 flex flex-wrap gap-4">
-            <button @click="applyFilters"
+            <button type="button" @click="applyFilters"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Filter">
                 Apply Filters
             </button>
-            <button @click="resetFilters"
+            <button type="button" @click="resetFilters"
                     class="bg-muted-foreground text-primary-foreground px-4 py-2 rounded-md hover:bg-muted-foreground transition-colors" aria-label="Filter">
                 Reset Filters
             </button>
-            <button @click="exportData('csv')"
+            <button type="button" @click="exportData('csv')"
                     class="bg-success text-primary-foreground px-4 py-2 rounded-md hover:bg-success transition-colors" aria-label="Export">
                 Export CSV
             </button>
-            <button @click="exportData('png')"
+            <button type="button" @click="exportData('png')"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Export">
                 Export PNG
             </button>
-            <button @click="openWorkPackageModal()"
+            <button type="button" @click="openWorkPackageModal()"
                     class="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary transition-colors" aria-label="Open">
                 Add Work Package
             </button>
         </div>
     </div>
 
+    <!-- Load failure: the tiles below read "—", this says why -->
+    <div x-show="loadError" x-cloak class="rounded-lg border border-destructive bg-background px-6 py-4 mb-6">
+        <p class="text-sm font-semibold text-destructive-emphasis" x-text="loadError"></p>
+        <p class="text-sm text-muted-foreground mt-1">
+            The roadmap could not be read. An empty timeline below is not an empty roadmap.
+        </p>
+        <button type="button" class="mt-3 text-sm text-primary underline" @click="loadData()">Retry</button>
+    </div>
+
     <!-- Statistics Cards -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Total Work Packages</h3>
-            <p class="text-3xl font-bold text-primary" x-text="statistics.totalWorkPackages"></p>
+            <p class="text-3xl font-bold" :class="statistics.totalWorkPackages == null ? 'text-muted-foreground' : 'text-primary'" x-text="statistics.totalWorkPackages ?? '—'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Active Initiatives</h3>
-            <p class="text-3xl font-bold text-success" x-text="statistics.activeInitiatives"></p>
+            <p class="text-3xl font-bold" :class="statistics.activeInitiatives == null ? 'text-muted-foreground' : 'text-success'" x-text="statistics.activeInitiatives ?? '—'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Total Investment</h3>
-            <p class="text-2xl font-bold text-primary" x-text="'$' + statistics.totalInvestment.toLocaleString() + 'K'"></p>
+            <p class="text-2xl font-bold" :class="statistics.totalInvestment == null ? 'text-muted-foreground' : 'text-primary'" x-text="statistics.totalInvestment == null ? '—' : '$' + statistics.totalInvestment.toLocaleString() + 'K'"></p>
         </div>
         <div class="bg-background rounded-lg shadow-md p-6">
             <h3 class="text-lg font-semibold text-foreground/80">Completion Rate</h3>
-            <p class="text-3xl font-bold text-warning" x-text="statistics.completionRate + '%'"></p>
+            <p class="text-3xl font-bold" :class="statistics.completionRate == null ? 'text-muted-foreground' : 'text-warning'" x-text="statistics.completionRate == null ? '—' : statistics.completionRate + '%'"></p>
         </div>
     </div>
 
@@ -150,7 +157,7 @@
                                 <template x-if="workPackage.element_capabilities && workPackage.element_capabilities.length > 0">
                                     <div class="flex flex-wrap gap-1">
                                         <template x-for="ecap in workPackage.element_capabilities" :key="ecap">
-                                            <span class="px-2 py-0.5 bg-primary/5 text-primary rounded text-[10px] font-medium" x-text="ecap"></span>
+                                            <span class="px-2 py-0.5 bg-primary/5 text-primary rounded text-xs font-medium" x-text="ecap"></span>
                                         </template>
                                     </div>
                                 </template>
@@ -166,8 +173,8 @@
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground" x-text="'$' + workPackage.investment_cost + 'K'"></td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <button @click="editWorkPackage(workPackage)" class="text-primary hover:text-indigo-900 mr-3" aria-label="Edit">Edit</button>
-                                <button @click="deleteWorkPackage(workPackage.id)" class="text-destructive hover:text-destructive" aria-label="Delete">Delete</button>
+                                <button type="button" @click="editWorkPackage(workPackage)" class="text-primary hover:text-primary/80 mr-3" aria-label="Edit">Edit</button>
+                                <button type="button" @click="deleteWorkPackage(workPackage.id)" class="text-destructive-emphasis hover:text-destructive-emphasis" aria-label="Delete">Delete</button>
                             </td>
                         </tr>
                     </template>
@@ -183,19 +190,26 @@
             <div class="flex items-center justify-between cursor-pointer" @click="showGaps = !showGaps">
                 <h3 class="text-lg font-semibold">Gap Analysis Summary</h3>
                 <div class="flex items-center gap-3">
+                    {# gaps_summary is None when the view could not run the gap
+                       query. "0 open gaps" would be a false all-clear, and the
+                       comparison below is a TypeError on None either way. #}
+                    {% if gaps_summary %}
                     <span class="text-sm text-muted-foreground">{{ gaps_summary.total }} open gap{{ 's' if gaps_summary.total != 1 else '' }}</span>
+                    {% else %}
+                    <span class="text-sm text-muted-foreground">&mdash; open gaps</span>
+                    {% endif %}
                     <svg :class="showGaps ? 'rotate-180' : ''" class="w-5 h-5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
                     </svg>
                 </div>
             </div>
-            {% if gaps_summary.total > 0 %}
+            {% if gaps_summary and gaps_summary.total > 0 %}
             <div class="mt-3 flex gap-2 flex-wrap">
                 {% for severity, count in gaps_summary.by_severity.items() %}
                 <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    {% if severity == 'critical' %}bg-destructive/10 text-destructive
-                    {% elif severity == 'high' %}bg-warning/10 text-warning
-                    {% elif severity == 'medium' %}bg-warning/10 text-warning
+                    {% if severity == 'critical' %}bg-destructive/10 text-destructive-emphasis
+                    {% elif severity == 'high' %}bg-warning/10 text-warning-emphasis
+                    {% elif severity == 'medium' %}bg-warning/10 text-warning-emphasis
                     {% else %}bg-primary/10 text-primary{% endif %}">
                     {{ severity|capitalize }}: {{ count }}
                 </span>
@@ -211,7 +225,8 @@
                                 <th class="text-left py-2 pr-3 font-medium">Name</th>
                                 <th class="text-left py-2 pr-3 font-medium">Type</th>
                                 <th class="text-left py-2 pr-3 font-medium">Severity</th>
-                                <th class="text-left py-2 font-medium">Status</th>
+                                <th class="text-left py-2 pr-3 font-medium">Status</th>
+                                <th class="text-right py-2 font-medium">Action</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y">
@@ -221,14 +236,23 @@
                                 <td class="py-2 pr-3 text-muted-foreground">{{ gap.gap_type }}</td>
                                 <td class="py-2 pr-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                        {% if gap.severity == 'critical' %}bg-destructive/10 text-destructive
-                                        {% elif gap.severity == 'high' %}bg-warning/10 text-warning
-                                        {% elif gap.severity == 'medium' %}bg-warning/10 text-warning
+                                        {% if gap.severity == 'critical' %}bg-destructive/10 text-destructive-emphasis
+                                        {% elif gap.severity == 'high' %}bg-warning/10 text-warning-emphasis
+                                        {% elif gap.severity == 'medium' %}bg-warning/10 text-warning-emphasis
                                         {% else %}bg-primary/10 text-primary{% endif %}">
                                         {{ gap.severity|capitalize }}
                                     </span>
                                 </td>
-                                <td class="py-2 text-muted-foreground">{{ gap.resolution_status|replace('_', ' ')|capitalize }}</td>
+                                <td class="py-2 pr-3 text-muted-foreground">{{ gap.resolution_status|replace('_', ' ')|capitalize }}</td>
+                                <td class="py-2 text-right">
+                                    <button type="button"
+                                            @click='planGap({{ gap.id }}, {{ gap.name|tojson }})'
+                                            :disabled="planningGapId === {{ gap.id }}"
+                                            class="inline-flex items-center px-2.5 py-1 rounded-md border border-input bg-background text-xs font-medium hover:bg-accent hover:text-accent-foreground disabled:opacity-50 disabled:cursor-not-allowed">
+                                        <span x-show="planningGapId !== {{ gap.id }}">Plan work package</span>
+                                        <span x-show="planningGapId === {{ gap.id }}" x-cloak>Planning&hellip;</span>
+                                    </button>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -299,7 +323,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Capability</label>
                             <select x-model="workPackageForm.capability_id" required
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Capability">
                                 <option value="">Select Capability</option>
                                 <template x-for="capability in availableCapabilities" :key="capability.id">
                                     <option :value="capability.id" x-text="capability.name"></option>
@@ -319,7 +343,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Status</label>
                             <select x-model="workPackageForm.status" required
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Status">
                                 <option value="Planned">Planned</option>
                                 <option value="In Progress">In Progress</option>
                                 <option value="Completed">Completed</option>
@@ -335,7 +359,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Assigned To</label>
                             <select x-model="workPackageForm.assigned_to"
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Assigned To">
                                 <option value="">Unassigned</option>
                                 <template x-for="user in availableUsers" :key="user.id">
                                     <option :value="user.id" x-text="user.email"></option>
@@ -345,7 +369,7 @@
                         <div>
                             <label class="block text-sm font-medium text-foreground/80 mb-1">Strategic Importance</label>
                             <select x-model="workPackageForm.strategic_importance"
-                                    class="w-full p-2 border border-border rounded-md">
+                                    class="w-full p-2 border border-border rounded-md" aria-label="Strategic Importance">
                                 <option value="">Not Set</option>
                                 <option value="High">High</option>
                                 <option value="Medium">Medium</option>
@@ -356,7 +380,7 @@
                     <div class="mt-4">
                         <label class="block text-sm font-medium text-foreground/80 mb-1">Description</label>
                         <textarea x-model="workPackageForm.description" rows="3"
-                                  class="w-full p-2 border border-border rounded-md"></textarea>
+                                  class="w-full p-2 border border-border rounded-md" aria-label="Description"></textarea>
                     </div>
                     <div class="mt-6 flex justify-end space-x-4">
                         <button type="button" @click="closeWorkPackageModal()"
@@ -385,6 +409,7 @@ function archimateRoadmapApp() {
         selectedImportance: '',
         timelineMode: 'quarters',
         showWorkPackageModal: false,
+        planningGapId: null,
         editingWorkPackage: false,
         availableLevels: ['L1', 'L2', 'L3', 'L4', 'L5'],
         availableDomains: [],
@@ -403,12 +428,14 @@ function archimateRoadmapApp() {
             strategic_importance: '',
             description: ''
         },
+        // Nothing counted yet — null renders as an em dash, a 0 would look measured.
         statistics: {
-            totalWorkPackages: 0,
-            activeInitiatives: 0,
-            totalInvestment: 0,
-            completionRate: 0
+            totalWorkPackages: null,
+            activeInitiatives: null,
+            totalInvestment: null,
+            completionRate: null
         },
+        loadError: null,
 
         init() {
             this.loadData();
@@ -417,18 +444,18 @@ function archimateRoadmapApp() {
         async loadData() {
             try {
                 // Load work packages
-                const workPackagesResponse = await fetch('/api/archimate-work-packages');
-                const wpData = await workPackagesResponse.json();
+                const wpData = await Platform.fetch('/api/archimate-work-packages',
+                    { silent: true, errorMsg: 'work packages request failed' });
                 this.workPackages = wpData.work_packages || wpData;
 
                 // Load capabilities
-                const capabilitiesResponse = await fetch('/api/capabilities');
-                const capData = await capabilitiesResponse.json();
+                const capData = await Platform.fetch('/api/capabilities',
+                    { silent: true, errorMsg: 'capabilities request failed' });
                 this.capabilities = capData.capabilities || capData;
 
                 // Load users
-                const usersResponse = await fetch('/api/users');
-                const usersData = await usersResponse.json();
+                const usersData = await Platform.fetch('/api/users',
+                    { silent: true, errorMsg: 'users request failed' });
                 this.users = usersData.users || usersData;
 
                 // Recompute derived data after loading
@@ -439,8 +466,20 @@ function archimateRoadmapApp() {
 
                 this.updateStatistics();
                 this.renderTimeline();
+                this.loadError = null;
             } catch (error) {
-                console.error('Error loading data:', error);
+                // Nothing was measured, so the tiles must read "—". A 0 here is
+                // indistinguishable from a roadmap that genuinely has no work packages.
+                this.workPackages = [];
+                this.capabilities = [];
+                this.users = [];
+                this.availableDomains = [];
+                this.availableCapabilities = [];
+                this.availableUsers = [];
+                this.filteredWorkPackages = [];
+                this.statistics = { totalWorkPackages: null, activeInitiatives: null, totalInvestment: null, completionRate: null };
+                this.loadError = 'Failed to load roadmap data: ' + error.message;
+                Platform.toast.error(this.loadError);
             }
         },
 
@@ -612,6 +651,28 @@ function archimateRoadmapApp() {
             return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
         },
 
+        // Turn a recorded gap into the work package that resolves it.
+        // POST /capability-map/api/roadmap/gaps/<id>/work-packages is the same
+        // endpoint capability_roadmap.html uses; the row is the handoff point.
+        async planGap(gapId, gapName) {
+            if (this.planningGapId) { return; }
+            const ok = await Platform.modal.confirm(
+                `Create a work package to resolve "${gapName}"?`);
+            if (!ok) { return; }
+            this.planningGapId = gapId;
+            try {
+                await Platform.fetch(
+                    `/capability-map/api/roadmap/gaps/${gapId}/work-packages`,
+                    { method: 'POST', body: { name: `Resolve: ${gapName}` }, silent: true });
+                Platform.toast.success('Work package created for this gap.');
+                this.loadData();
+            } catch (error) {
+                Platform.toast.error('Failed to plan this gap: ' + (error.message || 'request failed'));
+            } finally {
+                this.planningGapId = null;
+            }
+        },
+
         openWorkPackageModal() {
             this.editingWorkPackage = false;
             this.resetWorkPackageForm();
@@ -652,39 +713,25 @@ function archimateRoadmapApp() {
 
                 const method = this.editingWorkPackage ? 'PUT' : 'POST';
 
-                const response = await fetch(url, {
+                await Platform.fetch(url, {
                     method: method,
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.workPackageForm)
+                    body: this.workPackageForm,
+                    silent: true
                 });
-
-                if (response.ok) {
-                    this.closeWorkPackageModal();
-                    this.loadData();
-                } else {
-                    console.error('Error saving work package:', await response.text());
-                }
+                this.closeWorkPackageModal();
+                this.loadData();
             } catch (error) {
-                console.error('Error saving work package:', error);
+                Platform.toast.error('Failed to save work package — your changes were not saved: ' + (error.message || 'request failed'));
             }
         },
 
         async deleteWorkPackage(id) {
             if ((await Platform.modal.confirm('Are you sure you want to delete this work package?'))) {
                 try {
-                    const response = await fetch(`/api/archimate-work-packages/${id}`, {
-                        method: 'DELETE'
-                    });
-
-                    if (response.ok) {
-                        this.loadData();
-                    } else {
-                        console.error('Error deleting work package:', await response.text());
-                    }
+                    await Platform.fetch.delete(`/api/archimate-work-packages/${id}`, { silent: true });
+                    this.loadData();
                 } catch (error) {
-                    console.error('Error deleting work package:', error);
+                    Platform.toast.error('Failed to delete work package: ' + (error.message || 'request failed'));
                 }
             }
         },
@@ -692,7 +739,12 @@ function archimateRoadmapApp() {
         async exportData(format) {
             try {
                 if (format === 'csv') {
-                    const response = await fetch('/api/archimate-export/export/capability-map?format=csv');
+                    // raw-fetch-ok: the download needs the raw Response to call .blob();
+                    // Platform.fetch returns a parsed body.
+                    const response = await fetch('/api/archimate-export/export/capability-map?format=csv'); // raw-fetch-ok: .blob() needs the raw Response
+                    // Unchecked before: a 500 HTML error page was saved to disk as
+                    // archimate-roadmap.csv and read as a successful export.
+                    if (!response.ok) throw new Error('Export failed (HTTP ' + response.status + ')');
                     const blob = await response.blob();
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -713,7 +765,6 @@ function archimateRoadmapApp() {
                     }
                 }
             } catch (error) {
-                console.error('Error exporting data:', error);
                 Platform.toast.error('Export failed: ' + (error.message || 'Unable to export. Please try again.'));
             }
         }

@@ -6,20 +6,13 @@
 
 {% block content %}
 <div class="max-w-5xl mx-auto" x-data="seedManager()">
-    <!-- Breadcrumb -->
-    <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-        <a href="{{ url_for('admin.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-        <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-        <span class="text-foreground font-medium">Seed Management</span>
-    </nav>
-
-    <!-- Header -->
+    <!-- Header (page_header renders the single breadcrumb for this page -- M5) -->
     <div class="flex items-center justify-between mb-6">
         {{ page_header(
-        title='Seed Management',
+        title='Seed Management', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Seed Management'}],
         description='View seed data status and trigger seeding operations'
     ) }}
-        <button @click="seedAll()"
+        <button type="button" @click="seedAll()"
                 :disabled="seeding"
                 class="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" aria-label="Action">
             <i data-lucide="database" class="h-4 w-4" x-show="!seeding" x-cloak></i>
@@ -38,7 +31,7 @@
     <!-- Status Message -->
     <template x-if="message">
         <div class="mb-4 rounded-lg border px-4 py-3 text-sm"
-             :class="messageType === 'success' ? 'bg-success/10 text-success border-success/30' : 'bg-destructive/10 text-destructive border-destructive/30'">
+             :class="messageType === 'success' ? 'bg-success/10 text-success-emphasis border-success/30' : 'bg-destructive/10 text-destructive-emphasis border-destructive/30'">
             <span x-text="message"></span>
         </div>
     </template>
@@ -59,15 +52,15 @@
                                 <h3 class="font-semibold text-foreground" x-text="cat.name"></h3>
                                 <!-- Status badge -->
                                 <span x-show="cat.status === 'seeded'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success border border-success/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">
                                     Seeded
                                 </span>
                                 <span x-show="cat.status === 'empty'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">
                                     Empty
                                 </span>
                                 <span x-show="cat.status === 'error'" x-cloak
-                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning border border-warning/30">
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30">
                                     Error
                                 </span>
                             </div>
@@ -85,7 +78,7 @@
                         </div>
                     </div>
                     <!-- Seed button -->
-                    <button @click="seedCategory(cat.key)"
+                    <button type="button" @click="seedCategory(cat.key)"
                             :disabled="seedingKey === cat.key"
                             class="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ml-4" aria-label="Action">
                         <i data-lucide="play" class="h-3.5 w-3.5" x-show="seedingKey !== cat.key" x-cloak></i>
@@ -119,13 +112,16 @@ function seedManager() {
 
         async refreshStatus() {
             try {
-                const resp = await fetch('{{ url_for("admin.seed_status") }}');
-                const data = await resp.json();
+                const data = await Platform.fetch('{{ url_for("admin.seed_status") }}', { silent: true });
                 if (data.success) {
                     this.categories = data.categories;
                 }
             } catch (e) {
-                console.error('Failed to refresh seed status:', e);
+                // seed/seedAll already set this.message to their own success/failure result;
+                // this only means the category list on screen may now be stale, so append
+                // rather than overwrite whatever that message already said.
+                this.message = (this.message ? this.message + ' — ' : '') + 'Could not refresh status list; reload to see current state.';
+                this.messageType = 'error';
             }
             this.$nextTick(() => lucide.createIcons());
         },
@@ -134,11 +130,11 @@ function seedManager() {
             this.seedingKey = key;
             this.message = null;
             try {
-                const resp = await fetch(`{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    `{{ url_for("admin.seed", key="__KEY__") }}`.replace('__KEY__', key),
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'Seeding complete' : 'Seeding failed');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();
@@ -150,14 +146,28 @@ function seedManager() {
         },
 
         async seedAll() {
+            /* Confirmation gate. The 30 Aug 2026 QA audit clicked this button once
+               and it completed a live seeding write against the environment before
+               anything could be reviewed or cancelled: seeded categories went from
+               6/11 to 10/11. It was the ONE consequential action on the platform
+               with no confirmation -- every delete on Applications, Vendors,
+               Contracts, Licences, Business Case, Business Model, Value Streams and
+               Admin > Users gates behind one correctly. Seeding writes real rows
+               into a live tenant; it belongs on the same footing. */
+            const proceed = await Platform.modal.confirm(
+                'Seed all reference data into this environment? This writes records ' +
+                'into the live tenant and cannot be undone from this screen.'
+            );
+            if (!proceed) return;
+
             this.seeding = true;
             this.message = null;
             try {
-                const resp = await fetch('{{ url_for("admin.seed_all") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await resp.json();
+                const data = await Platform.fetch.post(
+                    '{{ url_for("admin.seed_all") }}',
+                    undefined,
+                    { silent: true }
+                );
                 this.message = data.message || (data.success ? 'All seeders completed' : 'Some seeders had errors');
                 this.messageType = data.success ? 'success' : 'error';
                 await this.refreshStatus();

@@ -57,7 +57,14 @@ class AutomatedCodeAnalyzer:
             try:
                 bandit_data = json.loads(result.stdout) if result.stdout else {"results": []}
             except json.JSONDecodeError:
-                bandit_data = {"results": []}
+                # Unparseable scanner output must NOT be reported as a clean scan.
+                return CodeAnalysisResult(
+                    tool="bandit",
+                    passed=False,
+                    issues=[{"error": "Bandit output could not be parsed"}],
+                    metrics={},
+                    raw_output=result.stdout,
+                )
             
             issues = []
             severity_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}

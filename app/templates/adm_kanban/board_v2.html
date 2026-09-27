@@ -1,5 +1,6 @@
 {# app/templates/adm_kanban/board_v2.html #}
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}ADM Kanban — Architect's Operating View{% endblock %}
 
@@ -19,26 +20,22 @@
 <div x-data="admKanbanV2()" x-init="init()" @adm-board-refresh.window="reload()" @adm-card-created.window="onCardCreated($event.detail)" x-cloak class="space-y-4">
 
     {# -- Header --------------------------------------------------------- #}
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-xl font-semibold text-foreground">ADM Kanban</h1>
-            <p class="text-sm text-muted-foreground">Architecture work across all TOGAF ADM phases</p>
-        </div>
-        <div class="flex items-center gap-2">
+    {% macro _ps_actions() %}
+<div class="flex items-center gap-2" data-testid="adm-kanban-toolbar">
             <select x-model="filters.assignee" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="all">All Assignees</option>
                 <option value="me">My Cards</option>
             </select>
             <select x-model="filters.card_type" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Type">
                 <option value="">All Types</option>
                 <option value="solution">Solutions</option>
                 <option value="deliverable">Deliverables</option>
                 <option value="task">Tasks</option>
             </select>
             <select x-model="filters.priority" @change="reload()"
-                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground">
+                    class="h-8 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Filter by Priority">
                 <option value="">All Priorities</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -62,7 +59,7 @@
             </a>
             {# View mode toggle: flat columns vs swimlane rows #}
             <div class="flex items-center gap-0.5 rounded-md border border-border p-0.5">
-                <button @click="viewMode = 'flat'"
+                <button type="button" @click="viewMode = 'flat'"
                         :class="viewMode === 'flat' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                         class="px-2 py-1 rounded text-xs font-medium transition-colors"
                         title="Flat Kanban columns">
@@ -70,7 +67,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                     </svg>
                 </button>
-                <button @click="viewMode = 'swimlane'"
+                <button type="button" @click="viewMode = 'swimlane'"
                         :class="viewMode === 'swimlane' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
                         class="px-2 py-1 rounded text-xs font-medium transition-colors"
                         title="Swimlane: ADM phases as rows">
@@ -80,41 +77,41 @@
                 </button>
             </div>
             {# Sprint Planning button #}
-            <button @click="$dispatch('open-sprint-panel')"
+            <button type="button" @click="$dispatch('open-sprint-panel')"
                     class="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-primary text-primary-foreground rounded border border-primary/80 hover:bg-primary/90 transition-colors"
                     aria-label="Open Sprint Planning panel"
                     title="Sprint Planning — manage sprints and assign cards">
                 <i data-lucide="calendar-clock" class="h-3.5 w-3.5"></i> Sprint Planning
             </button>
-            <a href="{{ url_for('adm_kanban_view.adm_roadmap_timeline') }}"
-               class="px-2.5 py-1.5 text-xs font-medium rounded border border-border hover:bg-muted transition-colors text-foreground"
-               title="ADM Roadmap Timeline — Gantt view of cards">
-                Roadmap
-            </a>
         </div>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='ADM Kanban', breadcrumb=[('Home', '/'), ('ADM Kanban', none)], subtitle='Architecture work across all TOGAF ADM phases', actions_caller=_ps_actions) }}
 
     {# -- Phase Tabs (flat mode only) ------------------------------------ #}
     <div x-show="viewMode === 'flat'" x-cloak class="flex flex-wrap gap-1 border-b border-border pb-2">
-        <button @click="filters.phase = 'all'; reload()"
+        <button type="button" @click="filters.phase = 'all'; reload()"
                 :class="filters.phase === 'all'
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'"
+ ? 'bg-primary text-primary-foreground'
+ : 'bg-muted text-muted-foreground hover:bg-muted/80'"
                 class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors">
             All
             <span class="ml-1 opacity-70" x-text="'(' + totalCardCount + ')'"></span>
         </button>
         <template x-for="phase in phases" :key="phase.code">
-            <button @click="filters.phase = phase.code; reload()"
+            <button type="button" @click="filters.phase = phase.code; reload()"
                     :class="filters.phase === phase.code
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'"
+ ? 'bg-primary text-primary-foreground'
+ : 'bg-muted text-muted-foreground hover:bg-muted/80'"
                     class="px-2.5 py-1 text-xs font-medium rounded-md transition-colors">
                 <span x-text="phase.code === 'PRELIM' ? 'Prelim' : phase.code === 'REQ' ? 'Req Mgmt' : phase.label"></span>
+                <template x-if="phase.activate_stage">
+                    <span class="ml-1 opacity-70" x-text="'Activate: ' + phase.activate_stage"
+                          title="SAP Activate stage (Capgemini SAP S/4HANA Assessment, Stage 1 enablement)"></span>
+                </template>
                 <span class="ml-1 opacity-70"
                       x-text="'(' + (phaseCounts[phase.code] || 0) + ')'"></span>
                 <template x-if="phaseDeliverables[phase.code] && phaseDeliverables[phase.code].total > 0">
-                    <span class="ml-1 text-[9px] font-semibold opacity-80"
+                    <span class="ml-1 text-2xs font-semibold opacity-80"
                           x-text="'✓' + phaseDeliverables[phase.code].checked + '/' + phaseDeliverables[phase.code].total"></span>
                 </template>
             </button>
@@ -127,13 +124,13 @@
         <p class="mt-2 text-sm text-muted-foreground">Loading board...</p>
     </div>
     <div x-show="error && !loading" x-cloak class="p-8 text-center">
-        <p class="text-sm text-destructive" x-text="error"></p>
-        <button @click="reload()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
+        <p class="text-sm text-destructive-emphasis" x-text="error"></p>
+        <button type="button" @click="reload()" class="mt-2 text-xs text-primary hover:underline">Retry</button>
     </div>
 
     {# -- Empty State ---------------------------------------------------- #}
     <div x-show="!loading && !error && cards.length === 0" x-cloak class="flex flex-col items-center justify-center py-16 text-center">
-        <i data-lucide="layout-kanban" class="h-12 w-12 text-muted-foreground/30 mb-4"></i>
+        <i data-lucide="kanban" class="h-12 w-12 text-muted-foreground/30 mb-4"></i>
         <h3 class="text-lg font-semibold text-foreground mb-1">No solutions on the board</h3>  <!-- frontend-quality-ok -->
         <p class="text-sm text-muted-foreground mb-4">Create a solution to start tracking ADM phases</p>
         <a href="/architecture-journey/" class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90">
@@ -144,8 +141,8 @@
     {# -- Pipeline Analytics Strip ---------------------------------------- #}
     <div x-show="!loading && !error && cards.length > 0" x-cloak
          class="flex items-center gap-6 px-4 py-2 mb-4 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-        <span>Pipeline: <strong class="text-foreground" x-text="cards.length + ' solutions'"></strong></span>
-        <span>Active: <strong class="text-foreground" x-text="cards.filter(c => c.column === 'in_progress' || c.column === 'review').length"></strong></span>
+        <span>Pipeline: <strong class="text-foreground" x-text="cards.length + ' cards'"></strong> <span x-show="solutionCount() !== cards.length" x-cloak x-text="'(' + solutionCount() + ' solutions)'"></span></span>
+        <span>Active: <strong class="text-foreground" x-text="cards.filter(c => c.column === 'under_development' || c.column === 'review').length"></strong></span>
         <span x-show="phases.length > 0" x-cloak>Top phase: <strong class="text-foreground" x-text="(() => { let counts = {}; cards.forEach(c => { let p = c.phase || 'A'; counts[p] = (counts[p]||0)+1; }); let best = 'A'; Object.keys(counts).forEach(k => { if (counts[k] > (counts[best]||0)) best = k; }); return best; })()"></strong></span>
     </div>
 
@@ -164,13 +161,13 @@
                 <div class="flex items-center justify-between px-2 py-1.5 mb-2 rounded-md"
                      :class="wipAtLimit(col.id) ? 'bg-destructive/10 ring-1 ring-destructive/30' : 'bg-muted'">
                     <span class="text-xs font-semibold text-foreground" x-text="col.label"></span>
-                    <span class="flex items-center gap-1 text-[10px]">
+                    <span class="flex items-center gap-1 text-xs">
                         <template x-if="colSlaStatus(col.id) && colSlaStatus(col.id).overdue_count > 0">
-                            <span class="px-1 py-0.5 rounded bg-destructive/10 text-destructive font-semibold"
+                            <span class="px-1 py-0.5 rounded bg-destructive/10 text-destructive-emphasis font-semibold"
                                   :title="colSlaStatus(col.id).overdue_count + ' card(s) past ' + colSlaStatus(col.id).sla_days + '-day SLA'"
                                   x-text="'⚠ ' + colSlaStatus(col.id).overdue_count + ' SLA'"></span>
                         </template>
-                        <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-amber-600 font-medium' : 'text-muted-foreground'"
+                        <span :class="wipAtLimit(col.id) ? 'text-destructive-emphasis font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                               class="flex items-center gap-0.5">
                             <span x-text="wipCount(col.id)"></span>
                             <template x-if="wipLimit(col.id) > 0">
@@ -194,9 +191,9 @@
                               @dragend="onDragEnd()"
                               @click="openDetail(card)"
                               :class="{
-                                'opacity-40 rotate-1 shadow-lg scale-[0.98]': draggingCard && draggingCard.id === card.id,
-                                'ring-2 ring-primary': isSelected(card.id)
-                             }">
+ 'opacity-40 rotate-1 shadow-lg scale-[0.98]': draggingCard && draggingCard.id === card.id,
+ 'ring-2 ring-primary': isSelected(card.id)
+ }">
 
                             {# Bulk select checkbox #}
                             <div class="absolute -top-1 -left-1 z-10"
@@ -210,17 +207,17 @@
 
                             {# Card header: phase badge + priority #}
                             <div class="flex items-center justify-between mb-1.5">
-                                <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded"
+                                <span class="px-1.5 py-0.5 text-xs font-semibold rounded"
                                       :class="phaseClass(card.phase)"
                                       x-text="phaseLabel(card.phase)"></span>
-                                <span class="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                                <span class="px-1.5 py-0.5 text-xs font-medium rounded"
                                       :class="priorityClass(card.priority)"
                                       x-text="card.priority"></span>
                             </div>
 
                             {# ARB governance badge #}
                             <template x-if="card.requires_arb_signoff">
-                              <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-300"
+                              <span class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis border border-warning/30"
                                     title="Requires ARB Sign-off">
                                 <i data-lucide="shield-alert" class="w-3 h-3" aria-hidden="true"></i>
                                 ARB
@@ -230,7 +227,7 @@
                             {# Title + subtitle #}
                             <h2 class="text-xs font-semibold text-foreground leading-tight mb-0.5"
                                 x-text="card.title"></h2>
-                            <p class="text-[10px] text-muted-foreground leading-snug line-clamp-2 mb-2"
+                            <p class="text-xs text-muted-foreground leading-snug line-clamp-2 mb-2"
                                x-text="card.subtitle"></p>
 
                             {# Solution-specific: ADM stepper #}
@@ -239,18 +236,18 @@
                                     <div class="flex items-center gap-0.5">
                                         <template x-for="p in phases.filter(function(ph){ return 'ABCDEFGH'.indexOf(ph.code) !== -1; })" :key="p.code">
                                             <div class="flex items-center">
-                                                <div class="w-3 h-3 rounded-full text-[7px] font-bold flex items-center justify-center"
+                                                <div class="w-3 h-3 rounded-full text-2xs font-bold flex items-center justify-center"
                                                      :class="card.meta.adm_completed.includes(p.code)
-                                                         ? 'bg-primary text-primary-foreground'
-                                                         : card.meta.adm_current === p.code
-                                                             ? 'bg-primary/20 text-primary border border-primary'
-                                                             : 'bg-muted text-muted-foreground'"
+ ? 'bg-primary text-primary-foreground'
+ : card.meta.adm_current === p.code
+ ? 'bg-primary/20 text-primary border border-primary'
+ : 'bg-muted text-muted-foreground'"
                                                      :title="p.label"
                                                      x-text="p.code"></div>
                                                 <template x-if="p.code !== 'H'">
                                                     <div class="w-1.5 h-px"
                                                          :class="card.meta.adm_completed.includes(p.code)
-                                                             ? 'bg-primary' : 'bg-border'"></div>
+ ? 'bg-primary' : 'bg-border'"></div>
                                                 </template>
                                             </div>
                                         </template>
@@ -260,10 +257,10 @@
 
                             {# Solution-specific: readiness + budget #}
                             <template x-if="card.card_type === 'solution' && card.meta">
-                                <div class="flex items-center gap-2 text-[10px] text-muted-foreground mb-2">
+                                <div class="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                                     <span x-show="card.meta.readiness_total > 0" x-cloak
                                           :class="card.meta.readiness_score === card.meta.readiness_total
-                                              ? 'text-emerald-600' : ''"
+ ? 'text-success-emphasis' : ''"
                                           x-text="'Readiness: ' + card.meta.readiness_score + '/' + card.meta.readiness_total"></span>
                                     <span x-show="card.meta.budget_range" x-cloak
                                           x-text="card.meta.budget_range"></span>
@@ -272,22 +269,22 @@
 
                             {# Entity coverage alert — amber when linked entities are sparse #}
                             <template x-if="card.card_type === 'solution' && card.meta && (card.meta.app_count || 0) + (card.meta.artifact_total || 0) < 5">
-                                <div class="flex items-center gap-1 text-[10px] text-amber-600 mb-1">
+                                <div class="flex items-center gap-1 text-xs text-warning-emphasis mb-1">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
                                     <span>Low coverage</span>
                                 </div>
                             </template>
 
                             <template x-if="card.card_type === 'solution' && card.meta">
-                                <div class="flex items-center gap-2 text-[10px] text-muted-foreground mb-2">
+                                <div class="flex items-center gap-2 text-xs text-muted-foreground mb-2">
                                     <span x-show="card.meta.app_count > 0" x-cloak
                                           x-text="card.meta.app_count + ' apps'"></span>
                                     <span x-show="card.meta.artifact_total > 0" x-cloak
-                                          class="inline-flex items-center px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 border border-violet-500/30 font-medium"
+                                          class="inline-flex items-center px-1.5 py-0.5 rounded bg-info/10 text-info-emphasis border border-info/30 font-medium"
                                           x-text="card.meta.artifact_total + ' artifacts'"></span>
                                     <template x-if="card.meta.phase_gate">
                                         <span :class="card.meta.phase_gate.valid
-                                                ? 'text-emerald-600' : 'text-destructive'"
+ ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                                               :title="card.meta.phase_gate.valid
                                                   ? 'Phase gate passed'
                                                   : (card.meta.phase_gate.errors || []).join('; ')">
@@ -302,22 +299,22 @@
                             <template x-if="card.card_type === 'deliverable' && card.meta">
                                 <div class="mb-2 space-y-1.5">
                                     <div class="flex items-center gap-1 flex-wrap">
-                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-indigo-500/10 text-primary border border-indigo-500/30">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded bg-info/10 text-primary border border-info/30">
                                             <svg class="w-2.5 h-2.5 mr-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                             <span x-text="card.meta.deliverable_type_label"></span>
                                         </span>
-                                        <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                        <span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded bg-info/10 text-info-emphasis border border-info/30"
                                               x-text="card.meta.archimate_viewpoint"></span>
                                     </div>
-                                    <div class="flex items-center gap-2 text-[10px] text-muted-foreground">
+                                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
                                         <span :class="{
-                                            'text-amber-600': card.meta.document_status === 'draft',
-                                            'text-sky-600': card.meta.document_status === 'in_progress',
-                                            'text-primary': card.meta.document_status === 'review',
-                                            'text-emerald-600': card.meta.document_status === 'approved',
-                                            'text-orange-600': card.meta.document_status === 'implementing',
-                                            'text-primary': card.meta.document_status === 'published'
-                                        }" x-text="card.meta.document_status"></span>
+ 'text-warning-emphasis': card.meta.document_status === 'draft',
+ 'text-info-emphasis': card.meta.document_status === 'in_progress',
+ 'text-primary': card.meta.document_status === 'review',
+ 'text-success-emphasis': card.meta.document_status === 'approved',
+ 'text-warning-emphasis': card.meta.document_status === 'implementing',
+ 'text-primary': card.meta.document_status === 'published'
+ }" x-text="card.meta.document_status"></span>
                                         <span x-text="card.meta.element_count + ' elements'"></span>
                                         <span x-text="'v' + card.meta.document_version"></span>
                                     </div>
@@ -327,7 +324,7 @@
                             {# Footer: blocker badge + owner + due date + link #}
                             <template x-if="card.blocker_count > 0">
                                 <div class="flex items-center gap-1 mb-1.5">
-                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold rounded bg-destructive/10 text-destructive border border-destructive/30"
+                                    <span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs font-semibold rounded bg-destructive/10 text-destructive-emphasis border border-destructive/30"
                                           :title="'Blocked by ' + card.blocker_count + ' unresolved dependencies'">
                                         <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
                                         <span x-text="'Blocked ' + card.blocker_count"></span>
@@ -340,13 +337,13 @@
                                 {# Row 1: avatar + owner name + app count #}
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-1.5 min-w-0">
-                                        <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-bold flex items-center justify-center"
+                                        <span class="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-2xs font-bold flex items-center justify-center"
                                               x-text="(() => { const o = (card.owner || 'U'); const parts = o.split('@')[0].split(/[\s._-]/); return (parts[0] || '').charAt(0).toUpperCase() + (parts[1] || '').charAt(0).toUpperCase(); })()"></span>
-                                        <span class="text-[10px] text-muted-foreground truncate"
+                                        <span class="text-xs text-muted-foreground truncate"
                                               x-text="(card.owner || 'Unassigned').split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); })"></span>
                                     </div>
                                     <span x-show="card.meta && card.meta.app_count > 0" x-cloak
-                                          class="flex-shrink-0 inline-flex items-center gap-0.5 text-[9px] text-muted-foreground"
+                                          class="flex-shrink-0 inline-flex items-center gap-0.5 text-2xs text-muted-foreground"
                                           :title="card.meta.app_count + ' linked applications'">
                                         <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z"/></svg>
                                         <span x-text="card.meta.app_count"></span>
@@ -356,26 +353,26 @@
                                 <div class="flex items-center justify-between">
                                     <div class="flex items-center gap-2">
                                         <span x-show="card.due_date" x-cloak
-                                              class="inline-flex items-center gap-0.5 text-[9px]"
+                                              class="inline-flex items-center gap-0.5 text-2xs"
                                               :class="isOverdue(card.due_date)
-                                                  ? 'text-destructive font-semibold'
-                                                  : 'text-muted-foreground'">
+ ? 'text-destructive-emphasis font-semibold'
+ : 'text-muted-foreground'">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                             <span x-text="formatDate(card.due_date)"></span>
                                         </span>
                                         <span x-show="card.meta && card.meta.days_in_column != null" x-cloak
-                                              class="inline-flex items-center gap-0.5 text-[9px]"
+                                              class="inline-flex items-center gap-0.5 text-2xs"
                                               :class="(card.meta?.days_in_column || 0) > 14
-                                                  ? 'text-destructive'
-                                                  : (card.meta?.days_in_column || 0) > 7
-                                                      ? 'text-amber-600'
-                                                      : 'text-muted-foreground'"
+ ? 'text-destructive'
+ : (card.meta?.days_in_column || 0) > 7
+ ? 'text-warning-emphasis'
+ : 'text-muted-foreground'"
                                               :title="(card.meta?.days_in_column || 0) + ' days in this column'">
                                             <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                             <span x-text="(card.meta?.days_in_column || 0) + 'd'"></span>
                                         </span>
                                     </div>
-                                    <a :href="card.link_url" class="text-[9px] text-primary hover:underline"
+                                    <a :href="card.link_url" class="text-2xs text-primary hover:underline"
                                        x-text="card.link_label || 'Open'" @click.stop></a>
                                 </div>
                             </div>
@@ -383,8 +380,8 @@
                     </template>
                 </div>
                 {# Flat-mode column add button #}
-                <button @click="openCreateTask(null, col.id)"
-                        class="mt-1 w-full py-1.5 text-[10px] text-muted-foreground/40 hover:text-primary hover:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
+                <button type="button" @click="openCreateTask(null, col.id)"
+                        class="mt-1 w-full py-1.5 text-xs text-muted-foreground/40 hover:text-primary hover:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                     </svg>
@@ -406,13 +403,13 @@
                     <div class="flex items-center justify-between px-2 py-1.5 rounded-md"
                          :class="wipAtLimit(col.id) ? 'bg-destructive/10 ring-1 ring-destructive/30' : 'bg-muted'">
                         <span class="text-xs font-semibold text-foreground" x-text="col.label"></span>
-                        <span class="flex items-center gap-0.5 text-[10px]">
+                        <span class="flex items-center gap-0.5 text-xs">
                             <template x-if="colSlaStatus(col.id) && colSlaStatus(col.id).overdue_count > 0">
-                                <span class="px-1 py-0.5 rounded bg-destructive/10 text-destructive font-semibold"
+                                <span class="px-1 py-0.5 rounded bg-destructive/10 text-destructive-emphasis font-semibold"
                                       :title="colSlaStatus(col.id).overdue_count + ' card(s) past SLA'"
                                       x-text="'⚠ ' + colSlaStatus(col.id).overdue_count"></span>
                             </template>
-                            <span :class="wipAtLimit(col.id) ? 'text-destructive font-semibold' : wipNearLimit(col.id) ? 'text-amber-600 font-medium' : 'text-muted-foreground'"
+                            <span :class="wipAtLimit(col.id) ? 'text-destructive-emphasis font-semibold' : wipNearLimit(col.id) ? 'text-warning-emphasis font-medium' : 'text-muted-foreground'"
                                   class="flex items-center gap-0.5">
                                 <span x-text="wipCount(col.id)"></span>
                                 <template x-if="wipLimit(col.id) > 0">
@@ -441,28 +438,33 @@
                          fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
                     </svg>
-                    <span class="text-[10px] font-bold w-9 shrink-0 opacity-60"
+                    <span class="text-xs font-bold w-9 shrink-0 opacity-60"
                           x-text="phase.code"></span>
                     <span class="text-xs font-semibold flex-1 min-w-0 truncate"
                           x-text="phase.label"></span>
-                    <span class="text-[10px] text-muted-foreground ml-auto shrink-0"
+                    <template x-if="phase.activate_stage">
+                        <span class="text-2xs font-medium shrink-0 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary-foreground border border-secondary/20"
+                              title="SAP Activate stage (Capgemini SAP S/4HANA Assessment, Stage 1 enablement)"
+                              x-text="'Activate: ' + phase.activate_stage"></span>
+                    </template>
+                    <span class="text-xs text-muted-foreground ml-auto shrink-0"
                           x-text="phaseTotal(phase.code) + ' cards'"></span>
                     <template x-if="phaseCycleAvg(phase.code) !== null">
-                        <span class="text-[10px] ml-1 shrink-0 px-1.5 py-0.5 rounded bg-primary/5 text-primary"
+                        <span class="text-xs ml-1 shrink-0 px-1.5 py-0.5 rounded bg-primary/5 text-primary"
                               :title="'Avg cycle time: ' + phaseCycleAvg(phase.code) + ' days'"
                               x-text="'⏱ ' + phaseCycleAvg(phase.code) + 'd'"></span>
                     </template>
                     {# Deliverable checklist badge #}
-                    <button @click.stop="toggleDeliverableDropdown($event, phase.code)"
+                    <button type="button" @click.stop="toggleDeliverableDropdown($event, phase.code)"
                             @mouseenter="loadPhaseDeliverables(phase.code)"
-                            class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors"
+                            class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold transition-colors"
                             :class="deliverableBadgeClass(phase.code)"
                             title="TOGAF deliverable checklist"
                             x-text="deliverableBadgeText(phase.code)">
                     </button>
                     {# SA-003: ArchiMate element count badge #}
                     <span @mouseenter="loadPhaseElements(phase.code)"
-                          class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/20"
+                          class="ml-1 shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/20"
                           :title="'Suggested ArchiMate elements for Phase ' + phase.code"
                           x-text="phaseElementBadgeText(phase.code)"
                           x-show="phaseElementBadgeText(phase.code)" x-cloak
@@ -472,7 +474,7 @@
                     {# Viewpoint link — maps ADM phase to ArchiMate viewpoint #}
                     <a @click.stop
                        :href="'/archimate/viewpoints?active=' + ({A:'stakeholder',B:'business_process',C:'application_cooperation',D:'technology',E:'implementation_deployment',F:'migration',G:'motivation',H:'motivation'}[phase.code] || 'basic')"
-                       class="ml-1 shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                       class="ml-1 shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
                        title="Open ArchiMate viewpoint for this phase">
                         <i data-lucide="eye" class="w-2.5 h-2.5"></i>
                         VP
@@ -483,11 +485,11 @@
                 <template x-if="expandedDeliverablePhase === phase.code">
                     <div class="mb-2 mx-1 p-3 rounded-md border border-border bg-card shadow-sm text-xs"
                          @click.stop>
-                        <p class="font-semibold text-foreground mb-2 text-[11px]">
+                        <p class="font-semibold text-foreground mb-2 text-2xs">
                             TOGAF Deliverables — Phase <span x-text="phase.code"></span>
                         </p>
                         <template x-if="phaseDeliverables[phase.code] && phaseDeliverables[phase.code].loading">
-                            <p class="text-muted-foreground text-[10px]">Loading…</p>
+                            <p class="text-muted-foreground text-xs">Loading…</p>
                         </template>
                         <template x-if="phaseDeliverables[phase.code] && !phaseDeliverables[phase.code].loading">
                             <div class="space-y-1.5">
@@ -497,12 +499,12 @@
                                                :checked="item.checked"
                                                @change="toggleDeliverable(item.id, phase.code, $event.target.checked)"
                                                class="mt-0.5 shrink-0 accent-primary">
-                                        <span class="text-[11px] leading-snug"
+                                        <span class="text-2xs leading-snug"
                                               :class="item.checked ? 'line-through text-muted-foreground' : 'text-foreground'"
                                               x-text="item.name"></span>
                                     </label>
                                 </template>
-                                <p class="pt-1 text-[10px] text-muted-foreground border-t border-border mt-2"
+                                <p class="pt-1 text-xs text-muted-foreground border-t border-border mt-2"
                                    x-text="phaseDeliverables[phase.code].checked + ' of ' + phaseDeliverables[phase.code].total + ' complete'"></p>
                             </div>
                         </template>
@@ -530,31 +532,31 @@
                                           @click="openDetail(card)"
                                           :class="draggingCard && draggingCard.id === card.id ? 'opacity-40 rotate-1 shadow-lg scale-[0.98]' : ''">
                                         <div class="flex items-center justify-between mb-1">
-                                            <span class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-muted text-muted-foreground"
+                                            <span class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded bg-muted text-muted-foreground"
                                                   x-text="card.card_type"></span>
-                                            <span class="px-1.5 py-0.5 text-[10px] font-medium rounded"
+                                            <span class="px-1.5 py-0.5 text-xs font-medium rounded"
                                                   :class="priorityClass(card.priority)"
                                                   x-text="card.priority"></span>
                                         </div>
                                         {# ARB governance badge #}
                                         <template x-if="card.requires_arb_signoff">
-                                          <span class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 border border-amber-300"
+                                          <span class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning-emphasis border border-warning/30"
                                                 title="Requires ARB Sign-off">
                                             <i data-lucide="shield-alert" class="w-3 h-3" aria-hidden="true"></i>
                                             ARB
                                           </span>
                                         </template>
-                                        <p class="text-[11px] font-semibold text-foreground leading-tight line-clamp-2"
+                                        <p class="text-2xs font-semibold text-foreground leading-tight line-clamp-2"
                                            x-text="card.title"></p>
                                         <p x-show="card.owner" x-cloak
-                                           class="text-[10px] text-muted-foreground mt-1 truncate"
+                                           class="text-xs text-muted-foreground mt-1 truncate"
                                            x-text="card.owner"></p>
                                     </div>
                                 </template>
 
                                 {# Inline add — visible in all cells, reveals on hover #}
-                                <button @click="openCreateTask(phase.code, col.id)"
-                                        class="w-full py-1.5 text-[10px] text-muted-foreground/40 group-hover/cell:text-primary group-hover/cell:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
+                                <button type="button" @click="openCreateTask(phase.code, col.id)"
+                                        class="w-full py-1.5 text-xs text-muted-foreground/40 group-hover/cell:text-primary group-hover/cell:bg-primary/5 rounded transition-colors flex items-center justify-center gap-1">
                                     <svg class="w-3 h-3 opacity-0 group-hover/cell:opacity-100 transition-opacity" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                                     </svg>
@@ -570,6 +572,39 @@
             </div>
         </template>
 
+    </div>
+
+    {# Bulk actions floating toolbar #}
+    <div x-show="selectedCardIds.length >= 2" x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="translate-y-4 opacity-0"
+         x-transition:enter-end="translate-y-0 opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="translate-y-0 opacity-100"
+         x-transition:leave-end="translate-y-4 opacity-0"
+         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card border border-border rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3"
+         @keydown.escape.window="clearSelection()">
+        <span class="text-xs font-medium text-foreground" x-text="selectedCardIds.length + ' selected'"></span>
+        <div class="h-4 w-px bg-border"></div>
+        <div class="flex items-center gap-1.5">
+            <label class="text-xs text-muted-foreground">Move to:</label>
+            <select x-model="bulkMoveTarget"
+                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground" aria-label="Move to">
+                <option value="">Choose...</option>
+                <template x-for="col in columns" :key="col.id">
+                    <option :value="col.id" x-text="col.label"></option>
+                </template>
+            </select>
+            <button type="button" @click="bulkMove()" :disabled="!bulkMoveTarget"
+                    class="h-7 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
+                Move
+            </button>
+        </div>
+        <div class="h-4 w-px bg-border"></div>
+        <button type="button" @click="clearSelection()"
+                class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Cancel
+        </button>
     </div>
 
     </div>
@@ -591,7 +626,7 @@
              @click.stop>
             <div class="flex items-center justify-between px-5 py-4 border-b border-border">
                 <h2 id="create-task-title" class="text-sm font-semibold text-foreground">New Architecture Task</h2>
-                <button @click="show = false"
+                <button type="button" @click="show = false"
                         class="p-1 text-muted-foreground hover:text-foreground rounded"
                         aria-label="Close">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -601,13 +636,13 @@
             </div>
             <div class="px-5 py-4 max-h-[60vh] overflow-y-auto space-y-1">
                 <div x-show="error" x-cloak
-                     class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive mb-2"
+                     class="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive-emphasis mb-2"
                      x-text="error"></div>
 
                 {# Section 1: Identity #}
                 <div x-data="{ expanded: true }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground border-b border-border mb-3">
                         <span>Identity</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -615,7 +650,7 @@
                     </button>
                     <div x-show="expanded" x-cloak class="space-y-3 mb-2">
                         <div class="space-y-1">
-                            <label class="text-xs font-medium text-foreground" for="ct-title">Title <span class="text-destructive">*</span></label>
+                            <label class="text-xs font-medium text-foreground" for="ct-title">Title <span class="text-destructive-emphasis">*</span></label>
                             <input id="ct-title" type="text" x-model="form.title" required
                                    placeholder="Task title..."
                                    class="w-full h-8 px-3 text-sm bg-background border border-border rounded text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary">
@@ -649,7 +684,7 @@
                 {# Section 2: TOGAF Classification #}
                 <div x-data="{ expanded: true }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground border-b border-border mb-3">
                         <span>TOGAF Classification</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -661,13 +696,13 @@
                             <div x-show="lockedPhase" x-cloak class="flex items-center gap-1.5">
                                 <span class="inline-flex items-center h-8 px-2.5 text-xs font-medium rounded bg-primary/10 text-primary border border-primary/20"
                                       x-text="(phases.find(function(p){ return p.code === lockedPhase; }) || {label: lockedPhase}).label"></span>
-                                <span class="text-[10px] text-muted-foreground">pre-selected</span>
+                                <span class="text-xs text-muted-foreground">pre-selected</span>
                             </div>
                             <select x-show="!lockedPhase" x-cloak
                                     id="ct-phase"
                                     x-model="form.phase"
                                     @change="onPhaseChange()"
-                                    class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
+                                    class="w-full h-8 px-2 text-xs bg-background border border-border rounded text-foreground focus:outline-none focus:ring-1 focus:ring-primary" aria-label="Phase">
                                 <template x-for="p in phases" :key="p.code">
                                     <option :value="p.code" x-text="p.label"></option>
                                 </template>
@@ -686,11 +721,11 @@
                                 <option value="Technology">Technology Architecture</option>
                                 <option value="Cross-cutting">Cross-cutting</option>
                             </select>
-                            <p class="text-[10px] mt-0.5 text-muted-foreground inline-flex items-center gap-1" x-show="!domainOverridden" x-cloak>
-                                <i data-lucide="check" class="h-3 w-3 text-emerald-600"></i><span class="text-emerald-600">Recommended</span>
+                            <p class="text-xs mt-0.5 text-muted-foreground inline-flex items-center gap-1" x-show="!domainOverridden" x-cloak>
+                                <i data-lucide="check" class="h-3 w-3 text-success"></i><span class="text-success-emphasis">Recommended</span>
                                 for <span x-text="'Phase ' + form.phase"></span>
                             </p>
-                            <p class="text-[10px] mt-0.5 text-amber-600 inline-flex items-center gap-1" x-show="domainOverridden" x-cloak>
+                            <p class="text-xs mt-0.5 text-warning-emphasis inline-flex items-center gap-1" x-show="domainOverridden" x-cloak>
                                 <i data-lucide="alert-triangle" class="h-3 w-3"></i> Override — default for <span x-text="'Phase ' + form.phase"></span> is
                                 <span x-text="form.phase === 'C' ? 'Application' : form.phase === 'D' || form.phase === 'G' ? 'Technology' : 'Business'"></span>
                             </p>
@@ -743,7 +778,7 @@
                 {# Section 3: Planning & Gantt #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground border-b border-border mb-3">
                         <span>Planning &amp; Gantt</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -781,7 +816,7 @@
                 {# Section 4: Assignment & Governance #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground border-b border-border mb-3">
                         <span>Assignment &amp; Governance</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -814,7 +849,7 @@
                             </div>
                             <p x-show="form.assignee_label" x-cloak class="text-xs text-muted-foreground mt-0.5">
                                 Assigned to: <span class="font-medium text-foreground" x-text="form.assignee_label"></span>
-                                <button type="button" @click="form.assignee=null; form.assignee_label=''; assigneeSearch=''" class="ml-1 text-muted-foreground hover:text-destructive">×</button>
+                                <button type="button" @click="form.assignee=null; form.assignee_label=''; assigneeSearch=''" class="ml-1 text-muted-foreground hover:text-destructive-emphasis">×</button>
                             </p>
                         </div>
                         <div class="space-y-1">
@@ -843,7 +878,7 @@
                 {# Section 5: Traceability (ArchiMate 3.2) #}
                 <div x-data="{ expanded: false }">
                     <button type="button" @click="expanded = !expanded"
-                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700 mb-3">
+                            class="flex w-full items-center justify-between py-2 text-sm font-semibold text-foreground border-b border-border mb-3">
                         <span>Traceability (ArchiMate 3.2)</span>
                         <svg :class="expanded ? 'rotate-180' : ''" class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -852,25 +887,25 @@
                     <div x-show="expanded" x-cloak class="space-y-3 mb-2">
                         {# Requirements #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground mb-1">
                                 Realizes Requirements
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → realizes → Requirement</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → realizes → Requirement</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.requirement_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 dark:bg-blue-900 text-primary/90 dark:text-blue-200 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary/90 rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeRequirement(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeRequirement(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
                             <input type="text" x-model="requirementSearch" @input.debounce.300ms="searchRequirements()" @focus="searchRequirements()"
                                    placeholder="Search requirements..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-                            <div x-show="requirementResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border rounded px-3 py-1.5 bg-background text-foreground" aria-label="Search requirements...">
+                            <div x-show="requirementResults.length > 0" x-cloak class="mt-1 border border-border rounded bg-background shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in requirementResults" :key="r.id">
-                                    <button type="button" @click="addRequirement(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addRequirement(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -878,25 +913,25 @@
                         </div>
                         {# Goals #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground mb-1">
                                 Influences Goals
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → influences → Goal</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → influences → Goal</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.goal_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-success/10 text-success-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeGoal(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeGoal(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
                             <input type="text" x-model="goalSearch" @input.debounce.300ms="searchGoals()" @focus="searchGoals()"
                                    placeholder="Search goals..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-                            <div x-show="goalResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border rounded px-3 py-1.5 bg-background text-foreground" aria-label="Search goals...">
+                            <div x-show="goalResults.length > 0" x-cloak class="mt-1 border border-border rounded bg-background shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in goalResults" :key="r.id">
-                                    <button type="button" @click="addGoal(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addGoal(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -904,25 +939,25 @@
                         </div>
                         {# Drivers #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground mb-1">
                                 Associated Drivers
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → associated with → Driver</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → associated with → Driver</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.driver_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-warning/10 text-warning-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removeDriver(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removeDriver(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
                             <input type="text" x-model="driverSearch" @input.debounce.300ms="searchDrivers()" @focus="searchDrivers()"
                                    placeholder="Search drivers..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-                            <div x-show="driverResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border rounded px-3 py-1.5 bg-background text-foreground" aria-label="Search drivers...">
+                            <div x-show="driverResults.length > 0" x-cloak class="mt-1 border border-border rounded bg-background shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in driverResults" :key="r.id">
-                                    <button type="button" @click="addDriver(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addDriver(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -930,25 +965,25 @@
                         </div>
                         {# Principles #}
                         <div>
-                            <label class="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">
+                            <label class="block text-xs font-medium text-muted-foreground mb-1">
                                 Complies with Principles
-                                <span class="text-zinc-400 font-normal ml-1">Work Package → complies with → Principle</span>
+                                <span class="text-muted-foreground font-normal ml-1">Work Package → complies with → Principle</span>
                             </label>
                             <div class="flex flex-wrap gap-1 mb-1">
                                 <template x-for="item in form.principle_ids" :key="item.id">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 rounded text-xs">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-info/10 text-info-emphasis rounded text-xs">
                                         <span x-text="item.ref + ': ' + item.label"></span>
-                                        <button type="button" @click="removePrinciple(item)" class="hover:text-destructive">×</button>
+                                        <button type="button" @click="removePrinciple(item)" class="hover:text-destructive-emphasis">×</button>
                                     </span>
                                 </template>
                             </div>
                             <input type="text" x-model="principleSearch" @input.debounce.300ms="searchPrinciples()" @focus="searchPrinciples()"
                                    placeholder="Search principles..."
-                                   class="w-full text-sm border border-zinc-300 dark:border-zinc-600 rounded px-3 py-1.5 bg-background dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100">
-                            <div x-show="principleResults.length > 0" x-cloak class="mt-1 border border-zinc-200 dark:border-zinc-700 rounded bg-background dark:bg-zinc-800 shadow-lg max-h-40 overflow-y-auto z-50">
+                                   class="w-full text-sm border border-border rounded px-3 py-1.5 bg-background text-foreground" aria-label="Search principles...">
+                            <div x-show="principleResults.length > 0" x-cloak class="mt-1 border border-border rounded bg-background shadow-lg max-h-40 overflow-y-auto z-50">
                                 <template x-for="r in principleResults" :key="r.id">
-                                    <button type="button" @click="addPrinciple(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-700">
-                                        <span class="font-mono text-xs text-zinc-500 mr-2" x-text="r.ref"></span>
+                                    <button type="button" @click="addPrinciple(r)" class="w-full text-left px-3 py-1.5 text-sm hover:bg-muted">
+                                        <span class="font-mono text-xs text-muted-foreground mr-2" x-text="r.ref"></span>
                                         <span x-text="r.label"></span>
                                     </button>
                                 </template>
@@ -958,11 +993,11 @@
                 </div>
             </div>
             <div class="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
-                <button @click="show = false"
+                <button type="button" @click="show = false"
                         class="h-8 px-3 text-xs font-medium bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors">
                     Cancel
                 </button>
-                <button @click="submit()"
+                <button type="button" @click="submit()"
                         :disabled="loading"
                         class="h-8 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
                     <span x-show="!loading" x-cloak>Create Task</span>
@@ -972,38 +1007,6 @@
         </div>
     </div>
 
-    {# Bulk actions floating toolbar #}
-    <div x-show="selectedCardIds.length >= 2" x-cloak
-         x-transition:enter="transition ease-out duration-150"
-         x-transition:enter-start="translate-y-4 opacity-0"
-         x-transition:enter-end="translate-y-0 opacity-100"
-         x-transition:leave="transition ease-in duration-100"
-         x-transition:leave-start="translate-y-0 opacity-100"
-         x-transition:leave-end="translate-y-4 opacity-0"
-         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-card border border-border rounded-lg shadow-lg px-4 py-2.5 flex items-center gap-3"
-         @keydown.escape.window="clearSelection()">
-        <span class="text-xs font-medium text-foreground" x-text="selectedCardIds.length + ' selected'"></span>
-        <div class="h-4 w-px bg-border"></div>
-        <div class="flex items-center gap-1.5">
-            <label class="text-xs text-muted-foreground">Move to:</label>
-            <select x-model="bulkMoveTarget"
-                    class="h-7 px-2 text-xs bg-background border border-border rounded text-foreground">
-                <option value="">Choose...</option>
-                <template x-for="col in columns" :key="col.id">
-                    <option :value="col.id" x-text="col.label"></option>
-                </template>
-            </select>
-            <button @click="bulkMove()" :disabled="!bulkMoveTarget"
-                    class="h-7 px-3 text-xs font-medium bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors disabled:opacity-50">
-                Move
-            </button>
-        </div>
-        <div class="h-4 w-px bg-border"></div>
-        <button @click="clearSelection()"
-                class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Cancel
-        </button>
-    </div>
 </div>
 
 {# Card Detail Modal — rendered outside overflow-hidden layout per admin_base.html rule #}
@@ -1039,7 +1042,7 @@
                         <p class="text-sm text-muted-foreground mt-1" x-show="card && card.description" x-cloak
                            x-text="card ? card.description : ''"></p>
                     </div>
-                    <button @click="card = null"
+                    <button aria-label="Close card details" type="button" @click="card = null"
                             class="mt-0.5 p-1 rounded text-muted-foreground hover:text-foreground transition-colors shrink-0">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
@@ -1053,7 +1056,7 @@
                    Section 1: Core Details (title, description, phase, status)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section1Open = !section1Open"
+                    <button type="button" @click="section1Open = !section1Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             aria-expanded="true"
                             :aria-expanded="section1Open">
@@ -1078,11 +1081,11 @@
                                     <div class="w-32 shrink-0 px-3 py-2.5 text-muted-foreground bg-muted/40">Status</div>
                                     <div class="flex-1 px-3 py-2.5 flex flex-wrap gap-1.5">
                                         <template x-for="col in columns" :key="col.id">
-                                            <button @click="moveCard(col.id)"
+                                            <button type="button" @click="moveCard(col.id)"
                                                     class="px-2 py-0.5 text-xs rounded border transition-colors"
                                                     :class="card && card.column === col.id
-                                                        ? 'bg-foreground text-background border-foreground font-medium'
-                                                        : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'"
+ ? 'bg-foreground text-background border-foreground font-medium'
+ : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/30'"
                                                     :disabled="card && card.column === col.id"
                                                     x-text="col.label"></button>
                                         </template>
@@ -1160,9 +1163,9 @@
                                     <template x-for="ph in ['A','B','C','D','E','F','G','H']" :key="ph">
                                         <div class="flex-1 text-center">
                                             <div class="h-1.5 rounded-sm"
-                                                 :class="card.meta.adm_completed.includes(ph) ? 'bg-emerald-500' : (card.meta.adm_current === ph ? 'bg-primary' : 'bg-muted')"></div>
-                                            <span class="text-[10px] mt-1 block"
-                                                  :class="card.meta.adm_completed.includes(ph) ? 'text-emerald-600 font-medium' : (card.meta.adm_current === ph ? 'text-primary font-medium' : 'text-muted-foreground')"
+                                                 :class="card.meta.adm_completed.includes(ph) ? 'bg-success' : (card.meta.adm_current === ph ? 'bg-primary' : 'bg-muted')"></div>
+                                            <span class="text-xs mt-1 block"
+                                                  :class="card.meta.adm_completed.includes(ph) ? 'text-success-emphasis font-medium' : (card.meta.adm_current === ph ? 'text-primary font-medium' : 'text-muted-foreground')"
                                                   x-text="ph"></span>
                                         </div>
                                     </template>
@@ -1176,7 +1179,7 @@
                    Section 2: Architecture Context (ArchiMate, layer, element type)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section2Open = !section2Open"
+                    <button type="button" @click="section2Open = !section2Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section2Open">
                         <span class="text-sm font-semibold text-foreground">Architecture Context</span>
@@ -1214,7 +1217,7 @@
                                 <p class="text-xs text-muted-foreground mb-2">ArchiMate Artifacts</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="layer in Object.keys(card.meta.artifacts)" :key="layer">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-violet-500/10 text-violet-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-info-emphasis"
                                               x-text="layer + ' ' + card.meta.artifacts[layer]"></span>
                                     </template>
                                     <span class="text-xs text-muted-foreground py-0.5" x-text="card.meta.artifact_total + ' total'"></span>
@@ -1263,7 +1266,7 @@
                                     </span>
                                 </template>
                                 <template x-for="blk in (card ? card.blocks || [] : [])" :key="'blk'+blk">
-                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-destructive/10 text-destructive">
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded bg-destructive/10 text-destructive-emphasis">
                                         <span>blocks</span> <span x-text="blk"></span>
                                     </span>
                                 </template>
@@ -1276,14 +1279,13 @@
                    Section 3: Requirements & Motivation (typeahead pickers)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section3Open = !section3Open"
+                    <button type="button" @click="section3Open = !section3Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section3Open">
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-semibold text-foreground">Requirements & Motivation</span>
                             <span x-show="card && ((card.requirement_ids && card.requirement_ids.length) || (card.goal_ids && card.goal_ids.length) || (card.driver_ids && card.driver_ids.length) || (card.principle_ids && card.principle_ids.length))" x-cloak
-                                  x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-primary/10 text-primary"
+                                  class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary"
                                   x-text="((card && card.requirement_ids ? card.requirement_ids.length : 0) + (card && card.goal_ids ? card.goal_ids.length : 0) + (card && card.driver_ids ? card.driver_ids.length : 0) + (card && card.principle_ids ? card.principle_ids.length : 0))"></span>
                         </div>
                         <svg class="w-4 h-4 text-muted-foreground transition-transform duration-200"
@@ -1306,19 +1308,19 @@
                                 <p class="text-xs text-muted-foreground mb-2">Linked Items</p>
                                 <div class="flex flex-wrap gap-1.5">
                                     <template x-for="id in (card ? card.requirement_ids || [] : [])" :key="'r'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-blue-500/10 text-primary"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-primary"
                                               x-text="'REQ-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.goal_ids || [] : [])" :key="'g'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-emerald-500/10 text-emerald-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-success/10 text-success-emphasis"
                                               x-text="'GOAL-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.driver_ids || [] : [])" :key="'d'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-amber-500/10 text-amber-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-warning/10 text-warning-emphasis"
                                               x-text="'DRV-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                     <template x-for="id in (card ? card.principle_ids || [] : [])" :key="'p'+id">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-purple-500/10 text-purple-700"
+                                        <span class="inline-flex items-center px-2 py-0.5 text-xs rounded bg-info/10 text-info-emphasis"
                                               x-text="'PRIN-' + String(id).padStart(3,'0')"></span>
                                     </template>
                                 </div>
@@ -1333,8 +1335,11 @@
                                            @focus="searchDetailRequirements()"
                                            placeholder="Search requirements..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
-                                    <div x-show="detailRequirementResults.length > 0" x-cloak
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search requirements..."/>
+                                    <div x-show="typeaheadError.requirements" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
+                                         x-text="typeaheadError.requirements"></div>
+                                    <div x-show="!typeaheadError.requirements && detailRequirementResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailRequirementResults" :key="item.id">
                                             <button type="button" @click="addDetailRequirement(item)"
@@ -1355,8 +1360,11 @@
                                            @focus="searchDetailGoals()"
                                            placeholder="Search goals..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
-                                    <div x-show="detailGoalResults.length > 0" x-cloak
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search goals..."/>
+                                    <div x-show="typeaheadError.goals" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
+                                         x-text="typeaheadError.goals"></div>
+                                    <div x-show="!typeaheadError.goals && detailGoalResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailGoalResults" :key="item.id">
                                             <button type="button" @click="addDetailGoal(item)"
@@ -1377,8 +1385,11 @@
                                            @focus="searchDetailDrivers()"
                                            placeholder="Search drivers..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
-                                    <div x-show="detailDriverResults.length > 0" x-cloak
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search drivers..."/>
+                                    <div x-show="typeaheadError.drivers" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
+                                         x-text="typeaheadError.drivers"></div>
+                                    <div x-show="!typeaheadError.drivers && detailDriverResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailDriverResults" :key="item.id">
                                             <button type="button" @click="addDetailDriver(item)"
@@ -1399,8 +1410,11 @@
                                            @focus="searchDetailPrinciples()"
                                            placeholder="Search principles..."
                                            autocomplete="off"
-                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
-                                    <div x-show="detailPrincipleResults.length > 0" x-cloak
+                                           class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Search principles..."/>
+                                    <div x-show="typeaheadError.principles" x-cloak
+                                         class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg px-3 py-2 text-sm text-destructive-emphasis"
+                                         x-text="typeaheadError.principles"></div>
+                                    <div x-show="!typeaheadError.principles && detailPrincipleResults.length > 0" x-cloak
                                          class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                         <template x-for="item in detailPrincipleResults" :key="item.id">
                                             <button type="button" @click="addDetailPrinciple(item)"
@@ -1423,7 +1437,7 @@
                    Section 4: Planning & Tracking (dates, points, assignee, labels)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section4Open = !section4Open"
+                    <button type="button" @click="section4Open = !section4Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section4Open">
                         <span class="text-sm font-semibold text-foreground">Planning & Tracking</span>
@@ -1485,13 +1499,13 @@
                    Section 5: Governance (acceptance criteria, ARB, phase gate, solution meta)
                    ══════════════════════════════════════════════════════════════ #}
                 <div class="border-b border-border">
-                    <button @click="section5Open = !section5Open"
+                    <button type="button" @click="section5Open = !section5Open"
                             class="w-full px-6 py-3 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
                             :aria-expanded="section5Open">
                         <div class="flex items-center gap-2">
                             <span class="text-sm font-semibold text-foreground">Governance</span>
                             <span x-show="card && card.requires_arb_signoff" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/30">ARB</span>
+                                  class="inline-flex items-center px-1.5 py-0.5 text-xs font-medium rounded-full bg-warning/10 text-warning-emphasis border border-warning/30">ARB</span>
                         </div>
                         <svg class="w-4 h-4 text-muted-foreground transition-transform duration-200"
                              :class="section5Open ? 'rotate-180' : ''"
@@ -1510,11 +1524,11 @@
 
                             {# ARB Sign-off #}
                             <div x-show="card && card.requires_arb_signoff" x-cloak
-                                 class="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-500/5 border border-amber-500/20">
-                                <svg class="w-4 h-4 text-amber-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                 class="flex items-center gap-2 px-3 py-2 rounded-md bg-warning/5 border border-warning/20">
+                                <svg class="w-4 h-4 text-warning shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                 </svg>
-                                <span class="text-xs text-amber-700 font-medium">Architecture Review Board sign-off required</span>
+                                <span class="text-xs text-warning-emphasis font-medium">Architecture Review Board sign-off required</span>
                             </div>
 
                             {# Acceptance Criteria #}
@@ -1527,7 +1541,7 @@
                             <template x-if="card && card.card_type === 'solution' && card.meta && card.meta.phase_gate">
                                 <div>
                                     <div class="rounded-lg px-3 py-2.5 text-sm"
-                                         :class="card.meta.phase_gate.valid ? 'bg-emerald-500/5 text-emerald-700' : 'bg-destructive/5 text-destructive'">
+                                         :class="card.meta.phase_gate.valid ? 'bg-success/5 text-success-emphasis' : 'bg-destructive/5 text-destructive-emphasis'">
                                         <div class="font-medium" x-text="card.meta.phase_gate.valid ? 'Phase gate passed' : 'Phase gate not met'"></div>
                                         <template x-if="card.meta.phase_gate.errors && card.meta.phase_gate.errors.length > 0">
                                             <ul class="mt-1.5 space-y-0.5 text-xs">
@@ -1537,7 +1551,7 @@
                                             </ul>
                                         </template>
                                         <template x-if="card.meta.phase_gate.warnings && card.meta.phase_gate.warnings.length > 0">
-                                            <ul class="mt-1.5 space-y-0.5 text-xs text-amber-600">
+                                            <ul class="mt-1.5 space-y-0.5 text-xs text-warning-emphasis">
                                                 <template x-for="warn in card.meta.phase_gate.warnings" :key="warn">
                                                     <li x-text="warn"></li>
                                                 </template>
@@ -1597,20 +1611,20 @@
                 <template x-if="card && card.card_type === 'task'">
                     <div class="px-6 py-5 space-y-3">
                         <div>
-                            <label class="text-xs text-muted-foreground">Title</label>
+                            <label class="text-xs text-muted-foreground">Task title</label>
                             <input x-model="editFields.title" type="text"
-                                   class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                   class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Task title"/>
                         </div>
                         <div>
                             <label class="text-xs text-muted-foreground">Description</label>
                             <textarea x-model="editFields.description" rows="3"
-                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Description"></textarea>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="text-xs text-muted-foreground">Priority</label>
                                 <select x-model="editFields.priority"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Priority">
                                     <option value="critical">Critical</option>
                                     <option value="high">High</option>
                                     <option value="medium">Medium</option>
@@ -1620,7 +1634,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Phase</label>
                                 <select x-model="editFields.phase" @change="onEditPhaseChange()"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Phase">
                                     <template x-for="ph in phases" :key="ph.code">
                                         <option :value="ph.code" x-text="ph.label"></option>
                                     </template>
@@ -1631,7 +1645,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Domain</label>
                                 <select x-model="editFields.arch_domain"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Domain">
                                     <option value="Business">Business</option>
                                     <option value="Data">Data</option>
                                     <option value="Application">Application</option>
@@ -1642,7 +1656,7 @@
                             <div>
                                 <label class="text-xs text-muted-foreground">Issue Type</label>
                                 <select x-model="editFields.issue_type"
-                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring">
+                                        class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Issue Type">
                                     <option value="Epic">Epic</option>
                                     <option value="Story">Story</option>
                                     <option value="Task">Task</option>
@@ -1660,7 +1674,7 @@
                                        @focus="searchEditUsers()"
                                        :placeholder="editFields.assignee_label || 'Search users...'"
                                        autocomplete="off"
-                                       class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Edit Assignee Search"/>
                                 <div x-show="editUserResults.length > 0" x-cloak
                                      class="absolute z-50 mt-1 w-full bg-background border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
                                     <template x-for="u in editUserResults" :key="u.id">
@@ -1674,30 +1688,30 @@
                             </div>
                             <p x-show="editFields.assignee_label" x-cloak class="text-xs text-muted-foreground mt-1">
                                 <span x-text="editFields.assignee_label"></span>
-                                <button type="button" @click="editFields.assignee=null; editFields.assignee_label=''; editAssigneeSearch=''" class="ml-1 text-destructive hover:underline text-xs">clear</button>
+                                <button type="button" @click="editFields.assignee=null; editFields.assignee_label=''; editAssigneeSearch=''" class="ml-1 text-destructive-emphasis hover:underline text-xs">clear</button>
                             </p>
                         </div>
                         <div class="grid grid-cols-3 gap-3">
                             <div>
                                 <label class="text-xs text-muted-foreground">Points</label>
                                 <input x-model.number="editFields.story_points" type="number" min="0" max="100"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Points"/>
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Start</label>
                                 <input x-model="editFields.target_start_date" type="date"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Start"/>
                             </div>
                             <div>
                                 <label class="text-xs text-muted-foreground">Due</label>
                                 <input x-model="editFields.target_end_date" type="date"
-                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring"/>
+                                       class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring" aria-label="Due"/>
                             </div>
                         </div>
                         <div>
                             <label class="text-xs text-muted-foreground">Acceptance Criteria</label>
                             <textarea x-model="editFields.acceptance_criteria" rows="2" placeholder="Definition of done..."
-                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                                      class="w-full mt-1 px-3 py-2 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Acceptance Criteria"></textarea>
                         </div>
                         <div>
                             <div class="flex items-center justify-between">
@@ -1705,7 +1719,7 @@
                                 <span class="text-xs tabular-nums text-muted-foreground" x-text="editFields.progress_pct + '%'"></span>
                             </div>
                             <input x-model.number="editFields.progress_pct" type="range" min="0" max="100"
-                                   class="w-full mt-1 accent-primary"/>
+                                   class="w-full mt-1 accent-primary" aria-label="Progress"/>
                         </div>
                     </div>
                 </template>
@@ -1722,13 +1736,13 @@
                     {# Delete (task cards) #}
                     <template x-if="card && card.card_type === 'task' && !editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="confirmDelete = true" x-show="!confirmDelete" x-cloak
-                                    class="text-sm text-muted-foreground hover:text-destructive transition-colors">Delete</button>
+                            <button type="button" @click="confirmDelete = true" x-show="!confirmDelete" x-cloak
+                                    class="text-sm text-muted-foreground hover:text-destructive-emphasis transition-colors">Delete</button>
                             <div x-show="confirmDelete" x-cloak class="flex items-center gap-2">
-                                <span class="text-xs text-destructive">Delete?</span>
-                                <button @click="deleteCard()"
+                                <span class="text-xs text-destructive-emphasis">Delete?</span>
+                                <button type="button" @click="deleteCard()"
                                         class="px-2 py-1 text-xs rounded bg-destructive text-destructive-foreground hover:bg-destructive/90">Yes</button>
-                                <button @click="confirmDelete = false"
+                                <button type="button" @click="confirmDelete = false"
                                         class="px-2 py-1 text-xs rounded border border-border hover:bg-muted">No</button>
                             </div>
                         </div>
@@ -1737,26 +1751,26 @@
                 <div class="flex items-center gap-2">
                     <template x-if="card && card.card_type === 'task' && editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="editMode = false"
+                            <button type="button" @click="editMode = false"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Cancel</button>
-                            <button @click="saveEdit()"
+                            <button type="button" @click="saveEdit()"
                                     class="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">Save</button>
                         </div>
                     </template>
                     <template x-if="card && card.card_type === 'task' && !editMode">
                         <div class="flex items-center gap-2">
-                            <button @click="pushToGantt()"
+                            <button type="button" @click="pushToGantt()"
                                     :disabled="ganttPushLoading"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors"
                                     :class="ganttPushLoading ? 'opacity-50 cursor-wait' : ''">
                                 <span x-show="!ganttPushLoading" x-cloak>Push to Gantt</span>
                                 <span x-show="ganttPushLoading" x-cloak>Pushing…</span>
                             </button>
-                            <button @click="startEdit()"
+                            <button type="button" @click="startEdit()"
                                     class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Edit</button>
                         </div>
                     </template>
-                    <button @click="card = null"
+                    <button type="button" @click="card = null"
                             class="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">Close</button>
                 </div>
             </div>
@@ -1765,9 +1779,7 @@
 </div>
 <script>
 (function(global) {
-    let _fetch = (global.Platform && global.Platform.fetch)
-        ? global.Platform.fetch
-        : function(url, opts) { return global.fetch(url, opts).then(function(r) { return r.json(); }); };
+    // Platform.fetch is used directly; no need for _fetch wrapper
 
     global.admKanbanDetail = function() {
         return {
@@ -1797,6 +1809,7 @@
             detailDriverResults: [],
             detailPrincipleSearch: '',
             detailPrincipleResults: [],
+            typeaheadError: { requirements: null, goals: null, drivers: null, principles: null },
 
             open: function(data) {
                 this.card = data.card;
@@ -1819,6 +1832,7 @@
                 this.detailDriverResults = [];
                 this.detailPrincipleSearch = '';
                 this.detailPrincipleResults = [];
+                this.typeaheadError = { requirements: null, goals: null, drivers: null, principles: null };
             },
             onMoved: function(data) {
                 if (this.card && this.card.id === data.id) {
@@ -1851,10 +1865,9 @@
             saveEdit: function() {
                 if (!this.card) return;
                 let self = this;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                    body: {
                         title: self.editFields.title,
                         description: self.editFields.description,
                         priority: self.editFields.priority,
@@ -1867,22 +1880,23 @@
                         target_start_date: self.editFields.target_start_date || null,
                         target_end_date: self.editFields.target_end_date || null,
                         progress_pct: self.editFields.progress_pct,
-                    }),
+                    },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
                         self.editMode = false;
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.editMode = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             deleteCard: function() {
                 if (!this.card) return;
                 let self = this;
                 let deletedId = self.card.id;
-                _fetch('/api/adm-kanban/v2/cards/' + deletedId, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + deletedId, {
                     method: 'DELETE',
                 }).then(function(data) {
                     if (data && data.success) {
@@ -1892,26 +1906,27 @@
                     } else {
                         self.confirmDelete = false;
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.confirmDelete = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             pushToGantt: function() {
                 if (!this.card) return;
                 let self = this;
                 self.ganttPushLoading = true;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.ref + '/push-to-gantt', {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.ref + '/push-to-gantt', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
+                    body: {},
                 }).then(function(data) {
                     self.ganttPushLoading = false;
                     if (data && data.success) {
                         self.card.work_package_id = data.work_package_id;
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.ganttPushLoading = false;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             moveCard: function(toColumn) {
@@ -1920,10 +1935,9 @@
                 let prevColumn = self.card.column;
                 self.card.column = toColumn;
 
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id + '/move', {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id + '/move', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ to_column: toColumn }),
+                    body: { to_column: toColumn },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
@@ -1931,16 +1945,18 @@
                     } else {
                         self.card.column = prevColumn;
                     }
-                }).catch(function() {
+                }).catch(function(err) {
                     self.card.column = prevColumn;
+                    throw err; // rethrow to let Platform.fetch's error handling show toast
                 });
             },
             phaseClass: function(phase) {
-                let map = { 'PRELIM':'bg-slate-500/10 text-slate-600', 'A':'bg-blue-500/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-gray-500/10 text-muted-foreground' };
+                let map = { 'PRELIM':'bg-muted-foreground/10 text-muted-foreground', 'A':'bg-info/10 text-primary', 'B':'bg-emerald-500/10 text-emerald-600', 'C':'bg-violet-500/10 text-violet-600', 'D':'bg-orange-500/10 text-orange-600', 'E':'bg-amber-500/10 text-amber-600', 'F':'bg-cyan-500/10 text-cyan-600', 'G':'bg-rose-500/10 text-rose-600', 'H':'bg-indigo-500/10 text-primary', 'REQ':'bg-muted-foreground/10 text-muted-foreground' }; // design-tokens-ok: TOGAF ADM phase legend A-H, categorical hues like ArchiMate layers
+
                 return map[phase] || 'bg-muted text-muted-foreground';
             },
             priorityClass: function(priority) {
-                let map = { 'critical':'bg-destructive/10 text-destructive', 'high':'bg-orange-500/10 text-orange-600', 'medium':'bg-amber-500/10 text-amber-600', 'low':'bg-muted text-muted-foreground' };
+                let map = { 'critical':'bg-destructive/10 text-destructive', 'high':'bg-warning/10 text-warning-emphasis', 'medium':'bg-warning/5 text-warning-emphasis', 'low':'bg-muted text-muted-foreground' }; // high/medium both warning family; distinguished by tint strength since orange/amber collapse to one token
                 return map[priority] || 'bg-muted text-muted-foreground';
             },
             phaseLabel: function(code) {
@@ -1949,17 +1965,26 @@
                 return p ? p.label : code;
             },
 
+            // -- Typeahead: shared loader -----------------------------------
+            // A failed suggestion lookup must not look like "nothing matched" — the
+            // caller records the message and the dropdown renders it in its place.
+            _loadSuggestions: async function(kind, query, existingIds) {
+                let data = await Platform.fetch.get('/api/adm-kanban/v2/suggestions/' + kind, { q: query || '' }, { silent: true });
+                let existing = existingIds || [];
+                return (data.results || []).filter(function(r) {
+                    return !existing.includes(r.id);
+                });
+            },
+
             // -- Typeahead: Requirements ------------------------------------
             searchDetailRequirements: async function() {
                 try {
-                    let q = this.detailRequirementSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/requirements?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.requirement_ids) || [];
-                    this.detailRequirementResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailRequirementResults = []; }
+                    this.detailRequirementResults = await this._loadSuggestions('requirements', this.detailRequirementSearch, this.card && this.card.requirement_ids);
+                    this.typeaheadError.requirements = null;
+                } catch (e) {
+                    this.detailRequirementResults = [];
+                    this.typeaheadError.requirements = e.message;
+                }
             },
             addDetailRequirement: function(item) {
                 if (!this.card) return;
@@ -1975,14 +2000,12 @@
             // -- Typeahead: Goals -------------------------------------------
             searchDetailGoals: async function() {
                 try {
-                    let q = this.detailGoalSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/goals?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.goal_ids) || [];
-                    this.detailGoalResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailGoalResults = []; }
+                    this.detailGoalResults = await this._loadSuggestions('goals', this.detailGoalSearch, this.card && this.card.goal_ids);
+                    this.typeaheadError.goals = null;
+                } catch (e) {
+                    this.detailGoalResults = [];
+                    this.typeaheadError.goals = e.message;
+                }
             },
             addDetailGoal: function(item) {
                 if (!this.card) return;
@@ -1998,14 +2021,12 @@
             // -- Typeahead: Drivers -----------------------------------------
             searchDetailDrivers: async function() {
                 try {
-                    let q = this.detailDriverSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/drivers?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.driver_ids) || [];
-                    this.detailDriverResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailDriverResults = []; }
+                    this.detailDriverResults = await this._loadSuggestions('drivers', this.detailDriverSearch, this.card && this.card.driver_ids);
+                    this.typeaheadError.drivers = null;
+                } catch (e) {
+                    this.detailDriverResults = [];
+                    this.typeaheadError.drivers = e.message;
+                }
             },
             addDetailDriver: function(item) {
                 if (!this.card) return;
@@ -2021,14 +2042,12 @@
             // -- Typeahead: Principles --------------------------------------
             searchDetailPrinciples: async function() {
                 try {
-                    let q = this.detailPrincipleSearch || '';
-                    let res = await fetch('/api/adm-kanban/v2/suggestions/principles?q=' + encodeURIComponent(q));
-                    let data = await res.json();
-                    let existing = (this.card && this.card.principle_ids) || [];
-                    this.detailPrincipleResults = (data.results || []).filter(function(r) {
-                        return !existing.includes(r.id);
-                    });
-                } catch (e) { this.detailPrincipleResults = []; }
+                    this.detailPrincipleResults = await this._loadSuggestions('principles', this.detailPrincipleSearch, this.card && this.card.principle_ids);
+                    this.typeaheadError.principles = null;
+                } catch (e) {
+                    this.detailPrincipleResults = [];
+                    this.typeaheadError.principles = e.message;
+                }
             },
             addDetailPrinciple: function(item) {
                 if (!this.card) return;
@@ -2045,21 +2064,24 @@
             _patchTraceability: function() {
                 if (!this.card) return;
                 let self = this;
-                _fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
+                Platform.fetch('/api/adm-kanban/v2/cards/' + self.card.id, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
+                    body: {
                         requirement_ids: self.card.requirement_ids || [],
                         goal_ids: self.card.goal_ids || [],
                         driver_ids: self.card.driver_ids || [],
                         principle_ids: self.card.principle_ids || [],
-                    }),
+                    },
                 }).then(function(data) {
                     if (data && data.success && data.card) {
                         Object.assign(self.card, data.card);
                         window.dispatchEvent(new CustomEvent('adm-board-refresh'));
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    // Platform.fetch already toasted the failure (non-silent by default);
+                    // rethrow to ensure error is not swallowed
+                    throw err;
+                });
             }
         };
     };
@@ -2099,7 +2121,7 @@
         {# Panel header #}
         <div class="flex items-center justify-between px-4 py-3 border-b border-border">
             <h2 class="text-sm font-semibold text-foreground">Sprint Planning</h2>
-            <button @click="open = false; $store.modal.close('sprint-planning-panel')"
+            <button type="button" @click="open = false; $store.modal.close('sprint-planning-panel')"
                     class="text-muted-foreground hover:text-foreground transition-colors"
                     aria-label="Close Sprint Planning panel">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -2123,10 +2145,10 @@
                 <div class="space-y-2">
                     <div class="flex items-center justify-between">
                         <span class="text-xs font-semibold text-foreground" x-text="activeSprint.name"></span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium"
+                        <span class="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium"
                               x-text="activeSprint.status"></span>
                     </div>
-                    <p class="text-[10px] text-muted-foreground">
+                    <p class="text-xs text-muted-foreground">
                         <span x-text="activeSprint.start_date || '—'"></span>
                         &nbsp;→&nbsp;
                         <span x-text="activeSprint.end_date || '—'"></span>
@@ -2134,9 +2156,9 @@
                     {# Capacity bar #}
                     <div>
                         <div class="flex items-center justify-between mb-1">
-                            <span class="text-[10px] text-muted-foreground">Capacity</span>
-                            <span class="text-[10px] font-medium"
-                                  :class="overCapacity ? 'text-destructive' : 'text-foreground'"
+                            <span class="text-xs text-muted-foreground">Capacity</span>
+                            <span class="text-xs font-medium"
+                                  :class="overCapacity ? 'text-destructive-emphasis' : 'text-foreground'"
                                   x-text="totalPoints + ' / ' + (activeSprint.capacity_points || 0) + ' pts'"></span>
                         </div>
                         <div class="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -2156,13 +2178,13 @@
             {# Sprint list #}
             <template x-if="!loading && sprints.length > 0">
                 <div class="space-y-1">
-                    <p class="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">All Sprints</p>
+                    <p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">All Sprints</p>
                     <template x-for="sprint in sprints" :key="sprint.id">
-                        <button @click="activeSprint = sprint"
+                        <button type="button" @click="activeSprint = sprint"
                                 class="w-full text-left px-3 py-2 rounded-md border text-xs transition-colors"
                                 :class="activeSprint && activeSprint.id === sprint.id
-                                    ? 'border-primary bg-primary/5 text-foreground'
-                                    : 'border-border hover:bg-muted text-muted-foreground'">
+ ? 'border-primary bg-primary/5 text-foreground'
+ : 'border-border hover:bg-muted text-muted-foreground'">
                             <span class="font-medium" x-text="sprint.name"></span>
                             <span class="ml-1.5 opacity-60" x-text="'[' + sprint.status + ']'"></span>
                         </button>
@@ -2171,7 +2193,7 @@
             </template>
 
             {# Create sprint toggle #}
-            <button @click="showCreateForm = !showCreateForm"
+            <button type="button" @click="showCreateForm = !showCreateForm"
                     class="w-full px-3 py-2 text-xs font-medium rounded-md border border-dashed border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
                 <span x-text="showCreateForm ? '− Cancel' : '+ Create Sprint'"></span>
             </button>
@@ -2181,7 +2203,7 @@
                 <form @submit.prevent="createSprint(newSprint.name, newSprint.startDate, newSprint.endDate, newSprint.capacityPoints)"
                       class="space-y-3 p-3 rounded-md border border-border bg-muted/30">
                     <div>
-                        <label class="block text-[10px] font-medium text-muted-foreground mb-1" for="sprint-name">Sprint Name *</label>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1" for="sprint-name">Sprint Name *</label>
                         <input id="sprint-name"
                                x-model="newSprint.name"
                                type="text"
@@ -2191,14 +2213,14 @@
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="block text-[10px] font-medium text-muted-foreground mb-1" for="sprint-start">Start Date</label>
+                            <label class="block text-xs font-medium text-muted-foreground mb-1" for="sprint-start">Start Date</label>
                             <input id="sprint-start"
                                    x-model="newSprint.startDate"
                                    type="date"
                                    class="w-full px-2 py-1 text-xs border border-border rounded-md bg-background focus:outline-none focus:ring-1 focus:ring-primary"/>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-medium text-muted-foreground mb-1" for="sprint-end">End Date</label>
+                            <label class="block text-xs font-medium text-muted-foreground mb-1" for="sprint-end">End Date</label>
                             <input id="sprint-end"
                                    x-model="newSprint.endDate"
                                    type="date"
@@ -2206,7 +2228,7 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-medium text-muted-foreground mb-1" for="sprint-capacity">Capacity Points</label>
+                        <label class="block text-xs font-medium text-muted-foreground mb-1" for="sprint-capacity">Capacity Points</label>
                         <input id="sprint-capacity"
                                x-model.number="newSprint.capacityPoints"
                                type="number"

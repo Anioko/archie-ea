@@ -18,6 +18,7 @@ Deliverables:
   - Feasibility Review     (NEW — creates SolutionFeasibilityReview records)
   - Full Package           (orchestrates all of the above)
 """
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from datetime import datetime, date
 from decimal import Decimal
@@ -29,27 +30,32 @@ logger = logging.getLogger(__name__)
 
 
 def _load_requirements_context(solution_id) -> List[Dict[str, Any]]:
-    """Load SolutionRequirement records for a solution as a plain-dict list."""
+    """Load SolutionRequirement records for a solution as a plain-dict list.
+
+    Raises on a load failure rather than returning []. Every caller is already
+    inside a handler that logs with a traceback and answers
+    ``{"success": False, "error": ...}``; swallowing the error here instead put
+    an empty list into the deliverable's ``requirements`` field, and made
+    ``generate_test_cases`` report the specific, false claim "No requirements
+    with acceptance criteria found".
+    """
     if not solution_id:
         return []
-    try:
-        from app.models.solution_architect_models import SolutionRequirement
-        requirements = SolutionRequirement.query.filter(
-            SolutionRequirement.solution_id == solution_id,
-            SolutionRequirement.deleted_at == None,  # noqa: E711
-        ).all()
-        return [
-            {
-                "name": r.requirement_name,
-                "type": getattr(r, "requirement_type", None),
-                "priority": getattr(r, "moscow_priority", None),
-                "description": r.description,
-                "acceptance_criteria": r.acceptance_criteria,
-            }
-            for r in requirements
-        ]
-    except Exception:
-        return []
+    from app.models.solution_architect_models import SolutionRequirement
+    requirements = SolutionRequirement.query.filter(
+        SolutionRequirement.solution_id == solution_id,
+        SolutionRequirement.deleted_at == None,  # noqa: E711
+    ).all()
+    return [
+        {
+            "name": r.requirement_name,
+            "type": getattr(r, "requirement_type", None),
+            "priority": getattr(r, "moscow_priority", None),
+            "description": r.description,
+            "acceptance_criteria": r.acceptance_criteria,
+        }
+        for r in requirements
+    ]
 
 
 class StructuredDeliverableService:
@@ -591,19 +597,25 @@ class StructuredDeliverableService:
             if json_match:
                 try:
                     requirements_data = json.loads(json_match.group())
-                except Exception:  # fabricated-values-ok
+                except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.exception("Failed to JSON parsing")
                     pass
+            # Accumulator for the rows created below. Its initialisation had been
+            # removed while `created.append(...)`, `len(created)` and the closing
+            # comprehension over it all remained, so this raised NameError on the
+            # first requirement.
+            created = []
             for req_data in requirements_data:
                 req = SolutionRequirement(
                     solution_id=solution_id,
                     capability_id=capability_id,
-                    requirement_name=req_data.get("requirement_name", "").strip(),
+                    name=req_data.get("requirement_name", "").strip(),
                     description=req_data.get("description"),
                     requirement_type=req_data.get("requirement_type", "functional"),
                     moscow_priority=req_data.get("moscow_priority", "SHOULD"),
                 )
                 db.session.add(req)
+                sync_archimate_element(req)
                 created.append(req)
             db.session.commit()
 
@@ -615,7 +627,7 @@ class StructuredDeliverableService:
                 "requirements": [
                     {
                         "id": r.id,
-                        "requirement_name": r.requirement_name,
+                        "requirement_name": r.name,
                         "requirement_type": r.requirement_type,
                         "moscow_priority": r.moscow_priority,
                     }

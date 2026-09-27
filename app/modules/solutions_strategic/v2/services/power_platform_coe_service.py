@@ -9,13 +9,11 @@ Credentials are stored in APISettings using:
   jira_email       → client_id
   custom_endpoint_url → environment URL
 """
-import json
 import logging
 import time
 from datetime import datetime
 
 import requests
-from flask import current_app
 
 from app import db
 
@@ -119,6 +117,13 @@ class PowerPlatformCoeService:
         Returns {"status": "ok", "environment": env_url} or
                 {"status": "error", "message": ...}.
         """
+        # F-08 note: env_url is NOT an SSRF sink. It is stored, echoed back in
+        # the response below, and never fetched — every outbound call in this
+        # class targets the fixed POWER_APPS_ENDPOINT constant, and the only
+        # other URL followed is @odata.nextLink returned by Microsoft's own
+        # API. If a future change ever fetches env_url directly, it must go
+        # through app.utils.ssrf_guard.validate_outbound_url with a
+        # *.dynamics.com / *.crm*.dynamics.com allow-list first.
         token = cls._get_token(tenant_id, client_id, client_secret)
         if not token:
             return {
@@ -202,11 +207,11 @@ class PowerPlatformCoeService:
 
     @classmethod
     def import_apps(cls, app_ids: list, discovered: list, user_id: int) -> dict:
-        """Create ApplicationComponent records for each app_id not already in ARCHIE.
+        """Create ApplicationComponent records for each app_id not already in Entelim.
 
         Returns {"imported": N, "already_exists": M, "failed": F}.
         Idempotent — skips apps where source_identifier matches.
-        Queues ARBAuditLog for apps without an ARCHIE owner.
+        Queues ARBAuditLog for apps without an Entelim owner.
         """
         from app.models.application_portfolio import ApplicationComponent
         from app.models.architecture_review_board import ARBAuditLog
@@ -261,7 +266,7 @@ class PowerPlatformCoeService:
                         action="coe_import_ungoverned",
                         action_description=(
                             f"Power App '{app_rec.name}' imported from CoE — "
-                            "no owner in ARCHIE. Requires assignment."
+                            "no owner in Entelim. Requires assignment."
                         ),
                         user_id=user_id,
                         new_value={"source": "power_platform_coe", "original_id": app_id},

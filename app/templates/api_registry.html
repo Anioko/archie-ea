@@ -5,7 +5,7 @@
 {% block title %}API Registry{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl" x-data="apiRegistry()">
+<div class="p-6 space-y-6 mx-auto max-w-7xl" x-data="apiRegistry()">
     {{ page_header(
         title='API Registry',
         description='Enterprise-wide catalog of published API contracts generated from solution blueprints.',
@@ -65,8 +65,15 @@
         Loading API specs…
     </div>
 
+    <!-- Error State -->
+    <div x-show="!loading && loadError" class="flex flex-col items-center justify-center py-16 text-center">
+        <i data-lucide="alert-circle" class="w-12 h-12 text-destructive mb-4" aria-hidden="true"></i>
+        <h3 class="text-base font-medium text-foreground mb-1">Could not load API specs</h3>
+        <p class="text-sm text-muted-foreground max-w-sm">Please try again.</p>
+    </div>
+
     <!-- Empty State -->
-    <div x-show="!loading && filteredSpecs.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
+    <div x-show="!loading && !loadError && filteredSpecs.length === 0" class="flex flex-col items-center justify-center py-16 text-center">
         <i data-lucide="file-code-2" class="w-12 h-12 text-muted-foreground mb-4" aria-hidden="true"></i>
         <h3 class="text-base font-medium text-foreground mb-1">No API specs found</h3>
         <p class="text-sm text-muted-foreground max-w-sm">
@@ -96,13 +103,7 @@
                         <td class="px-4 py-3 font-medium text-foreground" x-text="spec.solution_name || '—'"></td>
                         <td class="px-4 py-3 text-foreground" x-text="spec.title || 'Untitled'"></td>
                         <td class="px-4 py-3">
-                            <span
-                                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
-                                x-bind:class="spec.spec_type === 'openapi'
-                                    ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30'
-                                    : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'"
-                                x-text="spec.spec_type || '—'"
-                            ></span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" x-bind:class="spec.spec_type === 'openapi' ? 'bg-info/10 text-info border border-info/30' : 'bg-purple-500/10 text-purple-600 border border-purple-500/30'" x-text="spec.spec_type || '—'"></span><!-- design-tokens-ok: spec-type legend, non-openapi kept distinct from openapi (info) -->
                         </td>
                         <td class="px-4 py-3 text-muted-foreground font-mono text-xs" x-text="spec.spec_version || '—'"></td>
                         <td class="px-4 py-3 text-muted-foreground" x-text="spec.endpoint_count ?? '—'"></td>
@@ -111,8 +112,8 @@
                             <span
                                 class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border"
                                 x-bind:class="{
-                                    'bg-success/10 text-success border-success/30': spec.status === 'published',
-                                    'bg-warning/10 text-warning border-warning/30': spec.status === 'draft',
+                                    'bg-success/10 text-success-emphasis border-success/30': spec.status === 'published',
+                                    'bg-warning/10 text-warning-emphasis border-warning/30': spec.status === 'draft',
                                     'bg-muted/50 text-muted-foreground border-border': spec.status === 'deprecated'
                                 }"
                                 x-text="spec.status"
@@ -159,10 +160,10 @@
                                             <span
                                                 class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono font-bold w-14 justify-center"
                                                 x-bind:class="{
-                                                    'bg-green-500/10 text-green-600': ep.method === 'GET',
-                                                    'bg-blue-500/10 text-blue-600': ep.method === 'POST',
-                                                    'bg-yellow-500/10 text-yellow-600': ep.method === 'PUT' || ep.method === 'PATCH',
-                                                    'bg-red-500/10 text-red-600': ep.method === 'DELETE',
+                                                    'bg-success/10 text-success-emphasis': ep.method === 'GET',
+                                                    'bg-info/10 text-info': ep.method === 'POST',
+                                                    'bg-warning/10 text-warning-emphasis': ep.method === 'PUT' || ep.method === 'PATCH',
+                                                    'bg-destructive/10 text-destructive-emphasis': ep.method === 'DELETE',
                                                 }"
                                                 x-text="ep.method"
                                             ></span>
@@ -204,6 +205,7 @@ function apiRegistry() {
     return {
         specs: [],
         loading: false,
+        loadError: false,
         searchQuery: '',
         statusFilter: 'published',
         typeFilter: '',
@@ -224,6 +226,7 @@ function apiRegistry() {
 
         async loadSpecs() {
             this.loading = true;
+            this.loadError = false;
             this.page = 1;
             this.specs = [];
             try {
@@ -234,13 +237,14 @@ function apiRegistry() {
                 if (this.statusFilter) params.set('status', this.statusFilter);
                 if (this.typeFilter) params.set('type', this.typeFilter);
 
-                const res = await fetch(`/solutions/api/registry/specs?${params}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await Platform.fetch.get(`/solutions/api/registry/specs?${params}`);
                 this.specs = data.data || [];
                 this.total = data.total || 0;
             } catch (err) {
-                console.error('Failed to load API specs:', err);
+                this.loadError = true;
+                // The error is already surfaced via Platform.fetch's built-in toast,
+                // but we still need to set loadError so the UI shows its inline error state.
+                // No console output allowed.
             } finally {
                 this.loading = false;
             }
@@ -256,12 +260,13 @@ function apiRegistry() {
             if (this.typeFilter) params.set('type', this.typeFilter);
 
             try {
-                const res = await fetch(`/solutions/api/registry/specs?${params}`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await Platform.fetch.get(`/solutions/api/registry/specs?${params}`);
                 this.specs = this.specs.concat(data.data || []);
             } catch (err) {
-                console.error('Failed to load more specs:', err);
+                this.page -= 1;
+                // Platform.fetch already shows a toast; we do not need a duplicate.
+                // The error is surfaced to the user via the global toast.
+                // No console output allowed.
             }
         },
 
@@ -275,14 +280,13 @@ function apiRegistry() {
             const spec = this.specs.find(s => s.id === specId);
             if (spec && !spec.spec_content) {
                 try {
-                    const res = await fetch(`/solutions/api/registry/specs/${specId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        spec.spec_content = data.data.spec_content;
-                        spec.description = spec.description || data.data.description;
-                    }
+                    const data = await Platform.fetch.get(`/solutions/api/registry/specs/${specId}`);
+                    spec.spec_content = data.data.spec_content;
+                    spec.description = spec.description || data.data.description;
                 } catch (err) {
-                    console.error('Failed to load spec detail:', err);
+                    // Platform.fetch already shows a toast; we do not need a duplicate.
+                    // The error is surfaced to the user via the global toast.
+                    // No console output allowed.
                 }
             }
         },

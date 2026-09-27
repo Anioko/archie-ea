@@ -7,7 +7,7 @@ Provides automated data enhancement using external intelligence sources.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct

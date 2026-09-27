@@ -11,7 +11,7 @@ def _mcp_call(client, headers, name, arguments):
 
 class TestGetElementParity:
     def test_get_element_matches_rest_body_exactly(self, client, mcp_headers, element, logged_in_client):
-        rest_resp = logged_in_client.get(f"/architecture/api/elements/{element.id}")
+        rest_resp = logged_in_client.get(f"/archimate/api/elements/{element.id}/detail")
         rest_body = rest_resp.get_json()
 
         mcp_resp = _mcp_call(client, mcp_headers, "get_element", {"element_id": element.id})
@@ -22,7 +22,7 @@ class TestGetElementParity:
         assert result["isError"] is False
 
     def test_get_element_404_gives_iserror_true_with_body_verbatim(self, client, mcp_headers, logged_in_client):
-        rest_resp = logged_in_client.get("/architecture/api/elements/999999")
+        rest_resp = logged_in_client.get("/archimate/api/elements/999999/detail")
         rest_body = rest_resp.get_json()
         assert rest_resp.status_code == 404
 
@@ -41,7 +41,7 @@ class TestGetElementParity:
 
 class TestSearchElementsParity:
     def test_search_elements_matches_rest_body_exactly(self, client, mcp_headers, element, logged_in_client):
-        rest_resp = logged_in_client.get("/architecture/api/elements", query_string={"q": "Test Component"})
+        rest_resp = logged_in_client.get("/archimate/api/elements/search", query_string={"q": "Test Component"})
         rest_body = rest_resp.get_json()
 
         mcp_resp = _mcp_call(client, mcp_headers, "search_elements", {"q": "Test Component"})

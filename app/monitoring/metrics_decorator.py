@@ -7,7 +7,7 @@ Provides decorators for automatically collecting metrics from Flask routes and f
 import time
 import logging
 from functools import wraps
-from typing import Callable, Any
+from typing import Callable
 
 from flask import request, g
 from app.monitoring.metrics_service import metrics_service

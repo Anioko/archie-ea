@@ -502,7 +502,7 @@ def _build_caps_detail(caps: list) -> str:
                     gline += f" [tech debt: {debt}/100]"
                 gap_lines.append(gline)
             if gaps[0].get("coverage_percentage", 100) < 50:
-                entry_lines.append(f"   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
+                entry_lines.append("   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
             entry_lines.extend(gap_lines)
         else:
             entry_lines.append("   Coverage: No existing applications mapped — generate full greenfield architecture")
@@ -604,7 +604,7 @@ def _build_caps_detail(caps: list) -> str:
                     gline += f" [tech debt: {debt}/100]"
                 gap_lines.append(gline)
             if gaps[0].get("coverage_percentage", 100) < 50:
-                entry_lines.append(f"   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
+                entry_lines.append("   ⚠ SIGNIFICANT GAP: generate NEW application components to fill this capability gap")
             entry_lines.extend(gap_lines)
         else:
             entry_lines.append("   Coverage: No existing applications mapped — generate full greenfield architecture")
@@ -858,7 +858,7 @@ class ArchitectureGenerationService:
             combined_parsed = _run_combined_call(capabilities)
             if combined_parsed:
                 _ingest_parsed(combined_parsed, len(capabilities))
-                logger.info("Combined expansion: %d elements", sum(len(merged[l]) for l in ALL_LAYERS))
+                logger.info("Combined expansion: %d elements", sum(len(merged[item]) for item in ALL_LAYERS))
             else:
                 logger.warning("Combined call failed — parallel batch fallback")
                 errors.append("Combined expansion failed; used parallel batch fallback")
@@ -893,7 +893,7 @@ class ArchitectureGenerationService:
         # layers end up empty depends on ordering in the LLM response.  Cover all 5
         # non-trivial layers so Pass 1B fires regardless of which layers were cut.
         _required_layers = ("motivation", "strategy", "business", "application", "technology", "implementation")
-        _empty_required = [l for l in _required_layers if not merged.get(l)]
+        _empty_required = [item for item in _required_layers if not merged.get(item)]
         if _empty_required:
             logger.warning(
                 "Pass 1B: layers %s empty after batched expansion — running per-capability fill",
@@ -1530,9 +1530,11 @@ class ArchitectureGenerationService:
     def _get_semantic_catalog_context(self, capability_name: str, capability_desc: str) -> str:
         """Use semantic search to find the most relevant applications for a capability."""
         try:
-            from app.services.semantic_search_service import SemanticSearchService
+            from app.services.semantic_search_service import get_semantic_search_service
             query = f"{capability_name}: {capability_desc}"
-            results = SemanticSearchService.semantic_search(
+            # Was SemanticSearchService.semantic_search(...) - called on the CLASS,
+            # so self was never bound and query landed in the self slot.
+            results = get_semantic_search_service().semantic_search(
                 query=query, domain="applications", top_k=15,
             )
             if results:
@@ -1557,9 +1559,9 @@ class ArchitectureGenerationService:
     def _get_semantic_vendor_context(self, capability_name: str, capability_desc: str) -> str:
         """Use semantic search to find the most relevant vendor products for a capability."""
         try:
-            from app.services.semantic_search_service import SemanticSearchService
+            from app.services.semantic_search_service import get_semantic_search_service
             query = f"{capability_name}: {capability_desc}"
-            results = SemanticSearchService.semantic_search(
+            results = get_semantic_search_service().semantic_search(
                 query=query, domain="vendors", top_k=10,
             )
             if results:

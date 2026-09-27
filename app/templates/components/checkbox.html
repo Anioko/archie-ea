@@ -1,0 +1,53 @@
+{# Checkbox — accessible, token-styled boolean control.
+
+   A shared primitive so forms stop hand-rolling their own checkboxes (audit
+   Leverage 2: this was one of the missing form primitives). Native input for
+   robust form submission and keyboard/AT support; styled through tokens only.
+
+   Usage:
+     {% from "components/checkbox.html" import checkbox %}
+     {{ checkbox(id='tos', name='tos', value='1', label='I accept the terms',
+                 description='Required to continue', required=true) }}
+#}
+{% macro checkbox(
+    id='',
+    name='',
+    value='on',
+    checked=false,
+    disabled=false,
+    required=false,
+    label='',
+    description='',
+    error=none,
+    class=''
+) %}
+<div class="flex items-start gap-2.5 {{ class }}">
+    <input
+        type="checkbox"
+        {% if id %}id="{{ id }}"{% endif %}
+        {% if name %}name="{{ name }}"{% endif %}
+        value="{{ value }}"
+        {% if checked %}checked{% endif %}
+        {% if disabled %}disabled{% endif %}
+        {% if required %}required aria-required="true"{% endif %}
+        {% if error %}aria-invalid="true"{% endif %}
+        {% if error and id %}aria-describedby="{{ id }}-error"{% endif %}
+        class="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary text-primary
+               focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+               disabled:cursor-not-allowed disabled:opacity-50" />
+    {% if label or description %}
+    <div class="grid gap-0.5 leading-tight">
+        {% if label %}
+        <label {% if id %}for="{{ id }}"{% endif %}
+               class="text-sm font-medium text-foreground {% if not disabled %}cursor-pointer{% endif %}">
+            {{ label }}{% if required %}<span class="text-destructive-emphasis ml-1">*</span>{% endif %}
+        </label>
+        {% endif %}
+        {% if description %}<p class="text-xs text-muted-foreground">{{ description }}</p>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% if error and id %}
+<p id="{{ id }}-error" class="text-sm text-destructive-emphasis mt-1" role="alert">{{ error }}</p>
+{% endif %}
+{% endmacro %}

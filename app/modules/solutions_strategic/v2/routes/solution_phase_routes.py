@@ -1,7 +1,7 @@
+from app.services.archimate_backbone import sync_archimate_element
 import csv
 import io
 import logging
-from datetime import date
 from flask import abort, jsonify, request, url_for
 from flask_login import current_user, login_required
 from app import db
@@ -114,7 +114,7 @@ def create_solution_risk(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Assessment", "Motivation", risk.risk_description[:100], risk.risk_description)
+        _sync_archimate_element(solution_id, ae_type="Assessment", ae_layer="Motivation", name=risk.risk_description[:100], description=risk.risk_description)
     db.session.commit()
     return jsonify({"success": True, "data": risk.to_dict()}), 201
 
@@ -232,6 +232,7 @@ def import_solution_risks(solution_id):
                 created_by_id=current_user.id,
             )
             db.session.add(risk)
+            sync_archimate_element(risk)
             db.session.flush()
             created += 1
         except Exception as e:
@@ -288,7 +289,7 @@ def create_solution_metric(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Outcome", "Motivation", metric.name, metric.notes or metric.name)
+        _sync_archimate_element(solution_id, ae_type="Outcome", ae_layer="Motivation", name=metric.name, description=metric.notes or metric.name)
     db.session.commit()
     return jsonify({"success": True, "data": metric.to_dict()}), 201
 
@@ -305,7 +306,11 @@ def update_solution_metric(solution_id, metric_id):
             setattr(metric, field, data[field])
     if "measurement_date" in data and data["measurement_date"]:
         from datetime import date
-        metric.measurement_date = date.fromisoformat(data["measurement_date"])
+        try:
+            metric.measurement_date = date.fromisoformat(data["measurement_date"])
+        except (ValueError, TypeError):
+            db.session.rollback()
+            return jsonify({"success": False, "error": "measurement_date must be in YYYY-MM-DD format"}), 400
     db.session.commit()
     return jsonify({"success": True, "data": metric.to_dict()})
 
@@ -389,7 +394,10 @@ def create_solution_plateau(solution_id):
     )
     if data.get("target_date"):
         from datetime import date
-        plateau.target_date = date.fromisoformat(data["target_date"])
+        try:
+            plateau.target_date = date.fromisoformat(data["target_date"])
+        except (ValueError, TypeError):
+            return jsonify({"success": False, "error": "target_date must be in YYYY-MM-DD format"}), 400
     db.session.add(plateau)
     db.session.flush()
     if data.get("archimate_element_id"):
@@ -398,25 +406,13 @@ def create_solution_plateau(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Plateau", "Implementation", plateau.name, plateau.description)
+        _sync_archimate_element(solution_id, ae_type="Plateau", ae_layer="Implementation", name=plateau.name, description=plateau.description)
         # JWIRE-002: Derive Gap + WorkPackage alongside every Plateau.
         # In ArchiMate 3.2 a Plateau is the target state reached by closing Gaps via WorkPackages.
         # Without these, gap_analysis / transition_roadmap / work_packages blueprint sections
         # always score 0% for J7 wizard solutions.
-        _sync_archimate_element(
-            solution_id,
-            "Gap",
-            "Implementation",
-            f"Gap: current state \u2192 {plateau.name}",
-            f"Architecture gap to be closed by transition to {plateau.name}",
-        )
-        _sync_archimate_element(
-            solution_id,
-            "WorkPackage",
-            "Implementation",
-            f"Implement {plateau.name}",
-            f"Work package delivering the transition to {plateau.name}",
-        )
+        _sync_archimate_element(solution_id, ae_type="Gap", ae_layer="Implementation", name=f"Gap: current state \u2192 {plateau.name}", description=f"Architecture gap to be closed by transition to {plateau.name}",)
+        _sync_archimate_element(solution_id, ae_type="WorkPackage", ae_layer="Implementation", name=f"Implement {plateau.name}", description=f"Work package delivering the transition to {plateau.name}",)
     solution.section_scores = None  # invalidate cache so blueprint score reflects new plateau/gap/workpackage
     db.session.commit()
     return jsonify({"success": True, "data": plateau.to_dict()}), 201
@@ -460,7 +456,11 @@ def update_solution_plateau(solution_id, plateau_id):
     if "target_date" in data:
         if data["target_date"]:
             from datetime import date
-            plateau.target_date = date.fromisoformat(data["target_date"])
+            try:
+                plateau.target_date = date.fromisoformat(data["target_date"])
+            except (ValueError, TypeError):
+                db.session.rollback()
+                return jsonify({"success": False, "error": "target_date must be in YYYY-MM-DD format"}), 400
         else:
             plateau.target_date = None
     db.session.commit()
@@ -559,7 +559,6 @@ def create_solution_business_element(solution_id):
         description=data.get("description", ""),
         owner=data.get("owner", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     row.archimate_element_id = data.get('archimate_element_id')
     row.archimate_layer = data.get('archimate_layer')
@@ -608,7 +607,6 @@ def create_solution_app_element(solution_id):
         description=data.get("description", ""),
         technology=data.get("technology", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     db.session.add(row)
     db.session.commit()
@@ -654,7 +652,6 @@ def create_solution_tech_element(solution_id):
         description=data.get("description", ""),
         specification=data.get("specification", ""),
         notes=data.get("notes", ""),
-        created_by_id=current_user.id,
     )
     row.archimate_element_id = data.get('archimate_element_id')
     row.archimate_layer = data.get('archimate_layer')
@@ -921,11 +918,43 @@ def _recommendation_to_dict(r):
     return out
 
 
-def _sync_archimate_element(solution_id, ae_type, ae_layer, name, description=None):
-    """ARCH-LINK-1: Create ArchiMateElement + SolutionElement + SolutionArchiMateElement
-    for any entity that maps to an ArchiMate 3.2 concept.  Called by every CREATE endpoint.
-    Idempotent: if (name, type) is already linked to this solution, returns existing element.
-    Returns the ArchiMateElement so the caller can store .id if desired.
+def _sync_archimate_element(solution_id, *, ae_type, ae_layer, name, description=None):
+    """ARCH-LINK-1: create the ArchiMateElement and both junctions for a domain row.
+
+    AGENTS.md: "ArchiMate is the backbone, not a view. Every backend CREATE for a
+    motivation entity must call _sync_archimate_element() so a matching
+    ArchiMateElement row exists ... the field IS the element." Traceability, impact
+    analysis, line of sight and every capability lens read from that backbone, so a
+    missing element is a silently incomplete answer on several screens at once.
+
+    Idempotent on (solution_id, name, type); returns the element.
+
+    Three defects fixed here, all of which made the rule unenforceable:
+
+    *organization_id was never set.* ArchiMateElement carries TenantMixin, whose
+    organization_id is NOT NULL and is populated by the tenant middleware's
+    before_flush hook -- which only runs inside a request with g.current_org_id
+    set. Outside one (CLI, scheduler, importer, seeder, test) every call raised
+    NotNullViolation, the blanket except swallowed it, and all nine call sites
+    discard the return value. So the domain row committed and its element silently
+    did not. Worse, the failed flush aborts the transaction, so the next statement
+    fails with InFailedSqlTransaction and one silent miss cascades. The
+    organisation is now taken from the Solution being synced, which is correct
+    both inside a request and outside one.
+
+    *The existing-element lookup used Query.get().* AGENTS.md documents that
+    Query.get()/Session.get() are tenant-scoped only on an identity-map MISS; on a
+    hit they return the cached object with no SQL, so no tenant predicate is
+    applied. In a function that resolves by id and hands the row to a caller, that
+    is exactly the shape that can return another organisation's element.
+
+    *The parameters were positional, and a second definition takes them in a
+    different order.* solution_ai_orchestrator._sync_archimate_element is
+    (solution_id, name, element_type, layer). Calling either with the other's
+    convention silently transposes type and name -- a Driver named "Regulatory
+    pressure" becomes a "Regulatory pressure" named "Driver". Nothing fails; the
+    backbone is simply wrong and every downstream view inherits it. Keyword-only
+    parameters make the mistake impossible to express.
     """
     from app.models.archimate_core import ArchiMateElement
     from app.models.solution_element import SolutionElement
@@ -936,6 +965,21 @@ def _sync_archimate_element(solution_id, ae_type, ae_layer, name, description=No
         "ImplementationEvent": "implementation_events",
         "AssessmentResult": "assessment_results",
     }
+
+    from app.models.solution_models import Solution
+
+    # The element belongs to the solution's organisation. Read it explicitly rather
+    # than relying on the tenant middleware's before_flush hook, which is only
+    # installed inside a request -- that dependency is what made every non-request
+    # call fail.
+    organization_id = db.session.execute(
+        db.select(Solution.organization_id).where(Solution.id == solution_id)
+    ).scalar_one_or_none()
+    if organization_id is None:
+        raise ValueError(
+            f"cannot sync an ArchiMate element for solution {solution_id}: "
+            "no such solution, or it has no organisation"
+        )
 
     try:
         # Idempotency guard: check if this solution already has an element with (name, type).
@@ -952,12 +996,20 @@ def _sync_archimate_element(solution_id, ae_type, ae_layer, name, description=No
             .first()
         )
         if existing_sae:
-            return ArchiMateElement.query.get(existing_sae.element_id)
+            # Explicit filtered query, never Query.get(): on an identity-map hit
+            # .get() emits no SQL and so applies no tenant predicate.
+            return db.session.execute(
+                db.select(ArchiMateElement).where(
+                    ArchiMateElement.id == existing_sae.element_id,
+                    ArchiMateElement.organization_id == organization_id,
+                )
+            ).scalar_one_or_none()
 
         ae = ArchiMateElement(
             name=name,
             type=ae_type,
             layer=ae_layer,
+            organization_id=organization_id,
             description=description or f"{ae_type}: {name}",
         )
         db.session.add(ae)
@@ -966,12 +1018,22 @@ def _sync_archimate_element(solution_id, ae_type, ae_layer, name, description=No
             solution_id=solution_id, archimate_element_id=ae.id
         ).first()
         if not existing_se:
+            # No organization_id here: SolutionElement is a plain db.Model with no
+            # TenantMixin. It is reachable only through solution_id and
+            # archimate_element_id, both of which are tenant-scoped, so the junction
+            # inherits their scoping -- but it is worth knowing it has none of its
+            # own.
             db.session.add(SolutionElement(
                 solution_id=solution_id,
                 archimate_element_id=ae.id,
                 layer=ae_layer,
             ))
-        # SolutionArchiMateElement is what scoring queries — keep both junctions in sync
+        # SolutionArchiMateElement is what scoring queries — keep both junctions in
+        # sync. A row present in one and absent from the other is worse than one
+        # missing from both: the element shows on the layer views and vanishes from
+        # scoring, and the discrepancy looks like a scoring bug.
+        # Also not tenant-scoped in its own right; same reasoning as SolutionElement
+        # above. Both junctions are reachable only through tenant-scoped parents.
         db.session.add(SolutionArchiMateElement(
             solution_id=solution_id,
             element_id=ae.id,
@@ -982,8 +1044,18 @@ def _sync_archimate_element(solution_id, ae_type, ae_layer, name, description=No
         ))
         return ae
     except Exception as exc:
-        logger.warning("ARCH-LINK-1 sync failed for %s/%s: %s", ae_type, name, exc)
-        return None
+        # Logged at ERROR, not WARNING, and re-raised. This used to return None,
+        # and not one of the nine call sites checks the return value -- so a failure
+        # left the domain row committed with no element and told nobody. The failed
+        # flush also aborts the transaction, so the next statement dies with
+        # InFailedSqlTransaction and the real cause is three frames upstream.
+        # Raising keeps the record and its element atomic: either both exist or the
+        # request fails loudly.
+        logger.error(
+            "ARCH-LINK-1 sync failed for %s/%s on solution %s: %s",
+            ae_type, name, solution_id, exc,
+        )
+        raise
 
 
 def _link_existing_archimate_element(solution_id, archimate_element_id, expected_type, expected_layer):
@@ -1068,7 +1140,7 @@ def create_solution_driver(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Driver", "Motivation", driver.name, driver.description)
+        _sync_archimate_element(solution_id, ae_type="Driver", ae_layer="Motivation", name=driver.name, description=driver.description)
     solution.section_scores = None  # invalidate cache so score reflects new entity on reload
     db.session.commit()
     return jsonify({"success": True, "data": _driver_to_dict(driver)}), 201
@@ -1162,7 +1234,7 @@ def create_solution_goal(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Goal", "Motivation", goal.name, goal.description)
+        _sync_archimate_element(solution_id, ae_type="Goal", ae_layer="Motivation", name=goal.name, description=goal.description)
     solution.section_scores = None  # invalidate cache so score reflects new entity on reload
     db.session.commit()
     return jsonify({"success": True, "data": _goal_to_dict(goal)}), 201
@@ -1255,7 +1327,7 @@ def create_solution_constraint(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Constraint", "Motivation", constraint.name, constraint.description)
+        _sync_archimate_element(solution_id, ae_type="Constraint", ae_layer="Motivation", name=constraint.name, description=constraint.description)
     solution.section_scores = None  # invalidate cache so score reflects new entity on reload
     db.session.commit()
     return jsonify({"success": True, "data": _constraint_to_dict(constraint)}), 201
@@ -1357,7 +1429,7 @@ def create_solution_requirement(solution_id):
             db.session.rollback()
             return err
     else:
-        _sync_archimate_element(solution_id, "Requirement", "Motivation", requirement.name, requirement.description)
+        _sync_archimate_element(solution_id, ae_type="Requirement", ae_layer="Motivation", name=requirement.name, description=requirement.description)
     db.session.commit()
     return jsonify({"success": True, "data": _requirement_to_dict(requirement)}), 201
 
@@ -1411,7 +1483,6 @@ def get_solution_options(solution_id):
     """List all solution options/recommendations."""
     solution = Solution.query.get_or_404(solution_id)
     from app.models.solution_architect_models import (
-        SolutionAnalysisSession,
         SolutionRecommendation,
     )
 
@@ -1962,6 +2033,7 @@ def phase_h_new_cycle(solution_id: int):
                     source="phase_h_review",
                 )
                 db.session.add(driver)
+                sync_archimate_element(driver)
 
         db.session.commit()
 
@@ -2008,8 +2080,12 @@ def get_archimate_drivers(solution_id):
             if elem.element_table == "archimate_elements" and elem.layer_type == "motivation":
                 # Check actual element type from the repository
                 try:
-                    row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
+                    # tenancy-ok: elem comes from SolutionArchiMateElement rows
+                    # for solution_id, and Solution.query.get_or_404(solution_id)
+                    # above is a TenantMixin query, so a cross-org solution 404s
+                    # before any element id is reachable here.
+                    row = db.session.execute(
+                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),
                         {"eid": elem.element_id},
                     ).fetchone()
                     if row and row[2] == "Driver":
@@ -2046,10 +2122,19 @@ def link_archimate_driver(solution_id):
         return jsonify({"success": False, "error": "element_id is required"}), 400
 
     try:
-        # Verify the element exists and is a Driver
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
-            {"eid": element_id},
+        # Verify the element exists and is a Driver.
+        # element_id arrives in the request body and nothing upstream constrains
+        # it, so without the org predicate this both discloses another tenant's
+        # element and links it into this tenant's solution.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(
+                "SELECT id, name, type, description FROM archimate_elements "
+                f"WHERE id = :eid{_org_and}"
+            ),
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         if not row:
             return jsonify({"success": False, "error": "ArchiMate element not found"}), 404
@@ -2095,6 +2180,7 @@ def link_archimate_driver(solution_id):
                 ai_generated=False,
             )
             db.session.add(driver)
+            sync_archimate_element(driver)
 
         db.session.commit()
         return jsonify({
@@ -2123,8 +2209,12 @@ def get_archimate_goals(solution_id):
         for elem in elements:
             if elem.element_table == "archimate_elements" and elem.layer_type == "motivation":
                 try:
-                    row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
+                    # tenancy-ok: elem comes from SolutionArchiMateElement rows
+                    # for solution_id, and Solution.query.get_or_404(solution_id)
+                    # above is a TenantMixin query, so a cross-org solution 404s
+                    # before any element id is reachable here.
+                    row = db.session.execute(
+                        db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),
                         {"eid": elem.element_id},
                     ).fetchone()
                     if row and row[2] == "Goal":
@@ -2161,10 +2251,19 @@ def link_archimate_goal(solution_id):
         return jsonify({"success": False, "error": "element_id is required"}), 400
 
     try:
-        # Verify the element exists and is a Goal
-        row = db.session.execute(  # tenant-filtered: scoped via parent FK (element_id)
-            db.text("SELECT id, name, type, description FROM archimate_elements WHERE id = :eid"),  # tenant-filtered
-            {"eid": element_id},
+        # Verify the element exists and is a Goal.
+        # element_id arrives in the request body and nothing upstream constrains
+        # it, so without the org predicate this both discloses another tenant's
+        # element and links it into this tenant's solution.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_and = " AND organization_id = :org" if _org is not None else ""
+        row = db.session.execute(
+            db.text(
+                "SELECT id, name, type, description FROM archimate_elements "
+                f"WHERE id = :eid{_org_and}"
+            ),
+            {"eid": element_id, **({"org": _org} if _org is not None else {})},
         ).fetchone()
         if not row:
             return jsonify({"success": False, "error": "ArchiMate element not found"}), 404
@@ -2209,6 +2308,7 @@ def link_archimate_goal(solution_id):
                 ai_generated=False,
             )
             db.session.add(goal)
+            sync_archimate_element(goal)
 
         db.session.commit()
         return jsonify({
@@ -2229,7 +2329,6 @@ def get_solution_stakeholder_concerns(solution_id):
     Solution.query.get_or_404(solution_id)
     try:
         from app.models.solution_stakeholder import (
-            SolutionStakeholder,
             SolutionStakeholderMapping,
         )
 
@@ -2652,7 +2751,11 @@ def solution_traceability_export(solution_id):
 @login_required
 def list_roadmap_initiatives():
     """ENH-013: List technology roadmap initiatives, optionally filtered by year."""
+    from flask import g
+
+    from app.models.archimate_core import ArchitectureModel
     from app.models.implementation_migration import TechnologyRoadmapInitiative
+    from app.models.solution_models import Solution
 
     # Ensure table exists (no migrations)
     try:
@@ -2678,8 +2781,33 @@ def list_roadmap_initiatives():
     except Exception:
         db.session.rollback()
 
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return jsonify({"success": True, "data": [], "count": 0})
     year = request.args.get("year", type=int)
     query = TechnologyRoadmapInitiative.query
+    if org_id is not None:
+        arch_sub = (
+            db.session.query(ArchitectureModel.id)
+            .filter(ArchitectureModel.organization_id == org_id)
+            .subquery()
+        )
+        sol_sub = (
+            db.session.query(Solution.id)
+            .filter(Solution.organization_id == org_id)
+            .subquery()
+        )
+        from sqlalchemy import or_
+        query = query.filter(
+            or_(
+                TechnologyRoadmapInitiative.architecture_id.in_(
+                    db.session.query(arch_sub.c.id)
+                ),
+                TechnologyRoadmapInitiative.solution_id.in_(
+                    db.session.query(sol_sub.c.id)
+                ),
+            )
+        )
     if year:
         query = query.filter(
             TechnologyRoadmapInitiative.fiscal_year_start <= year,
@@ -2799,5 +2927,5 @@ def create_roadmap_initiative():
         solution_id=data.get("solution_id"),
     )
     db.session.add(initiative)
-    _commit_with_retry()
+    db.session.commit()
     return jsonify({"success": True, "data": initiative.to_dict()}), 201

@@ -3,6 +3,7 @@ Policy Enforcement Integration
 Integrate policy enforcement with existing tool system
 """
 
+from datetime import datetime
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -123,7 +124,12 @@ def patch_tools_with_policy():
     try:
         from app.utils import tools
     except ImportError:
-        logger.warning("Original tools module not found")
+        # info, not warning: app/utils/tools.py does not exist in this
+        # codebase at all (it's an optional monkey-patch target for a module
+        # this extract doesn't carry), so this fires unconditionally on every
+        # boot -- flooding /admin/errors with a permanent, unfixable
+        # "warning" rather than signalling anything actionable (10 Sep 2026).
+        logger.info("Original tools module not found; policy patching skipped")
         return
 
     # Store original functions
@@ -167,7 +173,6 @@ patch_tools_with_policy()
 # Policy monitoring endpoint
 def get_policy_monitoring_data() -> Dict[str, Any]:
     """Get data for policy monitoring dashboard"""
-    from app.utils.policy_tool_wrapper import check_policy_health
 
     return {
         "health_status": "HEALTHY" if check_policy_health() else "VIOLATIONS_DETECTED",

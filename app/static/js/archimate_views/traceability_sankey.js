@@ -42,18 +42,16 @@
         svg.call(zoom);
 
         // Fetch and render
-        fetch(apiUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+        Platform.fetch(apiUrl, {headers: {'X-Requested-With': 'XMLHttpRequest'}, silent: true})
             .then(function(data) {
                 g.selectAll('*').remove();
                 if (data.error) {
+                    // A server-reported error is NOT an empty result: this used to
+                    // render "No cross-layer relationships to display", so a failure
+                    // was indistinguishable from a genuinely empty model.
                     g.append('text').attr('x', width / 2).attr('y', height / 2)
                         .attr('text-anchor', 'middle').style('font-size', '14px').style('fill', '#94a3b8')
                         .text('No cross-layer relationships to display.');
-                    console.warn('Traceability API returned error:', data.error);
                     return;
                 }
                 if (!data.nodes || data.nodes.length === 0) {
@@ -69,7 +67,6 @@
                 g.append('text').attr('x', width / 2).attr('y', height / 2)
                     .attr('text-anchor', 'middle').style('fill', '#ef4444').style('font-size', '14px')
                     .text('Failed to load traceability data.');
-                console.error('Sankey load error:', err);
             });
     }
 
@@ -138,7 +135,6 @@
             g.append('text').attr('x', width / 2).attr('y', height / 2)
                 .attr('text-anchor', 'middle').style('font-size', '14px').style('fill', '#94a3b8')
                 .text('Diagram layout failed — too many cyclic relationships.');
-            console.error('Sankey layout error:', e);
             return;
         }
 

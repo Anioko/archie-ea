@@ -29,8 +29,11 @@ class VendorCatalogManager {
         // Search
         const searchInput = document.getElementById('search-input');
         if (searchInput) {
+            // Debounced: firing a request per keystroke let a slow early
+            // response overwrite the results of a later, more specific query.
             searchInput.addEventListener('input', (e) => {
-                this.handleSearch(e.target.value);
+                clearTimeout(this._searchTimer);
+                this._searchTimer = setTimeout(() => this.handleSearch(e.target.value), 300);
             });
         }
 
@@ -84,20 +87,14 @@ class VendorCatalogManager {
             if (this.filters.tier) params.append('tier', this.filters.tier);
             if (this.filters.category) params.append('category', this.filters.category);
 
-            const response = await fetch(`/api/vendors?${params}`);
-            const data = await response.json();
+            const data = await Platform.fetch.get(`/api/vendors?${params}`, null, { silent: true });
 
-            if (data.success) {
-                this.vendors = data.vendors || [];
-                this.productFamilies = data.product_families || [];
-                this.products = data.products || [];
-                this.displayCatalog();
-                this.updateStatistics(data.total || 0);
-            } else {
-                this.showError('Failed to load vendor catalog: ' + data.error);
-            }
+            this.vendors = data.vendors || [];
+            this.productFamilies = data.product_families || [];
+            this.products = data.products || [];
+            this.displayCatalog();
+            this.updateStatistics(data.total || 0);
         } catch (error) {
-            console.error('Error loading vendor catalog:', error);
             this.showError('Error loading vendor catalog');
         } finally {
             this.showLoading(false);
@@ -106,27 +103,19 @@ class VendorCatalogManager {
 
     async loadCategories() {
         try {
-            const response = await fetch('/api/vendors/categories');
-            const data = await response.json();
-
-            if (data.success) {
-                this.populateCategoryFilter(data.categories || []);
-            }
+            const data = await Platform.fetch.get('/api/vendors/categories', null, { silent: true });
+            this.populateCategoryFilter(data.categories || []);
         } catch (error) {
-            console.error('Error loading categories:', error);
+            this.showError('Error loading categories');
         }
     }
 
     async loadTiers() {
         try {
-            const response = await fetch('/api/vendors/tiers');
-            const data = await response.json();
-
-            if (data.success) {
-                this.populateTierFilter(data.tiers || []);
-            }
+            const data = await Platform.fetch.get('/api/vendors/tiers', null, { silent: true });
+            this.populateTierFilter(data.tiers || []);
         } catch (error) {
-            console.error('Error loading tiers:', error);
+            this.showError('Error loading tiers');
         }
     }
 
@@ -203,7 +192,7 @@ class VendorCatalogManager {
 
         safeHTML(container, this.vendors.map(vendor => `
             <div class="vendor-item ${this.selectedVendor?.id === vendor.id ? 'selected' : ''}"
-                 onclick="vendorCatalogManager.selectVendor(${vendor.id})">
+                 role="button" tabindex="0" data-catalog-action="selectVendor" data-catalog-id="${Number(vendor.id)}">
                 <div class="vendor-header">
                     <h4>${escapeHtml(vendor.name)}</h4>
                     <span class="tier-badge tier-${escapeHtml(vendor.tier)}">${escapeHtml(vendor.tier)}</span>
@@ -241,7 +230,7 @@ class VendorCatalogManager {
 
         safeHTML(container, this.productFamilies.map(family => `
             <div class="family-item ${this.selectedFamily?.id === family.id ? 'selected' : ''}"
-                 onclick="vendorCatalogManager.selectFamily(${family.id})">
+                 role="button" tabindex="0" data-catalog-action="selectFamily" data-catalog-id="${Number(family.id)}">
                 <div class="family-header">
                     <h4>${escapeHtml(family.name)}</h4>
                     <span class="product-count">${family.product_count || 0} products</span>
@@ -270,7 +259,7 @@ class VendorCatalogManager {
         }
 
         safeHTML(container, this.products.map(product => `
-            <div class="product-item" onclick="vendorCatalogManager.viewProductDetails(${product.id})">
+            <div class="product-item" role="button" tabindex="0" data-catalog-action="viewProductDetails" data-catalog-id="${Number(product.id)}">
                 <div class="product-header">
                     <h4>${escapeHtml(product.name)}</h4>
                     <span class="version">${escapeHtml(product.version) || 'N/A'}</span>
@@ -305,18 +294,11 @@ class VendorCatalogManager {
         // Load vendor hierarchy
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/${vendorId}/hierarchy`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.productFamilies = data.hierarchy?.product_families || [];
-                this.products = [];
-                this.displayCatalog();
-            } else {
-                this.showError('Failed to load vendor hierarchy: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/${vendorId}/hierarchy`, null, { silent: true });
+            this.productFamilies = data.hierarchy?.product_families || [];
+            this.products = [];
+            this.displayCatalog();
         } catch (error) {
-            console.error('Error loading vendor hierarchy:', error);
             this.showError('Error loading vendor hierarchy');
         } finally {
             this.showLoading(false);
@@ -329,17 +311,10 @@ class VendorCatalogManager {
         // Load family products
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/families/${familyId}/products`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.products = data.products || [];
-                this.displayProducts();
-            } else {
-                this.showError('Failed to load family products: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/families/${familyId}/products`, null, { silent: true });
+            this.products = data.products || [];
+            this.displayProducts();
         } catch (error) {
-            console.error('Error loading family products:', error);
             this.showError('Error loading family products');
         } finally {
             this.showLoading(false);
@@ -349,16 +324,9 @@ class VendorCatalogManager {
     async viewProductDetails(productId) {
         try {
             this.showLoading(true);
-            const response = await fetch(`/api/vendors/products/${productId}`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.showProductDetailsModal(data.product, data.applications);
-            } else {
-                this.showError('Failed to load product details: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/products/${productId}`, null, { silent: true });
+            this.showProductDetailsModal(data.product, data.applications);
         } catch (error) {
-            console.error('Error loading product details:', error);
             this.showError('Error loading product details');
         } finally {
             this.showLoading(false);
@@ -453,6 +421,11 @@ class VendorCatalogManager {
             return;
         }
 
+        // Abort any in-flight search so responses cannot land out of order.
+        if (this._searchAbort) this._searchAbort.abort();
+        this._searchAbort = new AbortController();
+        const signal = this._searchAbort.signal;
+
         try {
             this.showLoading(true);
             const params = new URLSearchParams();
@@ -460,16 +433,10 @@ class VendorCatalogManager {
             if (this.filters.tier) params.append('tier', this.filters.tier);
             if (this.filters.category) params.append('category', this.filters.category);
 
-            const response = await fetch(`/api/vendors/search?${params}`);
-            const data = await response.json();
-
-            if (data.success) {
-                this.displaySearchResults(data.results || []);
-            } else {
-                this.showError('Search failed: ' + data.error);
-            }
+            const data = await Platform.fetch.get(`/api/vendors/search?${params}`, null, { signal, silent: true });
+            this.displaySearchResults(data.results || []);
         } catch (error) {
-            console.error('Error searching:', error);
+            if (error.name === 'AbortError') return; // superseded by a newer query
             this.showError('Error searching');
         } finally {
             this.showLoading(false);
@@ -489,7 +456,7 @@ class VendorCatalogManager {
         const products = results.filter(r => r.type === 'product');
 
         safeHTML(vendorsContainer, vendors.map(vendor => `
-            <div class="vendor-item search-result" onclick="vendorCatalogManager.selectVendor(${vendor.id})">
+            <div class="vendor-item search-result" role="button" tabindex="0" data-catalog-action="selectVendor" data-catalog-id="${Number(vendor.id)}">
                 <div class="vendor-header">
                     <h4>${escapeHtml(vendor.name)}</h4>
                     <span class="tier-badge tier-${escapeHtml(vendor.tier)}">${escapeHtml(vendor.tier)}</span>
@@ -499,7 +466,7 @@ class VendorCatalogManager {
         `).join('') || '<div class="text-center py-4 text-muted-foreground">No vendors found</div>');
 
         safeHTML(familiesContainer, families.map(family => `
-            <div class="family-item search-result" onclick="vendorCatalogManager.selectFamily(${family.id})">
+            <div class="family-item search-result" role="button" tabindex="0" data-catalog-action="selectFamily" data-catalog-id="${Number(family.id)}">
                 <div class="family-header">
                     <h4>${escapeHtml(family.name)}</h4>
                     <span class="product-count">${family.product_count || 0} products</span>
@@ -509,7 +476,7 @@ class VendorCatalogManager {
         `).join('') || '<div class="text-center py-4 text-muted-foreground">No families found</div>');
 
         safeHTML(productsContainer, products.map(product => `
-            <div class="product-item search-result" onclick="vendorCatalogManager.viewProductDetails(${product.id})">
+            <div class="product-item search-result" role="button" tabindex="0" data-catalog-action="viewProductDetails" data-catalog-id="${Number(product.id)}">
                 <div class="product-header">
                     <h4>${escapeHtml(product.name)}</h4>
                     <span class="version">${escapeHtml(product.version) || 'N/A'}</span>
@@ -528,24 +495,11 @@ class VendorCatalogManager {
 
         try {
             this.showLoading(true);
-            const response = await fetch('/api/vendors/extract', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    application_description: input.value.trim()
-                })
-            });
-
-            const data = await response.json();
-            if (data.success) {
-                this.displayExtractionResults(data.extraction_result, data.alternatives, data.confidence);
-            } else {
-                this.showError('Extraction failed: ' + data.error);
-            }
+            const data = await Platform.fetch.post('/api/vendors/extract', {
+                application_description: input.value.trim()
+            }, { silent: true });
+            this.displayExtractionResults(data.extraction_result, data.alternatives, data.confidence);
         } catch (error) {
-            console.error('Error running AI extraction:', error);
             this.showError('Error running AI extraction');
         } finally {
             this.showLoading(false);
@@ -721,6 +675,30 @@ class VendorCatalogManager {
         }, 5000);
     }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: every vendor,
+// family and product row carried onclick="vendorCatalogManager.…" and so was
+// inert for its whole life while styled as clickable. Bound once at document
+// level so it survives the three lists being re-rendered from fetched data.
+// All three target methods (selectVendor, selectFamily, viewProductDetails)
+// exist on the manager and hit live endpoints; none of them is destructive.
+function handleVendorCatalogAction(event) {
+    const el = event.target.closest('[data-catalog-action]');
+    if (!el) return;
+    const manager = window.vendorCatalogManager;
+    if (!manager) return;
+    const action = el.getAttribute('data-catalog-action');
+    if (!['selectVendor', 'selectFamily', 'viewProductDetails'].includes(action)) return;
+    event.preventDefault();
+    manager[action](Number(el.getAttribute('data-catalog-id')));
+}
+
+document.addEventListener('click', handleVendorCatalogAction);
+document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!event.target.closest('[data-catalog-action]')) return;
+    handleVendorCatalogAction(event);
+});
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {

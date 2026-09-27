@@ -25,7 +25,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
-from typing import Iterable, List, Optional, Sequence
+from typing import List, Optional, Sequence
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import joinedload

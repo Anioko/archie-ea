@@ -27,6 +27,48 @@ def safe_url_for_with_fallback(endpoint, fallback_url="#", **values):
         return fallback_url
 
 
+def _get_show_archimate(user=None):
+    """Read show_archimate_names from a user-like object, returning False
+    when the attribute is absent or an error occurs."""
+    if user is None:
+        return False
+    try:
+        return bool(getattr(user, "show_archimate_names", False))
+    except Exception:
+        import logging
+        _log = logging.getLogger(__name__)
+        _log.warning("Could not read show_archimate_names from user %r", user, exc_info=True)
+        return False
+
+
+def _plain_name(element_type, user=None):
+    """Return the plain-language display name for an ArchiMate element type.
+
+    Module-level helper so tests can import it directly. The Jinja filter
+    ``|plain_name`` delegates here.
+    """
+    from app.models.archimate_element_types import plain_name_for
+
+    show_archimate = _get_show_archimate(user)
+    if show_archimate:
+        return element_type or "\u2014"
+    return plain_name_for(element_type)
+
+
+def _plain_layer(layer, user=None):
+    """Return the plain-language display name for an ArchiMate layer.
+
+    Module-level helper so tests can import it directly. The Jinja filter
+    ``|plain_layer`` delegates here.
+    """
+    from app.models.archimate_element_types import plain_layer_name
+
+    show_archimate = _get_show_archimate(user)
+    if show_archimate:
+        return layer or "\u2014"
+    return plain_layer_name(layer)
+
+
 def register_template_filters(app):
     """Register all template filters with the Flask app"""
 
@@ -100,6 +142,24 @@ def register_template_filters(app):
             currency_code = None
         service = CurrencyService(app)
         return service.parse_amount_from_string(amount_string, currency_code)
+
+    try:
+        from app.modules.interface_register.services.size_bands import effort_band
+
+        @app.template_filter("effort_band")
+        def effort_band_filter(estimated_effort_hours):
+            """Convert estimated effort hours to a T-shirt size band."""
+            return effort_band(estimated_effort_hours)
+    except Exception:
+        # A failure anywhere in interface_register must not prevent every
+        # other filter registered by this function from registering --
+        # importing this module transitively pulls in the whole
+        # interface_register package (routes -> models). Losing this one
+        # filter degrades one feature; losing the whole function 500s every
+        # page using |currency, |number_format, etc.
+        app.logger.warning(
+            "effort_band template filter failed to register", exc_info=True
+        )
 
     @app.template_filter("number_format")
     def number_format_filter(number: Union[int, float], decimal_places: int = 2) -> str:
@@ -215,6 +275,36 @@ def register_template_filters(app):
         slug = re.sub(r"[\s-]+", "-", slug)
         return slug.strip("-")
 
+    @app.template_filter("plain_name")
+    def plain_name_filter(element_type, user=None):
+        """Return the plain-language display name for an ArchiMate element type.
+
+        When the current user has ``show_archimate_names`` enabled, the
+        original PascalCase name is returned unchanged. Otherwise the
+        plain-language name from PLAIN_LANGUAGE_NAMES is used.
+
+        Usage in templates:
+            {{ element.element_type | plain_name }}
+            {{ element.element_type | plain_name(current_user) }}
+
+        The ``user`` argument is optional; when omitted or None the filter
+        defaults to plain names (the default setting is off).
+        """
+        return _plain_name(element_type, user)
+
+    @app.template_filter("plain_layer")
+    def plain_layer_filter(layer, user=None):
+        """Return the plain-language display name for an ArchiMate layer.
+
+        Same behaviour as ``plain_name``: respects the user's
+        ``show_archimate_names`` setting.
+
+        Usage in templates:
+            {{ layer | plain_layer }}
+            {{ layer | plain_layer(current_user) }}
+        """
+        return _plain_layer(layer, user)
+
     # Global template functions
     @app.context_processor
     def currency_context():
@@ -229,6 +319,38 @@ def register_template_filters(app):
             "get_supported_currency_codes": service.get_supported_currency_codes,
             "is_supported_currency": service.is_supported_currency,
             "default_currency": current_app.config.get("DEFAULT_CURRENCY", "GBP"),
+        }
+
+    @app.context_processor
+    def plain_language_context():
+        """Make plain-language vocabulary and user setting available to JS.
+
+        Only injected when a user is signed in — public pages (landing,
+        login, password reset) never render these values, so serialising
+        ~3 KB of JSON on every unauthenticated request is wasted work.
+        """
+        import json
+
+        from flask_login import current_user
+
+        try:
+            if not (
+                current_user
+                and hasattr(current_user, "is_authenticated")
+                and current_user.is_authenticated
+            ):
+                return {}
+        except Exception:
+            return {}
+
+        from app.models.archimate_element_types import PLAIN_LANGUAGE_NAMES, PLAIN_LAYER_NAMES
+
+        show_archimate = _get_show_archimate(current_user)
+
+        return {
+            "plain_language_names_json": json.dumps(PLAIN_LANGUAGE_NAMES),
+            "plain_layer_names_json": json.dumps(PLAIN_LAYER_NAMES),
+            "show_archimate_names_js": json.dumps(show_archimate),
         }
 
 

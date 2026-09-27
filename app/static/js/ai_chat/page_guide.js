@@ -205,7 +205,6 @@
                     operation: 'load',
                     error: error && error.message ? error.message : 'Unknown page guide load failure'
                 });
-                console.error('Failed to load page guide', error);
             });
         });
 
@@ -251,6 +250,28 @@
                     input.value = '';
 
                     const response = await sendMessage(context, message);
+
+                    /* A 200 is not the same as an answer. When no provider is
+                       configured the route still replies success:true and puts
+                       the administrative "AI features aren't configured yet"
+                       text in `response`, flagging it only via `agent_error`.
+                       Ignoring that field rendered the notice as ordinary
+                       guide prose AND recorded it as `response_success`, so
+                       the telemetry said the guide was working while every
+                       answer was really a configuration notice. */
+                    if (response.agent_error) {
+                        setError(
+                            response.response ||
+                            'The AI guide is not available right now. Check that an LLM provider is configured in Admin → AI Settings.'
+                        );
+                        input.value = message;
+                        emitTelemetry('response_failure', context, {
+                            operation: 'send',
+                            reason: 'agent_error'
+                        });
+                        return;
+                    }
+
                     current.push({ role: 'assistant', content: response.response || '' });
                     renderMessages(current);
                     emitTelemetry('response_success', context, {
@@ -270,7 +291,6 @@
                         operation: 'send',
                         error: error && error.message ? error.message : 'Unknown page guide send failure'
                     });
-                    console.error('Failed to send page guide message', error);
                 }
             });
         }
@@ -289,7 +309,6 @@
                         operation: 'clear',
                         error: error && error.message ? error.message : 'Unknown page guide clear failure'
                     });
-                    console.error('Failed to clear page guide history', error);
                 }
             });
         }

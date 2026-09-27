@@ -26,7 +26,7 @@ class FrameworkClassifier:
                 "finance": {
                     "name": "Financial Planning",
                     "description": "Financial management and planning",
-                    "categories": ["Financial Management", "Financial Planning"],
+                    "categories": ["Financial Management", "Financial Planning", "Finance & Controlling"],
                 },
             },
         },
@@ -39,7 +39,7 @@ class FrameworkClassifier:
                 "acquisition": {
                     "name": "Acquisition & Analytics",
                     "description": "Customer acquisition and analytics",
-                    "categories": ["Customer Acquisition", "Customer Analytics"],
+                    "categories": ["Customer Acquisition", "Customer Analytics", "Sales & Channel Management"],
                 },
                 "service": {
                     "name": "Service & Retention",
@@ -61,7 +61,7 @@ class FrameworkClassifier:
                 "operations": {
                     "name": "Operations Management",
                     "description": "Operations and process management",
-                    "categories": ["Operations Management", "Process Management"],
+                    "categories": ["Operations Management", "Process Management", "Manufacturing Operations"],
                 },
                 "supply_chain": {
                     "name": "Supply Chain & Procurement",
@@ -70,6 +70,7 @@ class FrameworkClassifier:
                         "Supply Chain Management",
                         "Inventory Management",
                         "Procurement",
+                        "Supply Chain & Logistics",
                     ],
                 },
             },
@@ -87,6 +88,8 @@ class FrameworkClassifier:
                         "IT Strategy",
                         "Application Management",
                         "Technology Management",
+                    
+                        "Information Technology",
                     ],
                 },
                 "infrastructure": {
@@ -109,7 +112,7 @@ class FrameworkClassifier:
                 "development": {
                     "name": "Development & Innovation",
                     "description": "Product development and innovation",
-                    "categories": ["Product Development", "Product Innovation"],
+                    "categories": ["Product Development", "Product Innovation", "Product & Innovation"],
                 },
                 "lifecycle": {
                     "name": "Lifecycle & Portfolio",
@@ -131,7 +134,7 @@ class FrameworkClassifier:
                 "compliance": {
                     "name": "Compliance & Risk",
                     "description": "Compliance and risk management",
-                    "categories": ["Compliance Management", "Risk Management"],
+                    "categories": ["Compliance Management", "Risk Management", "Health, Safety & Environment"],
                 },
                 "quality": {
                     "name": "Quality & Contracts",
@@ -158,7 +161,7 @@ class FrameworkClassifier:
                 "workforce": {
                     "name": "Workforce Planning",
                     "description": "Workforce planning and employee experience",
-                    "categories": ["Workforce Planning", "Employee Experience"],
+                    "categories": ["Workforce Planning", "Employee Experience", "People & Organisation"],
                 },
             },
         },

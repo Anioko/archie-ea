@@ -12,7 +12,7 @@
 {% block content %}
 <div class="space-y-6" x-data="consolidationTable()" x-cloak>
     {{ page_header(
-        title='Consolidation List',
+        title='Consolidation List', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Consolidation List'}],
         description='Plan and manage application consolidation, decommissioning, and retirement',
         actions=[
             {'text': 'Candidates', 'icon': 'users', 'href': url_for('unified_low_priority.consolidation_candidates'), 'variant': 'outline'},
@@ -64,7 +64,7 @@
                 <i data-lucide="bar-chart-3" class="h-4 w-4" aria-hidden="true"></i>
                 <span x-text="scoringInProgress ? 'Scoring...' : 'Score All (TIME)'"></span>
             </button>
-            <button type="button" @click="recalculateSavings()" :disabled="recalcInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 text-sm font-medium transition-colors disabled:opacity-50" aria-label="Recalculate savings for all entries">
+            <button type="button" @click="recalculateSavings()" :disabled="recalcInProgress" class="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-success bg-success/10 hover:bg-success/20 text-success-emphasis text-sm font-medium transition-colors disabled:opacity-50" aria-label="Recalculate savings for all entries">
                 <i data-lucide="calculator" class="h-4 w-4" aria-hidden="true"></i>
                 <span x-text="recalcInProgress ? 'Recalculating...' : 'Recalculate Savings'"></span>
             </button>
@@ -155,7 +155,7 @@
              x-transition:leave-end="opacity-0">
             <span class="text-sm font-medium" x-text="selectedCount + ' selected'" aria-live="polite"></span>
             <div class="h-4 w-px bg-border"></div>
-            <button type="button" class="text-sm font-medium text-destructive hover:text-destructive/80 transition-colors" @click="bulkAction('decommission')">Decommission</button>
+            <button type="button" class="text-sm font-medium text-destructive-emphasis hover:text-destructive-emphasis/80 transition-colors" @click="bulkAction('decommission')">Decommission</button>
             <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('set_wave')">Set Wave</button>
             <button type="button" class="text-sm font-medium text-foreground hover:text-primary transition-colors" @click="bulkAction('assign_owner')">Assign Owner</button>
             <div class="h-4 w-px bg-border"></div>
@@ -224,7 +224,7 @@
                             <td colspan="12" class="text-center py-12">
                                 <div class="flex flex-col items-center gap-2">
                                     <i data-lucide="alert-circle" class="h-10 w-10 text-destructive/50" aria-hidden="true"></i>
-                                    <p class="text-sm text-destructive" x-text="errorMsg"></p>
+                                    <p class="text-sm text-destructive-emphasis" x-text="errorMsg"></p>
                                     <button type="button" class="mt-1 text-sm text-primary hover:underline" @click="refresh()">Try again</button>
                                 </div>
                             </td>
@@ -278,12 +278,17 @@
                             </td>
                             {# Application name #}
                             <td class="px-4 py-3">
-                                <div class="font-medium text-sm" x-text="entry.application_name"></div>
-                                <div class="text-xs text-muted-foreground">
-                                    <span x-text="entry.application_owner || ''"></span>
-                                    <span x-show="entry.business_domain" x-text="' · ' + entry.business_domain" x-cloak></span>
-                                    <span x-show="entry.user_count" x-text="' · ' + entry.user_count + ' users'" x-cloak></span>
+                                <div class="flex items-center gap-1.5">
+                                    <div class="font-medium text-sm" :class="entry.application_orphaned ? 'text-destructive' : ''" x-text="entry.application_name"></div>
+                                    {# M4: an orphaned FK (the source application row was deleted) used to
+                                       read identically to "Unknown" data on a real row -- flag it distinctly. #}
+                                    <span x-show="entry.application_orphaned" x-cloak
+                                          class="inline-flex items-center gap-1 rounded-md bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium text-destructive border border-destructive/30"
+                                          title="The source application record no longer exists">
+                                        <i data-lucide="unlink" class="h-2.5 w-2.5" aria-hidden="true"></i> Orphaned
+                                    </span>
                                 </div>
+                                <div class="text-xs text-muted-foreground" x-text="entryMetaLine(entry)"></div>
                             </td>
                             {# Action badge #}
                             <td class="px-4 py-3">
@@ -317,7 +322,7 @@
                             {# Annual Saving #}
                             <td class="px-4 py-3 hidden md:table-cell">
                                 <div class="text-sm font-medium tabular-nums"
-                                     :class="entry.estimated_savings != null ? 'text-emerald-600' : 'text-muted-foreground italic'"
+                                     :class="entry.estimated_savings != null ? 'text-success-emphasis' : 'text-muted-foreground italic'"
                                      x-text="entry.estimated_savings != null ? fmt.currency(entry.estimated_savings) : '\u2014'"></div>
                             </td>
                             {# Migration Cost #}
@@ -356,8 +361,8 @@
                             <td class="px-4 py-3 text-right" @click.stop>
                                 <div class="flex items-center justify-end gap-1.5">
                                     <button type="button" class="text-primary hover:text-primary/90 text-xs" @click="openEditEntry(entry.id)" title="Edit">Edit</button>
-                                    <button type="button" x-show="entry.recommended_action !== 'add_to_roadmap'" x-cloak class="text-emerald-600 hover:text-emerald-800 text-xs" @click="openRoadmapConfig(entry.id)" title="Add to roadmap">Roadmap</button>
-                                    <button type="button" class="text-destructive hover:text-destructive/90 text-xs" @click="removeEntry(entry.id)" title="Remove">Remove</button>
+                                    <button type="button" x-show="entry.recommended_action !== 'add_to_roadmap'" x-cloak class="text-success-emphasis hover:text-success-emphasis/80 text-xs" @click="openRoadmapConfig(entry.id)" title="Add to roadmap">Roadmap</button>
+                                    <button type="button" class="text-destructive-emphasis hover:text-destructive-emphasis/90 text-xs" @click="removeEntry(entry.id)" title="Remove">Remove</button>
                                 </div>
                             </td>
                         </tr>
@@ -384,7 +389,7 @@
                 </div>
 
                 {# Error loading detail #}
-                <div x-show="detailHasError(entry.id)" x-cloak class="text-sm text-destructive">
+                <div x-show="detailHasError(entry.id)" x-cloak class="text-sm text-destructive-emphasis">
                     Failed to load details.
                     <button type="button" class="text-primary hover:underline ml-1" @click="loadDetail(entry.id)">Retry</button>
                 </div>
@@ -484,7 +489,7 @@
                     <template x-if="getMissingFields(entry).length > 0">
                         <div class="mt-4 pt-4 border-t border-border/50" :data-quick-edit="entry.id">
                             <div class="flex items-center justify-between mb-3">
-                                <h5 class="text-xs font-semibold text-amber-600 uppercase flex items-center gap-1.5">
+                                <h5 class="text-xs font-semibold text-warning-emphasis uppercase flex items-center gap-1.5">
                                     <i data-lucide="alert-circle" class="h-3.5 w-3.5" aria-hidden="true"></i>
                                     <span x-text="getMissingFields(entry).length + ' Missing Field' + (getMissingFields(entry).length !== 1 ? 's' : '')"></span>
                                 </h5>
@@ -500,31 +505,31 @@
                                     <div>
                                         <label class="block text-xs font-medium text-muted-foreground mb-1" x-text="field.label"></label>
                                         <template x-if="field.type === 'currency'">
-                                            <input type="number" step="0.01" min="0"
+                                            <input :aria-label="field.label" type="number" step="0.01" min="0"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    :placeholder="'0.00'" @click.stop>
                                         </template>
                                         <template x-if="field.type === 'date'">
-                                            <input type="date"
+                                            <input :aria-label="field.label" type="date"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    @click.stop>
                                         </template>
                                         <template x-if="field.type === 'text'">
-                                            <input type="text"
+                                            <input :aria-label="field.label" type="text"
                                                    :data-field="field.key"
                                                    class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                    :placeholder="field.label" @click.stop>
                                         </template>
                                         <template x-if="field.type === 'textarea'">
-                                            <textarea rows="2"
+                                            <textarea :aria-label="field.label" rows="2"
                                                       :data-field="field.key"
                                                       class="w-full px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                                                       :placeholder="field.label" @click.stop></textarea>
                                         </template>
                                         <template x-if="field.type === 'select'">
-                                            <select :data-field="field.key"
+                                            <select :aria-label="field.label" :data-field="field.key"
                                                     class="w-full h-8 px-2 py-1 text-sm border border-input rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-ring"
                                                     @click.stop>
                                                 <template x-for="opt in field.options" :key="opt.value">
@@ -549,13 +554,14 @@
             </p>
             <div class="flex items-center gap-2">
                 <label class="text-sm text-muted-foreground">Show:</label>
-                <select :value="pageSize" @change="setPerPage($event.target.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm">
+                <select :value="pageSize" @change="setPerPage($event.target.value)" class="h-8 w-16 rounded-md border border-input bg-background px-2 py-1 text-sm" aria-label="Show">
                     <option value="10">10</option>
                     <option value="25">25</option>
                     <option value="50">50</option>
                     <option value="100">100</option>
                 </select>
 
+                {# duplicate-breadcrumb-ok: table-pagination nav, not a breadcrumb -- flagged only because its Prev/Next buttons use chevron icons, the same shape heuristic keys on; real breadcrumb is the header-arg above. #}
                 <nav class="flex items-center gap-1" aria-label="Pagination">
                     <button type="button" class="inline-flex items-center justify-center h-8 px-2.5 rounded-md border border-input bg-background hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
                             :disabled="!hasPrev" @click="prevPage()" aria-label="Previous page">
@@ -582,34 +588,34 @@
     </div>
 
     {# ── Warning Footer ── #}
-    <div x-show="warningMessages().length > 0" x-cloak class="mt-4 p-4 rounded-lg bg-amber-500/10 border border-amber-500/30">
+    <div x-show="warningMessages().length > 0" x-cloak class="mt-4 p-4 rounded-lg bg-warning/10 border border-warning/30">
         <div class="flex items-start gap-3">
-            <i data-lucide="alert-triangle" class="h-5 w-5 text-amber-600 mt-0.5 shrink-0" aria-hidden="true"></i>
+            <i data-lucide="alert-triangle" class="h-5 w-5 text-warning mt-0.5 shrink-0" aria-hidden="true"></i>
             <div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <p class="text-sm font-medium text-amber-800">Items Require Attention</p>
-                    <button type="button" x-show="missingFilter" x-cloak @click="clearMissingFilter()" class="text-xs text-amber-600 hover:text-amber-800 underline">Clear filter</button>
+                    <p class="text-sm font-medium text-warning-emphasis">Items Require Attention</p>
+                    <button type="button" x-show="missingFilter" x-cloak @click="clearMissingFilter()" class="text-xs text-warning-emphasis hover:opacity-80 underline">Clear filter</button>
                 </div>
                 <div class="flex flex-wrap gap-x-2 gap-y-1 mt-1">
                     <template x-if="(summary.no_roadmap_count || 0) > 0">
-                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                        <button type="button" class="text-sm text-warning-emphasis hover:opacity-80 hover:underline transition-colors"
                                 @click="setMissingFilter('no_roadmap')"
                                 x-text="summary.no_roadmap_count + ' without roadmap link'"></button>
                     </template>
                     <template x-if="(summary.no_owner_count || 0) > 0">
-                        <span x-show="(summary.no_roadmap_count || 0) > 0" x-cloak class="text-amber-500" aria-hidden="true">&middot;</span>
-                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                        <span x-show="(summary.no_roadmap_count || 0) > 0" x-cloak class="text-warning" aria-hidden="true">&middot;</span>
+                        <button type="button" class="text-sm text-warning-emphasis hover:opacity-80 hover:underline transition-colors"
                                 @click="setMissingFilter('no_owner')"
                                 x-text="summary.no_owner_count + ' without assigned owner'"></button>
                     </template>
                     <template x-if="(summary.no_target_date_count || 0) > 0">
-                        <span x-show="(summary.no_roadmap_count || 0) > 0 || (summary.no_owner_count || 0) > 0" x-cloak class="text-amber-500" aria-hidden="true">&middot;</span>
-                        <button type="button" class="text-sm text-amber-700 hover:text-amber-900 hover:underline transition-colors"
+                        <span x-show="(summary.no_roadmap_count || 0) > 0 || (summary.no_owner_count || 0) > 0" x-cloak class="text-warning" aria-hidden="true">&middot;</span>
+                        <button type="button" class="text-sm text-warning-emphasis hover:opacity-80 hover:underline transition-colors"
                                 @click="setMissingFilter('no_target_date')"
                                 x-text="summary.no_target_date_count + ' without target date'"></button>
                     </template>
                 </div>
-                <p class="text-xs text-amber-600 mt-2">Click a category to filter. These items require attention before the next ARB governance review.</p>
+                <p class="text-xs text-warning-emphasis mt-2">Click a category to filter. These items require attention before the next ARB governance review.</p>
             </div>
         </div>
     </div>
@@ -656,7 +662,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<script src="{{ url_for('static', filename='js/consolidation_list/dashboard.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='js/consolidation_list/dashboard.js') }}"></script>
 
 {% endblock %}
 

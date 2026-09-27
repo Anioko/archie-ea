@@ -5,13 +5,14 @@ REST API endpoints for ACM Technical Capability management using hybrid approach
 Provides comprehensive CRUD operations with validation and performance optimization.
 """
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 from flask_login import login_required
 
 from app import db
 from app.decorators import audit_log
 from app.models.technical_capability import ACMDomain
 from app.services.acm_hybrid_manager import ACMHybridManager
+from app.utils.pagination import safe_int_arg
 
 # Create blueprint
 acm_hybrid_bp = Blueprint("acm_hybrid", __name__, url_prefix="/api/acm-hybrid")
@@ -81,7 +82,7 @@ def seed_capabilities():
                 400,
             )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Seeding operation failed"}), 500
 
 
@@ -108,7 +109,7 @@ def get_seeding_status():
         else:
             return jsonify({"success": False, "error": status["error"]}), 500
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Status check failed"}), 500
 
 
@@ -143,7 +144,7 @@ def get_domains():
 
         return jsonify({"success": True, "domains": domains}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get domains"}), 500
 
 
@@ -181,8 +182,8 @@ def get_capabilities():
         level = request.args.get("level")
         platform_specific = request.args.get("platform_specific")
         search = request.args.get("search")
-        page = int(request.args.get("page", 1))
-        per_page = min(int(request.args.get("per_page", 50)), 100)  # Max 100 per page
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)  # Max 100 per page
 
         # Build query
         query = TechnicalCapability.query
@@ -241,7 +242,7 @@ def get_capabilities():
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get capabilities"}), 500
 
 
@@ -270,7 +271,7 @@ def get_capability(code):
 
         return jsonify({"success": True, "capability": capability.to_dict()}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get capability"}), 500
 
 
@@ -308,7 +309,7 @@ def update_capability(code):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to update capability"}), 500
 
 
@@ -441,7 +442,7 @@ def validate_capabilities():
 
         return jsonify({"success": True, "validation": validation_result}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Validation failed"}), 500
 
 
@@ -556,7 +557,7 @@ def get_statistics():
             200,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get statistics"}), 500
 
 
@@ -608,7 +609,7 @@ def get_hierarchy():
 
         return jsonify({"success": True, "hierarchy": hierarchy}), 200
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "Failed to get hierarchy"}), 500
 
 

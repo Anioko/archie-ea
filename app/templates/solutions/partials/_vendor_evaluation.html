@@ -49,10 +49,10 @@
                         <p class="text-xs text-muted-foreground truncate" x-text="product.vendor_name"></p>
                         <div class="flex flex-wrap gap-1 mt-1">
                             <span x-show="product.product_family" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                   x-text="product.product_family"></span>
                             <span x-show="product.licensing_model" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30"
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                   x-text="product.licensing_model"></span>
                         </div>
                     </div>
@@ -85,9 +85,9 @@
 
     {# Warning for large shortlists #}
     <div x-show="shortlist.length > 4" x-cloak
-         class="mb-4 flex items-start gap-2 p-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
-        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" aria-hidden="true"></i>
-        <p class="text-sm text-amber-700">Shortlist exceeds recommended maximum of 4 products. Consider narrowing your selection for effective comparison.</p>
+         class="mb-4 flex items-start gap-2 p-3 rounded-lg border border-warning/30 bg-warning/5">
+        <i data-lucide="alert-triangle" class="w-4 h-4 text-warning flex-shrink-0 mt-0.5" aria-hidden="true"></i>
+        <p class="text-sm text-warning-emphasis">Shortlist exceeds recommended maximum of 4 products. Consider narrowing your selection for effective comparison.</p>
     </div>
 
     {# Current shortlist #}
@@ -98,8 +98,22 @@
                   class="ml-1 text-foreground" x-text="'(' + shortlist.length + ')'"></span>
         </h3>
 
+        {# Loading state #}
+        <div x-show="loading" x-cloak class="space-y-2">
+            <div class="animate-pulse h-14 bg-muted rounded-lg"></div>
+            <div class="animate-pulse h-14 bg-muted rounded-lg"></div>
+        </div>
+
+        {# Load-error state #}
+        <div x-show="!loading && loadFailed" x-cloak
+             class="flex flex-col items-center justify-center py-8 text-center border border-dashed border-destructive/30 rounded-lg">
+            <i data-lucide="alert-triangle" class="w-8 h-8 text-destructive-emphasis mb-2" aria-hidden="true"></i>
+            <p class="text-sm text-destructive-emphasis">Could not load the shortlist &mdash; this is not an empty shortlist</p>
+            <p class="text-xs text-muted-foreground mt-1">Reload the page to try again</p>
+        </div>
+
         {# Empty state #}
-        <div x-show="shortlist.length === 0" x-cloak
+        <div x-show="!loading && !loadFailed && shortlist.length === 0" x-cloak
              class="flex flex-col items-center justify-center py-8 text-center border border-dashed border-border rounded-lg">
             <i data-lucide="clipboard-list" class="w-8 h-8 text-muted-foreground/50 mb-2" aria-hidden="true"></i>
             <p class="text-sm text-muted-foreground">No products shortlisted yet</p>
@@ -107,35 +121,35 @@
         </div>
 
         {# Shortlist items #}
-        <div x-show="shortlist.length > 0" x-cloak class="space-y-2">
+        <div x-show="!loading && !loadFailed && shortlist.length > 0" x-cloak class="space-y-2">
             <template x-for="item in shortlist" :key="item.id">
                 <div class="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-background group hover:border-primary/30 transition-colors">
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2">
                             <p class="text-sm font-medium text-foreground truncate" x-text="item.name"></p>
                             <span x-show="item.market_position" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium"
-                                  :class="item.market_position === 'leader' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30' :
-                                           item.market_position === 'challenger' ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' :
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium"
+                                  :class="item.market_position === 'leader' ? 'bg-success/10 text-success-emphasis border border-success/30' :
+                                           item.market_position === 'challenger' ? 'bg-warning/10 text-warning-emphasis border border-warning/30' :
                                            'bg-muted text-muted-foreground border border-border'"
                                   x-text="item.market_position"></span>
                         </div>
                         <p class="text-xs text-muted-foreground" x-text="item.vendor_name"></p>
                         <div class="flex flex-wrap gap-1 mt-1">
                             <span x-show="item.product_family" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                   x-text="item.product_family"></span>
                             <span x-show="item.deployment_model" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-sky-500/10 text-sky-600 border border-sky-500/30"
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-info-emphasis border border-info/30"
                                   x-text="item.deployment_model"></span>
                             <span x-show="item.licensing_model" x-cloak
-                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground border border-border"
+                                  class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground border border-border"
                                   x-text="item.licensing_model"></span>
                         </div>
                     </div>
                     <button type="button" @click="removeFromShortlist(item.id)"
                             :disabled="removingId === item.id"
-                            class="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
+                            class="flex-shrink-0 p-1.5 rounded-md text-muted-foreground hover:text-destructive-emphasis hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-50"
                             :aria-label="'Remove ' + item.name + ' from shortlist'"
                             title="Remove from shortlist">
                         <i data-lucide="x" class="w-4 h-4" aria-hidden="true"></i>
@@ -163,7 +177,7 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100 translate-y-0"
          x-transition:leave-end="opacity-0 translate-y-1"
-         class="fixed bottom-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive text-sm shadow-lg"
+         class="fixed bottom-4 right-4 z-50 max-w-sm px-4 py-3 rounded-lg border border-destructive/30 bg-destructive/10 text-destructive-emphasis text-sm shadow-lg"
          @click="errorMsg = ''">
         <span x-text="errorMsg"></span>
     </div>
@@ -182,21 +196,30 @@ document.addEventListener('alpine:init', () => {
         addingId: null,
         removingId: null,
         errorMsg: '',
+        loading: true,
+        loadFailed: false,
 
         async init() {
             await this.loadShortlist();
         },
 
         async loadShortlist() {
+            this.loading = true;
+            this.loadFailed = false;
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation`);
-                const data = await resp.json();
+                const data = await Platform.fetch(`/solutions/${this.solutionId}/vendor-evaluation`, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist = data.shortlist || [];
                     this.categories = data.categories || [];
+                } else {
+                    this.loadFailed = true;
                 }
             } catch (e) {
-                console.error('Failed to load vendor evaluation shortlist:', e);
+                this.loadFailed = true;
+                this.errorMsg = 'Failed to load vendor shortlist. Reload the page to try again.';
+            } finally {
+                this.loading = false;
             }
         },
 
@@ -208,17 +231,21 @@ document.addEventListener('alpine:init', () => {
             }
             this.searching = true;
             try {
-                const params = new URLSearchParams();
-                if (q) params.set('q', q);
-                if (this.categoryFilter) params.set('category', this.categoryFilter);
-                params.set('limit', '20');
-                const resp = await fetch(`/solutions/vendor-products/search?${params}`);
-                const data = await resp.json();
+                const params = {};
+                if (q) params.q = q;
+                if (this.categoryFilter) params.category = this.categoryFilter;
+                params.limit = '20';
+                // Platform.fetch.get serialises plain‑object params to query string automatically.
+                const data = await Platform.fetch.get(`/solutions/vendor-products/search`, params, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.searchResults = data.results || [];
+                } else {
+                    this.searchResults = [];
+                    this.errorMsg = data.error || 'Vendor product search failed.';
                 }
             } catch (e) {
-                console.error('Vendor product search failed:', e);
+                this.errorMsg = 'Vendor product search failed.';
             } finally {
                 this.searching = false;
             }
@@ -233,12 +260,9 @@ document.addEventListener('alpine:init', () => {
             this.addingId = productId;
             this.errorMsg = '';
             try {
-                const resp = await fetch(`/solutions/${this.solutionId}/vendor-evaluation/shortlist`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_id: productId }),
-                });
-                const data = await resp.json();
+                // Platform.fetch.post serialises plain‑object body to JSON automatically; CSRF token is injected.
+                const data = await Platform.fetch.post(`/solutions/${this.solutionId}/vendor-evaluation/shortlist`, { product_id: productId }, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist.push(data.item);
                     if (data.warning) {
@@ -261,11 +285,9 @@ document.addEventListener('alpine:init', () => {
             this.removingId = productId;
             this.errorMsg = '';
             try {
-                const resp = await fetch(
-                    `/solutions/${this.solutionId}/vendor-evaluation/shortlist/${productId}`,
-                    { method: 'DELETE' }
-                );
-                const data = await resp.json();
+                // Platform.fetch.delete injects CSRF token automatically.
+                const data = await Platform.fetch.delete(`/solutions/${this.solutionId}/vendor-evaluation/shortlist/${productId}`, { silent: true });
+                // Platform.fetch returns the parsed response body directly; it throws on non‑ok responses.
                 if (data.success) {
                     this.shortlist = this.shortlist.filter(item => item.id !== productId);
                 } else {

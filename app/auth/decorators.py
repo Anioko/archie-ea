@@ -16,7 +16,7 @@ USAGE:
 
 from functools import wraps
 
-from flask import g, jsonify
+from flask import jsonify
 from flask_login import current_user
 from flask_login import login_required as flask_login_required
 

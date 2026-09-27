@@ -9,7 +9,7 @@ the review queue.
 import json
 import logging
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -17,14 +17,12 @@ from typing import Dict, List, Optional, Callable, Any
 
 from app.services.autonomous_adversarial_orchestrator import (
     AutonomousAdversarialOrchestrator,
-    AutonomousReviewSession,
-    ReviewStatus
+    AutonomousReviewSession
 )
 from app.services.sidebar_discovery_service import (
-    SidebarDiscoveryService,
-    DiscoveredSidebarItem
+    SidebarDiscoveryService
 )
-from app.services.task_auto_generator import TaskAutoGenerator, AdversarialFinding
+from app.services.task_auto_generator import TaskAutoGenerator
 
 logger = logging.getLogger(__name__)
 

@@ -2,26 +2,22 @@
    Usage: login, register, password reset, and any page accessible without login.
    Categories: account/login, account/register, account/reset_password, public-facing pages.
    See also: admin_base.html (authenticated with sidebar), base.html (legacy, avoid).
+   smoke-coverage-ok: full_title block added for page-level title override; backward-compatible, no visual change for existing pages.
 #}
 <!DOCTYPE html>
 <html lang="en" class="h-full">
 <head>
     {% include 'partials/_head.html' %}
-    <title>{% block title %}Welcome{% endblock %} - {{ config.APP_NAME }}</title>
+    <title>{% block full_title %}{% block title %}Welcome{% endblock %} - {{ config.APP_NAME }}{% endblock %}</title>
     
-    <!-- Accessibility CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/accessibility.css') }}">
+    {# Accessibility CSS: loaded once via partials/_head.html (asset_url filter) — do not re-include here (ARCH-061) #}
 
     {# CSRF Protection - in head so it's available before any scripts run #}
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- ═══ Platform Core (load synchronously, before Alpine defer fires) ═══ -->
-    <script src="{{ url_for('static', filename='js/core/00-namespace.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/01-logger.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/02-sanitize.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/03-fetch.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/04-toast.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/core/05-error.js') }}"></script>
+    <!-- Bundled from js/core/00..05 in order by scripts/build_js.py — see that file's docstring -->
+    <script src="{{ url_for('static', filename='js/bundles/core-public.js') }}"></script>
 
     <!-- ═══ Platform UI: modal controller ═══ -->
     <script src="{{ url_for('static', filename='js/ui/modal.js') }}"></script>
@@ -40,10 +36,13 @@
         {% block header %}{% endblock %}
 
         <!-- Main Content Area -->
-        <main id="main-content" 
+        <main id="main-content"
               class="flex-1 overflow-x-hidden overflow-y-auto bg-background"
               role="main">
-            {% include 'partials/_flashes.html' %}
+            {# Flash messages surface as toasts only (components/toast-container.html,
+               included below) — this used to also render partials/_flashes.html as an
+               inline banner, which duplicated every flash (mirrors the admin_base.html
+               fix in shell-overhaul Wave 1, Task 4). #}
             {% block content %}{% endblock %}
         </main>
     </div>
@@ -60,6 +59,10 @@
                 Alpine.store('modal', {
                     _openIds: [],
                     isOpen: function(id) { return this._openIds.indexOf(id) > -1; },
+                    register: function(id, config) {
+                        const m = (window.Platform && window.Platform.modal) || window.Modal;
+                        if (m && m.register) m.register(id, config);
+                    },
                     open:    function(id, payload) {
                         const m = (window.Platform && window.Platform.modal) || window.Modal;
                         if (m) m.open(id, payload);

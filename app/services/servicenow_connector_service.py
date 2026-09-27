@@ -36,7 +36,7 @@ def _refresh_token_on_401(method):
 
 
 class ServiceNowConnectorService:
-    """Bidirectional connector between A.R.C.H.I.E. and a ServiceNow instance."""
+    """Bidirectional connector between Entelim and a ServiceNow instance."""
 
     def __init__(self):
         self._token: str | None = None
@@ -55,7 +55,6 @@ class ServiceNowConnectorService:
         """
         from app.extensions import db
         from app.models.application_portfolio import ApplicationComponent
-        from app.models.connector_config import ConnectorConfig
 
         config = self._get_config(org_id, "servicenow")
         if config is None or not config.enabled:
@@ -137,7 +136,6 @@ class ServiceNowConnectorService:
         """
         from app.extensions import db
         from app.models.architecture_review_board import ARBReviewItem
-        from app.models.connector_config import ConnectorConfig
 
         arb_item = ARBReviewItem.query.get(arb_decision_id)
         if arb_item is None:
@@ -236,12 +234,12 @@ class ServiceNowConnectorService:
 
     @staticmethod
     def _get_config(org_id: int | None, connector_type: str):
-        """Load ConnectorConfig for the org; returns None if not found."""
+        """Load the org's ServiceNow OrgConnectorConfig; returns None if not found."""
         if org_id is None:
             return None
-        from app.models.connector_config import ConnectorConfig
+        from app.models.connector_config import OrgConnectorConfig
 
-        return ConnectorConfig.query.filter_by(
+        return OrgConnectorConfig.query.filter_by(
             organization_id=org_id, connector_type=connector_type
         ).first()
 

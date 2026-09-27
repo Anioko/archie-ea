@@ -10,7 +10,7 @@
         <div class="border-b px-6 py-4">
             <div class="flex items-center justify-between">
                 <h2 id="add-applications-modal-title" class="text-lg font-semibold">Add Applications to Consolidation List</h2>
-                <button type="button" data-modal-close="add-applications-modal"
+                <button data-modal-close="add-applications-modal"
                         class="text-muted-foreground hover:text-foreground text-xl leading-none rounded-md p-1"
                         aria-label="Close"
                         type="button">
@@ -161,14 +161,8 @@ document.addEventListener('change', function (e) {
     }
 });
 
-// ── Filter + submit wiring (CSP-safe) ───────────────────────────────────
-[domainSelect, critSelect, statusSelect, costSelect].forEach(function (el) {
-    if (el) el.addEventListener('change', function () { filterApplications(); });
-});
-if (searchInput) searchInput.addEventListener('input', function () { filterApplications(); });
-const clearBtn = document.getElementById('app-clear-btn');
-if (clearBtn) clearBtn.addEventListener('click', function () { clearSearchFilter(); });
-if (submitBtn) submitBtn.addEventListener('click', function () { submitAddApplications(); });
+// (Filter + submit wiring already done above — the duplicate block here
+//  re-declared `const clearBtn`, causing "Identifier already declared".)
 
 // ── Public: open / close ────────────────────────────────────────────────
 window.openAddApplicationsModal = function () {
@@ -264,7 +258,7 @@ function displayApps(apps) {
     const html = apps.map(function (app) {
         const checked = selectedAppIds.has(app.id) ? ' checked' : '';
         const costLine = app.total_cost_of_ownership
-            ? '<span class="text-xs font-medium text-emerald-600">TCO: &pound;' +
+            ? '<span class="text-xs font-medium text-success-emphasis">TCO: &pound;' +
               Platform.sanitize.escape(parseFloat(app.total_cost_of_ownership).toLocaleString()) + '</span>'
             : '';
         const critBadge = app.criticality && app.criticality !== 'Not assessed'
@@ -275,7 +269,7 @@ function displayApps(apps) {
         return '<div class="border-b last:border-b-0 px-4 py-3 hover:bg-accent/50 transition-colors cursor-pointer" ' +
                'data-action="toggleAppSelection" data-id="' + app.id + '">' +
             '<div class="flex items-start gap-3">' +
-                '<input type="checkbox" class="app-checkbox mt-0.5" value="' + app.id + '" ' +
+                '<input type="checkbox" aria-label="Select application" class="app-checkbox mt-0.5" value="' + app.id + '" ' +
                 'id="app-cb-' + app.id + '"' + checked + '>' +
                 '<div class="flex-1 min-w-0">' +
                     '<div class="flex items-center gap-2">' +
@@ -381,31 +375,31 @@ window.submitAddApplications = function () {
 // ── Helpers ─────────────────────────────────────────────────────────────
 function showError(msg) {
     Platform.sanitize.html(listContainer,
-        '<div class="p-6 text-center text-sm text-destructive">' + Platform.sanitize.escape(msg) + '</div>');
+        '<div class="p-6 text-center text-sm text-destructive-emphasis">' + Platform.sanitize.escape(msg) + '</div>');
 }
 
 function getStatusClasses(status) {
     const map = {
-        '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-500/10 text-emerald-600',
-        '2.2 TACTICAL':       'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
-        '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
-        '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
-        '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
-        '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
-        '5. DECOMMISSIONED':  'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground',
-        '1. UNDETERMINED':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'
+        '2.1 STRATEGIC':      'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success/10 text-success-emphasis',
+        '2.2 TACTICAL':       'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary',
+        '3. SUNSET':          'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis',
+        '4.1 DECOM DECIDED':  'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive',
+        '4.2 DECOM PLANNED':  'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive',
+        '4.3 READ-ONLY':      'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis',
+        '5. DECOMMISSIONED':  'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground',
+        '1. UNDETERMINED':    'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground'
     };
-    return map[status] || 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground';
+    return map[status] || 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground';
 }
 
 function getCriticalityClasses(crit) {
     const map = {
-        'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-500/10 text-destructive',
-        'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/10 text-amber-600',
-        'business_operational':'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-500/10 text-primary',
-        'administrative':      'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground'
+        'mission_critical':    'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-destructive/10 text-destructive',
+        'business_critical':   'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-warning/10 text-warning-emphasis',
+        'business_operational':'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-info/10 text-primary',
+        'administrative':      'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground'
     };
-    return map[crit] || 'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-500/10 text-muted-foreground';
+    return map[crit] || 'inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-muted-foreground/10 text-muted-foreground';
 }
 
 })();

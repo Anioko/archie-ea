@@ -86,6 +86,13 @@
         return global.document.getElementById(id);
     }
 
+    function _focusOrigin(returnFocus) {
+        if (returnFocus && returnFocus.isConnected && typeof returnFocus.focus === 'function') {
+            return returnFocus;
+        }
+        return global.document.activeElement;
+    }
+
     function _focusableIn(el) {
         const candidates = Array.prototype.slice.call(el.querySelectorAll(
             'button:not([disabled]), [href], area[href], input:not([disabled]), select:not([disabled]), ' +
@@ -103,12 +110,12 @@
         });
     }
 
-    function _trapFocus(el, id) {
+    function _trapFocus(el, id, returnFocus) {
         const focusable = _focusableIn(el);
         if (!focusable.length) return;
         // Store prevFocus per-entry so parallel modals each restore their own trigger
         if (_registry[id]) {
-            _registry[id].prevFocus = global.document.activeElement;
+            _registry[id].prevFocus = _focusOrigin(returnFocus);
         }
         setTimeout(function () { focusable[0].focus(); }, 50);
 
@@ -143,8 +150,11 @@
             delete el._modalFocusTrap;
         }
         const entry = _registry[id];
-        if (entry && entry.prevFocus && typeof entry.prevFocus.focus === 'function') {
-            entry.prevFocus.focus();
+        if (entry && entry.prevFocus) {
+            if (entry.prevFocus.isConnected && !entry.prevFocus.closest('[inert], [hidden]')
+                && typeof entry.prevFocus.focus === 'function') {
+                entry.prevFocus.focus();
+            }
             entry.prevFocus = null;
         }
     }
@@ -175,7 +185,7 @@
                     announcer.assertive(message);
                 }
             }
-        } catch(e) { /* announcer unavailable — fail silently */ }
+        } catch(e) { /* swallow-ok: screen-reader announcement of a modal that has already opened or closed visually; an error toast about it would itself be noise */ }
     }
 
     // ── Background inert management (VIOLATION-10) ───────────────────────────
@@ -200,6 +210,12 @@
                 );
                 const isLiveRegion = child.getAttribute('aria-live') || child.getAttribute('role') === 'status';
                 const isScript = child.tagName === 'SCRIPT' || child.tagName === 'STYLE';
+                // A parent modal may have been made inert by its child. When it
+                // becomes the top modal again, restore it before returning focus.
+                if (isModal && child.getAttribute('data-modal-inert') === '1') {
+                    child.removeAttribute('inert');
+                    child.removeAttribute('data-modal-inert');
+                }
                 if (!isModal && !isLiveRegion && !isScript) {
                     if (inertBackground) {
                         child.setAttribute('inert', '');
@@ -231,7 +247,10 @@
                     store[id] = isOpen;
                     if (payload !== undefined) store[id + '_payload'] = payload;
                 }
-            } catch(e) {}
+            } catch(e) {
+                // Best-effort mirror into the Alpine store for x-show bindings; the
+                // modal's own open/close state above is the source of truth either way.
+            }
         }
     }
 
@@ -254,7 +273,9 @@
     }
 
     // ── Open ─────────────────────────────────────────────────────────────────
-    function open(id, payload) {
+    // options.returnFocus may name an explicit invoking element, including for
+    // pointer/async callers where activeElement is not the invoking control.
+    function open(id, payload, options) {
         if (!_registry[id]) {
             // Auto-register if element exists
             if (!register(id)) return false;
@@ -274,7 +295,7 @@
         _stack.push(id);
         entry.isOpen = true;
 
-        if (entry.config.focus) _trapFocus(el, id);
+        if (entry.config.focus) _trapFocus(el, id, options && options.returnFocus);
         if (entry.config.keyboard) _bindEscape(id);
 
         _syncAlpine(id, true, payload);
@@ -318,6 +339,9 @@
             global.document.body.classList.remove('overflow-hidden');
         }
 
+        // Focus cannot enter an inert subtree. Restore the remaining top modal
+        // (or the page when the stack is empty) before returning to its opener.
+        _setBackgroundInert(_stack[_stack.length - 1] || null, _stack.length > 0);
         _releaseFocus(el, id);
         _unbindEscape(id);
         _syncAlpine(id, false);
@@ -325,12 +349,7 @@
         // VIOLATION-8 FIX: Announce modal close to screen readers
         _announceModal(id, false);
 
-        // VIOLATION-10 FIX: Restore inert on background only when no more modals are open
-        if (_stack.length === 0) {
-            _setBackgroundInert(null, false);
-        }
-
-        // Resolve promise if prompt() is waiting
+        // Resolve promise if awaitResult() is waiting
         if (entry.resolver) {
             entry.resolver(result);
             entry.resolver = null;
@@ -347,13 +366,15 @@
         return close(id, result);
     }
 
-    // ── Promise-based prompt ─────────────────────────────────────────────────
-    function prompt(id, payload) {
+    // ── Promise-based result ─────────────────────────────────────────────────
+    // Named awaitResult, not prompt: it shadowed the native dialog, so every
+    // internal call read as one.
+    function awaitResult(id, payload, options) {
         return new Promise(function (resolve_) {
             if (!_registry[id]) register(id);
             const entry = _registry[id];
             if (entry) entry.resolver = resolve_;
-            open(id, payload);
+            open(id, payload, options);
         });
     }
 
@@ -513,6 +534,7 @@
      * @param {string}  [options.confirmLabel]  - Confirm button text (default: 'Confirm')
      * @param {string}  [options.cancelLabel]   - Cancel button text (default: 'Cancel')
      * @param {boolean} [options.destructive]   - Use destructive (red) button (default: true)
+     * @param {HTMLElement} [options.returnFocus] - Explicit invoking control for focus return
      * @returns {Promise<boolean>} Resolves true if confirmed, false if cancelled/dismissed
      *
      * @example
@@ -521,7 +543,29 @@
      *   }
      */
     function confirmDialog(message, options) {
+        // CMP-04: accept BOTH call styles —
+        //   confirm('text', { confirmLabel, ... })   and
+        //   confirm({ message, title, confirmText, cancelText, variant })
+        // The object-first form (used by the composer's "Clear canvas?" flow)
+        // previously rendered the body as literally "[object Object]" because the
+        // object was String()'d straight into the content. Normalise here so the
+        // fix covers every object-first caller, not just the composer.
+        if (message !== null && typeof message === 'object') {
+            options = message;
+            message = options.message || options.text || '';
+        }
         options = options || {};
+        // Support both naming conventions for labels and destructiveness.
+        const confirmLabel = options.confirmLabel || options.confirmText || 'Confirm';
+        const cancelLabel = options.cancelLabel || options.cancelText || 'Cancel';
+        let isDestructive;
+        if (options.destructive !== undefined) {
+            isDestructive = options.destructive;
+        } else if (options.variant) {
+            isDestructive = options.variant === 'destructive';
+        } else {
+            isDestructive = true;  // preserve prior default
+        }
         const id = 'modal-confirm-' + Date.now();
         create({
             id:      id,
@@ -532,20 +576,91 @@
             keyboard: true,
             buttons: [
                 {
-                    label:   options.cancelLabel  || 'Cancel',
+                    label:   cancelLabel,
                     variant: 'outline',
                     resolve: false
                 },
                 {
-                    label:   options.confirmLabel || 'Confirm',
-                    variant: options.destructive === false ? 'primary' : 'destructive',
+                    label:   confirmLabel,
+                    variant: isDestructive ? 'destructive' : 'primary',
                     resolve: true
                 }
             ]
         });
-        return prompt(id).then(function (result) {
+        return awaitResult(id, undefined, options).then(function (result) {
             setTimeout(function () { destroy(id); }, 300);
             return result === true;
+        });
+    }
+
+    // ── Text prompt dialog ───────────────────────────────────────────────────
+    /**
+     * Ask the user for a line of text in a styled modal and return a
+     * Promise<string|null> — null when cancelled or dismissed. Replaces the
+     * native prompt(), which is unstyled, blocking and suppressible.
+     *
+     * @param {string} message - Label shown above the field
+     * @param {object|string} [options] - defaultValue, or an options object
+     * @param {string} [options.defaultValue]
+     * @param {string} [options.title]
+     * @param {string} [options.placeholder]
+     * @param {string} [options.confirmLabel]
+     * @param {string} [options.cancelLabel]
+     * @param {boolean} [options.multiline] - render a textarea instead
+     * @returns {Promise<string|null>}
+     */
+    function promptText(message, options) {
+        if (typeof options === 'string' || typeof options === 'number') {
+            options = { defaultValue: String(options) };
+        }
+        options = options || {};
+        const id = 'modal-prompt-' + Date.now();
+        const fieldId = id + '-field';
+        const fieldCls = 'w-full rounded-md border border-input bg-background px-3 py-2 ' +
+                         'text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+        const field = options.multiline
+            ? '<textarea id="' + fieldId + '" class="h-24 ' + fieldCls + '" placeholder="' +
+              sanitize.escape(options.placeholder || '') + '"></textarea>'
+            : '<input type="text" id="' + fieldId + '" class="' + fieldCls + '" placeholder="' +
+              sanitize.escape(options.placeholder || '') + '">';
+        create({
+            id:      id,
+            title:   options.title || 'Enter a value',
+            size:    'sm',
+            backdrop: false,
+            keyboard: true,
+            content: '<label for="' + fieldId + '" class="mb-2 block text-sm text-muted-foreground">' +
+                     sanitize.escape(String(message || '')) + '</label>' + field,
+            buttons: [
+                { label: options.cancelLabel || 'Cancel', variant: 'outline', resolve: null },
+                {
+                    label: options.confirmLabel || 'OK',
+                    variant: 'primary',
+                    handler: function () {
+                        const input = global.document.getElementById(fieldId);
+                        resolve(id, input ? input.value : null);
+                    }
+                }
+            ]
+        });
+        const input = global.document.getElementById(fieldId);
+        if (input) {
+            // Set as a property, not an attribute: keeps sanitize.html out of
+            // the way of a value that may contain markup characters.
+            input.value = options.defaultValue == null ? '' : String(options.defaultValue);
+            if (!options.multiline) {
+                input.addEventListener('keydown', function (e) {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        resolve(id, input.value);
+                    }
+                });
+            }
+            setTimeout(function () { input.focus(); input.select(); }, 50);
+        }
+        return awaitResult(id).then(function (result) {
+            setTimeout(function () { destroy(id); }, 300);
+            return (result === undefined || result === null) ? null : String(result);
         });
     }
 
@@ -563,7 +678,7 @@
         const openTrigger = e.target.closest('[data-modal-open]');
         if (openTrigger) {
             const targetId = openTrigger.getAttribute('data-modal-open');
-            if (targetId) { open(targetId); return; }
+            if (targetId) { open(targetId, undefined, { returnFocus: openTrigger }); return; }
         }
 
         // data-modal-close
@@ -664,14 +779,12 @@
             global.document.removeEventListener('keydown', observed.escHandler);
         }
 
-        // Restore focus
-        if (observed.prevFocus && typeof observed.prevFocus.focus === 'function') {
+        // Restore interactivity before focus, keeping any Platform modal isolated.
+        _setBackgroundInert(_stack[_stack.length - 1] || null, _stack.length > 0);
+        if (observed.prevFocus && observed.prevFocus.isConnected
+            && !observed.prevFocus.closest('[inert], [hidden]')
+            && typeof observed.prevFocus.focus === 'function') {
             observed.prevFocus.focus();
-        }
-
-        // Restore background inert if no Platform.modal modals are open either
-        if (_stack.length === 0) {
-            _setBackgroundInert(null, false);
         }
 
         // Announce close
@@ -730,13 +843,79 @@
         setTimeout(_initVisibilityObserver, 100);
     });
 
+    // ── CSP-safe declarative behaviours ──────────────────────────────────────
+    //
+    // This app ships an enforcing CSP with no 'unsafe-inline' in script-src, so
+    // an inline event handler attribute NEVER RUNS. The browser refuses it and
+    // logs "Refused to execute inline event handler", which nobody sees, and the
+    // control looks fine and does nothing.
+    //
+    // That was not theoretical. Six destructive forms carried
+    // onsubmit="return Platform.modal.confirmSubmit(...)" -- so the confirmation
+    // dialog never appeared and Delete submitted straight through, unconfirmed.
+    // Four selects carried onchange="this.form.submit()" and silently stopped
+    // filtering or, on the admin team page, stopped changing anyone's role.
+    //
+    // These two delegated listeners give the same behaviour declaratively, from
+    // a file loaded with <script src>, which the CSP allows:
+    //
+    //     <form data-confirm="Delete X? This cannot be undone.">   ...
+    //     <select data-autosubmit>                                 ...
+    //
+    // Delegation also means markup rendered after load is covered, which an
+    // attribute-by-attribute rewiring at DOMContentLoaded would miss.
+    global.document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!form || form.tagName !== 'FORM') return;
+        var message = form.getAttribute('data-confirm');
+        if (!message) return;
+        if (form.dataset.confirmed === 'yes') {
+            delete form.dataset.confirmed;
+            return;
+        }
+        event.preventDefault();
+        confirmDialog(message, { returnFocus: event.submitter }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.confirmed = 'yes';
+            // requestSubmit keeps validation and the submitter; form.submit()
+            // would skip both and would re-enter this listener.
+            if (typeof form.requestSubmit === 'function') form.requestSubmit();
+            else form.submit();
+        }).catch(function (error) {
+            // requestSubmit()/submit() can throw synchronously (constraint
+            // validation, or the form node already gone if the user
+            // navigated away while the confirm dialog was open) - this chain
+            // had no .catch() at all, so that became an unhandled promise
+            // rejection on every page with a data-confirm form, surfacing as
+            // an untraceable page error on completely unrelated journeys.
+            log.debug('confirm-submit failed', error);
+        });
+    }, true);
+
+    global.document.addEventListener('change', function (event) {
+        var el = event.target;
+        if (!el || !el.hasAttribute || !el.hasAttribute('data-autosubmit')) return;
+        var form = el.closest ? el.closest('form') : null;
+        if (!form) return;
+        if (typeof form.requestSubmit === 'function') form.requestSubmit();
+        else form.submit();
+    });
+
     // ── Public API ───────────────────────────────────────────────────────────
     function confirmSubmit(event, message, options) {
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
         var t = event && event.target;
         var form = t && t.closest ? t.closest('form') : (t && t.tagName === 'FORM' ? t : null);
-        confirmDialog(message, options).then(function (ok) {
+        var invoker = event && event.submitter;
+        if (!invoker && t && t.closest) {
+            invoker = t.closest('button:not(:disabled), input[type="submit"]:not(:disabled), a[href]');
+        }
+        var confirmOptions = Object.assign({ returnFocus: invoker }, options || {});
+        confirmDialog(message, confirmOptions).then(function (ok) {
             if (ok && form && typeof form.submit === 'function') form.submit();
+        }).catch(function (error) {
+            // Same unguarded-.then() defect as the data-confirm listener above.
+            log.debug('confirmSubmit failed', error);
         });
         return false;
     }
@@ -746,7 +925,8 @@
         open:        open,
         close:       close,
         resolve:     resolve,
-        prompt:      prompt,
+        prompt:      awaitResult,
+        promptText:  promptText,
         closeAll:    closeAll,
         on:          on,
         off:         off,
@@ -773,6 +953,48 @@
     if (typeof global.createModal === 'undefined') global.createModal = create;
     if (typeof global.openDrawer  === 'undefined') global.openDrawer  = openDrawer;
     if (typeof global.closeDrawer === 'undefined') global.closeDrawer = closeDrawer;
+
+    // Object shim (modal_manager.js compat): review_queue.js, solutions/detail.js,
+    // roadmap_builder, duplicate_detection, vendor_catalog.js and import_history.js all
+    // call window.modalManager.createModal({buttons:[{text,class,action,handler}]}) —
+    // the old API. Without this object every one of those actions throws a TypeError.
+    if (typeof global.modalManager === 'undefined') {
+        global.modalManager = {
+            createModal: function (opts) {
+                opts = opts || {};
+                const buttons = (opts.buttons || []).map(function (b) {
+                    let variant = b.variant;
+                    if (!variant) {
+                        const cls = b.class || '';
+                        if (/destructive|red-/.test(cls)) variant = 'destructive';
+                        else if (/bg-primary|emerald|green-|success/.test(cls)) variant = 'primary';
+                        else if (/border/.test(cls) && /bg-background|bg-white/.test(cls)) variant = 'outline';
+                        else variant = 'secondary';
+                    }
+                    return {
+                        label: b.label || b.text || 'OK',
+                        variant: variant,
+                        handler: b.handler,
+                        resolve: b.resolve,
+                        closeOnClick: b.closeOnClick
+                    };
+                });
+                return create({
+                    id: opts.id,
+                    title: opts.title,
+                    content: opts.content,
+                    size: opts.size,
+                    buttons: buttons,
+                    backdrop: opts.backdrop,
+                    keyboard: opts.keyboard
+                });
+            },
+            open: open,
+            close: close,
+            destroy: destroy,
+            isOpen: function (id) { return _registry[id] ? _registry[id].isOpen : false; }
+        };
+    }
 
     // Named convenience shims (modal_manager.js compat)
     global.openAddApplicationsModal  = function () { open('add-applications-modal'); };

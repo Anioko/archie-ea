@@ -1,25 +1,27 @@
-{# Admin Header with breadcrumbs, search, notifications, user menu #}
+{# Admin Header with breadcrumbs, search, notifications, user menu
+   smoke-coverage-ok: a11y fix (aria-hidden on icon); covered by tests/test_capability_map_a11y_csp.py #}
 
 {% set resolved_page_guide_context = page_guide_context | default({'enabled': false, 'supported': false}, true) %}
+{% from 'components/switch.html' import switch %}
 <header id="admin-header"
-        class="flex items-center justify-between h-16 px-6 bg-background border-b border-border">
+        class="sticky top-0 z-30 flex items-center justify-between h-16 pl-14 lg:pl-6 pr-6 bg-background border-b border-border">
     <div class="flex items-center gap-4">
-        <!-- Mobile menu toggle -->
-        <button @click="$store.sidebar.open = !$store.sidebar.open"
-                :aria-expanded="$store.sidebar.open.toString()"
-                aria-controls="admin-sidebar"
-                aria-label="Toggle sidebar"
-                class="lg:hidden text-muted-foreground hover:text-foreground">
-            <i data-lucide="menu" class="h-5 w-5"></i>
-        </button>
+        <!-- Mobile sidebar open trigger lives in layouts/admin_base.html
+             ("Global mobile sidebar opener") — it x-shows only while the sidebar is
+             closed, so a second always-visible trigger here rendered on top of it
+             (ARCH-103: two hamburgers stacked when the sidebar was closed on mobile). -->
 
         <!-- Desktop sidebar collapse trigger (shadcn SidebarTrigger pattern) -->
-        <button x-data
+        {# A static aria-label is the accessible name until Alpine hydrates and
+           the :aria-label binding below refines it to the current state — an
+           icon-only button with no aria-label at all until then has none. #}
+        <button type="button" x-data
                 @click="$store.sidebar.toggle()"
                 class="hidden lg:flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors sidebar-collapse-btn"
+                aria-label="Toggle sidebar"
                 :title="$store.sidebar.collapsed ? 'Expand sidebar (Ctrl+B)' : 'Collapse sidebar (Ctrl+B)'"
                 :aria-label="$store.sidebar.collapsed ? 'Expand sidebar' : 'Collapse sidebar'">
-            <i data-lucide="panel-left" class="h-5 w-5"></i>
+            <i data-lucide="panel-left" class="h-5 w-5" aria-hidden="true"></i>
         </button>
 
         {% block breadcrumb %}{% endblock %}
@@ -29,25 +31,28 @@
 
         <!-- Search (desktop) -->
         <div class="relative hidden md:block">
-            <button id="search-modal-trigger"
+            <button type="button" id="search-modal-trigger"
                     class="flex items-center gap-2 rounded-lg border border-input bg-background px-3 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
                     aria-label="Open search">
                 <i data-lucide="search" class="h-4 w-4"></i>
                 <span>Search...</span>
                 <!-- Platform-aware shortcut hint, filled by JS -->
-                <kbd id="search-kbd-hint" class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-foreground"></kbd>
+                <kbd id="search-kbd-hint" class="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-foreground"></kbd>
             </button>
         </div>
 
         <!-- Search (mobile icon only) -->
-        <button id="header-search-btn-mobile"
+        <button type="button" id="header-search-btn-mobile"
                 class="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                 aria-label="Open search">
             <i data-lucide="search" class="h-5 w-5"></i>
         </button>
 
-        <!-- LLM Selector -->
-        {% with selector_id='llm-selector-navbar' %}{% include 'components/llm_selector.html' %}{% endwith %}
+        {# LLM/model choice lives in AI Chat's own Settings (app/templates/ai_chat/index.html
+           #model-selector), not in the global header — every page showed a provider
+           selector unrelated to what that page displays, and its options ("OpenAI (GPT-4,
+           GPT-3.5)", "DeepSeek", ...) reflected the same /api/v1/llm/available registry AI
+           Chat already reads, so removing it here loses no capability. #}
 
         {% if resolved_page_guide_context.enabled %}
         <button id="page-guide-trigger"
@@ -62,7 +67,7 @@
 
         <!-- ── PLT-018: Business Unit Scope ─────────────────────────── -->
         <div class="relative" id="bu-scope-wrapper" data-dropdown-wrapper>
-            <button id="bu-scope-btn"
+            <button type="button" id="bu-scope-btn"
                     class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                     aria-label="Business unit scope"
                     aria-expanded="false"
@@ -88,14 +93,14 @@
 
         <!-- ── Notifications ─────────────────────────────────────────── -->
         <div class="relative" id="notif-wrapper" data-dropdown-wrapper>
-            <button id="notif-btn"
+            <button type="button" id="notif-btn"
                     class="relative text-muted-foreground hover:text-foreground transition-colors p-1.5 rounded-md hover:bg-accent"
                     aria-label="Notifications"
                     aria-expanded="false"
                     aria-haspopup="true">
                 <i data-lucide="bell" class="h-5 w-5"></i>
                 <span id="notif-badge"
-                      class="absolute -top-1 -right-1 min-w-[1rem] h-4 rounded-full bg-destructive text-[10px] font-medium text-destructive-foreground flex items-center justify-center px-0.5 hidden">0</span>
+                      class="absolute -top-1 -right-1 min-w-[1rem] h-4 rounded-full bg-destructive text-xs font-medium text-destructive-foreground flex items-center justify-center px-0.5 hidden">0</span>
             </button>
 
             <div id="notif-dropdown"
@@ -103,7 +108,7 @@
                  role="menu">
                 <div class="p-3 border-b border-border flex items-center justify-between">
                     <span class="text-sm font-semibold">Notifications</span>
-                    <button id="notif-mark-read-btn"
+                    <button type="button" id="notif-mark-read-btn"
                             class="text-xs text-muted-foreground hover:text-foreground transition-colors hidden"
                             aria-label="Mark all notifications as read">
                         Mark all read
@@ -120,7 +125,7 @@
 
         <!-- ── User Menu ─────────────────────────────────────────────── -->
         <div class="relative" id="user-menu-wrapper" data-dropdown-wrapper>
-            <button id="user-menu-btn"
+            <button type="button" id="user-menu-btn"
                     class="flex items-center gap-2 rounded-lg hover:bg-accent px-2 py-1.5 transition-colors"
                     aria-expanded="false"
                     aria-haspopup="true"
@@ -137,9 +142,8 @@
                 <!-- Role badge for ALL roles, not just admin -->
                 {% if current_user.is_authenticated %}
                     <span id="user-role-badge"
-                          class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border">
-                        {% if current_user.is_admin() %}Admin
-                        {% else %}{{ (current_user.role.name | title) if current_user.role else 'User' }}{% endif %}
+                          class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-muted/50 text-foreground border-border">
+                        {{ get_role_display_name(current_user.enterprise_role) if current_user.enterprise_role else ('Admin' if current_user.is_admin() else 'User') }}
                     </span>
                 {% endif %}
                 <i id="user-chevron"
@@ -148,7 +152,7 @@
             </button>
 
             <div id="user-dropdown"
-                 class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover shadow-lg z-50 hidden"
+                 class="absolute right-0 mt-2 w-64 rounded-md border border-border bg-popover text-popover-foreground shadow-lg z-50 hidden"
                  role="menu">
                 <div class="p-2">
                     {% if current_user.is_authenticated %}
@@ -161,10 +165,12 @@
                     {% endif %}
                     {% if current_user.is_authenticated %}
                         {% set header_login_time = current_user.last_login_at|default(none, true) %}
+                        {% if header_login_time %}
                         <div class="px-2 py-1 text-xs text-muted-foreground">
                             <i data-lucide="clock" class="inline h-3 w-3 align-text-bottom mr-0.5"></i>
-                            Last login: {{ header_login_time.strftime('%d %b %Y %H:%M') if header_login_time else 'Not tracked' }}
+                            Last login: {{ header_login_time.strftime('%d %b %Y %H:%M') }}
                         </div>
+                        {% endif %}
                     {% endif %}
                     <div class="h-px bg-border my-1" role="separator"></div>
                     <a href="{{ url_for('account.manage') }}"
@@ -173,7 +179,7 @@
                         <i data-lucide="user" class="h-4 w-4"></i>
                         Profile
                     </a>
-                    <a href="{{ url_for('account.change_password') }}"
+                    <a href="{{ url_for('account.manage') }}"
                        role="menuitem"
                        class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
                         <i data-lucide="settings" class="h-4 w-4"></i>
@@ -181,9 +187,22 @@
                     </a>
 
                     <div class="h-px bg-border my-1" role="separator"></div>
+                    <button type="button"
+                            role="menuitemcheckbox"
+                            :aria-checked="$store.theme.dark"
+                            @click="$store.theme.toggle()"
+                            class="flex items-center justify-between w-full rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="moon" class="h-4 w-4"></i>
+                            Dark theme
+                        </span>
+                        {{ switch(bind_checked="$store.theme.dark", span_only=true) }}
+                    </button>
+
+                    <div class="h-px bg-border my-1" role="separator"></div>
                     <a href="{{ url_for('account.logout') }}"
                        role="menuitem"
-                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 transition-colors">
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive-emphasis hover:bg-destructive/10 transition-colors">
                         <i data-lucide="log-out" class="h-4 w-4"></i>
                         Log out
                     </a>
@@ -210,8 +229,8 @@
                    placeholder="Search pages, applications, solutions, capabilities..."
                    class="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
                    autocomplete="off"
-                   spellcheck="false">
-            <kbd class="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">ESC</kbd>
+                   spellcheck="false" aria-label="Search pages, applications, solutions, capabilities...">
+            <kbd class="pointer-events-none hidden sm:inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground">ESC</kbd>
         </div>
         <div id="search-results" class="cmd-palette-results max-h-[28rem] overflow-y-auto p-1.5" role="listbox">
             <p class="px-2 py-8 text-center text-sm text-muted-foreground">Type to search pages and entities...</p>
@@ -219,12 +238,12 @@
         <div class="cmd-palette-footer flex items-center justify-between px-4 py-2 text-xs text-muted-foreground">
             <div class="flex items-center gap-3">
                 <span class="flex items-center gap-1">
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↑</kbd>
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↓</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↑</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↓</kbd>
                     Navigate
                 </span>
                 <span class="flex items-center gap-1">
-                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-[10px]">↵</kbd>
+                    <kbd class="px-1.5 py-0.5 bg-background border border-border rounded font-mono text-xs">↵</kbd>
                     Open
                 </span>
             </div>
@@ -272,15 +291,15 @@
         if (!badge) return;
         const text = badge.textContent.trim().toLowerCase();
         const map = {
-            admin:    'bg-amber-500/10 text-amber-600 border-amber-500/30',
-            user:     'bg-blue-500/10 text-primary border-blue-500/30',
-            analyst:  'bg-purple-500/10 text-primary border-purple-500/30',
-            architect:'bg-emerald-500/10 text-emerald-600 border-emerald-500/30',
-            viewer:   'bg-slate-500/10 text-slate-500 border-slate-400/30',
+              admin:    'bg-warning/10 text-warning-emphasis border-warning/30',
+              user:     'bg-info/10 text-primary border-info/30',
+              analyst:  'bg-purple-500/10 text-primary border-purple-500/30', // design-tokens-ok: 5-role legend, info already used by 'user'
+              architect:'bg-success/10 text-success-emphasis border-success/30',
+              viewer:   'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/30',
         };
         const cls = Object.entries(map).find(([k]) => text.includes(k));
         if (cls) cls[1].split(' ').forEach(function(c) { badge.classList.add(c); });
-        else 'bg-blue-500/10 text-primary border-blue-500/30'.split(' ').forEach(function(c) { badge.classList.add(c); });
+        else 'bg-info/10 text-primary border-info/30'.split(' ').forEach(function(c) { badge.classList.add(c); });
     })();
 
     /* ── Platform-aware keyboard shortcut hint ───────────────────────────── */
@@ -403,13 +422,11 @@
                 const nid = el.getAttribute('data-notif-id');
                 const src = el.getAttribute('data-notif-source') || 'notification';
                 if (!nid) return;
-                fetch('/api/notifications/' + nid + '/mark-read?source=' + src, {
-                    method: 'POST', credentials: 'same-origin',
-                    headers: {
-                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                }).catch(function() { /* silent */ });
+                Platform.fetch.post('/api/notifications/' + nid + '/mark-read?source=' + src, null, { silent: true }).catch(function() {
+                    // Fire-and-forget alongside the <a> navigation the click already
+                    // triggers; a failed mark-read just means it shows unread again
+                    // on the next poll, which is harmless.
+                });
             });
         });
     }
@@ -425,22 +442,26 @@
     }
 
     function pollNotifications() {
-        const fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
-        if (!fetchFn) return;
-        fetchFn('/api/notifications', { silent: true })
+        if (!window.Platform || !window.Platform.fetch) return;
+        Platform.fetch.get('/api/notifications', undefined, { silent: true })
             .then(function(data) {
                 notifItems = data.items || [];
                 const count = data.unread_count || 0;
                 updateBadge(count);
                 if (typeof Alpine !== 'undefined') {
+                    // Best-effort mirror into the Alpine store for other components
+                    // that read it; the DOM badge/list above is the source of truth.
                     try {
                         Alpine.store('notifications').count = count;
                         Alpine.store('notifications').items = notifItems;
-                    } catch(e) {}
+                    } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the DOM badge/list above already carries the same data, so there is nothing the user needs to be told */ }
                 }
                 renderNotifications();
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                // Polled every 60s; notifications are a non-critical widget, so a
+                // failed refresh just leaves the badge/list at their last-known state.
+            });
     }
 
     if (notifBtn && notifDropdown) {
@@ -457,22 +478,23 @@
             notifItems = notifItems.map(function(n) { return Object.assign({}, n, { read: true }); });
             updateBadge(0);
             if (typeof Alpine !== 'undefined') {
+                // Best-effort mirror into the Alpine store; the DOM state above is authoritative.
                 try {
                     Alpine.store('notifications').count = 0;
                     Alpine.store('notifications').items = notifItems;
-                } catch(e) {}
+                } catch(e) { /* swallow-ok: best-effort mirror into an Alpine store that may not be registered yet; the real persistence is the POST below, whose failure IS reported */ }
             }
             renderNotifications();
 
             // Persist to backend
-            fetch('/api/notifications/mark-all-read', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-            }).catch(function() { /* silent — optimistic UI already updated */ });
+            Platform.fetch.post('/api/notifications/mark-all-read', null, { silent: true }).catch(function() {
+                // The optimistic UI above already shows "all read"; if this didn't
+                // actually persist, the next 60s poll will silently bring the unread
+                // items back with no explanation, so tell the user now instead.
+                if (window.Platform && Platform.toast) {
+                    Platform.toast.error('Could not mark notifications as read. They may reappear.');
+                }
+            });
         });
     }
 
@@ -487,13 +509,19 @@
     const buLabel    = document.getElementById('bu-scope-label');
     const buList     = document.getElementById('bu-scope-list');
 
+    const buWrapper = document.getElementById('bu-scope-wrapper');
+
     function loadBuScope() {
-        let fetchFn = (window.Platform && window.Platform.fetch) || window.apiFetch;
-        if (!fetchFn) return;
-        fetchFn('/api/bu-scope', { silent: true })
+        if (!window.Platform || !window.Platform.fetch) return;
+        Platform.fetch.get('/api/bu-scope', undefined, { silent: true })
             .then(function(data) {
                 let items = data.business_units || [];
                 const currentId = data.current_bu_id;
+                /* No real business units to scope to for this tenant yet: "All" is
+                   the only option there ever is, so there is nothing to choose
+                   between. Hide the menu chrome rather than show a fake dropdown. */
+                if (buWrapper) buWrapper.classList.toggle('hidden', items.length === 0);
+                if (items.length === 0) return;
                 let html = '<button type="button" data-bu-id="" role="menuitem" ' +
                     'class="bu-scope-item w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors' +
                     (!currentId ? ' font-semibold text-foreground' : '') + '">All Business Units</button>';
@@ -514,22 +542,22 @@
                     buList.querySelectorAll('.bu-scope-item').forEach(function(el) {
                         el.addEventListener('click', function() {
                             let id = el.getAttribute('data-bu-id');
-                            fetch('/api/bu-scope', {
-                                method: 'POST', credentials: 'same-origin',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                body: JSON.stringify({ bu_id: id || null }),
-                            }).then(function() {
+                            Platform.fetch.post('/api/bu-scope', { bu_id: id || null }, { silent: true }).then(function() {
                                 window.location.reload();
-                            }).catch(function() {});
+                            }).catch(function() {
+                                if (window.Platform && Platform.toast) {
+                                    Platform.toast.error('Could not change the business unit scope.');
+                                }
+                            });
                         });
                     });
                 }
             })
-            .catch(function() { /* silent */ });
+            .catch(function() {
+                if (buList) {
+                    buList.innerHTML = '<p class="px-3 py-1.5 text-sm text-destructive-emphasis">Could not load business units.</p>';
+                }
+            });
     }
 
     if (buBtn && buDropdown) {
@@ -566,10 +594,17 @@
     const searchResults  = document.getElementById('search-results');
     const searchBackdrop = document.getElementById('search-modal-backdrop');
 
-    function openSearchModal() {
+    function openSearchModal(prefillQuery) {
         searchModal.style.display = 'flex';
+        if (typeof prefillQuery === 'string' && prefillQuery && searchInput) {
+            searchInput.value = prefillQuery;
+            handleSearchInput(prefillQuery);
+        }
         setTimeout(function () { if (searchInput) searchInput.focus(); }, 50);
     }
+
+    // The sidebar's "Search everywhere (Ctrl+K)" no-match action opens this modal pre-filled.
+    window.openSearchModal = openSearchModal;
 
     function closeSearchModal() {
         searchModal.style.display = 'none';
@@ -582,8 +617,8 @@
 
     const btnDesktop = document.getElementById('search-modal-trigger');
     const btnMobile  = document.getElementById('header-search-btn-mobile');
-    if (btnDesktop) btnDesktop.addEventListener('click', openSearchModal);
-    if (btnMobile)  btnMobile.addEventListener('click', openSearchModal);
+    if (btnDesktop) btnDesktop.addEventListener('click', function () { openSearchModal(); });
+    if (btnMobile)  btnMobile.addEventListener('click', function () { openSearchModal(); });
     if (searchBackdrop) searchBackdrop.addEventListener('click', closeSearchModal);
 
     if (searchInput) {
@@ -623,6 +658,17 @@
     }
 
     document.addEventListener('keydown', function (e) {
+        // Pages with their own Ctrl+K surface (the ArchiMate Composer's quick-add
+        // palette) opt out via this body attribute. Without it, this handler and
+        // the page's own keydown listener both fire on the same keypress -- both
+        // registered on `document`, so stopPropagation in the later (page-level)
+        // listener cannot undo work this earlier one already did. Found 10 Sep
+        // 2026: the Composer's Ctrl+K opened its quick-add palette AND this global
+        // search modal at once, the modal's `hidden` class overridden by this
+        // handler's own `style.display = 'flex'`, leaving an invisible-looking
+        // but fully interactive full-screen overlay stealing every click on the
+        // page until Escape was pressed.
+        if (document.body.hasAttribute('data-suppress-global-search-shortcut')) return;
         if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
             e.preventDefault();
             if (searchModal.style.display === 'flex') closeSearchModal();
@@ -638,8 +684,15 @@
         { label: 'Profile',                      href: '{{ url_for("account.manage") }}',                       icon: 'user',              section: 'Account' },
         { label: 'Settings / Change Password',   href: '{{ url_for("account.change_password") }}',             icon: 'settings',          section: 'Account' },
         { label: 'Manage Users',                 href: '{{ url_for("admin.registered_users") }}',               icon: 'users',             section: 'Admin' },
+        {# Both routes are guarded (platform-admin / org-admin). A command-palette hit
+           that 403s is the same defect as a link that 403s, so they are indexed only
+           for the users whose guard will pass. #}
+        {% if current_user.is_platform_admin %}
         { label: 'Feature Flags',                href: '{{ url_for("admin.feature_flags") }}',                  icon: 'flag',              section: 'Admin' },
+        {% endif %}
+        {% if current_user.is_org_admin %}
         { label: 'API Settings',                 href: '{{ url_for("admin.api_settings") }}',                   icon: 'key',               section: 'Admin' },
+        {% endif %}
         // Applications
         { label: 'Application Portfolio',        href: '/applications',                                          icon: 'layers',            section: 'Applications' },
         { label: 'All Applications',             href: '/applications',                                          icon: 'app-window',        section: 'Applications' },
@@ -678,10 +731,10 @@
     };
 
     function _renderSection(sec, items) {
-        let h = '<div class="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">' + esc(sec) + '</div>';
+        let h = '<div class="px-2 pt-2 pb-0.5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">' + esc(sec) + '</div>';
         items.forEach(function(item) {
             const icon = item.icon || ENTITY_ICONS[item.type] || 'circle';
-            const badge = item.type ? ' <span class="ml-auto text-[10px] text-muted-foreground">' + esc(item.type) + '</span>' : '';
+            const badge = item.type ? ' <span class="ml-auto text-xs text-muted-foreground">' + esc(item.type) + '</span>' : '';
             h += '<a href="' + esc(item.href || item.url || '#') + '" role="option" tabindex="-1"' +
                 ' class="flex items-center gap-3 rounded-sm px-3 py-2 text-sm hover:bg-accent focus:bg-accent focus:outline-none transition-colors">' +
                 '<i data-lucide="' + esc(icon) + '" class="h-4 w-4 text-muted-foreground shrink-0"></i>' +
@@ -731,9 +784,8 @@
         if (q.length < 2) return;
         clearTimeout(_searchDebounce);
         _searchDebounce = setTimeout(function() {
-            const fetchFn = (window.Platform && window.Platform.fetch) ? window.Platform.fetch : window.fetch;
-            fetchFn('/api/sidebar/search?q=' + encodeURIComponent(q))
-                .then(function(r) { return r.json ? r.json() : r; })
+            if (!window.Platform || !window.Platform.fetch) return;
+            Platform.fetch.get('/api/sidebar/search', { q: q }, { silent: true })
                 .then(function(data) {
                     if (searchInput.value.toLowerCase() !== q) return; // stale
                     const results = data.results || data || [];

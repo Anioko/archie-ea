@@ -27,6 +27,7 @@ from app.services.archimate.archimate_service import ArchiMateService
 from app.services.capability_mapping_service import CapabilityMappingService
 from app.services.kg.knowledge_graph_service import KnowledgeGraphService
 from app.services.unified_vendor_services import UnifiedVendorServices
+from app.utils.pagination import safe_int_arg
 
 try:
     from app.services.options_analysis_engine import OptionsAnalysisEngine
@@ -79,8 +80,8 @@ def get_kg_elements():
     try:
         element_type = request.args.get("type")
         domain = request.args.get("domain")
-        limit = int(request.args.get("limit", 100))
-        offset = int(request.args.get("offset", 0))
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
 
         elements = kg_service.get_elements(
             element_type=element_type, domain=domain, limit=limit, offset=offset
@@ -144,7 +145,7 @@ def search_kg():
     try:
         query = request.args.get("q", "").strip()
         element_type = request.args.get("type")
-        limit = int(request.args.get("limit", 50))
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         if not query:
             return jsonify({"success": False, "error": "Search query required"}), 400

@@ -1,0 +1,756 @@
+"""Importing a Lucidchart diagram must keep the structure the author drew.
+
+A nested box is how architects write "part of". Before this, the importer read
+shapes and connectors and ignored containment entirely, so a diagram whose whole
+meaning was its nesting - a product grouping, a layered reference model - arrived
+as a flat list of unrelated elements. Colour had the same problem: a traffic-light
+key is real information, and once the import dropped it the author could not get
+it back.
+
+These are pure unit tests. The transformer touches no database and no request
+context, so they run in milliseconds and can afford to be exhaustive about the
+geometry edge cases, which is where containment inference goes wrong.
+"""
+
+import pytest
+
+from app.services.lucid_archimate_transformer import LucidArchiMateTransformer
+
+pytestmark = pytest.mark.journey
+
+
+def _shape(shape_id, lucid_class, name, box=None, **extra):
+    shape = {
+        "id": shape_id,
+        "class": lucid_class,
+        "textAreas": [{"label": "Text", "text": name}],
+    }
+    if box:
+        x, y, w, h = box
+        shape["boundingBox"] = {"x": x, "y": y, "w": w, "h": h}
+    shape.update(extra)
+    return shape
+
+
+def _payload(shapes, lines=None, page_id="page-1"):
+    return {
+        "title": "Test Diagram",
+        "pages": [{"id": page_id, "title": "Page 1",
+                   "items": {"shapes": shapes, "lines": lines or []}}],
+    }
+
+
+def _rels(result, rel_type=None):
+    rels = result["relationships"]
+    if rel_type:
+        rels = [r for r in rels if r["type"] == rel_type]
+    return rels
+
+
+def _pair(result, source_name, target_name):
+    """Find a relationship by the NAMES of its endpoints, not their ids."""
+    names = {e["id"]: e["name"] for e in result["elements"]}
+    for rel in result["relationships"]:
+        if (names.get(rel["source_id"]) == source_name
+                and names.get(rel["target_id"]) == target_name):
+            return rel
+    return None
+
+
+class TestNestingBecomesStructure:
+    def test_a_nested_component_becomes_a_composition(self):
+        """The core case: one box drawn inside another means part-of."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("outer", "ArchiMate3ComponentBoxBlock", "Platform", (0, 0, 400, 400)),
+            _shape("inner", "ArchiMate3ComponentBoxBlock", "Module", (50, 50, 100, 100)),
+        ]))
+
+        rel = _pair(result, "Platform", "Module")
+        assert rel is not None, (
+            "containment produced no relationship, so the diagram's structure "
+            "was lost: %r" % result["relationships"])
+        assert rel["type"] == "composition"
+        assert rel["derived_from"] == "nesting"
+
+    def test_a_grouping_aggregates_rather_than_composes(self):
+        """ArchiMate 3.2 §4.5 - a Grouping collects its members, it does not own them."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("g", "ArchiMate3GroupingBoxBlock", "ArchiCore", (0, 0, 800, 600)),
+            _shape("c", "ArchiMate3ComponentBoxBlock", "Motivation Layer", (40, 40, 200, 120)),
+        ]))
+
+        rel = _pair(result, "ArchiCore", "Motivation Layer")
+        assert rel is not None and rel["type"] == "aggregation", (
+            "expected aggregation under a Grouping, got %r"
+            % (rel and rel["type"]))
+
+    def test_the_nearest_container_wins_not_the_outermost(self):
+        """Three levels deep is where naive containment goes wrong.
+
+        A shape sits geometrically inside its grandparent as well as its parent.
+        Relating it to both produces a model that says the leaf is simultaneously
+        part of two different wholes.
+        """
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "Outer", (0, 0, 900, 900)),
+            _shape("b", "ArchiMate3ComponentBoxBlock", "Middle", (100, 100, 400, 400)),
+            _shape("c", "ArchiMate3ComponentBoxBlock", "Leaf", (150, 150, 80, 80)),
+        ]))
+
+        assert _pair(result, "Middle", "Leaf") is not None, "leaf lost its parent"
+        assert _pair(result, "Outer", "Leaf") is None, (
+            "the leaf was also related to its grandparent, so it is part of two "
+            "wholes at once")
+        assert _pair(result, "Outer", "Middle") is not None, "middle lost its parent"
+
+    def test_shapes_on_different_pages_are_never_nested(self):
+        """Coordinates repeat per page; treating them globally invents structure."""
+        payload = {
+            "title": "Two Pages",
+            "pages": [
+                {"id": "p1", "title": "One", "items": {"shapes": [
+                    _shape("big", "ArchiMate3ComponentBoxBlock", "Big", (0, 0, 500, 500))], "lines": []}},
+                {"id": "p2", "title": "Two", "items": {"shapes": [
+                    _shape("small", "ArchiMate3ComponentBoxBlock", "Small", (10, 10, 50, 50))], "lines": []}},
+            ],
+        }
+        result = LucidArchiMateTransformer().transform_document(payload)
+
+        assert _pair(result, "Big", "Small") is None, (
+            "shapes on different pages were nested because their coordinates "
+            "happen to overlap")
+
+    def test_an_explicit_connector_is_not_duplicated_by_nesting(self):
+        """If the author drew the relationship, that statement wins."""
+        result = LucidArchiMateTransformer().transform_document(_payload(
+            shapes=[
+                _shape("outer", "ArchiMate3ComponentBoxBlock", "Host", (0, 0, 400, 400)),
+                _shape("inner", "ArchiMate3ComponentBoxBlock", "Guest", (50, 50, 100, 100)),
+            ],
+            lines=[{
+                "id": "line-1",
+                "textAreas": [{"label": "t0", "text": "triggers"}],
+                "endpoint1": {"connectedTo": "outer"},
+                "endpoint2": {"connectedTo": "inner"},
+            }],
+        ))
+
+        between = [r for r in result["relationships"]
+                   if {r["source_id"], r["target_id"]} == {"outer", "inner"}]
+        assert len(between) == 1, (
+            "expected the drawn connector only, got %d relationships: %r"
+            % (len(between), [r["type"] for r in between]))
+        assert between[0]["type"] == "triggering"
+
+    def test_a_declared_parent_beats_geometry(self):
+        """An export that names the container is more trustworthy than a bounding box."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("real", "ArchiMate3ComponentBoxBlock", "Real Parent", (0, 0, 900, 900)),
+            _shape("decoy", "ArchiMate3ComponentBoxBlock", "Decoy", (100, 100, 400, 400)),
+            _shape("child", "ArchiMate3ComponentBoxBlock", "Child", (150, 150, 80, 80),
+                   parent="real"),
+        ]))
+
+        assert _pair(result, "Real Parent", "Child") is not None, (
+            "the declared parent was ignored in favour of the enclosing box")
+        assert _pair(result, "Decoy", "Child") is None
+
+    def test_overlapping_but_not_enclosed_shapes_are_not_nested(self):
+        """Partial overlap is a layout accident, not a statement of structure."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "A", (0, 0, 200, 200)),
+            _shape("b", "ArchiMate3ComponentBoxBlock", "B", (150, 150, 200, 200)),
+        ]))
+
+        assert not _rels(result), (
+            "overlapping shapes produced a relationship: %r" % result["relationships"])
+
+    def test_nesting_is_flagged_for_review(self):
+        """Nesting is ambiguous in ArchiMate; the guess must be visible."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("outer", "ArchiMate3ComponentBoxBlock", "Outer", (0, 0, 400, 400)),
+            _shape("inner", "ArchiMate3ComponentBoxBlock", "Inner", (50, 50, 100, 100)),
+        ]))
+
+        assert any("nest" in w.lower() for w in result["warnings"]), (
+            "the importer guessed a structural relationship and said nothing: %r"
+            % result["warnings"])
+
+    def test_no_geometry_means_no_invented_nesting(self):
+        """Without coordinates there is nothing to infer from, and guessing is worse."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "A"),
+            _shape("b", "ArchiMate3ComponentBoxBlock", "B"),
+        ]))
+
+        assert not _rels(result), (
+            "relationships were invented for shapes with no geometry: %r"
+            % result["relationships"])
+
+
+class TestAnnotationsAreNotElements:
+    """Real diagrams carry commentary in ordinary boxes.
+
+    The source diagram for this work has two: a provisioning checklist and a
+    risk register, each several hundred characters. With a fallback type
+    configured they imported as applications named after their entire contents,
+    and the repository rejected them - element names are varchar(100). Worse
+    than the failure is what a slightly shorter one would have done: silently
+    become an application called "Risks of Retaining the Server Image...".
+    """
+
+    def test_a_paragraph_is_not_an_element(self):
+        prose = (
+            "Risks of Retaining the Server Image in SG Germany DC - The server "
+            "will often need to be tested for compatibility with the latest "
+            "virtualisation environment, and may become inaccessible."
+        )
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("note", "GenericRectangle", prose, (0, 0, 400, 300)),
+            _shape("app", "ArchiMate3ComponentBoxBlock", "Business Central", (500, 0, 160, 60)),
+        ]))
+
+        names = [e["name"] for e in result["elements"]]
+        assert names == ["Business Central"], (
+            "a paragraph of commentary was imported as an element: %r" % names)
+        assert any("note" in w.lower() or "commentary" in w.lower()
+                   for w in result["warnings"]), (
+            "dropped the annotation without saying so: %r" % result["warnings"])
+
+    def test_a_normal_name_is_untouched(self):
+        """The guard must not eat legitimately long element names."""
+        name = "COSMO CrefoDynamics App (Phase 1)"
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        assert [e["name"] for e in result["elements"]] == [name]
+
+
+class TestColourIsPreserved:
+    def test_fill_colour_survives_the_import(self):
+        """A traffic-light key is information the author cannot recover later."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "Ready Thing", (0, 0, 100, 100),
+                   style={"fill": {"color": "#FF9900"}}),
+        ]))
+
+        props = result["elements"][0]["custom_properties"]
+        assert props.get("lucid_fill_color") == "#FF9900", (
+            "the shape's colour was dropped, so a RAG or readiness key is "
+            "unrecoverable: %r" % props)
+
+    @pytest.mark.parametrize("style,expected", [
+        ({"fill": {"color": "#123456"}}, "#123456"),
+        ({"fillColor": "#abcdef"}, "#abcdef"),
+        ({"backgroundColor": "rgb(255,0,0)"}, "rgb(255,0,0)"),
+    ])
+    def test_the_colour_is_found_wherever_the_export_put_it(self, style, expected):
+        """Lucid spells this differently per export flavour."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "Thing", (0, 0, 100, 100), style=style),
+        ]))
+        assert result["elements"][0]["custom_properties"].get("lucid_fill_color") == expected
+
+    def test_no_colour_adds_no_property(self):
+        """An absent colour must not become a null that looks deliberate."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", "Thing", (0, 0, 100, 100)),
+        ]))
+        assert "lucid_fill_color" not in result["elements"][0]["custom_properties"]
+
+    def test_the_parent_hint_does_not_leak_into_properties(self):
+        """lucid_parent_id is plumbing - it becomes a relationship, not a property."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("p", "ArchiMate3ComponentBoxBlock", "Parent", (0, 0, 400, 400)),
+            _shape("c", "ArchiMate3ComponentBoxBlock", "Child", (50, 50, 100, 100), parent="p"),
+        ]))
+        for element in result["elements"]:
+            assert "lucid_parent_id" not in element["custom_properties"]
+
+
+class TestTheShapeMapIsWiderThanTheCuratedList:
+    """Lucid names its stencils after the concept, so the name can be read.
+
+    Listing every stencil by hand covers whatever someone got round to adding.
+    Deriving the type from the class name covers the whole set, and is safe
+    because the result must match a real ArchiMate 3.2 type before it is used.
+    """
+
+    @pytest.mark.parametrize("lucid_class,expected", [
+        ("ArchiMate3BusinessProcessBoxBlock", "BusinessProcess"),
+        ("ArchiMate3CapabilityBoxBlock", "Capability"),
+        ("ArchiMate3GoalBoxBlock", "Goal"),
+        ("ArchiMate3DriverBoxBlock", "Driver"),
+        ("ArchiMate3NodeBoxBlock", "Node"),
+        ("ArchiMate3WorkPackageBoxBlock", "WorkPackage"),
+        ("ArchiMate3BusinessActorBoxBlock", "BusinessActor"),
+        ("ArchiMate3ValueStreamBoxBlock", "ValueStream"),
+    ])
+    def test_stencils_beyond_the_curated_map_now_import(self, lucid_class, expected):
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", lucid_class, "Thing", (0, 0, 100, 100)),
+        ]))
+        assert result["elements"], (
+            "%s was skipped; the class name names a real ArchiMate type"
+            % lucid_class)
+        assert result["elements"][0]["type"] == expected
+
+    def test_the_curated_map_still_wins_over_the_class_name(self):
+        """Lucid's layer-agnostic names would be mistyped by a literal reading.
+
+        'Object' is not an ArchiMate type and 'Component' is ambiguous; the
+        curated map resolves both, and must not be overridden by pattern
+        matching.
+        """
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("o", "ArchiMate3ObjectBoxBlock", "Customer Record", (0, 0, 100, 100)),
+            _shape("c", "ArchiMate3ComponentBoxBlock", "CRM", (200, 0, 100, 100)),
+        ]))
+        types = {e["name"]: e["type"] for e in result["elements"]}
+        assert types == {"Customer Record": "DataObject", "CRM": "ApplicationComponent"}
+
+    def test_an_invented_type_is_not_accepted(self):
+        """Pattern matching must not manufacture types that do not exist."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3UnicornBoxBlock", "Sparkle", (0, 0, 100, 100)),
+        ]))
+        assert not result["elements"], (
+            "invented an ArchiMate type from an unknown stencil: %r"
+            % result["elements"])
+
+    def test_a_stereotype_label_states_the_type(self):
+        """«Capability» above the name is the author telling you the type."""
+        shape = _shape("a", "GenericRectangle", "x", (0, 0, 100, 100))
+        shape["textAreas"] = [{"label": "Text", "text": "«Capability»\nOrder Fulfilment"}]
+        result = LucidArchiMateTransformer().transform_document(_payload([shape]))
+
+        assert len(result["elements"]) == 1
+        element = result["elements"][0]
+        assert element["type"] == "Capability"
+        assert element["name"] == "Order Fulfilment", (
+            "the stereotype leaked into the element name: %r" % element["name"])
+        assert element["custom_properties"]["lucid_type_source"] == "stereotype"
+
+    def test_plain_rectangles_are_skipped_by_default(self):
+        """Silence is the safe default: inventing a type for every box is fiction."""
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "GenericRectangle", "Some Product", (0, 0, 100, 100)),
+        ]))
+        assert not result["elements"]
+        assert any("fallback" in w.lower() for w in result["warnings"]), (
+            "skipped the shapes without telling the user how to import them: %r"
+            % result["warnings"])
+
+    def test_a_fallback_imports_plain_rectangles_with_their_structure(self):
+        """The whole point: keep names, colour and nesting, guess only the type."""
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("outer", "GenericRectangle", "ArchiCore", (0, 0, 800, 600),
+                   style={"fill": {"color": "#E8A33D"}}),
+            _shape("inner", "GenericRectangle", "Service Catalogue", (40, 40, 200, 100)),
+        ]))
+
+        by_name = {e["name"]: e for e in result["elements"]}
+        assert set(by_name) == {"ArchiCore", "Service Catalogue"}
+        # A box drawn around other boxes is a grouping, whatever it was drawn with.
+        assert by_name["ArchiCore"]["type"] == "Grouping"
+        assert by_name["Service Catalogue"]["type"] == "ApplicationComponent"
+        assert by_name["ArchiCore"]["custom_properties"]["lucid_fill_color"] == "#E8A33D"
+        assert _pair(result, "ArchiCore", "Service Catalogue") is not None, (
+            "nesting was lost for fallback-typed shapes")
+
+    def test_a_guessed_type_is_marked_as_guessed(self):
+        """A guess that looks like a fact is worse than no import at all."""
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("a", "GenericRectangle", "Thing", (0, 0, 100, 100)),
+        ]))
+
+        assert result["elements"][0]["custom_properties"]["lucid_type_source"] == "fallback"
+        assert any("guess" in w.lower() for w in result["warnings"]), (
+            "imported guessed types without saying so: %r" % result["warnings"])
+
+    def test_a_fallback_type_must_be_a_real_archimate_type(self):
+        with pytest.raises(ValueError, match="ArchiMate"):
+            LucidArchiMateTransformer(fallback_element_type="NotTheRealThing")
+
+
+def _line(line_id, source, target, target_style="None", stroke=None, **extra):
+    line = {
+        "id": line_id,
+        "endpoint1": {"connectedTo": source, "style": "None"},
+        "endpoint2": {"connectedTo": target, "style": target_style},
+    }
+    if stroke:
+        line["stroke"] = {"style": stroke}
+    line.update(extra)
+    return line
+
+
+class TestRelationshipsAreReadFromTheNotation:
+    """A real ArchiMate diagram states its relationships by how lines are drawn.
+
+    Almost nobody labels edges. A production solution diagram carries hundreds
+    of relationships across five or six types, distinguished by arrowhead and
+    stroke and nothing else. Reading only labels collapsed all of them to
+    association: the boxes arrived and the architecture did not.
+
+    Stroke matters as much as the head - serving, flow and access share an
+    arrowhead and differ only by solid, dashed and dotted.
+    """
+
+    SHAPES = [
+        _shape("a", "ArchiMate3ComponentBoxBlock", "Business Central", (0, 0, 160, 60)),
+        _shape("b", "ArchiMate3ComponentBoxBlock", "MuleSoft", (400, 0, 160, 60)),
+    ]
+
+    def _one(self, **kwargs):
+        payload = _payload(self.SHAPES, [_line("l1", "a", "b", **kwargs)])
+        result = LucidArchiMateTransformer().transform_document(payload)
+        edges = [r for r in result["relationships"] if r["id"] == "l1"]
+        assert edges, "the line was dropped entirely"
+        return edges[0]
+
+    @pytest.mark.parametrize("style,stroke,expected", [
+        # The five notations in the source diagram's own legend.
+        ("Filled Diamond", None, "composition"),
+        ("Open Arrow", "dotted", "access"),
+        ("Arrow", "dashed", "flow"),
+        ("Arrow", None, "serving"),
+        ("None", None, "association"),
+        # The rest of ArchiMate's vocabulary.
+        ("Open Diamond", None, "aggregation"),
+        ("Hollow Triangle", None, "specialization"),
+        ("Hollow Triangle", "dotted", "realization"),
+        ("Filled Ball", None, "assignment"),
+    ])
+    def test_each_notation_yields_its_relationship(self, style, stroke, expected):
+        assert self._one(target_style=style, stroke=stroke)["type"] == expected
+
+    @pytest.mark.parametrize("style", [
+        "Filled Diamond", "Composition", "ArchiMate Composition Diamond", "Solid Diamond",
+    ])
+    def test_composition_survives_lucid_renaming_the_arrowhead(self, style):
+        """Token matching, not an exact-name table.
+
+        Lucid spells these differently across stencils and export paths, and an
+        exact table degrades every unseen name to association without saying so
+        - which is the bug this replaces.
+        """
+        assert self._one(target_style=style)["type"] == "composition"
+
+    @pytest.mark.parametrize("stroke,expected", [
+        (None, "serving"), ("dashed", "flow"), ("dotted", "access"),
+    ])
+    def test_the_same_arrowhead_means_three_things_by_stroke(self, stroke, expected):
+        """Ignoring stroke makes serving, flow and access indistinguishable."""
+        assert self._one(target_style="Arrow", stroke=stroke)["type"] == expected
+
+    @pytest.mark.parametrize("extra", [
+        {"stroke": {"style": "dashed"}},
+        {"style": {"stroke": {"style": "dashed"}}},
+        {"style": {"strokeStyle": "dashed"}},
+        {"strokeStyle": "dashed"},
+        {"lineStyle": "dashed"},
+    ])
+    def test_the_stroke_is_found_wherever_the_export_put_it(self, extra):
+        """Lucid records the stroke in a different place per export flavour."""
+        line = {
+            "id": "l1",
+            "endpoint1": {"connectedTo": "a", "style": "None"},
+            "endpoint2": {"connectedTo": "b", "style": "Arrow"},
+        }
+        line.update(extra)
+        result = LucidArchiMateTransformer().transform_document(
+            _payload(self.SHAPES, [line]))
+        assert result["relationships"][0]["type"] == "flow", (
+            "a dashed line recorded as %r was read as solid, so flow became "
+            "serving" % extra)
+
+    def test_the_diamond_end_is_the_whole(self):
+        """Composition is directional and the diamond marks which end owns.
+
+        Lucid records the line in drawing order, so a diamond on endpoint2 means
+        it was drawn from part to whole and the relationship runs backwards.
+        Getting this wrong inverts the model's containment silently.
+        """
+        rel = self._one(target_style="Filled Diamond")
+        assert (rel["source_id"], rel["target_id"]) == ("b", "a"), (
+            "the diamond end must be the source (the whole); got %s -> %s"
+            % (rel["source_id"], rel["target_id"]))
+
+    def test_an_explicit_label_still_beats_the_notation(self):
+        """If the author wrote the type on the line, that is what they meant."""
+        payload = _payload(self.SHAPES, [
+            _line("l1", "a", "b", target_style="Filled Diamond",
+                  textAreas=[{"label": "t0", "text": "triggers"}]),
+        ])
+        result = LucidArchiMateTransformer().transform_document(payload)
+        assert result["relationships"][0]["type"] == "triggering"
+
+    def test_a_labelled_arrow_is_a_flow_when_the_export_dropped_the_stroke(self):
+        """Lucid's JSON export records no stroke at all.
+
+        That erases the difference between serving, flow and access, which in
+        ArchiMate is carried by solid vs dashed vs dotted and nothing else. What
+        survives is the label, and on a real diagram those labels are payloads -
+        "eSign File", "Compliance CSV", "CAMT Bank Statements" - not
+        descriptions of a service being offered.
+        """
+        payload = _payload(self.SHAPES, [
+            _line("l1", "a", "b", target_style="Arrow",
+                  textAreas=[{"label": "t0", "text": "CAMT Bank Statements"}]),
+        ])
+        rel = LucidArchiMateTransformer().transform_document(payload)["relationships"][0]
+
+        assert rel["type"] == "flow", (
+            "a labelled arrow in a stroke-less export stayed serving, so every "
+            "data flow in the diagram is mistyped")
+        assert rel["flow_label"] == "CAMT Bank Statements", (
+            "the flow lost what it carries: %r" % rel["flow_label"])
+        assert rel["derived_from"] == "stroke-stripped-label"
+
+    def test_a_complete_export_is_never_second_guessed(self):
+        """When the stroke IS present, a solid arrow means serving. Full stop.
+
+        The label fallback exists only because information was destroyed on
+        export. Applying it to an export that recorded stroke would override
+        what the author actually drew.
+        """
+        payload = _payload(self.SHAPES, [
+            # One line carries stroke data, so the export is known to be complete.
+            _line("l0", "a", "b", target_style="Arrow", stroke="dashed"),
+            _line("l1", "a", "b", target_style="Arrow",
+                  textAreas=[{"label": "t0", "text": "Some Label"}]),
+        ])
+        rels = {r["id"]: r for r in
+                LucidArchiMateTransformer().transform_document(payload)["relationships"]}
+
+        assert rels["l0"]["type"] == "flow", "the genuinely dashed line is a flow"
+        assert rels["l1"]["type"] == "serving", (
+            "a solid arrow was overridden to flow even though this export "
+            "recorded stroke, so the author's own notation was discarded")
+
+    def test_a_notation_derived_type_is_marked_as_such(self):
+        assert self._one(target_style="Arrow", stroke="dashed")["derived_from"] == "notation"
+        assert self._one(target_style="None")["derived_from"] is None
+
+
+class TestQualifiersAreLiftedOutOfNames:
+    """(Phase 2) and (DE Only) are attributes, written where nothing else fit.
+
+    Left in the name they can only be grepped. As properties they can be
+    filtered, reported on, and used to scope a migration wave - which is what
+    the architect meant by writing them.
+    """
+
+    def _props(self, name):
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        return result["elements"][0]["custom_properties"]
+
+    @pytest.mark.parametrize("name,key,value", [
+        ("Navitrans 365 App (Phase 2)", "phase", "2"),
+        ("COSMO CrefoDynamics App (Phase 1)", "phase", "1"),
+        ("ATLAS (DE Only)", "scope", "DE"),
+        ("IBM Sterling (UK Only) (Phase 1)", "scope", "UK"),
+        ("Business Central UK/DE (SaaS)", "deployment", "SaaS"),
+        ("Formula NAV UK/DE (Server Image)", "deployment", "Server Image"),
+    ])
+    def test_a_qualifier_becomes_a_property(self, name, key, value):
+        assert self._props(name).get(key) == value
+
+    def test_the_name_is_left_exactly_as_drawn(self):
+        """The name is what the architect sees on the diagram and matches on."""
+        name = "COUPA Treasury (Phase 1) (DE Payments Only)"
+        result = LucidArchiMateTransformer().transform_document(_payload([
+            _shape("a", "ArchiMate3ComponentBoxBlock", name, (0, 0, 160, 60)),
+        ]))
+        assert result["elements"][0]["name"] == name
+
+    def test_every_parenthetical_is_kept_even_when_unrecognised(self):
+        """The interesting qualifier is always the next one nobody anticipated."""
+        props = self._props("Okarno EDI System (Tranche 3) (Pilot)")
+        assert props.get("qualifiers") == ["Tranche 3", "Pilot"]
+
+    def test_a_plain_name_gains_nothing(self):
+        assert "qualifiers" not in self._props("MuleSoft")
+
+
+class TestLegendSwatchesAreNotArchitecture:
+    """A legend draws one box per concept, labelled with the concept's name.
+
+    Six of those imported from the diagram behind this work - "Application",
+    "Business Role", "Location" - and were deleted by hand afterwards.
+    """
+
+    @pytest.mark.parametrize("label", [
+        "LEGEND", "Location", "Business Role", "Application Interface",
+        "Communication Network", "Application",
+    ])
+    def test_an_unconnected_concept_label_is_skipped(self, label):
+        result = LucidArchiMateTransformer(
+            fallback_element_type="ApplicationComponent"
+        ).transform_document(_payload([
+            _shape("swatch", "GenericRectangle", label, (2000, 0, 120, 40)),
+            _shape("real", "ArchiMate3ComponentBoxBlock", "MuleSoft", (0, 0, 160, 60)),
+        ]))
+        assert [e["name"] for e in result["elements"]] == ["MuleSoft"], (
+            "%r was imported as architecture" % label)
+
+    def test_a_connected_element_is_never_treated_as_a_swatch(self):
+        """The guard is 'labelled like a concept AND attached to nothing'.
+
+        A real Location genuinely named "Location" would still be related to
+        something. Dropping it because of its name alone would lose real data.
+        """
+        result = LucidArchiMateTransformer().transform_document(_payload(
+            shapes=[
+                _shape("loc", "ArchiMate3LocationBoxBlock", "Location", (0, 0, 400, 300)),
+                _shape("app", "ArchiMate3ComponentBoxBlock", "MuleSoft", (900, 0, 160, 60)),
+            ],
+            lines=[_line("l1", "loc", "app", target_style="Arrow")],
+        ))
+        assert "Location" in [e["name"] for e in result["elements"]]
+
+
+class TestImageExtractionPayloadMatchesTheImporter:
+    """A screenshot and a .lucid file must reach the canvas the same way.
+
+    The model answers with relationships that reference elements by NAME; the
+    composer works in ids, as the Lucidchart importer produces. Converting at
+    the edge means the canvas has one contract rather than two.
+    """
+
+    def _canonicalise(self, extracted):
+        from app.modules.architecture.routes.archimate_routes import (
+            _canonicalise_extracted,
+        )
+        return _canonicalise_extracted(extracted, "anthropic")
+
+    def test_named_relationships_become_id_relationships(self):
+        payload = self._canonicalise({
+            "elements": [
+                {"name": "Business Central", "type": "ApplicationComponent", "layer": "application"},
+                {"name": "MuleSoft", "type": "ApplicationComponent", "layer": "application"},
+            ],
+            "relationships": [
+                {"source": "Business Central", "target": "MuleSoft", "type": "Flow"},
+            ],
+        })
+        assert len(payload["elements"]) == 2
+        rel = payload["relationships"][0]
+        ids = {e["id"] for e in payload["elements"]}
+        assert rel["source_id"] in ids and rel["target_id"] in ids, (
+            "relationship still references names, so the composer cannot place it")
+        assert rel["type"] == "flow", "relationship type was not normalised to lower case"
+        assert rel["derived_from"] == "diagram-image"
+
+    def test_a_relationship_to_an_unknown_element_is_dropped_and_reported(self):
+        payload = self._canonicalise({
+            "elements": [{"name": "A", "type": "ApplicationComponent"}],
+            "relationships": [{"source": "A", "target": "Ghost", "type": "serving"}],
+        })
+        assert payload["relationships"] == []
+        assert any("did not also return" in w for w in payload["warnings"]), (
+            "silently dropped a relationship: %r" % payload["warnings"])
+
+    def test_the_reader_is_told_this_was_read_from_a_picture(self):
+        payload = self._canonicalise({"elements": [{"name": "A", "type": "Node"}]})
+        assert any("reading of a picture" in w for w in payload["warnings"])
+        assert payload["elements"][0]["custom_properties"]["source"] == "diagram-image"
+
+
+class TestImageAnalysisNoLongerCrashes:
+    """`await ...__doc__` sat on the live image path and raised TypeError.
+
+    Every diagram-image upload failed before reaching the model. The bug was
+    invisible in review because the line looks like prompt-building.
+    """
+
+    def test_the_awaited_docstring_is_gone(self):
+        import inspect
+
+        from app.services.archimate.document_analysis_service import DocumentAnalysisService
+
+        source = inspect.getsource(DocumentAnalysisService._analyze_image)
+        offending = [line.strip() for line in source.splitlines()
+                     if "await" in line and "__doc__" in line and not line.strip().startswith("#")]
+        assert not offending, (
+            "awaiting a docstring raises TypeError before the image is ever "
+            "sent: %r" % offending)
+
+    def test_the_context_prompt_reaches_the_model(self):
+        """The context-specific guidance was built and then thrown away."""
+        import asyncio
+
+        from app.services.archimate.document_analysis_service import DocumentAnalysisService
+
+        captured = {}
+
+        async def _fake_extract(image_path, provider, extra_instructions=""):
+            captured["extra"] = extra_instructions
+            return {"elements": []}, None
+
+        service = DocumentAnalysisService.__new__(DocumentAnalysisService)
+        service.multi_modal_service = type(
+            "Stub", (), {"extract_archimate_from_diagram": staticmethod(_fake_extract)}
+        )()
+
+        data, _interaction = asyncio.run(
+            service._analyze_image("/tmp/diagram.png", "claude", "application")
+        )
+
+        assert data == {"elements": []}
+        assert "ApplicationComponent" in captured.get("extra", ""), (
+            "the application-context prompt was not passed through: %r"
+            % captured.get("extra"))
+
+
+class TestImportProvenanceSurvivesPersistence:
+    """The review queue can only triage what the import bothered to record.
+
+    Element provenance always survived in custom_properties. Relationship
+    provenance was computed and then dropped on the way into the database, so
+    69 inferred relationships arrived indistinguishable from ones a person drew
+    deliberately - and a queue with nothing in it looks like a clean import.
+    """
+
+    def test_the_relationship_model_records_how_it_was_derived(self):
+        from app.models.models import ArchiMateRelationship
+
+        columns = ArchiMateRelationship.__table__.c
+        assert "derived_from" in columns, (
+            "relationships cannot say whether they were inferred, so nothing "
+            "can be reviewed")
+        assert "reviewed_at" in columns, (
+            "nothing records that a person confirmed an inferred relationship, "
+            "so the queue can never be worked down")
+
+    def test_both_review_columns_are_safe_for_reconcile_schema(self):
+        """reconcile-schema adds columns nullable with no backfill.
+
+        A NOT NULL column here would be fine on a fresh database and fatal on
+        every existing one - and the correct value for a pre-existing row is
+        NULL anyway: it was stated outright, not inferred by this importer.
+        """
+        from app.models.models import ArchiMateRelationship
+
+        for name in ("derived_from", "reviewed_at"):
+            column = ArchiMateRelationship.__table__.c[name]
+            assert column.nullable, "%s must be nullable" % name
+
+    def test_the_transformer_emits_a_provenance_value_to_persist(self):
+        """The column is pointless if nothing fills it."""
+        payload = _payload(
+            [_shape("a", "ArchiMate3ComponentBoxBlock", "A", (0, 0, 160, 60)),
+             _shape("b", "ArchiMate3ComponentBoxBlock", "B", (400, 0, 160, 60))],
+            [_line("l1", "a", "b", target_style="Arrow", stroke="dashed")],
+        )
+        result = LucidArchiMateTransformer().transform_document(payload)
+        assert result["relationships"][0]["derived_from"] == "notation"

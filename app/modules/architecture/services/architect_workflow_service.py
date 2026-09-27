@@ -10,7 +10,6 @@ Orchestrates actionable workflows for architects within the AI Chat:
 4. Gap Analysis to Roadmap
 """
 
-import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -18,7 +17,6 @@ from typing import Any, Dict, List, Optional
 from app import db
 from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
-from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.services.application_architecture_mapper import ApplicationArchitectureMapperService
 from app.services.apqc_classification_service import classify_apqc_text
 from app.services.comprehensive_archimate_service import ComprehensiveArchiMateService

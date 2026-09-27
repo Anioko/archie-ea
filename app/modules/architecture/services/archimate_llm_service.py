@@ -10,7 +10,6 @@ import logging
 import os
 from typing import Dict, List, Optional, Tuple
 
-from flask import current_app  # dead-code-ok
 
 from app import db
 
@@ -22,14 +21,13 @@ try:
     from app.models import (  # dead-code-ok
         ArchiMateElement,
         ArchiMateRelationship,
-        ArchitectureModel,
         BusinessCapability,
         LLMInteraction,
         PipelineStage,
     )
 except Exception:  # pragma: no cover
     # Fast-init / E2E: app.models intentionally exports only a small subset.
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship  # dead-code-ok
 
     BusinessCapability = None  # type: ignore[assignment]
     LLMInteraction = None  # type: ignore[assignment]

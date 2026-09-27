@@ -48,14 +48,14 @@ def check_completeness(genome: dict) -> CompletenessResult:
 
         if genome_has_frontend and stack["frontend"] is None:
             warnings.append(
-                f"genome.language='{lang}' ({stack['label']}) generates NO frontend code, "
+                f"genome.language='{lang}' ({stack['label']}) generates NO frontend code, "  # raw-html-ok: internal config warning message, never rendered as HTML/browser output
                 f"but genome contains frontend/ui_framework config — it will be ignored. "
                 f"For a full-stack output with Next.js, use 'react-shadcn' "
                 f"(FastAPI + Next.js), 'flask-nextjs' (Flask + Next.js), or 'flask-react' (Flask + React/Vite)."
             )
         if genome_has_mobile and stack["mobile"] is None:
             warnings.append(
-                f"genome.language='{lang}' ({stack['label']}) generates NO mobile code, "
+                f"genome.language='{lang}' ({stack['label']}) generates NO mobile code, "  # raw-html-ok: internal config warning message, never rendered as HTML/browser output
                 f"but genome contains mobile.platforms config — it will be ignored. "
                 f"For a mobile app, use 'react-native-expo'."
             )

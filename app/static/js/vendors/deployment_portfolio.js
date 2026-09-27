@@ -7,7 +7,9 @@
 function exportPortfolio(format) {
     const portfolioData = window.__PORTFOLIO_DATA__;
     if (!portfolioData) {
-        console.error('[deployment_portfolio] __PORTFOLIO_DATA__ not set');
+        if (window.Platform && Platform.toast) {
+            Platform.toast.error('Nothing to export — the portfolio data did not load. Reload the page and try again.');
+        }
         return;
     }
 

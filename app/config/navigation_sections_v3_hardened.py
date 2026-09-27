@@ -21,7 +21,6 @@ from app.config.navigation_registry_v3_hardened import (
     NavigationItemV3,
     NavigationSectionV3,
     register_navigation_section,
-    mark_registration_complete,
 )
 
 

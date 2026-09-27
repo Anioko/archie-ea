@@ -75,14 +75,21 @@ class PortfolioContextBuilder:
             for s in sols
         ]
 
-    def _quick_completeness(self, solution_id: int) -> int:
-        """Fast completeness estimate: count of linked ArchiMate elements / 20."""
+    def _quick_completeness(self, solution_id: int):
+        """Fast completeness estimate: count of linked ArchiMate elements / 20.
+
+        Returns None — never 0 — when the count cannot be read. This value is
+        formatted straight into the agent system prompt, so a fabricated 0
+        would reach the user as "that solution is 0% complete", asserted in
+        confident prose by a model with no way to know it was invented.
+        """
         try:
             from app.models.solution_models import SolutionArchiMateElement
             count = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).count()
             return min(100, count * 5)
         except Exception:
-            return 0
+            logger.exception("_quick_completeness(%s) failed", solution_id)
+            return None
 
     def _detect_patterns(self, solution_id: int, similar: list) -> str:
         """Detect shared applications between this solution and similar ones."""
@@ -109,10 +116,11 @@ class PortfolioContextBuilder:
                 return "Integration pattern overlap: " + ", ".join(overlap_names)
             return ""
         except Exception:
+            logger.exception("_detect_patterns(%s) failed", solution_id)
             return ""
 
-    def _portfolio_health_snapshot(self) -> dict:
-        """Count solutions by status. Single query."""
+    def _portfolio_health_snapshot(self):
+        """Count solutions by status. Single query. None when it cannot be read."""
         try:
             from app.models.solution_models import Solution
             from sqlalchemy import func
@@ -126,10 +134,11 @@ class PortfolioContextBuilder:
             total = sum(counts.values())
             return {"total": total, "by_status": counts}
         except Exception:
-            return {"total": 0, "by_status": {}}
+            logger.exception("_portfolio_health_snapshot failed")
+            return None
 
-    def _recent_interactions(self, user_id: int, limit: int = 5) -> list:
-        """Last N AI interactions for this user from AIChatAuditLog."""
+    def _recent_interactions(self, user_id: int, limit: int = 5):
+        """Last N AI interactions for this user. None when they cannot be read."""
         try:
             from app.models.ai_chat_audit_log import AIChatAuditLog
             rows = AIChatAuditLog.get_recent_for_user(user_id, limit=limit)
@@ -141,13 +150,17 @@ class PortfolioContextBuilder:
                 for r in rows
             ]
         except Exception:
-            return []
+            logger.exception("_recent_interactions(%s) failed", user_id)
+            return None
 
-    def _recent_arb_decisions(self, limit: int = 5) -> list:
+    def _recent_arb_decisions(self, limit: int = 5):
         """Recent ARB decisions — governance mandates the agent should know about.
 
         Includes structured rationale fields (action_description, new_value) so
         the AI can explain WHY a decision was made, not just that it happened.
+
+        None — not [] — when they cannot be read: an empty list here would tell
+        the agent the organisation has issued no governance decisions.
         """
         try:
             from app.models.architecture_review_board import ARBAuditLog
@@ -171,11 +184,15 @@ class PortfolioContextBuilder:
                 })
             return results
         except Exception:
-            return []
+            logger.exception("_recent_arb_decisions failed")
+            return None
 
-    def _learned_rules_summary(self, limit: int = 10) -> list:
+    def _learned_rules_summary(self, limit: int = 10):
         """Top learned corrections from ExtractionFeedback — injected into prompt
-        so the AI avoids repeating known extraction mistakes."""
+        so the AI avoids repeating known extraction mistakes.
+
+        None — not [] — when they cannot be read, so the agent does not conclude
+        there are no known corrections and repeat a mistake it was taught."""
         try:
             from app.modules.architecture.services.feedback_learning_service import (
                 ExtractionFeedback,
@@ -206,7 +223,8 @@ class PortfolioContextBuilder:
                     )
             return rules
         except Exception:
-            return []
+            logger.exception("_learned_rules_summary failed")
+            return None
 
     def _web_search_context(self, question: str) -> str:
         """Inject web search results for benchmark/industry questions."""
@@ -223,9 +241,17 @@ class PortfolioContextBuilder:
     # Formatting                                                           #
     # ------------------------------------------------------------------ #
 
-    def _format(self, active: dict, similar: list, patterns: str, health: dict,
-                memory: list, arb: list, learned: list = None, web_context: str = "") -> str:
+    def _format(self, active: dict, similar: list, patterns: str, health,
+                memory, arb, learned=None, web_context: str = "") -> str:
+        """Render the context block.
+
+        A section whose loader returned None could not be read. It is named in a
+        closing NOT AVAILABLE line instead of being silently omitted, because an
+        omitted section reads to the model as measured absence ("you have no
+        recent activity", "there are no correction rules") and it will say so.
+        """
         lines = ["PORTFOLIO CONTEXT:"]
+        unavailable: list[str] = []
 
         lines.append(
             f"Active solution: \"{active['name']}\" | "
@@ -237,23 +263,31 @@ class PortfolioContextBuilder:
             lines.append("")
             lines.append("Similar solutions (same domain):")
             for s in similar:
+                pct = s.get("overall_pct")
+                pct_str = ("completeness unavailable" if pct is None
+                           else f"~{pct}% complete")
                 lines.append(
                     f"  - Sol-{s['id']} \"{s['name']}\" "
-                    f"[Phase {s['adm_phase']}, ~{s['overall_pct']}% complete, {s['status']}]"
+                    f"[Phase {s['adm_phase']}, {pct_str}, {s['status']}]"
                 )
 
         if patterns:
             lines.append("")
             lines.append(patterns)
 
-        total = health.get("total", 0)
-        by_status = health.get("by_status", {})
-        if total:
-            status_str = " | ".join(f"{k}: {v}" for k, v in sorted(by_status.items()))
-            lines.append("")
-            lines.append(f"Portfolio health: {total} solutions — {status_str}")
+        if health is None:
+            unavailable.append("portfolio health (solution counts by status)")
+        else:
+            total = health.get("total", 0)
+            by_status = health.get("by_status", {})
+            if total:
+                status_str = " | ".join(f"{k}: {v}" for k, v in sorted(by_status.items()))
+                lines.append("")
+                lines.append(f"Portfolio health: {total} solutions — {status_str}")
 
-        if arb:
+        if arb is None:
+            unavailable.append("recent governance (ARB) decisions")
+        elif arb:
             lines.append("")
             lines.append("Recent governance decisions:")
             for r in arb:
@@ -262,13 +296,17 @@ class PortfolioContextBuilder:
                     f"  - {r['action']} ({r['timestamp']}){src}: {r['description']}"
                 )
 
-        if learned:
+        if learned is None:
+            unavailable.append("known extraction corrections")
+        elif learned:
             lines.append("")
             lines.append("Known extraction corrections (apply these to avoid past mistakes):")
             for rule in learned[:5]:
                 lines.append(f"  - {rule}")
 
-        if memory:
+        if memory is None:
+            unavailable.append("this user's recent interactions")
+        elif memory:
             lines.append("")
             lines.append("Recent interactions (this user):")
             for m in memory:
@@ -277,6 +315,15 @@ class PortfolioContextBuilder:
         if web_context:
             lines.append("")
             lines.append(web_context)
+
+        if unavailable:
+            lines.append("")
+            lines.append(
+                "NOT AVAILABLE — the following could not be loaded and are "
+                "MISSING, not empty: " + "; ".join(unavailable) + ". Do not say "
+                "or imply there are none, do not quote a count or percentage for "
+                "them, and tell the user the data could not be read if they ask."
+            )
 
         return "\n".join(lines)
 

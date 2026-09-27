@@ -13,6 +13,7 @@ from flask_login import current_user, login_required
 from app.decorators import audit_log
 
 from app.services.llm_service import LLMService
+from app.utils.pagination import safe_int_arg
 
 llm_bp = Blueprint("llm", __name__, url_prefix="/api/v1/llm")
 
@@ -223,7 +224,7 @@ def get_openrouter_models():
         # Parse query params
         free_only = request.args.get("free_only", "false").lower() == "true"
         search_query = request.args.get("search", "").lower()
-        limit = min(int(request.args.get("limit", 50)), 200)
+        limit = min(safe_int_arg('limit', 50, minimum=1, maximum=500), 200)
 
         models = []
         for m in raw_models:

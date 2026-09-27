@@ -4,7 +4,7 @@
 {% block title %}{{ rollup.programme.name }} — Fit-Gap Workbench{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="fitGapWorkbench({{ rollup.programme.id }})">
     {{ page_header(
         title=rollup.programme.name ~ ' — Fit-Gap Workbench',
@@ -23,7 +23,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Clean-Core Actual</p>
             {% if rollup.fit_gap.clean_core_score is not none %}
             <p class="text-2xl font-bold mt-1
-                {% if rollup.fit_gap.clean_core_score >= 70 %}text-emerald-600{% elif rollup.fit_gap.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {% if rollup.fit_gap.clean_core_score >= 70 %}text-success{% elif rollup.fit_gap.clean_core_score >= 40 %}text-warning{% else %}text-destructive{% endif %}">
                 {{ rollup.fit_gap.clean_core_score }}%</p>
             {% else %}<p class="text-lg text-muted-foreground mt-1">No data</p>{% endif %}
         </div>
@@ -40,7 +40,7 @@
             <p class="text-xs text-muted-foreground uppercase tracking-wider">Delta to Target</p>
             {% if rollup.fit_gap.clean_core_score is not none and rollup.fit_gap.clean_core_target %}
             {% set delta = rollup.fit_gap.clean_core_score - rollup.fit_gap.clean_core_target %}
-            <p class="text-2xl font-bold mt-1 {% if delta >= 0 %}text-emerald-600{% else %}text-destructive{% endif %}">
+            <p class="text-2xl font-bold mt-1 {% if delta >= 0 %}text-success{% else %}text-destructive{% endif %}">
                 {{ '%+d' % delta }}pp</p>
             {% else %}<p class="text-lg text-muted-foreground mt-1">Set a target</p>{% endif %}
         </div>
@@ -59,7 +59,7 @@
             <span class="text-xs text-muted-foreground">{{ m.total }} entr{{ 'y' if m.total == 1 else 'ies' }}</span>
             {% if m.clean_core_score is not none %}
             <span class="text-sm font-bold
-                {% if m.clean_core_score >= 70 %}text-emerald-600{% elif m.clean_core_score >= 40 %}text-amber-600{% else %}text-destructive{% endif %}">
+                {% if m.clean_core_score >= 70 %}text-success{% elif m.clean_core_score >= 40 %}text-warning{% else %}text-destructive{% endif %}">
                 {{ m.clean_core_score }}%</span>
             {% endif %}
         </div>
@@ -90,7 +90,7 @@
             </div>
         </div>
         <div x-cloak x-show="message" class="px-5 py-2 text-xs border-b border-border"
-             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive' : 'bg-emerald-500/10 text-emerald-700'"
+             :class="messageKind === 'error' ? 'bg-destructive/10 text-destructive-emphasis' : 'bg-success/10 text-success-emphasis'"
              x-text="message"></div>
 
         {% if entries %}
@@ -113,16 +113,16 @@
                     <td class="px-4 py-2 text-muted-foreground">{{ e.erp_module or '—' }}</td>
                     <td class="px-4 py-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
-                            {% if e.fit_type in ('standard', 'configuration') %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
-                            {% elif e.fit_type in ('extension', 'isv_solution') %}bg-amber-500/10 text-amber-600 border-amber-500/30
-                            {% else %}bg-destructive/10 text-destructive border-destructive/30{% endif %}">
+                            {% if e.fit_type in ('standard', 'configuration') %}bg-success/10 text-success-emphasis border-success/30
+                            {% elif e.fit_type in ('extension', 'isv_solution') %}bg-warning/10 text-warning-emphasis border-warning/30
+                            {% else %}bg-destructive/10 text-destructive-emphasis border-destructive/30{% endif %}">
                             {{ (e.fit_type or 'unclassified') | replace('_', ' ') | title }}
                         </span>
                     </td>
                     <td class="px-4 py-2">
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border
-                            {% if e.status == 'approved' %}bg-emerald-500/10 text-emerald-600 border-emerald-500/30
-                            {% elif e.status == 'reviewed' %}bg-amber-500/10 text-amber-600 border-amber-500/30
+                            {% if e.status == 'approved' %}bg-success/10 text-success-emphasis border-success/30
+                            {% elif e.status == 'reviewed' %}bg-warning/10 text-warning-emphasis border-warning/30
                             {% else %}bg-muted text-muted-foreground border-border{% endif %}">
                             {{ (e.status or 'draft') | title }}
                         </span>
@@ -167,32 +167,40 @@
                     if (this.bulk.fit_type) body.fit_type = this.bulk.fit_type;
                     if (this.bulk.status) body.status = this.bulk.status;
                     if (this.bulk.erp_module) body.erp_module = this.bulk.erp_module;
-                    const r = await fetch('/solutions/programmes/' + this.programmeId + '/api/fit-gap/bulk', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                        body: JSON.stringify(body),
-                    });
-                    const d = await r.json();
-                    if (!r.ok || !d.success) {
+                    // Platform.fetch.post automatically serialises plain objects to JSON and injects CSRF token.
+                    const d = await Platform.fetch.post('/solutions/programmes/' + this.programmeId + '/api/fit-gap/bulk', body);
+                    // Platform.fetch throws on non-ok responses, so reaching here means success.
+                    if (!d.success) {
+                        // The server returned a success HTTP status but indicated a logical failure.
                         this.messageKind = 'error';
                         this.message = d.error || 'Bulk update failed';
                         return;
                     }
                     window.location.reload();
+                } catch (err) {
+                    // Platform.fetch already shows a user-visible toast for HTTP errors.
+                    // However, we still need to paint an inline error state for this component.
+                    this.messageKind = 'error';
+                    this.message = err.message || 'Bulk update failed';
                 } finally { this.busy = false; }
             },
             async saveTarget() {
-                const r = await fetch('/solutions/programmes/' + this.programmeId, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': this._csrf() },
-                    body: JSON.stringify({ clean_core_target: this.target }),
-                });
-                const d = await r.json();
-                if (!r.ok || !d.success) {
-                    this.messageKind = 'error';
-                    this.message = d.error || 'Target update failed';
-                } else {
+                try {
+                    // Platform.fetch.patch automatically serialises plain objects to JSON and injects CSRF token.
+                    const d = await Platform.fetch.patch('/solutions/programmes/' + this.programmeId, { clean_core_target: this.target });
+                    // Platform.fetch throws on non-ok responses, so reaching here means success.
+                    if (!d.success) {
+                        // The server returned a success HTTP status but indicated a logical failure.
+                        this.messageKind = 'error';
+                        this.message = d.error || 'Target update failed';
+                        return;
+                    }
                     window.location.reload();
+                } catch (err) {
+                    // Platform.fetch already shows a user-visible toast for HTTP errors.
+                    // However, we still need to paint an inline error state for this component.
+                    this.messageKind = 'error';
+                    this.message = err.message || 'Target update failed';
                 }
             },
         };

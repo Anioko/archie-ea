@@ -10,20 +10,19 @@ High-accuracy clause extraction with:
 Uses spaCy/Transformers pipeline for NLP processing.
 """
 
-import json  # dead-code-ok
 import logging
+from enum import Enum
 import re
 from datetime import datetime
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple  # dead-code-ok
+from typing import Any, Dict, List, NamedTuple, Optional  # dead-code-ok
 
-from flask import current_app  # dead-code-ok
 
-from ... import db  # dead-code-ok
+
 
 logger = logging.getLogger(__name__)
 
 
-class EntityType(str, str):
+class EntityType(str, Enum):
     """Named entity types in contracts."""
     DATE = "DATE"
     MONEY = "MONEY"
@@ -34,7 +33,7 @@ class EntityType(str, str):
     OBLIGATION = "OBLIGATION"
 
 
-class RelationType(str, str):
+class RelationType(str, Enum):
     """Relation types between entities."""
     REQUIRES = "REQUIRES"
     PROVIDES = "PROVIDES"

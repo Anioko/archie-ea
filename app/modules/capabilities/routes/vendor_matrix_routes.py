@@ -21,6 +21,7 @@ from app.decorators import audit_log
 
 from . import capability_map
 import logging
+from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
 
@@ -307,7 +308,6 @@ def api_vendor_capability_risks():
     - capability_id: filter by capability
     """
     try:
-        from sqlalchemy import and_
 
         from app.models.business_capabilities import BusinessCapability
         from app.models.vendor.relationship_tables import vendor_capability_risks
@@ -502,7 +502,7 @@ def api_suggest_vendors_for_capability(capability_id):
             return jsonify({"error": f"Capability not found: {capability_id}"}), 404
 
         threshold = request.args.get("threshold", 0.72, type=float)
-        limit = request.args.get("limit", 5, type=int)
+        limit = safe_int_arg('limit', 5, minimum=1, maximum=500)
 
         service = VendorCapabilityLinkService()
         suggestions = service.suggest_vendors_for_capability(

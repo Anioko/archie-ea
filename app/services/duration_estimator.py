@@ -8,11 +8,8 @@ Uses median-based estimation with complexity multipliers.
 import logging
 from statistics import median, mean, stdev
 from typing import Dict, List, Optional, Any
-from datetime import timedelta
 
-from sqlalchemy import func
 
-from app import db
 from app.models.implementation_migration import WorkPackage as ImplementationWorkPackage
 
 logger = logging.getLogger(__name__)

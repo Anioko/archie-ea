@@ -11,6 +11,7 @@ Persona-specific dashboards and views for the unified vendor module.
 """
 
 from flask import render_template, request, redirect, url_for, flash, jsonify
+from app.utils.tenant_sql import org_scope
 from flask_login import login_required, current_user
 from flask import current_app, Blueprint
 from datetime import datetime
@@ -66,7 +67,8 @@ def _get_vendor_list_context():
         }
         return stats, vendors
     except Exception:
-        return {"total": 0, "active": 0, "strategic": 0, "total_products": 0, "total_linked_apps": 0, "total_acv": 0, "renewals_due": 0}, []
+        # Query failed: report unknown (em dash), not fabricated zero vendor metrics.
+        return {"total": None, "active": None, "strategic": None, "total_products": None, "total_linked_apps": None, "total_acv": None, "renewals_due": None}, []
 
 # Blueprint defined here (was in app/unified_vendors/__init__.py)
 unified_vendors_bp = Blueprint(
@@ -106,15 +108,21 @@ def vendor_mapping_tool():
     """Application-to-vendor mapping tool - renders vendor applications portfolio."""
     vendor = type("Vendor", (), {"id": 0, "name": "All Vendors"})()
     try:
-        rows = db.session.execute(text("""
+        # Neither application_vendor_product_mappings nor vendor_products has an
+        # organization_id, so this listed every tenant's applications. The
+        # predicate belongs on application_components, which does carry one.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE ac.organization_id = :org" if _org is not None else ""
+        rows = db.session.execute(text(f"""
             SELECT ac.id, ac.name, ac.vendor_name, vp.name AS product_name,
                    m.role_type, ac.description, ac.deployment_status,
                    ac.business_criticality, ac.business_owner
             FROM application_vendor_product_mappings m
             JOIN application_components ac ON ac.id = m.application_component_id
-            JOIN vendor_products vp ON vp.id = m.vendor_product_id
+            JOIN vendor_products vp ON vp.id = m.vendor_product_id{_org_where}
             ORDER BY ac.vendor_name, ac.name
-        """)).fetchall()
+        """), ({"org": _org} if _org is not None else {})).fetchall()
         applications = [_app_portfolio_item(r) for r in rows]
     except Exception:
         applications = []
@@ -186,6 +194,11 @@ def _portfolio_stats(apps):
 def _get_vendor_apps(vendor_id):
     """Return applications and stats for a specific vendor."""
     try:
+        # vendor_organizations carries no organization_id, so filtering on the
+        # vendor alone returned EVERY tenant's applications for that vendor -
+        # names, descriptions, owners and criticality. Scope on the one table
+        # here that does carry it.
+        _org_clause, _org_params = org_scope("ac.")
         rows = db.session.execute(text("""
             SELECT ac.id, ac.name, ac.vendor_name, vp.name AS product_name, m.role_type,
                    ac.description, ac.deployment_status, ac.business_criticality,
@@ -195,8 +208,9 @@ def _get_vendor_apps(vendor_id):
             JOIN vendor_products vp ON vp.id = m.vendor_product_id
             JOIN vendor_organizations vo ON vo.id = vp.vendor_organization_id
             WHERE vo.id = :vid
+            {org_clause}
             ORDER BY vp.name, ac.name
-        """), {"vid": vendor_id}).fetchall()
+        """.format(org_clause=_org_clause)), {"vid": vendor_id, **_org_params}).fetchall()
         apps = [_app_portfolio_item(r) for r in rows]
     except Exception:
         apps = []
@@ -208,12 +222,14 @@ def _get_vendor_apps(vendor_id):
 @login_required
 def vendor_analytics(vendor_id):
     """Vendor analytics - renders vendor applications portfolio."""
-    try:
-        vendor = VendorOrganization.query.get(vendor_id)
-    except Exception:
-        vendor = None
-    if vendor is None:
-        vendor = type("Vendor", (), {"id": vendor_id, "name": f"Vendor #{vendor_id}"})()
+    # A synthesised "Vendor #<id>" placeholder with "Total Applications: 0" is
+    # fabricated data — the user cannot tell it from a real vendor with no
+    # applications. A vendor that does not exist is a 404.
+    from app.utils.route_guards import require_entity
+
+    vendor = require_entity(
+        VendorOrganization, vendor_id, description="Vendor not found"
+    )
     applications, stats = _get_vendor_apps(vendor_id)
     return render_template(
         "vendors/vendor_applications_portfolio.html",
@@ -227,12 +243,14 @@ def vendor_analytics(vendor_id):
 @login_required
 def vendor_applications_portfolio(vendor_id):
     """Vendor applications portfolio view -- linked from vendor detail page."""
-    try:
-        vendor = VendorOrganization.query.get(vendor_id)
-    except Exception:
-        vendor = None
-    if vendor is None:
-        vendor = type("Vendor", (), {"id": vendor_id, "name": f"Vendor #{vendor_id}"})()
+    # A synthesised "Vendor #<id>" placeholder with "Total Applications: 0" is
+    # fabricated data — the user cannot tell it from a real vendor with no
+    # applications. A vendor that does not exist is a 404.
+    from app.utils.route_guards import require_entity
+
+    vendor = require_entity(
+        VendorOrganization, vendor_id, description="Vendor not found"
+    )
     applications, stats = _get_vendor_apps(vendor_id)
     return render_template(
         "vendors/vendor_applications_portfolio.html",
@@ -407,7 +425,7 @@ def edit_vendor(vendor_id):
             db.session.commit()
             flash(f'Vendor "{vendor.name}" updated successfully.', "success")
             return redirect(url_for("unified_vendors.edit_vendor", vendor_id=vendor.id))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             flash("Error updating vendor. Please try again.", "error")
 
@@ -729,6 +747,12 @@ def vendor_concentration_risk(vendor_id):
     """
     try:
         from app.models.vendor.vendor_organization import VendorProduct, VendorProductCapability
+        from app.utils.route_guards import require_entity_json
+
+        # Existence guard: an empty risk list for a nonexistent vendor is fabricated data.
+        _vendor, missing = require_entity_json(VendorOrganization, vendor_id, label="Vendor")
+        if missing:
+            return missing
         from app.models.business_capabilities import BusinessCapability
         from sqlalchemy import func
 

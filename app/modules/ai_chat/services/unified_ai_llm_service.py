@@ -15,20 +15,12 @@ Consolidates 7 AI/LLM services into a single, modular architecture:
 Phase 4: AI/LLM services consolidation (7 → 1) with modular architecture
 """
 
-import hashlib
-import json
 import logging
-import os
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
-import requests
-from flask import current_app
 
-from app import db
-from app.models import LLMInteraction, PipelineStage
 
 # Import individual services for consolidation
 try:

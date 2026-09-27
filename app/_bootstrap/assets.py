@@ -5,9 +5,36 @@ Asset pipeline setup — Flask-Assets Environment + manifest-based fingerprintin
 import json
 import os
 
+from app._bootstrap.build_info import get_build_id
+
 # Module-level manifest cache — loaded once at startup, reloaded on each request
 # in debug mode for development convenience.
 _manifest_cache = {}
+
+
+def _asset_version(static_folder, filename, debug=False):
+    """Return a cache-busting token for a static file with no manifest entry.
+
+    In production this is the single process-wide build identifier
+    (`build_info.get_build_id()`) — the same value the `url_for` override in
+    `context_processors.py` stamps on every static URL and that `/version`
+    reports, so one deploy carries exactly one `?v=` value everywhere
+    (ARCH-062; previously this used a per-file mtime, which is why five
+    distinct stamps could be observed in a single session).
+
+    In debug mode we keep the per-file mtime instead, so editing one asset on
+    a running dev server gets a fresh URL without a restart — dev-only
+    convenience, never reaching a deployed build.
+    """
+    if not debug:
+        return get_build_id()
+    if not static_folder or not filename:
+        return None
+    try:
+        mtime = os.path.getmtime(os.path.join(static_folder, filename))
+    except OSError:
+        return None
+    return str(int(mtime))
 
 
 def _load_manifest(app):
@@ -45,12 +72,21 @@ def init_assets(app):
         Usage in templates:
             {{ 'css/tailwind-output.css' | asset_url }}
 
-        Returns the URL for the content-hashed version if a manifest entry exists,
-        otherwise falls back to the original filename (safe for development).
+        Returns the URL for the content-hashed version if a manifest entry exists.
+        Otherwise falls back to the original filename with an mtime-based ?v=
+        cache-buster, so an asset rebuilt in place gets a fresh URL instead of
+        being served forever from a stale (previously `immutable`) cache entry.
         """
         from flask import url_for
-        resolved = _manifest_cache.get(filename, filename)
-        return url_for("static", filename=resolved)
+        resolved = _manifest_cache.get(filename)
+        if resolved:
+            # Content-hashed via the manifest → the URL already changes with the
+            # bytes, so no version query is needed (and it stays cache-forever safe).
+            return url_for("static", filename=resolved)
+        version = _asset_version(app.static_folder, filename, debug=app.debug)
+        if version:
+            return url_for("static", filename=filename, v=version)
+        return url_for("static", filename=filename)
 
     # --- Flask-Assets bundle registration (optional, non-fatal) ---
     try:

@@ -15,18 +15,14 @@ Key Features:
 - Interactive discovery dashboard
 """
 
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_, text
 from sqlalchemy.orm import joinedload
 
 from app import db
-from app.models import User
-from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import (
     TCOCalculation,
     VendorOrganization,
@@ -287,6 +283,7 @@ class VendorDiscoveryEngine:
         """Calculate cost effectiveness score based on pricing and TCO."""
 
         # Get pricing information
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         pricing_tiers = VendorProductPricing.query.filter_by(product_id=product.id).all()
 
         if not pricing_tiers:
@@ -486,6 +483,7 @@ class VendorDiscoveryEngine:
         """Calculate comprehensive TCO for a vendor product."""
 
         # Get pricing information
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         pricing = VendorProductPricing.query.filter_by(product_id=product.id).first()
 
         # Base calculations

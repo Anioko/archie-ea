@@ -1,22 +1,13 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% block title %}Tracking — Rationalization{% endblock %}
 
 {% block content %}
 <div x-data="trackingApp()" x-init="loadBenefits(); loadDependencyRisk(); loadRetirementSequence()">
 
     {# ── Breadcrumbs ──────────────────────────────────────────────── #}
-    <nav class="flex items-center text-sm text-muted-foreground mb-4" aria-label="Breadcrumb">
-        <a href="{{ url_for('unified_applications.rationalization_dashboard') }}" class="hover:text-foreground">Rationalization</a>
-        <i data-lucide="chevron-right" class="h-3.5 w-3.5 mx-1.5"></i>
-        <span class="text-foreground font-medium">Tracking</span>
-    </nav>
 
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-            <h1 class="text-2xl font-bold tracking-tight text-foreground">Portfolio Tracking</h1>
-            <p class="text-sm text-muted-foreground mt-1">Monitor savings realization, dependency risk, and retirement progress</p>
-        </div>
-    </div>
+    {{ page_shell(title='Portfolio Tracking', subtitle='Monitor savings realization, dependency risk, and retirement progress', breadcrumb=[('Rationalization', url_for('unified_applications.rationalization_dashboard')), ('Tracking', none)]) }}
 
     {% include 'applications/rationalization/_sub_nav.html' %}
 
@@ -24,8 +15,8 @@
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <div class="rounded-xl border bg-card p-5">
             <div class="flex items-center gap-3 mb-2">
-                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-emerald-500/10">
-                    <i data-lucide="trending-up" class="h-5 w-5 text-emerald-600"></i>
+                <div class="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10">
+                    <i data-lucide="trending-up" class="h-5 w-5 text-success"></i>
                 </div>
                 <div>
                     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Projected Savings</p>
@@ -59,7 +50,7 @@
                     <i data-lucide="upload" class="h-3.5 w-3.5"></i> Import
                 </button>
                 <select x-model="depRiskFilter" @change="loadDependencyRisk()"
-                    class="rounded-md border border-input bg-background px-3 py-1.5 text-xs">
+                    class="rounded-md border border-input bg-background px-3 py-1.5 text-xs" aria-label="Filter by Risk Level">
                 <option value="">All Risk Levels</option>
                 <option value="critical">Critical</option>
                 <option value="high">High</option>
@@ -106,7 +97,7 @@
                                 <td class="px-4 py-3" x-text="item.downstream_count"></td>
                                 <td class="px-4 py-3">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
-                                          :class="item.risk_level === 'critical' ? 'bg-destructive/10 text-destructive' : item.risk_level === 'high' ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground'"
+                                          :class="item.risk_level === 'critical' ? 'bg-destructive/10 text-destructive-emphasis' : item.risk_level === 'high' ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground'"
                                           x-text="item.risk_level"></span>
                                 </td>
                             </tr>
@@ -181,7 +172,7 @@
                     <label class="block text-xs font-medium text-muted-foreground mb-1">Upload JSON or CSV file</label>
                     <input type="file" accept=".json,.csv"
                            @change="handleImportFile($event)"
-                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary">
+                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary/10 file:px-3 file:py-1 file:text-xs file:font-medium file:text-primary" aria-label="Upload JSON or CSV file">
                 </div>
 
                 {# Preview table #}
@@ -228,7 +219,7 @@
             <template x-if="importResult">
                 <div class="space-y-3">
                     <div class="flex items-center gap-2"
-                         :class="importResult.success ? 'text-emerald-600' : 'text-destructive'">
+                         :class="importResult.success ? 'text-success-emphasis' : 'text-destructive-emphasis'">
                         <i :data-lucide="importResult.success ? 'check-circle-2' : 'alert-circle'" class="h-5 w-5"></i>
                         <span class="text-sm font-medium" x-text="importResult.success ? 'Import Complete' : 'Import Failed'"></span>
                     </div>
@@ -238,9 +229,9 @@
                             <p>Skipped (duplicates): <span class="font-medium text-foreground" x-text="importResult.skipped"></span></p>
                             <template x-if="importResult.errors && importResult.errors.length > 0">
                                 <div class="mt-2">
-                                    <p class="text-xs font-medium text-destructive">Errors:</p>
+                                    <p class="text-xs font-medium text-destructive-emphasis">Errors:</p>
                                     <template x-for="e in importResult.errors.slice(0, 5)" :key="e.row">
-                                        <p class="text-xs text-destructive" x-text="'Row ' + e.row + ': ' + e.reason"></p>
+                                        <p class="text-xs text-destructive-emphasis" x-text="'Row ' + e.row + ': ' + e.reason"></p>
                                     </template>
                                 </div>
                             </template>
@@ -259,5 +250,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="{{ url_for('static', filename='js/applications/rationalization_tracking.js') }}?v=1"></script> <!-- entity-picker-ok: script tag -->
+<script src="{{ url_for('static', filename='js/applications/rationalization_tracking.js') }}"></script> <!-- entity-picker-ok: script tag -->
 {% endblock %}

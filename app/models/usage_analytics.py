@@ -58,7 +58,7 @@ class UsageAnalytics(db.Model):
             user_agent=user_agent,
             ip_address=ip_address,
             referrer=referrer,
-            event_metadata=metadata or {}
+            event_metadata=event_metadata or {}
         )
 
         try:

@@ -69,8 +69,14 @@ class EnterpriseExportService:
             # own @page rules, cover gradient, and table styling).
             from weasyprint import HTML
             return HTML(string=html).write_pdf()
-            
-        except ImportError:
+
+        except (ImportError, OSError):
+            # OSError as well as ImportError: WeasyPrint is a CFFI binding over
+            # native GTK/Pango. When the wheel is installed but libgobject et al.
+            # are absent — normal on Windows, and on slim container images — the
+            # import raises OSError("cannot load library 'libgobject-2.0-0'"),
+            # not ImportError. Catching only ImportError let that propagate, so
+            # PDF export 500'd on exactly the hosts the fallback exists for.
             # Fallback to pdfkit (wkhtmltopdf)
             try:
                 import pdfkit
@@ -110,8 +116,7 @@ class EnterpriseExportService:
         """
         from app.models import Solution
         from pptx import Presentation
-        from pptx.util import Inches, Pt
-        from pptx.enum.text import PP_ALIGN
+        from pptx.util import Inches
         
         solution = Solution.query.get_or_404(solution_id)
         prs = Presentation()
@@ -175,16 +180,22 @@ class EnterpriseExportService:
             '       xsi:schemaLocation="http://www.opengroup.org/xsd/archimate/3.0/ http://www.opengroup.org/xsd/archimate/3_1/archimate3_Diagram.xsd"',
             f'       identifier="archie-export-{datetime.utcnow().strftime("%Y%m%d-%H%M%S")}"',
             '       version="3.2">',
-            '  <name>A.R.C.H.I.E. Architecture Export</name>',
+            '  <name>Entelim Architecture Export</name>',
             '  <elements>'
         ]
         
         # Export elements
         for elem in elements:
-            xml_lines.append(f'    <element identifier="{elem.id}" xsi:type="{elem.layer}:{elem.element_type}">')
-            xml_lines.append(f'      <name>{_escape_xml(elem.name)}</name>')
+            # elem.element_type does not exist on ArchiMateElement (the
+            # column is `type`) -- this line raised AttributeError on every
+            # call before this fix, so this export has never worked. Found
+            # incidentally while escaping this line for the raw-html-escaping
+            # gate (11 Sep 2026); fixing the attribute name since the escaping
+            # fix alone would leave this endpoint permanently broken.
+            xml_lines.append(f'    <element identifier="{elem.id}" xsi:type="{_escape_xml(elem.layer)}:{_escape_xml(elem.type)}">')  # raw-html-ok: elem.id is an int PK; elem.layer/type are _escape_xml()'d inline
+            xml_lines.append(f'      <name>{_escape_xml(elem.name)}</name>')  # raw-html-ok: _escape_xml() call
             if elem.description:
-                xml_lines.append(f'      <documentation>{_escape_xml(elem.description)}</documentation>')
+                xml_lines.append(f'      <documentation>{_escape_xml(elem.description)}</documentation>')  # raw-html-ok: _escape_xml() call
             xml_lines.append('    </element>')
         
         xml_lines.extend(['  </elements>', '  <relationships>'])
@@ -198,9 +209,14 @@ class EnterpriseExportService:
             relationships = ArchiMateRelationship.query.all()
         
         for rel in relationships:
-            xml_lines.append(f'    <relationship identifier="{rel.id}" source="{rel.source_id}" target="{rel.target_id}" xsi:type="{rel.relationship_type}">')
-            if rel.name:
-                xml_lines.append(f'      <name>{_escape_xml(rel.name)}</name>')
+            # Same pre-existing bug as the element loop above:
+            # rel.relationship_type doesn't exist (the column is `type`), and
+            # ArchiMateRelationship has no `name` column at all -- `custom_label`
+            # is its closest equivalent. Both raised AttributeError on every
+            # call before this fix.
+            xml_lines.append(f'    <relationship identifier="{rel.id}" source="{rel.source_id}" target="{rel.target_id}" xsi:type="{_escape_xml(rel.type)}">')  # raw-html-ok: rel.id/source_id/target_id are int PK/FKs; type is _escape_xml()'d inline
+            if rel.custom_label:
+                xml_lines.append(f'      <name>{_escape_xml(rel.custom_label)}</name>')  # raw-html-ok: _escape_xml() call
             xml_lines.append('    </relationship>')
         
         xml_lines.extend(['  </relationships>', '</model>'])
@@ -220,7 +236,7 @@ class EnterpriseExportService:
         
         Uses: openpyxl
         """
-        from app.models import Application, Vendor
+        from app.models import Application
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment
         
@@ -246,13 +262,13 @@ class EnterpriseExportService:
         apps = Application.query.all()
         for app in apps:
             ws_apps.append([
-                app.name,
-                app.vendor.name if app.vendor else '',
-                app.lifecycle_status or '',
-                app.annual_cost or 0,
-                app.technical_owner or '',
-                app.business_owner or '',
-                app.criticality or ''
+                getattr(app, "name", "") or "",
+                getattr(app, "vendor_name", "") or "",
+                getattr(app, "lifecycle_status", "") or "",
+                getattr(app, "annual_cost", 0) or 0,
+                getattr(app, "technical_owner", "") or "",
+                getattr(app, "business_owner", "") or "",
+                getattr(app, "criticality", "") or "",
             ])
         
         # Auto-size columns

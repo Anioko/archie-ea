@@ -10,7 +10,6 @@ Example:
 """
 
 from typing import List, Dict, Any, Optional
-from app import db
 from app.models.solution_models import Solution
 import logging
 

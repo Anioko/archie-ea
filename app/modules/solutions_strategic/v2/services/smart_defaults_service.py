@@ -15,6 +15,7 @@ Design principles:
 - Vendor products come from actual app-vendor relationships
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 import logging
 from collections import defaultdict
 
@@ -91,10 +92,21 @@ def generate_smart_defaults(solution):
         from app.models.application_capability import ApplicationCapabilityMapping
 
         # Count apps per capability
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would score every
+        # capability as zero app coverage. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
         cap_app_counts = dict(
             db.session.query(
                 ApplicationCapabilityMapping.business_capability_id,
+                # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
                 func.count(ApplicationCapabilityMapping.id),
+            )
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
             )
             .group_by(ApplicationCapabilityMapping.business_capability_id)
             .all()
@@ -189,6 +201,7 @@ def generate_smart_defaults(solution):
         if results["capabilities"]:
             cap_ids = [c["id"] for c in results["capabilities"]]
             app_mappings = (
+                # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                 ApplicationCapabilityMapping.query
                 .filter(ApplicationCapabilityMapping.business_capability_id.in_(cap_ids))
                 .all()
@@ -600,6 +613,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(driver)
+        sync_archimate_element(driver)
         db.session.flush()
         created_ids["driver_ids"].append(driver.id)
 
@@ -636,6 +650,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(goal)
+        sync_archimate_element(goal)
         db.session.flush()
         created_ids["goal_ids"].append(goal.id)
 
@@ -672,6 +687,7 @@ def apply_smart_defaults(solution, defaults):
             ai_generated=False,
         )
         db.session.add(constraint)
+        sync_archimate_element(constraint)
         db.session.flush()
         created_ids["constraint_ids"].append(constraint.id)
 
@@ -708,13 +724,7 @@ def revert_smart_defaults(solution, created_ids):
         created_ids: The created_ids dict returned by apply_smart_defaults
     """
     from app.models.solution_models import (
-        SolutionArchiMateElement,
         SolutionCapabilityMapping,
-    )
-    from app.models.solution_architect_models import (
-        SolutionConstraint,
-        SolutionDriver,
-        SolutionGoal,
     )
 
     reverted = {

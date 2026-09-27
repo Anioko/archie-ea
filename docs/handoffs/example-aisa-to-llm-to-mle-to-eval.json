@@ -1,0 +1,27 @@
+[
+  {
+    "from": "ai-solution-architect",
+    "to": "llm-architect",
+    "artifact": "docs/buckets/example-ai/ai-blueprint.md",
+    "approval_status": "approved",
+    "gate_conditions": ["blueprint_covers_autonomy_boundary"],
+    "timestamp": "2026-09-15T00:00:00Z"
+  },
+  {
+    "from": "llm-architect",
+    "to": "ml-engineer",
+    "artifact": "docs/buckets/example-ai/llm-spec.md",
+    "approval_status": "approved",
+    "gate_conditions": ["adr_cites_ai_gates", "spec_has_eval_criteria"],
+    "timestamp": "2026-09-15T00:05:00Z"
+  },
+  {
+    "from": "ml-engineer",
+    "to": "ai-ml-evaluation-lead",
+    "artifact": "app/modules/ai_chat/",
+    "approval_status": "pending",
+    "gate_conditions": ["verify_py_clean", "tests_pass"],
+    "unmet_conditions": ["verify_py_clean"],
+    "timestamp": "2026-09-15T00:10:00Z"
+  }
+]

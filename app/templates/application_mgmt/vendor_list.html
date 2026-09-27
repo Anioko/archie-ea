@@ -8,21 +8,14 @@
 <div class="flex-1 overflow-hidden bg-background">
   <div class="h-full overflow-y-auto">
     <div class="space-y-6">
-  <!-- Breadcrumbs -->
-  <nav class="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-    <a href="{{ url_for('main.index') }}" class="hover:text-foreground transition-colors">Dashboard</a>
-    <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
-    <span class="text-foreground font-medium">Application Vendors</span>
-  </nav>
-
   <!-- Page Header -->
   <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
     {{ page_header(
-        title='Application Vendors',
+        title='Application Vendors', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Application Vendors'}],
         description='Manage software vendors and their product portfolios across the enterprise.'
     ) }}
     <div class="flex flex-col sm:flex-row gap-3">
-      <button type="button" @click="openVendorAnalysisModal()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-warning/20 bg-warning/5 hover:bg-warning/10 text-warning transition-colors text-sm font-medium" aria-label="Action">
+      <button type="button" @click="openVendorAnalysisModal()" class="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-lg border-2 border-warning/20 bg-warning/5 hover:bg-warning/10 text-warning-emphasis transition-colors text-sm font-medium" aria-label="Action">
         <i data-lucide="sparkles" class="h-4 w-4" aria-hidden="true"></i>
         <span class="hidden sm:inline">Vendor Analysis</span>
         <span class="sm:hidden">Analysis</span>
@@ -74,9 +67,9 @@
   </div>
 
   <!-- Data Quality Banner -->
-  <div class="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 mb-4 flex items-center gap-4 text-xs text-muted-foreground">
-      <i data-lucide="alert-triangle" class="h-4 w-4 text-amber-500 shrink-0"></i>
-      <span class="font-medium text-amber-700">Data Quality</span>
+  <div class="rounded-lg border border-warning/30 bg-warning/5 p-3 mb-4 flex items-center gap-4 text-xs text-muted-foreground">
+      <i data-lucide="alert-triangle" class="h-4 w-4 text-warning shrink-0"></i>
+      <span class="font-medium text-warning-emphasis">Data Quality</span>
       <span>Contract data: limited</span>
       <span>Capability mappings: check vendor detail</span>
   </div>
@@ -150,7 +143,7 @@
               <div class="min-w-0">
                 <p class="font-medium text-sm truncate">{{ vendor.name }}</p>
                 {% if vendor.website %}
-                <a href="{{ vendor.website }}" target="_blank" class="text-xs text-primary hover:underline block truncate">{{ vendor.website }}</a>
+                <a href="{{ vendor.website }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline block truncate">{{ vendor.website }}</a>
                 {% endif %}
               </div>
             </td>
@@ -205,7 +198,7 @@
               </div>
             </td>
             <td class="px-4 py-3">
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium {% if vendor.status == 'active' %}bg-success/10 text-success border border-success/30{% else %}bg-muted border border-border{% endif %}">
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium {% if vendor.status == 'active' %}bg-success/10 text-success-emphasis border border-success/30{% else %}bg-muted border border-border{% endif %}">
                 {{ vendor.status | title }}
               </span>
             </td>
@@ -227,7 +220,7 @@
             <td class="px-4 py-3 text-center">
               {% set vm = vendor_metrics.get(vendor.id, {}) %}
               {% set completeness = ((1 if (vendor.products and vendor.products|length > 0) else 0) + (1 if vendor.vendor_type else 0) + (1 if (vm.capability_count and vm.capability_count > 0) else 0) + (1 if (vm.linked_applications and vm.linked_applications > 0) else 0) + (1 if vendor.description else 0)) %}
-              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if completeness >= 4 %}bg-success/10 text-success border border-success/30{% elif completeness >= 2 %}bg-amber-500/10 text-amber-600 border border-amber-500/30{% else %}bg-destructive/10 text-destructive border border-destructive/30{% endif %}">{{ completeness }}/5</span>
+              <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium {% if completeness >= 4 %}bg-success/10 text-success-emphasis border border-success/30{% elif completeness >= 2 %}bg-warning/10 text-warning-emphasis border border-warning/30{% else %}bg-destructive/10 text-destructive-emphasis border border-destructive/30{% endif %}">{{ completeness }}/5</span>
             </td>
             <td class="px-4 py-3 text-right">
               <div class="flex gap-2 justify-end min-w-[120px]">
@@ -249,7 +242,7 @@
           <div class="flex-1">
             <h3 class="font-semibold text-base mb-1">{{ vendor.name }}</h3>
             {% if vendor.website %}
-            <a href="{{ vendor.website }}" target="_blank" class="text-xs text-primary hover:underline block">{{ vendor.website }}</a>
+            <a href="{{ vendor.website }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline block">{{ vendor.website }}</a>
             {% endif %}
           </div>
           <div class="flex gap-2">
@@ -272,7 +265,7 @@
           </div>
           <div>
             <p class="text-xs text-muted-foreground mb-1">Status</p>
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {% if vendor.status == 'active' %}bg-success/10 text-success{% else %}bg-muted{% endif %}">
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium {% if vendor.status == 'active' %}bg-success/10 text-success-emphasis{% else %}bg-muted{% endif %}">
               {{ vendor.status | title }}
             </span>
           </div>
@@ -326,8 +319,12 @@
     <div class="p-4 sm:p-6 border-t bg-muted/30">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <p class="text-sm text-muted-foreground">
-          Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }}-{{ [pagination.page * pagination.per_page, pagination.total] | min }}
-          of {{ pagination.total }} vendor{{ 's' if pagination.total != 1 else '' }}
+          {% if pagination.total > 0 %}
+            Showing {{ ((pagination.page - 1) * pagination.per_page) + 1 }}-{{ [pagination.page * pagination.per_page, pagination.total] | min }}
+            of {{ pagination.total }} vendor{{ 's' if pagination.total != 1 else '' }}
+          {% else %}
+            0 results
+          {% endif %}
         </p>
         {% if pagination.pages > 1 %}
         <div class="flex items-center gap-1">

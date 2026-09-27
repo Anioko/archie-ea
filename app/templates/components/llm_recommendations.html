@@ -8,7 +8,7 @@
    - LLM metadata (model used, provider)
 
    Usage:
-   {% from 'components/llm_recommendations.html' import llm_recommendations %}
+   {% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 
    {{ llm_recommendations(
        dashboard='capability_health',
@@ -35,18 +35,10 @@ function llmRecommendationsComponent(dashboard) {
             this.error = null;
 
             try {
-                const response = await fetch('/strategic/api/recommendations/' + dashboard, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        context: {{ context_data | tojson }},
-                        max_recommendations: 5
-                    })
+                const data = await Platform.fetch.post('/strategic/api/recommendations/' + dashboard, {
+                    context: {{ context_data | tojson }},
+                    max_recommendations: 5
                 });
-
-                const data = await response.json();
 
                 if (data.success) {
                     this.recommendations = data.recommendations;
@@ -74,15 +66,7 @@ function llmRecommendationsComponent(dashboard) {
             }
 
             try {
-                const response = await fetch(`/strategic/api/recommendations/${recId}/rate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(this.ratingData)
-                });
-
-                const data = await response.json();
+                const data = await Platform.fetch.post(`/strategic/api/recommendations/${recId}/rate`, this.ratingData);
 
                 if (data.success) {
                     const rec = this.recommendations.find(r => r.id === recId);
@@ -163,7 +147,7 @@ function llmRecommendationsComponent(dashboard) {
                         Generate context-aware strategic recommendations using your configured LLM provider
                     </p>
                 </div>
-                <button 
+                <button type="button" 
                     @click="generateRecommendations()"
                     :disabled="loading"
                     class="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary disabled:bg-muted-foreground/40 text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Generate recommendations">
@@ -174,7 +158,7 @@ function llmRecommendationsComponent(dashboard) {
             
             <!-- Error Message -->
             <div x-show="error" x-cloak 
-                 class="p-4 bg-destructive/5 border border-destructive/20 rounded-lg text-destructive"
+                 class="p-4 bg-destructive/5 border border-destructive/20 rounded-lg text-destructive-emphasis"
                  x-transition>
                 <strong>Error:</strong> <span x-text="error"></span>
             </div>
@@ -210,12 +194,12 @@ function llmRecommendationsComponent(dashboard) {
                                         <template x-for="star in 5" :key="star">
                                             <i data-lucide="star" 
                                                class="h-4 w-4"
-                                               :class="star <= rec.user_rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50'"></i>
+                                               :class="star <= rec.user_rating ? 'fill-yellow-400 text-warning-emphasis/80' : 'text-muted-foreground/50'"></i>
                                         </template>
                                     </div>
                                 </template>
                                 <template x-if="!rec.user_rating">
-                                    <button 
+                                    <button type="button" 
                                         @click="openRatingModal(rec)"
                                         class="text-sm text-primary hover:text-primary font-medium" aria-label="Rate this recommendation">
                                         Rate this
@@ -277,7 +261,7 @@ function llmRecommendationsComponent(dashboard) {
                                 type="button">
                             <i data-lucide="star" 
                                class="h-8 w-8 cursor-pointer transition-colors"
-                               :class="star <= ratingData.rating ? 'fill-yellow-400 text-warning/80' : 'text-muted-foreground/50 hover:text-yellow-200'"></i>
+                               :class="star <= ratingData.rating ? 'fill-yellow-400 text-warning-emphasis/80' : 'text-muted-foreground/50 hover:text-warning-emphasis/50'"></i>
                         </button>
                     </template>
                     <span class="ml-2 text-sm text-muted-foreground" x-text="ratingData.rating + ' / 5'"></span>
@@ -291,7 +275,7 @@ function llmRecommendationsComponent(dashboard) {
                     x-model="ratingData.feedback_notes"
                     rows="3"
                     class="w-full px-3 py-2 border border-border rounded-lg focus:ring-2 focus:ring-ring focus:border-transparent"
-                    placeholder="Share your thoughts on this recommendation..."></textarea>
+                    placeholder="Share your thoughts on this recommendation..." aria-label="Feedback (Optional)"></textarea>
             </div>
             
             <!-- Implementation Status -->
@@ -307,12 +291,12 @@ function llmRecommendationsComponent(dashboard) {
             
             <!-- Actions -->
             <div class="flex items-center gap-3">
-                <button 
+                <button type="button" 
                     @click="rateRecommendation(ratingRecommendation.id)"
                     class="flex-1 px-4 py-2 bg-primary hover:bg-primary text-primary-foreground font-medium rounded-lg transition-colors" aria-label="Submit rating">
                     Submit Rating
                 </button>
-                <button 
+                <button type="button" 
                     @click="ratingRecommendation = null; resetRatingForm()"
                     class="px-4 py-2 border border-border hover:bg-muted text-foreground/80 font-medium rounded-lg transition-colors" aria-label="Cancel rating">
                     Cancel

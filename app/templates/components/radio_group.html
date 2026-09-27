@@ -1,0 +1,67 @@
+{# Radio group — accessible single-choice control.
+
+   A shared primitive so forms stop hand-rolling radio sets (audit Leverage 2:
+   one of the missing form primitives). Rendered as a <fieldset>/<legend> so the
+   group is announced as one labelled control; native inputs for robust
+   submission and keyboard support; styled through tokens only.
+
+   Usage:
+     {% from "components/radio_group.html" import radio_group %}
+     {{ radio_group(
+          name='tier', label='Support tier', required=true, value='gold',
+          options=[
+            {'value':'gold',   'label':'Gold',   'description':'24/7, 1h response'},
+            {'value':'silver', 'label':'Silver', 'description':'Business hours'},
+            {'value':'none',   'label':'None',   'disabled':true},
+          ]) }}
+#}
+{% macro radio_group(
+    name='',
+    options=[],
+    value=none,
+    disabled=false,
+    required=false,
+    label='',
+    error=none,
+    inline=false,
+    class=''
+) %}
+<fieldset {% if disabled %}disabled{% endif %}
+          {% if error %}aria-invalid="true"{% endif %}
+          {% if error and name %}aria-describedby="{{ name }}-error"{% endif %}
+          class="{{ class }}">
+    {% if label %}
+    <legend class="text-sm font-medium text-foreground mb-2">
+        {{ label }}{% if required %}<span class="text-destructive-emphasis ml-1">*</span>{% endif %}
+    </legend>
+    {% endif %}
+    <div class="{% if inline %}flex flex-wrap gap-x-6 gap-y-2{% else %}grid gap-2{% endif %}">
+        {% for opt in options %}
+        {% set oid = (name ~ '-' ~ loop.index) %}
+        <div class="flex items-start gap-2.5">
+            <input
+                type="radio"
+                id="{{ oid }}"
+                {% if name %}name="{{ name }}"{% endif %}
+                value="{{ opt.value }}"
+                {% if value is not none and (value | string) == (opt.value | string) %}checked{% endif %}
+                {% if opt.get('disabled') %}disabled{% endif %}
+                {% if required and loop.first %}required aria-required="true"{% endif %}
+                class="mt-0.5 h-4 w-4 shrink-0 border-input accent-primary text-primary
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                       disabled:cursor-not-allowed disabled:opacity-50" />
+            <div class="grid gap-0.5 leading-tight">
+                <label for="{{ oid }}"
+                       class="text-sm font-medium text-foreground {% if not opt.get('disabled') %}cursor-pointer{% endif %}">
+                    {{ opt.label }}
+                </label>
+                {% if opt.get('description') %}<p class="text-xs text-muted-foreground">{{ opt.description }}</p>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if error %}
+    <p {% if name %}id="{{ name }}-error"{% endif %} class="text-sm text-destructive-emphasis mt-2" role="alert">{{ error }}</p>
+    {% endif %}
+</fieldset>
+{% endmacro %}

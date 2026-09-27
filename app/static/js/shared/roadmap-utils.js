@@ -353,9 +353,8 @@ const RoadmapUtils = {
             link.click();
 
         } catch (error) {
-            console.error('Export error:', error);
             toast.error('Export Failed', {
-                description: 'Failed to export image. Please try again.',
+                description: `Failed to export image: ${error.message || error}`,
                 duration: 5000
             });
         } finally {

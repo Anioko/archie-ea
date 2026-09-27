@@ -8,7 +8,6 @@ across capabilities, technology, and processes.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app import db
@@ -270,7 +269,6 @@ RESPOND WITH JSON:
     ) -> ImpactAnalysisResult:
         """Analyze impact of a proposed change."""
         # Get element details
-        element_name = f"{element_type}:{element_id}"
 
         prompt = f"""Analyze the impact of this change.
 

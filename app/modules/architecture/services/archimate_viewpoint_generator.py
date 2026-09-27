@@ -24,6 +24,7 @@ Usage:
     xml = service.export_to_open_exchange(viewpoint)
 """
 
+from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import logging
 import uuid
 import xml.etree.ElementTree as ET
@@ -605,7 +606,7 @@ class ArchiMateViewpointGenerator:
         Returns:
             XML string in ArchiMate Open Exchange format
         """
-        logger.info(f"Exporting viewpoint to Open Exchange format")
+        logger.info("Exporting viewpoint to Open Exchange format")
 
         # Create root element with namespaces
         root = ET.Element(
@@ -647,7 +648,7 @@ class ArchiMateViewpointGenerator:
         # Add relationships
         relationships_container = ET.SubElement(root, "relationships")
         for rel in viewpoint.get("relationships", []):
-            relationship = ET.SubElement(
+            (ET.SubElement(
                 relationships_container,
                 "relationship",
                 {
@@ -656,7 +657,7 @@ class ArchiMateViewpointGenerator:
                     "source": str(rel.get("source", "")),
                     "target": str(rel.get("target", "")),
                 },
-            )
+            ))
 
         # Add view
         views_container = ET.SubElement(root, "views")
@@ -675,7 +676,7 @@ class ArchiMateViewpointGenerator:
 
         # Add nodes (elements in view)
         for idx, elem in enumerate(viewpoint.get("elements", [])):
-            node = ET.SubElement(
+            (ET.SubElement(
                 view,
                 "node",
                 {
@@ -686,7 +687,7 @@ class ArchiMateViewpointGenerator:
                     "w": "140",
                     "h": "55",
                 },
-            )
+            ))
 
         # Convert to string
         xml_string = ET.tostring(root, encoding="unicode", method="xml")
@@ -755,7 +756,7 @@ class ArchiMateViewpointGenerator:
 
         # Fallback: stdlib xml.etree structural checks
         try:
-            root = ET.fromstring(xml_string)
+            root = safe_xml.fromstring(xml_string)
 
             if "model" not in root.tag:
                 errors.append(f"Root element is '{root.tag}', expected 'model'")

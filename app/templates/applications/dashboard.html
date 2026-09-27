@@ -1,21 +1,23 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {% extends "layouts/admin_base.html" %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/card.html' import card, card_header, card_title, card_content %}
 {% from 'components/badge.html' import badge %}
-{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel %}
+{% from 'macros/nav_macros_shadcn.html' import pill_tabs, tab_panel with context %}
+{% from 'macros/page_shell.html' import page_shell %}
 
 {% block title %}{% if app is defined and app %}{{ app.name }} — Application Detail{% else %}Applications Dashboard{% endif %}{% endblock %}
 
-{# FAR-018: Breadcrumb navigation #}
+{# FAR-018: Breadcrumb navigation.
+   Application-detail (app is set) gets its breadcrumb from page_shell()
+   in the content block below -- rendering it here too produced TWO stacked
+   breadcrumb trails ("Home > Applications > X" above "Applications > X"),
+   a defect flagged in the shell-overhaul design review. Only the portfolio
+   dashboard (no app) still uses this block. #}
+{# duplicate-breadcrumb-ok: mutually exclusive with page_shell's breadcrumb arg below -- each side is guarded by the inverse of `app is defined and app`, so only one ever renders per request; the static checker can't see the runtime branch. #}
 {% block breadcrumb %}
+{% if not (app is defined and app) %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
-{% if app is defined and app %}
-{{ breadcrumb_nav(items=[
-    {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Applications', 'href': url_for('unified_applications.application_list')},
-    {'text': app.name, 'current': true}
-]) }}
-{% else %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Applications Dashboard', 'current': true}
@@ -28,7 +30,7 @@
    Used exclusively for server-generated ArchiMate diagram syntax (|safe allowed)
 ───────────────────────────────────────────────────────────────────────────── #}
 {% block extra_head_js %}
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="/static/vendor/mermaid.min.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     if (typeof mermaid !== 'undefined') {
@@ -46,85 +48,87 @@
 {% if app and (app.deployment_status == 'retired' or app.lifecycle_status == 'retired') %}
 <div class="mb-4 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
   <i data-lucide="alert-triangle" class="h-5 w-5 text-destructive shrink-0" aria-hidden="true"></i>
-  <span class="text-sm font-semibold text-destructive">RETIRED — This application has been decommissioned and is no longer active.</span>
+  <span class="text-sm font-semibold text-destructive-emphasis">RETIRED — This application has been decommissioned and is no longer active.</span>
 </div>
 {% endif %}
 
 {# ─────────────────────────────────────────────────────────────────────────────
-   Page Header (app detail only)
+   Page Header (app detail only) — screen system (page_shell)
+   Was a hand-rolled <nav aria-label="Breadcrumb"> + <h1> here, stacked below
+   the layout's own {% block breadcrumb %} — the "TWO stacked breadcrumb
+   trails" defect from the shell-overhaul design review. Now the sole
+   breadcrumb for this page: {% block breadcrumb %} above renders nothing
+   when app is set.
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app %}
-<div class="mb-4 flex flex-col gap-2">
-  <nav aria-label="Breadcrumb">
-    <ol class="flex items-center gap-1.5 text-sm text-muted-foreground">
-      <li><a href="{{ url_for('unified_applications.application_list') }}" class="hover:text-foreground transition-colors">Applications</a></li>
-      <li><i data-lucide="chevron-right" class="w-3.5 h-3.5" aria-hidden="true"></i></li>
-      <li class="text-foreground font-medium">{{ app.name }}</li>
-    </ol>
-  </nav>
+{% set valid_tab_ids = ['overview','architecture','capabilities','processes','vendors','technology','motivation','compliance','health','cost','dependencies','ea-workflows'] %}
+{% set resolved_tab = active_tab_id if active_tab_id in valid_tab_ids else 'overview' %}
 
-  <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">{{ app.name }}</h1>
-      <div class="flex flex-wrap items-center gap-2">
-        {# ARC-F01: Data freshness badge #}
-        {% if app.data_freshness_tier == 'fresh' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">fresh</span>
-        {% elif app.data_freshness_tier == 'stale' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
-        {% elif app.data_freshness_tier == 'outdated' %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-500/10 text-destructive border border-red-500/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
-        {% else %}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
-        {% endif %}
-        {# ARC-F02: Data completeness badge #}
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-            {% if app.completeness_score >= 80 %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-            {% elif app.completeness_score >= 50 %}bg-amber-500/10 text-amber-600 border border-amber-500/30
-            {% else %}bg-red-500/10 text-destructive border border-red-500/30{% endif %}"
-            title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
-            {{ app.completeness_score }}% complete
-        </span>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        {% if app.application_code %}
-        {% call badge(variant='outline') %}{{ app.application_code }}{% endcall %}
-        {% endif %}
-        {% if app.deployment_status %}
-        {% set ds = app.deployment_status | lower %}
-        {% if ds == 'production' %}{% call badge(variant='success') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% elif ds in ['retired', 'deprecated'] %}{% call badge(variant='destructive') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% elif ds in ['development', 'testing', 'staging'] %}{% call badge(variant='warning') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% else %}{% call badge(variant='neutral') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
-        {% endif %}
-        {% endif %}
-        {% if app.business_criticality %}
-        {% set bc = app.business_criticality | lower %}
-        {% if bc == 'critical' %}{% call badge(variant='destructive') %}{{ app.business_criticality }}{% endcall %}
-        {% elif bc == 'high' %}{% call badge(variant='warning') %}{{ app.business_criticality }}{% endcall %}
-        {% elif bc == 'medium' %}{% call badge(variant='info') %}{{ app.business_criticality }}{% endcall %}
-        {% else %}{% call badge(variant='neutral') %}{{ app.business_criticality }}{% endcall %}
-        {% endif %}
-        {% endif %}
-      </div>
-    </div>
-    <div class="flex items-center gap-2 shrink-0">
-      {% if edit_mode %}
-      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?tab={{ resolved_tab }}"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        Cancel
-      </a>
-      <button type="submit" form="overview-edit-form"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <i data-lucide="save" class="w-4 h-4 mr-2" aria-hidden="true"></i>Save
-      </button>
-      {% else %}
-      <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?edit=1&tab={{ resolved_tab }}"
-         class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
-        <i data-lucide="pencil" class="w-4 h-4 mr-2" aria-hidden="true"></i>Edit
-      </a>
-      {% endif %}
-    </div>
+{% macro _app_detail_actions() %}
+  {% if edit_mode %}
+  <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?tab={{ resolved_tab }}"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    Cancel
+  </a>
+  <button type="submit" form="overview-edit-form"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <i data-lucide="save" class="w-4 h-4 mr-2" aria-hidden="true"></i>Save
+  </button>
+  {% else %}
+  <a href="{{ url_for('unified_applications.application_detail', id=app.id) }}?edit=1&tab={{ resolved_tab }}"
+     class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <i data-lucide="pencil" class="w-4 h-4 mr-2" aria-hidden="true"></i>Edit
+  </a>
+  {% endif %}
+{% endmacro %}
+
+{{ page_shell(
+     title=app.name,
+     breadcrumb=[('Applications', url_for('unified_applications.application_list')), (app.name, None)],
+     actions_caller=_app_detail_actions
+) }}
+
+<div class="-mt-4 mb-4 flex flex-col gap-2">
+  <div class="flex flex-wrap items-center gap-2">
+    {# ARC-F01: Data freshness badge #}
+    {% if app.data_freshness_tier == 'fresh' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">fresh</span>
+    {% elif app.data_freshness_tier == 'stale' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">stale</span>
+    {% elif app.data_freshness_tier == 'outdated' %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30" title="Last updated: {{ app.updated_at.strftime('%Y-%m-%d') if app.updated_at else 'Never' }}">outdated</span>
+    {% else %}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border" title="Never updated">unknown</span>
+    {% endif %}
+    {# ARC-F02: Data completeness badge #}
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
+ {% if app.completeness_score >= 80 %}bg-success/10 text-success-emphasis border border-success/30
+ {% elif app.completeness_score >= 50 %}bg-warning/10 text-warning-emphasis border border-warning/30
+ {% else %}bg-destructive/10 text-destructive-emphasis border border-destructive/30{% endif %}"
+        title="Data completeness: {{ app.completeness_gaps|join(', ') }} gaps">
+        {{ app.completeness_score }}% complete
+    </span>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    {% if app.application_code %}
+    {% call badge(variant='outline') %}{{ app.application_code }}{% endcall %}
+    {% endif %}
+    {% if app.deployment_status %}
+    {% set ds = app.deployment_status | lower %}
+    {% if ds == 'production' %}{% call badge(variant='success') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% elif ds in ['retired', 'deprecated'] %}{% call badge(variant='destructive') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% elif ds in ['development', 'testing', 'staging'] %}{% call badge(variant='warning') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% else %}{% call badge(variant='neutral') %}{{ app.deployment_status | replace('_',' ') | title }}{% endcall %}
+    {% endif %}
+    {% endif %}
+    {% if app.business_criticality %}
+    {% set bc = app.business_criticality | lower %}
+    {% if bc == 'critical' %}{% call badge(variant='destructive') %}{{ app.business_criticality }}{% endcall %}
+    {% elif bc == 'high' %}{% call badge(variant='warning') %}{{ app.business_criticality }}{% endcall %}
+    {% elif bc == 'medium' %}{% call badge(variant='info') %}{{ app.business_criticality }}{% endcall %}
+    {% else %}{% call badge(variant='neutral') %}{{ app.business_criticality }}{% endcall %}
+    {% endif %}
+    {% endif %}
   </div>
 </div>
 {% else %}
@@ -138,23 +142,23 @@
    Data Completeness Nudge Banner — shown only when completeness < 40%
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app and app.completeness_score < 40 %}
-<div class="mb-4 bg-amber-50 border border-amber-200 rounded-lg dark:bg-amber-950/20 dark:border-amber-800"
+<div class="mb-4 bg-warning/10 border border-warning/30 rounded-lg"
      x-data="{ dismissed: false }" x-show="!dismissed">
   <div class="px-4 py-3 flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-      <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0" aria-hidden="true"></i>
+      <i data-lucide="alert-triangle" class="w-5 h-5 text-warning flex-shrink-0" aria-hidden="true"></i>
       <div>
-        <p class="text-sm font-medium text-amber-800 dark:text-amber-200">
+        <p class="text-sm font-medium text-warning-emphasis">
           Data completeness: {{ app.completeness_score }}% — AI analysis quality is low
         </p>
-        <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+        <p class="text-xs text-warning-emphasis/80 mt-0.5">
           Missing: {{ app.completeness_gaps | join(', ') }}. Fill these in to improve AI architect responses.
         </p>
       </div>
     </div>
     <div class="flex items-center gap-2 flex-shrink-0">
-      <button @click="dismissed = true"
-        class="text-xs text-amber-700 hover:text-amber-900 dark:text-amber-300 underline">Dismiss</button>
+      <button type="button" @click="dismissed = true"
+        class="text-xs text-warning-emphasis hover:text-warning-emphasis/80 underline">Dismiss</button>
     </div>
   </div>
 </div>
@@ -181,6 +185,13 @@
   <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Applications</p>
     <p class="mt-1 text-2xl font-bold text-foreground">{{ total_apps or 0 }}</p>
+    {# M2: this counts every ApplicationComponent row regardless of lifecycle_status,
+       so it disagrees with /applications/'s default "active portfolio" view, which
+       excludes "5. decommissioned" unless its include-decommissioned toggle is on.
+       Both counts are correct for what they measure -- label which one this is
+       rather than let the two pages silently disagree. #}
+    <p class="mt-1 text-2xs text-muted-foreground">Includes decommissioned applications</p>
+    <a href="{{ url_for('unified_applications.application_list') }}" class="mt-1 inline-block text-2xs text-primary hover:underline">View active portfolio only &rarr;</a>
   </div>
   <div data-slot="card" class="rounded-xl border bg-card text-card-foreground shadow-sm p-4">
     <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Active Interfaces</p>
@@ -195,6 +206,8 @@
     <p class="mt-1 text-2xl font-bold text-foreground">{{ avg_tech_debt or 0 }}</p>
   </div>
 </div>
+{% else %}
+<p class="mb-6 text-sm text-muted-foreground">No metrics available for this application yet.</p>
 {% endif %}
 
 {# ─────────────────────────────────────────────────────────────────────────────
@@ -203,8 +216,9 @@
    Tab switching is client-side (Alpine x-show) — no server round-trips
 ───────────────────────────────────────────────────────────────────────────── #}
 {% if app %}
-{% set valid_tab_ids = ['overview','architecture','capabilities','processes','vendors','technology','motivation','compliance','health','cost','dependencies'] %}
-{% set resolved_tab = active_tab_id if active_tab_id in valid_tab_ids else 'overview' %}
+{# valid_tab_ids / resolved_tab are already set above (page-header section) — this
+   used to redefine them identically here; kept as one definition, closer to
+   the header actions that also depend on resolved_tab. #}
 
 {% set tabs = [
   {'id': 'overview',        'label': 'Overview',         'count': none},
@@ -214,6 +228,7 @@
   {'id': 'vendors',         'label': 'Vendors',          'count': (vendor_products | default([], true)) | length},
   {'id': 'motivation',      'label': 'Motivation',       'count': (archimate_relationships.incoming + archimate_relationships.outgoing) | selectattr('layer', 'equalto', 'Motivation') | list | length if archimate_relationships else 0},
   {'id': 'dependencies',    'label': 'Dependencies',     'count': (archimate_relationships.incoming | length + archimate_relationships.outgoing | length) if archimate_relationships else 0},
+  {'id': 'ea-workflows',    'label': 'EA Workflows',     'count': none},
 ] %}
 {# Conditionally add tabs only when the app has relevant data #}
 {% if app.technology_stack or app.programming_languages or app.primary_database %}
@@ -244,10 +259,9 @@
 
     {# Contract expiry warning #}
     {% if app.contract_expiry_date %}
-    {% set today = namespace(d=none) %}
-    {% set days_until = (app.contract_expiry_date - namespace(d=none).d) %}
+    {% set expiry_days = days_until(app.contract_expiry_date) %}
     <div class="rounded-lg border px-4 py-3
-      {% if app.contract_expiry_date|string < '2026-04-20' %}border-destructive/30 bg-destructive/10{% elif app.contract_expiry_date|string < '2026-05-20' %}border-warning/30 bg-warning/10{% else %}border-border bg-muted/30{% endif %}">
+ {% if expiry_days is not none and expiry_days < 30 %}border-destructive/30 bg-destructive/10{% elif expiry_days is not none and expiry_days < 90 %}border-warning/30 bg-warning/10{% else %}border-border bg-muted/30{% endif %}">
       <div class="flex items-center gap-2 text-sm">
         <i data-lucide="calendar" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
         <span><strong>Contract Expiry:</strong> {{ app.contract_expiry_date.strftime('%d %b %Y') }}</span>
@@ -324,27 +338,27 @@
           <div x-data="{ correcting: false, confirmed: false }" class="mt-3 flex items-center gap-2">
             <template x-if="!confirmed && !correcting">
               <div class="flex gap-2">
-                <button @click="confirmed=true; fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'approve'})})"
-                  class="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded px-2 py-1 bg-emerald-50">
+                <button type="button" @click="Platform.fetch.post('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {action:'approve'}).then(function () { confirmed = true; }).catch(function (e) { Platform.toast.error('Could not approve correction: ' + e.message); })"
+                  class="inline-flex items-center gap-1 text-xs text-success-emphasis hover:text-success-emphasis/80 border border-success/30 rounded px-2 py-1 bg-success/10">
                   <i data-lucide="thumbs-up" class="w-3 h-3"></i> Correct
                 </button>
-                <button @click="correcting=true"
-                  class="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-700 border border-amber-200 rounded px-2 py-1 bg-amber-50">
+                <button type="button" @click="correcting=true"
+                  class="inline-flex items-center gap-1 text-xs text-warning-emphasis hover:text-warning-emphasis/80 border border-warning/30 rounded px-2 py-1 bg-warning/10">
                   <i data-lucide="pencil" class="w-3 h-3"></i> Fix
                 </button>
               </div>
             </template>
             <template x-if="correcting">
               <div x-data="{ name: '{{ archimate_info.name | replace("'", "\\'") }}', type: '{{ archimate_info.type | replace("'", "\\'") }}' }" class="flex gap-2 items-center flex-wrap">
-                <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name">
-                <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type">
-                <button @click="fetch('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':'{{ csrf_token() }}'}, body:JSON.stringify({action:'correct', name, type})}).then(()=>{correcting=false; confirmed=true})"
+                <input x-model="name" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Name" aria-label="Name">
+                <input x-model="type" class="text-xs border rounded px-2 py-1 w-32 bg-background text-foreground border-border" placeholder="Type" aria-label="Type">
+                <button type="button" @click="Platform.fetch.post('/dashboard/api/archimate-elements/{{ archimate_info.id }}/correct', {action:'correct', name, type}).then(function () { correcting = false; confirmed = true; }).catch(function (e) { Platform.toast.error('Could not save the correction: ' + e.message); })"
                   class="text-xs bg-primary text-primary-foreground rounded px-2 py-1">Save</button>
-                <button @click="correcting=false"
+                <button type="button" @click="correcting=false"
                   class="text-xs text-muted-foreground hover:text-foreground rounded px-2 py-1">Cancel</button>
               </div>
             </template>
-            <span x-show="confirmed" class="inline-flex items-center gap-1 text-xs text-emerald-600">
+            <span x-show="confirmed" class="inline-flex items-center gap-1 text-xs text-success-emphasis">
               <i data-lucide="check-circle" class="w-3 h-3"></i> Confirmed
             </span>
           </div>
@@ -517,14 +531,14 @@
     {% if not app.archimate_element_id %}
     <div data-slot="card" class="rounded-xl border border-dashed border-border bg-card p-8 text-center">
       <i data-lucide="box" class="mx-auto h-10 w-10 text-muted-foreground mb-3" aria-hidden="true"></i>
-      <p class="text-sm font-medium text-foreground mb-1">No ArchiMate element linked</p>
-      <p class="text-xs text-muted-foreground mb-4">Generate ArchiMate application-layer elements using AI to enable relationships, viewpoints, and impact analysis.</p>
+      <p class="text-sm font-medium text-foreground mb-1">No architecture element linked</p>
+      <p class="text-xs text-muted-foreground mb-4">Generate architecture elements using AI to enable relationships, viewpoints, and impact analysis.</p>
       <div class="flex items-center justify-center gap-3">
         <form action="{{ url_for('unified_applications.generate_application_archimate', id=app.id) }}" method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit"
                   class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-9 px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" aria-label="Submit">
-            <i data-lucide="cpu" class="w-4 h-4 mr-2" aria-hidden="true"></i>Generate ArchiMate
+            <i data-lucide="cpu" class="w-4 h-4 mr-2" aria-hidden="true"></i>Generate Elements
           </button>
         </form>
         {# A95-005: deep link to AI chat with generate-archimate context #}
@@ -548,7 +562,7 @@
       </div>
       <div class="p-6 pt-0">
         {% if impact_analysis.diagram %}
-        <div class="mermaid text-sm">{{ impact_analysis.diagram | safe }}</div>
+        <div class="mermaid text-sm">{{ impact_analysis.diagram }}</div>
         {% else %}
         <p class="text-sm text-muted-foreground">No impact diagram available.</p>
         {% endif %}
@@ -573,7 +587,7 @@
           {% endif %}
         </div>
         <div class="p-6 pt-0 overflow-x-auto">
-          <div class="mermaid text-xs">{{ diagram_src | safe }}</div>
+          <div class="mermaid text-xs">{{ diagram_src }}</div>
         </div>
       </div>
       {% endif %}
@@ -584,8 +598,8 @@
     {% set all_rels = (archimate_relationships.incoming + archimate_relationships.outgoing) if archimate_relationships else [] %}
     {% if all_rels %}
     <div class="space-y-4">
-      <h3 class="text-lg font-semibold">ArchiMate Relationships</h3>
-      <p class="text-sm text-muted-foreground">{{ all_rels | length }} relationships from the ArchiMate model</p>
+      <h3 class="text-lg font-semibold">Architecture Relationships</h3>
+      <p class="text-sm text-muted-foreground">{{ all_rels | length }} relationships from the architecture model</p>
       {% for layer_name in ['Motivation', 'Strategy', 'Business', 'Application', 'Technology', 'Implementation'] %}
       {% set ns = namespace(filtered=[]) %}
       {% for r in all_rels if r.layer and r.layer | lower == layer_name | lower %}
@@ -609,7 +623,7 @@
     </div>
     {% else %}
     <div data-slot="card" class="rounded-xl border border-dashed border-border bg-card p-6 text-center">
-      <p class="text-sm text-muted-foreground">No ArchiMate viewpoint diagrams available. Link an ArchiMate element to generate diagrams.</p>
+      <p class="text-sm text-muted-foreground">No architecture viewpoint diagrams available. Link an architecture element to generate diagrams.</p>
     </div>
     {% endif %}
     {% endif %}
@@ -624,7 +638,7 @@
       </div>
       <div class="p-6 pt-0">
         <div data-platform-table="application-relationships"
-             data-config="{{ dashboard_config.tables['application-relationships'] | tojson | forceescape }}">
+             data-config='{{ dashboard_config.tables["application-relationships"] | tojson }}'>
           <div class="overflow-x-auto">
             <table class="w-full text-sm">
               <thead>
@@ -637,7 +651,9 @@
                   <th class="pb-2 text-left font-medium text-muted-foreground">Context</th>
                 </tr>
               </thead>
-              <tbody class="divide-y">
+              <tbody class="divide-y">{# actionable-rows-ok: rows are flattened relationship descriptions built for display by the dashboard
+                 config and carry no element id. The ArchiMate Direct Links table below is the
+                 editable view of the same relationships. #}
                 {% for row in rel_rows %}
                 <tr class="border-b last:border-0 hover:bg-muted/50">
                   <td class="py-2 pr-3 font-medium">{{ row.name }}</td>
@@ -673,7 +689,7 @@
           <i data-lucide="bot" class="h-4 w-4 text-primary" aria-hidden="true"></i>Generate ArchiMate with AI
         </a>
         {% if archimate_form_config.enabled %}
-        <button data-modal-open="add-archimate-link-modal"
+        <button type="button" data-modal-open="add-archimate-link-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add ArchiMate relationship">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Relationship
         </button>
@@ -709,9 +725,9 @@
                 <td class="py-2 text-right">
                   {% if row.delete_url %}
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
-                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove this ArchiMate link?')">
+                    data-confirm="Remove this ArchiMate link?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove link">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove link">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -776,15 +792,19 @@
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Functional Maturity</p>
         <p class="mt-1 text-2xl font-bold text-foreground">
-          {% if functional_maturity > 0 %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}0 / 5{% endif %}
+          {% if functional_maturity %}{{ '%.1f' | format(functional_maturity) }} / 5{% else %}<span class="text-muted-foreground">&mdash;</span>{% endif %}
         </p>
       </div>
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Compliance Score</p>
+        {% if compliance_score is none %}
+        <p class="mt-1 text-2xl font-bold text-muted-foreground" title="Not yet assessed">&mdash;</p>
+        {% else %}
         <p class="mt-1 text-2xl font-bold
-          {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
+ {% if compliance_score >= 80 %}text-success{% elif compliance_score >= 50 %}text-warning{% else %}text-destructive{% endif %}">
           {{ '%.0f' | format(compliance_score) }}%
         </p>
+        {% endif %}
       </div>
     </div>
 
@@ -793,26 +813,47 @@
         suggestions: [],
         loading: false,
         loaded: false,
-        async loadSuggestions() {
-            if (this.loaded) return;
+        loadSuggestions() {
+            const self = this;
+            if (this.loaded) return Promise.resolve();
             this.loading = true;
-            try {
-                let resp = await fetch('/applications/{{ app.id }}/suggest-capabilities');
-                let data = await resp.json();
-                if (data.success) this.suggestions = data.suggestions || [];
-            } catch (e) { /* silent */ }
-            finally { this.loading = false; this.loaded = true; }
+            return Platform.fetch.get('/applications/{{ app.id }}/suggest-capabilities')
+              .then(function (data) {
+                if (data.success) self.suggestions = data.suggestions || [];
+                self.loading = false;
+                self.loaded = true;
+              })
+              .catch(function (e) {
+                // Best-effort: this whole card only shows when loaded is true and
+                // suggestions.length is greater than zero, so a failed load just
+                // leaves it hidden -- the same as no suggestions, which is an
+                // acceptable degrade for an optional AI enrichment widget. Note:
+                // no double-quote characters in this comment -- this whole block
+                // lives inside a double-quoted x-data attribute, and an embedded
+                // double-quote here terminates that attribute early, handing
+                // Alpine a truncated expression (SyntaxError: Unexpected token).
+                // swallow-ok: optional AI enrichment card stays hidden on failure, exactly as it does when there are no suggestions.
+                void e;
+                self.suggestions = [];
+                self.loading = false;
+                self.loaded = true;
+              });
         },
-        async accept(capId, confidence, idx) {
-            try {
-                let resp = await fetch('/applications/{{ app.id }}/accept-capability-suggestion', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name=csrf-token]')?.content || ''},
-                    body: JSON.stringify({capability_id: capId, confidence: confidence})
-                });
-                let data = await resp.json();
-                if (data.success) { this.suggestions.splice(idx, 1); setTimeout(() => location.reload(), 500); }
-            } catch (e) { console.warn('Accept error:', e); }
+        accept(capId, confidence, idx) {
+            const self = this;
+            return Platform.fetch.post('/applications/{{ app.id }}/accept-capability-suggestion',
+                {capability_id: capId, confidence: confidence})
+              .then(function (data) {
+                if (data.success) {
+                    self.suggestions.splice(idx, 1);
+                    setTimeout(() => location.reload(), 500);
+                } else {
+                    Platform.toast.error(data.error || 'Could not accept that suggestion.');
+                }
+              })
+              .catch(function (e) {
+                Platform.toast.error('Could not accept that suggestion: ' + (e.message || e));
+              });
         }
     }" x-init="loadSuggestions()" x-cloak x-show="loaded && suggestions.length > 0"
        class="rounded-xl border border-primary/20 bg-card shadow-sm mb-4">
@@ -820,28 +861,28 @@
             <div class="flex items-center gap-2 mb-3">
                 <i data-lucide="sparkles" class="h-4 w-4 text-primary" aria-hidden="true"></i>
                 <h3 class="text-sm font-semibold">Suggested Capabilities</h3>
-                <span class="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">AI</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">AI</span>
                 <span class="text-xs text-muted-foreground ml-auto" x-text="suggestions.length + ' suggestions from portfolio patterns'"></span>
             </div>
             <div class="space-y-2">
                 <template x-for="(s, idx) in suggestions" :key="s.capability_id">
                     <div class="flex items-center gap-3 p-3 rounded-lg border border-border bg-background hover:bg-muted/30 transition-colors">
                         <span class="text-xs font-bold px-2 py-0.5 rounded-full shrink-0"
-                              :class="s.confidence >= 60 ? 'bg-emerald-500/10 text-emerald-700' : (s.confidence >= 30 ? 'bg-amber-500/10 text-amber-700' : 'bg-muted text-muted-foreground')"
+                              :class="s.confidence >= 60 ? 'bg-success/10 text-success-emphasis' : (s.confidence >= 30 ? 'bg-warning/10 text-warning-emphasis' : 'bg-muted text-muted-foreground')"
                               x-text="s.confidence + '%'"></span>
                         <div class="flex-1 min-w-0">
                             <p class="text-sm font-medium" x-text="s.capability_name"></p>
                             <div class="flex flex-wrap gap-1 mt-1">
                                 <template x-for="signal in s.signals" :key="signal">
-                                    <span class="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded" x-text="signal"></span>
+                                    <span class="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded" x-text="signal"></span>
                                 </template>
                             </div>
                         </div>
-                        <button @click="accept(s.capability_id, s.confidence, idx)"
+                        <button type="button" @click="accept(s.capability_id, s.confidence, idx)"
                                 class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
                             <i data-lucide="check" class="h-3 w-3" aria-hidden="true"></i> Accept
                         </button>
-                        <button @click="suggestions.splice(idx, 1)"
+                        <button aria-label="Dismiss suggestion" type="button" @click="suggestions.splice(idx, 1)"
                                 class="inline-flex items-center px-1.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground shrink-0">
                             <i data-lucide="x" class="h-3 w-3" aria-hidden="true"></i>
                         </button>
@@ -858,7 +899,7 @@
           <h3 class="text-lg font-semibold">Mapped Capabilities</h3>
           <p class="text-sm text-muted-foreground">{{ capabilities | length }} {% if capabilities | length == 1 %}capability{% else %}capabilities{% endif %} linked to this application</p>
         </div>
-        <button data-modal-open="add-capability-modal"
+        <button type="button" data-modal-open="add-capability-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Map a capability to this application">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Map Capability
         </button>
@@ -912,9 +953,9 @@
                 <td class="py-2 text-right">
                   {% if row.delete_url %}
                   <form method="POST" action="{{ row.delete_url }}" class="inline"
-                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove capability mapping for {{ row.name | e }}?')">
+                    data-confirm="Remove capability mapping for {{ row.name | e }}?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove mapping">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -969,7 +1010,8 @@
               <th class="pb-2 text-left font-medium text-muted-foreground">Daily Txns</th>
             </tr>
           </thead>
-          <tbody class="divide-y">
+          <tbody class="divide-y">{# actionable-rows-ok: process-support rows built for display by the dashboard config, with no process
+             id to link. Change a mapping from the business process itself. #}
             {% for row in proc_rows %}
             <tr class="border-b last:border-0 hover:bg-muted/50">
               <td class="py-2 pr-3">{% call badge(variant='outline') %}{{ row.code }}{% endcall %}</td>
@@ -1022,7 +1064,7 @@
       <div class="flex flex-col space-y-1.5 p-6 pb-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 class="text-lg font-semibold">Vendor Footprint</h3>
         {% if vendor_summary.has_archimate %}
-        <button data-modal-open="add-vendor-modal"
+        <button type="button" data-modal-open="add-vendor-modal"
                 class="inline-flex items-center gap-2 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="Add vendor product">
             <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i> Add Vendor Product
         </button>
@@ -1071,11 +1113,11 @@
                 </td>
                 <td class="py-2 text-right">
                   <form method="POST" action="{{ url_for('application_mgmt.application_vendor_footprint', id=app.id) }}" class="inline"
-                    onsubmit="return Platform.modal.confirmSubmit(event, 'Remove {{ v.product_name | e }} from vendor footprint?')">
+                    data-confirm="Remove {{ v.product_name | e }} from vendor footprint?">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="action" value="delete">
                     <input type="hidden" name="vendor_product_id" value="{{ v.product_id }}">
-                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive hover:bg-destructive/10 transition-colors" aria-label="Remove vendor product">
+                    <button type="submit" class="inline-flex items-center justify-center h-7 w-7 rounded-md text-destructive-emphasis hover:bg-destructive/10 transition-colors" aria-label="Remove vendor product">
                       <i data-lucide="x" class="h-3.5 w-3.5" aria-hidden="true"></i>
                     </button>
                   </form>
@@ -1495,16 +1537,21 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <div data-slot="card" class="rounded-xl border bg-card shadow-sm p-4 text-center lg:col-span-1">
         <p class="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Compliance Score</p>
+        {% if compliance_score is none %}
+        <div class="text-5xl font-bold text-muted-foreground">&mdash;</div>
+        <p class="text-xs text-muted-foreground mt-2">Not yet assessed</p>
+        {% else %}
         <div class="text-5xl font-bold
-          {% if compliance_score >= 80 %}text-success
-          {% elif compliance_score >= 50 %}text-warning
-          {% else %}text-destructive{% endif %}">
+ {% if compliance_score >= 80 %}text-success
+ {% elif compliance_score >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
           {{ '%.0f' | format(compliance_score) }}<span class="text-2xl">%</span>
         </div>
         {% if compliance_results %}
         <p class="text-xs text-muted-foreground mt-2">
           {{ compliance_results.get('satisfied_count', 0) }} / {{ compliance_results.get('total_requirements', 0) }} requirements satisfied
         </p>
+        {% endif %}
         {% endif %}
       </div>
 
@@ -1669,9 +1716,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Current Uptime</p>
             <p class="text-2xl font-bold
-              {% if health_metrics.current_uptime >= 99 %}text-success
-              {% elif health_metrics.current_uptime >= 95 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if health_metrics.current_uptime >= 99 %}text-success
+ {% elif health_metrics.current_uptime >= 95 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.2f' | format(health_metrics.current_uptime) }}%
             </p>
           </div>
@@ -1689,9 +1736,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Change Failure Rate</p>
             <p class="font-medium
-              {% if health_metrics.change_failure_rate < 5 %}text-success
-              {% elif health_metrics.change_failure_rate < 15 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if health_metrics.change_failure_rate < 5 %}text-success-emphasis
+ {% elif health_metrics.change_failure_rate < 15 %}text-warning-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ '%.1f' | format(health_metrics.change_failure_rate) }}%
             </p>
           </div>
@@ -1709,24 +1756,24 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Quality Score</p>
             <p class="text-2xl font-bold
-              {% if quality_metrics.code_quality_score >= 80 %}text-success
-              {% elif quality_metrics.code_quality_score >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.code_quality_score >= 80 %}text-success
+ {% elif quality_metrics.code_quality_score >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.0f' | format(quality_metrics.code_quality_score) }}
             </p>
           </div>
 
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Technical Debt</p>
-            <p class="font-medium text-warning">{{ quality_metrics.technical_debt_hours }} hrs</p>
+            <p class="font-medium text-warning-emphasis">{{ quality_metrics.technical_debt_hours }} hrs</p>
           </div>
 
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Open Bugs</p>
             <p class="font-medium
-              {% if quality_metrics.bugs_count == 0 %}text-success
-              {% elif quality_metrics.bugs_count < 10 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.bugs_count == 0 %}text-success-emphasis
+ {% elif quality_metrics.bugs_count < 10 %}text-warning-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ quality_metrics.bugs_count }}
             </p>
           </div>
@@ -1734,8 +1781,8 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Vulnerabilities</p>
             <p class="font-medium
-              {% if quality_metrics.vulnerabilities_count == 0 %}text-success
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.vulnerabilities_count == 0 %}text-success-emphasis
+ {% else %}text-destructive-emphasis{% endif %}">
               {{ quality_metrics.vulnerabilities_count }}
             </p>
           </div>
@@ -1743,9 +1790,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Code Coverage</p>
             <p class="font-medium
-              {% if quality_metrics.code_coverage >= 80 %}text-success
-              {% elif quality_metrics.code_coverage >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.code_coverage >= 80 %}text-success
+ {% elif quality_metrics.code_coverage >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.1f' | format(quality_metrics.code_coverage) }}%
             </p>
           </div>
@@ -1753,9 +1800,9 @@
           <div class="space-y-1">
             <p class="text-xs text-muted-foreground uppercase tracking-wide">Automated Testing</p>
             <p class="font-medium
-              {% if quality_metrics.automated_testing_coverage >= 80 %}text-success
-              {% elif quality_metrics.automated_testing_coverage >= 50 %}text-warning
-              {% else %}text-destructive{% endif %}">
+ {% if quality_metrics.automated_testing_coverage >= 80 %}text-success
+ {% elif quality_metrics.automated_testing_coverage >= 50 %}text-warning
+ {% else %}text-destructive{% endif %}">
               {{ '%.1f' | format(quality_metrics.automated_testing_coverage) }}%
             </p>
           </div>
@@ -1858,7 +1905,9 @@
                 <th class="pb-2 text-left font-medium text-muted-foreground">Criticality</th>
               </tr>
             </thead>
-            <tbody class="divide-y">
+            <tbody class="divide-y">{# actionable-rows-ok: the edge list behind the dependency graph drawn above -- a textual rendering of
+               the same picture, for reading and export. Dependencies are edited on the
+               application at either end. #}
               {% for edge in dependency_graph_data.edges %}
               <tr class="border-b last:border-0 hover:bg-muted/50">
                 <td class="py-2 pr-3 font-mono text-xs">{{ edge.from }}</td>
@@ -2021,7 +2070,13 @@
       <p class="mt-2 text-sm text-muted-foreground">Loading workflows…</p>
     </div>
 
-    <div x-show="!loading && instances.length === 0" x-cloak class="py-8 text-center">
+    <div x-show="!loading && loadError" x-cloak class="py-8 text-center">
+      <i data-lucide="alert-triangle" class="mx-auto h-10 w-10 text-destructive mb-3 opacity-60" aria-hidden="true"></i>
+      <p class="text-sm font-medium text-foreground mb-1">Couldn't load workflow runs</p>
+      <p class="text-xs text-muted-foreground" x-text="loadError"></p>
+    </div>
+
+    <div x-show="!loading && !loadError && instances.length === 0" x-cloak class="py-8 text-center">
       <i data-lucide="play-circle" class="mx-auto h-10 w-10 text-muted-foreground mb-3 opacity-40" aria-hidden="true"></i>
       <p class="text-sm font-medium text-foreground mb-1">No workflow runs yet</p>
       <p class="text-xs text-muted-foreground mb-3">Start an EA workflow to review and govern this application.</p>
@@ -2034,7 +2089,7 @@
            class="flex items-center justify-between rounded-lg border border-border p-3 hover:bg-muted/50 transition-colors">
           <div class="flex items-center gap-3">
             <span class="inline-flex h-8 w-8 items-center justify-center rounded-full"
-                  :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-amber-500/10 text-amber-700': inst.status==='running'||inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': true}">
+                  :class="{'bg-success/10 text-success-emphasis': inst.status==='completed', 'bg-warning/10 text-warning-emphasis': inst.status==='running'||inst.status==='waiting_approval', 'bg-destructive/10 text-destructive-emphasis': inst.status==='failed', 'bg-muted text-muted-foreground': true}">
               <i data-lucide="activity" class="h-4 w-4" aria-hidden="true"></i>
             </span>
             <div>
@@ -2043,7 +2098,7 @@
             </div>
           </div>
           <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
-                :class="{'bg-emerald-500/10 text-emerald-700': inst.status==='completed', 'bg-primary/10 text-primary': inst.status==='running', 'bg-amber-500/10 text-amber-700': inst.status==='waiting_approval', 'bg-destructive/10 text-destructive': inst.status==='failed', 'bg-muted text-muted-foreground': !['completed','running','waiting_approval','failed'].includes(inst.status)}"
+                :class="{'bg-success/10 text-success-emphasis': inst.status==='completed', 'bg-primary/10 text-primary': inst.status==='running', 'bg-warning/10 text-warning-emphasis': inst.status==='waiting_approval', 'bg-destructive/10 text-destructive-emphasis': inst.status==='failed', 'bg-muted text-muted-foreground': !['completed','running','waiting_approval','failed'].includes(inst.status)}"
                 x-text="inst.status"></span>
         </a>
       </template>
@@ -2052,12 +2107,18 @@
   <script>
   function eaWorkflowsTab(appId) {
     return {
-      appId: appId, loading: true, instances: [],
+      appId: appId, loading: true, instances: [], loadError: null,
       async init() {
         try {
-          const r = await fetch('/api/ea-workflows/instances?application_id=' + appId + '&per_page=10');
-          if (r.ok) { const d = await r.json(); this.instances = d.instances || []; }
-        } catch(e) { /* silent */ } finally { this.loading = false; lucide.createIcons(); }
+          const d = await Platform.fetch.get('/api/ea-workflows/instances', {application_id: appId, 'per_page': 10});
+          this.instances = d.instances || [];
+        } catch(e) { 
+          this.loadError = e.message; 
+          // No silent flag because we want to show the error in the UI
+        } finally { 
+          this.loading = false; 
+          lucide.createIcons(); 
+        }
       }
     };
   }

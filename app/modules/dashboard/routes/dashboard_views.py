@@ -26,7 +26,17 @@ Endpoints (17 routes — url_prefix="/dashboard" applied by __init__.py):
 - /api/table/<table_name>    -> api_table_get
 """
 
-from flask import Blueprint, jsonify, redirect, render_template, request, session, url_for
+from flask import (
+    Blueprint,
+    current_app,
+    g,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
 from flask_login import current_user, login_required
 
 from app import db
@@ -52,7 +62,12 @@ def _build_overview_context():
     metrics = {
         "applications": db.session.query(db.func.count(ApplicationComponent.id)).scalar() or 0,
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
-        "users": db.session.query(db.func.count(User.id)).scalar() or 0,
+        "users": (
+            db.session.query(db.func.count(User.id))
+            .filter(User.organization_id == g.current_org_id)
+            .scalar()
+            or 0
+        ),
         "active_sessions": 0,
     }
 
@@ -116,14 +131,19 @@ def _build_overview_context():
     data_coverage = {"owner": 0, "vendor": 0, "cost": 0, "risk": 0, "criticality": 0}
     try:
         from sqlalchemy import text
-        row = db.session.execute(text("""
+        # Scope to the caller's org so coverage matches the (org-scoped) app count
+        # and never aggregates other tenants' data. No-op in system contexts.
+        _org = getattr(g, "current_org_id", None)
+        _cov_where = "WHERE organization_id = :org" if _org is not None else ""
+        row = db.session.execute(text(f"""
             SELECT
                 COUNT(*) FILTER (WHERE application_owner IS NOT NULL OR business_owner IS NOT NULL) AS owner_n,
                 COUNT(*) FILTER (WHERE vendor_product_id IS NOT NULL OR vendor_name IS NOT NULL) AS vendor_n,
                 COUNT(*) FILTER (WHERE total_cost_of_ownership IS NOT NULL OR license_cost IS NOT NULL OR maintenance_cost IS NOT NULL) AS cost_n,
                 COUNT(*) FILTER (WHERE business_criticality IS NOT NULL) AS crit_n
             FROM application_components
-        """)).fetchone()
+            {_cov_where}
+        """), ({"org": _org} if _org is not None else {})).fetchone()
         data_coverage["owner"] = round(row[0] / total_apps * 100)
         data_coverage["vendor"] = round(row[1] / total_apps * 100)
         data_coverage["cost"] = round(row[2] / total_apps * 100)
@@ -188,19 +208,29 @@ def api_coverage_debug():
     """Temp debug: returns raw coverage query result or error."""
     try:
         from sqlalchemy import text
-        row = db.session.execute(text("""
+        # Raw SQL bypasses the tenant listener, so these coverage counts spanned
+        # every organisation's portfolio.
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _org_where = " WHERE organization_id = :org" if _org is not None else ""
+        row = db.session.execute(text(f"""
             SELECT
                 COUNT(*) FILTER (WHERE application_owner IS NOT NULL OR business_owner IS NOT NULL) AS owner_n,
                 COUNT(*) FILTER (WHERE vendor_product_id IS NOT NULL OR vendor_name IS NOT NULL) AS vendor_n,
                 COUNT(*) FILTER (WHERE total_cost_of_ownership IS NOT NULL OR license_cost IS NOT NULL OR maintenance_cost IS NOT NULL) AS cost_n,
                 COUNT(*) FILTER (WHERE business_criticality IS NOT NULL) AS crit_n,
                 COUNT(*) AS total_n
-            FROM application_components
-        """)).fetchone()
+            FROM application_components{_org_where}
+        """), ({"org": _org} if _org is not None else {})).fetchone()
         return jsonify({"ok": True, "owner": row[0], "vendor": row[1], "cost": row[2], "crit": row[3], "total": row[4]})
-    except Exception as e:
+    except Exception:
         db.session.rollback()
-        return jsonify({"ok": False, "error": str(e)})
+        # 500, not 200. The body already said ok:false, but the STATUS said
+        # fine, so the client's !response.ok never fired and the counts stayed
+        # at whatever they were. str(e) is dropped with it: a raw exception
+        # message can carry SQL and column names to the browser.
+        current_app.logger.exception("dashboard coverage counts query failed")
+        return jsonify({"ok": False, "error": "Could not load coverage counts"}), 500
 
 
 @dashboard_bp.route("/api/overview/table")

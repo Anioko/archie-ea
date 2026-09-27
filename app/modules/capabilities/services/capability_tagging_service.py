@@ -9,11 +9,8 @@ Provides dynamic capability classification, search, and analytics.
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
-from app.models.application_portfolio import ApplicationComponent
-from app.models.business_capabilities import BusinessCapability
 from app.models.capability_tagging import CapabilityTag, CapabilityTagAssociation
 from app.models.unified_capability import UnifiedCapability
 

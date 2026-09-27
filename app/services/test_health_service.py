@@ -10,11 +10,12 @@ import json
 import smtplib
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import requests
+from html import escape
 
 
 @dataclass
@@ -245,7 +246,7 @@ class TestHealthService:
             }
         
         # Get most recent run
-        latest = max(metrics, key=lambda x: x['timestamp'])
+        max(metrics, key=lambda x: x['timestamp'])
         
         # Calculate trend (compare to previous run)
         sorted_metrics = sorted(metrics, key=lambda x: x['timestamp'], reverse=True)
@@ -371,7 +372,6 @@ class TestHealthService:
             return []
         
         # Track test stability across runs
-        test_history = {}
         
         for run in metrics:
             # This is a simplified version - in production you'd track individual test results
@@ -437,7 +437,7 @@ class TestAlertService:
                             'short': True
                         }
                     ],
-                    'footer': 'ARCHIE Test Health Dashboard',
+                    'footer': 'Entelim Test Health Dashboard',
                     'ts': int(datetime.utcnow().timestamp())
                 }]
             }
@@ -487,7 +487,7 @@ View dashboard: http://localhost:5000/testing/health-dashboard
     <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
         <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;">Type</td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">{alert.get('type', 'Unknown')}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">{escape(str(alert.get('type', 'Unknown')))}</td>
         </tr>
         <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;">Severity</td>
@@ -497,15 +497,15 @@ View dashboard: http://localhost:5000/testing/health-dashboard
         </tr>
         <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;">Message</td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">{alert.get('message', '')}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">{escape(str(alert.get('message', '')))}</td>
         </tr>
         <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;">Value</td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">{alert.get('value', 'N/A')}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">{escape(str(alert.get('value', 'N/A')))}</td>
         </tr>
         <tr>
             <td style="padding: 8px; border: 1px solid #e5e7eb; font-weight: bold;">Threshold</td>
-            <td style="padding: 8px; border: 1px solid #e5e7eb;">{alert.get('threshold', 'N/A')}</td>
+            <td style="padding: 8px; border: 1px solid #e5e7eb;">{escape(str(alert.get('threshold', 'N/A')))}</td>
         </tr>
     </table>
     

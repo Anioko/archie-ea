@@ -1064,7 +1064,25 @@ class AbacusImportService:
         ).all()
         rel_app_lookup = {a.application_code: a for a in abacus_apps}
 
-        existing_mappings = ApplicationCapabilityMapping.query.all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production (added nullable by reconcile-schema,
+        # never backfilled; nothing populates it, including this importer).
+        # A predicate on it would match zero rows and make dedup think no
+        # mapping exists, creating a duplicate on every re-import. Joining
+        # BusinessCapability (TenantMixin) lets do_orm_execute's
+        # with_loader_criteria scope the join automatically; falls back to
+        # unscoped only outside a request context (CLI import), where there
+        # is no tenant to leak across. See e622d36 / rationalization_scoring_service.py.
+        existing_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .all()
+        )
         mapping_lookup = {
             (m.application_component_id, m.business_capability_id): m
             for m in existing_mappings
@@ -1074,7 +1092,7 @@ class AbacusImportService:
             try:
                 # Extract source and target IDs/names
                 source_eeid = rel_data.get("source_eeid") or rel_data.get("source_id")
-                source_archimate_id = rel_data.get("source_archimate_id")
+                rel_data.get("source_archimate_id")
                 target_name = rel_data.get("target_name") or rel_data.get("target_id")
                 target_archimate_id = rel_data.get("target_archimate_id")
                 connection_type = rel_data.get("connection_type")

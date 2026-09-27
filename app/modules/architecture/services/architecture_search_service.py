@@ -36,14 +36,19 @@ class ArchitectureSearchService:
             q = q.filter(
                 or_(
                     ArchitectureElement.name.ilike(search_term),
-                    ArchitectureElement.element_type.ilike(search_term),
+                    # `type`, not `element_type`: the mapped column on
+                    # ArchiMateElement is `type`, and this attribute raised
+                    # AttributeError on EVERY non-empty query -- so
+                    # /architecture/search?q=anything was a 500 while the
+                    # bare page rendered 200 and every gate stayed green.
+                    ArchitectureElement.type.ilike(search_term),
                     ArchitectureElement.description.ilike(search_term),
                 )
             )
         
         # Filter by type
         if element_type:
-            q = q.filter_by(element_type=element_type)
+            q = q.filter_by(type=element_type)
         
         # Filter by layer
         if layer:
@@ -63,7 +68,7 @@ class ArchitectureSearchService:
     @staticmethod
     def filter_by_type(element_type: str) -> List:
         """Get all elements of a type."""
-        return ArchitectureElement.query.filter_by(element_type=element_type).all()
+        return ArchitectureElement.query.filter_by(type=element_type).all()
     
     @staticmethod
     def get_statistics() -> dict:
@@ -78,9 +83,9 @@ class ArchitectureSearchService:
         
         # Count by type (top 5)
         type_counts = db.session.query(
-            ArchitectureElement.element_type,
+            ArchitectureElement.type,
             db.func.count(ArchitectureElement.id).label("count")
-        ).group_by(ArchitectureElement.element_type).order_by(
+        ).group_by(ArchitectureElement.type).order_by(
             db.func.count(ArchitectureElement.id).desc()
         ).limit(5).all()
         

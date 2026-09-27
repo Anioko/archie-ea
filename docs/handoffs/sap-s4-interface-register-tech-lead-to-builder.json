@@ -1,0 +1,12 @@
+{
+  "from": "tech-lead",
+  "to": "builder",
+  "artifact": "docs/buckets/sap-s4-interface-register/implementation-plan.md",
+  "approval_status": "approved",
+  "gate_conditions": [
+    "conflict_arbitrated",
+    "all_srs_stories_covered_by_a_task"
+  ],
+  "unmet_conditions": [],
+  "timestamp": "2026-09-15T00:00:00Z"
+}

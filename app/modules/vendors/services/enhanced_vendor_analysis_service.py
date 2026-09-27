@@ -9,13 +9,11 @@ improved classifications and quality metrics from the enhanced dataset.
 
 import logging
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import joinedload
 
-from app import db
-from app.models.business_capabilities import BusinessCapability
-from app.models.vendor import VendorOrganization, VendorProduct
+from app.models.vendor import VendorProduct
 
 logger = logging.getLogger(__name__)
 

@@ -24,10 +24,9 @@ Usage:
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from flask import current_app
-from sqlalchemy import and_, func, or_
 
 from app import db
 from app.models.apqc_process import APQCProcess

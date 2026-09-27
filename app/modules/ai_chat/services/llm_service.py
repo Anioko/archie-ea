@@ -33,12 +33,22 @@ from app.modules.ai_chat.services.llm_model_router import (  # noqa: F401  # dea
     TaskPriority,
 )
 
-# llm_router has a syntax error in source
+# llm_router imports cleanly (verified: py_compile passes, and the `compile`
+# gate bytecode-compiles every module, so a real syntax error here would fail
+# the build). The comment this replaced claimed it "has a syntax error in
+# source", which had stopped being true; left as-is it invited the next reader
+# to treat the module as dead and skip it. The guard is kept as genuine
+# defence -- this is a re-export shim and one bad transitive import should
+# degrade the router, not the whole LLM service -- but it now names what
+# failed instead of logging "Failed to operation".
 try:
     from app.modules.ai_chat.services.llm_router import *  # noqa: F401,F403
 except (ImportError, SyntaxError):
-    logger.exception("Failed to operation")
-    pass
+    logger.exception(
+        "llm_router could not be imported; its exports are unavailable from "
+        "llm_service. Provider routing falls back to LLMService's own "
+        "selection."
+    )
 
 # llm_health_check exports functions only
 try:

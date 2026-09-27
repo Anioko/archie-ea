@@ -7,7 +7,6 @@ Covers:
 - Utility functions (allowed_file, file_size_ok, sanitize_import_error, format_job_status, safe_int_param)
 - Compat wrapper infrastructure (stats tracking)
 """
-import pytest
 
 
 # ============================================================================
@@ -25,21 +24,12 @@ class TestImportBatchV2Imports:
     def test_v2_schemas_importable(self):
         from app.modules.import_batch.v2.schemas import (
             CreateJobSchema,
-            ApproveJobSchema,
-            RejectJobSchema,
-            BatchProcessSchema,
-            UnifiedImportSchema,
-            FieldMappingSchema,
         )
         assert callable(CreateJobSchema.validate)
 
     def test_v2_utils_importable(self):
         from app.modules.import_batch.v2.utils import (
             allowed_file,
-            file_size_ok,
-            sanitize_import_error,
-            format_job_status,
-            safe_int_param,
         )
         assert callable(allowed_file)
 
@@ -216,7 +206,6 @@ class TestImportBatchCompatWrappers:
 
     def test_compat_module_imports(self):
         from app.compat.import_batch import (
-            ImportBatchCompatStats,
             wrap_legacy_import_batch_bp,
         )
         assert callable(wrap_legacy_import_batch_bp)

@@ -5,15 +5,16 @@ Dashboard and CRUD operations for Application Layer elements.
 """
 # mass-deletion-ok — BE-179 removes 16 manual CSRF blocks replaced by global CSRFProtect
 
-import asyncio  # dead-code-ok
-import csv  # dead-code-ok
-import io  # dead-code-ok
+# Side-effect import, NOT dead code: this is the only module that imports
+# app/models/metrics.py, and that import is what registers the
+# `application_metrics_snapshots` table on db.metadata. Removing it (as
+# `ruff --fix --select F401` did) silently drops the table from the ORM —
+# caught by comparing db.metadata.tables before and after.
+from ..models.metrics import ApplicationMetricsSnapshot  # noqa: F401
 import json
 import logging
-import os  # dead-code-ok
 import re
-from datetime import datetime, timedelta  # dead-code-ok
-from decimal import Decimal  # dead-code-ok
+from datetime import datetime  # dead-code-ok
 
 # Define the logger
 logger = logging.getLogger(__name__)
@@ -25,65 +26,24 @@ from flask import (
     redirect,
     render_template,
     request,
-    session,
     url_for,
 )
-from flask import send_file  # dead-code-ok
-from flask_login import current_user, login_required  # dead-code-ok
-from sqlalchemy import func, or_, select, text  # dead-code-ok: func
+from sqlalchemy import or_, select, text  # dead-code-ok: func
 from sqlalchemy.orm import joinedload
-from werkzeug.exceptions import BadRequest  # dead-code-ok
 
 from config import CurrencyConfig
-from .. import csrf, db  # dead-code-ok
+from .. import db  # dead-code-ok
 from ..models.application_layer import (
-    ApplicationEvent,
-    ApplicationFunction,
-    ApplicationInteraction,
     ApplicationInterface,
-    ApplicationProcess,
     ApplicationService,
     DataObject,
 )
 from ..models.application_portfolio import ApplicationComponent
-from ..models.archimate_business import (
-    BusinessCollaboration,
-    BusinessInteraction,
-    BusinessInterface,
-    Contract,
-    Representation,
-)
-from ..models.motivation import Stakeholder
-from ..models.archimate_technology import (
-    Resource,
-    TechnologyEvent,
-    TechnologyFunction,
-    TechnologyInteraction,
-    TechnologyProcess,
-)
-from ..models.archimate_technology import TechnologyCollaborationFull  # dead-code-ok
-from ..models.business_layer import BusinessEvent
 
 # Import the missing model
-from ..models.metrics import ApplicationMetricsSnapshot  # dead-code-ok
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok: ArchitectureModel
-from ..models.motivation import Assessment, Driver, Goal, Meaning, Value
-from ..utils.validators import (  # dead-code-ok
-    sanitize_html,
-    validate_application_name,
-    validate_description,
-    validate_email,
-    validate_enum,
-    validate_float,
-    validate_id,
-    validate_integer,
-    validate_json_payload,
-    validate_string,
-    validation_error_response,
-)
+from ..models.models import ArchiMateElement, ArchiMateRelationship  # dead-code-ok: ArchitectureModel
+from ..models.motivation import Driver, Goal
 from . import application_mgmt
-from .forms import ApplicationComponentForm, OverviewForm  # dead-code-ok
-from app.utils.deprecation import deprecated_route  # dead-code-ok
 
 # =============================================================================
 # HELPER FUNCTIONS FOR DATA IMPORT
@@ -416,7 +376,6 @@ def _find_process_by_name_enhanced(name):
     """
     import difflib
 
-    from ..models.process_data import BusinessProcess
 
     if not name:
         return None
@@ -484,7 +443,6 @@ def _link_application_to_processes(app, functional_capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.relationship_tables import ApplicationProcessSupport
 
     if not functional_capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -578,11 +536,9 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
     Returns:
         dict: {'linked': int, 'skipped': int, 'created_processes': int, 'errors': list}
     """
-    from datetime import datetime
 
     from app.models.apqc_process import APQCProcess
 
-    from ..models.process_data import BusinessProcess
     from ..models.relationship_tables import ApplicationProcessSupport
 
     if not apqc_matches or not app:
@@ -642,7 +598,7 @@ def _link_application_to_apqc_by_ids(app, apqc_matches):
             # Get the APQC process ID from the semantic match
             apqc_id = match.get("existing_id")
             process_code = match.get("process_code", "")
-            process_name = match.get("process_name", "")
+            match.get("process_name", "")
             similarity_score = match.get("similarity_score", 0)
             source = match.get("source", "semantic_similarity")
 
@@ -825,9 +781,6 @@ def _link_application_to_capabilities(app, capabilities_str):
     Returns:
         dict: {'linked': int, 'not_found': list, 'matched': list}
     """
-    from ..models.unified_application_capability_mapping import (
-        UnifiedApplicationCapabilityMapping,
-    )
 
     if not capabilities_str or not app:
         return {"linked": 0, "not_found": [], "matched": []}
@@ -896,7 +849,6 @@ def _suggest_process_links_semantic(app, confidence_threshold=0.5):
     """
     from difflib import SequenceMatcher
 
-    from ..models.process_data import BusinessProcess
 
     if not app:
         return []
@@ -1152,11 +1104,6 @@ def validate_archimate_element_creation(
 from sqlalchemy.exc import SQLAlchemyError
 
 # Import statements (moved to proper location)
-from ..models.application_layer import (
-    ApplicationCollaboration,
-    ApplicationEvent,
-    DataObject,
-)
 from ..models.business_capabilities import BusinessCapability, BusinessFunction
 from ..models.business_layer import (
     BusinessActor,
@@ -1165,13 +1112,9 @@ from ..models.business_layer import (
     BusinessService,
 )
 from ..models.implementation_migration import Deliverable
-from ..models.implementation_migration import Gap
 from ..models.implementation_migration import Plateau
 from ..models.implementation_migration import WorkPackage
-from ..models.miscellaneous import ApplicationDocument
-from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel  # dead-code-ok: ArchitectureModel
-from ..models.models import Principle, Requirement
-from ..models.motivation import Driver, Goal
+from ..models.models import Requirement
 from ..models.physical_layer import (
     PhysicalDistributionNetwork,
     PhysicalEquipment,
@@ -1180,17 +1123,10 @@ from ..models.physical_layer import (
 )
 from ..models.process_data import BusinessProcess
 from ..models.relationship_tables import ApplicationProcessSupport
-from ..models.relationship_tables import ApplicationBusinessActorMapping  # dead-code-ok
-from ..models.relationship_tables import DataObjectStorage  # dead-code-ok
-from ..models.strategy_layer import CourseOfAction, ValueStream
 from ..models.technology_layer import (
-    CommunicationNetwork,
     Device,
     Node,
-    Path,
     SystemSoftware,
-    TechnologyInterface,
-    TechnologyService,
 )
 from ..models.unified_application_capability_mapping import (
     UnifiedApplicationCapabilityMapping,
@@ -1200,12 +1136,7 @@ from ..models.vendor.vendor_organization import (
     VendorProduct,
     application_vendor_products,
 )
-from ..services.archimate.archimate_llm_service import ArchiMateLLMService  # dead-code-ok
 from ..services.archimate_validation_service import ArchiMateValidationService
-from ..services.compliance.compliance_inheritance_service import (  # dead-code-ok
-    ComplianceInheritanceService,
-)
-from ..services.mermaid_diagram_generator import MermaidDiagramGenerator  # dead-code-ok
 
 # ============================================================================
 # Batch Query Helpers - N + 1 Query Prevention
@@ -1323,7 +1254,7 @@ def get_archimate_elements_batch(application_component_id, layer=None, search=No
                 for elem in model_elements:
                     if matches_search(elem):
                         elements.append(serialize_element(elem, type_name, layer_name))
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 # Model may not have the expected column or other issues
                 logger.debug(f"Model error: {e}")
 
@@ -1382,7 +1313,7 @@ def get_element_counts_batch(application_component_id):
                 layer_total += model_class.query.filter_by(  # model-safety-ok: iterating over model classes, not data rows
                     application_component_id=application_component_id
                 ).count()
-            except Exception as e:  # fabricated-values-ok: optional model may not exist
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(
                     "Optional model query failed for layer %s: %s", layer_name, e
                 )
@@ -1420,12 +1351,12 @@ def teardown_request(exception=None):
     if exception:
         try:
             db.session.rollback()
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug(f"Ignored: {e}")
     if not current_app.testing:
         try:
             db.session.remove()
-        except Exception as e:  # fabricated-values-ok
+        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
             logger.debug(f"Ignored: {e}")
 
 
@@ -1579,13 +1510,39 @@ def _delete_archimate_element(element_id, rel_type="realization"):
 
         eid = int(element_id)
 
+        # Tenant guard: never let one org delete another org's element graph.
+        # Query.get_or_404 can be served from the identity map and bypass the
+        # ORM tenant filter, so assert ownership against the actual column before
+        # the destructive cascade. No-op in system contexts (no tenant); legacy
+        # rows with no organization_id are left deletable.
+        from flask import abort as _abort, g as _g
+        _org = getattr(_g, "current_org_id", None)
+        if _org is not None:
+            _owner = db.session.execute(
+                text("SELECT organization_id FROM archimate_elements WHERE id = :id"),
+                {"id": eid},
+            ).scalar()
+            if _owner is not None and _owner != _org:
+                _abort(404)
+
+        # Every statement below is keyed on `eid`, and `eid` is `int(element_id)`
+        # for an element whose `organization_id` was just read straight from the
+        # table and compared against `g.current_org_id` above. Re-scoping the
+        # cascade by organisation would be worse than useless: it would leave a
+        # row in another organisation still pointing at the element being
+        # deleted, and the NO ACTION foreign keys these statements exist to
+        # clear would then abort the delete.
+        #
         # ------------------------------------------------------------------
         # 1. Self-referential: clear children that point to this as parent/template
         # ------------------------------------------------------------------
+        # tenancy-ok: keyed on eid, whose organization_id was asserted against
+        # g.current_org_id immediately above; scoping the cascade would strand FKs
         db.session.execute(
             text("UPDATE archimate_elements SET parent_id = NULL WHERE parent_id = :id"),
             {"id": eid},
         )
+        # tenancy-ok: keyed on the same ownership-checked eid
         db.session.execute(
             text("UPDATE archimate_elements SET template_element_id = NULL WHERE template_element_id = :id"),
             {"id": eid},
@@ -1598,6 +1555,7 @@ def _delete_archimate_element(element_id, rel_type="realization"):
         # ------------------------------------------------------------------
         # saved_diagram_relationships references archimate_relationships, so
         # delete those first before deleting the relationships themselves.
+        # tenancy-ok: keyed on the same ownership-checked eid
         db.session.execute(
             text("""
                 DELETE FROM saved_diagram_relationships
@@ -1608,6 +1566,9 @@ def _delete_archimate_element(element_id, rel_type="realization"):
             """),
             {"id": eid},
         )
+        # tenancy-ok: keyed on the same ownership-checked eid. A relationship
+        # touching this element must go regardless of which organisation owns the
+        # relationship row, or the element delete fails on its FK.
         db.session.execute(
             text("DELETE FROM archimate_relationships WHERE source_id = :id OR target_id = :id"),
             {"id": eid},
@@ -1938,10 +1899,6 @@ def render_application_detail(id):
     Restored after BE-054 god-file decomposition dropped this shared handler.
     """
     from app.models.application_portfolio import ApplicationComponent
-    from app.models.business_capabilities import BusinessCapability
-    from app.models.unified_application_capability_mapping import (
-        UnifiedApplicationCapabilityMapping,
-    )
 
     app_obj = ApplicationComponent.query.get_or_404(id)
 
@@ -1952,6 +1909,8 @@ def render_application_detail(id):
     capability_mappings = []
     try:
         from app.models.application_capability import ApplicationCapabilityMapping
+        # tenant-scoping-ok: filtered by application_component_id == id below,
+        # and app_obj (id) is an org-scoped ApplicationComponent load.
         cap_pairs = (
             db.session.query(ApplicationCapabilityMapping, BusinessCapability)
             .join(
@@ -1963,6 +1922,47 @@ def render_application_detail(id):
         )
         capabilities = [cap for _, cap in cap_pairs]
         capability_mappings = cap_pairs  # Keep (mapping, cap) pairs for table
+
+        # DEF-003 follow-up (3 Sep 2026): the "Map Capability" modal's create
+        # handler (application_capability_mapping_create,
+        # detail_layer_routes.py) writes UnifiedApplicationCapabilityMapping —
+        # the canonical store per ADR-0008 — but this display only ever read
+        # the legacy ApplicationCapabilityMapping table above. A capability
+        # mapped through the modal therefore persisted correctly (confirmed
+        # in the DB) yet never appeared here: silent, not a crash. Rather than
+        # migrate the legacy rows into the unified table (a locked, checksum-
+        # verified data operation matching project_capabilities.py's rigor
+        # that this fix does not attempt), the display unions both sources,
+        # de-duplicated by the underlying BusinessCapability identity so an
+        # already-legacy-linked capability cannot render twice.
+        from app.models.unified_application_capability_mapping import (
+            UnifiedApplicationCapabilityMapping,
+        )
+        from app.models.unified_capability import UnifiedCapability
+
+        legacy_capability_ids = {cap.id for cap in capabilities}
+        unified_pairs = (
+            db.session.query(UnifiedApplicationCapabilityMapping, UnifiedCapability)
+            .join(
+                UnifiedCapability,
+                UnifiedApplicationCapabilityMapping.unified_capability_id == UnifiedCapability.id,
+            )
+            .filter(
+                UnifiedApplicationCapabilityMapping.application_component_id == id,
+                UnifiedCapability.source_table == "business_capability",
+            )
+            .all()
+        )
+        for u_mapping, u_cap in unified_pairs:
+            try:
+                source_bc_id = int(u_cap.source_id)
+            except (TypeError, ValueError):
+                continue
+            if source_bc_id in legacy_capability_ids:
+                continue
+            legacy_capability_ids.add(source_bc_id)
+            capability_mappings.append((u_mapping, u_cap))
+            capabilities.append(u_cap)
     except Exception:
         db.session.rollback()
 
@@ -2113,9 +2113,27 @@ def render_application_detail(id):
     # --- Metric cards ---
     metric_cards = [
         {
-            "label": "Lifecycle Stage",
-            "value": (app_obj.deployment_status or "unknown").replace("_", " ").title(),
-            "delta": f"Criticality: {app_obj.business_criticality or 'Not set'}",
+            # Labelled for the field it actually plots. It read "Lifecycle
+            # Stage" while showing deployment_status, directly above an
+            # "Application Identity / Lifecycle Status" row showing
+            # lifecycle_status -- so the same page answered "what stage is this
+            # application at?" twice, with two different values, and neither
+            # label said which field it came from.
+            #
+            # An unrecorded status is an em dash, not the word "unknown"
+            # (and previously not the ORM default "development", which read as
+            # a recorded answer).
+            "label": "Deployment Status",
+            "value": (
+                app_obj.deployment_status.replace("_", " ").title()
+                if app_obj.deployment_status
+                else "—"
+            ),
+            "delta": (
+                f"Criticality: {app_obj.business_criticality}"
+                if app_obj.business_criticality
+                else "Criticality not recorded"
+            ),
             "icon_svg": "",
         },
         {
@@ -2154,12 +2172,23 @@ def render_application_detail(id):
         cap_table["columns"] = ["Capability", "Category", "Support", "Coverage", "Maturity", "Strategic", "Compliance"]
         cap_rows = []
         for mapping, cap in capability_mappings:
+            # DEF-003 follow-up: `mapping` is either an ApplicationCapabilityMapping
+            # (legacy) or a UnifiedApplicationCapabilityMapping (canonical, from the
+            # union added above) \u2014 they share support_level/coverage_percentage but
+            # not maturity_contribution_score, compliance_level, or is_primary_enabler.
+            # getattr(..., None/False) rather than a plain attribute access, so a
+            # unified-sourced row renders with an honest \u2014 em dash instead of a 500.
             support = mapping.support_level or ""
             coverage_pct = mapping.coverage_percentage
             maturity = cap.current_maturity_level
             if maturity is None:
-                maturity = mapping.maturity_contribution_score
-            compliance = mapping.compliance_level or ""
+                maturity = getattr(mapping, "maturity_contribution_score", None)
+            if maturity is None:
+                maturity = getattr(mapping, "maturity_level", None)
+            compliance = getattr(mapping, "compliance_level", None) or ""
+            is_strategic = getattr(mapping, "is_primary_enabler", None)
+            if is_strategic is None:
+                is_strategic = getattr(mapping, "is_strategic", False)
             cap_rows.append({
                 "name": cap.name,
                 "detail_url": None,
@@ -2167,7 +2196,7 @@ def render_application_detail(id):
                 "support_level": support.replace("_", " ").title() if support else "",
                 "coverage": f"{coverage_pct}%" if coverage_pct is not None else "",
                 "maturity": f"L{maturity}" if maturity is not None else "",
-                "strategic": "Yes" if mapping.is_primary_enabler else "No",
+                "strategic": "Yes" if is_strategic else "No",
                 "compliance": compliance.replace("_", " ").title() if compliance else "\u2014",
             })
         cap_table["rows"] = cap_rows
@@ -2226,6 +2255,8 @@ def render_application_detail(id):
     application_documents = []
     try:
         from app.models.miscellaneous import ApplicationDocument
+        # tenant-scoping-ok: FK-scoped to app_obj.id, an org-scoped
+        # ApplicationComponent load.
         application_documents = (
             ApplicationDocument.query.filter_by(application_component_id=app_obj.id)
             .order_by(ApplicationDocument.uploaded_at.desc())
@@ -2237,9 +2268,12 @@ def render_application_detail(id):
     return render_template(
         "applications/dashboard.html",
         app=app_obj,
-        functional_maturity=0.0,
-        compliance_score=0.0,
-        compliance_results=[],
+        # Not yet computed for this view. Pass None (never 0.0) so the template
+        # renders an em dash instead of asserting a measured score of zero —
+        # a literal 0.0 here rendered every application as red/non-compliant.
+        functional_maturity=None,
+        compliance_score=None,
+        compliance_results=None,
         capabilities_with_compliance=[],
         edit_mode=request.args.get("edit") == "1",
         edit_mode_motivation=request.args.get("edit_motivation") == "1",

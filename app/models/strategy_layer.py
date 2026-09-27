@@ -212,11 +212,18 @@ def _link_strategy_archimate(connection, target, element_type, desc_prefix):
     from app.models.models import ArchiMateElement
 
     archimate_table = ArchiMateElement.__table__
+    # ArchiMateElement.name is String(100); several strategy models (notably
+    # BusinessCapability) allow String(256), so a long name would raise on
+    # insert and poison the flush. Truncate with an ellipsis and keep the full
+    # name recoverable — the element IS the field, so it must never fail to be
+    # created because the field was long.
+    name = target.name or ""
+    stored_name = name if len(name) <= 100 else name[:99] + "…"
     values = {
-        "name": target.name,
+        "name": stored_name,
         "type": element_type,
         "layer": "Strategy",
-        "description": target.description or f"{desc_prefix}: {target.name}",
+        "description": target.description or f"{desc_prefix}: {name}",
     }
     org_id = getattr(target, "organization_id", None)
     if org_id is not None:
@@ -253,3 +260,9 @@ def create_archimate_value_stream(mapper, connection, target):
     """Automatically create ArchiMateElement for ValueStream"""
     if not target.archimate_element_id:
         _link_strategy_archimate(connection, target, "ValueStream", "Value stream")
+
+
+# NOTE: BusinessCapability already has its OWN before_insert listener
+# (create_capability_archimate_element in app/models/business_capabilities.py) that
+# mirrors every capability into a Strategy-layer Capability element. It is the single
+# source of that sync — do NOT add a competing one here.

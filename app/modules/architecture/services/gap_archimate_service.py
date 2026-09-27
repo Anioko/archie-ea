@@ -13,11 +13,12 @@ ArchiMate 3.2 Implementation & Migration layer integration:
 - Plateau: Stable architectural state snapshots
 """
 
+from app.services.archimate_backbone import sync_archimate_element
 from datetime import date, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from app import db
-from app.models.implementation_migration import Deliverable, Gap, WorkPackage
+from app.models.implementation_migration import Gap, WorkPackage
 
 # Gap type color mapping (consistent with UI)
 GAP_TYPE_COLORS = {
@@ -298,6 +299,7 @@ class GapArchiMateService:
         wp.gaps.append(gap)
 
         db.session.add(wp)
+        sync_archimate_element(wp)
         return wp
 
     def create_child_work_package(self, parent: WorkPackage, data: Dict) -> WorkPackage:
@@ -331,6 +333,7 @@ class GapArchiMateService:
             child.gaps.append(gap)
 
         db.session.add(child)
+        sync_archimate_element(child)
         return child
 
     def create_standard_work_breakdown(self, gap: Gap, template: str = "default") -> WorkPackage:
@@ -449,6 +452,10 @@ class GapArchiMateService:
             "estimated_cost",
             "actual_cost",
             "dependencies",
+            # F-08(b), Capgemini dry-run: the Capability Roadmap's edit form
+            # has always offered "Target Plateau" — it was accepted (200) and
+            # silently dropped because this whitelist never included it.
+            "plateau_id",
         }
 
         for field, value in updates.items():
@@ -539,7 +546,9 @@ class GapArchiMateService:
         Returns:
             List of Gap objects
         """
-        query = Gap.query
+        # D3: exclude interface-register plateau-transition gaps -- this
+        # feeds capability roadmap display, not the interface register.
+        query = Gap.query.filter(Gap.gap_kind != "plateau_transition")
 
         if filters:
             if filters.get("gap_type"):

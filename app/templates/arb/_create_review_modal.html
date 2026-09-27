@@ -7,13 +7,13 @@
 <form @submit.prevent="submitCreateReview()" class="space-y-4" x-data="arbReviewCreateModal()">
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div class="sm:col-span-2">
-      <label for="car-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive">*</span></label>
+      <label for="car-title" class="block text-sm font-medium mb-1">Title <span class="text-destructive-emphasis">*</span></label>
       <input type="text" id="car-title" x-model="formData.title" required maxlength="255"
              class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
              placeholder="e.g. Cloud Migration Architecture Proposal">
     </div>
     <div>
-      <label for="car-type" class="block text-sm font-medium mb-1">Review Type <span class="text-destructive">*</span></label>
+      <label for="car-type" class="block text-sm font-medium mb-1">Review Type <span class="text-destructive-emphasis">*</span></label>
       <select id="car-type" x-model="formData.review_type"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">Select type...</option>
@@ -23,7 +23,7 @@
       </select>
     </div>
     <div>
-      <label for="car-decision-sought" class="block text-sm font-medium mb-1">Decision Sought <span class="text-destructive">*</span></label>
+      <label for="car-decision-sought" class="block text-sm font-medium mb-1">Decision Sought <span class="text-destructive-emphasis">*</span></label>
       <select id="car-decision-sought" x-model="formData.decision_sought" required
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">What is the board being asked to approve?</option>
@@ -33,7 +33,17 @@
       </select>
     </div>
     <div>
-      <label for="car-togaf" class="block text-sm font-medium mb-1">TOGAF Phase</label>
+      {# M-07: ARB reviews use the full TOGAF ADM cycle (A-H), including Phase G
+         (Implementation Governance) and Phase H (Architecture Change Management) —
+         organisation-wide governance concerns that ARB tracks. The solution
+         blueprint's "ADM Phase Completion" checklist (see solution_design_routes.py
+         phase_defs / _blueprint_governance.html) deliberately covers only A-F: the
+         phases scoped to a single solution's design. These are two different,
+         intentionally-scoped taxonomies for two different audiences — not a bug,
+         and G/H are not shown as "failing" on the blueprint because they are out
+         of that checklist's scope, not incomplete. Do not truncate this list to
+         A-F to "match" the blueprint. #}
+      <label for="car-togaf" class="block text-sm font-medium mb-1">TOGAF ADM Phase (A-H)</label>
       <select id="car-togaf" x-model="formData.togaf_phase"
               class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <option value="">—</option>
@@ -117,14 +127,21 @@
           <p class="text-xs text-muted-foreground mt-1">Systems delivering or affected by this change. Hold Ctrl/Cmd to select multiple.</p>
         </div>
         <div class="sm:col-span-2">
-          <label for="car-solution" class="block text-sm font-medium mb-1">Solution</label>
-          <select id="car-solution" x-model="formData.solution_id"
-                  class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            <option value="">—</option>
-            <template x-for="s in formOptions.solutions" :key="s.id">
-              <option :value="s.id" x-text="s.name"></option>
-            </template>
-          </select>
+          {# 2 Sep 2026 (Capgemini delivery-team dry-run): this used to be a
+             Solution dropdown wired to formData.solution_id — but the server
+             ALWAYS rejects a solution-linked submission from this modal
+             (_create_arb_review_item, arb_routes.py): a Solution review needs
+             the evidence dossier only the solution's own "Submit for ARB"
+             flow can build, which this generic modal cannot collect. Offering
+             a control that can never succeed is a dead end, not a shortcut —
+             point the user at the real path instead of a guaranteed error. #}
+          <label class="block text-sm font-medium mb-1">Solution</label>
+          <div class="rounded-md border border-input bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            Reviewing a Solution? Submit it from the solution's own page — open
+            the solution, then use <span class="font-medium text-foreground">Submit for ARB</span>.
+            That captures the evidence a solution review requires; this form is
+            for ADRs and architecture models only.
+          </div>
         </div>
         <div>
           <label for="car-adr" class="block text-sm font-medium mb-1">ADR</label>
@@ -146,6 +163,21 @@
             </template>
           </select>
         </div>
+        {# 2 Sep 2026 (Capgemini delivery-team dry-run, F-06): a review with
+           neither field set is created successfully and then stuck permanently
+           — arb_read_models._legacy_generic() classifies it "legacy" the
+           instant review_cycle_id is never set, with no Submit/Advance action
+           ever again. Nothing at creation time said so. Warn here, and require
+           an explicit acknowledgement rather than silently accepting it. #}
+        <div class="sm:col-span-2" x-show="!formData.adr_id && !formData.architecture_model_id" x-cloak>
+          <div class="rounded-md bg-warning/10 border border-warning/30 px-3 py-2 text-sm text-warning-emphasis space-y-2">
+            <p>Without a linked ADR or Architecture Model, this review can never reach the board — no Submit or Decision action will ever appear on it.</p>
+            <label class="flex items-start gap-2 font-normal">
+              <input type="checkbox" x-model="formData.acknowledge_no_subject" class="mt-0.5">
+              <span>I understand this will be a record-only item the board cannot act on.</span>
+            </label>
+          </div>
+        </div>
         <div>
           <label for="car-cap-impact-type" class="block text-sm font-medium mb-1">Capability Impact Type</label>
           <select id="car-cap-impact-type" x-model="formData.capability_impact_type"
@@ -156,7 +188,7 @@
           </select>
         </div>
         <div class="sm:col-span-2">
-          <label for="car-capabilities" class="block text-sm font-medium mb-1">Capabilities <span class="text-destructive" x-cloak x-show="isCapabilityRequired()">*</span></label>
+          <label for="car-capabilities" class="block text-sm font-medium mb-1">Capabilities <span class="text-destructive-emphasis" x-cloak x-show="isCapabilityRequired()">*</span></label>
           <select id="car-capabilities" x-model="formData.capability_ids" multiple
                   class="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <template x-for="c in formOptions.capabilities" :key="c.id">
@@ -168,7 +200,7 @@
       </div>
     </div>
   </details>
-  <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+  <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
   <div class="flex justify-end gap-3 pt-2 border-t border-border">
     <button type="button" data-modal-close="create-arb-review"
             class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>

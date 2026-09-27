@@ -10,7 +10,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Risk Assessment', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -19,11 +20,6 @@
     {{ page_header(
         title='Risk Assessment',
         description='Portfolio-wide risk analysis with mitigation recommendations.',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Strategic Planning'},
-            {'label': 'Risk Assessment'}
-        ],
         actions=[
             {'text': 'Mitigate Risk', 'icon': 'shield-alert', 'onclick': "$dispatch('open-initiative-risk-mitigation-modal')", 'variant': 'destructive'}
         ]
@@ -85,17 +81,26 @@
                                 <td class="p-3 text-sm">{{ risk.capability_name|default('N/A') }}</td>
                                 <td class="p-3">
                                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium
-                                        {% if risk.risk_level == 'CRITICAL' %}bg-destructive/10 text-destructive border border-destructive/30
-                                        {% elif risk.risk_level == 'HIGH' %}bg-warning/10 text-warning border border-warning/30
+                                        {% if risk.risk_level == 'CRITICAL' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
+                                        {% elif risk.risk_level == 'HIGH' %}bg-warning/10 text-warning-emphasis border border-warning/30
                                         {% elif risk.risk_level == 'MEDIUM' %}bg-primary/10 text-primary border border-primary/30
-                                        {% else %}bg-success/10 text-success border border-success/30{% endif %}">
+                                        {% else %}bg-success/10 text-success-emphasis border border-success/30{% endif %}">
                                         {{ risk.risk_level|default('Low') }}
                                     </span>
                                 </td>
                                 <td class="p-3 text-sm tabular-nums">{{ risk.overall_risk_score|default(0) }}</td>
                                 <td class="p-3 text-sm text-muted-foreground">
                                     {% if risk.risk_factors %}
-                                        {{ risk.risk_factors[:2]|join(', ') }}{% if risk.risk_factors|length > 2 %}...{% endif %}
+                                        {% if risk.risk_factors is string %}
+                                            {{ risk.risk_factors }}
+                                        {% elif risk.risk_factors is mapping %}
+                                            {{ risk.risk_factors.keys()|list|join(', ') }}
+                                        {% elif risk.risk_factors is iterable %}
+                                            {% set factors = risk.risk_factors|list %}
+                                            {{ factors[:2]|join(', ') }}{% if factors|length > 2 %}...{% endif %}
+                                        {% else %}
+                                            {{ risk.risk_factors }}
+                                        {% endif %}
                                     {% else %}
                                         None
                                     {% endif %}
@@ -113,7 +118,7 @@
                                     Unassigned
                                 </td>
                                 <td class="p-3">
-                                    <button
+                                    <button type="button"
                                         @click="$dispatch('open-risk-detail', {{ risk.capability_id }})"
                                         class="inline-flex items-center gap-1 px-3 py-1.5 bg-destructive hover:bg-destructive/90 text-primary-foreground text-xs font-medium rounded-md transition-colors"
                                      aria-label="View risk details">
@@ -155,7 +160,7 @@
 </div>
 
 <!-- LLM-Powered Recommendations -->
-{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 {% from 'components/risk_detail_modal.html' import risk_detail_modal %}
 
 {{ risk_detail_modal() }}
@@ -199,12 +204,9 @@ document.addEventListener('alpine:init', () => {
         
         async init() {
             try {
-                const response = await fetch('/strategic/api/risks/statuses');
-                if (response.ok) {
-                    this.statuses = await response.json();
-                }
+                this.statuses = await Platform.fetch('/strategic/api/risks/statuses', { silent: true });
             } catch (err) {
-                console.error('Failed to fetch risk statuses:', err);
+                Platform.toast.error('Failed to load risk statuses: ' + (err.message || 'Unknown error'));
             }
         },
         

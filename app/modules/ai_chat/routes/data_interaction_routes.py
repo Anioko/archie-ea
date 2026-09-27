@@ -83,7 +83,7 @@ def get_audit_log():
 
         return jsonify({"success": True, "audit_log": audit_log, "total_entries": len(audit_log)})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -119,7 +119,7 @@ def validate_operation():
 
         return jsonify({"success": True, "validation": validation_result})
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -159,7 +159,7 @@ def create_application():
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -196,7 +196,7 @@ def update_application(application_id):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -232,7 +232,7 @@ def create_vendor():
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -265,7 +265,7 @@ def update_vendor(vendor_id):
         else:
             return jsonify({"success": False, "error": result["error"]}), 400
 
-    except Exception as e:
+    except Exception:
         return jsonify({"success": False, "error": "An internal error occurred"}), 500
 
 
@@ -480,7 +480,7 @@ _SAD_SECTION_SERVICE_MAP = {
 @ai_data_interaction.route("/generate-sad-section", methods=["POST"])
 @login_required
 @audit_log("ai_data_generate_sad_section")
-@rate_limit(10, "1h")  # fabricated-values-ok: 10/hr cap for AI generation
+@rate_limit(10, "1h")  # 10/hr rate-limit config, not displayed data
 def generate_sad_section():
     """Generate content for a specific SAD section via the mapped backend service.
 

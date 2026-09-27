@@ -25,6 +25,7 @@ from app.decorators import audit_log
 from app.security.audit import audit_logger
 from app.security.data_protection import data_protector
 from app.security.rbac import Permission, ResourceDomain, check_permission, rbac_manager
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ def get_audit_events():
         user_id = request.args.get("user_id", type=int)
         resource_type = request.args.get("resource_type")
         event_type = request.args.get("event_type")
-        limit = request.args.get("limit", 100, type=int)
+        limit = safe_int_arg('limit', 100, minimum=1, maximum=500)
 
         start_date = None
         end_date = None

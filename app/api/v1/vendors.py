@@ -14,12 +14,19 @@ from sqlalchemy import or_
 
 from app import db
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+from app.utils.duplicate_guard import (
+    duplicate_conflict_response,
+    find_duplicate_by_name,
+    find_similar_entities,
+    lock_name_for_write,
+)
 from app.utils.api_response import (
     error_response,
     not_found_response,
     success_response,
     validation_error_response,
 )
+from app.utils.pagination import safe_int_arg
 
 vendors_bp = Blueprint("vendors_v1", __name__)
 
@@ -58,8 +65,8 @@ def get_vendors():
         description: List of vendors
     """
     try:
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 100)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 100)
         search = request.args.get("search", "", type=str)
         vendor_type = request.args.get("vendor_type", "", type=str)
 
@@ -113,7 +120,7 @@ def get_vendors():
             }
         )
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve vendors",
             code="VENDORS_RETRIEVAL_ERROR",
@@ -179,7 +186,7 @@ def get_vendor(vendor_id):
 
         return success_response(vendor_data)
 
-    except Exception as e:
+    except Exception:
         return error_response(
             message="Failed to retrieve vendor",
             code="VENDOR_RETRIEVAL_ERROR",
@@ -236,14 +243,21 @@ def create_vendor():
         if not data.get("name"):
             return validation_error_response({"name": "Name is required"})
 
-        # Check for duplicate name
-        existing = VendorOrganization.query.filter_by(name=data["name"]).first()
-        if existing:
-            return error_response(
-                message="Vendor with this name already exists",
-                code="DUPLICATE_VENDOR",
-                status_code=409,
-            )
+        # ARCH-030: normalised match. VendorOrganization is deliberately NOT
+        # TenantMixin — it is shared reference data with a globally unique
+        # ``name`` (see its docstring / ADR-0003) — so this lookup is global and
+        # takes no organisation predicate. There is no allow_duplicate escape
+        # hatch here: the database UNIQUE on ``name`` would reject it anyway,
+        # and this check exists to turn that IntegrityError into a 409 that
+        # names the existing vendor.
+        # Serialise the check-then-insert (see lock_name_for_write).
+        lock_name_for_write(VendorOrganization, data["name"])
+        existing = find_duplicate_by_name(VendorOrganization, data["name"])
+        if existing is not None:
+            return duplicate_conflict_response("A vendor", existing)
+
+        # S-06: near-duplicate advisory, surfaced before the write commits.
+        similar = find_similar_entities(VendorOrganization, data["name"])
 
         # Create new vendor
         # Auto-generate required NOT NULL fields from the name
@@ -290,11 +304,13 @@ def create_vendor():
                 "created_at": vendor.created_at.isoformat()
                 if vendor.created_at
                 else None,
+                "similar_entities": similar,
+                "similar_entities_count": len(similar),
             },
             status_code=201,
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to create vendor",
@@ -410,7 +426,7 @@ def update_vendor(vendor_id):
             }
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to update vendor",
@@ -464,7 +480,7 @@ def delete_vendor(vendor_id):
             {"message": "Vendor deleted successfully", "id": str(vendor_id)}
         )
 
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         return error_response(
             message="Failed to delete vendor",

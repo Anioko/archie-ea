@@ -19,41 +19,43 @@
     <template x-if="summary.total > 0">
       <div class="flex items-center gap-2 flex-wrap">
         <template x-if="summary.confirmed > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30"
                 x-text="`${summary.confirmed} confirmed`"></span>
         </template>
         <template x-if="summary.vendor_seeded > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"
+          {# design-tokens-ok: 4-status legend (confirmed/vendor-seeded/schema-imported/AI-inferred) — info is already schema-imported's token, so vendor-seeded keeps a distinct hue #}
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30"{# design-tokens-ok #}
                 x-text="`${summary.vendor_seeded} vendor-seeded`"
                 title="Pre-populated from vendor template — spot-check field names before confirming"></span>
         </template>
         <template x-if="summary.schema_imported > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-600 border border-blue-500/30"
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info border border-info/30"
                 x-text="`${summary.schema_imported} schema-imported`"
                 title="Imported from your DDL/OpenAPI/CDS — high fidelity, confirm to lock in"></span>
         </template>
         <template x-if="summary.ai_inferred > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-500/10 text-amber-600 border border-amber-500/30"
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-warning/10 text-warning-emphasis border border-warning/30"
                 x-text="`${summary.ai_inferred} AI-inferred`"
                 title="LLM-inferred — review carefully before confirming"></span>
         </template>
         <template x-if="summary.pending > 0">
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted/60 text-muted-foreground border border-border"
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium bg-muted/60 text-muted-foreground border border-border"
                 x-text="`${summary.pending} pending`"></span>
         </template>
       </div>
     </template>
     <div class="ml-auto flex items-center gap-1.5">
       {# Import Schema button #}
-      <button @click="importOpen = true"
-              class="inline-flex items-center gap-1 px-2 py-1 rounded border border-violet-500/40 text-[10px] text-violet-600 hover:bg-violet-500/10 hover:border-violet-500/60 transition-colors font-medium">
+      {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
+      <button type="button" @click="importOpen = true"
+              class="inline-flex items-center gap-1 px-2 py-1 rounded border border-violet-500/40 text-xs text-violet-600 hover:bg-violet-500/10 hover:border-violet-500/60 transition-colors font-medium">{# design-tokens-ok #}
         <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
         </svg>
         Import Schema
       </button>
-      <button @click="load()" :disabled="loading"
-              class="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-[10px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40">
+      <button type="button" @click="load()" :disabled="loading"
+              class="inline-flex items-center gap-1 px-2 py-1 rounded border border-border text-xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40">
         <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" :class="loading ? 'animate-spin' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M4 9a9 9 0 0115-2.83M20 15a9 9 0 01-15 2.83"/>
         </svg>
@@ -72,7 +74,7 @@
   </div>
 
   {# ── Error ── #}
-  <div x-show="error" x-cloak class="text-xs text-destructive py-2" x-text="error"></div>
+  <div x-show="error" x-cloak class="text-xs text-destructive-emphasis py-2" x-text="error"></div>
 
   {# ── Empty state ── #}
   <div x-show="!loading && !error && elements.length === 0" x-cloak
@@ -91,11 +93,11 @@
       <div class="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
         <div>
           <h3 class="text-sm font-semibold text-foreground">Import Schema</h3>
-          <p class="text-[11px] text-muted-foreground mt-0.5">
+          <p class="text-2xs text-muted-foreground mt-0.5">
             Paste an existing schema to set confirmed fields — prevents field invention during code generation.
           </p>
         </div>
-        <button @click="importOpen = false" class="text-muted-foreground hover:text-foreground transition-colors">
+        <button aria-label="Close import panel" type="button" @click="importOpen = false" class="text-muted-foreground hover:text-foreground transition-colors">
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
           </svg>
@@ -107,49 +109,51 @@
 
         {# Format selector #}
         <div>
-          <label class="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schema Format</label>
+          <label class="text-2xs font-medium text-muted-foreground uppercase tracking-wide">Schema Format</label>
           <div class="mt-1.5 flex gap-2 flex-wrap">
             <template x-for="opt in importFormats" :key="opt.value">
-              <button @click="importFormat = opt.value"
+              {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
+              <button type="button" @click="importFormat = opt.value"
                       :class="importFormat === opt.value
-                        ? 'border-violet-500/60 bg-violet-500/10 text-violet-700'
+                        ? 'border-violet-500/60 bg-violet-500/10 text-violet-700'{# design-tokens-ok #}
                         : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'"
-                      class="px-3 py-1.5 rounded-md border text-[11px] font-medium transition-colors">
+                      class="px-3 py-1.5 rounded-md border text-2xs font-medium transition-colors">
                 <span x-text="opt.label"></span>
               </button>
             </template>
           </div>
-          <p class="mt-1.5 text-[10px] text-muted-foreground/70" x-text="importFormats.find(f => f.value === importFormat)?.hint || ''"></p>
+          <p class="mt-1.5 text-xs text-muted-foreground/70" x-text="importFormats.find(f => f.value === importFormat)?.hint || ''"></p>
         </div>
 
         {# Paste textarea #}
         <div>
-          <label class="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Schema Content</label>
+          <label class="text-2xs font-medium text-muted-foreground uppercase tracking-wide">Schema Content</label>
+          {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
           <textarea x-model="importContent"
                     rows="12"
-                    :placeholder="importFormats.find(f => f.value === importFormat)?.placeholder || ''"
-                    class="mt-1.5 w-full font-mono text-[11px] bg-muted/40 border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none text-foreground placeholder:text-muted-foreground/40">
+                    :placeholder="importFormats.find(f => f.value === importFormat)?.placeholder || ''" aria-label="Schema Content"
+                    class="mt-1.5 w-full font-mono text-2xs bg-muted/40 border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-violet-500/50 resize-none text-foreground placeholder:text-muted-foreground/40" {# design-tokens-ok #}>
           </textarea>
         </div>
 
         {# Result preview #}
         <template x-if="importResult">
           <div :class="importResult.error
-                  ? 'bg-destructive/10 border-destructive/30 text-destructive'
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700'"
-               class="rounded-lg border px-3 py-2 text-[11px]">
+                  ? 'bg-destructive/10 border-destructive/30 text-destructive-emphasis'
+                  : 'bg-success/10 border-success/30 text-success-emphasis'"
+               class="rounded-lg border px-3 py-2 text-2xs">
             <template x-if="!importResult.error">
               <div>
                 <p class="font-semibold mb-1" x-text="`✓ Imported ${importResult.imported} of ${importResult.total_parsed} entities`"></p>
                 <template x-if="importResult.matched && importResult.matched.length > 0">
                   <ul class="space-y-0.5 mb-1">
                     <template x-for="m in importResult.matched" :key="m.entity">
-                      <li x-text="`${m.element} ← ${m.entity} (${m.field_count} fields)`" class="text-[10px]"></li>
+                      <li x-text="`${m.element} ← ${m.entity} (${m.field_count} fields)`" class="text-xs"></li>
                     </template>
                   </ul>
                 </template>
                 <template x-if="importResult.unmatched && importResult.unmatched.length > 0">
-                  <p class="text-amber-600 text-[10px]"
+                  <p class="text-warning-emphasis text-xs"
                      x-text="`Unmatched (no element found): ${importResult.unmatched.join(', ')}`"></p>
                 </template>
               </div>
@@ -164,13 +168,13 @@
 
       {# Modal footer #}
       <div class="flex items-center justify-end gap-2 px-4 py-3 border-t border-border shrink-0">
-        <button @click="importOpen = false; importResult = null"
-                class="px-3 py-1.5 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+        <button type="button" @click="importOpen = false; importResult = null"
+                class="px-3 py-1.5 rounded border border-border text-2xs text-muted-foreground hover:text-foreground transition-colors">
           Close
         </button>
-        <button @click="runImport()"
+        <button type="button" @click="runImport()"
                 :disabled="importing || !importContent.trim()"
-                class="px-3 py-1.5 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                class="px-3 py-1.5 rounded bg-violet-600 text-primary-foreground text-2xs font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">{# design-tokens-ok #}
           <span x-text="importing ? 'Importing…' : 'Import &amp; Confirm'"></span>
         </button>
       </div>
@@ -180,46 +184,49 @@
   {# ── Element list ── #}
   <div x-show="!loading && !error && elements.length > 0" x-cloak class="space-y-2">
     <template x-for="el in elements" :key="el.element_id">
+      {# design-tokens-ok: 4-status legend — vendor-seeded keeps a distinct hue from schema-imported's info token #}
       <div class="rounded-lg border overflow-hidden"
            :class="el.fields_status === 'confirmed'
-             ? 'border-emerald-500/30 bg-emerald-500/5'
+             ? 'border-success/30 bg-success/5'
              : el.fields_status === 'vendor_seeded'
-               ? 'border-violet-500/30 bg-violet-500/5'
+               ? 'border-violet-500/30 bg-violet-500/5'{# design-tokens-ok #}
                : el.fields_status === 'schema_imported'
-                 ? 'border-blue-500/30 bg-blue-500/5'
+                 ? 'border-info/30 bg-info/5'
                  : el.fields.length > 0
-                   ? 'border-amber-500/30 bg-amber-500/5'
+                   ? 'border-warning/30 bg-warning/5'
                    : 'border-border bg-card'">
 
         {# Element header #}
-        <button @click="el._open = !el._open"
+        <button type="button" @click="el._open = !el._open"
                 class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors">
           {# Status dot #}
+          {# design-tokens-ok: 4-status legend — vendor-seeded keeps a distinct hue from schema-imported's info token #}
           <span class="w-2 h-2 rounded-full shrink-0 mt-px"
-                :class="el.fields_status === 'confirmed' ? 'bg-emerald-500'
-                        : el.fields_status === 'vendor_seeded' ? 'bg-violet-500'
-                        : el.fields_status === 'schema_imported' ? 'bg-blue-500'
-                        : el.fields.length > 0 ? 'bg-amber-400'
+                :class="el.fields_status === 'confirmed' ? 'bg-success'
+                        : el.fields_status === 'vendor_seeded' ? 'bg-violet-500'{# design-tokens-ok #}
+                        : el.fields_status === 'schema_imported' ? 'bg-info'
+                        : el.fields.length > 0 ? 'bg-warning'
                         : 'bg-muted-foreground/40'"></span>
 
           <span class="text-xs font-medium truncate flex-1" x-text="el.name"></span>
 
           {# Type badge #}
-          <span class="text-[11px] px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground font-mono shrink-0"
+          <span class="text-2xs px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground font-mono shrink-0"
                 x-text="el.type"></span>
 
           {# Field count #}
-          <span class="text-[10px] text-muted-foreground shrink-0"
+          <span class="text-xs text-muted-foreground shrink-0"
                 x-text="el.fields.length > 0 ? `${el.fields.length} fields` : 'no fields'"></span>
 
           {# Status badge — distinct per source #}
           <span x-show="el.fields_status === 'confirmed'"
-                class="text-[11px] font-semibold text-emerald-600 shrink-0">&#10003; Confirmed</span>
+                class="text-2xs font-semibold text-success-emphasis shrink-0">&#10003; Confirmed</span>
+          {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
           <span x-show="el.fields_status === 'vendor_seeded'"
-                class="text-[11px] font-semibold text-violet-600 shrink-0"
+                class="text-2xs font-semibold text-violet-600 shrink-0"{# design-tokens-ok #}
                 title="Pre-populated from vendor template — spot-check before confirming">&#9670; Vendor-seeded</span>
           <span x-show="el.fields_status === 'schema_imported'"
-                class="text-[11px] font-semibold text-blue-600 shrink-0"
+                class="text-2xs font-semibold text-info shrink-0"
                 title="Imported from DDL/OpenAPI/CDS — confirm to lock in">&#9642; Schema-imported</span>
 
           {# Chevron #}
@@ -235,7 +242,7 @@
 
           {# No fields yet #}
           <template x-if="el.fields.length === 0">
-            <p class="text-[11px] text-muted-foreground/60 italic py-1">
+            <p class="text-2xs text-muted-foreground/60 italic py-1">
               No fields inferred yet. Run Phase&nbsp;1 Enrichment (architecture generation) to auto-infer this element's schema.
             </p>
           </template>
@@ -243,9 +250,9 @@
           {# Field table #}
           <template x-if="el.fields.length > 0">
             <div>
-              <table class="w-full text-[11px] mb-2.5">
+              <table class="w-full text-2xs mb-2.5">
                 <thead>
-                  <tr class="text-[11px] uppercase tracking-wider text-muted-foreground border-b border-border/50">
+                  <tr class="text-2xs uppercase tracking-wider text-muted-foreground border-b border-border/50">
                     <th class="text-left pb-1 font-medium w-[35%]">Field</th>
                     <th class="text-left pb-1 font-medium w-[20%]">Type</th>
                     <th class="text-center pb-1 font-medium w-[12%]">Req.</th>
@@ -259,20 +266,20 @@
                       <td class="py-1 pr-2">
                         <input type="text" x-model="field.name"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
-                               class="w-full bg-transparent border-0 outline-none text-[11px] font-mono disabled:cursor-default focus:ring-0 focus:outline-none"
-                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''"/>
+                               class="w-full bg-transparent border-0 outline-none text-2xs font-mono disabled:cursor-default focus:ring-0 focus:outline-none"
+                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''" aria-label="Name"/>
                       </td>
                       <td class="py-1 pr-2">
                         <select x-model="field.type"
                                 :disabled="el.fields_status === 'confirmed' && !el._editing"
-                                class="w-full bg-transparent border-0 outline-none text-[11px] font-mono disabled:cursor-default appearance-none">
+                                class="w-full bg-transparent border-0 outline-none text-2xs font-mono disabled:cursor-default appearance-none" aria-label="Type">
                           <template x-for="t in fieldTypes" :key="t">
                             <option :value="t" x-text="t" :selected="field.type === t"></option>
                           </template>
                         </select>
                       </td>
                       <td class="py-1 pr-2 text-center">
-                        <input type="checkbox" x-model="field.required"
+                        <input aria-label="Field is required" type="checkbox" x-model="field.required"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
                                class="w-3 h-3 rounded accent-primary disabled:cursor-default"/>
                       </td>
@@ -280,13 +287,13 @@
                         <input type="text" x-model="field.description"
                                placeholder="describe this field…"
                                :disabled="el.fields_status === 'confirmed' && !el._editing"
-                               class="w-full bg-transparent border-0 outline-none text-[11px] text-muted-foreground disabled:cursor-default focus:ring-0 focus:outline-none"
-                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''"/>
+                               class="w-full bg-transparent border-0 outline-none text-2xs text-muted-foreground disabled:cursor-default focus:ring-0 focus:outline-none"
+                               :class="el.fields_status !== 'confirmed' || el._editing ? 'border-b border-dashed border-border/60 focus:border-primary/50' : ''" aria-label="describe this field…"/>
                       </td>
                       <td class="py-1 text-center">
-                        <button x-show="el._editing || el.fields_status !== 'confirmed'"
+                        <button aria-label="Remove field" type="button" x-show="el._editing || el.fields_status !== 'confirmed'"
                                 @click="removeField(el, fi)"
-                                class="text-muted-foreground/40 hover:text-destructive transition-colors">
+                                class="text-muted-foreground/40 hover:text-destructive-emphasis transition-colors">
                           <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                           </svg>
@@ -298,9 +305,9 @@
               </table>
 
               {# Add field row #}
-              <button x-show="el._editing || el.fields_status !== 'confirmed'"
+              <button type="button" x-show="el._editing || el.fields_status !== 'confirmed'"
                       @click="addField(el)"
-                      class="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2.5 transition-colors">
+                      class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2.5 transition-colors">
                 <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
                 </svg>
@@ -314,83 +321,84 @@
             {# Confirmed state — show Edit + Reset #}
             <template x-if="el.fields_status === 'confirmed' && !el._editing">
               <div class="flex items-center gap-2">
-                <button @click="el._editing = true"
-                        class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <button type="button" @click="el._editing = true"
+                        class="px-2.5 py-1 rounded border border-border text-2xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
                   Edit
                 </button>
-                <button @click="resetFields(el)"
-                        class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-destructive hover:border-destructive/30 transition-colors">
+                <button type="button" @click="resetFields(el)"
+                        class="px-2.5 py-1 rounded border border-border text-2xs text-muted-foreground hover:text-destructive-emphasis hover:border-destructive/30 transition-colors">
                   Reset to AI-inferred
                 </button>
-                <span class="text-[10px] text-muted-foreground/60">Confirmed fields will be used verbatim in code generation.</span>
+                <span class="text-xs text-muted-foreground/60">Confirmed fields will be used verbatim in code generation.</span>
               </div>
             </template>
 
             {# Editing confirmed — show Save + Cancel #}
             <template x-if="el.fields_status === 'confirmed' && el._editing">
               <div class="flex items-center gap-2">
-                <button @click="confirmFields(el)"
+                <button type="button" @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-emerald-600 text-white text-[11px] font-medium hover:bg-emerald-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-success text-success-foreground text-2xs font-medium hover:bg-success/90 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Save changes'"></span>
                 </button>
-                <button @click="cancelEdit(el)"
-                        class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+                <button type="button" @click="cancelEdit(el)"
+                        class="px-2.5 py-1 rounded border border-border text-2xs text-muted-foreground hover:text-foreground transition-colors">
                   Cancel
                 </button>
               </div>
             </template>
 
             {# Vendor-seeded — spot-check prompt #}
+            {# design-tokens-ok: matches the vendor-seeded legend colour used throughout this panel #}
             <template x-if="el.fields_status === 'vendor_seeded' && !el._editing">
               <div class="flex items-center gap-2">
-                <button @click="confirmFields(el)"
+                <button type="button" @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-violet-600 text-white text-[11px] font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-violet-600 text-primary-foreground text-2xs font-medium hover:bg-violet-700 disabled:opacity-50 transition-colors">{# design-tokens-ok #}
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
-                <button @click="el._editing = true"
-                        class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <button type="button" @click="el._editing = true"
+                        class="px-2.5 py-1 rounded border border-border text-2xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
                   Edit
                 </button>
-                <span class="text-[10px] text-violet-600">From vendor template — spot-check field names</span>
+                <span class="text-xs text-violet-600">{# design-tokens-ok #}From vendor template — spot-check field names</span>
               </div>
             </template>
 
             {# Schema-imported — confirm to lock in #}
             <template x-if="el.fields_status === 'schema_imported' && !el._editing">
               <div class="flex items-center gap-2">
-                <button @click="confirmFields(el)"
+                <button type="button" @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-blue-600 text-white text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-2xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
-                <button @click="el._editing = true"
-                        class="px-2.5 py-1 rounded border border-border text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
+                <button type="button" @click="el._editing = true"
+                        class="px-2.5 py-1 rounded border border-border text-2xs text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors">
                   Edit
                 </button>
-                <span class="text-[10px] text-blue-600">From your schema — confirm to lock in for codegen</span>
+                <span class="text-xs text-info">From your schema — confirm to lock in for codegen</span>
               </div>
             </template>
 
             {# AI-inferred or other unconfirmed with fields #}
             <template x-if="!['confirmed', 'vendor_seeded', 'schema_imported'].includes(el.fields_status) && el.fields.length > 0">
               <div class="flex items-center gap-2">
-                <button @click="confirmFields(el)"
+                <button type="button" @click="confirmFields(el)"
                         :disabled="el._saving"
-                        class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-[11px] font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                        class="px-2.5 py-1 rounded bg-primary text-primary-foreground text-2xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors">
                   <span x-text="el._saving ? 'Saving…' : 'Confirm fields'"></span>
                 </button>
-                <span class="text-[10px] text-amber-600">AI-inferred — review carefully before confirming</span>
+                <span class="text-xs text-warning-emphasis">AI-inferred — review carefully before confirming</span>
               </div>
             </template>
           </div>
 
           {# Save feedback #}
-          <p x-show="el._saved" x-cloak class="text-[10px] text-emerald-600 mt-1.5">
+          <p x-show="el._saved" x-cloak class="text-xs text-success-emphasis mt-1.5">
             &#10003; Saved — codegen will use these fields verbatim
           </p>
-          <p x-show="el._saveError" x-cloak class="text-[10px] text-destructive mt-1.5" x-text="el._saveError"></p>
+          <p x-show="el._saveError" x-cloak class="text-xs text-destructive-emphasis mt-1.5" x-text="el._saveError"></p>
         </div>
 
       </div>
@@ -447,9 +455,7 @@ function fieldConfirmation(solutionId) {
       this.loading = true;
       this.error = null;
       try {
-        const r = await fetch(`/architecture-journey/${this.solutionId}/element-fields`);
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const data = await r.json();
+        const data = await Platform.fetch(`/architecture-journey/${this.solutionId}/element-fields`, { silent: true });
         this.summary = data.summary || {};
         this.elements = (data.elements || []).map(el => ({
           ...el,
@@ -486,16 +492,11 @@ function fieldConfirmation(solutionId) {
       el._saved = false;
       el._saveError = null;
       try {
-        const r = await fetch(
+        const json = await Platform.fetch.patch(
           `/architecture-journey/${this.solutionId}/element/${el.element_id}/fields`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fields: el._editFields, status: 'confirmed' }),
-          }
+          { fields: el._editFields, status: 'confirmed' },
+          { silent: true }
         );
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
         // Commit the edit back to the source array
         const prevStatus = el.fields_status;
         el.fields = el._editFields.map(f => ({ ...f }));
@@ -520,16 +521,11 @@ function fieldConfirmation(solutionId) {
       el._saving = true;
       el._saveError = null;
       try {
-        const r = await fetch(
+        const json = await Platform.fetch.patch(
           `/architecture-journey/${this.solutionId}/element/${el.element_id}/fields`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'reset' }),
-          }
+          { status: 'reset' },
+          { silent: true }
         );
-        const json = await r.json();
-        if (!r.ok) throw new Error(json.error || `HTTP ${r.status}`);
         el.fields_status = 'pending';
         el.fields = [];
         el._editFields = [];
@@ -548,23 +544,15 @@ function fieldConfirmation(solutionId) {
       this.importing = true;
       this.importResult = null;
       try {
-        const csrf = document.querySelector('meta[name="csrf-token"]');
-        const headers = { 'Content-Type': 'application/json' };
-        if (csrf) headers['X-CSRFToken'] = csrf.content;
-        const r = await fetch(`/architecture-journey/${this.solutionId}/import-schema`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ format: this.importFormat, content: this.importContent }),
-        });
-        const json = await r.json();
-        if (!r.ok) {
-          this.importResult = { error: json.error || `HTTP ${r.status}` };
-        } else {
-          this.importResult = json.data || json;
-          if ((this.importResult.imported || 0) > 0) {
-            // Reload element list to show newly confirmed fields
-            await this.load();
-          }
+        const json = await Platform.fetch.post(
+          `/architecture-journey/${this.solutionId}/import-schema`,
+          { format: this.importFormat, content: this.importContent },
+          { silent: true }
+        );
+        this.importResult = json.data || json;
+        if ((this.importResult.imported || 0) > 0) {
+          // Reload element list to show newly confirmed fields
+          await this.load();
         }
       } catch (e) {
         this.importResult = { error: e.message };

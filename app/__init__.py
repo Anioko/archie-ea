@@ -71,6 +71,24 @@ def create_app(config=None):
     from app.middleware.audit_middleware import install_audit_logging
     install_audit_logging(app)
 
+    # 1e. Server-side error aggregation: dedupes WARNING+ log records into
+    # error_events (see app/_bootstrap/error_tracking.py) so silent
+    # degradation shows up at /admin/errors instead of only in stdout.
+    if not os.getenv("APP_FAST_INIT"):
+        from app._bootstrap.error_tracking import init_error_tracking
+        init_error_tracking(app)
+
+    # 1f. F-06: application-wide request throttling. Installed before
+    # blueprints so the global default limits cover every route registered
+    # afterwards.
+    from app._bootstrap.rate_limiting import init_rate_limiting
+    init_rate_limiting(app)
+
+    # 1g. F-07: server-authoritative session idle timeout, separate from the
+    # absolute PERMANENT_SESSION_LIFETIME cap.
+    from app._bootstrap.session_policy import init_session_policy
+    init_session_policy(app)
+
     # 2. Security headers, guardrails, batch config
     init_security(app)
 
@@ -98,6 +116,12 @@ def create_app(config=None):
         app.logger.warning("Solution Prompt Admin blueprint failed: %s", e)
 
     # 7b. Code Workbench — registered in _bootstrap/blueprints.py (removed duplicate)
+
+    # 7c. CSRF default-deny coverage gate (P-04) — every write route not
+    # protected by flask-wtf's CSRFProtect must have a justified opt-out
+    # recorded in app/_bootstrap/csrf_coverage.py, or boot fails.
+    from app._bootstrap.csrf_coverage import assert_csrf_coverage
+    assert_csrf_coverage(app)
 
     # 8. OpenAPI/Swagger documentation (feature-flagged)
     init_swagger(app)
@@ -127,6 +151,21 @@ def create_app(config=None):
     return app
 
 
+# Endpoints that core chrome (admin_base.html / admin_sidebar.html) calls url_for()
+# on unguarded. A missing registration here silently breaks every admin page, so
+# boot warns and tests/test_boot_health.py asserts on it. Module-level so the test
+# imports this list rather than duplicating it.
+REQUIRED_ENDPOINTS = [
+    "dashboard.health_scorecard",
+    "dashboard_pages.rationalization_scorecard",
+    "unified_applications.application_list",
+    "solution_design.programmes_list",
+    "solution_design.transformation_programme_overview",
+    "transformation_api.create_programme",
+    "interface_register.index",
+]
+
+
 def _validate_critical_endpoints(app):
     """Warn at startup if any endpoint referenced by core templates is missing.
 
@@ -134,11 +173,6 @@ def _validate_critical_endpoints(app):
     admin_sidebar.html — a missing registration silently breaks every admin page.
     This check surfaces the problem immediately at boot rather than on first request.
     """
-    REQUIRED_ENDPOINTS = [
-        "dashboard.health_scorecard",
-        "dashboard_pages.rationalization_scorecard",
-        "unified_applications.application_list",
-    ]
     with app.app_context():
         missing = [ep for ep in REQUIRED_ENDPOINTS if ep not in app.view_functions]
         if missing:

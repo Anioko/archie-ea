@@ -1,13 +1,14 @@
 {% extends 'layouts/admin_base.html' %}
+{% from 'macros/page_shell.html' import page_shell %}
 
-{% block title %}Data Entity Catalog — A.R.C.H.I.E.{% endblock %}
+{% block title %}Data Entity Catalog — {{ config.APP_NAME }}{% endblock %}
 
 {% block breadcrumb %}
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Technology Layer', 'href': url_for('archimate_crud.dashboard') + '#technology'},
-    {'text': 'Data Architecture'},
+    {'text': 'Data Architecture', 'href': url_for('data_architecture.data_architecture_dashboard')},
     {'text': 'Entity Catalog', 'current': true}
 ]) }}
 {% endblock %}
@@ -15,17 +16,14 @@
 {% block content %}
 <div class="space-y-6">
     {# Header #}
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-foreground">Data Entity Catalog</h1>
-            <p class="text-sm text-muted-foreground mt-1">{{ total_count }} data entities across the enterprise</p>
-        </div>
-        <a href="{{ url_for('data_architecture.create_data_entity') }}"
+    {% macro _ps_actions() %}
+<a href="{{ url_for('data_architecture.create_data_entity') }}"
            class="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
             <i data-lucide="plus" class="w-4 h-4" aria-hidden="true"></i>
             Create Entity
         </a>
-    </div>
+    {% endmacro %}
+    {{ page_shell(title='Data Entity Catalog', subtitle=(total_count) ~ ' data entities across the enterprise', actions_caller=_ps_actions) }}
 
     {# Summary Cards #}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -49,16 +47,16 @@
 
     {# Filters #}
     <div class="rounded-lg border bg-card p-4">
-        <form method="get" class="flex flex-wrap gap-3 items-end">
+        <form method="get" action="{{ url_for('data_architecture.data_entity_catalog') }}" class="flex flex-wrap gap-3 items-end">
             <div class="flex-1 min-w-[200px]">
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Search</label>
                 <input type="text" name="search" value="{{ search }}"
                     class="w-full h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                    placeholder="Search entities...">
+                    placeholder="Search entities..." aria-label="Search">
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Classification</label>
-                <select name="classification" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="classification" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Classification">
                     <option value="">All</option>
                     <option value="public" {{ 'selected' if classification == 'public' }}>Public</option>
                     <option value="internal" {{ 'selected' if classification == 'internal' }}>Internal</option>
@@ -68,7 +66,7 @@
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Type</label>
-                <select name="entity_type" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="entity_type" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Type">
                     <option value="">All</option>
                     <option value="master" {{ 'selected' if entity_type == 'master' }}>Master</option>
                     <option value="transactional" {{ 'selected' if entity_type == 'transactional' }}>Transactional</option>
@@ -78,7 +76,7 @@
             </div>
             <div>
                 <label class="text-xs font-medium text-muted-foreground mb-1 block">Domain</label>
-                <select name="domain_id" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground">
+                <select name="domain_id" class="h-9 px-3 text-sm rounded-md border border-input bg-background text-foreground" aria-label="Domain">
                     <option value="">All Domains</option>
                     {% for d in domains %}
                     <option value="{{ d.id }}" {{ 'selected' if domain_id == d.id|string }}>{{ d.name }}</option>
@@ -129,8 +127,8 @@
                         {% if entity.entity_type %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
                             {% if entity.entity_type == 'master' %}bg-primary/10 text-primary border border-primary/30
-                            {% elif entity.entity_type == 'transactional' %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30
-                            {% elif entity.entity_type == 'reference' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% elif entity.entity_type == 'transactional' %}bg-success/10 text-success-emphasis border border-success/30
+                            {% elif entity.entity_type == 'reference' %}bg-warning/10 text-warning-emphasis border border-warning/30
                             {% else %}bg-muted text-muted-foreground border border-border{% endif %}">
                             {{ entity.entity_type }}
                         </span>
@@ -141,10 +139,10 @@
                     <td class="px-4 py-3">
                         {% if entity.data_classification %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium
-                            {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive border border-destructive/30
-                            {% elif entity.data_classification == 'confidential' %}bg-amber-500/10 text-amber-600 border border-amber-500/30
+                            {% if entity.data_classification == 'restricted' %}bg-destructive/10 text-destructive-emphasis border border-destructive/30
+                            {% elif entity.data_classification == 'confidential' %}bg-warning/10 text-warning-emphasis border border-warning/30
                             {% elif entity.data_classification == 'internal' %}bg-primary/10 text-primary border border-primary/30
-                            {% else %}bg-emerald-500/10 text-emerald-600 border border-emerald-500/30{% endif %}">
+                            {% else %}bg-success/10 text-success-emphasis border border-success/30{% endif %}">
                             {{ entity.data_classification }}
                         </span>
                         {% else %}
@@ -153,7 +151,7 @@
                     </td>
                     <td class="px-4 py-3">
                         {% if entity.contains_pii %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">
                             PII
                         </span>
                         {% else %}
@@ -165,8 +163,8 @@
                         <div class="flex items-center gap-2">
                             <div class="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
                                 <div class="h-full rounded-full
-                                    {% if entity.data_quality_score >= 70 %}bg-emerald-500
-                                    {% elif entity.data_quality_score >= 40 %}bg-amber-500
+                                    {% if entity.data_quality_score >= 70 %}bg-success
+                                    {% elif entity.data_quality_score >= 40 %}bg-warning
                                     {% else %}bg-destructive{% endif %}"
                                     style="width: {{ entity.data_quality_score }}%"><!-- inline-style-ok --></div>
                             </div>

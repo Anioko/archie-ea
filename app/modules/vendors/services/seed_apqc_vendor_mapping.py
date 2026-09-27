@@ -10,7 +10,6 @@ Usage:
     python -m app.services.seed_apqc_vendor_mapping
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -28,7 +27,7 @@ from app.models.unified_capability import (
 )
 from app.models.vendor import VendorOrganization, VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
-from app.seed_data.vendor_catalogue import APQC_CATEGORIES, APQC_PROCESSES, VENDOR_CATALOGUE
+from app.seed_data.vendor_catalogue import APQC_PROCESSES, VENDOR_CATALOGUE
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

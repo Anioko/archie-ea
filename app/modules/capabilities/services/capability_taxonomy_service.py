@@ -15,11 +15,13 @@ Features:
 - Violation management and reporting
 """
 
+import json
+from datetime import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 
 from app import db
 
@@ -437,7 +439,7 @@ class CapabilityTaxonomyService:
                 rule_name=strategic_rule["rule_name"],
                 violation_type="hierarchy_violation",
                 severity="error",
-                message=f"Hierarchy violation: Strategic capabilities cannot have parent capabilities",
+                message="Hierarchy violation: Strategic capabilities cannot have parent capabilities",
                 actual_value=f"Strategic capability with parent: {parent.name}",
                 expected_value="No parent capability",
                 can_auto_correct=False,
@@ -454,7 +456,7 @@ class CapabilityTaxonomyService:
                     rule_name=operational_rule["rule_name"],
                     violation_type="hierarchy_violation",
                     severity="error",
-                    message=f"Hierarchy violation: Operational capabilities must have tactical parents",
+                    message="Hierarchy violation: Operational capabilities must have tactical parents",
                     actual_value=f"Operational capability with {parent_level} parent: {parent.name}",
                     expected_value="Tactical parent capability",
                     can_auto_correct=False,
@@ -464,7 +466,7 @@ class CapabilityTaxonomyService:
 
     def _generate_naming_correction(self, name: str, rule: Dict) -> str:
         """Generate corrected name based on naming rule."""
-        level = rule.get("capability_level", "")
+        rule.get("capability_level", "")
         prefix = rule.get("naming_prefix", "")
         suffix = rule.get("naming_suffix", "")
 
@@ -495,7 +497,6 @@ class CapabilityTaxonomyService:
         user_id: int,
     ) -> Dict[str, Any]:
         """Create audit entry for taxonomy action."""
-        from app.models.application_capability import CapabilityTaxonomyAudit
 
         audit_entry = {
             "audit_type": "validation",

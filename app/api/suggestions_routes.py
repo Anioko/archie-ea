@@ -19,10 +19,12 @@ import logging
 
 from flask import Blueprint, jsonify, request
 from flask_login import current_user, login_required
+from werkzeug.exceptions import HTTPException
 
 from app.decorators import audit_log
 from app.models.ai_suggestion import AISuggestion
 from app.services.ai_suggestion_service import AISuggestionService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +67,8 @@ def list_suggestions():
         priority = request.args.get("priority")
         workflow_name = request.args.get("workflow_name")
         batch_id = request.args.get("batch_id")
-        limit = request.args.get("limit", 50, type=int)
-        offset = request.args.get("offset", 0, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
+        offset = safe_int_arg('offset', 0, minimum=0)
         order_by = request.args.get("order_by", "priority_confidence")
 
         # Get suggestions
@@ -398,6 +400,33 @@ def get_entity_suggestions(entity_type, entity_id):
         JSON list of suggestions
     """
     try:
+        from app.models.apqc_process import APQCProcess
+        from app.models.application_layer import ApplicationComponent
+        from app.models.vendor import VendorProduct
+        from app.utils.route_guards import require_entity
+
+        # Mirrors AISuggestionService._get_entity: an entity_type this API cannot
+        # resolve, or an id that does not exist, must be an error rather than an
+        # empty 200 that reads as "this entity has no suggestions".
+        entity_models = {
+            "application": ApplicationComponent,
+            "vendor": VendorProduct,
+            "process": APQCProcess,
+        }
+        model = entity_models.get(entity_type)
+        if model is None:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"Unknown entity_type '{entity_type}'",
+                        "supported_entity_types": sorted(entity_models),
+                    }
+                ),
+                400,
+            )
+        require_entity(model, entity_id, description=f"{entity_type} {entity_id} not found")
+
         include_reviewed = request.args.get("include_reviewed", "false").lower() == "true"
 
         suggestions = suggestion_service.get_suggestions_for_entity(
@@ -415,6 +444,8 @@ def get_entity_suggestions(entity_type, entity_id):
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting suggestions for {entity_type} {entity_id}: {e}")
         return jsonify({"success": False, "error": "An internal error occurred"}), 500

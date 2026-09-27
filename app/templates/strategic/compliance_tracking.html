@@ -10,19 +10,23 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Compliance Tracking', 'current': true}
 ]) }}
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Compliance Tracking',
-        description='Monitor compliance status across business capabilities and applications.',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Compliance Tracking'}
-        ]
+        description='Monitor compliance status across business capabilities and applications.'
     ) }}
 
     {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}
@@ -71,12 +75,16 @@
                     <tbody class="divide-y">
                         {% for item in capability_compliance|default([]) %}
                         <tr class="hover:bg-muted/50 transition-colors">
-                            <td class="p-4 font-medium">{{ item.capability_name|default('N/A') }}</td>
+                            <td class="p-4 font-medium">
+                                {% if item.capability_id %}
+                                {% set _h = row_href('archimate_crud.detail_element', layer='strategy', element_type='Capability', element_id=item.capability_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.capability_name|default('N/A') }}</a>{% else %}{{ item.capability_name|default('N/A') }}{% endif %}
+                                {% else %}{{ item.capability_name|default('N/A') }}{% endif %}
+                            </td>
                             <td class="p-4">
                                 <span class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold
-                                    {% if item.status == 'Critical' %}border-destructive/30 text-destructive
-                                    {% elif item.status == 'Non-Compliant' %}border-warning/30 text-warning
-                                    {% else %}border-success/30 text-success{% endif %}">
+                                    {% if item.status == 'Critical' %}border-destructive/30 text-destructive-emphasis
+                                    {% elif item.status == 'Non-Compliant' %}border-warning/30 text-warning-emphasis
+                                    {% else %}border-success/30 text-success-emphasis{% endif %}">
                                     {{ item.status|default('Unknown') }}
                                 </span>
                             </td>

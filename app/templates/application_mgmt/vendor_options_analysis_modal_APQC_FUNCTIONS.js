@@ -17,8 +17,28 @@ function removeProcess(processId) {
     if (typeof updateProcessSummary === 'function') updateProcessSummary();
 }
 
+// Surface an APQC load failure to the user: the picker must never look like an
+// empty result set when the request actually failed.
+function handleAPQCLoadFailure(selectEl, label, detail) {
+    const message = `Could not load ${label}: ${detail}`;
+    if (selectEl) {
+        selectEl.innerHTML = '';
+        const option = document.createElement('option');
+        option.value = '';
+        option.disabled = true;
+        option.textContent = message;
+        selectEl.appendChild(option);
+    }
+    if (typeof showToast === 'function') {
+        showToast(message, 'error');
+    } else if (window.Platform && Platform.toast) {
+        Platform.toast.error(message);
+    }
+}
+
 // Load Level 1 APQC Processes (Categories)
 async function loadAPQCL1Processes() {
+  const l1Select = document.getElementById('apqc-l1-processes');
   try {
     const response = await fetch('/dashboard/api/apqc-processes?level=1', {
       credentials: 'same-origin',
@@ -27,7 +47,6 @@ async function loadAPQCL1Processes() {
 
     if (response.ok) {
       const processes = await response.json();
-      const l1Select = document.getElementById('apqc-l1-processes');
       l1Select.innerHTML = '';
 
       processes.forEach(proc => {
@@ -38,10 +57,10 @@ async function loadAPQCL1Processes() {
         l1Select.appendChild(option);
       });
     } else {
-      console.error('Failed to load L1 APQC processes:', response.status);
+      handleAPQCLoadFailure(l1Select, 'Level 1 categories', `HTTP ${response.status}`);
     }
   } catch (error) {
-    console.error('Error loading L1 APQC processes:', error);
+    handleAPQCLoadFailure(l1Select, 'Level 1 categories', error.message);
   }
 }
 
@@ -90,10 +109,10 @@ async function loadAPQCL2Processes() {
         l2Select.appendChild(option);
       });
     } else {
-      console.error('Failed to load L2 APQC processes:', response.status);
+      handleAPQCLoadFailure(l2Select, 'Level 2 process groups', `HTTP ${response.status}`);
     }
   } catch (error) {
-    console.error('Error loading L2 APQC processes:', error);
+    handleAPQCLoadFailure(l2Select, 'Level 2 process groups', error.message);
   }
 }
 
@@ -142,10 +161,10 @@ async function loadAPQCL3Processes() {
         l3Select.appendChild(option);
       });
     } else {
-      console.error('Failed to load L3 APQC processes:', response.status);
+      handleAPQCLoadFailure(l3Select, 'Level 3 processes', `HTTP ${response.status}`);
     }
   } catch (error) {
-    console.error('Error loading L3 APQC processes:', error);
+    handleAPQCLoadFailure(l3Select, 'Level 3 processes', error.message);
   }
 }
 
@@ -194,10 +213,10 @@ async function loadAPQCL4Processes() {
         l4Select.appendChild(option);
       });
     } else {
-      console.error('Failed to load L4 APQC processes:', response.status);
+      handleAPQCLoadFailure(l4Select, 'Level 4 activities', `HTTP ${response.status}`);
     }
   } catch (error) {
-    console.error('Error loading L4 APQC processes:', error);
+    handleAPQCLoadFailure(l4Select, 'Level 4 activities', error.message);
   }
 }
 
@@ -246,10 +265,10 @@ async function loadAPQCL5Processes() {
         l5Select.appendChild(option);
       });
     } else {
-      console.error('Failed to load L5 APQC processes:', response.status);
+      handleAPQCLoadFailure(l5Select, 'Level 5 tasks', `HTTP ${response.status}`);
     }
   } catch (error) {
-    console.error('Error loading L5 APQC processes:', error);
+    handleAPQCLoadFailure(l5Select, 'Level 5 tasks', error.message);
   }
 }
 
@@ -272,7 +291,7 @@ function updateProcessSummary() {
     listDiv.innerHTML = allProcesses.map(proc => `
       <div class="flex items-center justify-between p-2 bg-background rounded border border-border">
         <span class="text-sm text-foreground/80">${proc.name}</span>
-        <button onclick="removeProcess('${proc.id}')" class="text-destructive hover:text-red-800">
+        <button type="button" data-remove-process="${String(proc.id).replace(/"/g, '&quot;')}" aria-label="Remove selected process" class="text-destructive hover:text-red-800">
           <i data-lucide="x" class="w-3 h-3"></i>
         </button>
       </div>
@@ -338,12 +357,10 @@ async function discoverVendorsForProcesses() {
       const vendors = await response.json();
       displayProcessVendors(vendors);
     } else {
-      console.error('Failed to discover vendors for processes:', response.status);
-      showToast('Failed to discover vendors', 'error');
+      showToast(`Failed to discover vendors (HTTP ${response.status})`, 'error');
     }
   } catch (error) {
-    console.error('Error discovering vendors for processes:', error);
-    showToast('Error discovering vendors', 'error');
+    showToast(`Error discovering vendors: ${error.message}`, 'error');
   }
 }
 
@@ -381,3 +398,14 @@ function displayProcessVendors(vendors) {
     lucide.createIcons();
   }
 }
+
+// Delegated, because the CSP refuses inline on*= attributes: the per-process
+// remove button carried onclick="removeProcess('id')" and never fired.
+// removeProcess() is defined at the top of this file and only splices the
+// in-memory selectedL1..L5Processes arrays -- it deletes no server-side data.
+document.addEventListener('click', function (event) {
+  const el = event.target.closest('[data-remove-process]');
+  if (!el) return;
+  event.preventDefault();
+  removeProcess(el.getAttribute('data-remove-process'));
+});

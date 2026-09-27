@@ -60,12 +60,12 @@
         {% if class == 'error' %}
             <div class="rounded-md bg-destructive/15 border border-destructive p-4">
                 {% if header is not none %}
-                    <h5 class="font-medium text-sm text-destructive mb-2">{{ header }}</h5>
+                    <h5 class="font-medium text-sm text-destructive-emphasis mb-2">{{ header }}</h5>
                 {% endif %}
                 {% if messages %}
-                    <ul class="list-disc list-inside text-sm text-destructive space-y-1">
+                    <ul class="list-disc list-inside text-sm text-destructive-emphasis space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -73,12 +73,12 @@
         {% elif class == 'warning' %}
             <div class="rounded-md bg-warning/5 border border-warning/20 p-4">
                 {% if header is not none %}
-                    <h5 class="font-medium text-sm text-warning mb-2">{{ header }}</h5>
+                    <h5 class="font-medium text-sm text-warning-emphasis mb-2">{{ header }}</h5>
                 {% endif %}
                 {% if messages %}
-                    <ul class="list-disc list-inside text-sm text-warning space-y-1">
+                    <ul class="list-disc list-inside text-sm text-warning-emphasis space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -91,7 +91,7 @@
                 {% if messages %}
                     <ul class="list-disc list-inside text-sm text-primary space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -99,12 +99,12 @@
         {% elif class == 'success' %}
             <div class="rounded-md bg-success/5 border border-success/20 p-4">
                 {% if header is not none %}
-                    <h5 class="font-medium text-sm text-success mb-2">{{ header }}</h5>
+                    <h5 class="font-medium text-sm text-success-emphasis mb-2">{{ header }}</h5>
                 {% endif %}
                 {% if messages %}
-                    <ul class="list-disc list-inside text-sm text-success space-y-1">
+                    <ul class="list-disc list-inside text-sm text-success-emphasis space-y-1">
                         {% for message in messages %}
-                            <li>{{ message | safe }}</li>
+                            <li>{{ message }}</li>
                         {% endfor %}
                     </ul>
                 {% endif %}
@@ -136,8 +136,8 @@
     <div class="space-y-2 {{ extra_classes }}">
         {{ render_form_input(field) }}
         {% if field.errors %}
-            <p id="{{ field.id }}-error" class="text-sm font-medium text-destructive" role="alert">
-                {{ field.errors[0] | safe }}
+            <p id="{{ field.id }}-error" class="text-sm font-medium text-destructive-emphasis" role="alert">
+                {{ field.errors[0] }}
             </p>
         {% endif %}
     </div>

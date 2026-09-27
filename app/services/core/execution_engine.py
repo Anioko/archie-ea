@@ -8,10 +8,8 @@ from typing import Any, Callable, Dict, Optional
 
 from app import db
 
-from ..validation.artifact_validator import ArtifactValidator, validate_or_fail
-from ..validation.schema_validator import SchemaValidator
+from ..validation.artifact_validator import ArtifactValidator
 from .retry_handler import RetryHandler
-from .transaction_manager import pipeline_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +172,6 @@ def example_pipeline_execution():
     # Stage 1: Architecture Generation
     def architecture_stage_handler(ctx):
         # Your existing logic here
-        from app.services.llm_service import LLMService
 
         elements = []  # Generate elements using LLM
         return {"artifacts": elements, "cost": 0.05}

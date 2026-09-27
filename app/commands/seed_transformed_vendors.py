@@ -111,7 +111,7 @@ def seed_transformed_vendors():
                 vtype = vendor["vendorType"]
                 vendor_types[vtype] = vendor_types.get(vtype, 0) + 1
 
-            print(f"\n📊 Vendor Type Distribution:")
+            print("\n📊 Vendor Type Distribution:")
             for vtype, count in vendor_types.items():
                 print(f"   - {vtype}: {count}")
 
@@ -122,7 +122,7 @@ def seed_transformed_vendors():
                     level = process.split(".")[0]
                     apqc_coverage[level] = apqc_coverage.get(level, 0) + 1
 
-            print(f"\n📈 APQC Coverage by Level:")
+            print("\n📈 APQC Coverage by Level:")
             for level in sorted(apqc_coverage.keys()):
                 print(f"   - Level {level}: {apqc_coverage[level]} process mappings")
 

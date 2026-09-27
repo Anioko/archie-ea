@@ -1,4 +1,5 @@
 {% extends 'layouts/admin_base.html' %}
+{% block title %}SSO / Identity Federation{% endblock %}
 {% from 'components/page_header.html' import page_header %}
 
 {% block content %}
@@ -20,7 +21,7 @@
                 {% for category, message in messages %}
                     <div class="rounded-md border p-4
                         {% if category == 'success' %}bg-primary/10 border-primary/20 text-foreground
-                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive
+                        {% elif category == 'error' %}bg-destructive/10 border-destructive/20 text-destructive-emphasis
                         {% else %}bg-muted border-border text-foreground{% endif %}">
                         {{ message }}
                     </div>
@@ -41,7 +42,7 @@
                 </label>
                 <select id="protocol" name="protocol"
                         class="w-full rounded-md border border-border bg-background text-foreground px-3 py-2 text-sm focus:ring-2 focus:ring-primary/50"
-                        onchange="toggleProtocolFields(this.value)">
+                        data-protocol-toggle>
                     <option value="oidc" {% if not config or config.protocol == 'oidc' %}selected{% endif %}>
                         OIDC / OpenID Connect (recommended)
                     </option>
@@ -115,7 +116,7 @@
 
             {# SAML fields (hidden by default) #}
             <div id="saml-fields" class="hidden space-y-4">
-                <div class="rounded-md border border-border bg-amber-500/5 p-4 text-sm text-foreground">
+                <div class="rounded-md border border-border bg-warning/5 p-4 text-sm text-foreground">
                     <strong>SAML 2.0 support is coming soon.</strong>
                     SAML federation requires the <code>python3-saml</code> library.
                     For now, please use OIDC.
@@ -194,7 +195,19 @@ function toggleProtocolFields(protocol) {
         saml.classList.add('hidden');
     }
 }
-// Apply on page load
-toggleProtocolFields(document.getElementById('protocol').value);
+// The change handler is bound here, not with an inline onchange= attribute.
+// This app ships an enforcing CSP whose script-src has no 'unsafe-inline', and a
+// nonce does not cover event handler attributes -- so onchange= was refused by
+// the browser and switching between OIDC and SAML never revealed the right
+// fields. The <script> block itself is fine: template-authored script tags are
+// nonce'd at compile time (app/_bootstrap/security.py).
+var protocolSelect = document.getElementById('protocol');
+if (protocolSelect) {
+    protocolSelect.addEventListener('change', function () {
+        toggleProtocolFields(this.value);
+    });
+    // Apply on page load
+    toggleProtocolFields(protocolSelect.value);
+}
 </script>
 {% endblock %}

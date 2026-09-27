@@ -7,7 +7,6 @@ and automated enterprise architecture modeling from vendor and capability data.
 
 import json
 import logging
-from datetime import datetime  # dead-code-ok: used in element timestamps
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import selectinload
@@ -16,7 +15,7 @@ from app import db
 from app.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from app.models.archimate import ElementType, Layer, RelationshipType
 from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct  # dead-code-ok: VendorProduct used by rules engine
+from app.models.vendor.vendor_organization import VendorOrganization  # dead-code-ok: VendorProduct used by rules engine
 from app.services.archimate.archimate_rules_engine import ArchiMateRulesEngine
 
 logger = logging.getLogger(__name__)
@@ -68,7 +67,7 @@ class ArchiMateService:
         self.rules_engine = ArchiMateRulesEngine()
 
     def generate_architecture_from_vendors(
-        self, vendor_ids: Optional[List[int]] = None
+        self, vendor_ids: Optional[List[int]] = None, dry_run: bool = False
     ) -> Dict[str, Any]:
         """
         Generate complete ArchiMate architecture from vendor data.
@@ -122,21 +121,35 @@ class ArchiMateService:
                 logger.error(f"Failed to generate elements for vendor {vendor.name}: {e}")
 
         # Commit all generated elements and relationships
-        commit_result = self.rules_engine.commit_elements_to_database()
+        commit_result = self.rules_engine.commit_elements_to_database(dry_run=dry_run)
 
+        # `elements_created` reports what was WRITTEN, not what the rules engine
+        # proposed. Since the commit skips elements that already exist, the
+        # proposed count is no longer the created count, and reporting the
+        # proposal as the result would be a fabricated number in the sense
+        # CLAUDE.md forbids: plausible, wrong, and unverifiable by the user.
         return {
             "vendors_processed": processed_vendors,
             "total_vendors": total_vendors,
-            "elements_created": total_elements,
-            "relationships_created": total_relationships,
+            "elements_proposed": total_elements,
+            "elements_created": commit_result.get("elements_committed", 0),
+            "elements_skipped_existing": commit_result.get(
+                "elements_skipped_existing", 0
+            ),
+            "elements_would_create": commit_result.get("elements_would_create"),
+            "relationships_proposed": total_relationships,
+            "relationships_created": commit_result.get("relationships_committed", 0),
             "commit_success": commit_result.get("success", False),
+            "capped": commit_result.get("capped", False),
+            "cap": commit_result.get("cap"),
+            "error": commit_result.get("error"),
+            "dry_run": bool(dry_run),
             "generation_stats": self.rules_engine.get_generation_stats(),
         }
 
     @staticmethod
     def _build_llm_prompt(capability: "BusinessCapability") -> str:
         """Build org-context-enriched LLM prompt for ArchiMate generation."""
-        from app import db as _db
 
         cap_name = capability.name or "Unknown"
         cap_level = capability.level if capability.level is not None else 1
@@ -289,7 +302,9 @@ class ArchiMateService:
                 ),
                 properties=json.dumps(props),
             )
-            db.session.add(element)
+            # Registered rather than session.add()ed so it goes through the
+            # same dedupe/dry-run/cap choke point as rules-engine elements.
+            self.rules_engine.register_element(element)
             created.append(element)
 
         logger.info(
@@ -300,7 +315,7 @@ class ArchiMateService:
         return created
 
     def generate_architecture_from_capabilities(
-        self, capability_ids: Optional[List[int]] = None
+        self, capability_ids: Optional[List[int]] = None, dry_run: bool = False
     ) -> Dict[str, Any]:
         """
         Generate ArchiMate elements from business capabilities.
@@ -366,19 +381,30 @@ class ArchiMateService:
                 logger.error(f"Failed to generate elements for capability {capability.name}: {e}")
 
         # Commit all generated elements and relationships
-        commit_result = self.rules_engine.commit_elements_to_database()
+        commit_result = self.rules_engine.commit_elements_to_database(dry_run=dry_run)
 
-        # Collect the actual committed element objects for callers that need them
-        created_elements = all_created_elements + [
-            elem for elem in self.rules_engine.generated_elements.values()
-        ]
+        # The rows that represent this batch — the ones just inserted plus the
+        # already-existing rows a duplicate resolved to. A caller linking these
+        # to a solution must get the row that exists, not a transient duplicate
+        # that was correctly not written.
+        created_elements = commit_result.get("resolved_elements", [])
 
         return {
             "capabilities_processed": processed_capabilities,
             "total_capabilities": total_capabilities,
-            "elements_created": total_elements,
-            "relationships_created": total_relationships,
+            "elements_proposed": total_elements,
+            "elements_created": commit_result.get("elements_committed", 0),
+            "elements_skipped_existing": commit_result.get(
+                "elements_skipped_existing", 0
+            ),
+            "elements_would_create": commit_result.get("elements_would_create"),
+            "relationships_proposed": total_relationships,
+            "relationships_created": commit_result.get("relationships_committed", 0),
             "commit_success": commit_result.get("success", False),
+            "capped": commit_result.get("capped", False),
+            "cap": commit_result.get("cap"),
+            "error": commit_result.get("error"),
+            "dry_run": bool(dry_run),
             "generation_stats": self.rules_engine.get_generation_stats(),
             "created_elements": created_elements,
         }
@@ -439,7 +465,7 @@ class ArchiMateService:
         return model
 
     def get_elements_by_type(
-        self, element_type: str, layer: Optional[str] = None
+        self, element_type: str, layer: Optional[str] = None, limit: Optional[int] = None
     ) -> List[ArchiMateElement]:
         """
         Get ArchiMate elements by type and optional layer.
@@ -447,6 +473,7 @@ class ArchiMateService:
         Args:
             element_type: Element type to filter by
             layer: Optional layer filter
+            limit: Optional validated result bound; omitted preserves existing callers
 
         Returns:
             List of matching ArchiMateElement instances
@@ -455,6 +482,9 @@ class ArchiMateService:
 
         if layer:
             query = query.filter_by(layer=layer)
+
+        if limit is not None:
+            query = query.limit(limit)
 
         return query.all()
 

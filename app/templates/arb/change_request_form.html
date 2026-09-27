@@ -27,37 +27,47 @@
                 event.target.value = '';
             },
             removeFile(idx) { this.pendingFiles.splice(idx, 1); },
-            async submit() {
+            /* .then()/.catch(), not async/await: this body lives in an Alpine
+               attribute and is run by the CSP-safe interpreter
+               (app/static/js/csp/csp-evaluator.js), which cannot await. The
+               uploads are chained with reduce so they still run one at a time,
+               in order, exactly as the old sequential awaits did. */
+            submit() {
+                const self = this;
                 this.submitting = true;
-                const csrf = document.querySelector('meta[name=csrf-token]')?.content || '';
                 const payload = {title: this.title, description: this.description, trigger_type: this.trigger_type};
                 if (this.capability_id) payload.capability_id = parseInt(this.capability_id);
                 if (this.solution_id) payload.solution_id = parseInt(this.solution_id);
-                const r = await fetch('/arb/api/change-requests', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                });
-                if (!r.ok) { this.submitting = false; Platform.toast.error('Submission failed'); return; }
-                const cr = await r.json();
-                const crId = cr.id;
-                // Upload any attached files against the new change request
-                for (const file of this.pendingFiles) {
-                    const fd = new FormData();
-                    fd.append('file', file);
-                    fd.append('document_type', this.docType);
-                    await fetch(`/arb/api/change-requests/${crId}/documents`, {
-                        method: 'POST', headers: {'X-CSRFToken': csrf}, body: fd
+                return Platform.fetch.post('/arb/api/change-requests', payload, { silent: true })
+                    .then(function (cr) {
+                        const crId = cr.id;
+                        // Upload any attached files against the new change request,
+                        // sequentially — a rejection short-circuits the rest of the chain.
+                        return self.pendingFiles.reduce(function (chain, file) {
+                            return chain.then(function () {
+                                const fd = new FormData();
+                                fd.append('file', file);
+                                fd.append('document_type', self.docType);
+                                return Platform.fetch.post('/arb/api/change-requests/' + crId + '/documents', fd);
+                            });
+                        }, Promise.resolve());
+                    })
+                    .then(function () {
+                        window.location.href = '/arb/change-requests';
+                    })
+                    .catch(function () {
+                        self.submitting = false;
+                        Platform.toast.error('Submission failed');
+                        // The error is already logged by Platform.fetch; we do not rethrow
+                        // because the user-visible toast above is the report.
                     });
-                }
-                window.location.href = '/arb/change-requests';
             }
         }" @submit.prevent="submit()" class="space-y-5">
 
             <!-- Title -->
             <div>
                 <label for="cr-title" class="block text-sm font-medium text-foreground mb-1">
-                    Title <span class="text-destructive">*</span>
+                    Title <span class="text-destructive-emphasis">*</span>
                 </label>
                 <input id="cr-title" type="text" x-model="title" required
                        placeholder="Brief title for this change request"
@@ -67,7 +77,7 @@
             <!-- Description -->
             <div>
                 <label for="cr-description" class="block text-sm font-medium text-foreground mb-1">
-                    Description <span class="text-destructive">*</span>
+                    Description <span class="text-destructive-emphasis">*</span>
                 </label>
                 <textarea id="cr-description" x-model="description" required rows="5"
                           placeholder="Describe the change, its rationale, and expected impact"
@@ -77,7 +87,7 @@
             <!-- Trigger Type -->
             <div>
                 <label for="cr-trigger-type" class="block text-sm font-medium text-foreground mb-1">
-                    Trigger Type <span class="text-destructive">*</span>
+                    Trigger Type <span class="text-destructive-emphasis">*</span>
                 </label>
                 <select id="cr-trigger-type" x-model="trigger_type" required
                         class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
@@ -117,7 +127,7 @@
 
                 <!-- Document type selector -->
                 <div class="flex items-center gap-3">
-                    <select x-model="docType" class="rounded-md border border-input bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring">
+                    <select x-model="docType" class="rounded-md border border-input bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring" aria-label="Supporting Documents (optional)">
                         <option value="supporting">Supporting</option>
                         <option value="evidence">Evidence</option>
                         <option value="decision">Decision Record</option>
@@ -137,7 +147,7 @@
                             <i data-lucide="file" class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0"></i>
                             <span class="flex-1 truncate" x-text="f.name"></span>
                             <button aria-label="Remove" type="button" @click="removeFile(idx)"
-                                    class="text-muted-foreground hover:text-destructive">
+                                    class="text-muted-foreground hover:text-destructive-emphasis">
                                 <i data-lucide="x" class="w-3.5 h-3.5"></i>
                             </button>
                         </li>

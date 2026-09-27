@@ -15,16 +15,13 @@ Features:
 
 import logging
 from difflib import SequenceMatcher
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, or_
 
-from app import db
-from app.models.application_layer import ApplicationInterface
 from app.models.application_portfolio import ApplicationComponent
 from app.models.archimate_core import ArchiMateElement
 from app.models.business_capabilities import BusinessCapability
-from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +171,7 @@ class DocumentEntityMatchingService:
 
         # Extract application name and alternatives
         app_name = app_data.get("name", "")
-        app_description = app_data.get("description", "")
+        app_data.get("description", "")
         tech_stack = app_data.get("technology_stack", [])
         business_domain = app_data.get("business_domain", "")
 
@@ -493,7 +490,7 @@ class DocumentEntityMatchingService:
                 )
 
                 # Boost score if types match
-                type_boost = 0.2 if existing_elem.element_type == elem_type else 0
+                type_boost = 0.2 if existing_elem.type == elem_type else 0
 
                 combined_score = name_similarity + type_boost
 
@@ -508,10 +505,10 @@ class DocumentEntityMatchingService:
                         "extracted_type": elem_type,
                         "entity_id": best_match.id,
                         "entity_name": best_match.name,
-                        "entity_type": best_match.element_type,
+                        "entity_type": best_match.type,
                         "match_confidence": round(min(best_score, 1.0) * 100, 1),
                         "match_level": "high",
-                        "same_type": best_match.element_type == elem_type,
+                        "same_type": best_match.type == elem_type,
                     }
                 )
             elif best_match and best_score >= self.MEDIUM_MATCH_THRESHOLD:
@@ -521,7 +518,7 @@ class DocumentEntityMatchingService:
                         "extracted_type": elem_type,
                         "entity_id": best_match.id,
                         "entity_name": best_match.name,
-                        "entity_type": best_match.element_type,
+                        "entity_type": best_match.type,
                         "match_confidence": round(min(best_score, 1.0) * 100, 1),
                         "match_level": "medium",
                         "warning": f"Similar to existing element '{best_match.name}'",
@@ -785,7 +782,7 @@ class DocumentEntityMatchingService:
                         "source_name": rel.get("source"),
                         "target_id": existing_target.id,
                         "target_name": existing_target.name,
-                        "target_type": existing_target.element_type,
+                        "target_type": existing_target.type,
                         "relationship_type": rel_type,
                         "confidence": 0.9,
                         "action": "link_to_existing",
@@ -798,7 +795,7 @@ class DocumentEntityMatchingService:
                     {
                         "source_id": existing_source.id,
                         "source_name": existing_source.name,
-                        "source_type": existing_source.element_type,
+                        "source_type": existing_source.type,
                         "target_name": rel.get("target"),
                         "relationship_type": rel_type,
                         "confidence": 0.9,

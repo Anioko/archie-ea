@@ -11,8 +11,8 @@ Follows the ARBExportService pattern: conditional imports for reportlab/pandas,
 branded header/footer, and graceful degradation when dependencies are missing.
 """
 
-import csv
 import io
+from html import escape
 import logging
 from datetime import datetime
 
@@ -101,7 +101,7 @@ class TOGAFDeliverableExportService:
 
     def _build_branded_header(self, elements, styles, title, phase_label, timestamp):
         """Add branded title page elements."""
-        elements.append(Paragraph("A.R.C.H.I.E.", styles["BrandTitle"]))
+        elements.append(Paragraph("Entelim", styles["BrandTitle"]))
         elements.append(
             Paragraph(
                 f"Enterprise Architecture Platform — {phase_label}",
@@ -123,7 +123,7 @@ class TOGAFDeliverableExportService:
         elements.append(Spacer(1, 30))
         elements.append(
             Paragraph(
-                f"<i>{CONFIDENTIALITY_NOTICE} | A.R.C.H.I.E. Platform</i>",
+                f"<i>{CONFIDENTIALITY_NOTICE} | Entelim Platform</i>",
                 ParagraphStyle(
                     "Footer",
                     parent=styles["Normal"],
@@ -203,7 +203,7 @@ class TOGAFDeliverableExportService:
                     name = s.get("name", s.get("role", "Stakeholder"))
                     concern = s.get("concern", s.get("key_concern", ""))
                     elements.append(
-                        Paragraph(f"<b>{name}</b>: {concern}", styles["BodyText"])
+                        Paragraph(f"<b>{escape(str(name))}</b>: {escape(str(concern))}", styles["BodyText"])
                     )
                 else:
                     elements.append(Paragraph(str(s), styles["BodyText"]))
@@ -233,7 +233,7 @@ class TOGAFDeliverableExportService:
             if isinstance(constraints, dict):
                 for k, v in list(constraints.items())[:10]:
                     elements.append(
-                        Paragraph(f"<b>{k}</b>: {v}", styles["BodyText"])
+                        Paragraph(f"<b>{escape(str(k))}</b>: {escape(str(v))}", styles["BodyText"])
                     )
             elif isinstance(constraints, list):
                 for c in constraints[:10]:
@@ -258,7 +258,7 @@ class TOGAFDeliverableExportService:
                 if isinstance(p, dict):
                     elements.append(
                         Paragraph(
-                            f"<b>{p.get('name', 'Principle')}</b>: {p.get('statement', '')}",
+                            f"<b>{escape(str(p.get('name', 'Principle')))}</b>: {escape(str(p.get('statement', '')))}",
                             styles["BodyText"],
                         )
                     )
@@ -485,7 +485,7 @@ class TOGAFDeliverableExportService:
             elements.append(Paragraph("TCO Analysis", styles["SectionHead"]))
             for k, v in list(tco.items())[:10]:
                 elements.append(
-                    Paragraph(f"<b>{k}</b>: {v}", styles["BodyText"])
+                    Paragraph(f"<b>{escape(str(k))}</b>: {escape(str(v))}", styles["BodyText"])
                 )
 
         # Recommendation
@@ -634,7 +634,7 @@ class TOGAFDeliverableExportService:
                 if isinstance(t, dict):
                     elements.append(
                         Paragraph(
-                            f"<b>{t.get('name', 'Transition')}</b>: {t.get('description', '')}",
+                            f"<b>{escape(str(t.get('name', 'Transition')))}</b>: {escape(str(t.get('description', '')))}",
                             styles["BodyText"],
                         )
                     )

@@ -7,7 +7,7 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
     {'text': 'Requirements Traceability', 'current': true}
 ]) }}
 {% endblock %}
@@ -29,7 +29,7 @@
         {% for r in requirements %}
             {% set _ = by_status.update({r.status: (by_status.get(r.status, 0) + 1)}) %}
         {% endfor %}
-        {% for label, color in [('Draft','bg-muted text-muted-foreground'), ('Refined','bg-primary/10 text-primary'), ('Approved','bg-emerald-500/10 text-emerald-700'), ('Implemented','bg-primary/10 text-primary')] %}
+        {% for label, color in [('Draft','bg-muted text-muted-foreground'), ('Refined','bg-primary/10 text-primary'), ('Approved','bg-success/10 text-success-emphasis'), ('Implemented','bg-primary/10 text-primary')] %}
         <div data-slot="card" class="rounded-xl border bg-card p-5 flex items-center gap-4">
             <span class="flex h-10 w-10 items-center justify-center rounded-full {{ color }} text-lg font-bold shrink-0">
                 {{ by_status.get(label, 0) }}
@@ -69,16 +69,16 @@
                         data-cap-id="{{ req.capability_id or '' }}">
                         <td class="px-4 py-3 text-xs">
                             {% if req.driver_id and driver_map.get(req.driver_id) %}
-                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive px-2 py-0.5 text-[11px] font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
+                                <span class="inline-flex items-center rounded-full bg-destructive/10 text-destructive-emphasis px-2 py-0.5 text-2xs font-medium" title="{{ driver_map[req.driver_id] }}">{{ driver_map[req.driver_id]|truncate(30) }}</span>
                             {% else %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                             {% endif %}
                         </td>
                         <td class="px-4 py-3 text-xs">
                             {% if req.goal_id and goal_map.get(req.goal_id) %}
-                                <span class="inline-flex items-center rounded-full bg-emerald-500/10 text-emerald-700 px-2 py-0.5 text-[11px] font-medium" title="{{ goal_map[req.goal_id] }}">{{ goal_map[req.goal_id]|truncate(30) }}</span>
+                                <span class="inline-flex items-center rounded-full bg-success/10 text-success-emphasis px-2 py-0.5 text-2xs font-medium" title="{{ goal_map[req.goal_id] }}">{{ goal_map[req.goal_id]|truncate(30) }}</span>
                             {% else %}
-                                <span class="text-muted-foreground italic text-[11px]">—</span>
+                                <span class="text-muted-foreground italic text-2xs">—</span>
                             {% endif %}
                         </td>
                         <td class="px-4 py-3 text-xs" data-cell="capability">
@@ -90,13 +90,13 @@
                                     <button type="button"
                                             title="Change capability link"
                                             class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted transition-opacity"
-                                            @click="openLinkCapModal({{ req.id }}, {{ req.capability_id }}, '{{ cap_map[req.capability_id]|replace("'", "\\'") }}')">
+                                            @click="openLinkCapModal({{ req.id }}, {{ req.capability_id }}, null)">
                                         <i data-lucide="pencil" class="h-3 w-3 text-muted-foreground" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             {% else %}
                                 <button type="button"
-                                        class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-[11px] transition-colors group"
+                                        class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-2xs transition-colors group"
                                         title="Link to a capability"
                                         @click="openLinkCapModal({{ req.id }}, null, null)">
                                     <i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i>
@@ -106,9 +106,9 @@
                         </td>
                         <td class="px-4 py-3">
                             <div class="flex items-center gap-1.5">
-                                <span class="inline-flex items-center rounded bg-muted border border-border px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-foreground tracking-wide shrink-0">REQ-{{ '%04d' % req.id }}</span>
+                                <span class="inline-flex items-center rounded bg-muted border border-border px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground tracking-wide shrink-0">REQ-{{ '%04d' % req.id }}</span>
                                 {% if req.ai_generated %}
-                                <span class="inline-flex items-center rounded-sm bg-violet-100 text-violet-700 px-1.5 py-0.5 text-[10px] font-semibold shrink-0" title="AI-generated">AI</span>
+                                <span class="inline-flex items-center rounded-sm bg-violet-100 text-violet-700 px-1.5 py-0.5 text-xs font-semibold shrink-0" title="AI-generated">AI</span> {# token-migration-ok: violet is the app-wide AI-generated indicator colour #}
                                 {% endif %}
                                 <a href="/enterprise/requirements-backlog"
                                    class="font-medium hover:text-primary hover:underline"
@@ -117,7 +117,7 @@
                         </td>
                         <td class="px-4 py-3 text-xs">
                             {% if req.togaf_phase %}
-                            <span class="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] font-medium">Phase {{ req.togaf_phase }}</span>
+                            <span class="inline-flex items-center rounded-full bg-primary/10 text-primary px-2 py-0.5 text-2xs font-medium">Phase {{ req.togaf_phase }}</span>
                             {% else %}
                             <span class="text-muted-foreground">—</span>
                             {% endif %}
@@ -125,8 +125,8 @@
                         <td class="px-4 py-3">
                             {% if req.moscow_priority %}
                             <span class="px-2 py-0.5 text-xs rounded-full font-medium
-                                {% if req.moscow_priority == 'MUST' %}bg-destructive/15 text-destructive
-                                {% elif req.moscow_priority == 'SHOULD' %}bg-warning/15 text-warning
+                                {% if req.moscow_priority == 'MUST' %}bg-destructive/15 text-destructive-emphasis
+                                {% elif req.moscow_priority == 'SHOULD' %}bg-warning/15 text-warning-emphasis
                                 {% elif req.moscow_priority == 'COULD' %}bg-primary/10 text-primary
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
                                 {{ req.moscow_priority }}
@@ -136,8 +136,8 @@
                             {% endif %}
                         </td>
                         <td class="px-4 py-3">
-                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium
-                                {% if req.status == 'Implemented' %}bg-emerald-500/10 text-emerald-700
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium
+                                {% if req.status == 'Implemented' %}bg-success/10 text-success-emphasis
                                 {% elif req.status == 'Approved' %}bg-primary/10 text-primary
                                 {% elif req.status == 'Refined' %}bg-primary/10 text-primary
                                 {% else %}bg-muted text-muted-foreground{% endif %}">
@@ -171,11 +171,11 @@
         <div class="flex flex-wrap gap-2 items-center text-sm text-muted-foreground">
             <span class="rounded-full bg-primary/10 text-primary px-3 py-1 font-medium">Business Capability</span>
             <i data-lucide="arrow-right" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
-            <span class="rounded-full bg-violet-100 text-violet-700 px-3 py-1 font-medium">Requirement (Motivation)</span>
+            <span class="rounded-full bg-violet-100 text-violet-700 px-3 py-1 font-medium">Requirement (Motivation)</span> {# token-migration-ok: violet is the app-wide AI-generated indicator colour, matching the AI badge this legend describes below #}
             <i data-lucide="arrow-right" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
             <span class="rounded-full bg-primary/10 text-primary px-3 py-1 font-medium">Solution Architecture</span>
             <i data-lucide="arrow-right" class="h-4 w-4 shrink-0" aria-hidden="true"></i>
-            <span class="rounded-full bg-emerald-500/10 text-emerald-700 px-3 py-1 font-medium">ADM Kanban Card</span>
+            <span class="rounded-full bg-success/10 text-success-emphasis px-3 py-1 font-medium">ADM Kanban Card</span>
         </div>
         <p class="mt-3 text-xs text-muted-foreground">
             Each row traces a requirement from its originating capability through solution design to ADM Phase A–H implementation cards.
@@ -207,7 +207,7 @@
                     <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" aria-hidden="true"></i>
                     <input type="text" x-model="capSearch" placeholder="Filter capabilities…"
                            class="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                           @keydown.escape.stop="capSearch = ''">
+                           @keydown.escape.stop="capSearch = ''" aria-label="Filter capabilities…">
                 </div>
                 <!-- Capability list -->
                 <div class="border rounded-md overflow-y-auto max-h-60 divide-y">
@@ -295,12 +295,11 @@
                 let self = this;
                 if (self.saving) return;
                 self.saving = true;
-                fetch('/api/enterprise/requirements/' + self.activeReqId + '/enrich', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': self._csrf() },
-                    body: JSON.stringify({ capability_id: self.activeCapId })
-                })
-                .then(function (r) { return r.json(); })
+                // Use Platform.fetch.patch which automatically injects CSRF token and serializes JSON
+                Platform.fetch.patch('/api/enterprise/requirements/' + self.activeReqId + '/enrich', 
+                    { capability_id: self.activeCapId },
+                    { silent: true }
+                )
                 .then(function (data) {
                     if (data.success) {
                         self._updateRow(self.activeReqId, self.activeCapId);
@@ -311,13 +310,24 @@
                         Platform.toast.error('Error: ' + (data.error || 'Unknown error'));
                     }
                 })
-                .catch(function (e) { Platform.toast.error('Network error: ' + e); })
+                .catch(function (e) {
+                    // Platform.fetch throws a PlatformError on network or HTTP errors
+                    // We passed silent:true, so no automatic toast was shown.
+                    // Extract a user-friendly message from the error.
+                    let message = 'Network error';
+                    if (e.type === 'HttpError' && e.data && e.data.error) {
+                        message = e.data.error;
+                    } else if (e.message) {
+                        message = e.message;
+                    }
+                    Platform.toast.error('Error: ' + message);
+                })
                 .finally(function () { self.saving = false; });
             },
 
             _csrf: function () {
                 let m = document.cookie.match(/csrftoken=([^;]+)/);
-                let meta = document.querySelector('meta[name="csrf-token"]');
+                let meta = document.querySelector('meta[name=csrf-token]');
                 return m ? m[1] : (meta ? meta.getAttribute('content') : '');
             },
 
@@ -329,7 +339,7 @@
                 let cell = row.querySelector('[data-cell="capability"]');
                 if (!cell) return;
                 if (!capId) {
-                    cell.innerHTML = '<button type="button" class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-[11px] transition-colors group" title="Link to a capability" @click="openLinkCapModal(' + reqId + ', null, null)"><i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i> Link capability</button>';
+                    cell.innerHTML = '<button type="button" class="inline-flex items-center gap-1 text-muted-foreground hover:text-primary italic text-2xs transition-colors group" title="Link to a capability" @click="openLinkCapModal(' + reqId + ', null, null)"><i data-lucide="link" class="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true"></i> Link capability</button>';
                     if (window.lucide) lucide.createIcons();
                     // re-attach Alpine click (fallback: use onclick)
                     let btn = cell.querySelector('button');
@@ -349,7 +359,7 @@
                     '</button></div>';
                 if (window.lucide) lucide.createIcons();
                 let editBtn = cell.querySelector('button');
-                if (editBtn) editBtn.onclick = function () { self.openLinkCapModal(reqId, capId, capName); };
+                if (editBtn) editBtn.onclick = function () { self.openLinkCapModal(reqId, capId, null); };
             },
 
             _esc: function (s) {

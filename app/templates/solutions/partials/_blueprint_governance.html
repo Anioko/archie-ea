@@ -1,23 +1,10 @@
 {# ── Blueprint Governance Panel (right sidebar) ── #}
 {# Variables: solution, scores, phase_checklist, next_actions, arb_ready #}
 
-{# ── Pre-compute overall score and section count using Jinja ── #}
-{% set all_sections = [
-    'executive_summary', 'vision_motivation', 'value_stream_map',
-    'business_process_view', 'application_cooperation', 'data_information',
-    'deployment_view', 'network_communication', 'gap_analysis',
-    'transition_roadmap', 'work_packages', 'security_viewpoint',
-    'nfr_satisfaction', 'requirements_traceability'
-] %}
-{% set ns = namespace(total=0, filled=0) %}
-{% for sid in all_sections %}
-    {% set pct = scores.get(sid, {}).get('overall', 0) if scores else 0 %}
-    {% set ns.total = ns.total + pct %}
-    {% if pct > 0 %}
-        {% set ns.filled = ns.filled + 1 %}
-    {% endif %}
-{% endfor %}
-{% set overall_pct = (ns.total / 14)|round|int %}
+{# Completeness comes from `completeness` (compute_blueprint_completeness) —
+   the single server-side computation shared with the header strip and the gap
+   advisor. Do not re-derive it here: the four surfaces disagreeing was S-02. #}
+{% set overall_pct = completeness.percent %}
 
 <div class="space-y-3">
 
@@ -25,21 +12,32 @@
     {# 0. Setup Checklist (GOV-03)                                         #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="setupChecklist({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Platform Setup</h3>
+        {# Collapsed by default: with Completeness and Next Actions carrying the
+           page's live status, four always-open rail cards were noise. #}
+        <div x-data="{ railOpen: false }">
+        <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
+                class="w-full flex items-center justify-between text-left mb-1">
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Platform Setup</h3>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
+        </button>
+        <div x-show="railOpen" x-cloak class="pt-2">
 
         {# Progress bar #}
+        <template x-if="loadError">
+            <p class="text-xs text-destructive-emphasis mb-2">Setup status failed to load — reload the page to try again.</p>
+        </template>
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs font-medium" :class="{
-                'text-emerald-600': completionPct >= 80,
-                'text-amber-600': completionPct >= 40 && completionPct < 80,
-                'text-destructive': completionPct < 40
+                'text-success-emphasis': completionPct >= 80,
+                'text-warning-emphasis': completionPct >= 40 && completionPct < 80,
+                'text-destructive-emphasis': completionPct < 40
             }" x-text="configuredCount + '/' + totalCount + ' configured'"></span>
-            <span class="text-[10px] text-muted-foreground" x-text="completionPct + '%'"></span>
+            <span class="text-xs text-muted-foreground" x-text="completionPct + '%'"></span>
         </div>
         <div class="w-full h-1.5 rounded-full bg-muted/60 mb-3">
             <div class="h-1.5 rounded-full transition-all duration-500" :class="{
-                'bg-emerald-500': completionPct >= 80,
-                'bg-amber-500': completionPct >= 40 && completionPct < 80,
+                'bg-success': completionPct >= 80,
+                'bg-warning': completionPct >= 40 && completionPct < 80,
                 'bg-destructive': completionPct < 40
             }" :style="'width:' + completionPct + '%'"></div>
         </div>
@@ -50,9 +48,9 @@
                 <a :href="'#setup-' + item.anchor" @click.prevent="scrollToSection(item.anchor)"
                    class="flex items-center gap-2 group cursor-pointer">
                     <span class="w-4 h-4 rounded-full flex items-center justify-center shrink-0"
-                          :class="item.done ? 'bg-emerald-500/20' : 'border border-border'">
-                        <span class="text-[10px] leading-none"
-                              :class="item.done ? 'text-emerald-600' : 'text-muted-foreground/50'"
+                          :class="item.done ? 'bg-success/20' : 'border border-border'">
+                        <span class="text-xs leading-none"
+                              :class="item.done ? 'text-success-emphasis' : 'text-muted-foreground/50'"
                               x-text="item.done ? '\u2713' : '\u25CB'"></span>
                     </span>
                     <span class="text-xs group-hover:underline"
@@ -60,6 +58,8 @@
                           x-text="item.label"></span>
                 </a>
             </template>
+        </div>
+        </div>
         </div>
     </div>
 
@@ -69,6 +69,7 @@
             completionPct: 0,
             configuredCount: 0,
             totalCount: 7,
+            loadError: false,
             checklistItems: [
                 {key: 'integration_contracts', label: 'Integration contracts registered', anchor: 'integration-contracts', done: false},
                 {key: 'identity_provider', label: 'Identity provider configured', anchor: 'identity-provider', done: false},
@@ -80,9 +81,10 @@
             ],
             init: function() {
                 const self = this;
-                fetch('/api/solutions/' + solutionId + '/setup-status', {
-                    headers: {'Accept': 'application/json'}
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch('/api/solutions/' + solutionId + '/setup-status', {
+                    headers: {'Accept': 'application/json'},
+                    silent: true,
+                }).then(function(data) {
                     if (data.success) {
                         self.completionPct = data.completion_pct || 0;
                         self.configuredCount = data.configured_count || 0;
@@ -91,7 +93,9 @@
                             item.done = !!data[item.key];
                         });
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.loadError = true;
+                });
             },
             scrollToSection: function(anchor) {
                 const el = document.getElementById('setup-' + anchor) || document.getElementById(anchor);
@@ -108,7 +112,7 @@
     {# 1. Blueprint Completeness Ring                                      #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Completeness</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Completeness</h3>
 
         <div class="flex flex-col items-center">
             {# Circular score ring #}
@@ -123,14 +127,14 @@
                             stroke-width="4" stroke-linecap="round"
                             stroke-dasharray="175.93"
                             stroke-dashoffset="{{ 175.93 - (175.93 * overall_pct / 100) }}"
-                            class="{% if overall_pct >= 80 %}text-emerald-500
-                                   {% elif overall_pct >= 40 %}text-amber-500
+                            class="{% if overall_pct >= 80 %}text-success
+                                   {% elif overall_pct >= 40 %}text-warning
                                    {% else %}text-destructive
                                    {% endif %}" />
                 </svg>
                 <div class="absolute inset-0 flex items-center justify-center">
-                    <span class="text-sm font-bold {% if overall_pct >= 80 %}text-emerald-600
-                        {% elif overall_pct >= 40 %}text-amber-600
+                    <span class="text-sm font-bold {% if overall_pct >= 80 %}text-success-emphasis
+                        {% elif overall_pct >= 40 %}text-warning-emphasis
                         {% else %}text-destructive
                         {% endif %}">{{ overall_pct }}%</span>
                 </div>
@@ -139,9 +143,9 @@
             {# Version badge + section count #}
             <div class="flex items-center gap-2 mt-1">
                 {% if solution.blueprint_version is defined and solution.blueprint_version %}
-                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-muted text-muted-foreground border border-border">v{{ solution.blueprint_version }}</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">v{{ solution.blueprint_version }}</span>
                 {% endif %}
-                <span class="text-[10px] text-muted-foreground">{{ ns.filled }} of 14 sections</span>
+                <span class="text-xs text-muted-foreground">{{ completeness.sections_complete }} of {{ completeness.total_sections }} sections complete</span>
             </div>
         </div>
     </div>
@@ -150,20 +154,24 @@
     {# 2. TOGAF ADM Checklist                                              #}
     {# ════════════════════════════════════════════════════════════════════ #}
     {% if phase_checklist %}
-    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">TOGAF ADM Checklist</h3>
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="{ railOpen: false }">
+        <button type="button" @click="railOpen = !railOpen" :aria-expanded="railOpen"
+                class="w-full flex items-center justify-between text-left">
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">ADM Phase Completion ({{ phase_checklist|length }} phases)</h3>
+            <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-muted-foreground transition-transform" :class="railOpen ? 'rotate-180' : ''"></i>
+        </button>
 
-        <div class="space-y-2">
+        <div x-show="railOpen" x-cloak class="space-y-2 pt-3">
             {% for phase in phase_checklist %}
             <div class="flex items-center gap-2">
                 {% if phase.passed %}
-                <span class="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <span class="text-emerald-600 text-[10px] leading-none">&#10003;</span>
+                <span class="w-4 h-4 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                    <span class="text-success-emphasis text-xs leading-none">&#10003;</span>
                 </span>
                 <span class="text-xs text-muted-foreground line-through">{{ phase.name }}</span>
                 {% else %}
                 <span class="w-4 h-4 rounded-full border border-border flex items-center justify-center shrink-0">
-                    <span class="text-muted-foreground/50 text-[10px] leading-none">&#9675;</span>
+                    <span class="text-muted-foreground/50 text-xs leading-none">&#9675;</span>
                 </span>
                 <span class="text-xs text-foreground">{{ phase.name }}</span>
                 {% endif %}
@@ -177,7 +185,7 @@
     {# 3. Next Actions                                                     #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Next Actions</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Next Actions</h3>
 
         {% if next_actions %}
         <div class="space-y-2">
@@ -188,22 +196,22 @@
                 <div class="flex items-center gap-1.5 mb-0.5">
                     <span class="w-1.5 h-1.5 rounded-full shrink-0
                         {% if action.score is defined and action.score == 0 %}bg-destructive
-                        {% else %}bg-amber-500
+                        {% else %}bg-warning
                         {% endif %}"></span>
                     <span class="text-xs font-medium
-                        {% if action.score is defined and action.score == 0 %}text-destructive
-                        {% else %}text-amber-600
+                        {% if action.score is defined and action.score == 0 %}text-destructive-emphasis
+                        {% else %}text-warning-emphasis
                         {% endif %} group-hover:underline">{{ action.title }}</span>
                 </div>
                 {% if action.description %}
-                <p class="text-[10px] text-muted-foreground leading-snug pl-3">{{ action.description }}</p>
+                <p class="text-xs text-muted-foreground leading-snug pl-3">{{ action.description }}</p>
                 {% endif %}
             </a>
             {% endfor %}
         </div>
         {% else %}
-        <div class="rounded-lg border border-dashed border-emerald-500/30 bg-emerald-500/5 p-3 text-center">
-            <span class="text-[10px] text-emerald-600 font-medium">All sections at 80%+ — ready for governance review.</span>
+        <div class="rounded-lg border border-dashed border-success/30 bg-success/5 p-3 text-center">
+            <span class="text-xs text-success-emphasis font-medium">All sections at 80%+ — ready for governance review.</span>
         </div>
         {% endif %}
     </div>
@@ -211,18 +219,19 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     {# 4. Governance Status                                                #}
     {# ════════════════════════════════════════════════════════════════════ #}
-    <div class="rounded-xl border border-border bg-card shadow-sm p-4">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Governance Status</h3>
+    <div class="rounded-xl border border-border bg-card shadow-sm p-4"
+         x-data="arbReadinessPanel({{ solution.id }})" x-init="load()">
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Governance Status</h3>
 
         {# Review status badge #}
         <div class="mb-3">
             {% set gov_status = solution.governance_status if solution.governance_status is defined and solution.governance_status else 'draft' %}
             {% if gov_status == 'approved' %}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30">Approved</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30">Approved</span>
             {% elif gov_status == 'arb_review' or gov_status == 'in_review' %}
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-primary/10 text-primary border border-primary/30">In ARB Review</span>
             {% elif gov_status == 'rejected' %}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30">Rejected</span>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30">Rejected</span>
             {% else %}
             <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">Draft</span>
             {% endif %}
@@ -232,64 +241,161 @@
         <div class="flex items-center justify-between mb-3">
             <span class="text-xs text-muted-foreground">Compliance</span>
             <span class="text-xs font-semibold
-                {% if overall_pct >= 80 %}text-emerald-600
-                {% elif overall_pct >= 40 %}text-amber-600
+                {% if overall_pct >= 80 %}text-success-emphasis
+                {% elif overall_pct >= 40 %}text-warning-emphasis
                 {% else %}text-destructive
                 {% endif %}">{{ overall_pct }}%</span>
         </div>
 
         {# ARB Readiness Checklist — fetched async to avoid blocking page render #}
-        <div x-data="arbReadinessPanel({{ solution.id }})" x-init="load()" class="mb-3">
+        <div class="mb-3 space-y-3"
+             data-testid="arb-evidence-dossier">
+            <div x-show="loading" x-cloak class="rounded-md border border-border bg-muted/30 p-3" role="status">
+                <p class="text-xs text-muted-foreground">Checking governed evidence…</p>
+            </div>
             <template x-if="checks.length > 0">
                 <div>
                     <div class="flex items-center justify-between mb-2">
-                        <span class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">ARB Readiness</span>
-                        <span class="text-[10px] font-semibold"
-                              :class="{'text-emerald-600': pct >= 80, 'text-amber-600': pct >= 50 && pct < 80, 'text-destructive': pct < 50}"
+                        <span class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">ARB Readiness</span>
+                        <span class="text-xs font-semibold"
+                              :class="{'text-success-emphasis': pct >= 80, 'text-warning-emphasis': pct >= 50 && pct < 80, 'text-destructive-emphasis': pct < 50}"
                               x-text="pct + '%'"></span>
                     </div>
                     <div class="w-full h-1 rounded-full bg-muted/60 mb-2">
                         <div class="h-1 rounded-full transition-all duration-500"
-                             :class="{'bg-emerald-500': pct >= 80, 'bg-amber-500': pct >= 50 && pct < 80, 'bg-destructive': pct < 50}"
+                             :class="{'bg-success': pct >= 80, 'bg-warning': pct >= 50 && pct < 80, 'bg-destructive': pct < 50}"
                              :style="'width:' + pct + '%'"></div>
                     </div>
                     <div class="space-y-1">
                         <template x-for="c in checks" :key="c.label">
                             <div class="flex items-start gap-1.5">
                                 <span class="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
-                                      :class="c.passed ? 'bg-emerald-500/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
-                                    <span class="text-[11px] leading-none"
-                                          :class="c.passed ? 'text-emerald-600' : (c.required ? 'text-destructive/60' : 'text-muted-foreground/50')"
+                                      :class="c.passed ? 'bg-success/20' : (c.required ? 'border border-destructive/50' : 'border border-border')">
+                                    <span class="text-2xs leading-none"
+                                          :class="c.passed ? 'text-success-emphasis' : (c.required ? 'text-destructive-emphasis/60' : 'text-muted-foreground/50')"
                                           x-text="c.passed ? '\u2713' : '\u25CB'"></span>
                                 </span>
                                 <div class="leading-tight">
-                                    <span class="text-[10px]"
+                                    <span class="text-xs"
                                           :class="c.passed ? 'text-muted-foreground line-through' : (c.required ? 'text-foreground' : 'text-muted-foreground')"
                                           x-text="c.label"></span>
-                                    <span x-show="!c.required" class="text-[11px] text-muted-foreground/60 ml-1">(optional)</span>
+                                    <span x-show="!c.required" class="text-2xs text-muted-foreground/60 ml-1">(optional)</span>
                                 </div>
                             </div>
                         </template>
                     </div>
                 </div>
             </template>
+            <div x-show="loadError" x-cloak class="rounded-md border border-destructive/30 bg-destructive/5 p-3" role="alert">
+                <p class="text-xs font-medium text-destructive-emphasis">Readiness is unavailable</p>
+                <p class="mt-1 text-xs text-muted-foreground">No submission decision has been made. Try the check again.</p>
+                <button type="button" @click="load()" :disabled="loading"
+                        class="mt-2 inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent disabled:pointer-events-none disabled:opacity-50">Try readiness check again</button>
+            </div>
+
+            <div x-show="submission.state === 'blocked'" x-cloak data-testid="arb-missing-evidence"
+                 class="rounded-md border border-warning/30 bg-warning/5 p-3" role="alert">
+                <p class="text-xs font-semibold text-warning-emphasis">Submission blocked by missing evidence</p>
+                <ul class="mt-2 space-y-2 border-l-2 border-warning/30 pl-3">
+                    <template x-for="(item, index) in submission.missingEvidence" :key="item.code || item.name || index">
+                        <li class="text-xs">
+                            <p class="font-medium text-foreground" x-text="item.label || item.name || item.code || item"></p>
+                            <p x-show="item.action || item.detail" x-cloak class="text-muted-foreground" x-text="item.action || item.detail"></p>
+                        </li>
+                    </template>
+                </ul>
+                <p x-show="submission.missingEvidence.length === 0" x-cloak class="mt-2 text-xs text-muted-foreground">The readiness service did not return an evidence list. Run the check again before retrying.</p>
+            </div>
+
+            <div x-show="submission.state === 'unavailable' || submission.state === 'error'" x-cloak
+                 data-testid="arb-submission-error" class="rounded-md border border-destructive/30 bg-destructive/5 p-3" role="alert">
+                <p class="text-xs font-semibold text-destructive-emphasis" x-text="submission.title"></p>
+                <p class="mt-1 text-xs text-muted-foreground" x-text="submission.message"></p>
+            </div>
+
+            <div x-show="submission.state === 'success' && submission.reviewItemId && submission.reviewNumber" x-cloak
+                 class="rounded-md border border-success/30 bg-success/5 p-3" role="status">
+                <p class="text-xs font-semibold text-success-emphasis">Submitted to the Architecture Review Board</p>
+                <p class="mt-1 font-mono text-xs text-foreground" x-text="submission.reviewNumber"></p>
+                <a :href="'/arb/reviews/' + submission.reviewItemId"
+                   class="mt-2 inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent">Open canonical review</a>
+            </div>
         </div>
         <script>
         function arbReadinessPanel(solutionId) {
             return {
-                checks: [], pct: 0,
+                checks: [], pct: 0, loading: false, loadError: false,
+                humanReviewed: false,
+                costSource: '',
+                directEvidence: {
+                    design_reviewed: {passed: false, evidence: ''},
+                    security_impact_reviewed: {passed: false, evidence: ''},
+                    data_impact_reviewed: {passed: false, evidence: ''}
+                },
+                directEvidenceReady: function() {
+                    return Object.values(this.directEvidence).every(function(item) {
+                        return item.passed && item.evidence.trim().length > 0;
+                    });
+                },
+                submission: {state: 'idle', status: null, body: {}, title: '', message: '', missingEvidence: [], reasonCodes: [], reviewItemId: null, reviewNumber: null},
+                classifySubmissionFailure: function(error) {
+                    const body = error && error.data ? error.data : {};
+                    const status = error && error.status ? error.status : null;
+                    const reasonCodes = Array.isArray(body.reason_codes) ? body.reason_codes : [];
+                    const evidenceCodes = ['missing_named_artifacts', 'missing_direct_route_evidence', 'human_review_required', 'cost_source_required', 'recommended_vendor_not_found', 'governance_gate_failed'];
+                    const unavailable = status >= 500 || (error && error.type === 'NetworkError') ||
+                        reasonCodes.some(function(code) { return ['evaluator_unavailable', 'submission_failed', 'evidence_immutability_unavailable'].includes(code); });
+                    if (unavailable) return {state: 'unavailable', title: 'Submission service unavailable', message: 'No review was created. Check the service connection, then try again.', status: status, body: body};
+                    if (status === 401 || status === 403) return {state: 'error', title: 'Submission not permitted', message: 'Your account cannot submit this dossier. Confirm your access or sign in again.', status: status, body: body};
+                    if (status === 404) return {state: 'error', title: 'Submission context not found', message: 'The solution or its governed workspace is no longer available. Return to the solution and reopen it.', status: status, body: body};
+                    if (status === 422 && reasonCodes.some(function(code) { return evidenceCodes.includes(code); })) return {state: 'blocked', title: 'Submission blocked by evidence', message: 'The review was not created. Complete the evidence below, then try submission again.', status: status, body: body};
+                    return {state: 'error', title: 'Submission could not be completed', message: 'No review was created. Refresh the dossier and try again.', status: status, body: body};
+                },
                 load: function() {
                     const self = this;
-                    fetch('/solutions/' + solutionId + '/governance-status', {
-                        headers: {'Accept': 'application/json'}
-                    }).then(function(r) { return r.json(); }).then(function(d) {
+                    self.loading = true;
+                    self.loadError = false;
+                    Platform.fetch('/solutions/' + solutionId + '/governance-status', {
+                        headers: {'Accept': 'application/json'},
+                        silent: true,
+                    }).then(function(d) {
                         if (d.readiness_checks) {
                             self.checks = d.readiness_checks;
                             const total = self.checks.length;
                             const passed = self.checks.filter(function(c) { return c.passed; }).length;
                             self.pct = total > 0 ? Math.round(passed / total * 100) : 0;
                         }
-                    }).catch(function() {});
+                    }).catch(function() {
+                        self.loadError = true;
+                    }).then(function() { self.loading = false; });
+                },
+                submit: function() {
+                    const self = this;
+                    if (self.submission.state === 'submitting') return;
+                    self.submission.state = 'submitting';
+                    self.submission.missingEvidence = [];
+                    Platform.fetch.post('/solutions/' + solutionId + '/submit-for-arb', {
+                        human_reviewed: self.humanReviewed,
+                        cost_source: self.costSource || null,
+                        direct_route_evidence: self.directEvidence
+                    }, {silent: true}).then(function(data) {
+                        data = data && data.data !== undefined ? data.data : data;
+                        if (!data || !data.review_item_id || !data.review_number) {
+                            throw new Error('Canonical review identity was not returned.');
+                        }
+                        self.submission.reviewItemId = data.review_item_id;
+                        self.submission.reviewNumber = data.review_number;
+                        self.submission.state = 'success';
+                    }).catch(function(error) {
+                        const failure = self.classifySubmissionFailure(error);
+                        self.submission.status = failure.status;
+                        self.submission.body = failure.body;
+                        self.submission.title = failure.title;
+                        self.submission.message = failure.message;
+                        self.submission.missingEvidence = failure.state === 'blocked' && Array.isArray(failure.body.missing_evidence) ? failure.body.missing_evidence : [];
+                        self.submission.reasonCodes = Array.isArray(failure.body.reason_codes) ? failure.body.reason_codes : [];
+                        self.submission.state = failure.state;
+                    });
                 }
             };
         }
@@ -298,10 +404,44 @@
         {# ARB submit button #}
         <div class="space-y-2">
             {% if arb_ready %}
-            <button type="button" id="bp-submit-arb-btn"
-                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+            <label class="flex items-start gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" x-model="humanReviewed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
+                <span>I have reviewed the AI-assisted content and confirm this dossier is ready for governance.</span>
+            </label>
+            <label class="block text-xs text-muted-foreground">
+                Cost provenance <span class="font-normal">(required when estimated cost is non-zero)</span>
+                <select x-model="costSource" aria-label="Cost provenance"
+                        class="mt-1 flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                    <option value="">Select when applicable</option>
+                    <option value="manual_override">I confirm the estimate was manually reviewed</option>
+                </select>
+                <span class="mt-1 block">Choose manual review only when you have checked the persisted estimate. Entelim does not infer cost provenance.</span>
+            </label>
+            <fieldset class="space-y-3 rounded-md border border-border p-3">
+                <legend class="px-1 text-xs font-medium text-foreground">Required review attestations</legend>
+                <template x-for="item in [
+                    {key: 'design_reviewed', label: 'Architecture design reviewed'},
+                    {key: 'security_impact_reviewed', label: 'Security impact reviewed'},
+                    {key: 'data_impact_reviewed', label: 'Data impact reviewed'}
+                ]" :key="item.key">
+                    <div class="space-y-1.5">
+                        <label class="flex items-start gap-2 text-xs text-foreground">
+                            <input type="checkbox" x-model="directEvidence[item.key].passed" class="mt-0.5 h-4 w-4 rounded border-input text-primary focus-visible:ring-1 focus-visible:ring-ring">
+                            <span x-text="item.label"></span>
+                        </label>
+                        <label class="block text-xs text-muted-foreground">
+                            Evidence note
+                            <input type="text" x-model.trim="directEvidence[item.key].evidence" :aria-label="item.label + ' evidence note'" placeholder="Record what was checked and where the evidence is held"
+                                   class="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+                        </label>
+                    </div>
+                </template>
+            </fieldset>
+            <button type="button" id="bp-submit-arb-btn" @click="submit()"
+                    :disabled="!humanReviewed || !directEvidenceReady() || submission.state === 'submitting' || submission.state === 'success'"
+                    class="w-full inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:pointer-events-none disabled:opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                Submit to ARB
+                <span x-text="['blocked', 'unavailable', 'error'].includes(submission.state) ? 'Try submission again' : submission.state === 'submitting' ? 'Submitting…' : 'Submit to ARB'"></span>
             </button>
             {% else %}
             <button type="button" disabled
@@ -345,14 +485,14 @@
     {% if gov_status == 'arb_review' and arb_review_id is defined and arb_review_id %}
     <div class="rounded-xl border border-primary/30 bg-primary/5 shadow-sm p-4"
          x-data="arbReviewPanel({{ solution.id }}, {{ arb_review_id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-primary/80 mb-3">ARB Review</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-primary/80 mb-3">ARB Review</h3>
         <p class="text-xs text-muted-foreground mb-3">This blueprint is pending ARB approval. Review it and record your decision.</p>
 
         <div class="space-y-2">
             {# Approve #}
             <button type="button" @click="approve()"
                     :disabled="deciding"
-                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors disabled:opacity-50">
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-success/10 text-success-emphasis border border-success/30 hover:bg-success/20 transition-colors disabled:opacity-50">
                 <svg x-show="!deciding" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <svg x-show="deciding" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                 <span x-text="deciding ? 'Recording...' : 'Approve'"></span>
@@ -360,7 +500,7 @@
             {# Reject #}
             <button type="button" @click="rejectPrompt()"
                     :disabled="deciding"
-                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50">
+                    class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 hover:bg-destructive/20 transition-colors disabled:opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Reject with Conditions
             </button>
@@ -370,7 +510,7 @@
                     <textarea x-model="rejectReason"
                               rows="3"
                               placeholder="Reason for rejection / conditions required..."
-                              class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"></textarea>
+                              class="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none" aria-label="Reason for rejection / conditions required..."></textarea>
                     <div class="flex gap-1.5">
                         <button type="button" @click="reject()"
                                 :disabled="!rejectReason.trim() || deciding"
@@ -381,7 +521,7 @@
                 </div>
             </template>
             <p x-show="arbMsg" x-cloak class="text-xs font-medium mt-1"
-               :class="arbSuccess ? 'text-emerald-600' : 'text-destructive'"
+               :class="arbSuccess ? 'text-success-emphasis' : 'text-destructive-emphasis'"
                x-text="arbMsg"></p>
         </div>
     </div>
@@ -397,26 +537,18 @@
                 const self = this;
                 self.deciding = true;
                 self.arbMsg = '';
-                fetch('/solutions/' + solutionId + '/arb/' + reviewId + '/record-decision', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
-                    },
-                    body: JSON.stringify({
-                        decision: decision,
-                        decision_reason: reason || '',
-                        decided_by_id: null
-                    })
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/solutions/' + solutionId + '/arb/' + reviewId + '/record-decision', {
+                    decision: decision,
+                    decision_reason: reason || '',
+                    decided_by_id: null
+                }, { silent: true })
                 .then(function(data) {
                     self.arbSuccess = !data.error;
                     self.arbMsg = data.error ? data.error : (decision === 'approved' ? 'Approved — page will reload' : 'Rejected — page will reload');
                     if (!data.error) setTimeout(function() { window.location.reload(); }, 1800);
                 })
                 .catch(function(e) {
-                    self.arbMsg = e.message || 'Request failed';
+                    self.arbMsg = (e && e.message) || 'Request failed';
                     self.arbSuccess = false;
                 })
                 .finally(function() { self.deciding = false; });
@@ -432,38 +564,30 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     {# 4c. AI Generation panel                                             #}
     {# ════════════════════════════════════════════════════════════════════ #}
-    <div class="rounded-xl border border-violet-500/20 bg-violet-500/5 shadow-sm p-4"
+    <div class="rounded-xl border border-info/20 bg-info/5 shadow-sm p-4"
          x-data="{ aiGenerating: false, aiMsg: '', aiSuccess: false }">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-violet-500/80 mb-3">AI Generation</h3>
-        <p class="text-[10px] text-muted-foreground mb-3 leading-relaxed">Generate a complete architecture draft across all TOGAF phases from the problem statement.</p>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-info-emphasis/80 mb-3">AI Generation</h3>
+        <p class="text-xs text-muted-foreground mb-3 leading-relaxed">Generate a complete architecture draft across all TOGAF phases from the problem statement.</p>
         <button type="button"
                 @click="
                     aiGenerating = true; aiMsg = '';
-                    fetch('/solutions/{{ solution.id }}/generate-draft', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || ''
-                        },
-                        body: JSON.stringify({problem_statement: '{{ (solution.description or solution.name)|replace("'", "\\'") }}'})
-                    })
-                    .then(r => r.json())
+                    Platform.fetch.post('/solutions/{{ solution.id }}/generate-draft', {problem_statement: '{{ (solution.description or solution.name)|replace("'", "\\'") }}'}, { silent: true })
                     .then(d => {
                         aiSuccess = d.success;
                         aiMsg = d.success ? 'Created ' + (d.total || 0) + ' entities — reloading...' : (d.error || 'Failed');
                         if (d.success) setTimeout(() => window.location.reload(), 1800);
                     })
-                    .catch(e => { aiMsg = e.message; aiSuccess = false; })
+                    .catch(e => { aiMsg = (e && e.message) || 'Failed'; aiSuccess = false; })
                     .finally(() => { aiGenerating = false; })
                 "
                 :disabled="aiGenerating"
-                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30 hover:bg-violet-500/20 transition-colors disabled:opacity-50">
+                class="w-full inline-flex items-center justify-center px-3 py-1.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30 hover:bg-info/20 transition-colors disabled:opacity-50">
             <svg x-show="!aiGenerating" xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg><!-- alpine-scope-ok -->
             <svg x-show="aiGenerating" x-cloak class="w-3.5 h-3.5 mr-1.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
             <span x-text="aiGenerating ? 'Generating...' : 'Generate All Phases'"></span>
         </button>
-        <p x-show="aiMsg" x-cloak class="mt-2 text-[10px] font-medium leading-snug"
-           :class="aiSuccess ? 'text-emerald-600' : 'text-destructive'"
+        <p x-show="aiMsg" x-cloak class="mt-2 text-xs font-medium leading-snug"
+           :class="aiSuccess ? 'text-success-emphasis' : 'text-destructive-emphasis'"
            x-text="aiMsg"></p>
     </div>
 
@@ -472,7 +596,7 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4">
         {# Export section #}
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Export</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Export</h3>
 
         <div class="space-y-1.5 mb-4">
             {# Export PDF #}
@@ -488,7 +612,7 @@
                     class="w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground cursor-not-allowed opacity-50">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                 Export PowerPoint
-                <span class="ml-auto text-[11px] text-muted-foreground/60">Soon</span>
+                <span class="ml-auto text-2xs text-muted-foreground/60">Soon</span>
             </button>
 
             {# Export ArchiMate XML #}
@@ -503,7 +627,7 @@
         <div class="border-t border-border my-3"></div>
 
         {# Development section #}
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Development</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Development</h3>
 
         <div class="space-y-1.5">
             {# Generate API Specs #}
@@ -522,7 +646,7 @@
 
             {# Language selector #}
             <div class="mb-1.5">
-                <label for="bp-language-select" class="text-[10px] text-muted-foreground block mb-1">Target Language</label>
+                <label for="bp-language-select" class="text-xs text-muted-foreground block mb-1">Target Language</label>
                 <select id="bp-language-select"
                         class="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary">
                     <option value="python-fastapi">Python (FastAPI)</option>
@@ -538,37 +662,37 @@
             </button>
 
             {# Synthesize Business Logic (hidden until generation completes) #}
-            <button id="bp-synthesize-logic-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-indigo-500/30 text-primary hover:bg-indigo-500/5 transition-colors">
+            <button id="bp-synthesize-logic-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-primary hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 Synthesize Business Logic
             </button>
 
             {# Download generated code (hidden until generation completes) #}
-            <a id="bp-download-product-btn" href="#" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/5 transition-colors">
+            <a id="bp-download-product-btn" href="#" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-success/30 text-success-emphasis hover:bg-success/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
                 Download Code ZIP
             </a>
 
             {# Push to GitHub (hidden until generation completes) #}
-            <button id="bp-push-github-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-sky-500/30 text-sky-600 hover:bg-sky-500/5 transition-colors">
+            <button id="bp-push-github-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-info-emphasis hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
                 Push to GitHub
             </button>
 
             {# GitHub repo link (hidden until push completes) #}
-            <div class="bp-github-repo-info hidden rounded-lg border border-sky-500/20 bg-sky-500/5 p-2">
-                <span class="text-[10px] text-muted-foreground block mb-0.5">Repository:</span>
-                <a id="bp-github-repo-link" href="#" target="_blank" class="text-[11px] text-sky-600 hover:underline truncate block"></a>
+            <div class="bp-github-repo-info hidden rounded-lg border border-info/20 bg-info/5 p-2">
+                <span class="text-xs text-muted-foreground block mb-0.5">Repository:</span>
+                <a id="bp-github-repo-link" href="#" target="_blank" class="text-2xs text-info-emphasis hover:underline truncate block"></a>
             </div>
 
             {# Run Tests (hidden until generation completes) #}
-            <button id="bp-run-tests-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-amber-500/30 text-amber-600 hover:bg-amber-500/5 transition-colors">
+            <button id="bp-run-tests-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-warning/30 text-warning-emphasis hover:bg-warning/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Run Tests
             </button>
 
             {# Live Preview (hidden until generation completes) #}
-            <button id="bp-preview-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-violet-500/30 text-violet-600 hover:bg-violet-500/5 transition-colors">
+            <button id="bp-preview-btn" type="button" class="hidden w-full inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium border border-info/30 text-info-emphasis hover:bg-info/5 transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Live Preview
             </button>
@@ -578,10 +702,10 @@
     {# ════════════════════════════════════════════════════════════════════ #}
     {# 5a. Integration Contracts (RUNTIME-02)                              #}
     {# ════════════════════════════════════════════════════════════════════ #}
-    <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContracts({{ solution.id }})">
+    <div id="setup-integration-contracts" class="rounded-xl border border-border bg-card shadow-sm" x-data="integrationContractsPanel({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Integration Contracts</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -597,33 +721,36 @@
                             <div class="flex items-center justify-between mb-1">
                                 <span class="text-xs font-medium text-foreground" x-text="c.name"></span>
                                 <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
+                                    <button type="button" @click="editContract(c)" class="text-muted-foreground hover:text-foreground" title="Edit">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
                                     </button>
-                                    <button @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive" title="Delete">
+                                    <button type="button" @click="deleteContract(c.id)" class="text-muted-foreground hover:text-destructive-emphasis" title="Delete">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
                             </div>
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-primary border border-blue-500/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
-                                <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/10 text-violet-600 border border-violet-500/30" x-text="c.auth_method"></span>
-                                <span x-show="c.base_url" class="text-[10px] text-muted-foreground truncate max-w-[140px]" x-text="c.base_url" :title="c.base_url"></span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-primary border border-info/30" x-text="(c.protocol || 'rest').toUpperCase()"></span>
+                                <span x-show="c.auth_method" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-info/10 text-info-emphasis border border-info/30" x-text="c.auth_method"></span>
+                                <span x-show="c.base_url" class="text-xs text-muted-foreground truncate max-w-[140px]" x-text="c.base_url" :title="c.base_url"></span>
                             </div>
                         </div>
                     </template>
                 </div>
             </template>
 
-            <template x-if="contracts.length === 0 && !showForm">
-                <p class="text-[10px] text-muted-foreground mb-3">No integration contracts registered yet.</p>
+            <template x-if="contracts.length === 0 && !showForm && !contractsError">
+                <p class="text-xs text-muted-foreground mb-3">No integration contracts registered yet.</p>
+            </template>
+            <template x-if="contractsError">
+                <p class="text-xs text-destructive-emphasis mb-3">Integration contracts failed to load — reload the page to try again.</p>
             </template>
 
             {# Add / Edit form #}
             <div x-show="showForm" class="space-y-2 mb-3 rounded-lg border border-border p-3 bg-muted/20">
                 <div>
-                    <label class="text-[10px] text-muted-foreground block mb-0.5">Application</label>
-                    <select x-model="form.application_id" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                    <label class="text-xs text-muted-foreground block mb-0.5">Application</label>
+                    <select x-model="form.application_id" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Application">
                         <option value="">-- Select application --</option>
                         <template x-for="app in connectedApps" :key="app.id">
                             <option :value="app.id" x-text="app.name"></option>
@@ -631,17 +758,17 @@
                     </select>
                 </div>
                 <div>
-                    <label class="text-[10px] text-muted-foreground block mb-0.5">Name</label>
-                    <input type="text" x-model="form.name" placeholder="e.g. Payment Gateway API" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <label class="text-xs text-muted-foreground block mb-0.5">Name</label>
+                    <input type="text" x-model="form.name" placeholder="e.g. Payment Gateway API" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Name"/>
                 </div>
                 <div>
-                    <label class="text-[10px] text-muted-foreground block mb-0.5">Base URL</label>
-                    <input type="url" x-model="form.base_url" placeholder="https://api.example.com/v1" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <label class="text-xs text-muted-foreground block mb-0.5">Base URL</label>
+                    <input type="url" x-model="form.base_url" placeholder="https://api.example.com/v1" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Base URL"/>
                 </div>
                 <div class="grid grid-cols-2 gap-2">
                     <div>
-                        <label class="text-[10px] text-muted-foreground block mb-0.5">Protocol</label>
-                        <select x-model="form.protocol" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                        <label class="text-xs text-muted-foreground block mb-0.5">Protocol</label>
+                        <select x-model="form.protocol" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Protocol">
                             <option value="rest">REST</option>
                             <option value="grpc">gRPC</option>
                             <option value="soap">SOAP</option>
@@ -650,8 +777,8 @@
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] text-muted-foreground block mb-0.5">Auth Method</label>
-                        <select x-model="form.auth_method" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                        <label class="text-xs text-muted-foreground block mb-0.5">Auth Method</label>
+                        <select x-model="form.auth_method" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Auth Method">
                             <option value="none">None</option>
                             <option value="api_key">API Key</option>
                             <option value="oauth2">OAuth 2.0</option>
@@ -663,52 +790,52 @@
 
                 {# Conditional auth config fields #}
                 <template x-if="form.auth_method === 'oauth2'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Token URL</label>
-                        <input type="url" x-model="form.auth_config.token_url" placeholder="https://auth.example.com/oauth/token" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Client ID env var</label>
-                        <input type="text" x-model="form.auth_config.client_id_env" placeholder="CLIENT_ID" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Scope</label>
-                        <input type="text" x-model="form.auth_config.scope" placeholder="read write" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Token URL</label>
+                        <input type="url" x-model="form.auth_config.token_url" placeholder="https://auth.example.com/oauth/token" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Token URL"/></div>
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Client ID env var</label>
+                        <input type="text" x-model="form.auth_config.client_id_env" placeholder="CLIENT_ID" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Client ID env var"/></div>
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Scope</label>
+                        <input type="text" x-model="form.auth_config.scope" placeholder="read write" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Scope"/></div>
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'api_key'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Header name</label>
-                        <input type="text" x-model="form.auth_config.api_key_header" placeholder="X-API-Key" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Env var name</label>
-                        <input type="text" x-model="form.auth_config.api_key_env" placeholder="API_KEY" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Header name</label>
+                        <input type="text" x-model="form.auth_config.api_key_header" placeholder="X-API-Key" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Header name"/></div>
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Env var name</label>
+                        <input type="text" x-model="form.auth_config.api_key_env" placeholder="API_KEY" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Env var name"/></div>
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'basic'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Username env var</label>
-                        <input type="text" x-model="form.auth_config.username_env" placeholder="BASIC_USER" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div> <!-- entity-picker-ok: env var name, not a user reference -->
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Password env var</label>
-                        <input type="text" x-model="form.auth_config.password_env" placeholder="BASIC_PASS" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Username env var</label>
+                        <input type="text" x-model="form.auth_config.username_env" placeholder="BASIC_USER" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Username env var"/></div> <!-- entity-picker-ok: env var name, not a user reference -->
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Password env var</label>
+                        <input type="text" x-model="form.auth_config.password_env" placeholder="BASIC_PASS" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Password env var"/></div>
                     </div>
                 </template>
                 <template x-if="form.auth_method === 'mtls'">
-                    <div class="space-y-2 pl-2 border-l-2 border-blue-500/30">
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Cert path env var</label>
-                        <input type="text" x-model="form.auth_config.cert_path_env" placeholder="MTLS_CERT_PATH" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
-                        <div><label class="text-[10px] text-muted-foreground block mb-0.5">Key path env var</label>
-                        <input type="text" x-model="form.auth_config.key_path_env" placeholder="MTLS_KEY_PATH" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" /></div>
+                    <div class="space-y-2 pl-2 border-l-2 border-info/30">
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Cert path env var</label>
+                        <input type="text" x-model="form.auth_config.cert_path_env" placeholder="MTLS_CERT_PATH" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Cert path env var"/></div>
+                        <div><label class="text-xs text-muted-foreground block mb-0.5">Key path env var</label>
+                        <input type="text" x-model="form.auth_config.key_path_env" placeholder="MTLS_KEY_PATH" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Key path env var"/></div>
                     </div>
                 </template>
 
                 {# Environment URLs #}
                 <div class="space-y-1.5">
-                    <label class="text-[10px] text-muted-foreground block">Environment URLs</label>
-                    <input type="url" x-model="form.environments.dev" placeholder="Dev: https://dev-api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <input type="url" x-model="form.environments.staging" placeholder="Staging: https://staging-api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
-                    <input type="url" x-model="form.environments.prod" placeholder="Prod: https://api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <label class="text-xs text-muted-foreground block">Environment URLs</label>
+                    <input type="url" x-model="form.environments.dev" placeholder="Dev: https://dev-api.example.com" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Environment URLs"/>
+                    <input type="url" x-model="form.environments.staging" placeholder="Staging: https://staging-api.example.com" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Staging: https://staging-api.example.com"/>
+                    <input type="url" x-model="form.environments.prod" placeholder="Prod: https://api.example.com" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Prod: https://api.example.com"/>
                 </div>
 
                 {# SLA #}
                 <div>
-                    <label class="text-[10px] text-muted-foreground block mb-0.5">SLA Latency (ms)</label>
-                    <input type="number" x-model.number="form.sla_latency_ms" placeholder="500" min="0" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                    <label class="text-xs text-muted-foreground block mb-0.5">SLA Latency (ms)</label>
+                    <input type="number" x-model.number="form.sla_latency_ms" placeholder="500" min="0" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="SLA Latency (ms)"/>
                 </div>
 
                 {# Actions #}
@@ -734,10 +861,15 @@
     </div>
 
     <script>
-    function integrationContracts(solutionId) {
+    {# Named -Panel deliberately: the blueprint root component's mixin data
+       contains a property "integrationContracts" (an object), and Alpine's
+       scope chain shadows same-named globals for every descendant - calling
+       this under its old name invoked that object and killed the panel. #}
+    function integrationContractsPanel(solutionId) {
         return {
             expanded: false,
             contracts: [],
+            contractsError: false,
             connectedApps: [],
             showForm: false,
             saving: false,
@@ -749,22 +881,25 @@
             },
             loadContracts: function() {
                 let self = this;
-                fetch('/api/enterprise/contracts?per_page=100', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
-                .then(function(data) { self.contracts = data.items || []; })
-                .catch(function() {});
+                Platform.fetch('/api/enterprise/contracts?per_page=100', { silent: true })
+                .then(function(data) { self.contracts = data.items || []; self.contractsError = false; })
+                .catch(function(err) {
+                    self.contractsError = true;
+                });
             },
             loadConnectedApps: function() {
                 let self = this;
-                fetch('/solutions/' + solutionId + '/api/archimate-elements?layer=application', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/archimate-elements', { silent: true })
                 .then(function(data) {
-                    const elems = data.elements || data.items || [];
+                    const payload = data.data || data;
+                    const elems = (payload.elements_by_layer && payload.elements_by_layer.application) || [];
                     self.connectedApps = elems.filter(function(e) { return e.application_id; }).map(function(e) {
                         return {id: e.application_id, name: e.name || e.element_name || ('App #' + e.application_id)};
                     });
                 })
-                .catch(function() {});
+                .catch(function(err) {
+                    if (window.Platform && Platform.toast) Platform.toast.error('Failed to load applications for the contract form');
+                });
             },
             resetForm: function() {
                 this.form = {application_id: '', name: '', base_url: '', protocol: 'rest', auth_method: 'none', auth_config: {}, environments: {dev: '', staging: '', prod: ''}, sla_latency_ms: null};
@@ -801,11 +936,7 @@
                     method = 'PUT';
                 }
 
-                fetch(url, {
-                    method: method,
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch(url, { method: method, body: payload, silent: true }).then(function(data) {
                     self.saving = false;
                     if (data.error) {
                         if (window.Platform && Platform.toast) Platform.toast.error(data.error);
@@ -817,21 +948,17 @@
                     }
                 }).catch(function(e) {
                     self.saving = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             deleteContract: async function(id) {
                 if (!(await Platform.modal.confirm('Delete this integration contract?'))) return;
                 let self = this;
-                let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/enterprise/contracts/' + id, {
-                    method: 'DELETE',
-                    headers: {'X-CSRFToken': csrf}
-                }).then(function(r) { return r.json(); }).then(function() {
+                Platform.fetch.delete('/api/enterprise/contracts/' + id, { silent: true }).then(function() {
                     if (window.Platform && Platform.toast) Platform.toast.success('Contract deleted');
                     self.loadContracts();
                 }).catch(function(e) {
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -844,7 +971,7 @@
     <div id="setup-identity-provider" class="rounded-xl border border-border bg-card shadow-sm" x-data="identityProvider({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Identity Provider</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Identity Provider</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -852,10 +979,13 @@
         </button>
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-2">
+            <template x-if="loadError">
+                <p class="text-xs text-destructive-emphasis">Could not load the existing identity provider config — reload before saving, or you may overwrite it.</p>
+            </template>
             {# Provider selector #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Provider</label>
-                <select x-model="form.type" @change="onPresetChange()" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                <label class="text-xs text-muted-foreground block mb-0.5">Provider</label>
+                <select x-model="form.type" @change="onPresetChange()" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Provider">
                     <option value="">-- Select provider --</option>
                     <option value="okta">Okta</option>
                     <option value="azure_ad">Azure AD</option>
@@ -868,57 +998,57 @@
 
             {# Issuer URL #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Issuer URL</label>
-                <input type="url" x-model="form.issuer_url" placeholder="https://your-idp.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">Issuer URL</label>
+                <input type="url" x-model="form.issuer_url" placeholder="https://your-idp.example.com" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Issuer URL"/>
             </div>
 
             {# JWKS URI #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">JWKS URI</label>
-                <input type="url" x-model="form.jwks_uri" placeholder="https://your-idp.example.com/.well-known/jwks.json" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">JWKS URI</label>
+                <input type="url" x-model="form.jwks_uri" placeholder="https://your-idp.example.com/.well-known/jwks.json" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="JWKS URI"/>
             </div>
 
             {# Client ID env var #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Client ID env var</label>
-                <input type="text" x-model="form.client_id_env" placeholder="OAUTH_CLIENT_ID" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">Client ID env var</label>
+                <input type="text" x-model="form.client_id_env" placeholder="OAUTH_CLIENT_ID" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Client ID env var"/>
             </div>
 
             {# Audience #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Audience</label>
-                <input type="text" x-model="form.audience" placeholder="https://api.example.com" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">Audience</label>
+                <input type="text" x-model="form.audience" placeholder="https://api.example.com" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Audience"/>
             </div>
 
             {# Scopes #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Scopes (comma-separated)</label>
-                <input type="text" x-model="scopesStr" placeholder="openid, profile, email" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">Scopes (comma-separated)</label>
+                <input type="text" x-model="scopesStr" placeholder="openid, profile, email" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Scopes (comma-separated)"/>
             </div>
 
             {# Role claim path #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-0.5">Role claim path</label>
-                <input type="text" x-model="form.role_claim" placeholder="groups" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                <label class="text-xs text-muted-foreground block mb-0.5">Role claim path</label>
+                <input type="text" x-model="form.role_claim" placeholder="groups" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role claim path"/>
             </div>
 
             {# Role mapping #}
             <div>
-                <label class="text-[10px] text-muted-foreground block mb-1">Role Mapping</label>
+                <label class="text-xs text-muted-foreground block mb-1">Role Mapping</label>
                 <div class="space-y-1.5">
                     <template x-for="(mapping, idx) in roleMappings" :key="idx">
                         <div class="flex items-center gap-1.5">
-                            <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
-                            <span class="text-[10px] text-muted-foreground">&#8594;</span>
-                            <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-zinc-700 bg-zinc-800 px-2 py-1 text-[11px] text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
-                            <button @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive shrink-0">
+                            <input type="text" x-model="mapping.idp_group" placeholder="IdP Group" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Role Mapping"/>
+                            <span class="text-xs text-muted-foreground">&#8594;</span>
+                            <input type="text" x-model="mapping.app_role" placeholder="App Role" class="flex-1 rounded-md border border-input bg-background px-2 py-1 text-2xs text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="App Role"/>
+                            <button aria-label="Remove role mapping" type="button" @click="roleMappings.splice(idx, 1)" class="text-muted-foreground hover:text-destructive-emphasis shrink-0">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
                     </template>
                 </div>
                 <button type="button" @click="roleMappings.push({idp_group: '', app_role: ''})"
-                        class="mt-1.5 text-[10px] text-primary hover:underline">+ Add row</button>
+                        class="mt-1.5 text-xs text-primary hover:underline">+ Add row</button>
             </div>
 
             {# Save button #}
@@ -929,8 +1059,8 @@
 
             {# Current status #}
             <template x-if="currentProvider">
-                <div class="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2">
-                    <span class="text-[10px] text-emerald-600 font-medium" x-text="'Configured: ' + currentProvider"></span>
+                <div class="rounded-lg border border-success/20 bg-success/5 p-2">
+                    <span class="text-xs text-success-emphasis font-medium" x-text="'Configured: ' + currentProvider"></span>
                 </div>
             </template>
         </div>
@@ -948,14 +1078,14 @@
         return {
             expanded: false,
             saving: false,
+            loadError: false,
             currentProvider: null,
             form: {type: '', issuer_url: '', jwks_uri: '', client_id_env: 'OAUTH_CLIENT_ID', audience: '', role_claim: ''},
             scopesStr: 'openid, profile, email',
             roleMappings: [{idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}, {idp_group: '', app_role: ''}],
             init: function() {
                 let self = this;
-                fetch('/solutions/' + solutionId + '/identity-provider', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/solutions/' + solutionId + '/identity-provider', { silent: true })
                 .then(function(data) {
                     const idp = (data.data || {}).identity_provider;
                     if (idp) {
@@ -974,7 +1104,9 @@
                             }
                         }
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.loadError = true;
+                });
             },
             onPresetChange: function() {
                 const preset = presetDefaults[this.form.type];
@@ -1004,11 +1136,7 @@
                     role_mapping: roleMap
                 };
 
-                fetch('/solutions/' + solutionId + '/identity-provider', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/solutions/' + solutionId + '/identity-provider', payload, { silent: true }).then(function(data) {
                     self.saving = false;
                     if (data.success) {
                         self.currentProvider = (data.identity_provider || {}).display_name || self.form.type;
@@ -1018,7 +1146,7 @@
                     }
                 }).catch(function(e) {
                     self.saving = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -1031,7 +1159,7 @@
     <div id="setup-infrastructure" class="rounded-xl border border-border bg-card shadow-sm" x-data="infrastructureConfig({{ solution.id }})">
         <button type="button" @click="expanded = !expanded"
                 class="w-full flex items-center justify-between p-4 text-left">
-            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure</h3>
+            <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Infrastructure</h3>
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-muted-foreground transition-transform"
                  :class="expanded ? 'rotate-180' : ''" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
@@ -1039,24 +1167,27 @@
         </button>
 
         <div x-show="expanded" x-collapse class="px-4 pb-4 space-y-4">
+            <template x-if="loadError.db || loadError.cicd || loadError.arch">
+                <p class="text-xs text-destructive-emphasis">Could not load the existing configuration below — reload before saving, or you may overwrite what's already set.</p>
+            </template>
 
             {# ── Database sub-section ── #}
             <div>
-                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"/></svg>
                     Database
                 </h4>
                 <div class="space-y-2">
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Engine</label>
-                            <select x-model="db.engine" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">Engine</label>
+                            <select x-model="db.engine" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Engine">
                                 <option value="postgresql">PostgreSQL</option>
                             </select>
                         </div>
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Version</label>
-                            <select x-model="db.version" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">Version</label>
+                            <select x-model="db.version" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Version">
                                 <option value="14">14</option>
                                 <option value="15">15</option>
                                 <option value="16">16</option>
@@ -1064,8 +1195,8 @@
                         </div>
                     </div>
                     <div>
-                        <label class="text-[10px] text-muted-foreground block mb-0.5">Instance class</label>
-                        <select x-model="db.instance_class" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                        <label class="text-xs text-muted-foreground block mb-0.5">Instance class</label>
+                        <select x-model="db.instance_class" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Instance class">
                             <option value="db.t3.micro">db.t3.micro</option>
                             <option value="db.t3.small">db.t3.small</option>
                             <option value="db.t3.medium">db.t3.medium</option>
@@ -1082,22 +1213,22 @@
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Storage (GB)</label>
-                            <input type="number" x-model.number="db.storage_gb" min="5" max="1000" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <label class="text-xs text-muted-foreground block mb-0.5">Storage (GB)</label>
+                            <input type="number" x-model.number="db.storage_gb" min="5" max="1000" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Storage (GB)"/>
                         </div>
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Backup days</label>
-                            <input type="number" x-model.number="db.backup_days" min="0" max="35" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <label class="text-xs text-muted-foreground block mb-0.5">Backup days</label>
+                            <input type="number" x-model.number="db.backup_days" min="0" max="35" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Backup days"/>
                         </div>
                     </div>
                     <div class="flex items-center gap-4">
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" x-model="db.multi_az" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                            <span class="text-[10px] text-muted-foreground">Multi-AZ</span>
+                            <input type="checkbox" x-model="db.multi_az" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-xs text-muted-foreground">Multi-AZ</span>
                         </label>
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" x-model="db.encryption" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                            <span class="text-[10px] text-muted-foreground">Encryption</span>
+                            <input type="checkbox" x-model="db.encryption" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-xs text-muted-foreground">Encryption</span>
                         </label>
                     </div>
                     <button type="button" @click="saveDb()" :disabled="savingDb"
@@ -1111,22 +1242,22 @@
 
             {# ── CI/CD sub-section ── #}
             <div>
-                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     CI/CD Pipeline
                 </h4>
                 <div class="space-y-2">
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Provider</label>
-                            <select x-model="cicd.provider" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">Provider</label>
+                            <select x-model="cicd.provider" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Provider">
                                 <option value="github_actions">GitHub Actions</option>
                                 <option value="gitlab_ci">GitLab CI</option>
                             </select>
                         </div>
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Container registry</label>
-                            <select x-model="cicd.container_registry" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">Container registry</label>
+                            <select x-model="cicd.container_registry" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Container registry">
                                 <option value="ghcr">GHCR</option>
                                 <option value="ecr">ECR</option>
                                 <option value="gcr">GCR</option>
@@ -1136,22 +1267,22 @@
                     </div>
                     <div class="grid grid-cols-2 gap-2">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Staging namespace</label>
-                            <input type="text" x-model="cicd.k8s_staging_namespace" placeholder="staging" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <label class="text-xs text-muted-foreground block mb-0.5">Staging namespace</label>
+                            <input type="text" x-model="cicd.k8s_staging_namespace" placeholder="staging" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Staging namespace"/>
                         </div>
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Prod namespace</label>
-                            <input type="text" x-model="cicd.k8s_prod_namespace" placeholder="production" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary" />
+                            <label class="text-xs text-muted-foreground block mb-0.5">Prod namespace</label>
+                            <input type="text" x-model="cicd.k8s_prod_namespace" placeholder="production" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary"  aria-label="Prod namespace"/>
                         </div>
                     </div>
                     <div class="flex items-center gap-4">
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" x-model="cicd.require_manual_approval" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                            <span class="text-[10px] text-muted-foreground">Manual approval for prod</span>
+                            <input type="checkbox" x-model="cicd.require_manual_approval" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-xs text-muted-foreground">Manual approval for prod</span>
                         </label>
                         <label class="flex items-center gap-1.5 cursor-pointer">
-                            <input type="checkbox" x-model="cicd.run_security_scan" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                            <span class="text-[10px] text-muted-foreground">Security scan</span>
+                            <input type="checkbox" x-model="cicd.run_security_scan" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                            <span class="text-xs text-muted-foreground">Security scan</span>
                         </label>
                     </div>
                     <button type="button" @click="saveCicd()" :disabled="savingCicd"
@@ -1165,14 +1296,14 @@
 
             {# ── Architecture Style sub-section ── #}
             <div>
-                <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+                <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                     Architecture Style
                 </h4>
                 <div class="space-y-2">
                     <div>
-                        <label class="text-[10px] text-muted-foreground block mb-0.5">Primary style</label>
-                        <select x-model="arch.primary" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                        <label class="text-xs text-muted-foreground block mb-0.5">Primary style</label>
+                        <select x-model="arch.primary" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Primary style">
                             <option value="microservices">Microservices</option>
                             <option value="event_driven">Event-Driven</option>
                             <option value="serverless">Serverless</option>
@@ -1180,31 +1311,31 @@
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] text-muted-foreground block mb-1">Patterns</label>
+                        <label class="text-xs text-muted-foreground block mb-1">Patterns</label>
                         <div class="grid grid-cols-2 gap-1.5">
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="saga" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">Saga</span>
+                                <input type="checkbox" value="saga" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">Saga</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="event_sourcing" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">Event Sourcing</span>
+                                <input type="checkbox" value="event_sourcing" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">Event Sourcing</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="api_gateway" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">API Gateway</span>
+                                <input type="checkbox" value="api_gateway" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">API Gateway</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="service_mesh" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">Service Mesh</span>
+                                <input type="checkbox" value="service_mesh" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">Service Mesh</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="cqrs" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">CQRS</span>
+                                <input type="checkbox" value="cqrs" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">CQRS</span>
                             </label>
                             <label class="flex items-center gap-1.5 cursor-pointer">
-                                <input type="checkbox" value="circuit_breaker" x-model="arch.patterns" class="rounded border-zinc-600 bg-zinc-800 text-primary focus:ring-primary focus:ring-offset-0" />
-                                <span class="text-[11px] text-zinc-100">Circuit Breaker</span>
+                                <input type="checkbox" value="circuit_breaker" x-model="arch.patterns" class="rounded border-input bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+                                <span class="text-2xs text-foreground">Circuit Breaker</span>
                             </label>
                         </div>
                     </div>
@@ -1212,8 +1343,8 @@
                     {# Service mesh selector (conditional) #}
                     <template x-if="arch.patterns.includes('service_mesh')">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">Service Mesh</label>
-                            <select x-model="arch.service_mesh" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">Service Mesh</label>
+                            <select x-model="arch.service_mesh" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="Service Mesh">
                                 <option value="">None</option>
                                 <option value="istio">Istio</option>
                                 <option value="linkerd">Linkerd</option>
@@ -1225,8 +1356,8 @@
                     {# API gateway selector (conditional) #}
                     <template x-if="arch.patterns.includes('api_gateway')">
                         <div>
-                            <label class="text-[10px] text-muted-foreground block mb-0.5">API Gateway</label>
-                            <select x-model="arch.api_gateway" class="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-100 focus:border-primary focus:ring-1 focus:ring-primary">
+                            <label class="text-xs text-muted-foreground block mb-0.5">API Gateway</label>
+                            <select x-model="arch.api_gateway" class="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground focus:border-primary focus:ring-1 focus:ring-primary" aria-label="API Gateway">
                                 <option value="">None</option>
                                 <option value="kong">Kong</option>
                                 <option value="envoy">Envoy</option>
@@ -1253,14 +1384,14 @@
             savingDb: false,
             savingCicd: false,
             savingArch: false,
+            loadError: {db: false, cicd: false, arch: false},
             db: {engine: 'postgresql', version: '16', instance_class: 'db.t3.micro', storage_gb: 20, multi_az: false, encryption: true, backup_days: 7},
             cicd: {provider: 'github_actions', container_registry: 'ghcr', k8s_staging_namespace: 'staging', k8s_prod_namespace: 'production', require_manual_approval: true, run_security_scan: true},
             arch: {primary: 'microservices', patterns: [], service_mesh: '', api_gateway: ''},
             init: function() {
                 let self = this;
                 // Load database config
-                fetch('/api/solutions/' + solutionId + '/database-config', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/database-config', { silent: true })
                 .then(function(data) {
                     if (data.success && data.database_config) {
                         let c = data.database_config;
@@ -1272,11 +1403,12 @@
                         self.db.encryption = c.encryption !== false;
                         self.db.backup_days = c.backup_days || 7;
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.loadError.db = true;
+                });
 
                 // Load CI/CD config
-                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/ci-cd-config', { silent: true })
                 .then(function(data) {
                     if (data.success && data.ci_cd) {
                         let c = data.ci_cd;
@@ -1287,11 +1419,12 @@
                         self.cicd.require_manual_approval = c.require_manual_approval !== false;
                         self.cicd.run_security_scan = c.run_security_scan !== false;
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.loadError.cicd = true;
+                });
 
                 // Load architecture style
-                fetch('/api/solutions/' + solutionId + '/architecture-style', {headers: {'Accept': 'application/json'}})
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/architecture-style', { silent: true })
                 .then(function(data) {
                     if (data.success && data.architecture_style) {
                         let c = data.architecture_style;
@@ -1300,17 +1433,15 @@
                         self.arch.service_mesh = c.service_mesh || '';
                         self.arch.api_gateway = c.api_gateway || '';
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.loadError.arch = true;
+                });
             },
             saveDb: function() {
                 let self = this;
                 self.savingDb = true;
                 let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/database-config', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(self.db)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/database-config', self.db, { silent: true }).then(function(data) {
                     self.savingDb = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('Database config saved');
@@ -1319,18 +1450,14 @@
                     }
                 }).catch(function(e) {
                     self.savingDb = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             saveCicd: function() {
                 let self = this;
                 self.savingCicd = true;
                 let csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/ci-cd-config', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(self.cicd)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/ci-cd-config', self.cicd, { silent: true }).then(function(data) {
                     self.savingCicd = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('CI/CD config saved');
@@ -1339,7 +1466,7 @@
                     }
                 }).catch(function(e) {
                     self.savingCicd = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             },
             saveArch: function() {
@@ -1349,11 +1476,7 @@
                 const payload = {primary: self.arch.primary, patterns: self.arch.patterns};
                 if (self.arch.patterns.includes('service_mesh') && self.arch.service_mesh) payload.service_mesh = self.arch.service_mesh;
                 if (self.arch.patterns.includes('api_gateway') && self.arch.api_gateway) payload.api_gateway = self.arch.api_gateway;
-                fetch('/api/solutions/' + solutionId + '/architecture-style', {
-                    method: 'PUT',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-                    body: JSON.stringify(payload)
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.put('/api/solutions/' + solutionId + '/architecture-style', payload, { silent: true }).then(function(data) {
                     self.savingArch = false;
                     if (data.success) {
                         if (window.Platform && Platform.toast) Platform.toast.success('Architecture style saved');
@@ -1362,7 +1485,7 @@
                     }
                 }).catch(function(e) {
                     self.savingArch = false;
-                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                    if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
                 });
             }
         };
@@ -1373,7 +1496,7 @@
     {# 5d. Cloud Cost Estimator                                            #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="costEstimator({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cloud Cost Estimate</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cloud Cost Estimate</h3>
 
         {# Estimate button #}
         <button type="button"
@@ -1391,9 +1514,9 @@
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted-foreground">Monthly</span>
                     <span class="text-lg font-bold" :class="{
-                        'text-emerald-600': result.total_monthly_usd < 200,
-                        'text-amber-600': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
-                        'text-destructive': result.total_monthly_usd >= 500
+                        'text-success-emphasis': result.total_monthly_usd < 200,
+                        'text-warning-emphasis': result.total_monthly_usd >= 200 && result.total_monthly_usd < 500,
+                        'text-destructive-emphasis': result.total_monthly_usd >= 500
                     }" x-text="'$' + result.total_monthly_usd.toLocaleString('en-US', {minimumFractionDigits: 2})"></span>
                 </div>
                 <div class="flex items-center justify-between">
@@ -1403,7 +1526,7 @@
 
                 {# Warning badge #}
                 <template x-if="result.warning">
-                    <div class="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-medium bg-destructive/10 text-destructive border border-destructive/30 w-full">
+                    <div class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-destructive/10 text-destructive-emphasis border border-destructive/30 w-full">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
                         <span x-text="result.warning"></span>
                     </div>
@@ -1411,12 +1534,12 @@
 
                 {# Breakdown table #}
                 <div class="border-t border-border pt-2">
-                    <h4 class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Breakdown</h4>
+                    <h4 class="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Breakdown</h4>
                     <div class="space-y-1">
                         <template x-for="item in result.breakdown" :key="item.service">
-                            <div class="flex items-center justify-between text-[11px]">
+                            <div class="flex items-center justify-between text-2xs">
                                 <div class="flex items-center gap-1.5 min-w-0">
-                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-muted/60 text-muted-foreground shrink-0" x-text="item.category"></span>
+                                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-medium bg-muted/60 text-muted-foreground shrink-0" x-text="item.category"></span>
                                     <span class="text-foreground truncate" x-text="item.service"></span>
                                 </div>
                                 <span class="text-foreground font-medium shrink-0 ml-2" x-text="'$' + item.monthly_usd.toFixed(2)"></span>
@@ -1428,23 +1551,23 @@
                 {# Assumptions #}
                 <div class="border-t border-border pt-2">
                     <details class="group">
-                        <summary class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer">Assumptions</summary>
+                        <summary class="text-xs font-semibold uppercase tracking-wider text-muted-foreground cursor-pointer">Assumptions</summary>
                         <ul class="mt-1.5 space-y-0.5">
                             <template x-for="(a, idx) in result.assumptions" :key="idx">
-                                <li class="text-[10px] text-muted-foreground pl-3 relative before:content-[''] before:absolute before:left-0 before:top-1.5 before:w-1 before:h-1 before:rounded-full before:bg-muted-foreground/30" x-text="a"></li>
+                                <li class="text-xs text-muted-foreground pl-3 relative before:content-[''] before:absolute before:left-0 before:top-1.5 before:w-1 before:h-1 before:rounded-full before:bg-muted-foreground/30" x-text="a"></li>
                             </template>
                         </ul>
                     </details>
                 </div>
 
                 {# Source badge #}
-                <div class="text-[11px] text-muted-foreground/50 text-right" x-text="'Source: ' + (result.source || 'estimate')"></div>
+                <div class="text-2xs text-muted-foreground/50 text-right" x-text="'Source: ' + (result.source || 'estimate')"></div>
             </div>
         </template>
 
         {# Error state #}
         <template x-if="error">
-            <div class="text-[11px] text-destructive" x-text="error"></div>
+            <div class="text-2xs text-destructive-emphasis" x-text="error"></div>
         </template>
     </div>
 
@@ -1459,10 +1582,7 @@
                 self.loading = true;
                 self.error = null;
                 self.result = null;
-                fetch('/api/solutions/' + solutionId + '/cost-estimate', {
-                    headers: {'Accept': 'application/json'}
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch('/api/solutions/' + solutionId + '/cost-estimate', { silent: true })
                 .then(function(data) {
                     self.loading = false;
                     if (data.success) {
@@ -1473,7 +1593,7 @@
                 })
                 .catch(function(e) {
                     self.loading = false;
-                    self.error = 'Error: ' + e.message;
+                    self.error = 'Error: ' + ((e && e.message) || 'Request failed');
                 });
             }
         };
@@ -1484,13 +1604,13 @@
     {# 5b. Compliance Monitor (CODEGEN-06)                                #}
     {# ════════════════════════════════════════════════════════════════════ #}
     <div class="rounded-xl border border-border bg-card shadow-sm p-4" x-data="complianceMonitor({{ solution.id }})">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compliance Monitor</h3>
+        <h3 class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Compliance Monitor</h3>
 
         {# Service URL input #}
         <div class="mb-2">
             <input type="url" x-model="serviceUrl"
                    placeholder="http://service:8000"
-                   class="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary" />
+                   class="w-full px-2.5 py-1.5 text-xs rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary"  aria-label="http://service:8000"/>
         </div>
 
         {# Check button #}
@@ -1510,9 +1630,9 @@
                     <span class="text-xs text-muted-foreground">Score</span>
                     <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
                           :class="{
-                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.compliance_score >= 0.8,
-                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.compliance_score >= 0.5 && result.compliance_score < 0.8,
-                              'bg-destructive/10 text-destructive border border-destructive/30': result.compliance_score < 0.5
+                              'bg-success/10 text-success-emphasis border border-success/30': result.compliance_score >= 0.8,
+                              'bg-warning/10 text-warning-emphasis border border-warning/30': result.compliance_score >= 0.5 && result.compliance_score < 0.8,
+                              'bg-destructive/10 text-destructive-emphasis border border-destructive/30': result.compliance_score < 0.5
                           }"
                           x-text="Math.round(result.compliance_score * 100) + '%'"></span>
                 </div>
@@ -1520,11 +1640,11 @@
                 {# Status badge #}
                 <div class="flex items-center justify-between">
                     <span class="text-xs text-muted-foreground">Status</span>
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-medium"
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
                           :class="{
-                              'bg-emerald-500/10 text-emerald-600 border border-emerald-500/30': result.status === 'passed',
-                              'bg-amber-500/10 text-amber-600 border border-amber-500/30': result.status === 'drifted',
-                              'bg-destructive/10 text-destructive border border-destructive/30': result.status === 'unreachable' || result.status === 'error'
+                              'bg-success/10 text-success-emphasis border border-success/30': result.status === 'passed',
+                              'bg-warning/10 text-warning-emphasis border border-warning/30': result.status === 'drifted',
+                              'bg-destructive/10 text-destructive-emphasis border border-destructive/30': result.status === 'unreachable' || result.status === 'error'
                           }"
                           x-text="result.status"></span>
                 </div>
@@ -1532,13 +1652,13 @@
                 {# Missing endpoints #}
                 <template x-if="result.missing_endpoints && result.missing_endpoints.length > 0">
                     <div>
-                        <button @click="showMissing = !showMissing" class="text-[10px] text-destructive hover:underline cursor-pointer">
+                        <button type="button" @click="showMissing = !showMissing" class="text-xs text-destructive-emphasis hover:underline cursor-pointer">
                             <span x-text="result.missing_endpoints.length + ' missing endpoint(s)'"></span>
                             <span x-text="showMissing ? '[-]' : '[+]'"></span>
                         </button>
                         <div x-show="showMissing" class="mt-1 space-y-0.5">
                             <template x-for="ep in result.missing_endpoints" :key="ep.method + ep.path">
-                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-destructive/30">
+                                <div class="text-xs text-muted-foreground font-mono pl-2 border-l-2 border-destructive/30">
                                     <span x-text="ep.method + ' ' + ep.path"></span>
                                 </div>
                             </template>
@@ -1549,15 +1669,15 @@
                 {# Schema mismatches #}
                 <template x-if="result.schema_mismatches && result.schema_mismatches.length > 0">
                     <div>
-                        <button @click="showSchema = !showSchema" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                        <button type="button" @click="showSchema = !showSchema" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.schema_mismatches.length + ' schema mismatch(es)'"></span>
                             <span x-text="showSchema ? '[-]' : '[+]'"></span>
                         </button>
                         <div x-show="showSchema" class="mt-1 space-y-0.5">
                             <template x-for="sm in result.schema_mismatches" :key="sm.method + sm.path">
-                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                <div class="text-xs text-muted-foreground font-mono pl-2 border-l-2 border-warning/30">
                                     <span x-text="sm.method + ' ' + sm.path"></span>
-                                    <span class="block text-[11px] text-muted-foreground/70" x-text="sm.details"></span>
+                                    <span class="block text-2xs text-muted-foreground/70" x-text="sm.details"></span>
                                 </div>
                             </template>
                         </div>
@@ -1567,13 +1687,13 @@
                 {# SLA violations #}
                 <template x-if="result.sla_violations && result.sla_violations.length > 0">
                     <div>
-                        <button @click="showSla = !showSla" class="text-[10px] text-amber-600 hover:underline cursor-pointer">
+                        <button type="button" @click="showSla = !showSla" class="text-xs text-warning-emphasis hover:underline cursor-pointer">
                             <span x-text="result.sla_violations.length + ' SLA violation(s)'"></span>
                             <span x-text="showSla ? '[-]' : '[+]'"></span>
                         </button>
                         <div x-show="showSla" class="mt-1 space-y-0.5">
                             <template x-for="sv in result.sla_violations" :key="sv.method + sv.path">
-                                <div class="text-[10px] text-muted-foreground font-mono pl-2 border-l-2 border-amber-500/30">
+                                <div class="text-xs text-muted-foreground font-mono pl-2 border-l-2 border-warning/30">
                                     <span x-text="sv.method + ' ' + sv.path + ' (' + sv.latency_ms + 'ms > ' + sv.threshold_ms + 'ms)'"></span>
                                 </div>
                             </template>
@@ -1582,7 +1702,7 @@
                 </template>
 
                 {# Last checked #}
-                <div class="text-[10px] text-muted-foreground/60 pt-1 border-t border-border">
+                <div class="text-xs text-muted-foreground/60 pt-1 border-t border-border">
                     Checked <span x-text="result.checked_at ? new Date(result.checked_at).toLocaleString() : 'just now'"></span>
                     <span x-show="result.duration_ms"> in <span x-text="result.duration_ms"></span>ms</span>
                 </div>
@@ -1592,7 +1712,7 @@
         {# Error display #}
         <template x-if="error">
             <div class="rounded-lg border border-destructive/30 bg-destructive/5 p-2">
-                <p class="text-[10px] text-destructive" x-text="error"></p>
+                <p class="text-xs text-destructive-emphasis" x-text="error"></p>
             </div>
         </template>
     </div>
@@ -1610,31 +1730,23 @@
             showSla: false,
             init: function() {
                 let self = this;
-                fetch('/api/solutions/' + solutionId + '/compliance/latest', {
-                    headers: {'Accept': 'application/json'}
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch('/api/solutions/' + solutionId + '/compliance/latest', { silent: true }).then(function(data) {
                     if (data.check) {
                         self.result = data.check;
                         if (data.check.service_url && !self.serviceUrl) {
                             self.serviceUrl = data.check.service_url;
                         }
                     }
-                }).catch(function() {});
+                }).catch(function(err) {
+                    self.error = 'Failed to load the last compliance check result.';
+                });
             },
             runCheck: function() {
                 let self = this;
                 self.checking = true;
                 self.error = null;
                 localStorage.setItem(storageKey, self.serviceUrl);
-                const csrf = (window.__BLUEPRINT_CONFIG__ || {}).csrfToken || '';
-                fetch('/api/solutions/' + solutionId + '/compliance/check', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrf
-                    },
-                    body: JSON.stringify({service_url: self.serviceUrl})
-                }).then(function(r) { return r.json(); }).then(function(data) {
+                Platform.fetch.post('/api/solutions/' + solutionId + '/compliance/check', { service_url: self.serviceUrl }, { silent: true }).then(function(data) {
                     self.checking = false;
                     if (data.success) {
                         self.result = data;
@@ -1650,7 +1762,7 @@
                     }
                 }).catch(function(e) {
                     self.checking = false;
-                    self.error = 'Network error: ' + e.message;
+                    self.error = 'Network error: ' + ((e && e.message) || 'Request failed');
                 });
             }
         };
@@ -1669,7 +1781,7 @@
 
 </div>
 
-{# CSP-safe event handlers — replaces all removed onclick="" attributes #}
+{# CSP-safe event handlers — replaces all the inline handlers removed from this page #}
 <script>
 (function () {
     let _SID = {{ solution.id }};
@@ -1690,31 +1802,14 @@
         }
     });
 
-    /* ── Submit to ARB ── */
-    let _arbBtn = document.getElementById('bp-submit-arb-btn');
-    if (_arbBtn) {
-        _arbBtn.addEventListener('click', async function () {
-            if (!(await Platform.modal.confirm('Submit this blueprint to the Architecture Review Board?'))) return;
-            fetch('/solutions/' + _SID + '/submit-for-arb', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Submitted to ARB');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Submission failed');
-            });
-        });
-    }
-
     /* ── Generate API Specs ── */
     let _genApiBtn = document.getElementById('bp-generate-api-specs-btn');
     if (_genApiBtn) {
         _genApiBtn.addEventListener('click', function () {
-            fetch('/solutions/api/' + _SID + '/generate-specs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('API specs generated');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Generation failed');
+            Platform.fetch.post('/solutions/api/' + _SID + '/generate-specs', undefined, { silent: true }).then(function () {
+                if (window.Platform && Platform.toast) Platform.toast.success('API specs generated');
+            }).catch(function (e) {
+                if (window.Platform && Platform.toast) Platform.toast.error((e && e.message) || 'API spec generation failed');
             });
         });
     }
@@ -1723,12 +1818,10 @@
     let _inferBtn = document.getElementById('bp-infer-code-specs-btn');
     if (_inferBtn) {
         _inferBtn.addEventListener('click', function () {
-            fetch('/solutions/api/' + _SID + '/infer-code-specs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) {
-                if (r.ok && window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
-                else if (window.Platform && Platform.toast) Platform.toast.error('Inference failed');
+            Platform.fetch.post('/solutions/api/' + _SID + '/infer-code-specs', undefined, { silent: true }).then(function () {
+                if (window.Platform && Platform.toast) Platform.toast.success('Code specs inferred');
+            }).catch(function (e) {
+                if (window.Platform && Platform.toast) Platform.toast.error((e && e.message) || 'Code spec inference failed');
             });
         });
     }
@@ -1741,17 +1834,10 @@
             let lang = (document.getElementById('bp-language-select') || {}).value || 'python-fastapi';
             btn.disabled = true;
             btn.textContent = 'Inferring specs...';
-            fetch('/solutions/' + _SID + '/api/component-specs/infer-all', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function () {
+            Platform.fetch.post('/solutions/' + _SID + '/api/component-specs/infer-all', undefined, { silent: true }).then(function () {
                 btn.textContent = 'Generating ' + (lang === 'go-chi' ? 'Go' : 'Python') + ' code...';
-                return fetch('/api/solutions/' + _SID + '/product/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() },
-                    body: JSON.stringify({ language: lang })
-                });
-            }).then(function (r) { return r.json(); }).then(function (data) {
+                return Platform.fetch.post('/api/solutions/' + _SID + '/product/generate', { language: lang }, { silent: true });
+            }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
                 if (data.success) {
@@ -1772,7 +1858,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg> Generate Product';
-                if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform && Platform.toast) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1786,9 +1872,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Synthesizing logic...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/synthesize', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/synthesize', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
                 if (data.success) {
@@ -1801,7 +1885,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Synthesize Business Logic';
-                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1826,9 +1910,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Pushing to GitHub...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/push-to-github', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/push-to-github', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
                 if (data.success) {
@@ -1845,7 +1927,7 @@
             }).catch(function (e) {
                 btn.disabled = false;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 mr-1.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> Push to GitHub';
-                if (window.Platform) Platform.toast.error('Error: ' + e.message);
+                if (window.Platform) Platform.toast.error('Error: ' + ((e && e.message) || 'Request failed'));
             });
         });
     }
@@ -1859,9 +1941,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Running tests...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/run', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/run', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.textContent = 'Run Tests';
                 if (data.success !== false) {
@@ -1883,9 +1963,7 @@
             if (!bid) { if (window.Platform) Platform.toast.error('Generate code first'); return; }
             btn.disabled = true;
             btn.textContent = 'Starting preview...';
-            fetch('/api/solutions/' + _SID + '/product/' + bid + '/preview', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrf() }
-            }).then(function (r) { return r.json(); }).then(function (data) {
+            Platform.fetch.post('/api/solutions/' + _SID + '/product/' + bid + '/preview', undefined, { silent: true }).then(function (data) {
                 btn.disabled = false;
                 btn.textContent = 'Live Preview';
                 if (data.success) {

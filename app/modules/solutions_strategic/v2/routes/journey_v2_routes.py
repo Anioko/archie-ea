@@ -6,16 +6,26 @@ Blueprint: architecture_journey_bp, url_prefix=/architecture-journey
 import logging
 from functools import wraps
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import or_, select
 
 from app import db
 from app.core.api.response import api_error, api_success
 from app.models.solution_models import Solution
+from app.models.architecture_journey import (
+    ARCHITECTURE_LAYERS,
+    JOURNEY_INTENTS,
+    JOURNEY_STAGES,
+    JOURNEY_STATUSES,
+    OUTCOME_TYPES,
+    ArchitectureJourney,
+)
 from app.models.solution_archimate_element import SolutionArchiMateElement
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
 from app.models.architecture_inference_relationship import ArchitectureInferenceRelationship
 from app.modules.codegen.models import CodegenGeneration
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +33,223 @@ architecture_journey_bp = Blueprint("architecture_journey", __name__, url_prefix
 
 # Legacy alias — keeps imports in __init__.py working during rename
 journey_v2_bp = architecture_journey_bp
+
+from app.models.solution_models import Solution as _GuardSolution  # noqa: E402
+from app.utils.route_guards import require_entity_json  # noqa: E402
+
+JOURNEY_INTENT_OPTIONS = (
+    ("business_transformation", "Transform how the business works", "Redesign capabilities, value streams, organisation and outcomes."),
+    ("operating_model", "Shape an operating model", "Align people, process, information, locations and governance."),
+    ("strategy_to_execution", "Turn strategy into execution", "Trace goals to capabilities, investments, work and measures."),
+    ("portfolio_change", "Change a portfolio", "Assess application, data or technology change across the estate."),
+    ("risk_and_compliance", "Respond to risk or regulation", "Frame obligations, controls, decisions and evidence."),
+    ("architecture_assessment", "Assess an architecture", "Understand current state, gaps, dependencies and options."),
+    ("solution_design", "Design a solution", "Use the specialised solution path through design and ARB review."),
+)
+
+JOURNEY_LAYER_OPTIONS = (
+    ("motivation", "Motivation", "Why change"),
+    ("strategy", "Strategy", "What direction"),
+    ("business", "Business", "How value is created"),
+    ("data", "Data", "What information matters"),
+    ("application", "Application", "What enables the work"),
+    ("technology", "Technology", "What the estate runs on"),
+    ("implementation", "Implementation", "How change is delivered"),
+    ("governance", "Governance", "How decisions are assured"),
+)
+
+JOURNEY_DELIVERABLE_OPTIONS = (
+    ("architecture_definition", "Architecture definition document", "file-text"),
+    ("capability_map", "Capability map", "map"),
+    ("capability_maturity", "Capability maturity assessment", "thermometer"),
+    ("value_stream", "Value-stream model", "waypoints"),
+    ("product_service_catalogue", "Product and service catalogue", "package"),
+    ("operating_model", "Operating-model assessment", "building-2"),
+    ("stakeholder_map", "Stakeholder map", "users"),
+    ("organisation_ownership", "Organisation and ownership model", "network"),
+    ("information_map", "Information and data map", "database"),
+    ("outcome_scorecard", "Outcome and KPI scorecard", "gauge"),
+    ("strategy_traceability", "Strategy-to-execution traceability", "git-branch"),
+    ("initiative_alignment", "Initiative and project alignment", "layout-dashboard"),
+    ("options_assessment", "Options and trade-off assessment", "scale"),
+    ("roadmap", "Transition roadmap", "milestone"),
+    ("decision_record", "Architecture decision record", "gavel"),
+    ("governance_pack", "Governance evidence pack", "shield-check"),
+    ("business_case", "Business case", "briefcase-business"),
+    ("solution_blueprint", "Solution blueprint", "boxes"),
+)
+
+DELIVERABLE_TOOL_ENDPOINTS = {
+    "capability_map": "capability_map.index",
+    "capability_maturity": "maturity_management.maturity_heatmap",
+    "value_stream": "value_stream.index",
+    "product_service_catalogue": "archimate_layers.business_products",
+    "operating_model": "business_model.index",
+    "stakeholder_map": "stakeholder_map.stakeholder_map_page",
+    "organisation_ownership": "organization.index",
+    "information_map": "data_architecture.data_architecture_dashboard",
+    "outcome_scorecard": "dashboard.health_scorecard",
+    "strategy_traceability": "enterprise.strategic_planning_dashboard",
+    "initiative_alignment": "portfolio.index",
+    "roadmap": "enterprise.gap_analysis",
+    "decision_record": "arch_decisions.list_decisions",
+    "governance_pack": "governance.dashboard",
+    "business_case": "business_case.index",
+}
+
+
+def _available_deliverable_tools(journey=None):
+    """Build only links whose optional blueprint registered successfully.
+
+    E2E-3: "solution_blueprint" was a real, selectable deliverable
+    (JOURNEY_DELIVERABLE_OPTIONS) with a real, working page behind it
+    (solution_design.view_solution -- "Blueprint page ships ON by
+    default") that was simply never added to this map, so every journey
+    reported "Tool unavailable" for it unconditionally. It is not a
+    plain index page like the others here, though -- it needs a
+    solution_id, which an ArchitectureJourney only has once one is
+    linked (see E2E-2's ArchitectureJourney/Solution split). Built
+    separately from the endpoint-existence comprehension below rather
+    than added to DELIVERABLE_TOOL_ENDPOINTS, since url_for() with no
+    solution_id would raise BuildError and take out every other tool's
+    lookup with it.
+    """
+    tools = {
+        deliverable: url_for(endpoint)
+        for deliverable, endpoint in DELIVERABLE_TOOL_ENDPOINTS.items()
+        if endpoint in current_app.view_functions
+    }
+    if (
+        journey is not None
+        and journey.solution_id
+        and "solution_design.view_solution" in current_app.view_functions
+    ):
+        tools["solution_blueprint"] = url_for(
+            "solution_design.view_solution", solution_id=journey.solution_id
+        )
+    return tools
+
+
+def _validate_evidence_manifest(value):
+    from app.models.ai_chat_document import AIChatDocumentUpload
+
+    if not isinstance(value, list) or len(value) > 50:
+        return None, "Evidence must be a list of no more than 50 records"
+    cleaned = []
+    for item in value:
+        if not isinstance(item, dict):
+            return None, "Each evidence record must be an object"
+        kind = item.get("kind")
+        name = item.get("name")
+        reference = item.get("reference")
+        document_id = item.get("document_id")
+        if kind not in {"document_reference", "observation", "model", "decision"}:
+            return None, "Evidence kind is invalid"
+        if not isinstance(name, str) or not name.strip() or len(name) > 255:
+            return None, "Evidence name is required and must be 255 characters or fewer"
+        if reference is not None and (not isinstance(reference, str) or len(reference) > 1000):
+            return None, "Evidence reference must be 1000 characters or fewer"
+        if document_id is not None and not isinstance(document_id, int):
+            return None, "Evidence document_id must be an integer"
+        if document_id is not None:
+            document = AIChatDocumentUpload.query.filter_by(id=document_id).first()
+            if document is None:
+                return None, "Canonical evidence document was not found in this organization"
+            if document.uploaded_by_id != current_user.id and not current_user.is_admin():
+                return None, "Canonical evidence document is not available to this user"
+        if not reference and document_id is None:
+            return None, "Evidence needs a reference or canonical document_id"
+        cleaned.append({
+            "kind": kind,
+            "name": name.strip(),
+            "reference": reference.strip() if isinstance(reference, str) else None,
+            "document_id": document_id,
+        })
+    return cleaned, None
+
+
+def _validate_state(value):
+    import json
+    if not isinstance(value, dict):
+        return "Journey state must be an object"
+    if len(json.dumps(value)) > 65536:
+        return "Journey state exceeds the 64 KB limit"
+    return None
+
+
+def _require_journey_owner(view):
+    """Authorise access to a tenant-scoped journey owned by the current user."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
+        if (
+            journey.owner_id != current_user.id
+            and not current_user.is_admin()
+            and not getattr(current_user, "is_platform_admin", False)
+        ):
+            return api_error("Access denied: you do not own this journey", 403)
+        return view(journey_id, *args, **kwargs)
+    return decorated
+
+
+def _require_journey_access(view):
+    """Allow the tenant-scoped owner, an admin, or an explicit journey member."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
+        is_admin = current_user.is_admin() or bool(
+            getattr(current_user, "is_platform_admin", False)
+        )
+        if journey.owner_id != current_user.id and not is_admin:
+            membership = ArchitectureJourneyMember.query.filter_by(
+                journey_id=journey.id,
+                user_id=current_user.id,
+                organization_id=journey.organization_id,
+            ).first()
+            if membership is None:
+                abort(404)
+        return view(journey_id, *args, **kwargs)
+    return decorated
+
+
+_JOURNEY_EDITOR_ROLES = frozenset({
+    "chief_architect", "enterprise_architect", "business_architect",
+    "solution_architect", "application_architect", "data_architect",
+    "technology_architect", "security_architect", "programme_architect",
+    "contributor",
+})
+
+
+def _require_journey_editor(view):
+    """Allow mutations only to the owner/admin or an explicit editing role."""
+    @wraps(view)
+    def decorated(journey_id, *args, **kwargs):
+        from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+        journey = ArchitectureJourney.query.filter_by(
+            id=journey_id, organization_id=current_user.organization_id
+        ).first_or_404()
+        is_admin = current_user.is_admin() or bool(
+            getattr(current_user, "is_platform_admin", False)
+        )
+        if journey.owner_id != current_user.id and not is_admin:
+            membership = ArchitectureJourneyMember.query.filter_by(
+                journey_id=journey.id,
+                user_id=current_user.id,
+                organization_id=journey.organization_id,
+            ).first()
+            if membership is None:
+                abort(404)
+            if membership.role not in _JOURNEY_EDITOR_ROLES:
+                return api_error("This journey role has read-only access", 403)
+        return view(journey_id, *args, **kwargs)
+    return decorated
 
 
 def _require_solution_owner(f):
@@ -41,6 +268,22 @@ def _require_solution_owner(f):
     return decorated
 
 
+def _require_solution_org_view(f):
+    """Guard for READ routes: any authenticated user in the solution's ORG may
+    view it — architects govern and review solutions they do not own, so an
+    owner-only gate on a GET produced a 403 (and a broken, console-erroring data
+    fetch) whenever a non-owner opened a solution page. Solution is TenantMixin,
+    so Solution.query.get_or_404 is org-scoped and a foreign-org solution 404s;
+    this simply drops the owner restriction for reads while tenant isolation is
+    preserved by the mixin. WRITES keep the stricter _require_solution_owner.
+    """
+    @wraps(f)
+    def decorated(solution_id, *args, **kwargs):
+        Solution.query.get_or_404(solution_id)  # tenant-scoped: same-org or 404
+        return f(solution_id, *args, **kwargs)
+    return decorated
+
+
 # ---------------------------------------------------------------------------
 # Journey state machine helper — advances state through intermediate steps
 # ---------------------------------------------------------------------------
@@ -53,7 +296,7 @@ def _get_problem_id(solution_id):
         if session:
             prob = SolutionProblemDefinition.query.filter_by(session_id=session.id).first()
             return prob.id if prob else None
-    except Exception:  # fabricated-values-ok
+    except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
         pass
     return None
 
@@ -97,15 +340,81 @@ def _advance_journey_state(solution_id, target_state_value):
 @journey_v2_bp.route("/")
 @login_required
 def index():
-    """Landing page — start or resume journey v2."""
+    """Purpose-led landing page — start or resume any architecture journey."""
+    # The list used to be `.limit(8)` on active journeys with no count, no filter
+    # and no pagination. A user with nine journeys saw eight and was told nothing
+    # about the ninth: a truncated list that does not admit to being truncated is a
+    # lie of omission on a screen whose whole job is "resume your work". And the
+    # hardcoded status="active" made a completed journey unreachable by any route.
+    #
+    # State lives in the URL and the server is the source of truth, following the
+    # applications list. An unknown filter value is refused rather than ignored,
+    # because ignoring it renders the full list under a filter the user believes is
+    # applied.
+    filter_intent = request.args.get("intent_filter") or None
+    filter_stage = request.args.get("stage") or None
+    filter_status = request.args.get("status") or "active"
+
+    if filter_intent is not None and filter_intent not in JOURNEY_INTENTS:
+        return api_error("Unknown journey intent filter", 400)
+    if filter_stage is not None and filter_stage not in JOURNEY_STAGES:
+        return api_error("Unknown journey stage filter", 400)
+    if filter_status not in JOURNEY_STATUSES:
+        return api_error("Unknown journey status filter", 400)
+
+    try:
+        page = max(1, safe_int_arg('page', 1, minimum=1))
+    except (TypeError, ValueError):
+        page = 1
+    page_size = 9
+
+    from app.models.architecture_journey_link import ArchitectureJourneyMember
+
+    member_journeys = select(ArchitectureJourneyMember.journey_id).where(
+        ArchitectureJourneyMember.user_id == current_user.id,
+        ArchitectureJourneyMember.organization_id == current_user.organization_id,
+    )
+    journey_query = ArchitectureJourney.query.filter(
+        ArchitectureJourney.organization_id == current_user.organization_id,
+        ArchitectureJourney.status == filter_status,
+        or_(
+            ArchitectureJourney.owner_id == current_user.id,
+            ArchitectureJourney.id.in_(member_journeys),
+        ),
+    )
+    if filter_intent:
+        journey_query = journey_query.filter_by(intent=filter_intent)
+    if filter_stage:
+        journey_query = journey_query.filter_by(current_stage=filter_stage)
+
+    journey_total = journey_query.count()
+    journey_pages = max(1, (journey_total + page_size - 1) // page_size)
+    journeys = (
+        journey_query.order_by(ArchitectureJourney.updated_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    journey_filters_active = bool(filter_intent or filter_stage or filter_status != "active")
     try:
         in_progress = (
+            # The three ~ilike exclusions that used to sit here filtered out
+            # solutions named 'J1-AutoTest-%', 'J7-E2E-Test%' and '%-AutoTest-%'.
+            # Those are this repository's own test fixture names, and they were
+            # being excluded from what a real user sees in production.
+            #
+            # It is the wrong place to solve that problem twice over: a customer
+            # who legitimately names a solution "Migration-AutoTest-Rig" would have
+            # it silently vanish from their own hub, and a test suite that leaves
+            # rows behind should be fixed in the suite rather than hidden from the
+            # product. Test data does not belong in a production predicate.
             Solution.query.filter(
                 Solution.created_by_id == current_user.id,
                 Solution.governance_status.in_(["draft", "proposed", "in_progress"]),
-                ~Solution.name.ilike("J1-AutoTest-%"),
-                ~Solution.name.ilike("J7-E2E-Test%"),
-                ~Solution.name.ilike("%-AutoTest-%"),
+                # Fixture-name exclusions deliberately absent: they hid this
+                # repository's own test rows from a real user's hub, and would have
+                # hidden a customer's legitimately-named solution too. Purge test
+                # rows; do not filter them out of the product.
             )
             .order_by(Solution.updated_at.desc())
             .limit(5)
@@ -116,11 +425,380 @@ def index():
         db.session.rollback()
         in_progress = []
     return render_template(
-        "architecture_assistant/journey_v3.html",
+        "architecture_assistant/architecture_journey_hub.html",
+        architecture_journeys=journeys,
+        journey_total=journey_total,
+        journey_page=page,
+        journey_pages=journey_pages,
+        journey_filters_active=journey_filters_active,
+        filter_intent=filter_intent,
+        filter_stage=filter_stage,
+        filter_status=filter_status,
+        journey_stages=JOURNEY_STAGES,
+        journey_statuses=JOURNEY_STATUSES,
+        intent_options=JOURNEY_INTENT_OPTIONS,
+        layer_options=JOURNEY_LAYER_OPTIONS,
+        deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
+        requested_intent=(request.args.get("intent") or "").replace("-", "_"),
         solutions=in_progress,
         solution_id=None,
         has_acm_domains=False,
     )
+
+
+@journey_v2_bp.route("/start-architecture", methods=["POST"])
+@login_required
+def start_architecture_journey():
+    """Create a durable journey without creating a Solution."""
+    data = request.get_json(silent=True) or {}
+    title_value = data.get("title")
+    intent_value = data.get("intent")
+    outcome_value = data.get("outcome_type", "undecided")
+    title = title_value.strip() if isinstance(title_value, str) else ""
+    intent = intent_value.strip().replace("-", "_") if isinstance(intent_value, str) else ""
+    outcome_type = outcome_value.strip() if isinstance(outcome_value, str) else ""
+    raw_layers = data.get("selected_layers")
+    raw_deliverables = data.get("selected_deliverables", [])
+    if (
+        not isinstance(raw_layers, list)
+        or len(raw_layers) > len(ARCHITECTURE_LAYERS)
+        or any(not isinstance(item, str) for item in raw_layers)
+    ):
+        return api_error("Architecture scope must be a bounded list", 400)
+    if (
+        not isinstance(raw_deliverables, list)
+        or len(raw_deliverables) > len(JOURNEY_DELIVERABLE_OPTIONS)
+        or any(not isinstance(item, str) for item in raw_deliverables)
+    ):
+        return api_error("Deliverables must be a bounded list", 400)
+    layers = list(dict.fromkeys(raw_layers))
+    deliverables = list(dict.fromkeys(raw_deliverables))
+
+    valid_deliverables = {item[0] for item in JOURNEY_DELIVERABLE_OPTIONS}
+    if not title or len(title) > 255:
+        return api_error("Give this journey a clear purpose", 400)
+    if intent not in JOURNEY_INTENTS:
+        return api_error("Choose a valid architecture purpose", 400)
+    if not layers or any(layer not in ARCHITECTURE_LAYERS for layer in layers):
+        return api_error("Choose at least one valid architecture scope", 400)
+    if any(item not in valid_deliverables for item in deliverables):
+        return api_error("Choose valid journey deliverables", 400)
+    if outcome_type not in OUTCOME_TYPES:
+        return api_error("Choose a valid outcome", 400)
+
+    journey = ArchitectureJourney(
+        owner_id=current_user.id,
+        organization_id=current_user.organization_id,
+        title=title,
+        intent=intent,
+        selected_layers=layers,
+        selected_deliverables=deliverables,
+        outcome_type=outcome_type,
+        evidence_manifest=[],
+        journey_state={"framing": {"purpose": title}},
+    )
+    db.session.add(journey)
+    db.session.commit()
+    return api_success(data={"journey_id": journey.id, "redirect": journey.resume_path}, status_code=201)
+
+
+@journey_v2_bp.route("/work/<int:journey_id>")
+@login_required
+@_require_journey_access
+def architecture_journey_workspace(journey_id):
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+
+    from app.modules.solutions_strategic.v2.services.journey_home import (
+        journey_home_view,
+    )
+
+    home = journey_home_view(journey_id=journey.id, actor_user=current_user)
+    if home is None:
+        # The guard above already resolved this journey for this tenant, so the
+        # read model refusing it means the two disagree -- which is a fault, not a
+        # permission answer. Do not fall through to a page rendered from partial
+        # context: that is how a screen ends up quietly showing someone a journey
+        # with none of its records and no indication anything is missing.
+        abort(404)
+
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
+    return render_template(
+        "architecture_assistant/architecture_journey_workspace.html",
+        journey=journey,
+        home=home,
+        link_entity_types=JOURNEY_LINK_ENTITY_TYPES,
+        link_relations=JOURNEY_LINK_RELATIONS,
+        intent_options=JOURNEY_INTENT_OPTIONS,
+        layer_options=JOURNEY_LAYER_OPTIONS,
+        deliverable_options=JOURNEY_DELIVERABLE_OPTIONS,
+        deliverable_tool_urls=_available_deliverable_tools(journey),
+    )
+
+
+# ── journey edges: linking records, and adding people ────────────────────────
+#
+# The journey home counts participants, decisions, risks and governance. Without
+# these write paths those counts are permanently zero and the screen is decorative
+# -- a worse failure than showing nothing, because a reader sees "0 risks" and
+# concludes the journey is clean when nothing could ever have been recorded.
+#
+# Bodies are strictly allow-listed. organization_id and the author come from the
+# session and are never accepted from the request: a caller who can name the tenant
+# can write into someone else's.
+
+
+def _link_payload_error(data):
+    """Validate a link body. Returns an error message, or None when acceptable."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_LINK_ENTITY_TYPES,
+        JOURNEY_LINK_RELATIONS,
+    )
+
+    allowed = {"entity_type", "entity_id", "relation", "note"}
+    unknown = set(data) - allowed
+    if unknown:
+        # Named explicitly rather than ignored: silently dropping a field the
+        # caller believed was saved is how a client ends up trusting a value the
+        # server never stored.
+        return f"Unsupported link fields: {', '.join(sorted(unknown))}"
+
+    entity_type = data.get("entity_type")
+    if entity_type not in JOURNEY_LINK_ENTITY_TYPES:
+        return "Unknown record type for a journey link"
+
+    entity_id = data.get("entity_id")
+    if isinstance(entity_id, bool) or not isinstance(entity_id, int) or entity_id <= 0:
+        # A 0 or a negative id points at no row, and would render as a broken
+        # reference that looks like a real one.
+        return "A journey link needs the id of an existing record"
+
+    relation = data.get("relation", "references")
+    if relation not in JOURNEY_LINK_RELATIONS:
+        return "Unknown relation for a journey link"
+
+    note = data.get("note")
+    if note is not None and (not isinstance(note, str) or len(note) > 2000):
+        return "A link note must be text of at most 2000 characters"
+
+    return None
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links", methods=["POST"])
+@login_required
+@_require_journey_editor
+def create_journey_link(journey_id):
+    """Link this journey to a record that already exists elsewhere."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    error = _link_payload_error(data)
+    if error:
+        return api_error(error, 400)
+
+    from app.modules.solutions_strategic.v2.services.journey_home import (
+        resolve_journey_link_target,
+    )
+    target = resolve_journey_link_target(
+        data["entity_type"], data["entity_id"], journey.organization_id
+    )
+    if target is None:
+        # Missing and foreign records are deliberately indistinguishable.
+        return api_error("No such record in this organisation", 404)
+
+    relation = data.get("relation", "references")
+    existing = ArchitectureJourneyLink.query.filter_by(
+        journey_id=journey.id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+    ).first()
+    if existing is not None:
+        # The same record linked twice with the same relation is a duplicate, not
+        # a second fact.
+        return api_error("That record is already linked to this journey", 409)
+
+    link = ArchitectureJourneyLink(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        entity_type=data["entity_type"],
+        entity_id=data["entity_id"],
+        relation=relation,
+        note=(data.get("note") or None),
+        created_by_id=current_user.id,
+    )
+    db.session.add(link)
+    db.session.commit()
+    return api_success(
+        data={
+            "id": link.id,
+            "entity_type": link.entity_type,
+            "entity_id": link.entity_id,
+            "relation": link.relation,
+            "label": target["label"],
+            "status": target["status"],
+        },
+        status_code=201,
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/links/<int:link_id>", methods=["DELETE"])
+@login_required
+@_require_journey_owner
+def delete_journey_link(journey_id, link_id):
+    """Unlink a record. The record itself is untouched -- this owns the edge only."""
+    from app.models.architecture_journey_link import ArchitectureJourneyLink
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    link = ArchitectureJourneyLink.query.filter_by(
+        id=link_id, journey_id=journey.id
+    ).first()
+    if link is None:
+        return api_error("No such link on this journey", 404)
+
+    db.session.delete(link)
+    db.session.commit()
+    return api_success(data={"id": link_id})
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/members", methods=["POST"])
+@login_required
+@_require_journey_owner
+def add_journey_member(journey_id):
+    """Put a person on this journey, by user id."""
+    from app.models.architecture_journey_link import (
+        JOURNEY_MEMBER_ROLES,
+        ArchitectureJourneyMember,
+    )
+    from app.models.user import User
+
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+
+    unknown = set(data) - {"user_id", "role"}
+    if unknown:
+        return api_error(f"Unsupported member fields: {', '.join(sorted(unknown))}", 400)
+
+    user_id = data.get("user_id")
+    if isinstance(user_id, bool) or not isinstance(user_id, int) or user_id <= 0:
+        return api_error("A journey member needs a user id", 400)
+
+    role = data.get("role", "contributor")
+    if role not in JOURNEY_MEMBER_ROLES:
+        return api_error("Unknown role for a journey member", 400)
+
+    # Resolved with an explicit organisation predicate. Adding a user from another
+    # tenant would put a name on a journey that person cannot open, and would leak
+    # the existence of that user to this one.
+    member_user = User.query.filter_by(
+        id=user_id, organization_id=journey.organization_id
+    ).first()
+    if member_user is None:
+        return api_error("No such user in this organisation", 400)
+
+    existing = ArchitectureJourneyMember.query.filter_by(
+        journey_id=journey.id, user_id=member_user.id
+    ).first()
+    if existing is not None:
+        return api_error("That person is already on this journey", 409)
+
+    member = ArchitectureJourneyMember(
+        journey_id=journey.id,
+        organization_id=journey.organization_id,
+        user_id=member_user.id,
+        role=role,
+        added_by_id=current_user.id,
+    )
+    db.session.add(member)
+    db.session.commit()
+    return api_success(
+        data={"id": member.id, "user_id": member.user_id, "role": member.role},
+        status_code=201,
+    )
+
+
+@journey_v2_bp.route("/work/<int:journey_id>/state", methods=["PATCH"])
+@login_required
+@_require_journey_editor
+def update_architecture_journey(journey_id):
+    """Persist framing, evidence, deliverables and resume position."""
+    journey = ArchitectureJourney.query.filter_by(id=journey_id).first_or_404()
+    data = request.get_json(silent=True) or {}
+    allowed = {
+        "title", "selected_layers", "selected_deliverables", "outcome_type",
+        "evidence_manifest", "journey_state", "current_stage", "status",
+    }
+    unknown = set(data) - allowed
+    if unknown:
+        return api_error(f"Unsupported journey fields: {', '.join(sorted(unknown))}", 400)
+    if "title" in data and (
+        not isinstance(data["title"], str)
+        or not data["title"].strip()
+        or len(data["title"].strip()) > 255
+    ):
+        return api_error("Journey title cannot be empty", 400)
+    if "selected_layers" in data:
+        if (
+            not isinstance(data["selected_layers"], list)
+            or len(data["selected_layers"]) > len(ARCHITECTURE_LAYERS)
+            or any(not isinstance(item, str) for item in data["selected_layers"])
+        ):
+            return api_error("Architecture scope must be a bounded list", 400)
+        layers = list(dict.fromkeys(data["selected_layers"] or []))
+        if not layers or any(layer not in ARCHITECTURE_LAYERS for layer in layers):
+            return api_error("Choose at least one valid architecture scope", 400)
+        journey.selected_layers = layers
+    if "selected_deliverables" in data:
+        if (
+            not isinstance(data["selected_deliverables"], list)
+            or len(data["selected_deliverables"]) > len(JOURNEY_DELIVERABLE_OPTIONS)
+            or any(not isinstance(item, str) for item in data["selected_deliverables"])
+        ):
+            return api_error("Deliverables must be a bounded list", 400)
+        deliverables = list(dict.fromkeys(data["selected_deliverables"] or []))
+        valid_deliverables = {item[0] for item in JOURNEY_DELIVERABLE_OPTIONS}
+        if any(item not in valid_deliverables for item in deliverables):
+            return api_error("Choose valid journey deliverables", 400)
+        journey.selected_deliverables = deliverables
+    if "outcome_type" in data and data["outcome_type"] not in OUTCOME_TYPES:
+        return api_error("Choose a valid outcome", 400)
+    if "current_stage" in data and data["current_stage"] not in JOURNEY_STAGES:
+        return api_error("Choose a valid journey stage", 400)
+    if "status" in data:
+        # E2E-2: the "deliver" stage's "Journey ready to close" button fired
+        # a 200 with no terminal state -- there was no route accepting a
+        # status transition at all, so a journey could never actually be
+        # marked done. Restricted to the one real transition this closes:
+        # only "completed", and only once the journey has genuinely reached
+        # its final stage -- a journey that skipped Decide/Deliver has
+        # nothing to close.
+        target_status = data["status"]
+        if target_status != "completed":
+            return api_error("A journey can only be closed as completed here", 400)
+        if journey.current_stage != "deliver":
+            return api_error(
+                "Complete the Deliver stage before closing this journey", 400,
+            )
+        journey.status = target_status
+    if "journey_state" in data:
+        state_error = _validate_state(data["journey_state"])
+        if state_error:
+            return api_error(state_error, 400)
+    if "evidence_manifest" in data:
+        evidence, evidence_error = _validate_evidence_manifest(data["evidence_manifest"])
+        if evidence_error:
+            return api_error(evidence_error, 400)
+        journey.evidence_manifest = evidence
+    for field in allowed - {"selected_layers", "selected_deliverables", "evidence_manifest", "status"}:
+        if field in data:
+            setattr(journey, field, str(data[field]).strip() if field == "title" else data[field])
+    db.session.commit()
+    return api_success(data={"journey_id": journey.id, "resume_path": journey.resume_path})
 
 
 @journey_v2_bp.route("/start", methods=["POST"])
@@ -322,6 +1000,12 @@ def patch_journey_state(solution_id):
 
         state = solution.journey_state or {}
         if not isinstance(state, dict):
+            # `_json` is imported as `import json as _json` inside a DIFFERENT
+            # function in this module, so it was never bound here. The except below
+            # catches Exception and would have swallowed the resulting NameError,
+            # silently discarding a valid string state as {}.
+            import json as _json
+
             try:
                 state = _json.loads(state) if isinstance(state, str) else {}
             except Exception:
@@ -612,9 +1296,9 @@ def upload_documents(solution_id):
 
 @journey_v2_bp.route("/<int:solution_id>/proposals", methods=["GET"])
 @login_required
-@_require_solution_owner
+@_require_solution_org_view
 def list_proposals(solution_id):
-    """List blueprint proposals."""
+    """List blueprint proposals (readable by any member of the solution's org)."""
     try:
         from app.modules.architecture_assistant.journey_orchestrator import JourneyOrchestrator
         status = request.args.get("status")
@@ -1972,10 +2656,12 @@ def _enrich_capabilities_with_technical_data(capabilities: list) -> list:
     ApplicationCapabilityMapping for gap analysis data. Both degrade gracefully on failure.
     """
     import json as _json
+    from flask import g
     try:
         from app.models.technical_capability import TechnicalCapability
         from app.models.application_capability import ApplicationCapabilityMapping
         from app.models.application_layer import ApplicationComponent
+        from app.models.business_capabilities import BusinessCapability
     except Exception:
         return capabilities
 
@@ -2025,9 +2711,22 @@ def _enrich_capabilities_with_technical_data(capabilities: list) -> list:
         # ── Application coverage gap data ─────────────────────────────────
         if cap_id:
             try:
+                # cap_id comes straight from the request JSON body (not an
+                # org-scoped DB load), and ApplicationCapabilityMapping is not
+                # TenantMixin (its organization_id is NULL in prod), so it gets
+                # none of the automatic do_orm_execute filtering. Scope through
+                # the TenantMixin FK parent BusinessCapability instead, mirroring
+                # the honest ACM sites in rationalization_scoring_service.py.
                 mappings = (
                     ApplicationCapabilityMapping.query
-                    .filter_by(business_capability_id=cap_id)
+                    .join(
+                        BusinessCapability,
+                        BusinessCapability.id == ApplicationCapabilityMapping.business_capability_id,
+                    )
+                    .filter(
+                        ApplicationCapabilityMapping.business_capability_id == cap_id,
+                        BusinessCapability.organization_id == getattr(g, "current_org_id", None),
+                    )
                     .order_by(ApplicationCapabilityMapping.coverage_percentage.desc())
                     .limit(5)
                     .all()
@@ -2263,7 +2962,7 @@ def generation_readiness(solution_id):
 
     try:
         links = _SAE.query.filter_by(solution_id=solution_id).all()
-        element_ids = [l.element_id for l in links if l.element_id]
+        element_ids = [item.element_id for item in links if item.element_id]
 
         layer_counts = {}
         app_element_names = []
@@ -2524,65 +3223,25 @@ def full_validate(solution_id):
 @login_required
 @_require_solution_owner
 def submit_arb(solution_id):
-    """Submit solution to Architecture Review Board.
+    """Submit through the canonical, evidence-gated ARB service."""
+    from app.modules.transformation_room.arb_submission_adapter import (
+        TypedARBSubmissionAdapter,
+    )
 
-    Readiness gate (reasoning mode): requires >= 4 of 7 ACM domains covered
-    and all pipeline stages complete. Pass override_acm_warning=true to bypass.
-
-    Readiness gate (domain mode): requires ready_for_arb from get_arb_package()
-    (>= 6/7 domains confirmed, >= 4/5 ArchiMate layers populated).
-    """
     data = request.get_json() or {}
-    override = data.get("override_acm_warning", False)
-
-    # --- Readiness gate ---
-    if not override:
-        try:
-            from app.modules.solutions_strategic.v2.services.journey_reasoning_orchestrator import (
-                JourneyReasoningOrchestrator,
-            )
-            r_orch = JourneyReasoningOrchestrator(solution_id)
-            journey_data = r_orch._get_journey_data()
-
-            if journey_data.get("confirmed_capabilities"):
-                # Reasoning mode: check pipeline completion + ACM coverage
-                ready, reasons = r_orch.is_ready_for_arb_reasoning()
-                if not ready:
-                    return api_error(
-                        "Architecture not ready for ARB. " + " | ".join(reasons),
-                        422,
-                    )
-            else:
-                # Domain mode: check blueprint proposals coverage
-                from app.modules.architecture_assistant.journey_orchestrator import (
-                    JourneyOrchestrator as JO,
-                )
-                package = JO(solution_id).get_arb_package()
-                if not package.get("ready_for_arb"):
-                    summary = package.get("summary", {})
-                    return api_error(
-                        f"Architecture not ready: {summary.get('domain_coverage', '?/7')} domains "
-                        f"confirmed, {summary.get('layer_coverage', '?/5')} ArchiMate layers populated. "
-                        "Confirm remaining domains or pass override_acm_warning=true.",
-                        422,
-                    )
-        except Exception as gate_err:
-            logger.error("ARB readiness gate check failed: %s", gate_err, exc_info=True)
-            return api_error(
-                "Readiness check failed unexpectedly. Architecture state could not be verified. "
-                "Pass override_acm_warning=true only if you have manually confirmed readiness.",
-                500,
-            )
-
-    # --- Submission ---
-    try:
-        from app.modules.architecture_assistant.journey_orchestrator import JourneyOrchestrator
-        orch = JourneyOrchestrator(solution_id)
-        result = orch.submit_to_arb(validation_result=data.get("validation_result", {}))
-        return api_success(data=result)
-    except Exception as e:
-        logger.error("ARB submission failed: %s", e, exc_info=True)
-        return api_error("Failed to submit to ARB", 500)
+    result = TypedARBSubmissionAdapter.submit_solution_from_request(
+        solution_id=solution_id,
+        payload=data,
+    )
+    if not result.success:
+        return jsonify({"success": False, "reason_codes": result.reason_codes,
+                        "missing_evidence": result.missing_evidence}), result.http_status
+    return api_success(data={"review_item_id": result.review_item_id,
+                             "review_number": result.review_number,
+                             "snapshot_id": result.snapshot_id,
+                             "idempotent": result.idempotent,
+                             "review_cycle_id": result.review_cycle_id,
+                             "canonical_url": result.canonical_url})
 
 
 # ── Spec Inference Hooks (post-generation triggers) ──────────────
@@ -2603,7 +3262,10 @@ def infer_component_specs(solution_id):
     from app.models.solution_sad_models import SolutionIntegrationFlow, SolutionSLA
 
     body = request.get_json(silent=True) or {}
-    batch_size = min(int(body.get("batch_size", 3)), 10)
+    try:
+        batch_size = min(int(body.get("batch_size", 3)), 10)
+    except (ValueError, TypeError):
+        return api_error("batch_size must be an integer", 400)
 
     # ── Load junctions; empty set is a valid state (no elements linked yet) ──
     try:
@@ -3332,10 +3994,10 @@ def save_structured_intake(solution_id):
                 if not existing:
                     _jwire_tech_sync(
                         solution_id,
-                        ae_type,
-                        "Technology",
-                        tech_name,
-                        f"Technology constraint ({tc.get('type','constraint')}): {tech_name}",
+                        ae_type=ae_type,
+                        ae_layer="Technology",
+                        name=tech_name,
+                        description=f"Technology constraint ({tc.get('type','constraint')}): {tech_name}",
                     )
                     counts["archimate_elements"] = counts.get("archimate_elements", 0) + 1
         except Exception as _jwire3_err:
@@ -3457,32 +4119,52 @@ def save_structured_intake(solution_id):
             for s in (motivation.get("stakeholders") or []):
                 name = (s.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Stakeholder", name):
-                    _jwire_sync(solution_id, "Stakeholder", "Motivation", name,
-                                s.get("description") or f"Stakeholder: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Stakeholder",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=s.get("description") or f"Stakeholder: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Drivers → ArchiMate Driver elements
             for d in (motivation.get("drivers") or []):
                 name = (d.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Driver", name):
-                    _jwire_sync(solution_id, "Driver", "Motivation", name,
-                                d.get("description") or f"Business driver: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Driver",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=d.get("description") or f"Business driver: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Goals → ArchiMate Goal elements
             for g in (motivation.get("goals") or []):
                 name = (g.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Goal", name):
-                    _jwire_sync(solution_id, "Goal", "Motivation", name,
-                                g.get("description") or f"Goal: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Goal",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=g.get("description") or f"Goal: {name}",
+                    )
                     _ae_count += 1
 
             # BA-defined Constraints → ArchiMate Constraint elements
             for c in (motivation.get("constraints") or []):
                 name = (c.get("name") or "").strip()
                 if name and not _has_ae(solution_id, "Constraint", name):
-                    _jwire_sync(solution_id, "Constraint", "Motivation", name,
-                                c.get("source") or f"Constraint: {name}")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Constraint",
+                        ae_layer="Motivation",
+                        name=name,
+                        description=c.get("source") or f"Constraint: {name}",
+                    )
                     _ae_count += 1
 
             # Fallback: if BA didn't define any motivation, infer one Stakeholder + one Goal
@@ -3501,8 +4183,13 @@ def save_structured_intake(solution_id):
                         " ".join(filter(None, [org_size, biz_domain, "Stakeholder"])).strip()
                         or "Organizational Stakeholder"
                     )
-                    _jwire_sync(solution_id, "Stakeholder", "Motivation", stakeholder_name,
-                                "Inferred stakeholder from business context")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Stakeholder",
+                        ae_layer="Motivation",
+                        name=stakeholder_name,
+                        description="Inferred stakeholder from business context",
+                    )
                     _ae_count += 1
 
                 if not _has_ae_type(solution_id, "Goal"):
@@ -3512,8 +4199,13 @@ def save_structured_intake(solution_id):
                         goal_name = drivers_data[0].get("name", "Strategic Objective")[:80]
                     else:
                         goal_name = f"Strategic Goal for {solution.name or 'Solution'}"
-                    _jwire_sync(solution_id, "Goal", "Motivation", goal_name,
-                                "Inferred goal from problem statement")
+                    _jwire_sync(
+                        solution_id,
+                        ae_type="Goal",
+                        ae_layer="Motivation",
+                        name=goal_name,
+                        description="Inferred goal from problem statement",
+                    )
                     _ae_count += 1
 
             counts["archimate_elements"] = counts.get("archimate_elements", 0) + _ae_count
@@ -3588,7 +4280,16 @@ def save_structured_intake(solution_id):
                 logger.info("JWIRE-002: Created %d cross-layer motivation relationships", _rel_count)
 
         except Exception as _jwire_err:
-            logger.warning("JWIRE-001+ motivation element creation failed: %s", _jwire_err)
+            # logger.exception, not logger.warning: this block is the only thing that
+            # turns the Motivation tab's on-screen promise ("drivers, goals and
+            # constraints you define here become ArchiMate Motivation elements") into
+            # rows, and every call in it raised TypeError for as long as
+            # _sync_archimate_element has been keyword-only — the callers here were
+            # never updated. A one-line warning with no traceback is why that survived:
+            # the intake still returned 200 and the journey still advanced, so nothing
+            # visible said the architecture backbone had not been written.
+            logger.exception("JWIRE-001+ motivation element creation failed: %s", _jwire_err)
+            counts["archimate_elements_failed"] = True
 
         solution.section_scores = None  # invalidate blueprint score cache so vision_motivation reflects intake elements
         db.session.commit()
@@ -3909,9 +4610,9 @@ def validate_step(solution_id, step_num):
                 .all()
             )
             counts_by_layer = {r.layer_type: r.cnt for r in rows}
-            empty_layers = [l for l in LAYERS if counts_by_layer.get(l, 0) == 0]
+            empty_layers = [item for item in LAYERS if counts_by_layer.get(item, 0) == 0]
             if empty_layers:
-                labels = ", ".join(l.capitalize() for l in empty_layers)
+                labels = ", ".join(item.capitalize() for item in empty_layers)
                 warnings.append({
                     "code": "empty_layers",
                     "count": len(empty_layers),
@@ -4167,6 +4868,10 @@ def traceability_flow(solution_id):
     """Return D3 Sankey data: ArchiMate layers → code. Nodes annotated with layer/column/has_spec/has_code.
     Links filtered to left-to-right cross-layer only (Sankey DAG constraint).
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     LAYER_COLUMN = {
         "motivation": 0,
         "strategy": 1,
@@ -4412,6 +5117,10 @@ def layer_flow(solution_id, layer):
     Nodes are elements in that layer; columns are Active/Behavioral/Passive aspects.
     Links are intra-layer relationships only (both endpoints in this layer).
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     layer = layer.lower()
     type_col = _INTRA_LAYER_TYPE_COL.get(layer, {})
     col_labels = _INTRA_LAYER_COL_LABELS.get(layer, [{"name": "Active"}, {"name": "Behavioral"}, {"name": "Passive"}])
@@ -4552,6 +5261,10 @@ def architecture_accuracy(solution_id):
 
     No LLM calls — fully deterministic. Safe to call on every page load.
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     saes = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).all()
     if not saes:
         return jsonify({"solution_id": solution_id, "total_elements": 0,
@@ -4588,7 +5301,7 @@ def architecture_accuracy(solution_id):
 
     # ── Dimension 3: chain completeness ──────────────────────────────────
     covered_layers = {_AM32_LAYER[e.type] for e in elements if e.type in _AM32_LAYER}
-    missing_layers = [l for l in _CHAIN_LAYERS if l not in covered_layers]
+    missing_layers = [item for item in _CHAIN_LAYERS if item not in covered_layers]
     chain_score = int(100 * len(covered_layers & set(_CHAIN_LAYERS)) / len(_CHAIN_LAYERS))
 
     # ── Dimension 4: traceability (AIR + AR) ─────────────────────────────
@@ -4670,8 +5383,12 @@ def architecture_accuracy(solution_id):
     def _tokens(text):
         return {w for w in _re.split(r'[^a-z]+', (text or '').lower()) if len(w) > 2 and w not in _STOP}
 
+    from flask import g as _g
+    _org = getattr(_g, "current_org_id", None)
+    _oc = " AND organization_id = :org" if _org is not None else ""
+    _sp = {'s': solution_id, 'org': _org} if _org is not None else {'s': solution_id}
     sol_row = db.session.execute(
-        db.text('SELECT name, description FROM solutions WHERE id = :s'), {'s': solution_id}
+        db.text(f'SELECT name, description FROM solutions WHERE id = :s{_oc}'), _sp
     ).fetchone()
     _sol_name = sol_row[0] if sol_row else ""
     _sol_desc = sol_row[1] if sol_row else ""
@@ -4844,19 +5561,23 @@ def get_element_fields(solution_id):
     Only returns elements whose type can carry a field schema (DataObject, ApplicationComponent, etc.).
     Summary counts: total / confirmed / ai_inferred / pending.
     """
+    _sol, _missing = require_entity_json(_GuardSolution, solution_id, label="Solution")
+    if _missing:
+        return _missing
+
     from app.models.archimate_core import ArchiMateElement
 
     links = SolutionArchiMateElement.query.filter_by(solution_id=solution_id).all()
     if not links:
         return jsonify({"elements": [], "summary": {"total": 0, "confirmed": 0, "ai_inferred": 0, "pending": 0}})
 
-    element_ids = [l.element_id for l in links]
+    element_ids = [item.element_id for item in links]
     elements = {
         e.id: e
         for e in ArchiMateElement.query.filter(ArchiMateElement.id.in_(element_ids)).all()
         if e.type in _DATA_ELEMENT_TYPES
     }
-    junction_by_el = {l.element_id: l for l in links}
+    junction_by_el = {item.element_id: item for item in links}
 
     result = []
     summary = {"total": 0, "confirmed": 0, "vendor_seeded": 0, "schema_imported": 0, "ai_inferred": 0, "pending": 0}
@@ -5024,7 +5745,13 @@ def _parse_sql_ddl(content: str) -> dict:
 
 
 def _parse_openapi(content: str) -> dict:
-    """Parse OpenAPI 2/3 YAML or JSON into {schema_name: [{name, type, required, description}]}."""
+    """Parse OpenAPI 2/3 YAML or JSON into {schema_name: [{name, type, required, description}]}.
+
+    A parse failure propagates. The caller (`import_schema`) already catches it,
+    logs it and answers "Parse failed: <reason>" with a 400. Returning {} sent
+    the user "No entity or field definitions found in the provided schema"
+    instead — telling them their file was empty when it was in fact unreadable.
+    """
     import json as _json
     try:
         import yaml as _yaml
@@ -5032,10 +5759,7 @@ def _parse_openapi(content: str) -> dict:
     except Exception:
         spec = None
     if spec is None:
-        try:
-            spec = _json.loads(content)
-        except Exception:
-            return {}
+        spec = _json.loads(content)
     schemas = ((spec.get('components') or {}).get('schemas')
                or spec.get('definitions') or {})
     FORMAT_MAP = {'date-time': 'datetime', 'date': 'date', 'uuid': 'uuid', 'float': 'float', 'double': 'float'}
@@ -5148,13 +5872,13 @@ def import_schema(solution_id):
     if not links:
         return api_error("No ArchiMate elements linked to this solution yet — generate architecture first", 400)
 
-    el_ids = [l.element_id for l in links]
+    el_ids = [item.element_id for item in links]
     elements = {
         e.id: e
         for e in ArchiMateElement.query.filter(ArchiMateElement.id.in_(el_ids)).all()
         if e.type in _DATA_ELEMENT_TYPES
     }
-    junction_by_el_id = {l.element_id: l for l in links}
+    junction_by_el_id = {item.element_id: item for item in links}
     el_name_to_id = {e.name: e.id for e in elements.values()}
 
     matched, unmatched = [], []

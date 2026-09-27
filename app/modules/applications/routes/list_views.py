@@ -26,16 +26,18 @@ from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
 from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_capability import UnifiedCapability
+from app.modules.my_applications.services import has_assigned_owner
 from app.security.import_decorators import with_import_security
+from app.utils.pagination import safe_int_arg
 
 # Import performance utilities (conditionally available)  # dead-code-ok
 try:
     from app.services.core.data_cache import (  # dead-code-ok
-        get_all_applications,
-        get_application_filter_options,
-        invalidate_application_cache,
+        get_all_applications,  # noqa: F401 — availability probe: the import IS the test
+        get_application_filter_options,  # noqa: F401 — availability probe: the import IS the test
+        invalidate_application_cache,  # noqa: F401 — availability probe: the import IS the test
     )
-    from app.services.core.eager_loading import get_application_options  # dead-code-ok
+    from app.services.core.eager_loading import get_application_options  # dead-code-ok  # noqa: F401 — availability probe: the import IS the test
 
     PERF_UTILS_AVAILABLE = True
 except ImportError:
@@ -46,6 +48,16 @@ from . import unified_applications_bp
 logger = logging.getLogger(__name__)
 
 # APP-032: canonical Abacus lifecycle codes for portfolio filter (matches production; filter is case-insensitive)
+# ARCH-100: allow-listed sortable columns for application_list() (?sort=&dir=)
+# — maps the query-param name to the actual ORM column, so a bad/unknown
+# value can never reach ORDER BY.
+_SORTABLE_COLUMNS = {
+    "id": ApplicationComponent.id,
+    "name": ApplicationComponent.name,
+    "type": ApplicationComponent.application_category,
+    "lifecycle_status": ApplicationComponent.lifecycle_status,
+}
+
 _LIFECYCLE_ABACUS_CODES = (
     "1. UNDETERMINED",
     "2.1 STRATEGIC",
@@ -100,10 +112,12 @@ def application_list():
         qs_include_decom_false  str — query string to disable toggle (page reset to 1)
         currency_symbol    str
     """
+    # Counts are None, not 0: this context is only ever rendered after the
+    # query failed, and "0 applications" is a claim about the estate.
     _EMPTY_CONTEXT = dict(
         applications=[],
-        total_count=0,
-        portfolio_total=0,
+        total_count=None,
+        portfolio_total=None,
         current_page=1,
         total_pages=1,
         page_size=25,
@@ -120,13 +134,18 @@ def application_list():
             domains=[],
         ),
         stats=dict(
-            total=0,
-            active_portfolio=0,
-            strategic=0,
-            tactical=0,
-            sunset_decom_pipeline=0,
-            decommissioned=0,
+            total=None,
+            active_portfolio=None,
+            strategic=None,
+            tactical=None,
+            sunset_decom_pipeline=None,
+            decommissioned=None,
+            owner_assigned=None,
+            vendor_assigned=None,
         ),
+        sort="",
+        dir="asc",
+        load_error="The application portfolio could not be read.",
         currency_symbol="\u00a3",
         bu_filter_active=False,
         bu_name=None,
@@ -155,8 +174,15 @@ def application_list():
         process_level_filter = request.args.get("process_level", "").strip()
         capability_level_filter = request.args.get("capability_level", "").strip()
         domain_filter = request.args.get("domain", "").strip()
-        page = max(1, request.args.get("page", 1, type=int))
-        page_size = min(max(1, request.args.get("page_size", 25, type=int)), 100)
+        page = max(1, safe_int_arg('page', 1, minimum=1))
+        page_size = min(max(1, safe_int_arg('page_size', 25, minimum=1, maximum=500)), 100)
+
+        # APP-100: sortable headers — allow-listed column + direction only,
+        # so an arbitrary ?sort= value can never reach ORDER BY.
+        sort_param = request.args.get("sort", "").strip()
+        dir_param = request.args.get("dir", "asc").strip().lower()
+        sort_column = _SORTABLE_COLUMNS.get(sort_param)
+        sort_dir = "desc" if dir_param == "desc" else "asc"
 
         # APP-031: default hide decommissioned; ?include_decom=true shows full portfolio
         include_decom = request.args.get("include_decom", "").strip().lower() in (
@@ -241,7 +267,10 @@ def application_list():
                 | ApplicationComponent.technology_stack.ilike(safe_search, escape="\\")
             )
         if type_filter:
-            query = query.filter(ApplicationComponent.application_category == type_filter)
+            # "Type" is component_type everywhere it is shown (fact sheet, edit form,
+            # list column). application_category is a separate, mostly-empty field;
+            # filtering on it left the Type dropdown dead. Filter on component_type.
+            query = query.filter(ApplicationComponent.component_type == type_filter)
         # APP-032: lifecycle_status only (no deployment_status); ignore legacy/invalid query values
         if status_filter:
             sf = status_filter.strip().lower()
@@ -313,20 +342,24 @@ def application_list():
         try:
             if hasattr(ApplicationComponent, "primary_vendor_product"):
                 eager_opts.append(joinedload(ApplicationComponent.primary_vendor_product))
-        except Exception:  # fabricated-values-ok
+        except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
             current_app.logger.debug("primary_vendor_product eager-load unavailable", exc_info=True)
+
+        order_by_clause = (
+            sort_column.desc() if sort_dir == "desc" else sort_column.asc()
+        ) if sort_column is not None else ApplicationComponent.name
 
         try:
             pagination = (
                 query.options(*eager_opts)
-                .order_by(ApplicationComponent.name)
+                .order_by(order_by_clause)
                 .paginate(page=page, per_page=page_size, error_out=False)
             )
         except Exception as eager_exc:
             current_app.logger.warning(
                 "applications.list eager-load fallback triggered: %s", eager_exc
             )
-            pagination = query.order_by(ApplicationComponent.name).paginate(
+            pagination = query.order_by(order_by_clause).paginate(
                 page=page, per_page=page_size, error_out=False
             )
 
@@ -343,7 +376,9 @@ def application_list():
                         result.append(n)
             return sorted(result)
 
-        component_types = _distinct_normalised(ApplicationComponent.application_category)
+        # "Type" is component_type (the field the fact sheet, edit form and list
+        # column all treat as Type), not application_category.
+        component_types = _distinct_normalised(ApplicationComponent.component_type)
         # APP-032: fixed Abacus lifecycle list (not DISTINCT deployment_status or ad hoc DB strings)
         lifecycle_statuses = [{"value": v, "label": v} for v in _LIFECYCLE_ABACUS_CODES]
         try:
@@ -359,7 +394,20 @@ def application_list():
 
         # ── 7. Stats (always against full portfolio) ──────────────────────────
         # APP-030: lifecycle-only card counts from Abacus lifecycle_status codes.
-        _decommissioned_vals = {"5. decommissioned"}
+        # lifecycle_status holds TWO vocabularies in practice: the Abacus codes
+        # ("3. sunset", "5. decommissioned") that the filter dropdown offers, and
+        # the plain words ("sunset", "deprecated", "retired") written by imports,
+        # seeds and the ArchiMate side. Counting only the coded form made the
+        # tiles contradict the table right underneath them -- the list showed a
+        # row whose Lifecycle Status column read "Sunset" while the
+        # "Sunset/Decom Pipeline" tile above it read 0. Recognise both spellings
+        # so the tile and the column can never disagree; a plausible-but-wrong
+        # count is worse than none because the reader cannot tell.
+        _decommissioned_vals = {
+            "5. decommissioned",
+            "decommissioned",
+            "retired",
+        }
         _sunset_pipeline_vals = {
             "3. sunset",
             "4.1 decom decided",
@@ -367,6 +415,11 @@ def application_list():
             "4.3 read-only",
             "4.3 read only",
             "4.4 stopped",
+            "sunset",
+            "deprecated",
+            "sunsetting",
+            "end_of_life",
+            "end-of-life",
         }
         _stats_base = ApplicationComponent.query.filter(
             ~ApplicationComponent.name.ilike("(Duplicate)%", escape="\\")
@@ -378,6 +431,26 @@ def application_list():
             ).count()
 
         decommissioned_count = _lifecycle_count(_decommissioned_vals)
+
+        # ARCH-106: Data Quality banner used to hardcode "Owner: 0/N" and
+        # "Vendor: 0/N" — literal zeros, not computed from any data. Count real
+        # owner-assigned and vendor-assigned applications instead.
+        # An application counts as having an assigned owner when a business owner is
+        # recorded on it or an application manager is assigned to it; the second half
+        # is the same ownership the My Applications screens count for a user.
+        owner_assigned_count = _stats_base.filter(
+            has_assigned_owner(current_user.organization_id)
+        ).count()
+        vendor_assigned_count = _stats_base.filter(
+            db.or_(
+                db.and_(
+                    ApplicationComponent.vendor_name.isnot(None),
+                    ApplicationComponent.vendor_name != "",
+                ),
+                ApplicationComponent.vendor_product_id.isnot(None),
+            )
+        ).count()
+
         stats = {
             "total": portfolio_total,
             "active_portfolio": max(0, portfolio_total - decommissioned_count),
@@ -385,6 +458,8 @@ def application_list():
             "tactical": _lifecycle_count({"2.2 tactical"}),
             "sunset_decom_pipeline": _lifecycle_count(_sunset_pipeline_vals),
             "decommissioned": decommissioned_count,
+            "owner_assigned": owner_assigned_count,
+            "vendor_assigned": vendor_assigned_count,
         }
 
         # ── 8. Currency symbol ────────────────────────────────────────────────
@@ -431,6 +506,8 @@ def application_list():
             include_decom=include_decom,
             qs_include_decom_true=qs_include_decom_true,
             qs_include_decom_false=qs_include_decom_false,
+            sort=sort_param if sort_column is not None else "",
+            dir=sort_dir,
         )
 
     except Exception as exc:
@@ -482,8 +559,8 @@ def api_list():
         # BUG-B3 FIX: Apply a hard limit so this endpoint never returns the full
         # portfolio in one response. Callers (e.g. auto-map app selector in list.js)
         # can paginate using ?page=N&per_page=N. Default 200, max 500.
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 200, type=int), 500)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 200, minimum=1, maximum=500), 500)
         search = request.args.get("search", "").strip()
         sort_by = request.args.get("sort", "name").strip()
         status_filter = request.args.get("status", "").strip()
@@ -529,6 +606,7 @@ def api_list():
                 cap_count_rows = (
                     db.session.query(
                         ApplicationCapabilityMapping.application_component_id,
+                        # tenant-scoping-ok: FK id already org-scoped (application/capability resolved via a TenantMixin model or the current request's own app/solution).
                         sqla_func.count(ApplicationCapabilityMapping.id),
                     )
                     .filter(ApplicationCapabilityMapping.application_component_id.in_(app_ids))
@@ -561,7 +639,7 @@ def api_list():
                 "per_page": pagination.per_page,
             }
         )
-    except Exception as e:
+    except Exception:
         try:
             db.session.rollback()
         except Exception as rollback_error:
@@ -589,8 +667,8 @@ def api_table_data():
             )
 
         # Get pagination parameters
-        page = request.args.get("page", 1, type=int)
-        per_page = min(request.args.get("per_page", 50, type=int), 200)
+        page = safe_int_arg('page', 1, minimum=1)
+        per_page = min(safe_int_arg('per_page', 50, minimum=1, maximum=500), 200)
         search = request.args.get("search", "").strip()
         type_filter = request.args.get("type", "").strip()
         status_filter = request.args.get("status", "").strip()
@@ -795,24 +873,34 @@ def model_dashboard(model_name):
 @unified_applications_bp.route("/api/bulk-lifecycle", methods=["POST"])
 @login_required
 def api_bulk_lifecycle():
-    """PLT-020: Bulk update lifecycle stage for selected applications."""
-    from app.models.constants import LifecycleStatus
+    """PLT-020: Bulk update lifecycle stage for selected applications.
+
+    17 Aug 2026 QA finding: this validated against LifecycleStatus.ALL
+    (planning/development/testing/pilot/production/maintenance/sunset/
+    retired) — a vocabulary the "Lifecycle" bulk menu never sent. The menu
+    sends this app's actual lifecycle_status values, the TOGAF-decommission
+    phase scheme also used by list_simple.html's STATUS_MAP badge lookup
+    (2.1 strategic, 2.2 tactical, ...). Every real click failed validation
+    100% of the time — "bulk lifecycle management completely non-functional"
+    as reported. Validate against the vocabulary this UI actually uses.
+    """
+    from app.models.application_portfolio import APPLICATION_LIFECYCLE_STAGES
 
     data = request.get_json()
     if not data:
         return jsonify({"success": False, "error": "No data provided"}), 400
 
     ids = data.get("ids", [])
-    lifecycle_stage = data.get("lifecycle_stage", "").strip()
+    lifecycle_stage = data.get("lifecycle_stage", "").strip().lower()
 
     if not ids:
         return jsonify({"success": False, "error": "No application IDs provided"}), 400
-    if lifecycle_stage not in LifecycleStatus.ALL:
+    if lifecycle_stage not in APPLICATION_LIFECYCLE_STAGES:
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": f"Invalid lifecycle stage. Must be one of: {', '.join(LifecycleStatus.ALL)}",
+                    "error": f"Invalid lifecycle stage. Must be one of: {', '.join(APPLICATION_LIFECYCLE_STAGES)}",
                 }
             ),
             400,

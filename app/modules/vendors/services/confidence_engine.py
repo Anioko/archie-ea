@@ -129,17 +129,20 @@ class ConfidenceEngine:
         # Confidence distribution
         dist = db.session.query(
             VendorProductPricing.data_source_type,
+            # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
             db.func.count(VendorProductPricing.id),
         ).group_by(VendorProductPricing.data_source_type).all()
 
         # Staleness
         cutoff = datetime.now(timezone.utc) - timedelta(days=STALENESS_THRESHOLD_DAYS)
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         stale_count = VendorProductPricing.query.filter(
             db.or_(
                 VendorProductPricing.last_verified_at < cutoff,
                 VendorProductPricing.last_verified_at.is_(None),
             )
         ).count()
+        # tenant-scoping-ok: vendor reference/catalog data (product-scoped or global catalog stats), not tenant-owned.
         total_pricing = VendorProductPricing.query.count()
 
         return {

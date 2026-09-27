@@ -1,14 +1,14 @@
 """
 Unified Low Priority Routes
 
-Consolidates remaining routes into a single, comprehensive set:
-1. Architecture routes (architecture_routes.py)
-2. Capability map routes (capability_map_routes.py)
-3. Strategic routes (strategic_routes.py)
-4. Consolidation list routes (consolidation_list_routes.py)
-5. Policy monitoring routes (policy_monitoring_routes.py)
+Architecture, strategic, consolidation-list and policy-monitoring routes under
+/enterprise, defined directly on ``unified_low_priority_bp`` below.
 
-Phase 6: Low priority consolidations with full preservation
+The header used to promise a consolidation of five other route modules
+(architecture_routes.py, capability_map_routes.py, strategic_routes.py,
+consolidation_list_routes.py, policy_monitoring_routes.py) via star imports.
+None of those modules exist here; the aggregator never ran. Every route this
+module serves is written out below.
 """
 
 from flask import (
@@ -19,17 +19,18 @@ from flask import (
     redirect,
     render_template,
     request,
-    url_for,
 )
 from flask_login import login_required
-from flask_wtf.csrf import CSRFError
 
 from app.decorators import audit_log
 from sqlalchemy import or_, text
 
 from .. import db
 from ..models.application_portfolio import ApplicationComponent
-from ..models.business_capabilities import BusinessCapability
+from ..models.business_capabilities import (
+    ApplicationCapabilityCoverage,
+    BusinessCapability,
+)
 from ..models.models import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
 from ..services.consolidation_service import ConsolidationService
 from ..services.policy_monitoring_service import PolicyMonitoringService
@@ -47,19 +48,15 @@ unified_low_priority_bp = Blueprint(
     "unified_low_priority", __name__, url_prefix="/enterprise"
 )
 
-# Import individual route modules for consolidation
-try:
-    # Import route functions from existing modules
-    from .architecture_routes import *
-    from .capability_map_routes import *
-
-    # from .consolidation_list_routes import *  # Removed: violates blueprints ban
-    from .policy_monitoring_routes import *
-    from .strategic_routes import *
-
-    LOW_PRIORITY_ROUTES_AVAILABLE = True
-except ImportError:
-    LOW_PRIORITY_ROUTES_AVAILABLE = False
+# There used to be a `try: from .architecture_routes import * ...` aggregator here,
+# star-importing architecture_routes, capability_map_routes, policy_monitoring_routes
+# and strategic_routes and setting LOW_PRIORITY_ROUTES_AVAILABLE.
+#
+# It never ran. The first of the four modules does not exist in this codebase, so the
+# whole block raised ModuleNotFoundError on line one and the except arm set the flag to
+# False — every time, since before capability_map_routes.py was removed. No name below
+# came from it (ruff reports no F405), and nothing anywhere read the flag. Removed
+# rather than left as a comment that reads like a working feature.
 
 
 # === ARCHITECTURE ROUTES ===
@@ -85,9 +82,14 @@ def architecture_models():
         models = ArchitectureModel.query.order_by(ArchitectureModel.name).all()
         return render_template("architecture/models.html", models=models)
     except Exception as e:
-        current_app.logger.error(f"Architecture models error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture models error: %s", e)
         flash("Error loading architecture models", "error")
-        return render_template("architecture/models.html", models=[])
+        return render_template(
+            "architecture/models.html",
+            models=[],
+            load_error="Architecture models could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/architecture/elements")
@@ -98,26 +100,64 @@ def architecture_elements():
         elements = ArchiMateElement.query.order_by(ArchiMateElement.name).all()
         return render_template("architecture/elements.html", elements=elements)
     except Exception as e:
-        current_app.logger.error(f"Architecture elements error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture elements error: %s", e)
         flash("Error loading architecture elements", "error")
-        return render_template("architecture/elements.html", elements=[])
+        return render_template(
+            "architecture/elements.html",
+            elements=[],
+            load_error="ArchiMate elements could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/architecture/relationships")
 @login_required
 def architecture_relationships():
-    """List architecture relationships"""
+    """List architecture relationships.
+
+    F-05(b), Capgemini dry-run: fed the template rel.source_element/
+    rel.relationship_type — attributes ArchiMateRelationship never declares
+    (it has source_id/target_id FKs and a `type` column, no relationship()).
+    Jinja silently falls back to the bare id for a missing attribute, so this
+    route showed "20 rows of bare numeric IDs" despite querying the right
+    table. Resolve names explicitly instead. Same fix as
+    architecture_crud.list_relationships, the other route sharing this
+    template.
+    """
     try:
-        relationships = ArchiMateRelationship.query.order_by(
-            ArchiMateRelationship.type
-        ).all()
+        rels = ArchiMateRelationship.query.order_by(ArchiMateRelationship.type).all()
+        element_ids = {
+            eid for rel in rels for eid in (rel.source_id, rel.target_id) if eid is not None
+        }
+        names_by_id = {}
+        if element_ids:
+            names_by_id = dict(
+                db.session.query(ArchiMateElement.id, ArchiMateElement.name)
+                .filter(ArchiMateElement.id.in_(element_ids))
+            )
+        relationships = [
+            {
+                "id": rel.id,
+                "type": rel.type,
+                "source_id": rel.source_id,
+                "target_id": rel.target_id,
+                "source_name": names_by_id.get(rel.source_id),
+                "target_name": names_by_id.get(rel.target_id),
+            }
+            for rel in rels
+        ]
         return render_template(
             "architecture/relationships.html", relationships=relationships
         )
     except Exception as e:
-        current_app.logger.error(f"Architecture relationships error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Architecture relationships error: %s", e)
         flash("Error loading architecture relationships", "error")
-        return render_template("architecture/relationships.html", relationships=[])
+        return render_template(
+            "architecture/relationships.html",
+            relationships=[],
+            load_error="ArchiMate relationships could not be read.",
+        )
 
 
 # === CAPABILITY MAP ROUTES ===
@@ -128,9 +168,20 @@ def architecture_relationships():
 @login_required
 def capability_map_dashboard():
     """Capability mapping dashboard"""
+    # capability_map/index.html's "Total Capabilities" tile reads
+    # `total_capabilities`, not `capability_count` -- this route passed the
+    # latter, so the tile was Undefined here and always rendered the null-state
+    # em dash regardless of how many capabilities actually existed. Route both
+    # variables through the same counting function `/capability-map/`'s index()
+    # uses (app/modules/capabilities/services/capability_count_service.py) so
+    # this surface cannot drift from that one (ADR 0008 / store-agreement).
+    from app.modules.capabilities.services.capability_count_service import (
+        count_business_capabilities,
+    )
+
     try:
         # Get capability statistics
-        capability_count = BusinessCapability.query.count()
+        capability_count = count_business_capabilities()
         application_count = ApplicationComponent.query.count()
 
         # Get capability categories
@@ -140,13 +191,23 @@ def capability_map_dashboard():
         return render_template(
             "capability_map/index.html",
             capability_count=capability_count,
+            total_capabilities=capability_count,
             application_count=application_count,
             categories=categories,
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map dashboard error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map dashboard error: %s", e)
         flash("Error loading capability map dashboard", "error")
-        return render_template("capability_map/index.html")
+        # None, not 0: a counted zero and an uncounted one must not look alike.
+        return render_template(
+            "capability_map/index.html",
+            capability_count=None,
+            total_capabilities=None,
+            application_count=None,
+            categories=[],
+            load_error="Capability map statistics could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/capabilities")
@@ -155,13 +216,23 @@ def capability_map_capabilities():
     """List capabilities for mapping"""
     try:
         capabilities = BusinessCapability.query.order_by(BusinessCapability.name).all()
+        # Parent names, so a sub-capability can say what it is a sub-capability OF.
+        parent_names = {c.id: c.name for c in capabilities}
         return render_template(
-            "capability_map/capabilities.html", capabilities=capabilities
+            "capability_map/capabilities.html",
+            capabilities=capabilities,
+            parent_names=parent_names,
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map capabilities error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map capabilities error: %s", e)
         flash("Error loading capabilities", "error")
-        return render_template("capability_map/capabilities.html", capabilities=[])
+        return render_template(
+            "capability_map/capabilities.html",
+            capabilities=[],
+            parent_names={},
+            load_error="Capabilities could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/applications")
@@ -176,9 +247,14 @@ def capability_map_applications():
             "capability_map/applications.html", applications=applications
         )
     except Exception as e:
-        current_app.logger.error(f"Capability map applications error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability map applications error: %s", e)
         flash("Error loading applications", "error")
-        return render_template("capability_map/applications.html", applications=[])
+        return render_template(
+            "capability_map/applications.html",
+            applications=[],
+            load_error="Applications could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/capability-map/mapping")
@@ -191,16 +267,62 @@ def capability_map_mapping():
             ApplicationComponent.name
         ).all()
 
+        # The page called itself a Coverage Matrix and rendered no coverage at
+        # all -- the template carried a comment saying the join data "would be
+        # required from the route" and printed "N apps available" (the total
+        # application count, repeated on every row) in its place. Read the real
+        # mappings.
+        #
+        # ApplicationCapabilityCoverage has no TenantMixin, so it carries no
+        # organization_id and gets no automatic tenant predicate. Scope it by
+        # restricting to THIS organisation's capability ids, which are filtered.
+        mapped_apps = {c.id: [] for c in capabilities}
+        cap_ids = list(mapped_apps)
+        if cap_ids:
+            app_names = {a.id: a.name for a in applications}
+            rows = ApplicationCapabilityCoverage.query.filter(
+                ApplicationCapabilityCoverage.capability_id.in_(cap_ids)
+            ).all()
+            for row in rows:
+                name = app_names.get(row.application_component_id)
+                if name is None:
+                    continue  # an application outside this organisation
+                mapped_apps[row.capability_id].append(
+                    {
+                        "id": row.application_component_id,
+                        "name": name,
+                        "mapping_id": row.id,
+                        "support_level": row.support_level,
+                    }
+                )
+            for entries in mapped_apps.values():
+                entries.sort(key=lambda e: e["name"])
+
+        covered = sum(1 for c in capabilities if mapped_apps[c.id])
+        # None, not 0: with no capabilities at all there is nothing to be a
+        # percentage OF, and a rendered "0%" would read as a measured result.
+        coverage_pct = round(covered * 100 / len(capabilities)) if capabilities else None
+
         return render_template(
             "capability_map/mapping.html",
             capabilities=capabilities,
             applications=applications,
+            mapped_apps=mapped_apps,
+            covered_count=covered,
+            coverage_pct=coverage_pct,
         )
     except Exception as e:
-        current_app.logger.error(f"Capability mapping error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Capability mapping error: %s", e)
         flash("Error loading capability mapping", "error")
         return render_template(
-            "capability_map/mapping.html", capabilities=[], applications=[]
+            "capability_map/mapping.html",
+            capabilities=[],
+            applications=[],
+            mapped_apps={},
+            covered_count=None,
+            coverage_pct=None,
+            load_error="The capability mapping data could not be read.",
         )
 
 
@@ -254,7 +376,8 @@ def strategic_roadmap():
             quarter=quarter,
         )
     except Exception as e:
-        current_app.logger.error(f"Strategic roadmap error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Strategic roadmap error: %s", e)
         flash("Error loading strategic roadmap", "error")
         return render_template(
             "strategic/roadmap.html",
@@ -263,6 +386,7 @@ def strategic_roadmap():
             health_scores=[],
             year=None,
             quarter=None,
+            load_error="The strategic roadmap could not be read.",
         )
 
 
@@ -296,13 +420,15 @@ def strategic_initiatives():
             status_filter=status_filter,
         )
     except Exception as e:
-        current_app.logger.error(f"Strategic initiatives error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Strategic initiatives error: %s", e)
         flash("Error loading strategic initiatives", "error")
         return render_template(
             "strategic/initiatives.html",
             initiatives=[],
             health_scores=[],
             status_filter=None,
+            load_error="Strategic initiatives could not be read.",
         )
 
 
@@ -361,9 +487,14 @@ def consolidation_candidates():
         )
         return render_template("consolidation/candidates.html", candidates=candidates)
     except Exception as e:
-        current_app.logger.error(f"Consolidation candidates error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Consolidation candidates error: %s", e)
         flash("Error loading consolidation candidates", "error")
-        return render_template("consolidation/candidates.html", candidates=[])
+        return render_template(
+            "consolidation/candidates.html",
+            candidates=[],
+            load_error="Consolidation candidates could not be read.",
+        )
 
 
 @unified_low_priority_bp.route("/consolidation/opportunities")
@@ -394,9 +525,14 @@ def consolidation_opportunities():
             savings_forecast=savings,
         )
     except Exception as e:
-        current_app.logger.error(f"Consolidation opportunities error: {str(e)}")
+        db.session.rollback()
+        current_app.logger.exception("Consolidation opportunities error: %s", e)
         flash("Error loading consolidation opportunities", "error")
-        return render_template("consolidation/opportunities.html", opportunities=[])
+        return render_template(
+            "consolidation/opportunities.html",
+            opportunities=[],
+            load_error="Consolidation opportunities could not be read.",
+        )
 
 
 # === POLICY MONITORING ROUTES ===
@@ -641,7 +777,7 @@ def get_architecture_statistics():
             "models": ArchitectureModel.query.count(),
         }
     except Exception:
-        return {"elements": 0, "relationships": 0, "models": 0}
+        return {"elements": None, "relationships": None, "models": None}
 
 
 def get_capability_map_statistics():
@@ -653,7 +789,7 @@ def get_capability_map_statistics():
             "mapped_relationships": 0,  # Placeholder
         }
     except Exception:
-        return {"capabilities": 0, "applications": 0, "mapped_relationships": 0}
+        return {"capabilities": None, "applications": None, "mapped_relationships": None}
 
 
 def get_strategic_statistics():
@@ -667,9 +803,9 @@ def get_strategic_statistics():
                 "milestones": data.get("milestones", {}).get("total", 0),
                 "risks": data.get("initiatives", {}).get("at_risk", 0),
             }
-        return {"initiatives": 0, "milestones": 0, "risks": 0}
+        return {"initiatives": None, "milestones": None, "risks": None}
     except Exception:
-        return {"initiatives": 0, "milestones": 0, "risks": 0}
+        return {"initiatives": None, "milestones": None, "risks": None}
 
 
 def get_consolidation_statistics():
@@ -683,9 +819,9 @@ def get_consolidation_statistics():
                 "opportunities": data.get("opportunities", {}).get("total", 0),
                 "savings_estimate": data.get("estimated_pipeline_savings", 0),
             }
-        return {"candidates": 0, "opportunities": 0, "savings_estimate": 0}
+        return {"candidates": None, "opportunities": None, "savings_estimate": None}
     except Exception:
-        return {"candidates": 0, "opportunities": 0, "savings_estimate": 0}
+        return {"candidates": None, "opportunities": None, "savings_estimate": None}
 
 
 def get_policy_monitoring_statistics():
@@ -699,9 +835,9 @@ def get_policy_monitoring_statistics():
                 "violations": data.get("total_violations", 0),
                 "compliance_rate": data.get("compliance_percentage", 0),
             }
-        return {"policies": 0, "violations": 0, "compliance_rate": 0}
+        return {"policies": None, "violations": None, "compliance_rate": None}
     except Exception:
-        return {"policies": 0, "violations": 0, "compliance_rate": 0}
+        return {"policies": None, "violations": None, "compliance_rate": None}
 
 
 # === ERROR HANDLERS ===
@@ -720,10 +856,18 @@ def internal_error(error):
     return render_template("errors/500.html"), 500
 
 
-@unified_low_priority_bp.errorhandler(CSRFError)
-def csrf_error(error):
-    """Handle CSRF errors"""
-    flash("CSRF token expired. Please try again.", "error")
-    return redirect(
-        request.referrer or url_for("unified_low_priority.architecture_dashboard")
-    )
+
+# P-04: a blueprint-local CSRFError handler used to live here, catching a
+# missing/invalid token and silently 302-redirecting to the dashboard (or to
+# request.referrer) instead of the app-wide 400 JSON response
+# (app/_bootstrap/extensions.py::handle_csrf_error). Two of this blueprint's
+# JSON POST endpoints — /api/consolidation/detect and
+# /api/policy-monitoring/scan — are @login_required-only otherwise, so a
+# request with no session at all resolved to a 302 that read exactly like a
+# successful redirect rather than a rejected write, and every AJAX caller
+# here got an unparseable HTML redirect instead of the
+# {"error_type": "csrf"} contract every other endpoint in the app relies on
+# (see core/03-fetch.js's isSessionExpired handling, which keys off that
+# field). Removed so this blueprint gets the same CSRF-failure contract as
+# everything else — see app/_bootstrap/csrf_coverage.py and
+# tests/test_csrf_coverage.py (R-30), which caught this.

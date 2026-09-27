@@ -195,8 +195,7 @@ async function loadTargets() {
             url = '/capability-map/api/unified-capabilities';
         }
 
-        let response = await fetch(url);
-        let data = await response.json();
+        let data = await Platform.fetch(url, { silent: true });
 
         if (data.error) {
             safeHTML(container, '<div class="text-center py-8 text-destructive">' +
@@ -299,7 +298,6 @@ async function loadTargets() {
 
         filterUnifiedTargets();
     } catch (error) {
-        console.error('Error loading targets:', error);
         safeHTML(container, '<div class="text-center py-8 text-destructive">' +
             '<i data-lucide="alert-circle" class="w-8 h-8 mx-auto mb-2"></i>' +
             '<p>Failed to load data. Please try again.</p>' +
@@ -407,7 +405,7 @@ function renderTargetsList() {
             ' data-action="selectTarget" data-params=\'["' + target.id + '", "' + (target.name || '').replace(/"/g, '&quot;') + '"]\'>' +
             '<div class="flex items-start justify-between">' +
                 '<div class="flex items-start space-x-3 flex-1">' +
-                    (isReverseMode ? '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' class="mt-2 rounded border-border text-primary focus:ring-primary" onclick="event.stopPropagation()">' : '') +
+                    (isReverseMode ? '<input type="checkbox" ' + (isSelected ? 'checked' : '') + ' class="mt-2 rounded border-border text-primary focus:ring-primary" data-umm-card-checkbox aria-label="Select this target">' : '') +
                     '<div class="flex-shrink-0 w-10 h-10 rounded-lg bg-' + badgeColor + '-100 flex items-center justify-center">' +
                         '<i data-lucide="' + iconName + '" class="w-5 h-5 text-' + badgeColor + '-600"></i>' +
                     '</div>' +
@@ -740,11 +738,9 @@ async function loadUnifiedApplications(targetId) {
             url = '/api/vendors/' + id + '/applications';
         }
 
-        let response = await fetch(url);
-        let data = await response.json();
+        let data = await Platform.fetch(url, { silent: true });
 
         if (data.error) {
-            console.error('Error loading applications:', data.error);
             if (container) {
                 safeHTML(container, '<div class="text-center py-8 text-destructive">' +
                     '<p>Error: ' + data.error + '</p>' +
@@ -777,7 +773,6 @@ async function loadUnifiedApplications(targetId) {
             if (searchInput) searchInput.focus();
         }, 100);
     } catch (error) {
-        console.error('Error loading applications:', error);
         if (container) {
             safeHTML(container, '<div class="text-center py-8 text-destructive">' +
                 '<p>Failed to load applications</p>' +
@@ -1018,6 +1013,8 @@ function renderUnifiedApplicationsList() {
 }
 
 function renderUnifiedApplicationSettings(appId, mapping) {
+    // Escaped for attribute interpolation, matching how data-params is built above.
+    let appIdAttr = String(appId).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     let mappingData = (mapping && mapping.mapping) ? mapping.mapping : {};
     let context = UnifiedMappingModal.context;
 
@@ -1025,7 +1022,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
         '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Support Level</label>' +
-                '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'support_level\', this.value)">' +
+                '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="support_level">' +
                     '<option value="full"' + (mappingData.support_level === 'full' ? ' selected' : '') + '>Full</option>' +
                     '<option value="partial"' + (mappingData.support_level === 'partial' ? ' selected' : '') + '>Partial</option>' +
                     '<option value="minimal"' + (mappingData.support_level === 'minimal' ? ' selected' : '') + '>Minimal</option>' +
@@ -1033,15 +1030,15 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '</div>' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Coverage %</label>' +
-                '<input type="number" min="0" max="100" value="' + (mappingData.coverage_percentage || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'coverage_percentage\', parseInt(this.value))"/>' +
+                '<input type="number" min="0" max="100" value="' + (mappingData.coverage_percentage || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="coverage_percentage" data-umm-cast="int"/>' +
             '</div>' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Quality (1-5)</label>' +
-                '<input type="number" min="1" max="5" value="' + (mappingData.support_quality || 3) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'support_quality\', parseInt(this.value))"/>' +
+                '<input type="number" min="1" max="5" value="' + (mappingData.support_quality || 3) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="support_quality" data-umm-cast="int"/>' +
             '</div>' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Relationship</label>' +
-                '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'relationship_type\', this.value)">' +
+                '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="relationship_type">' +
                     '<option value="enables"' + (mappingData.relationship_type === 'enables' ? ' selected' : '') + '>Enables</option>' +
                     '<option value="supports"' + (mappingData.relationship_type === 'supports' ? ' selected' : '') + '>Supports</option>' +
                     '<option value="governs"' + (mappingData.relationship_type === 'governs' ? ' selected' : '') + '>Governs</option>' +
@@ -1050,7 +1047,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '</div>' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Dependency</label>' +
-                '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'dependency_level\', this.value)">' +
+                '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="dependency_level">' +
                     '<option value="critical"' + (mappingData.dependency_level === 'critical' ? ' selected' : '') + '>Critical</option>' +
                     '<option value="high"' + (mappingData.dependency_level === 'high' ? ' selected' : '') + '>High</option>' +
                     '<option value="medium"' + (mappingData.dependency_level === 'medium' ? ' selected' : '') + '>Medium</option>' +
@@ -1059,7 +1056,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '</div>' +
             '<div>' +
                 '<label class="block text-xs font-medium text-foreground mb-1">Priority</label>' +
-                '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'priority\', this.value)">' +
+                '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="priority">' +
                     '<option value="high"' + (mappingData.priority === 'high' ? ' selected' : '') + '>High</option>' +
                     '<option value="medium"' + (mappingData.priority === 'medium' ? ' selected' : '') + '>Medium</option>' +
                     '<option value="low"' + (mappingData.priority === 'low' ? ' selected' : '') + '>Low</option>' +
@@ -1068,7 +1065,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
         '</div>' +
         '<div>' +
             '<label class="block text-xs font-medium text-foreground mb-1">Gap Description</label>' +
-            '<textarea class="w-full text-sm border border-border rounded px-2 py-1" rows="2" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'gap_description\', this.value)">' + (mappingData.gap_description || '') + '</textarea>' +
+            '<textarea class="w-full text-sm border border-border rounded px-2 py-1" rows="2" data-umm-app="' + appIdAttr + '" data-umm-field="gap_description">' + (mappingData.gap_description || '') + '</textarea>' +
         '</div>';
 
     // ArchiMate fields
@@ -1081,7 +1078,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '<div class="grid grid-cols-2 gap-4">' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Relationship Type</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'archimate_relationship_type\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="archimate_relationship_type">' +
                         '<optgroup label="Structural">' +
                             '<option value="composition"' + (mappingData.archimate_relationship_type === 'composition' ? ' selected' : '') + '>Composition</option>' +
                             '<option value="aggregation"' + (mappingData.archimate_relationship_type === 'aggregation' ? ' selected' : '') + '>Aggregation</option>' +
@@ -1105,7 +1102,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Access Mode</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'archimate_access_mode\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="archimate_access_mode">' +
                         '<option value="unspecified"' + (mappingData.archimate_access_mode === 'unspecified' ? ' selected' : '') + '>Unspecified</option>' +
                         '<option value="read"' + (mappingData.archimate_access_mode === 'read' ? ' selected' : '') + '>Read</option>' +
                         '<option value="write"' + (mappingData.archimate_access_mode === 'write' ? ' selected' : '') + '>Write</option>' +
@@ -1126,15 +1123,15 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '<div class="grid grid-cols-2 md:grid-cols-4 gap-4">' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Automation (1-5)</label>' +
-                    '<input type="number" min="1" max="5" value="' + (mappingData.automation_level || 1) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'automation_level\', parseInt(this.value))"/>' +
+                    '<input type="number" min="1" max="5" value="' + (mappingData.automation_level || 1) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="automation_level" data-umm-cast="int"/>' +
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Contribution %</label>' +
-                    '<input type="number" min="0" max="100" value="' + (mappingData.process_contribution || 50) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'process_contribution\', parseInt(this.value))"/>' +
+                    '<input type="number" min="0" max="100" value="' + (mappingData.process_contribution || 50) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="process_contribution" data-umm-cast="int"/>' +
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Role</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'application_role\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="application_role">' +
                         '<option value="primary"' + (mappingData.application_role === 'primary' ? ' selected' : '') + '>Primary</option>' +
                         '<option value="secondary"' + (mappingData.application_role === 'secondary' ? ' selected' : '') + '>Secondary</option>' +
                         '<option value="supporting"' + (mappingData.application_role === 'supporting' ? ' selected' : '') + '>Supporting</option>' +
@@ -1143,7 +1140,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Criticality</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'process_criticality\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="process_criticality">' +
                         '<option value="critical"' + (mappingData.process_criticality === 'critical' ? ' selected' : '') + '>Critical</option>' +
                         '<option value="high"' + (mappingData.process_criticality === 'high' ? ' selected' : '') + '>High</option>' +
                         '<option value="medium"' + (mappingData.process_criticality === 'medium' ? ' selected' : '') + '>Medium</option>' +
@@ -1164,7 +1161,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
             '<div class="grid grid-cols-2 md:grid-cols-3 gap-4">' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Implementation</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'implementation_status\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="implementation_status">' +
                         '<option value="planned"' + (mappingData.implementation_status === 'planned' ? ' selected' : '') + '>Planned</option>' +
                         '<option value="in_progress"' + (mappingData.implementation_status === 'in_progress' ? ' selected' : '') + '>In Progress</option>' +
                         '<option value="deployed"' + (mappingData.implementation_status === 'deployed' ? ' selected' : '') + '>Deployed</option>' +
@@ -1173,7 +1170,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">License</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'license_type\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="license_type">' +
                         '<option value="perpetual"' + (mappingData.license_type === 'perpetual' ? ' selected' : '') + '>Perpetual</option>' +
                         '<option value="subscription"' + (mappingData.license_type === 'subscription' ? ' selected' : '') + '>Subscription</option>' +
                         '<option value="open_source"' + (mappingData.license_type === 'open_source' ? ' selected' : '') + '>Open Source</option>' +
@@ -1182,7 +1179,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Deployment</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'deployment_model\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="deployment_model">' +
                         '<option value="on_premise"' + (mappingData.deployment_model === 'on_premise' ? ' selected' : '') + '>On-Premise</option>' +
                         '<option value="cloud"' + (mappingData.deployment_model === 'cloud' ? ' selected' : '') + '>Cloud</option>' +
                         '<option value="hybrid"' + (mappingData.deployment_model === 'hybrid' ? ' selected' : '') + '>Hybrid</option>' +
@@ -1191,7 +1188,7 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Contract</label>' +
-                    '<select class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'contract_status\', this.value)">' +
+                    '<select class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="contract_status">' +
                         '<option value="active"' + (mappingData.contract_status === 'active' ? ' selected' : '') + '>Active</option>' +
                         '<option value="expiring"' + (mappingData.contract_status === 'expiring' ? ' selected' : '') + '>Expiring Soon</option>' +
                         '<option value="expired"' + (mappingData.contract_status === 'expired' ? ' selected' : '') + '>Expired</option>' +
@@ -1200,11 +1197,11 @@ function renderUnifiedApplicationSettings(appId, mapping) {
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">Annual Cost ($)</label>' +
-                    '<input type="number" min="0" value="' + (mappingData.annual_cost || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'annual_cost\', parseInt(this.value))"/>' +
+                    '<input type="number" min="0" value="' + (mappingData.annual_cost || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="annual_cost" data-umm-cast="int"/>' +
                 '</div>' +
                 '<div>' +
                     '<label class="block text-xs font-medium text-foreground mb-1">User Count</label>' +
-                    '<input type="number" min="0" value="' + (mappingData.user_count || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" onchange="updateUnifiedApplicationMapping(\'' + appId + '\', \'user_count\', parseInt(this.value))"/>' +
+                    '<input type="number" min="0" value="' + (mappingData.user_count || 0) + '" class="w-full text-sm border border-border rounded px-2 py-1" data-umm-app="' + appIdAttr + '" data-umm-field="user_count" data-umm-cast="int"/>' +
                 '</div>' +
             '</div>' +
         '</div>';
@@ -1256,7 +1253,28 @@ window.deselectAllUnified = function() {
     renderUnifiedApplicationsList();
 };
 
+function _setUnifiedSaveButtonsDisabled(disabled) {
+    ['unified-save-btn', 'unified-reverse-save-btn'].forEach(function(id) {
+        let btn = document.getElementById(id);
+        if (btn) btn.disabled = disabled;
+    });
+}
+
 window.saveUnifiedMappings = async function() {
+    // Guard against double-submit: rapid repeat clicks on Save must not fire
+    // duplicate mapping-creation requests.
+    if (UnifiedMappingModal._saving) return;
+    UnifiedMappingModal._saving = true;
+    _setUnifiedSaveButtonsDisabled(true);
+    try {
+        await _saveUnifiedMappingsInner();
+    } finally {
+        UnifiedMappingModal._saving = false;
+        _setUnifiedSaveButtonsDisabled(false);
+    }
+};
+
+async function _saveUnifiedMappingsInner() {
     // Handle reverse mode: Application -> Targets
     if (UnifiedMappingModal.reverseMode) {
         await saveReverseMappings();
@@ -1300,17 +1318,7 @@ window.saveUnifiedMappings = async function() {
             body.vendor_product_id = UnifiedMappingModal.vendorProductId;
         }
 
-        let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-            },
-            body: JSON.stringify(body)
-        });
-
-        let data = await response.json();
+        let data = await Platform.fetch.post(url, body);
 
         if (data.error) {
             if (typeof showNotification === 'function') {
@@ -1335,7 +1343,6 @@ window.saveUnifiedMappings = async function() {
 
         closeUnifiedMappingModal();
     } catch (error) {
-        console.error('Error saving mappings:', error);
         if (typeof showNotification === 'function') {
             showNotification('Error saving mappings', 'error');
         } else {
@@ -1372,26 +1379,24 @@ async function saveReverseMappings() {
                 }]
             };
 
-            let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-            let response = await fetch(UnifiedMappingModal.apiEndpoint + '/mappings', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-                },
-                body: JSON.stringify(body)
-            });
-
-            let data = await response.json();
-            if (data.success || data.created > 0) {
-                successCount++;
-            } else {
+            try {
+                let data = await Platform.fetch.post(UnifiedMappingModal.apiEndpoint + '/mappings', body, { silent: true });
+                if (data.success || data.created > 0) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                }
+            } catch (error) {
                 errorCount++;
             }
         }
 
         if (successCount > 0) {
             Platform.toast.success('Successfully mapped ' + successCount + ' capability(s) to ' + UnifiedMappingModal.reverseAppName);
+            // A partial failure used to be reported as an unqualified success.
+            if (errorCount > 0) {
+                Platform.toast.error(errorCount + ' capability(s) were NOT mapped — retry those.');
+            }
             if (UnifiedMappingModal.onSaveCallback) {
                 UnifiedMappingModal.onSaveCallback({ success: true, created: successCount });
             }
@@ -1400,7 +1405,6 @@ async function saveReverseMappings() {
             Platform.toast.error('Failed to save mappings. Please try again.');
         }
     } catch (error) {
-        console.error('Error saving reverse mappings:', error);
         Platform.toast.error('Error saving mappings: ' + error.message);
     }
 }
@@ -1421,15 +1425,7 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
             url = '/api/vendors/application-mappings/' + mappingId;
         }
 
-        let csrfMeta = document.querySelector('meta[name="csrf-token"]');
-        let response = await fetch(url, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': csrfMeta ? csrfMeta.content : ''
-            }
-        });
-
-        let data = await response.json();
+        let data = await Platform.fetch.delete(url);
 
         if (data.error) {
             if (typeof showNotification === 'function') {
@@ -1445,9 +1441,60 @@ window.deleteUnifiedMapping = async function(mappingId, appId) {
             showNotification('Mapping removed successfully', 'success');
         }
     } catch (error) {
-        console.error('Error deleting mapping:', error);
+        if (typeof showNotification === 'function') {
+            showNotification('Error deleting mapping. Please try again.', 'error');
+        } else {
+            Platform.toast.error('Error deleting mapping. Please try again.');
+        }
     }
 };
+
+// ── Delegated listeners (CSP) ───────────────────────────────────────────────
+// The app ships script-src 'self' 'nonce-…' 'strict-dynamic' with no
+// 'unsafe-inline'/'unsafe-hashes', so an on*= attribute never executes however
+// it reaches the DOM. Worse, this markup is inserted via safeHTML(), and
+// core/02-sanitize.js FORBID_ATTRs onclick/onchange outright -- the attributes
+// were being stripped before the CSP even got a say. Every settings control in
+// renderUnifiedApplicationSettings() was therefore inert for its whole life:
+// changing Support Level, Coverage %, Relationship, the ArchiMate/APQC/vendor
+// fields etc. never reached updateUnifiedApplicationMapping(), so the mapping
+// saved whatever buildMappingData() defaulted to.
+//
+// Bound once at document level so it survives renderUnifiedApplicationsList()
+// re-rendering the list from fetched data.
+document.addEventListener('change', function(event) {
+    let el = event.target.closest('[data-umm-app][data-umm-field]');
+    if (!el) return;
+    let value = el.value;
+    if (el.getAttribute('data-umm-cast') === 'int') {
+        value = parseInt(el.value, 10);
+        if (isNaN(value)) return;
+    }
+    updateUnifiedApplicationMapping(el.getAttribute('data-umm-app'), el.getAttribute('data-umm-field'), value);
+});
+
+// Target-card selection. The cards carry data-action="selectTarget" with
+// data-params, but nothing in the shipped JS dispatches that pair for this
+// modal (capability_map/index.js has a [data-action] switch with no
+// selectTarget case), so clicking a card -- cursor-pointer, hover highlight --
+// did nothing. This is the dispatcher.
+document.addEventListener('click', function(event) {
+    // The reverse-mode checkbox sits inside the card and used to carry
+    // onclick="event.stopPropagation()" -- itself stripped by the sanitizer and
+    // refused by the CSP. It is deliberately allowed to fall through to the
+    // card handler now: toggleTargetSelection() re-renders the card with the
+    // correct checked state, so checkbox and card agree.
+    let card = event.target.closest('#unified-targets-list [data-action="selectTarget"]');
+    if (!card) return;
+    let params;
+    try {
+        params = JSON.parse(card.getAttribute('data-params') || '[]');
+    } catch (err) {
+        return;
+    }
+    if (!params.length) return;
+    selectTarget(params[0], params[1]);
+});
 
 // Close modal on backdrop click — runs unconditionally (script loaded after DOM element)
 (function() {

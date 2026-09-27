@@ -28,7 +28,7 @@ Routes:
 
 from datetime import datetime
 
-from flask import current_app, jsonify, request
+from flask import current_app, g, jsonify, request
 from flask_login import login_required
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
@@ -45,6 +45,7 @@ from app.exceptions import (
 from . import capability_map
 from .map_views import build_nodes_edges
 import logging
+from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
 
@@ -198,7 +199,6 @@ def api_capabilities_tree():
         if not capabilities:
             return jsonify({"tree": [], "total": 0})
 
-        params = {}
 
         highlight_ids = set()
         highlight_param = request.args.get("highlight", "")
@@ -282,9 +282,12 @@ def api_capabilities_semantic_search():
                 db.or_(BusinessCapability.name.ilike(f"%{query}%"),
                        BusinessCapability.description.ilike(f"%{query}%"))
             ).limit(top_k).all()
+            # similarity is None, not 0.5: a keyword hit has no cosine score, and a
+            # literal 0.5 is indistinguishable from a measured one.
+            # error-signalling-ok: the keyword fallback returns real matches, so the search did succeed; method=keyword_fallback tells the caller the ranking is not vector-based
             return jsonify({"capabilities": [
                 {"id": c.id, "name": c.name, "level": c.level, "code": c.code or "",
-                 "description": c.description or "", "similarity": 0.5}
+                 "description": c.description or "", "similarity": None}
                 for c in caps
             ], "method": "keyword_fallback"})
 
@@ -431,7 +434,22 @@ def api_unified_capabilities():
         # Use BusinessCapability (real APQC data) as the primary source
         app_capabilities = BusinessCapability.query.limit(500).all()
 
-        app_mappings = ApplicationCapabilityMapping.query.limit(500).all()
+        # tenant-scoping-ok: scoped via the TenantMixin FK parent
+        # BusinessCapability, not ACM.organization_id -- that column is NULL
+        # on every row in production, so a predicate on it would report
+        # every capability as unmapped. Joining BusinessCapability lets
+        # do_orm_execute scope the join automatically. See e622d36 /
+        # rationalization_scoring_service.py.
+        app_mappings = (
+            # tenant-scoping-ok: scoped via TenantMixin FK parent BusinessCapability, ACM.organization_id is NULL in prod (see e622d36).
+            ApplicationCapabilityMapping.query
+            .join(
+                BusinessCapability,
+                ApplicationCapabilityMapping.business_capability_id == BusinessCapability.id,
+            )
+            .limit(500)
+            .all()
+        )
         mapped_app_cap_ids = {mapping.business_capability_id for mapping in app_mappings}
 
         # Build mapping index (business_capability_id -> list of mappings)
@@ -462,7 +480,7 @@ def api_unified_capabilities():
             current_app.logger.info(
                 "ManufacturingCapability model not found; manufacturing capabilities will be skipped."
             )
-        except Exception as e:
+        except Exception:
             current_app.logger.exception(
                 "Error importing or querying ManufacturingCapability; manufacturing capabilities will be skipped."
             )
@@ -537,9 +555,15 @@ def api_unified_capabilities():
                         "business_criticality": biz_criticality or "supporting",
                         "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                         "business_impact": min(business_impact, 100),
-                        "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                        "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                        "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                        # R3-1: an unassessed capability must not render as a
+                        # fabricated "Level 1 -> Level 3" pair (same fix as
+                        # already applied at :890/:972 in this file).
+                        "current_maturity": getattr(capability, "current_maturity_level", None),
+                        "target_maturity": getattr(capability, "target_maturity_level", None),
+                        "maturity_reason_code": None
+                        if getattr(capability, "current_maturity_level", None) is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": getattr(capability, "maturity_gap", None),
                         "annual_cost": getattr(capability, "annual_cost", None),
                         "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                         "status": getattr(capability, "status", "defined"),
@@ -555,7 +579,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if app_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic capability
                 continue
 
@@ -660,9 +684,26 @@ def api_unified_capabilities():
                         if capability.unified_capability
                         else False,
                         "business_impact": min(mfg_business_impact, 100),
-                        "current_maturity": getattr(capability, "lean_maturity", 1),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "target_maturity": getattr(capability, "lean_maturity", 3),  # model-safety-ok: field on ManufacturingCapability, defensive for mixed types
-                        "maturity_gap": 0,
+                        # D-R7-1: ManufacturingCapability only carries a single
+                        # `lean_maturity` field (current, no separate target
+                        # concept on that model). The single authority for a
+                        # current/target/gap TRIPLET for this row is the linked
+                        # UnifiedCapability (`unified_cap`), same as the other 3
+                        # sites in this file (:561-566, :890, :972). Do not copy
+                        # `lean_maturity` into both current and target — that
+                        # fabricates a gap of 0 that can never be anything else.
+                        "current_maturity": unified_cap.current_maturity_level
+                        if unified_cap
+                        else None,
+                        "target_maturity": unified_cap.target_maturity_level
+                        if unified_cap
+                        else None,
+                        "maturity_reason_code": None
+                        if unified_cap and unified_cap.current_maturity_level is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": unified_cap.maturity_gap
+                        if unified_cap and unified_cap.maturity_gap is not None
+                        else None,
                         "annual_cost": None,
                         "annual_revenue_impact": None,
                         "status": getattr(capability, "status", "defined"),  # model-safety-ok: ManufacturingCapability does not have status field
@@ -678,7 +719,7 @@ def api_unified_capabilities():
                         "coverage_percentage": 100 if mfg_mapped else 0,
                     }
                 )
-            except Exception as e:
+            except Exception:
                 # Skip problematic manufacturing capability
                 continue
 
@@ -735,7 +776,7 @@ def api_unified_capabilities():
                 },
             }
         )
-    except Exception as e:
+    except Exception:
         return (
             jsonify(
                 {
@@ -867,9 +908,14 @@ def api_mappings():
                         "business_criticality": getattr(capability, "business_criticality", None) or "supporting",
                         "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                         "business_impact": business_impact,
-                        "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                        "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                        "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                        # D-7: an unassessed capability must not render as a
+                        # fabricated "Level 1 -> Level 3" pair.
+                        "current_maturity": getattr(capability, "current_maturity_level", None),
+                        "target_maturity": getattr(capability, "target_maturity_level", None),
+                        "maturity_reason_code": None
+                        if getattr(capability, "current_maturity_level", None) is not None
+                        else "no_maturity_recorded",
+                        "maturity_gap": getattr(capability, "maturity_gap", None),
                         "annual_cost": getattr(capability, "annual_cost", None),
                         "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                         "status": getattr(capability, "status", "defined"),
@@ -944,9 +990,14 @@ def api_mappings():
                     "business_owner": getattr(capability, "capability_owner", None) or "Unassigned",
                     "business_priority": business_priority,
                     "business_impact": business_impact,
-                    "current_maturity": getattr(capability, "current_maturity_level", None) or 1,
-                    "target_maturity": getattr(capability, "target_maturity_level", None) or 3,
-                    "maturity_gap": getattr(capability, "maturity_gap", 0) or 0,
+                    # D-7: an unassessed capability must not render as a
+                    # fabricated "Level 1 -> Level 3" pair.
+                    "current_maturity": getattr(capability, "current_maturity_level", None),
+                    "target_maturity": getattr(capability, "target_maturity_level", None),
+                    "maturity_reason_code": None
+                    if getattr(capability, "current_maturity_level", None) is not None
+                    else "no_maturity_recorded",
+                    "maturity_gap": getattr(capability, "maturity_gap", None),
                     "is_core_differentiator": getattr(capability, "is_core_differentiator", False),
                     "annual_revenue_impact": getattr(capability, "annual_revenue_impact", None),
                 }
@@ -1133,6 +1184,67 @@ def api_capability_applications(capability_id):
         return jsonify({"error": "An internal error occurred"}), 500
 
 
+# --------------------------------------------------------------------------- dual write
+
+def _mirror_mapping(capability_id, application_id, support_level, delete=False):
+    """Keep application_capability_mapping in step with application_capability_coverage.
+
+    Two tables model the same fact -- "this application supports this capability".
+    This endpoint wrote only ApplicationCapabilityCoverage, while the flagship
+    Capability Map (api_unified_capabilities), its gap analysis and its coverage
+    percentage all read ApplicationCapabilityMapping. The result: you could map
+    two applications on the mapping screen, see them listed there, and the
+    Capability Map would still report "Mapped to Apps 0 / Coverage 0% / No
+    Application Mapped" for the same capability. Two screens disagreeing about
+    the same fact is the worst failure mode for a system of record.
+
+    Consolidating onto one table is a data migration across ~600 call sites and
+    is not this change; keeping both in step at the single point that writes them
+    is, and it makes every existing reader correct.
+    """
+    from app.models.application_capability import ApplicationCapabilityMapping
+
+    # This model carries organization_id but NOT TenantMixin, so nothing filters
+    # it for us -- the predicate has to be written here. Without it the lookup
+    # could match another tenant's row for the same (capability, application)
+    # pair and then update or delete it, which is exactly what the insert below
+    # already guards against by setting organization_id explicitly.
+    existing = ApplicationCapabilityMapping.query.filter_by(
+        business_capability_id=capability_id,
+        application_component_id=application_id,
+        organization_id=getattr(g, "current_org_id", None),
+    ).first()
+
+    if delete:
+        if existing:
+            db.session.delete(existing)
+        return
+
+    if existing:
+        existing.support_level = support_level
+    else:
+        db.session.add(
+            ApplicationCapabilityMapping(
+                business_capability_id=capability_id,
+                application_component_id=application_id,
+                support_level=support_level,
+                organization_id=getattr(g, "current_org_id", None),
+            )
+        )
+    # "The field IS the element" applies to relationships too — but this is
+    # ALREADY handled: app/models/archimate_relationship_sync.py's Listener 10
+    # (after_insert/after_delete on ApplicationCapabilityMapping, the exact
+    # model this function writes) already mirrors every row here into a real
+    # ArchiMateRelationship(type="serving") the moment it's inserted/deleted.
+    #
+    # A prior session pass (2 Sep 2026) added a SECOND, hand-rolled mirror here
+    # — type="realization" — without checking whether one already existed. It
+    # did: every mapping made through this endpoint was producing TWO
+    # relationships for one fact, exactly the duplicate-authority problem
+    # ADR-0008 exists to prevent. Removed; the canonical listener already does
+    # this, correctly, tenant-validated, and idempotently — nothing to add here.
+
+
 @capability_map.route("/api/mappings", methods=["POST"])
 @login_required
 @audit_log("capability_mapping_create")
@@ -1156,7 +1268,7 @@ def api_create_mapping():
         # Convert string ID to int for database query
         try:
             capability_id_int = int(capability_id)
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             current_app.logger.error(f"Invalid capability_id format: {capability_id}")
             return jsonify({"error": f"Invalid capability_id format: {capability_id}"}), 400
 
@@ -1234,6 +1346,7 @@ def api_create_mapping():
                     if key in ALLOWED_MAPPING_FIELDS and hasattr(existing, key):
                         setattr(existing, key, value)
                 existing.updated_at = datetime.utcnow()
+                _mirror_mapping(capability_id_int, app_id_int, existing.support_level)
                 updated_count += 1
             else:
                 # Create new mapping
@@ -1248,6 +1361,7 @@ def api_create_mapping():
                     notes=mapping_fields.get("notes", ""),
                 )
                 db.session.add(mapping)
+                _mirror_mapping(capability_id_int, app_id_int, mapping.support_level)
                 created_count += 1
 
         db.session.commit()
@@ -1296,14 +1410,27 @@ def api_delete_mapping(mapping_id):
     try:
         from app.models.business_capabilities import ApplicationCapabilityCoverage
 
-        mapping = ApplicationCapabilityCoverage.query.get(mapping_id)
+        from app.models.business_capabilities import BusinessCapability
+
+        mapping = ApplicationCapabilityCoverage.query.filter_by(id=mapping_id).first()
         if not mapping:
+            return jsonify({"error": "Mapping not found"}), 404
+
+        # ApplicationCapabilityCoverage has no TenantMixin, so nothing scopes it
+        # to the caller's organisation -- a bare id lookup would let any tenant
+        # delete any other tenant's mapping. BusinessCapability IS tenant-filtered,
+        # so resolving the parent capability is the check.
+        owning_capability = BusinessCapability.query.filter_by(
+            id=mapping.capability_id
+        ).first()
+        if owning_capability is None:
             return jsonify({"error": "Mapping not found"}), 404
 
         capability_id = mapping.capability_id
         application_id = mapping.application_component_id
 
         db.session.delete(mapping)
+        _mirror_mapping(capability_id, application_id, None, delete=True)
         db.session.commit()
 
         return jsonify(
@@ -1317,6 +1444,46 @@ def api_delete_mapping(mapping_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error deleting mapping: {str(e)}")
+        return jsonify({"error": "An internal error occurred"}), 500
+
+
+@capability_map.route(
+    "/api/mappings/by-capability/<int:capability_id>/application/<int:application_id>",
+    methods=["DELETE"],
+)
+@login_required
+@audit_log("capability_mapping_delete")
+def api_delete_mapping_by_pair(capability_id, application_id):
+    """Delete a mapping addressed by the pair it connects.
+
+    The mapping UI knows which capability and which application the user
+    unticked; it has no reason to also track the surrogate id of the join row.
+    Scoped through BusinessCapability, which carries the tenant filter.
+    """
+    try:
+        from app.models.business_capabilities import (
+            ApplicationCapabilityCoverage,
+            BusinessCapability,
+        )
+
+        capability = BusinessCapability.query.filter_by(id=capability_id).first()
+        if capability is None:
+            return jsonify({"error": "Capability not found"}), 404
+
+        mapping = ApplicationCapabilityCoverage.query.filter_by(
+            capability_id=capability_id, application_component_id=application_id
+        ).first()
+        if mapping is None:
+            return jsonify({"error": "Mapping not found"}), 404
+
+        db.session.delete(mapping)
+        _mirror_mapping(capability_id, application_id, None, delete=True)
+        db.session.commit()
+        return jsonify({"success": True, "capability_id": capability_id,
+                        "application_id": application_id})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting mapping by pair: {e}")
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -1845,8 +2012,11 @@ def api_abacus_auto_suggest():
     if not application_ids or not isinstance(application_ids, list):
         return jsonify({"error": "application_ids (list of ints) is required"}), 400
 
-    threshold = float(data.get("threshold", 0.3))
-    auto_apply_threshold = float(data.get("auto_apply_threshold", 0.7))
+    try:
+        threshold = float(data.get("threshold", 0.3))
+        auto_apply_threshold = float(data.get("auto_apply_threshold", 0.7))
+    except (ValueError, TypeError):
+        return jsonify({"error": "threshold and auto_apply_threshold must be numbers"}), 400
 
     try:
         # Load requested applications (filter to Abacus-sourced ones)
@@ -2021,7 +2191,7 @@ def api_abacus_pending_suggestions():
     )
 
     threshold = request.args.get("threshold", 0.3, type=float)
-    limit = request.args.get("limit", 50, type=int)
+    limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
     try:
         # Subquery: app IDs that already have at least one coverage mapping

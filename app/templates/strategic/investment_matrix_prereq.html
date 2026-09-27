@@ -8,7 +8,8 @@
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
     {'text': 'Strategy Layer', 'href': url_for('archimate_crud.dashboard') + '#strategy'},
-    {'text': 'Strategic Planning', 'current': true}
+    {'text': 'Strategic Planning', 'href': url_for('enterprise.strategic_planning_dashboard')},
+    {'text': 'Investment Matrix', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -16,11 +17,7 @@
 <div class="space-y-6">
     {{ page_header(
         title='Investment Prioritization Matrix',
-        description='Data-driven investment recommendations based on strategic importance, coverage gaps, and risk assessment',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Investment Matrix'}
-        ]
+        description='Data-driven investment recommendations based on strategic importance, coverage gaps, and risk assessment'
     ) }}
 
     <div class="flex items-center justify-center min-h-[480px]">
@@ -49,7 +46,7 @@
             </div>
 
             <div class="flex flex-col items-center gap-3 pt-2">
-                <button id="btn-map-capabilities"
+                <button type="button" id="btn-map-capabilities"
                         class="inline-flex items-center justify-center gap-2 rounded-md bg-primary text-primary-foreground px-6 py-2.5 text-sm font-medium shadow hover:bg-primary/90 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
                          viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -59,7 +56,7 @@
                     </svg>
                     Map Applications to Capabilities
                 </button>
-                <button id="btn-map-applications"
+                <button type="button" id="btn-map-applications"
                         class="text-sm text-muted-foreground hover:underline hover:text-foreground transition-colors">
                     or map from an application →
                 </button>

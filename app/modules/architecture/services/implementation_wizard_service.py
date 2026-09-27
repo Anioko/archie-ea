@@ -3,17 +3,12 @@ Implementation Wizard Service - Plan C + Plan B Hybrid
 7 - step wizard for implementation planning
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app import db
 from app.models import (
-    ApplicationCapability,
     ArchiMateElement,
-    ArchiMateRelationship,
     ArchitectureModel,
-    BusinessCapability,
-    GenerationPipeline,
-    TechnologyStack,
     WorkflowPipeline,
     WorkflowTemplate,
 )

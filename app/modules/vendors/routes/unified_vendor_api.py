@@ -11,17 +11,21 @@ Consolidated API endpoints for vendor operations.
 All endpoints return standardized JSON responses.
 """
 
-from flask import jsonify, request, current_app, Blueprint, redirect, url_for
+from flask import jsonify, request, current_app, Blueprint, url_for
 from flask_login import login_required, current_user
 from sqlalchemy import func
 
 from app.utils.api_helpers import api_error
+from app.utils.validators import validate_string
 
 from app.decorators import audit_log, require_roles
 from app.services.rate_limiter import rate_limit
 from app.extensions import db
 from app.models.vendor_organization import VendorOrganization, VendorProduct
 import logging
+from app.utils.pagination import safe_int_arg
+from app.utils.route_guards import require_entity
+from app.models.vendor_analysis import OptionsAnalysis
 logger = logging.getLogger(__name__)
 
 # Blueprint defined here (was in app/unified_vendors/__init__.py)
@@ -67,8 +71,8 @@ MAX_WEBSITE_LENGTH = 500
 @login_required
 def list_vendors():
     """List vendors with pagination and filtering."""
-    page = request.args.get("page", 1, type=int)
-    per_page = min(request.args.get("per_page", 25, type=int), 100)
+    page = safe_int_arg('page', 1, minimum=1)
+    per_page = min(safe_int_arg('per_page', 25, minimum=1, maximum=500), 100)
     search = request.args.get("q") or request.args.get("search", "")
     vendor_type = request.args.get("vendor_type", "")
     sort_by = request.args.get("sort") or request.args.get("sort_by", "name")
@@ -150,8 +154,37 @@ def bulk_delete_vendors():
         return api_error("No IDs provided", "MISSING_IDS")
     if not isinstance(ids, list):
         return api_error("ids must be a list", "INVALID_INPUT")
-    deleted = VendorOrganization.query.filter(VendorOrganization.id.in_(ids)).delete(synchronize_session=False)
-    db.session.commit()
+
+    # DEF-073, Capgemini dry-run: vendor_products.vendor_id has no
+    # ondelete=CASCADE, so deleting a vendor with products raised
+    # IntegrityError straight out of the bulk DELETE, uncaught, and reached
+    # the user as a raw "Internal Server Error" toast twice (once per retry)
+    # with the vendor left in place either way. Report which vendors are
+    # blocked rather than let the DB error surface.
+    from app.models.vendor.vendor_organization import VendorProduct
+
+    blocking = (
+        db.session.query(VendorProduct.vendor_organization_id, db.func.count(VendorProduct.id))
+        .filter(VendorProduct.vendor_organization_id.in_(ids))
+        .group_by(VendorProduct.vendor_organization_id)
+        .all()
+    )
+    if blocking:
+        blocked_ids = [vendor_id for vendor_id, _count in blocking]
+        return api_error(
+            "Cannot delete vendor(s) with products still attached: "
+            + ", ".join(str(v) for v in blocked_ids)
+            + ". Remove their products first.",
+            "VENDOR_HAS_PRODUCTS",
+        )
+
+    try:
+        deleted = VendorOrganization.query.filter(VendorOrganization.id.in_(ids)).delete(synchronize_session=False)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Bulk vendor delete failed for ids %s", ids)
+        return api_error("Could not delete the selected vendor(s).", "DELETE_FAILED")
     return jsonify({"deleted": deleted, "ids": ids})
 
 
@@ -173,14 +206,37 @@ def get_vendor(vendor_id):
 def search_vendors():
     """Search vendors by name — autocomplete endpoint used by pickers."""
     search = request.args.get("search", "").strip()
-    limit = min(request.args.get("limit", 10, type=int), 100)
+    # ARCH-014: ``total`` used to be ``len(vendors)`` — the size of the page just
+    # returned, not the size of the collection. A consumer paging on it concluded
+    # the catalogue held 10 vendors when it held 45, with no way to detect the
+    # truncation. It is now a COUNT over the filtered query, independent of paging.
+    # ``per_page`` was also silently ignored (only ``limit`` was read), so an
+    # explicit page-size request was answered with the default 10.
+    page_size = safe_int_arg('per_page', None, minimum=1, maximum=500)
+    if page_size is None:
+        page_size = safe_int_arg('limit', None, minimum=1, maximum=500)
+    if page_size is None:
+        page_size = 10
+    page_size = max(1, min(page_size, MAX_PER_PAGE))
+    page = max(1, safe_int_arg('page', 1, minimum=1) or 1)
+
     query = VendorOrganization.query
     if search:
         query = query.filter(VendorOrganization.name.ilike(f"%{search}%"))
-    vendors = query.order_by(VendorOrganization.name).limit(limit).all()
+
+    total = query.count()
+    vendors = (
+        query.order_by(VendorOrganization.name)
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+        .all()
+    )
     return jsonify({
         "vendors": [{"id": v.id, "name": v.name, "vendor_type": getattr(v, "vendor_type", None)} for v in vendors],
-        "total": len(vendors),
+        "total": total,
+        "page": page,
+        "per_page": page_size,
+        "pages": (total + page_size - 1) // page_size,
     })
 
 
@@ -205,6 +261,17 @@ def create_vendor():
             f"Name exceeds maximum length of {MAX_NAME_LENGTH} characters",
             "NAME_TOO_LONG",
         )
+
+    # ARCH-071: vendor name is an identifier, not rich text — strip HTML tags
+    # at the schema layer rather than relying solely on output encoding.
+    # Stripping (not entity-escaping) matches validate_application_name's
+    # approach so this does not double-escape on Jinja's own autoescape.
+    _valid, data["name"], _err = validate_string(
+        data["name"], max_length=MAX_NAME_LENGTH, min_length=1,
+        field_name="name", required=True, strip_tags=True,
+    )
+    if not _valid:
+        return api_error(_err or "Invalid vendor name", "INVALID_NAME")
 
     if (
         data.get("description")
@@ -236,7 +303,7 @@ def create_vendor():
     vendor = VendorOrganization(
         name=data["name"],
         vendor_type=data.get("vendor_type", "software_vendor"),
-        country=data.get("country"),
+        headquarters_location=data.get("country"),  # model column is headquarters_location
         description=data.get("description"),
         website=data.get("website"),
         created_at=datetime.utcnow(),
@@ -267,7 +334,6 @@ def create_vendor():
 def update_vendor(vendor_id):
     """Update vendor organization with allowlist protection and audit logging. PROD-009"""
     from datetime import datetime
-    from sqlalchemy.orm import with_for_update
 
     data = request.get_json() or {}
 
@@ -398,8 +464,8 @@ def match_vendor():
 
             service = VendorProductService()
 
-            match_result = service.find_best_vendor_match(
-                app_name=application_name, description=description
+            match_result = service.find_vendor_product_match(
+                application_name=application_name, description=description
             )
 
             return jsonify(
@@ -413,27 +479,16 @@ def match_vendor():
                 }
             )
         except ImportError:
-            vendors = VendorOrganization.query.filter(
-                VendorOrganization.name.ilike(f"%{application_name[:10]}%")
-            ).all()
-
-            return jsonify(
-                {
-                    "success": True,
-                    "match_result": {
-                        "matches": [
-                            {"vendor": v.to_dict(), "confidence": 0.5}
-                            for v in vendors[:5]
-                        ],
-                        "total_matches": len(vendors),
-                        "match_method": "catalog_search",
-                    },
-                    "request": {
-                        "application_name": application_name,
-                        "description": description,
-                    },
-                }
+            # The name-substring fallback stamped every hit with a literal
+            # confidence of 0.5, which is indistinguishable from a scored match.
+            # VendorProductService ships with the app, so an ImportError here is a
+            # broken install, not a supported degraded mode.
+            current_app.logger.exception(
+                "VendorProductService unavailable; vendor matching cannot run"
             )
+            return jsonify(
+                {"success": False, "error": "Vendor matching is unavailable"}
+            ), 500
 
     except Exception as e:
         current_app.logger.error(f"Error in vendor matching: {e}")
@@ -698,7 +753,6 @@ def get_recommendations():
 @require_roles("admin", "architect")
 def create_analysis():
     """Create vendor analysis."""
-    from flask_login import current_user
 
     data = request.get_json()
     if not data:
@@ -740,6 +794,8 @@ def list_analyses():
 @login_required
 def get_analysis(analysis_id):
     """Get analysis results."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     return jsonify(
         {
             "success": True,
@@ -756,6 +812,8 @@ def get_analysis(analysis_id):
 @login_required
 def get_comparison(analysis_id):
     """Get vendor comparison matrix data."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     return jsonify(
         {
             "success": True,
@@ -769,6 +827,8 @@ def get_comparison(analysis_id):
 @login_required
 def get_comparison_matrix(analysis_id):
     """Get vendor comparison matrix."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     include_gaps = request.args.get("include_gaps", "true").lower() == "true"
     include_recommendations = (
         request.args.get("include_recommendations", "true").lower() == "true"
@@ -823,6 +883,8 @@ def compare_scenarios(analysis_id):
 @login_required
 def run_sensitivity_analysis(analysis_id):
     """Run sensitivity analysis on criteria weights."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     criteria = request.args.get("criteria", "cost")
     variation_range = float(request.args.get("variation_range", 0.1))
 
@@ -885,6 +947,8 @@ def export_analysis(analysis_id, format_type):
 @login_required
 def get_provenance(analysis_id):
     """Get analysis provenance data."""
+    # Existence guard: a zeroed payload for a nonexistent analysis is fabricated data.
+    require_entity(OptionsAnalysis, analysis_id, description=f"Analysis {analysis_id} not found")
     from datetime import datetime
 
     provenance = {
@@ -1003,6 +1067,8 @@ def get_data_quality():
 @login_required
 def get_vendor_quality(vendor_id):
     """Get data quality score for specific vendor."""
+    # Existence guard: a zero quality score for a nonexistent vendor is fabricated data.
+    require_entity(VendorOrganization, vendor_id, description=f"Vendor {vendor_id} not found")
     return jsonify(
         {"success": True, "vendor_id": vendor_id, "quality_score": 0, "issues": []}
     )

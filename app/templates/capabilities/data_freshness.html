@@ -1,0 +1,120 @@
+{% extends 'layouts/admin_base.html' %}
+{% from "components/page_header.html" import page_header %}
+{% from "components/metrics_card.html" import metrics_card %}
+{% from "components/empty_state.html" import empty_state %}
+
+{% block title %}Data freshness{% endblock %}
+
+{% macro band_class(band) %}{{ 'text-success' if band == 'good' else 'text-warning' if band == 'warn' else 'text-destructive' }}{% endmacro %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+
+  {{ page_header(
+      title='Data freshness',
+      description='How complete and trustworthy the repository is — rolled up from every record’s completeness score. Fix the worst offenders below.',
+      breadcrumbs=[{'label': 'Governance'}, {'label': 'Data freshness'}]
+  ) }}
+
+  {# ── Top band ────────────────────────────────────────────────────────── #}
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+    <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6 flex items-center gap-5">
+      {% set ring = band_class(overall.band) %}
+      <div class="relative shrink-0" style="width:80px;height:80px"> {# inline-style-ok: fixed ring #}
+        <svg viewBox="0 0 36 36" class="w-full h-full -rotate-90">
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" class="text-muted/40" stroke-width="3"></circle>
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="currentColor" class="{{ ring }}" stroke-width="3"
+                  stroke-linecap="round" stroke-dasharray="{{ overall.avg }} 100"></circle>
+        </svg>
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-xl font-bold tabular-nums text-foreground">{{ overall.avg }}<span class="text-xs">%</span></span>
+        </div>
+      </div>
+      <div>
+        <p class="text-sm font-medium text-foreground">Repository completeness</p>
+        <p class="text-xs text-muted-foreground mt-0.5">across {{ overall.count }} records</p>
+      </div>
+    </div>
+
+    {{ metrics_card(title='Complete records', value=overall.buckets.good, icon='circle-check',
+        footer_text='80%+ of key fields recorded') }}
+    {{ metrics_card(title='Need attention', value=overall.buckets.warn, icon='clipboard-list',
+        footer_text='50–79% recorded') }}
+    {{ metrics_card(title='Critically thin', value=overall.buckets.poor, icon='triangle-alert',
+        footer_text='under 50% recorded') }}
+  </div>
+
+  {# ── Per-type breakdown ──────────────────────────────────────────────── #}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    {% for t in types %}
+    <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h2 class="text-sm font-semibold text-foreground">{{ t.label }}</h2>
+        <span class="text-sm font-bold tabular-nums {{ band_class(t.summary.band) }}">{{ t.summary.avg }}%</span>
+      </div>
+      <div class="h-2 rounded-full bg-muted overflow-hidden mb-3">
+        <div class="h-full rounded-full {{ 'bg-success' if t.summary.band == 'good' else 'bg-warning' if t.summary.band == 'warn' else 'bg-destructive' }}"
+             style="width:{{ t.summary.avg }}%"></div> {# inline-style-ok: data-driven bar #}
+      </div>
+      <div class="flex items-center gap-4 text-xs text-muted-foreground">
+        <span><span class="text-success font-semibold">{{ t.summary.buckets.good }}</span> complete</span>
+        <span><span class="text-warning font-semibold">{{ t.summary.buckets.warn }}</span> partial</span>
+        <span><span class="text-destructive font-semibold">{{ t.summary.buckets.poor }}</span> thin</span>
+        <span class="ml-auto">{{ t.summary.count }} total</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# ── Worst offenders — the actionable list ───────────────────────────── #}
+  <section data-slot="card" class="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+    <header class="flex items-center gap-2 px-6 py-4 border-b border-border">
+      <i data-lucide="list-checks" class="h-4 w-4 text-primary" aria-hidden="true"></i>
+      <h2 class="text-sm font-semibold text-foreground">Fix these first — least-complete records</h2>
+    </header>
+    {% if worst %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide text-muted-foreground border-b border-border">
+            <th class="px-6 py-2.5 font-medium">Record</th>
+            <th class="px-3 py-2.5 font-medium">Type</th>
+            <th class="px-3 py-2.5 font-medium w-40">Completeness</th>
+            <th class="px-6 py-2.5 font-medium">Missing</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for w in worst %}
+          {% set href = url_for('unified_applications.application_fact_sheet', id=w.id) if w.kind == 'application' else url_for('enterprise_crud.capability_fact_sheet', capability_id=w.id) %}
+          <tr class="border-b border-border/60">
+            <td class="px-6 py-3">
+              <a href="{{ href }}" class="text-foreground font-medium hover:text-primary hover:underline">{{ w.name }}</a>
+            </td>
+            <td class="px-3 py-3 text-muted-foreground capitalize">{{ w.kind }}</td>
+            <td class="px-3 py-3">
+              <div class="flex items-center gap-2">
+                <div class="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div class="h-full rounded-full {{ 'bg-warning' if w.band == 'warn' else 'bg-destructive' }}" style="width:{{ w.pct }}%"></div> {# inline-style-ok: data-driven #}
+                </div>
+                <span class="tabular-nums text-xs {{ band_class(w.band) }}">{{ w.pct }}%</span>
+              </div>
+            </td>
+            <td class="px-6 py-3 text-xs text-muted-foreground">
+              {{ w.missing[:4] | join(', ') }}{% if w.missing | length > 4 %} +{{ w.missing | length - 4 }} more{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      {{ empty_state(icon='circle-check', title='Every record is complete', description='No application or capability is missing key fields. The repository is trustworthy.', padding='py-12') }}
+    {% endif %}
+  </section>
+
+  {% if capped %}
+  <p class="text-xs text-muted-foreground mt-3">Scan capped at the first {{ scanned }} records for performance.</p>
+  {% endif %}
+
+</div>
+{% endblock %}

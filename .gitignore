@@ -1,5 +1,8 @@
 .webassets-cache/
 webassets-external/
+# Planning/provenance artifacts belong in the orchestrator repository, not
+# this one -- see CLAUDE.md's public-repository conventions.
+docs/buckets/
 .DS_Store
 *.pyc
 *.pyo
@@ -7,7 +10,6 @@ env
 venv
 *.env
 .env.*
-env*
 dist
 *.egg
 *.egg-info
@@ -30,6 +32,10 @@ scripts/bin/tailwindcss
 # build step (the Docker image is Python-only). Regenerate it with the build
 # script when templates/classes change; the hashed variants stay ignored.
 app/static/css/tailwind-output.*.css
+# --check writes a pid-suffixed backup and restores from it. If the
+# process dies mid-check the file survives; it is a build artifact,
+# never a source file.
+app/static/css/*.checkbak*
 
 # Asset manifest (build artifact from scripts/build_css.py)
 app/static/manifest.json
@@ -67,6 +73,12 @@ TEST_*.txt
 VALIDATION_*.txt
 VALIDATION_*.md
 VENDOR_*.txt
+# ...but the vendored-asset provenance record is a tracked artefact, not clutter.
+# It is how "what is in app/static/vendor and where did it come from" is answered
+# for an enterprise security review, and the vendor-integrity gate reads it.
+# Second time this "one-off looking name" pattern has hidden a permanent file —
+# see the scripts/check_*.py note further down.
+!app/static/vendor/VENDOR_MANIFEST.txt
 VENDOR_*.md
 📖_*.txt
 🎉_*.txt
@@ -170,15 +182,59 @@ scripts/prune/*.txt
 
 verification_artifacts/
 
+# deploy_verified.sh's local record of the last SHA it watched verify clean,
+# used for auto-rollback. Machine-local by design -- never shared via git.
+.deploy-state/
+
 # Screenshot evidence files (captured during E2E verification sessions)
 *.jpg
 *.png
 !docs/design_system/*.png
 !app/static/img/*.png
 !app/static/img/*.jpg
+!tests/smoke/visual_baselines/*.png
 
-# One-off diagnostic scripts
+# One-off diagnostic scripts.
+#
+# NOTE: these globs are why DESIGN.md can reference a `check_token_migration.py`
+# pre-commit hook that is absent from the repository — a permanent quality gate was
+# named like a throwaway and got ignored out of existence. Permanent gates must be
+# negated below, not just named carefully.
 scripts/check_*.py
+# Permanent gates — must stay tracked despite the check_*.py glob above.
+# Note: gitignore has no inline comments, so each negation gets its own line.
+!scripts/check_design_tokens.py
+!scripts/check_shell_conformance.py
+!scripts/check_external_origins.py
+!scripts/check_sri.py
+!scripts/check_deployed_deps.py
+!scripts/check_raw_sql_tenancy.py
+!scripts/check_fabricated_data.py
+!scripts/check_macro_import_context.py
+!scripts/check_dead_interactions.py
+!scripts/check_broken_surfaces.py
+!scripts/check_template_syntax.py
+!scripts/check_silent_data.py
+!scripts/check_error_signalling.py
+!scripts/check_fetch_guards.py
+!scripts/check_null_filters.py
+!scripts/check_template_references.py
+!scripts/check_sidebar_links.py
+!scripts/check_tenant_scoping.py
+!scripts/check_llm_boundary.py
+!scripts/check_dynamic_link_prefixes.py
+!scripts/check_asset_urls.py
+!scripts/check_qa_register.py
+!scripts/check_csrf_coverage.py
+!scripts/check_alpine_csp_compat.py
+!scripts/check_docs_drift.py
+!scripts/check_unregistered_checks.py
+!scripts/check_raw_repr_in_template.py
+!scripts/check_duplicate_breadcrumb.py
+!scripts/check_raw_html_escaping.py
+!scripts/check_smoke_coverage_on_change.py
+!scripts/check_composer_url_params.py
+!scripts/check_crosswalk_writer_gated.py
 scripts/patch_*.py
 scripts/find_*.py
 scripts/delete_*.py
@@ -229,3 +285,45 @@ uploads/
 instance/
 *.backup
 *.bak
+
+# Static-analysis and coverage artefacts (added 2026-07-30)
+# SonarQube scanner working dir (huge, vendored licence files exceed Windows path limits)
+.scannerwork/
+# junit report - generated
+test-results.xml
+
+# --- Local scratch / working files ---------------------------------------------
+# Ad-hoc scripts and dumps that accumulate at the repo root during investigation.
+# Listed explicitly rather than with broad globs (build_*.py, seed_*.py) so a
+# legitimately-named future module is not silently untracked.
+#
+# CI scans the FULL git history with gitleaks, so an accidental `git add -A` that
+# commits a dump containing real data is expensive to undo. Prefer putting new
+# throwaway work in scratch/ below.
+scratch/
+b_gz.html
+b_plain.html
+h_gz.txt
+h_plain.txt
+build_diagram.py
+build_engagement.py
+build_phase5.py
+codegen_incontainer.py
+seed_caps_overlap.py
+seed_sap_sfdc.py
+
+# Ad-hoc REPL scripts that reached the repo root and were committed by accident
+# (qc.py, si.py, readgen.py, recheck.py — 11-19 lines each, one with a hardcoded
+# solution_id=11, referenced by nothing). Deleted 2026-08-03. Named explicitly
+# rather than by glob so a legitimately-named future module is not swallowed.
+qc.py
+si.py
+readgen.py
+recheck.py
+.worktrees/
+
+# Wave verification screenshot-matrix output (scripts/screenshot_matrix.py) --
+# reviewed in-session, not committed.
+docs/superpowers/evidence/
+route_verification.json
+route_verification.accum.json

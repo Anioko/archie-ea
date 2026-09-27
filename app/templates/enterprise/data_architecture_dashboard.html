@@ -8,21 +8,24 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Data Architecture', 'current': true}
 ]) }}
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="space-y-6">
     <!-- Page Header -->
     {{ page_header(
         title='Data Architecture',
         description='Manage and analyze data architecture models',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Data Architecture'}
-        ],
         actions=[
             {'text': 'Data Models', 'icon': 'database', 'href': url_for('enterprise.data_models'), 'variant': 'default'}
         ]
@@ -30,10 +33,10 @@
 
     <!-- Metrics Cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
-        {{ metrics_card(title='Conceptual Models', value=conceptual_count or 0, icon='brain') }}
-        {{ metrics_card(title='Logical Models', value=logical_count or 0, icon='git-branch') }}
-        {{ metrics_card(title='Physical Models', value=physical_count or 0, icon='server') }}
-        {{ metrics_card(title='Data Lineage Flows', value=data_lineage_count or 0, icon='git-merge') }}
+        {{ metrics_card(title='Conceptual Models', value=conceptual_count|dash, icon='brain') }}
+        {{ metrics_card(title='Logical Models', value=logical_count|dash, icon='git-branch') }}
+        {{ metrics_card(title='Physical Models', value=physical_count|dash, icon='server') }}
+        {{ metrics_card(title='Data Lineage Flows', value=data_lineage_count|dash, icon='git-merge') }}
     </div>
 
     <!-- Quick Actions -->
@@ -44,10 +47,10 @@
                 <i data-lucide="database" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium">View All Models</span>
             </a>
-            <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
-                <i data-lucide="plus-circle" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
-                <span class="text-sm font-medium text-muted-foreground">Create Model</span>
-            </span>
+            <a href="{{ url_for('data_architecture.data_lineage_view') }}" data-testid="data-architecture-lineage-link" class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-background hover:border-primary/50 hover:shadow-sm transition-all duration-200">
+                <i data-lucide="git-merge" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
+                <span class="text-sm font-medium">Data Lineage</span>
+            </a>
             <span class="flex items-center gap-3 p-4 rounded-lg border-2 border-input bg-muted/30 cursor-not-allowed opacity-60" title="Coming soon">
                 <i data-lucide="bar-chart" class="w-5 h-5 text-muted-foreground" aria-hidden="true"></i>
                 <span class="text-sm font-medium text-muted-foreground">Analytics</span>
@@ -85,12 +88,16 @@
                             <div class="font-medium text-foreground">{{ item.capability }}</div>
                         </td>
                         <td class="px-6 py-4">
-                            <span class="text-[10px] px-2 py-0.5 bg-muted text-muted-foreground rounded-full border border-border font-bold uppercase tracking-wider">{{ item.domain }}</span>
+                            <span class="text-xs px-2 py-0.5 bg-muted text-muted-foreground rounded-full border border-border font-bold uppercase tracking-wider">{{ item.domain }}</span>
                         </td>
                         <td class="px-6 py-4">
                             <div class="flex flex-col">
                                 <span class="font-medium text-foreground">{{ item.product }}</span>
+                                {% if item.vendor_id %}
+                                <span class="text-xs italic">{% set _h = row_href('unified_vendors.vendor_detail', vendor_id=item.vendor_id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.vendor }}</a>{% else %}{{ item.vendor }}{% endif %}</span>
+                                {% else %}
                                 <span class="text-xs text-muted-foreground italic">{{ item.vendor }}</span>
+                                {% endif %}
                             </div>
                         </td>
                         <td class="px-6 py-4">
@@ -104,9 +111,9 @@
                         <td class="px-6 py-4">
                             <div class="flex items-center justify-center gap-3">
                                 <div class="flex-1 max-w-[100px] h-2 bg-muted rounded-full overflow-hidden border border-border shadow-inner">
-                                    <div class="h-full bg-emerald-500 rounded-full transition-all duration-700" style="width: {{ item.fit }}%"></div>
+                                    <div class="h-full bg-success rounded-full transition-all duration-700" style="width: {{ item.fit }}%"></div>
                                 </div>
-                                <span class="text-xs font-black text-success tabular-nums">{{ item.fit }}%</span>
+                                <span class="text-xs font-black text-success-emphasis tabular-nums">{{ item.fit }}%</span>
                             </div>
                         </td>
                     </tr>
@@ -139,8 +146,8 @@
         </div>
         <div class="p-6">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                {{ metrics_card(title='Data & Application Elements', value=archimate_data_count or 0, icon='box') }}
-                {{ metrics_card(title='Architecture Relationships', value=archimate_rel_count or 0, icon='git-pull-request') }}
+                {{ metrics_card(title='Data & Application Elements', value=archimate_data_count|dash, icon='box') }}
+                {{ metrics_card(title='Architecture Relationships', value=archimate_rel_count|dash, icon='git-pull-request') }}
             </div>
         </div>
     </div>

@@ -147,35 +147,27 @@ function renderFeatures(features) {
 }
 
 function loadActivityLog() {
-    let activities = [
-        { action: 'Extension downloaded', timestamp: '2024-01-13 10:30', user: 'System' },
-        { action: 'Configuration updated', timestamp: '2024-01-12 15:45', user: 'Admin' },
-        { action: 'Extension activated', timestamp: '2024-01-11 09:20', user: 'System' },
-        { action: 'Version checked', timestamp: '2024-01-10 14:15', user: 'System' }
-    ];
-
+    // This rendered four hardcoded rows - 'Extension downloaded' / 'Admin' /
+    // '2024-01-13 10:30' - which read as a genuine audit trail. Nothing records
+    // extension activity: main.framework_management.extension_dashboard only
+    // renders the template, and no activity endpoint exists. In a governance
+    // product a fabricated audit log is the worst kind of placeholder, because a
+    // reader cannot distinguish it from a record and may cite it in a review.
+    // Show the absence instead, until something real is captured.
     let logContainer = document.getElementById('activityLog');
-    safeHTML(logContainer, '');
-
-    activities.forEach(function(activity) {
-        let activityDiv = document.createElement('div');
-        activityDiv.className = 'flex items-center justify-between p-3 bg-muted rounded-md';
-        safeHTML(activityDiv,
-            '<div class="flex items-center space-x-3">' +
-                '<div class="bg-primary/10 p-2 rounded-full">' +
-                    '<i class="fas fa-info text-primary text-sm"></i>' +
-                '</div>' +
-                '<div>' +
-                    '<p class="font-medium text-foreground">' + activity.action + '</p>' +
-                    '<p class="text-sm text-muted-foreground">' + activity.user + '</p>' +
-                '</div>' +
-            '</div>' +
-            '<span class="text-sm text-muted-foreground">' + activity.timestamp + '</span>');
-        logContainer.appendChild(activityDiv);
-    });
+    if (!logContainer) return;
+    safeHTML(logContainer,
+        '<div class="flex flex-col items-center justify-center py-8 text-center">' +
+            '<i data-lucide="inbox" class="h-10 w-10 text-muted-foreground mb-3" aria-hidden="true"></i>' +
+            '<p class="text-sm font-medium text-foreground">No activity recorded</p>' +
+            '<p class="text-sm text-muted-foreground">Extension activity is not tracked yet.</p>' +
+        '</div>');
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
 }
 
-function activateExtension() {
+async function activateExtension() {
     // API call to activate extension
     let statusEl = document.getElementById('extensionStatus');
     let previousStatus = statusEl ? statusEl.textContent : '';
@@ -184,17 +176,11 @@ function activateExtension() {
         statusEl.className = 'px-2 py-1 text-xs rounded-full bg-amber-100 text-amber-800';
     }
 
-    fetch('/framework-management/api/activate-extension', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+    try {
+        const data = await Platform.fetch.post('/framework-management/api/activate-extension', {
             extension_name: extensionName
-        })
-    })
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
+        }, { silent: true }); // suppress global toast because we show our own error
+
         if (data.success) {
             document.getElementById('extensionStatus').textContent = 'Active';
             document.getElementById('extensionStatus').className = 'px-2 py-1 text-xs rounded-full bg-emerald-500/10 text-green-800';
@@ -209,15 +195,13 @@ function activateExtension() {
             }
             showExtensionError('Failed to activate extension: ' + (data.message || 'unknown error'));
         }
-    })
-    .catch(function(error) {
-        console.error('Error activating extension:', error);
+    } catch (error) {
         if (statusEl) {
             statusEl.textContent = previousStatus || 'Inactive';
             statusEl.className = 'px-2 py-1 text-xs rounded-full bg-destructive/10 text-red-800';
         }
-        showExtensionError('Error activating extension. Please retry.');
-    });
+        showExtensionError('Error activating extension: ' + (error.message || 'Please retry.'));
+    }
 }
 
 function showExtensionError(message) {

@@ -126,16 +126,11 @@ let ComposerAI = (function() {
                 return;
             }
 
-            fetch('/archimate/api/composer/suggestions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    viewpoint_type: self.activeViewpoint || '',
-                }),
-            })
-            .then(function(res) { return res.json(); })
+            Platform.fetch.post('/archimate/api/composer/suggestions', {
+                elements: elements,
+                relationships: relationships,
+                viewpoint_type: self.activeViewpoint || '',
+            }, { silent: true })
             .then(function(data) {
                 let items = [];
                 (data.missing_elements || []).forEach(function(s) {
@@ -189,17 +184,12 @@ let ComposerAI = (function() {
 
             if (!sourceId || !targetId || !relType) return;
 
-            fetch('/archimate/api/relationships', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_element_id: sourceId,
-                    target_element_id: targetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                }),
-            })
-            .then(function(res) { return res.json(); })
+            Platform.fetch.post('/archimate/api/relationships', {
+                source_element_id: sourceId,
+                target_element_id: targetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
+            }, { silent: true })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -273,12 +263,7 @@ let ComposerAI = (function() {
                 viewpoint_type: self.activeViewpoint || '',
             };
 
-            fetch('/archimate/api/composer/validate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            })
-            .then(function(resp) { return resp.json(); })
+            Platform.fetch.post('/archimate/api/composer/validate', payload, { silent: true })
             .then(function(data) {
                 self.validationReport = {
                     passed: data.passed || [],
@@ -294,7 +279,6 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Validation failed: ' + (err.message || err));
-                console.error('[CMP-018] Validation failed:', err);
                 self.statusText = 'Validation failed';
                 self.validationReport = {
                     passed: [],
@@ -388,24 +372,21 @@ let ComposerAI = (function() {
             }
 
             self.generateContextLoading = true;
-            fetch('/archimate/api/composer/context-preview', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    description: desc,
-                    phase: self.generatePhase || '',
-                    business_domain: self.generateDomain || '',
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/context-preview', {
+                description: desc,
+                phase: self.generatePhase || '',
+                business_domain: self.generateDomain || '',
+            }, { silent: true })
             .then(function(data) {
                 self.generateContextLoading = false;
                 if (!data.error) {
                     self.generateContextPreview = data;
                 }
             })
-            .catch(function() {
+            /* Unsolicited advisory fired by a debounce while the user is still typing
+               the description. On failure the preview panel simply does not appear —
+               the guard above keeps a 4xx/5xx body from being rendered as counts. */
+            .catch(function() { /* swallow-ok: debounced background context preview; a failure leaves the panel hidden and the user is not waiting on it */
                 self.generateContextLoading = false;
             });
         },
@@ -458,13 +439,7 @@ let ComposerAI = (function() {
                 ? 'Generating with enterprise context...'
                 : 'Generating...';
 
-            fetch(endpoint, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(body),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post(endpoint, body, { silent: true })
             .then(function(data) {
                 self.generateLoading = false;
                 if (data.error) {
@@ -559,13 +534,7 @@ let ComposerAI = (function() {
             self.statusText = 'Creating: ' + el.name + '...';
             let elName = el.name;
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: elName, type: el.type, layer: layer }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: elName, type: el.type, layer: layer }, { silent: true })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -589,7 +558,7 @@ let ComposerAI = (function() {
                     self.statusText = 'Create failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+            .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
         },
 
         /* Wire any pending relationship whose source AND target are both accepted. */
@@ -619,7 +588,100 @@ let ComposerAI = (function() {
             });
         },
 
+        /* Governance: AI-generated elements are written to the model only after an
+           explicit human confirmation. "Place Full Diagram on Canvas" no longer
+           persists silently — it summarises what will be created (and how many
+           possible duplicates are unresolved) and waits for the architect to approve. */
         acceptAllGenerated: function() {
+            let self = this;
+            let pending = self.generatedElements.slice();
+            if (!pending.length) return;
+
+            let newCount = pending.filter(function(e) {
+                return !(e.category === 'existing' && e.existing_id);
+            }).length;
+            let existingCount = pending.length - newCount;
+            let dupCount = pending.filter(function(e) {
+                return e.category === 'possible_duplicate';
+            }).length;
+
+            let msg = 'This will create ' + newCount + ' new element'
+                + (newCount === 1 ? '' : 's') + ' in your architecture model';
+            if (existingCount) {
+                msg += ' and link ' + existingCount + ' existing element'
+                    + (existingCount === 1 ? '' : 's');
+            }
+            msg += '.';
+            if (dupCount) {
+                msg += ' ' + dupCount + (dupCount === 1 ? ' element is' : ' elements are')
+                    + ' flagged as a possible duplicate and will be created as new'
+                    + ' unless you resolve them first (Use existing / Keep new).';
+            }
+            msg += ' These AI-generated changes are written to your model once you confirm.';
+
+            Platform.confirm({
+                title: 'Place ' + pending.length + ' element'
+                    + (pending.length === 1 ? '' : 's') + ' into the model?',
+                message: msg,
+                confirmText: 'Create & place',
+                cancelText: 'Keep reviewing',
+            }).then(function(ok) {
+                if (ok) self._doAcceptAllGenerated();
+            });
+        },
+
+        /* POST with retry on 429 (rate limit): global write limit is 30/min
+           (app/_bootstrap/rate_limiting.py), and a "Place Full Diagram on
+           Canvas" of the size the AI generator routinely produces (30+
+           elements, plus relationships right behind them) fires enough
+           writes in one burst to exceed it. Confirmed in production 10 Sep
+           2026 -- a 32-element diagram left one element silently missing,
+           the only sign a single toast the architect could easily miss.
+           Retries honour Retry-After when the server sends one, else backs
+           off a window past the fixed-window limiter's own reset. */
+        _postWithRetry: function(url, body, attempt) {
+            attempt = attempt || 0;
+            return Platform.fetch.post(url, body, { silent: true })
+                .catch(function(err) {
+                    let status = err && (err.status || (err.response && err.response.status));
+                    if (status !== 429 || attempt >= 3) throw err;
+                    let retryAfter = err && err.response && err.response.headers
+                        && err.response.headers.get && err.response.headers.get('Retry-After');
+                    let waitMs = retryAfter ? parseFloat(retryAfter) * 1000 : (attempt + 1) * 2000;
+                    return new Promise(function(resolve) { setTimeout(resolve, waitMs); })
+                        .then(function() { return this._postWithRetry(url, body, attempt + 1); }.bind(this));
+                }.bind(this));
+        },
+
+        /* Run async factories with limited concurrency instead of firing them
+           all at once -- see _postWithRetry's comment for why unbounded
+           parallelism here silently drops elements once a diagram is larger
+           than the rate limiter's burst window. */
+        _runLimited: function(factories, limit, onEach) {
+            return new Promise(function(resolve) {
+                let idx = 0, active = 0, doneCount = 0;
+                let total = factories.length;
+                if (total === 0) { resolve(); return; }
+                function next() {
+                    while (active < limit && idx < total) {
+                        let i = idx++;
+                        active++;
+                        factories[i]().then(function(result) {
+                            onEach(result, i);
+                        }).catch(function(err) {
+                            onEach({ __error: err }, i);
+                        }).finally(function() {
+                            active--; doneCount++;
+                            if (doneCount === total) resolve();
+                            else next();
+                        });
+                    }
+                }
+                next();
+            });
+        },
+
+        _doAcceptAllGenerated: function() {
             let self = this;
             let pending = self.generatedElements.slice();
             let pendingRelationships = self.generatedRelationships.slice();
@@ -637,66 +699,55 @@ let ComposerAI = (function() {
             };
             updateProgress();
 
-            pending.forEach(function(el, idx) {
+            const placeNode = function(id, name, type, layer, idx) {
+                let vp = self.paper.translate();
+                let s = self.paper.scale().sx;
+                let rect = self.paper.el.getBoundingClientRect();
+                let cx = (rect.width / 2 - vp.tx) / s;
+                let cy = (rect.height / 2 - vp.ty) / s;
+                let node = createNode(id, name, type, layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
+                self.graph.addCell(node);
+            };
+
+            let factories = pending.map(function(el, idx) {
                 let layer = el.layer || guessLayer(el.type);
 
                 if (el.category === 'existing' && el.existing_id) {
-                    let vp = self.paper.translate();
-                    let s = self.paper.scale().sx;
-                    let rect = self.paper.el.getBoundingClientRect();
-                    let cx = (rect.width / 2 - vp.tx) / s;
-                    let cy = (rect.height / 2 - vp.ty) / s;
-                    let node = createNode(el.existing_id, el.name, el.type, layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
-                    self.graph.addCell(node);
-                    self.canvasElements[el.existing_id] = el;
-                    self.elementCount++;
-                    nameToElementId[el.name] = el.existing_id;
-                    if (self.solutionId) self.linkElementToSolution(el.existing_id);
-                    created++;
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                    return;
+                    return function() {
+                        return Promise.resolve().then(function() {
+                            placeNode(el.existing_id, el.name, el.type, layer, idx);
+                            self.canvasElements[el.existing_id] = el;
+                            self.elementCount++;
+                            nameToElementId[el.name] = el.existing_id;
+                            if (self.solutionId) self.linkElementToSolution(el.existing_id);
+                        });
+                    };
                 }
 
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.name, type: el.type, layer: layer }),
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    created++;
-                    let d = data.element || data;
-                    if (d.id) {
-                        let vp = self.paper.translate();
-                        let s = self.paper.scale().sx;
-                        let rect = self.paper.el.getBoundingClientRect();
-                        let cx = (rect.width / 2 - vp.tx) / s;
-                        let cy = (rect.height / 2 - vp.ty) / s;
+                return function() {
+                    return self._postWithRetry('/api/architecture-assistant/create-element',
+                        { name: el.name, type: el.type, layer: layer })
+                        .then(function(data) {
+                            let d = data.element || data;
+                            if (d.id) {
+                                placeNode(d.id, d.name, d.type, d.layer || layer, idx);
+                                self.canvasElements[d.id] = d;
+                                self.elementCount++;
+                                nameToElementId[el.name] = d.id;
+                                if (self.solutionId) self.linkElementToSolution(d.id);
+                            }
+                        });
+                };
+            });
 
-                        let node = createNode(d.id, d.name, d.type, d.layer || layer, cx - 90 + idx * 40, cy - 32 + idx * 50);
-                        self.graph.addCell(node);
-                        self.canvasElements[d.id] = d;
-                        self.elementCount++;
-                        nameToElementId[el.name] = d.id;
-                        if (self.solutionId) self.linkElementToSolution(d.id);
-                    }
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                })
-                .catch(function() {
-                    created++;
-                    _toast('error', 'Failed to create element');
-                    updateProgress();
-                    if (created === total) {
-                        self._finishAcceptAll(pendingRelationships, nameToElementId, total);
-                    }
-                });
+            /* 5 concurrent, well under the 30/min write bucket even with
+               relationship-wiring writes still to come right after. */
+            self._runLimited(factories, 5, function(result) {
+                created++;
+                if (result && result.__error) _toast('error', 'Failed to create element');
+                updateProgress();
+            }).then(function() {
+                self._finishAcceptAll(pendingRelationships, nameToElementId, total);
             });
         },
 
@@ -720,21 +771,20 @@ let ComposerAI = (function() {
             });
         },
 
-        _wireSingleRelationship: function(rel, sourceId, targetId, onDone, pending) {
+        /* Returns a promise that always resolves (never rejects) once this
+           relationship's create attempt has fully settled, success or
+           failure -- so a caller running many of these under _runLimited can
+           treat "settled" as "safe to start the next one" regardless of
+           outcome. */
+        _wireSingleRelationship: function(rel, sourceId, targetId) {
             let self = this;
             let relType = rel.type || rel.relationship_type || 'association';
-            fetch('/archimate/api/relationships', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    source_element_id: sourceId,
-                    target_element_id: targetId,
-                    relationship_type: relType,
-                    solution_id: self.solutionId || null,
-                }),
+            return self._postWithRetry('/archimate/api/relationships', {
+                source_element_id: sourceId,
+                target_element_id: targetId,
+                relationship_type: relType,
+                solution_id: self.solutionId || null,
             })
-            .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.id) {
                     let sourceCell = null;
@@ -750,11 +800,9 @@ let ComposerAI = (function() {
                         self.statusText = rel.source_name + ' \u2192 ' + rel.target_name + ' (' + relType + ')';
                     }
                 }
-                if (pending) { pending.done++; if (pending.done >= pending.total && onDone) onDone(); }
             })
             .catch(function() {
                 _toast('error', 'Failed to wire: ' + rel.source_name + ' \u2192 ' + rel.target_name);
-                if (pending) { pending.done++; if (pending.done >= pending.total && onDone) onDone(); }
             });
         },
 
@@ -773,11 +821,19 @@ let ComposerAI = (function() {
                 if (onAllDone) onAllDone();
                 return;
             }
-            let pending = { done: 0, total: toWire.length };
-            toWire.forEach(function(rel) {
-                let sourceId = nameToElementId[rel.source_name];
-                let targetId = nameToElementId[rel.target_name];
-                self._wireSingleRelationship(rel, sourceId, targetId, onAllDone, pending);
+            /* Same burst-vs-rate-limit problem as element creation: wire with
+               bounded concurrency instead of firing every relationship POST
+               at once (see _postWithRetry / _runLimited). */
+            let factories = toWire.map(function(rel) {
+                return function() {
+                    let sourceId = nameToElementId[rel.source_name];
+                    let targetId = nameToElementId[rel.target_name];
+                    return self._wireSingleRelationship(rel, sourceId, targetId);
+                };
+            });
+            self._runLimited(factories, 5, function() {}).then(function() {
+                self.statusText = 'Done';
+                if (onAllDone) onAllDone();
             });
         },
 
@@ -803,17 +859,11 @@ let ComposerAI = (function() {
             self.extractedRelationships = [];
             self.statusText = 'Extracting...';
 
-            fetch('/archimate/api/composer/extract', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    text: txt,
-                    target_phase: self.extractPhase || '',
-                    viewpoint_type: self.activeViewpoint || '',
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/extract', {
+                text: txt,
+                target_phase: self.extractPhase || '',
+                viewpoint_type: self.activeViewpoint || '',
+            }, { silent: true })
             .then(function(data) {
                 self.extractLoading = false;
                 if (data.error) {
@@ -839,13 +889,7 @@ let ComposerAI = (function() {
             let layer = el.layer || guessLayer(el.suggested_type);
             self.statusText = 'Creating: ' + el.name + '...';
 
-            fetch('/api/architecture-assistant/create-element', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.suggested_type, layer: layer }, { silent: true })
             .then(function(data) {
                 let d = data.element || data;
                 if (d.id) {
@@ -866,7 +910,7 @@ let ComposerAI = (function() {
                     self.statusText = 'Create failed: ' + (data.error || 'unknown');
                 }
             })
-            .catch(function(err) { self.statusText = 'Error: ' + err.message; _toast('error', err.message || 'Operation failed'); });
+            .catch(function(err) { self.statusText = 'Error: ' + (err && err.message); _toast('error', (err && err.message) || 'Operation failed'); });
 
             /* Remove from review list */
             let elName = el.name;
@@ -899,13 +943,7 @@ let ComposerAI = (function() {
 
             pending.forEach(function(el, idx) {
                 let layer = el.layer || guessLayer(el.suggested_type);
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.name, type: el.suggested_type, layer: layer }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.name, type: el.suggested_type, layer: layer }, { silent: true })
                 .then(function(data) {
                     created++;
                     let d = data.element || data;
@@ -960,10 +998,7 @@ let ComposerAI = (function() {
             if (ids.length === 0) { self.intelligenceData = {}; return; }
 
             self.intelligenceLoading = true;
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.intelligenceData = data.enrichment || {};
                 self.intelligenceLoading = false;
@@ -1047,8 +1082,7 @@ let ComposerAI = (function() {
             self.patternInstantiatedRelationships = [];
             self.patternLoading = true;
 
-            fetch('/archimate/api/patterns', { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/patterns', { silent: true })
             .then(function(data) {
                 self.patternLoading = false;
                 self.patterns = data.patterns || [];
@@ -1056,7 +1090,7 @@ let ComposerAI = (function() {
             .catch(function(err) {
                 self.patternLoading = false;
                 _toast('error', 'Failed to load patterns');
-                self.statusText = 'Failed to load patterns: ' + err.message;
+                self.statusText = 'Failed to load patterns: ' + (err && err.message);
             });
         },
 
@@ -1074,13 +1108,7 @@ let ComposerAI = (function() {
             self.patternInstantiatedElements = [];
             self.patternInstantiatedRelationships = [];
 
-            fetch('/archimate/api/patterns/' + self.selectedPatternId + '/instantiate', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({ context: self.patternContext.trim() }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/patterns/' + self.selectedPatternId + '/instantiate', { context: self.patternContext.trim() }, { silent: true })
             .then(function(data) {
                 self.patternLoading = false;
                 if (data.error) {
@@ -1120,13 +1148,7 @@ let ComposerAI = (function() {
                 let el = elements[idx];
                 let layer = guessLayer(el.type);
 
-                fetch('/api/architecture-assistant/create-element', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({ name: el.label, type: el.type, layer: layer }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/api/architecture-assistant/create-element', { name: el.label, type: el.type, layer: layer }, { silent: true })
                 .then(function(data) {
                     let d = data.element || data;
                     if (d.id) {
@@ -1177,18 +1199,12 @@ let ComposerAI = (function() {
                     return;
                 }
 
-                fetch('/archimate/api/relationships', {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                    body: JSON.stringify({
-                        source_element_id: sourceId,
-                        target_element_id: targetId,
-                        relationship_type: rel.type,
-                        solution_id: self.solutionId || null,
-                    }),
-                })
-                .then(function(r) { return r.json(); })
+                Platform.fetch.post('/archimate/api/relationships', {
+                    source_element_id: sourceId,
+                    target_element_id: targetId,
+                    relationship_type: rel.type,
+                    solution_id: self.solutionId || null,
+                }, { silent: true })
                 .then(function(data) {
                     if (data.id) {
                         created++;
@@ -1285,17 +1301,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/patterns', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    name: name,
-                    description: (self.savePatternDescription || '').trim() || null,
-                    pattern_json: { elements: elements, relationships: relationships },
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/patterns', {
+                name: name,
+                description: (self.savePatternDescription || '').trim() || null,
+                pattern_json: { elements: elements, relationships: relationships },
+            }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Save pattern failed: ' + data.error;
@@ -1306,7 +1316,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Failed to save pattern');
-                self.statusText = 'Save pattern error: ' + err.message;
+                self.statusText = 'Save pattern error: ' + (err && err.message);
             });
         },
 
@@ -1324,8 +1334,7 @@ let ComposerAI = (function() {
             /* Fetch available diagrams for baseline selection */
             let url = '/archimate/api/saved-viewpoints';
             if (self.solutionId) url += '?solution_id=' + self.solutionId;
-            fetch(url, { credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
+            Platform.fetch(url, { silent: true })
             .then(function(data) {
                 let vps = (data.viewpoints || []).filter(function(v) {
                     return v.id !== self.currentSavedVpId;
@@ -1344,20 +1353,10 @@ let ComposerAI = (function() {
             self.deltaLoading = true;
             self.statusText = 'Computing delta...';
 
-            let csrfToken = document.querySelector('meta[name="csrf-token"]');
-            let headers = { 'Content-Type': 'application/json' };
-            if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
-
-            fetch('/archimate/api/composer/delta', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({
-                    baseline_viewpoint_id: parseInt(self.deltaCompareVpId),
-                    target_viewpoint_id: self.currentSavedVpId,
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/delta', {
+                baseline_viewpoint_id: parseInt(self.deltaCompareVpId),
+                target_viewpoint_id: self.currentSavedVpId,
+            }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Delta error: ' + data.error;
@@ -1375,7 +1374,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Delta comparison failed');
-                self.statusText = 'Delta error: ' + err.message;
+                self.statusText = 'Delta error: ' + (err && err.message);
                 self.deltaLoading = false;
             });
         },
@@ -1446,17 +1445,7 @@ let ComposerAI = (function() {
             if (!self.deltaData || !self.deltaData.delta) return;
             self.plateauLoading = true;
 
-            let csrfToken = document.querySelector('meta[name="csrf-token"]');
-            let headers = { 'Content-Type': 'application/json' };
-            if (csrfToken) headers['X-CSRFToken'] = csrfToken.getAttribute('content');
-
-            fetch('/archimate/api/composer/plateaus', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: headers,
-                body: JSON.stringify({ delta: self.deltaData.delta }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/plateaus', { delta: self.deltaData.delta }, { silent: true })
             .then(function(data) {
                 if (data.error) {
                     self.statusText = 'Plateau error: ' + data.error;
@@ -1469,7 +1458,7 @@ let ComposerAI = (function() {
             })
             .catch(function(err) {
                 _toast('error', 'Plateau computation failed');
-                self.statusText = 'Plateau error: ' + err.message;
+                self.statusText = 'Plateau error: ' + (err && err.message);
                 self.plateauLoading = false;
             });
         },
@@ -1523,17 +1512,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/composer/explain', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    elements: elements,
-                    relationships: relationships,
-                    audience: self.explanationAudience,
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain', {
+                elements: elements,
+                relationships: relationships,
+                audience: self.explanationAudience,
+            }, { silent: true })
             .then(function(data) {
                 self.explanationText = data.narration || 'No narration generated.';
                 self.explanationLoading = false;
@@ -1574,17 +1557,11 @@ let ComposerAI = (function() {
                 }
             });
 
-            fetch('/archimate/api/composer/impact', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify({
-                    element_id: elementId,
-                    elements: elements,
-                    relationships: relationships,
-                }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/impact', {
+                element_id: elementId,
+                elements: elements,
+                relationships: relationships,
+            }, { silent: true })
             .then(function(data) {
                 self.impactData = data;
                 self._highlightImpact(data.affected_element_ids || []);
@@ -1597,13 +1574,7 @@ let ComposerAI = (function() {
 
         explainRelationship: function(relData) {
             let self = this;
-            fetch('/archimate/api/composer/explain-relationship', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken() },
-                body: JSON.stringify(relData),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/explain-relationship', relData, { silent: true })
             .then(function(data) {
                 self.statusText = data.explanation || 'No explanation available.';
             })
@@ -1686,10 +1657,7 @@ let ComposerAI = (function() {
                 return;
             }
 
-            fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/composer/intelligence?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.heatmapLoading = false;
                 let enrichment = data.enrichment || {};
@@ -1811,14 +1779,7 @@ let ComposerAI = (function() {
                 });
             });
 
-            let csrfTok = (typeof helpers !== 'undefined' && helpers.csrfToken) ? helpers.csrfToken() : '';
-
-            fetch('/archimate/api/composer/derived-relationships', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfTok },
-                body: JSON.stringify({ elements: elements, relationships: relationships }),
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch.post('/archimate/api/composer/derived-relationships', { elements: elements, relationships: relationships }, { silent: true })
             .then(function(data) {
                 self.derivedLoading = false;
                 let derived = data.derived || [];
@@ -1900,12 +1861,12 @@ let ComposerAI = (function() {
                 else if (results.changed && results.changed.some(function(e) { return e.id == eid; })) status = 'changed';
 
                 if (status === 'added') {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#22c55e', 'stroke-width': 3 } } } }); } catch(e) { /* swallow-ok: cosmetic gap-overlay outline; the opacity tint already separates added, removed and changed elements */ }
                 } else if (status === 'removed') {
                     view.vel.attr({ opacity: 0.3 });
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 3, 'stroke-dasharray': '4,4' } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#ef4444', 'stroke-width': 3, 'stroke-dasharray': '4,4' } } } }); } catch(e) { /* swallow-ok: cosmetic gap-overlay outline; the opacity tint already separates added, removed and changed elements */ }
                 } else if (status === 'changed') {
-                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '6,3' } } } }); } catch(e) {}
+                    try { view.highlight(null, { highlighter: { name: 'stroke', options: { padding: 5, rx: 6, attrs: { stroke: '#f59e0b', 'stroke-width': 2, 'stroke-dasharray': '6,3' } } } }); } catch(e) { /* swallow-ok: cosmetic gap-overlay outline; the opacity tint already separates added, removed and changed elements */ }
                 } else {
                     view.vel.attr({ opacity: 0.2 });
                 }
@@ -1919,7 +1880,7 @@ let ComposerAI = (function() {
                 let view = self.paper.findViewByModel(cell);
                 if (!view) return;
                 view.vel.attr({ opacity: 1 });
-                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) {}
+                try { view.unhighlight(null, { highlighter: { name: 'stroke' } }); } catch(e) { /* swallow-ok: cosmetic un-highlight while clearing the gap overlay */ }
             });
         },
 
@@ -2145,10 +2106,7 @@ let ComposerAI = (function() {
             self.metricsLoading = true;
             self.statusText = 'Loading metrics (' + self.metricsOverlayType + ')...';
 
-            fetch('/archimate/api/composer/element-metrics?element_ids=' + ids.join(','), {
-                credentials: 'same-origin',
-            })
-            .then(function(r) { return r.json(); })
+            Platform.fetch('/archimate/api/composer/element-metrics?element_ids=' + ids.join(','), { silent: true })
             .then(function(data) {
                 self.metricsLoading = false;
                 self.metricsData = data.metrics || {};

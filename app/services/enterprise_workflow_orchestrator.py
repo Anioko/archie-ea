@@ -8,9 +8,8 @@ This service REUSES the existing RoadmapWorkPackage model and APIs (99.99% reuse
 """
 
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
-from sqlalchemy.orm import Session
 
 from app import db
 from app.models.application_layer import Application

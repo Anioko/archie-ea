@@ -11,7 +11,6 @@ Both mapping paths work simultaneously during migration period.
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 
 def upgrade():

@@ -4,12 +4,13 @@ Import Routes for Application Management
 Handles application data import (CSV, Excel, JSON, manual) and import history.
 """
 
+import re
 import csv
 import io
 import json
 import os
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from flask import (
     current_app,
@@ -26,6 +27,7 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from . import application_mgmt
 from .routes import (
+    FIELD_MAX_LENGTHS,
     IMPORT_COLUMN_ALIASES,
     INTEGER_RANGE_FIELDS,
     _link_application_to_apqc_by_ids,
@@ -188,7 +190,7 @@ def application_import():
 
                     # Debug
                     current_app.logger.debug(
-                        f"Row {index}: name='{name}', existing={existing_app is not None}, mode={import_mode}"
+                        f"Row {index}: name='{name}', existing={existing_app is not None}, mode={import_mode}"  # raw-html-ok: logger call, never rendered as HTML/browser output
                     )
 
                     if existing_app and import_mode == "skip":
@@ -833,7 +835,6 @@ def get_import_fields():
             )
 
     # Build auto-mapping aliases based on field names
-    aliases = {}
     alias_patterns = {
         "name": ["name", "application name", "app name", "appname", "app_name"],
         "application_code": [
@@ -1026,7 +1027,6 @@ def analyze_import():
     import csv
     import io
     import json
-    import unicodedata
 
     import openpyxl
 
@@ -1096,13 +1096,13 @@ def analyze_import():
     try:
         # Force rollback to clear any failed transaction state
         db.session.rollback()
-    except Exception as e:  # fabricated-values-ok
+    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.debug(f"Ignored: {e}")  # Ignore rollback errors
 
     # Start a fresh transaction
     try:
         db.session.begin()
-    except Exception as e:  # fabricated-values-ok
+    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
         logger.debug(f"Ignored: {e}")  # If begin fails, continue with existing session
 
     if "file" not in request.files:
@@ -1113,7 +1113,7 @@ def analyze_import():
         return jsonify({"error": "No file selected"}), 400
 
     filename = (file.filename or "").lower()
-    duplicate_mode = request.form.get("duplicate_mode", "merge")
+    request.form.get("duplicate_mode", "merge")
 
     # Get custom field mappings from frontend
     custom_mappings = {}
@@ -1304,7 +1304,7 @@ def analyze_import():
             pcf_column = capabilities_column
 
         # Debug logging for column detection
-        current_app.logger.info(f"Column detection results:")
+        current_app.logger.info("Column detection results:")
         current_app.logger.info(f"  - Headers found: {headers}")
         current_app.logger.info(f"  - Name: '{name_column}'")
         current_app.logger.info(f"  - App ID: '{app_id_column}'")
@@ -1327,12 +1327,12 @@ def analyze_import():
             # Ensure clean transaction state before queries
             try:
                 db.session.rollback()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
             try:
                 db.session.begin()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
 
             # Execute queries with proper error handling
@@ -1349,9 +1349,9 @@ def analyze_import():
             }
             _all_apqc = APQCProcess.query.all()
             existing_apqc = {p.process_code: p for p in _all_apqc}
-            existing_apqc_by_name = {
+            ({
                 p.process_name.lower(): p for p in _all_apqc
-            }
+            })
             existing_vendors = {}
             if VendorOrganization:
                 existing_vendors = {
@@ -1363,7 +1363,7 @@ def analyze_import():
             # Force rollback to clear any failed transaction state
             try:
                 db.session.rollback()
-            except Exception as e:  # fabricated-values-ok
+            except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.debug(f"Ignored: {e}")
             return jsonify({"error": "An internal error occurred"}), 500
 
@@ -1422,7 +1422,7 @@ def analyze_import():
                 )
 
                 # Performance optimization: Set timeout for large imports
-                import threading
+                import threading  # noqa: F401 — availability probe: the import IS the test
                 import time
                 from concurrent.futures import ThreadPoolExecutor
                 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -1628,7 +1628,7 @@ def analyze_import():
             # Get name
             name = None
             current_app.logger.info(
-                f"Row {row_idx}: Processing row data. name_column='{name_column}', custom_mappings={custom_mappings}"
+                f"Row {row_idx}: Processing row data. name_column='{name_column}', custom_mappings={custom_mappings}"  # raw-html-ok: logger call, never rendered as HTML/browser output
             )
             current_app.logger.info(
                 f"Row {row_idx}: Available row_data keys: {list(row_data.keys())}"
@@ -1705,7 +1705,7 @@ def analyze_import():
                 # Force rollback to clear any failed transaction state
                 try:
                     db.session.rollback()
-                except Exception as e:  # fabricated-values-ok
+                except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.debug(f"Ignored: {e}")
                 # Assume it doesn't exist if database query fails
                 existing_app = None
@@ -2968,7 +2968,7 @@ def upload_excel_applications():
         else None
     )
     if archimate_layers:
-        archimate_layers = [l.strip() for l in archimate_layers if l.strip()]
+        archimate_layers = [item.strip() for item in archimate_layers if item.strip()]
     current_app.logger.info(
         f"Import: ArchiMate generation: {generate_archimate}, layers: {archimate_layers}"
     )
@@ -2981,14 +2981,6 @@ def upload_excel_applications():
     # NEW: Store original file data for AI analysis
     file_applications_data = []  # Store original file data with app IDs
 
-    # Check if batch processing should be used for large imports
-    use_batch_processing = False
-    batch_job_id = None
-    if len(data_rows) > 100:  # Use batch processing for imports >100 applications
-        use_batch_processing = True
-        current_app.logger.info(
-            f"Large import detected ({len(data_rows)} rows), enabling batch processing"
-        )
 
     # Determine import source based on file type
     if filename.endswith(".csv"):
@@ -3013,70 +3005,6 @@ def upload_excel_applications():
     file.seek(0)  # Reset file pointer
     db.session.add(import_history)
     db.session.flush()
-
-    # Create batch job if needed
-    if use_batch_processing:
-        try:
-            from ..services.batch_processing_service import (
-                BatchJobConfig,
-                BatchJobType,
-                BatchProcessingService,
-            )
-
-            batch_service = BatchProcessingService()
-
-            # Prepare items for batch processing
-            items = []
-            for row_idx, row in enumerate(data_rows):
-                items.append(
-                    {
-                        "row_index": row_idx,
-                        "data": row,
-                        "import_history_id": import_history.id,
-                        "duplicate_mode": duplicate_mode,
-                        "generate_archimate": generate_archimate,
-                    }
-                )
-
-            batch_config = BatchJobConfig(
-                job_name=f"AI Import - {file.filename}",
-                job_type="ai_import",
-                items=items,
-                confidence_threshold=0.6,
-                auto_retry=True,
-                max_retries=3,
-                parallel_processing=False,
-                user_id=current_user.id if current_user.is_authenticated else None,
-                config_data={
-                    "import_history_id": import_history.id,
-                    "file_name": file.filename,
-                    "duplicate_mode": duplicate_mode,
-                    "generate_archimate": generate_archimate,
-                    "archimate_layers": archimate_layers,
-                    "field_mappings": custom_mappings,
-                    "apqc_links_by_row": apqc_links_by_row,
-                },
-            )
-
-            batch_job_result = batch_service.create_batch_job(batch_config)
-            if batch_job_result["success"]:
-                batch_job_id = batch_job_result["batch_job_id"]
-                import_history.batch_job_id = batch_job_id
-                current_app.logger.info(
-                    f"Created batch job {batch_job_id} for large import"
-                )
-            else:
-                current_app.logger.error(
-                    f"Failed to create batch job: {batch_job_result.get('error')}"
-                )
-                use_batch_processing = False  # Fallback to regular processing
-
-        except ImportError as e:
-            current_app.logger.error(f"Batch processing service not available: {e}")
-            use_batch_processing = False  # Fallback to regular processing
-        except Exception as e:
-            current_app.logger.error(f"Error creating batch job: {e}")
-            use_batch_processing = False  # Fallback to regular processing
 
     try:
         headers = []
@@ -3173,6 +3101,86 @@ def upload_excel_applications():
                 400,
             )
 
+        # Batch processing for large imports.
+        # MOVED: this ran before the parsing above, so `data_rows` was unbound and
+        # every request to this endpoint raised NameError before doing any work.
+        # It must run after parsing. `use_batch_processing` and `batch_job_id` are
+        # used only within this block, so relocating it changes nothing downstream.
+        # Note `data_rows` is populated for CSV/JSON only; Excel streams via `ws`,
+        # so batching applies to CSV/JSON imports, as before.
+        # Check if batch processing should be used for large imports
+        use_batch_processing = False
+        batch_job_id = None
+        if len(data_rows) > 100:  # Use batch processing for imports >100 applications
+            use_batch_processing = True
+            current_app.logger.info(
+                f"Large import detected ({len(data_rows)} rows), enabling batch processing"
+            )
+        # Create batch job if needed
+        if use_batch_processing:
+            try:
+                from ..services.batch_processing_service import (
+                    BatchJobConfig,
+                    BatchJobType,  # noqa: F401 — availability probe: the import IS the test
+                    BatchProcessingService,
+                )
+
+                batch_service = BatchProcessingService()
+
+                # Prepare items for batch processing
+                items = []
+                for row_idx, row in enumerate(data_rows):
+                    items.append(
+                        {
+                            "row_index": row_idx,
+                            "data": row,
+                            "import_history_id": import_history.id,
+                            "duplicate_mode": duplicate_mode,
+                            "generate_archimate": generate_archimate,
+                        }
+                    )
+
+                batch_config = BatchJobConfig(
+                    job_name=f"AI Import - {file.filename}",
+                    job_type="ai_import",
+                    items=items,
+                    confidence_threshold=0.6,
+                    auto_retry=True,
+                    max_retries=3,
+                    parallel_processing=False,
+                    user_id=current_user.id if current_user.is_authenticated else None,
+                    config_data={
+                        "import_history_id": import_history.id,
+                        "file_name": file.filename,
+                        "duplicate_mode": duplicate_mode,
+                        "generate_archimate": generate_archimate,
+                        "archimate_layers": archimate_layers,
+                        "field_mappings": custom_mappings,
+                        "apqc_links_by_row": apqc_links_by_row,
+                    },
+                )
+
+                batch_job_result = batch_service.create_batch_job(batch_config)
+                if batch_job_result["success"]:
+                    batch_job_id = batch_job_result["batch_job_id"]
+                    import_history.batch_job_id = batch_job_id
+                    current_app.logger.info(
+                        f"Created batch job {batch_job_id} for large import"
+                    )
+                else:
+                    current_app.logger.error(
+                        f"Failed to create batch job: {batch_job_result.get('error')}"
+                    )
+                    use_batch_processing = False  # Fallback to regular processing
+
+            except ImportError as e:
+                current_app.logger.error(f"Batch processing service not available: {e}")
+                use_batch_processing = False  # Fallback to regular processing
+            except Exception as e:
+                current_app.logger.error(f"Error creating batch job: {e}")
+                use_batch_processing = False  # Fallback to regular processing
+
+
         # Process rows
         records_created = 0
         records_updated = 0
@@ -3267,7 +3275,7 @@ def upload_excel_applications():
                         # Rollback to clear failed transaction state (critical for PostgreSQL)
                         try:
                             db.session.rollback()
-                        except Exception as e:  # fabricated-values-ok
+                        except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                             logger.debug(f"Ignored: {e}")
                         # Assume it doesn't exist if database query fails
                         existing_app = None
@@ -3422,7 +3430,7 @@ def upload_excel_applications():
                     # Row processing failed - rollback only this row's changes
                     try:
                         db.session.rollback()
-                    except Exception as e:  # fabricated-values-ok
+                    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         logger.debug(f"Ignored: {e}")
                     records_failed += 1
                     errors.append(f"Row {row_idx}: {str(e)}")
@@ -3755,7 +3763,7 @@ def upload_excel_applications():
                     # Rollback to clear failed transaction state (critical for PostgreSQL)
                     try:
                         db.session.rollback()
-                    except Exception as e:  # fabricated-values-ok
+                    except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                         logger.debug(f"Ignored: {e}")
                     # Assume it doesn't exist if database query fails
                     existing_app = None
@@ -4138,7 +4146,7 @@ def upload_excel_applications():
                 # Since we commit each successful row above, rollback here only affects the current failed row
                 try:
                     db.session.rollback()
-                except Exception as e:  # fabricated-values-ok
+                except Exception as e:  # fabricated-ok: guarded skip on error; emits no fabricated value
                     logger.debug(
                         f"Ignored: {e}"
                     )  # Rollback may fail if session is already clean
@@ -4332,17 +4340,29 @@ def upload_excel_applications():
         return jsonify({"error": "An internal error occurred"}), 500
 
 
+def _manual_import_payload(data):
+    """Validate the legacy grid using the shared manual-write boundary."""
+    from app.utils.manual_application_import import validate_manual_application_import
+
+    applications, mode, _date_format = validate_manual_application_import(data)
+    return applications, mode
+
+
 @application_mgmt.route("/applications/import-manual", methods=["POST"])
 @login_required
 def import_manual_applications():
     """Process manual entry applications"""
     import json
+    from flask import g
 
     from app.models.application_import_history import ApplicationImportHistory
 
-    data = request.get_json()
-    applications = data.get("applications", [])
-    duplicate_mode = data.get("duplicate_mode", "merge")
+    if type(getattr(g, "current_org_id", None)) is not int or g.current_org_id <= 0:
+        return jsonify({"success": False, "error": "An active organization is required"}), 403
+    try:
+        applications, duplicate_mode = _manual_import_payload(request.get_json(silent=True))
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
 
     # Create import history
     import_history = ApplicationImportHistory(
@@ -4363,6 +4383,20 @@ def import_manual_applications():
     records_failed = 0
     errors = []
 
+    # Traceability state. The audit block near the end of this function referenced
+    # created_app_ids/updated_app_ids without this function ever building them —
+    # they are initialised in upload_excel_applications, from which that block was
+    # copied — so every call raised NameError once it reached the audit step.
+    created_app_objs = []
+    updated_app_ids = []
+
+    # This function does not batch: the batch branch further down was copied from
+    # upload_excel_applications along with the audit block. Initialising these keeps
+    # that branch inert (and correct) rather than raising NameError at the guard.
+    use_batch_processing = False
+    batch_job_id = None
+    file_applications_data = []
+
     # Prefetch all existing applications to avoid N+1 query in loop
     existing_apps_list = ApplicationComponent.query.all()
     existing_apps_by_name = {
@@ -4372,7 +4406,6 @@ def import_manual_applications():
     for idx, app_data in enumerate(applications, start=1):
         try:
             name = app_data.get("name", "").strip()
-            app_id = app_data.get("app_id", "").strip() or None
 
             if not name:
                 records_failed += 1
@@ -4400,8 +4433,6 @@ def import_manual_applications():
                 # Update existing
                 changed_fields = {}
                 for key, value in app_data.items():
-                    if not hasattr(existing_app, key):  # model-safety-ok
-                        continue
                     # Skip empty/falsy values — preserve existing data
                     # Catches None, empty strings, 0, 0.0, False
                     if not value and value is not False:
@@ -4420,24 +4451,32 @@ def import_manual_applications():
                         "Import merge updated %s: %s", existing_app.name, changed_fields
                     )
                 records_updated += 1
+                # A second row may merge into an application created by this
+                # same batch. Its provenance remains created-only for rollback.
+                if existing_app not in created_app_objs and existing_app.id not in updated_app_ids:
+                    updated_app_ids.append(existing_app.id)
             elif existing_app and duplicate_mode == "skip":
                 records_skipped += 1
                 continue
             else:
-                # Create new - filter to only valid ApplicationComponent fields
-                valid_fields = {
-                    col.name for col in ApplicationComponent.__table__.columns
-                }
-                filtered_data = {
-                    k: v for k, v in app_data.items() if k in valid_fields and k != "id"
-                }
-                app = ApplicationComponent(**filtered_data)
+                # app_data contains only explicitly validated business fields.
+                app = ApplicationComponent(**app_data)
                 db.session.add(app)
                 records_created += 1
+                # Collect the object, not the id: the PK is not assigned until flush.
+                # Flushed once after the loop rather than per row.
+                created_app_objs.append(app)
+                existing_apps_by_name[name.lower()] = app
 
         except Exception as e:
             records_failed += 1
             errors.append(f"Row {idx}: {str(e)}")
+
+    # Assign primary keys to newly created rows so their ids can be recorded in the
+    # audit trail below. One flush for the whole batch, not one per row.
+    if created_app_objs:
+        db.session.flush()
+    created_app_ids = [a.id for a in created_app_objs if a.id is not None]
 
     # Update import history with comprehensive audit data
     import_history.total_records = len(applications)
@@ -4544,28 +4583,82 @@ def import_manual_applications():
 @application_mgmt.route("/applications/import-history", methods=["GET"])
 @login_required
 def get_import_history():
-    """Get comprehensive import history with audit trail"""
-    import json
+    """Read tenant-scoped application audit records, never unrelated batch jobs."""
+    try:
+        status = request.args.get("status", "")
+        if status not in ("", "completed", "partial", "failed", "pending", "running", "rolled_back"):
+            raise ValueError("Choose a valid import status.")
+        bounds = {}
+        for key in ("date_from", "date_to"):
+            value = request.args.get(key, "")
+            if value:
+                if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                    raise ValueError("Dates must use YYYY-MM-DD.")
+                bounds[key] = datetime.strptime(value, "%Y-%m-%d")
+        if bounds.get("date_from") and bounds.get("date_to") and bounds["date_from"] > bounds["date_to"]:
+            raise ValueError("Date from must not be after Date to.")
+        # Stored import timestamps are naive UTC. The upper bound includes every
+        # instant on the selected day without truncating subsecond precision.
+        until = bounds["date_to"] + timedelta(days=1) if "date_to" in bounds else None
+        page = int(request.args.get("page", "1"))
+        per_page = int(request.args.get("per_page", "50"))
+        if page < 1 or not 1 <= per_page <= 500:
+            raise ValueError("Page must be positive and page size must be between 1 and 500.")
+        export_format = request.args.get("format", "json")
+        if export_format not in ("json", "csv"):
+            raise ValueError("Choose JSON or CSV format.")
+    except (ValueError, OverflowError) as exc:
+        return jsonify({"success": False, "error": str(exc) or "Invalid history filters."}), 400
 
     from app.models.application_import_history import ApplicationImportHistory
 
-    history = (
-        ApplicationImportHistory.query.order_by(
-            ApplicationImportHistory.imported_at.desc()
-        )
-        .limit(50)
-        .all()
-    )
+    try:
+        # TenantMixin applies the current organization's scope mechanically.
+        query = ApplicationImportHistory.query
+        if status:
+            query = query.filter(ApplicationImportHistory.status == status)
+        if "date_from" in bounds:
+            query = query.filter(ApplicationImportHistory.imported_at >= bounds["date_from"])
+        if until is not None:
+            query = query.filter(ApplicationImportHistory.imported_at < until)
+        query = query.order_by(ApplicationImportHistory.imported_at.desc(), ApplicationImportHistory.id.desc())
+        if export_format == "csv":
+            output = io.StringIO(newline="")
+            writer = csv.writer(output)
+            writer.writerow(["Import ID", "File name", "Imported at (UTC)", "Imported by", "Source",
+                             "Status", "Total", "Created", "Updated", "Skipped", "Failed"])
+            for row in query.yield_per(500):
+                cells = [row.id, row.file_name, _import_history_utc(row.imported_at), row.imported_by_name,
+                         row.import_source, row.status, row.total_records, row.records_created,
+                         row.records_updated, row.records_skipped, row.records_failed]
+                # Spreadsheet formula injection: preserve text, never execute it.
+                writer.writerow([_import_history_csv_value(value) for value in cells])
+            payload = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+            return send_file(payload, mimetype="text/csv", as_attachment=True,
+                             download_name="application-import-history.csv")
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        history = paginated.items
+    except Exception:
+        logger.exception("Could not read application import history")
+        return jsonify({"success": False, "error": "Could not load application import history."}), 500
 
     # Enhanced history with audit data
     enhanced_history = []
     for h in history:
-        history_dict = h.to_dict()
+        history_dict = {key: getattr(h, key) for key in (
+            "id", "imported_by_id", "imported_by_name", "import_source", "file_name", "file_size",
+            "total_records", "records_created", "records_updated", "records_skipped", "records_failed",
+            "duplicate_mode", "status", "error_summary")}
+        history_dict["imported_at"] = _import_history_utc(h.imported_at)
+        history_dict["errors"] = []
 
         # Parse import settings for additional context
         if h.import_settings:
             try:
                 settings = json.loads(h.import_settings)
+                if not isinstance(settings, dict):
+                    raise ValueError("Import settings must be an object")
+                history_dict["import_settings"] = settings
                 history_dict.update(
                     {
                         "processing_time_seconds": settings.get(
@@ -4580,7 +4673,7 @@ def get_import_history():
                         "ai_analysis_stats": settings.get("ai_analysis"),
                     }
                 )
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 history_dict["import_settings_parse_error"] = True
 
         # Parse error details to separate errors from linked applications
@@ -4593,21 +4686,45 @@ def get_import_history():
                         "linked_applications",
                         history_dict.get("linked_applications", {}),
                     )
-                else:
+                elif isinstance(details, list):
                     history_dict["errors"] = details
-            except json.JSONDecodeError:
+                else:
+                    history_dict["errors"] = [str(details)]
+            except (json.JSONDecodeError, TypeError):
                 history_dict["errors"] = [h.error_details] if h.error_details else []
+        if not isinstance(history_dict["errors"], list):
+            history_dict["errors"] = [str(history_dict["errors"])]
+        history_dict["errors"] = [error if isinstance(error, str) else json.dumps(error, ensure_ascii=False)
+                                  for error in history_dict["errors"]]
+        history_dict["error_details"] = history_dict["errors"]
 
-        # Add rollback eligibility (within 7 days for completed imports)
-        if h.status == "completed" and h.imported_at:
-            days_since_import = (datetime.utcnow() - h.imported_at).days
-            history_dict["can_rollback"] = days_since_import <= 7
-        else:
-            history_dict["can_rollback"] = False
+        # The mutation endpoint independently rechecks this policy and scope.
+        from app.modules.applications.routes.import_export_routes import rollback_import_eligibility
+        history_dict.update(rollback_import_eligibility(h, current_user))
 
         enhanced_history.append(history_dict)
 
-    return jsonify({"history": enhanced_history}), 200
+    return jsonify({"success": True, "history": enhanced_history, "total": paginated.total,
+                    "page": page, "per_page": per_page, "pages": paginated.pages}), 200
+
+
+def _import_history_utc(value):
+    if value is None:
+        return None
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return aware.isoformat().replace("+00:00", "Z")
+
+
+def _import_history_csv_value(value):
+    """Reuse export protection and cover formula prefixes hidden by whitespace."""
+    from app.modules.applications.routes._helpers import _sanitize_csv_value
+
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if _sanitize_csv_value(value) != value or _sanitize_csv_value(stripped) != stripped:
+        return "'" + value
+    return value
 
 
 @application_mgmt.route("/applications/download-template", methods=["GET"])

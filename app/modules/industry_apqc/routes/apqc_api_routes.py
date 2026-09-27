@@ -14,6 +14,7 @@ from flask_login import login_required
 from app.decorators import audit_log
 
 from app.services.apqc_hierarchy_service import APQCHierarchyService
+from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ def search_apqc_processes():
         query = request.args.get("q", "").strip()
         level = request.args.get("level", type=int)
         industry = request.args.get("industry")
-        limit = request.args.get("limit", 50, type=int)
+        limit = safe_int_arg('limit', 50, minimum=1, maximum=500)
 
         if not query:
             return jsonify({"success": False, "error": "Search query is required"}), 400

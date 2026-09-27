@@ -1,5 +1,5 @@
 {% extends "layouts/admin_base.html" %}
-{% from "components/page_header.html" import page_header %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge %}
 {% from 'components/modal.html' import modal %}
 
@@ -9,39 +9,42 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     {% if is_reviews_view %}
-    {{ page_header(
+    {% macro _arb_reviews_actions() %}
+    <button type="button" @click="Platform.modal.open('create-arb-review')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label="New Review">
+        <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Review
+    </button>
+    {% endmacro %}
+    {# duplicate-breadcrumb-ok: this page_shell() and the one in the else branch below are mutually exclusive render paths (is_reviews_view), so exactly one page_shell -- and one breadcrumb -- ever renders per request. #}
+    {{ page_shell(
         title='ARB Reviews',
-        description='Architecture review items submitted for governance assessment',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Governance'},
-            {'label': 'ARB Reviews'}
-        ],
-        actions=[
-            {'text': 'New Review', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-arb-review")', 'variant': 'default'}
-        ]
+        subtitle='Architecture review items submitted for governance assessment',
+        breadcrumb=[('Home', url_for('main.index')), ('Governance', None), ('ARB Reviews', None)],
+        actions_caller=_arb_reviews_actions
     ) }}
     {% else %}
-    {{ page_header(
+    {% macro _arb_sessions_actions() %}
+    <button type="button" @click="Platform.modal.open('create-arb-session')"
+            class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium h-10 px-4 py-2 ring-offset-background transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
+            aria-label="New Session">
+        <i data-lucide="plus" class="w-4 h-4 mr-2" aria-hidden="true"></i>New Session
+    </button>
+    {% endmacro %}
+    {{ page_shell(
         title='ARB Sessions',
-        description='Scheduled Architecture Review Board meetings',
-        breadcrumbs=[
-            {'label': 'Dashboard', 'href': url_for('main.index')},
-            {'label': 'Governance'},
-            {'label': 'ARB Sessions'}
-        ],
-        actions=[
-            {'text': 'New Session', 'icon': 'plus', 'onclick': 'Platform.modal.open("create-arb-session")', 'variant': 'default'}
-        ]
+        subtitle='Scheduled Architecture Review Board meetings',
+        breadcrumb=[('Home', url_for('main.index')), ('Governance', None), ('ARB Sessions', None)],
+        actions_caller=_arb_sessions_actions
     ) }}
     {% endif %}
 
     <!-- Filters -->
     <div class="bg-card border border-border rounded-lg p-4 mb-6" x-data>
-        <form method="GET" class="flex flex-wrap gap-4">
+        <form method="GET" action="{{ request.path }}" class="flex flex-wrap gap-4">
             <div>
                 <label class="block text-sm font-medium text-muted-foreground mb-1">Status</label>
-                <select name="status" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()">
+                <select name="status" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()" aria-label="Status">
                     <option value="all" {% if status == 'all' %}selected{% endif %}>All Statuses</option>
                     {% if is_reviews_view %}
                     <option value="submitted" {% if status == 'submitted' %}selected{% endif %}>Submitted</option>
@@ -61,7 +64,7 @@
             {% if is_reviews_view %}
             <div>
                 <label class="block text-sm font-medium text-muted-foreground mb-1">Review Type</label>
-                <select name="review_type" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()">
+                <select name="review_type" class="rounded-md border border-input bg-background px-3 py-2 text-sm" @change="$el.form.submit()" aria-label="Review Type">
                     <option value="all" {% if review_type == 'all' %}selected{% endif %}>All Types</option>
                     <option value="solution" {% if review_type == 'solution' %}selected{% endif %}>Solution</option>
                     <option value="architecture" {% if review_type == 'architecture' %}selected{% endif %}>Architecture</option>
@@ -81,7 +84,12 @@
                 <div class="flex justify-between items-start">
                     <div class="flex-1">
                         <div class="flex items-center gap-3 mb-2">
-                            <span class="text-sm font-mono text-primary">{% if is_reviews_view %}{{ session.review_number or ('REV-' ~ session.id) }}{% else %}SESSION-{{ session.id }}{% endif %}</span>
+                            {# F-23, Capgemini dry-run: this rendered a synthetic
+                               SESSION-{{ id }} instead of the board's real,
+                               unique board_number (ARB-2026-001 style), which
+                               collided in spirit with the ARB-numbered boards
+                               list elsewhere in the app. #}
+                            <span class="text-sm font-mono text-primary">{% if is_reviews_view %}{{ session.review_number or ('REV-' ~ session.id) }}{% else %}{{ session.board_number or ('SESSION-' ~ session.id) }}{% endif %}</span>
                             {% if is_reviews_view %}
                                 {% if session.status == 'approved' %}
                                 {{ status_badge('Approved', 'success') }}
@@ -112,7 +120,14 @@
                                 {% endif %}
                             {% endif %}
                         </div>
-                        <h3 class="font-semibold text-foreground">{{ session.title or ('Review Item' if is_reviews_view else 'ARB Session') }}</h3>
+                        {# DEF-055, Capgemini dry-run: ArchitectureReviewBoard's
+                           real name column is `name`, not `title` — reading
+                           `session.title` here always returned None (that
+                           model has no such column), so every session's own
+                           name was silently discarded in favour of the
+                           generic "ARB Session" fallback. Reviews (ARBReviewItem)
+                           genuinely do use `title`. #}
+                        <h3 class="font-semibold text-foreground">{{ (session.title if is_reviews_view else session.name) or ('Review Item' if is_reviews_view else 'ARB Session') }}</h3>
                         <p class="text-sm text-muted-foreground mt-1">{{ session.description | truncate(150) if session.description else 'No description' }}</p>
                         <div class="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
                             {% if is_reviews_view %}
@@ -138,7 +153,7 @@
                             {% if session.submitter %}
                             <span class="flex items-center gap-1">
                                 <i data-lucide="user" class="w-3.5 h-3.5" aria-hidden="true"></i>
-                                {{ session.submitter.first_name }} {{ session.submitter.last_name }}
+                                {{ session.submitter.full_name() }}
                             </span>
                             {% endif %}
                             {% else %}
@@ -178,6 +193,7 @@
                         </a>
                         {% if not is_reviews_view and session.status == 'scheduled' %}
                         <form action="{{ url_for('arb.complete_session', id=session.id) }}" method="POST" class="inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit"
                                     class="inline-flex items-center px-3 py-1.5 text-sm bg-success text-primary-foreground rounded-md hover:bg-success transition-colors" aria-label="Submit">
                                 <i data-lucide="check" class="w-3.5 h-3.5 mr-1" aria-hidden="true"></i>
@@ -227,49 +243,61 @@
 </div>
 
 {% call modal(id='create-arb-session', title='Schedule ARB Session', description='Create a new Architecture Review Board meeting', size='lg') %}
-<form @submit.prevent="submitCreateSession()" class="space-y-4" x-data="arbSessionModal()">
+{#
+  Progressive enhancement, deliberately. Alpine intercepts the submit and posts
+  JSON when it is bound; when it is NOT bound the browser posts this form
+  natively to the same endpoint and the server's flash reaches the user as a
+  toast. Before 01 Sep 2026 the form carried no method/action and no name
+  attributes, so an unbound Alpine meant a native GET-shaped submit that lost
+  every field: the modal closed, the page returned to /arb/sessions and nothing
+  at all was reported. There is no third outcome now -- a session is created, or
+  the reason is on screen.
+#}
+<form method="POST" action="{{ url_for('arb.create_session') }}"
+      @submit.prevent="submitCreateSession()" class="space-y-4" x-data="arbSessionModal()">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div>
-        <label for="cas-name" class="block text-sm font-medium mb-1">Session Name <span class="text-destructive">*</span></label>
-        <input type="text" id="cas-name" x-model="formData.name" required
+        <label for="cas-name" class="block text-sm font-medium mb-1">Session Name <span class="text-destructive-emphasis">*</span></label>
+        <input type="text" id="cas-name" name="name" x-model="formData.name" required
                class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                placeholder="e.g. ARB Session Q1 2026">
     </div>
     <div>
         <label for="cas-description" class="block text-sm font-medium mb-1">Description</label>
-        <textarea id="cas-description" x-model="formData.description" rows="2"
+        <textarea id="cas-description" name="description" x-model="formData.description" rows="2"
                   class="flex min-h-[64px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   placeholder="Agenda and objectives for this session"></textarea>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-            <label for="cas-date" class="block text-sm font-medium mb-1">Scheduled Date &amp; Time <span class="text-destructive">*</span></label>
-            <input type="datetime-local" id="cas-date" x-model="formData.scheduled_date" required
+            <label for="cas-date" class="block text-sm font-medium mb-1">Scheduled Date &amp; Time <span class="text-destructive-emphasis">*</span></label>
+            <input type="datetime-local" id="cas-date" name="scheduled_date" x-model="formData.scheduled_date" required
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         </div>
         <div>
             <label for="cas-duration" class="block text-sm font-medium mb-1">Duration (minutes)</label>
-            <input type="number" id="cas-duration" x-model="formData.duration_minutes" min="30" max="480" value="120"
+            <input type="number" id="cas-duration" name="duration_minutes" x-model="formData.duration_minutes" min="30" max="480" value="120"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         </div>
     </div>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-            <label for="cas-chair" class="block text-sm font-medium mb-1">Chair <span class="text-destructive">*</span></label>
-            <select id="cas-chair" x-model="formData.chair_id" required
+            <label for="cas-chair" class="block text-sm font-medium mb-1">Chair <span class="text-destructive-emphasis">*</span></label>
+            <select id="cas-chair" name="chair_id" x-model="formData.chair_id" required
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select chair...</option>
                 {% for user in users %}
-                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                <option value="{{ user.id }}">{{ user.full_name() }}</option>
                 {% endfor %}
             </select>
         </div>
         <div>
             <label for="cas-secretary" class="block text-sm font-medium mb-1">Secretary (optional)</label>
-            <select id="cas-secretary" x-model="formData.secretary_id"
+            <select id="cas-secretary" name="secretary_id" x-model="formData.secretary_id"
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <option value="">Select secretary...</option>
                 {% for user in users %}
-                <option value="{{ user.id }}">{{ user.first_name }} {{ user.last_name }}</option>
+                <option value="{{ user.id }}">{{ user.full_name() }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -277,18 +305,18 @@
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
             <label for="cas-location" class="block text-sm font-medium mb-1">Location</label>
-            <input type="text" id="cas-location" x-model="formData.location"
+            <input type="text" id="cas-location" name="location" x-model="formData.location"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                    placeholder="Room or building name">
         </div>
         <div>
             <label for="cas-link" class="block text-sm font-medium mb-1">Meeting Link</label>
-            <input type="url" id="cas-link" x-model="formData.meeting_link"
+            <input type="url" id="cas-link" name="meeting_link" x-model="formData.meeting_link"
                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                    placeholder="https://teams.microsoft.com/...">
         </div>
     </div>
-    <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive" x-text="errorMsg"></div>
+    <div x-cloak x-show="errorMsg" class="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive-emphasis" x-text="errorMsg"></div>
     <div class="flex justify-end gap-3 pt-2 border-t border-border">
         <button type="button" data-modal-close="create-arb-session"
                 class="px-4 py-2 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent" aria-label="Action">Cancel</button>
@@ -309,6 +337,19 @@
 <script>
   window.__ARB_CONFIG__ = window.__ARB_CONFIG__ || {};
   window.__ARB_CONFIG__.createSessionUrl = '{{ url_for("arb.create_session") }}';
+  {#
+    This template serves BOTH /arb/sessions and /arb/reviews, and it includes
+    arb/_create_review_modal.html and loads dashboard.js -- but it used to declare
+    only createSessionUrl. dashboard.js's loadFormData() reads
+    __ARB_CONFIG__.formDataUrl and returns immediately when it is absent, so on
+    these two pages the Review Type and Decision Type dropdowns were permanently
+    empty while formOptions.loadError stayed false: the app never knew it had
+    failed. The QA audit of 30 Aug 2026 (High #8) recorded it as "No user can
+    create a new ARB review through the UI ... blocking a core governance
+    workflow entirely." Both URLs the shared modal needs are declared here now.
+  #}
+  window.__ARB_CONFIG__.createReviewUrl = '{{ url_for("arb.create_review") }}';
+  window.__ARB_CONFIG__.formDataUrl = '{{ url_for("arb.api_form_data") }}';
 </script>
 <script src="{{ url_for('static', filename='js/arb/sessions.js') }}"></script>
 {# dashboard.js provides arbReviewCreateModal() for the shared Create Review modal #}

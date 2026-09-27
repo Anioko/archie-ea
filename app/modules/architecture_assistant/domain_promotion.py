@@ -1,6 +1,7 @@
 # app/modules/architecture_assistant/domain_promotion.py
 """Domain Promotion Service — promotes accepted proposals to ArchiMate elements."""
 
+from app.services.archimate_backbone import sync_archimate_element
 import json
 import logging
 import re
@@ -294,6 +295,7 @@ class DomainPromotionService:
                 verification_method=unwrap_acm_value(acm_props.get("verification_method")),
             )
             db.session.add(req)
+            sync_archimate_element(req)
             created += 1
 
         if created:

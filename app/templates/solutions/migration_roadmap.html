@@ -4,7 +4,7 @@
 {% block title %}Migration Roadmap — {{ solution.name }}{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-5xl"
+<div class="p-6 space-y-6 mx-auto max-w-5xl"
      x-data="migrationRoadmap({{ solution.id }}, {{ (roadmap.id if roadmap else 'null') }})">
     {{ page_header(
         title='Migration Roadmap',
@@ -28,7 +28,7 @@
         </button>
     </div>
 
-    <div x-cloak x-show="error" class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive p-3 text-sm" x-text="error"></div>
+    <div x-cloak x-show="error" class="mb-6 rounded-md border border-destructive/30 bg-destructive/10 text-destructive-emphasis p-3 text-sm" x-text="error"></div>
     <div x-cloak x-show="busy" class="mb-6 rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground flex items-center gap-2">
         <i data-lucide="loader" class="h-4 w-4 animate-spin"></i> The Solution Architect is sequencing the plateaus — this takes a few seconds.
     </div>
@@ -54,7 +54,7 @@
             </div>
             <div class="shrink-0 text-right">
                 <p class="text-2xl font-bold text-foreground">{{ roadmap.plateau_count }}</p>
-                <p class="text-[10px] uppercase tracking-wider text-muted-foreground">plateaus{% if roadmap.horizon_months %} · {{ roadmap.horizon_months }} mo{% endif %}</p>
+                <p class="text-xs uppercase tracking-wider text-muted-foreground">plateaus{% if roadmap.horizon_months %} · {{ roadmap.horizon_months }} mo{% endif %}</p>
             </div>
         </div>
     </div>
@@ -63,26 +63,26 @@
     <ol class="relative border-l-2 border-border ml-3 space-y-6">
         {% for p in roadmap.plateaus %}
         <li class="ml-6">
-            <span class="absolute -left-[0.7rem] flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-bold ring-4 ring-background">{{ p.sequence }}</span>
+            <span class="absolute -left-[0.7rem] flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground text-2xs font-bold ring-4 ring-background">{{ p.sequence }}</span>
             <div class="border border-border rounded-xl bg-card overflow-hidden">
                 <div class="px-5 py-3 border-b border-border flex items-center justify-between bg-muted/20">
                     <h3 class="text-sm font-semibold text-foreground">{{ p.name }}</h3>
-                    {% if p.horizon_months %}<span class="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><i data-lucide="clock" class="h-3 w-3"></i> ~{{ p.horizon_months }} mo</span>{% endif %}
+                    {% if p.horizon_months %}<span class="inline-flex items-center gap-1 text-2xs text-muted-foreground"><i data-lucide="clock" class="h-3 w-3"></i> ~{{ p.horizon_months }} mo</span>{% endif %}
                 </div>
                 <div class="p-5 space-y-3">
-                    {% if p.objective %}<div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Objective</p><p class="text-sm text-foreground mt-0.5">{{ p.objective }}</p></div>{% endif %}
-                    {% if p.target_state %}<div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Target state</p><p class="text-sm text-muted-foreground mt-0.5">{{ p.target_state }}</p></div>{% endif %}
+                    {% if p.objective %}<div><p class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Objective</p><p class="text-sm text-foreground mt-0.5">{{ p.objective }}</p></div>{% endif %}
+                    {% if p.target_state %}<div><p class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Target state</p><p class="text-sm text-muted-foreground mt-0.5">{{ p.target_state }}</p></div>{% endif %}
                     {% if p.work_packages %}
                     <div>
-                        <p class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Work packages</p>
+                        <p class="text-2xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Work packages</p>
                         <div class="space-y-1.5">
                             {% for wp in p.work_packages %}
                             <div class="flex items-start gap-2 text-xs border border-border rounded-md px-3 py-2 bg-background">
-                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-muted text-muted-foreground shrink-0">{{ wp.effort or '—' }}</span>
+                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold bg-muted text-muted-foreground shrink-0">{{ wp.effort or '—' }}</span>
                                 <div class="min-w-0">
                                     <p class="text-foreground font-medium">{{ wp.name }}</p>
-                                    {% if wp.touches %}<p class="text-[11px] text-muted-foreground mt-0.5">Touches: {{ wp.touches }}</p>{% endif %}
-                                    {% if wp.depends_on %}<p class="text-[11px] text-muted-foreground mt-0.5">Depends on: {{ wp.depends_on | join(', ') }}</p>{% endif %}
+                                    {% if wp.touches %}<p class="text-2xs text-muted-foreground mt-0.5">Touches: {{ wp.touches }}</p>{% endif %}
+                                    {% if wp.depends_on %}<p class="text-2xs text-muted-foreground mt-0.5">Depends on: {{ wp.depends_on | join(', ') }}</p>{% endif %}
                                 </div>
                             </div>
                             {% endfor %}
@@ -95,7 +95,7 @@
         {% endfor %}
     </ol>
 
-    <p class="text-[11px] text-muted-foreground mt-6">Generated by the AI Solution Architect · regenerate to re-sequence as the design evolves.</p>
+    <p class="text-2xs text-muted-foreground mt-6">Generated by the AI Solution Architect · regenerate to re-sequence as the design evolves.</p>
     {% endif %}
 </div>
 {% endblock %}
@@ -112,14 +112,19 @@
             async generate() {
                 this.busy = true; this.error = '';
                 try {
-                    const r = await fetch('/solutions/' + this.solutionId + '/migration-roadmap/generate', {
-                        method: 'POST', headers: { 'X-CSRFToken': this._csrf() },
-                    });
-                    const d = await r.json();
-                    if (!r.ok || !d.success) { this.error = d.error || 'Generation failed.'; return; }
+                    const d = await Platform.fetch.post('/solutions/' + this.solutionId + '/migration-roadmap/generate', null, { silent: true });
+                    if (!d.success) {
+                        this.error = d.error || 'Generation failed.';
+                        return;
+                    }
                     window.location.reload();
-                } catch (e) { this.error = 'Network error during generation.'; }
-                finally { this.busy = false; }
+                } catch (e) {
+                    // Platform.fetch throws on network errors or non-ok responses.
+                    // We already passed silent:true, so no duplicate toast appears.
+                    this.error = e.message || 'Network error during generation.';
+                } finally {
+                    this.busy = false;
+                }
             },
         };
     }

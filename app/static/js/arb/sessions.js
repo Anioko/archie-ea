@@ -27,15 +27,7 @@ function arbSessionModal() {
       this.submitting = true;
       this.errorMsg = '';
       const url = window.__ARB_CONFIG__?.createSessionUrl || '/arb/sessions/create';
-      fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
-        },
-        body: JSON.stringify(this.formData)
-      })
-        .then(r => r.json())
+      Platform.fetch.post(url, this.formData, { silent: true })
         .then(data => {
           this.submitting = false;
           if (!data.success) {
@@ -46,9 +38,19 @@ function arbSessionModal() {
           showToast({ title: 'Session scheduled successfully', variant: 'default' });
           setTimeout(() => window.location.reload(), 800);
         })
-        .catch(() => {
+        .catch(err => {
           this.submitting = false;
-          this.errorMsg = 'Network error. Please try again.';
+          // Every failure must reach the user. Reporting the server's own reason
+          // beats a generic line: a 500 here used to read "Network error. Please
+          // try again." while the response body said exactly what was wrong.
+          const data = (err && err.data) || {};
+          const fieldErrors = Object.values(data.errors || {}).filter(Boolean).join(' ');
+          this.errorMsg =
+            fieldErrors || data.error || (err && err.message) ||
+            'The session could not be scheduled.';
+          if (window.Platform && Platform.toast) {
+            Platform.toast.error(this.errorMsg);
+          }
         });
     }
   };

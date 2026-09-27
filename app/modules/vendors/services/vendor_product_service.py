@@ -15,14 +15,16 @@ Features:
 - Vendor risk scoring and analysis
 """
 
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func, or_
 
 from app import db
+from app.models.vendor.vendor_organization import VendorOrganization
 
 logger = logging.getLogger(__name__)
 
@@ -557,7 +559,8 @@ class VendorProductService:
 
             # Check if mapping already exists
             existing = ApplicationVendorProductMapping.query.filter_by(
-                application_id=application_id, vendor_product_id=vendor_product_id
+                application_component_id=application_id,
+                vendor_product_id=vendor_product_id,
             ).first()
 
             if existing:
@@ -569,15 +572,19 @@ class VendorProductService:
 
             # Create new mapping
             mapping = ApplicationVendorProductMapping(
-                application_id=application_id,
+                application_component_id=application_id,
                 vendor_product_id=vendor_product_id,
-                confidence_score=confidence_score,
-                mapping_method=mapping_method,
-                deployment_type=deployment_type,
-                version_deployed=version_deployed,
-                license_type=license_type,
-                ai_extraction_rationale=f"AI extracted vendor-product mapping with confidence {confidence_score}",
-                created_by_id=user_id,
+                product_version=version_deployed,
+                deployment_model=deployment_type.lower(),
+                mapping_notes=json.dumps(
+                    {
+                        "confidence_score": confidence_score,
+                        "mapping_method": mapping_method,
+                        "license_type": license_type,
+                        "created_by_id": user_id,
+                    },
+                    sort_keys=True,
+                ),
             )
 
             db.session.add(mapping)
@@ -766,7 +773,6 @@ class VendorProductService:
 
     def _find_product_family_by_name(self, family_name: str, vendor_name: str):
         """Find product family by name and vendor."""
-        from app.models.vendor.vendor_organization import VendorProduct
         from app.models.vendor.vendor_product import VendorProductFamily
 
         return (
@@ -804,7 +810,6 @@ class VendorProductService:
 
     def _get_vendor_product_families(self, vendor_id: int):
         """Get all product families for a vendor."""
-        from app.models.vendor.vendor_organization import VendorProduct
         from app.models.vendor.vendor_product import VendorProductFamily
 
         return VendorProductFamily.query.filter_by(vendor_id=vendor_id).all()
@@ -1034,7 +1039,6 @@ class VendorProductService:
         """Calculate average TCO for vendor products"""
         try:
             from app.models.vendor.vendor_organization import VendorProduct
-            from app.models.vendor.vendor_product import VendorProductFamily
 
             # Get all products for this vendor directly by vendor_organization_id
             products = VendorProduct.query.filter_by(vendor_organization_id=vendor.id).all()
@@ -1116,7 +1120,7 @@ class VendorProductService:
             List of product dictionaries with search results
         """
         try:
-            from sqlalchemy import and_, distinct, or_
+            from sqlalchemy import or_
 
             from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 
@@ -1343,8 +1347,10 @@ class VendorProductService:
                 "total_products": total_products,
             }
         except Exception as e:
+            # Do not fabricate an empty/zero catalog on failure; the route
+            # handler turns this into a clean 500 rather than a fake "0 vendors".
             logger.error(f"Error getting complete catalog: {e}")
-            return {"vendors": [], "total_vendors": 0, "total_families": 0, "total_products": 0}
+            raise
 
     def get_catalog_statistics(self) -> Dict[str, Any]:
         """Get aggregate statistics for the vendor catalog."""
@@ -1376,13 +1382,14 @@ class VendorProductService:
                 "category_breakdown": {cat: cnt for cat, cnt in category_breakdown if cat},
             }
         except Exception as e:
+            # Do not fabricate zero statistics on failure; the route handler
+            # turns this into a clean 500 rather than a fake "0 vendors".
             logger.error(f"Error getting catalog statistics: {e}")
-            return {"total_vendors": 0, "total_product_families": 0, "total_products": 0}
+            raise
 
     def get_all_categories(self) -> List[str]:
         """Get all unique product family categories."""
         try:
-            from app.models.vendor.vendor_organization import VendorProduct
             from app.models.vendor.vendor_product import VendorProductFamily
             rows = db.session.query(VendorProductFamily.category).distinct().all()
             return sorted([r[0] for r in rows if r[0]])
@@ -1444,7 +1451,6 @@ class VendorProductService:
     def get_vendor_product_families(self, vendor_id: int) -> List[Dict[str, Any]]:
         """Get all product families for a vendor."""
         try:
-            from app.models.vendor.vendor_organization import VendorProduct
             from app.models.vendor.vendor_product import VendorProductFamily
             families = VendorProductFamily.query.filter_by(vendor_id=vendor_id).all()
             return [f.to_dict() for f in families] if families else []
@@ -1465,15 +1471,20 @@ class VendorProductService:
     def get_product_applications(self, product_id: int) -> List[Dict[str, Any]]:
         """Get all applications mapped to a product via application_vendor_product_mappings."""
         try:
+            # vendor_products is shared reference data with no organization_id,
+            # so product_id does not scope this — application_components does.
+            from flask import g as _g
+            _org = getattr(_g, "current_org_id", None)
+            _org_and = " AND ac.organization_id = :org" if _org is not None else ""
             rows = db.session.execute(
-                db.text("""
+                db.text(f"""
                     SELECT ac.id, ac.name, m.role_type
                     FROM application_vendor_product_mappings m
                     JOIN application_components ac ON ac.id = m.application_component_id
-                    WHERE m.vendor_product_id = :pid
+                    WHERE m.vendor_product_id = :pid{_org_and}
                     ORDER BY ac.name
                 """),
-                {"pid": product_id},
+                {"pid": product_id, **({"org": _org} if _org is not None else {})},
             ).fetchall()
             return [{"id": r[0], "name": r[1], "role_type": r[2]} for r in rows]
         except Exception as e:

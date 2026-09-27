@@ -1,39 +1,37 @@
 {% extends "layouts/admin_base.html" %}
+{% from 'macros/page_shell.html' import page_shell %}
 {% from 'components/status_badge.html' import status_badge_auto as status_badge %}
 {% block title %}Solution Portfolio{% endblock %}
 {% block content %}
-<div class="container mx-auto px-4 sm:px-6 lg:px-8 py-6 max-w-7xl"
+<div class="p-6 space-y-6 mx-auto max-w-7xl"
      x-data="portfolioFilter()"
      x-init="init()">
 
-  <div class="flex items-center justify-between mb-6">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">Solution Portfolio</h1>
-      <p class="mt-1 text-sm text-muted-foreground">{{ total_count }} solution(s) across {{ domains|length }} domain(s)</p>
-    </div>
-    <a href="/architecture-journey/"
+  {% macro _ps_actions() %}
+<a href="/architecture-journey/"
        class="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg">
       + New Solution
     </a>
-  </div>
+  {% endmacro %}
+  {{ page_shell(title='Solution Portfolio', breadcrumb=[('Home', '/'), ('Solution Portfolio', none)], subtitle=(total_count) ~ ' solution(s) across ' ~ (domains|length) ~ ' domain(s)', actions_caller=_ps_actions) }}
 
   <!-- ENH-022: Filters with group-by toggle -->
   <div class="flex flex-wrap gap-3 mb-6">
     <select x-model="groupBy" @change="applyFilters()"
-            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground">
+            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground" aria-label="Group By">
       <option value="domain" {% if group_by != 'roadmap' %}selected{% endif %}>Group by Domain</option>
       <option value="roadmap" {% if group_by == 'roadmap' %}selected{% endif %}>Group by Roadmap Initiative</option>
     </select>
     <select x-model="domainFilter" @change="applyFilters()"
             class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground"
-            x-show="groupBy === 'domain'" x-cloak>
+            x-show="groupBy === 'domain'" x-cloak aria-label="Filter by Domain">
       <option value="">All Domains</option>
       {% for d in all_domains %}
       <option value="{{ d }}" {% if d == selected_domain %}selected{% endif %}>{{ d }}</option>
       {% endfor %}
     </select>
     <select x-model="statusFilter" @change="applyFilters()"
-            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground">
+            class="block rounded-md border-border shadow-sm text-sm focus:ring-ring focus:border-ring bg-background text-foreground" aria-label="Filter by Status">
       <option value="">All Statuses</option>
       {% for s in all_statuses %}
       <option value="{{ s }}" {% if s == selected_status %}selected{% endif %}>{{ s|replace('_',' ')|title }}</option>

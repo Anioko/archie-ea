@@ -1,0 +1,37 @@
+{#
+  The journey home's record panels: participants, decisions, risks, governance.
+
+  Every count on this screen comes from `home.counts`, where `None` means "not
+  computed" and renders as an em dash via the `dash` filter. It is never `0`.
+  On a governance screen a zero that means "the query failed" is indistinguishable
+  from a zero that means "there are genuinely no open risks", and the reader acts
+  on the difference.
+
+  Nothing here copies a field from the record it points at. A link carries a type
+  and an id; the label is the type and the identifier, not a cached title that
+  would silently stop being true the moment someone renamed the record.
+#}
+
+{% macro journey_count_panel(testid, title, description, count, icon, empty_hint, degraded) %}
+<section data-testid="{{ testid }}" class="rounded-xl border border-border bg-card p-5"
+         aria-labelledby="{{ testid }}-title">
+  <div class="flex items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h3 id="{{ testid }}-title" class="text-sm font-semibold text-foreground">{{ title }}</h3>
+      <p class="mt-1 text-xs leading-5 text-muted-foreground">{{ description }}</p>
+    </div>
+    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+      <i data-lucide="{{ icon }}" class="h-4 w-4" aria-hidden="true"></i>
+    </div>
+  </div>
+
+  <p class="mt-4 text-2xl font-bold tabular-nums text-foreground">{{ count | dash }}</p>
+
+  {% if degraded %}
+    {# Not "0". The screen does not know, and says so. #}
+    <p class="mt-1 text-xs text-warning-emphasis">Not available — this journey's links could not be read.</p>
+  {% elif count == 0 %}
+    <p class="mt-1 text-xs text-muted-foreground">{{ empty_hint }}</p>
+  {% endif %}
+</section>
+{% endmacro %}

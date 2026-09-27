@@ -9,8 +9,8 @@
 {% from 'components/breadcrumb_nav.html' import breadcrumb_nav %}
 {{ breadcrumb_nav(items=[
     {'text': 'Home', 'href': url_for('main.index'), 'icon': 'home'},
-    {'text': 'Enterprise Architecture'},
-    {'text': 'Enterprise', 'current': true}
+    {'text': 'Enterprise Architecture', 'href': url_for('enterprise.enterprise_dashboard')},
+    {'text': 'Gap Analysis', 'current': true}
 ]) }}
 {% endblock %}
 
@@ -27,25 +27,42 @@
 
     <!-- Gap Summary -->
     <div class="grid gap-4 md:grid-cols-4">
-        {{ metrics_card(title='Total Gaps', value=gaps|length|default(0), icon='target') }}
+        {{ metrics_card(title='Recorded Gaps', value=gaps|length|default(0), icon='target', description='ArchiMate Gap elements in the register') }}
         {{ metrics_card(title='Critical', value=gaps|selectattr('priority', 'equalto', 'Critical')|list|length|default(0), icon='alert-triangle', icon_class='!text-destructive', value_class='text-destructive') }}
         {{ metrics_card(title='In Progress', value=gaps|selectattr('status', 'equalto', 'In Progress')|list|length|default(0), icon='loader', icon_class='!text-primary', value_class='text-primary') }}
         {{ metrics_card(title='Resolved', value=gaps|selectattr('status', 'equalto', 'Resolved')|list|length|default(0), icon='check-circle', icon_class='!text-success', value_class='text-success') }}
     </div>
 
     <!-- Gaps Table -->
-    <div data-slot="card" class="rounded-xl border bg-card">
+    <div data-slot="card" class="rounded-xl border bg-card" x-data="gapAnalysisTable()">
         <div class="p-6">
             <h3 class="font-semibold mb-4">Identified Gaps</h3>
             <div class="overflow-x-auto">
                 <table class="w-full">
                     <thead>
                         <tr class="border-b">
-                            <th class="text-left p-3 font-medium">Gap</th>
-                            <th class="text-left p-3 font-medium">Type</th>
-                            <th class="text-left p-3 font-medium">Priority</th>
-                            <th class="text-left p-3 font-medium">Status</th>
-                            <th class="text-left p-3 font-medium">Impact</th>
+                            {# T-14 (2 Sep 2026 audit): same server-side sort pattern as /risks/ —
+                               survives reload/bookmark since this table has no Alpine array backing it. #}
+                            {% macro sort_th(key, label) %}
+                            {% set next_dir = 'desc' if current_sort == key and current_dir == 'asc' else 'asc' %}
+                            <th class="text-left p-3 font-medium">
+                                <a href="{{ request.path }}?sort={{ key }}&dir={{ next_dir }}"
+                                   class="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                                   aria-label="Sort by {{ label }}{{ ', currently ' ~ current_dir ~ 'ending' if current_sort == key }}">
+                                    {{ label }}
+                                    {% if current_sort == key %}
+                                    <i data-lucide="{{ 'arrow-up' if current_dir == 'asc' else 'arrow-down' }}" class="h-3 w-3" aria-hidden="true"></i>
+                                    {% else %}
+                                    <i data-lucide="chevrons-up-down" class="h-3 w-3 opacity-40" aria-hidden="true"></i>
+                                    {% endif %}
+                                </a>
+                            </th>
+                            {% endmacro %}
+                            {{ sort_th('name', 'Gap') }}
+                            {{ sort_th('gap_type', 'Type') }}
+                            {{ sort_th('priority', 'Priority') }}
+                            {{ sort_th('resolution_status', 'Status') }}
+                            {{ sort_th('impact', 'Impact') }}
                             <th class="text-left p-3 font-medium">Actions</th>
                         </tr>
                     </thead>
@@ -53,8 +70,11 @@
                         {% for gap in gaps|default([]) %}
                         <tr class="border-b hover:bg-muted/50">
                             <td class="p-3">
-                                <div class="font-medium">{{ gap.name|default('N/A') }}</div>
-                                <div class="text-sm text-muted-foreground">{{ gap.description|default('')|truncate(50) }}</div>
+                                <div class="font-medium">
+                                    <a href="{{ url_for('archimate_crud.detail_element', layer='implementation', element_type='Gap', element_id=gap.id) }}"
+                                       class="hover:underline" data-testid="gap-link-{{ gap.id }}">{{ gap.name|default('—', true) }}</a>
+                                </div>
+                                <div class="text-sm text-muted-foreground">{{ gap.description|default('', true)|truncate(50) }}</div>
                             </td>
                             <td class="p-3">{{ gap.gap_type|default('Unknown') }}</td>
                             <td class="p-3">
@@ -77,8 +97,12 @@
                             </td>
                             <td class="p-3 text-sm text-muted-foreground">{{ gap.impact|default('Unknown') }}</td>
                             <td class="p-3">
-                                <button class="p-2 hover:bg-muted rounded-md" aria-label="Action">
-                                    <i data-lucide="more-horizontal" class="h-4 w-4" aria-hidden="true"></i>
+                                <button type="button" class="px-3 py-1.5 text-sm rounded-md border hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                                        @click="convertToWorkPackage({{ gap.id }}, {{ (gap.name|default('this gap'))|tojson }}, $event.target)"
+                                        :disabled="busyId === {{ gap.id }}"
+                                        aria-label="Convert this gap to a work package">
+                                    <span x-show="busyId !== {{ gap.id }}">Convert to Work Package</span>
+                                    <span x-show="busyId === {{ gap.id }}">Converting…</span>
                                 </button>
                             </td>
                         </tr>
@@ -93,4 +117,30 @@
         </div>
     </div>
 </div>
+<script>
+    function gapAnalysisTable() {
+        return {
+            busyId: null,
+            convertToWorkPackage(gapId, gapName) {
+                if (this.busyId !== null) return;
+                this.busyId = gapId;
+                Platform.fetch.post('/api/roadmap/gaps/' + gapId + '/work-packages', { template: 'auto' })
+                    .then((data) => {
+                        if (data && data.success === false) {
+                            Platform.toast.error(data.error || 'Could not convert "' + gapName + '" to a work package.');
+                            return;
+                        }
+                        Platform.toast.success('"' + gapName + '" converted to a work package.');
+                    })
+                    .catch((err) => {
+                        Platform.toast.error('Could not convert "' + gapName + '" to a work package.');
+                        throw err;
+                    })
+                    .finally(() => {
+                        this.busyId = null;
+                    });
+            }
+        };
+    }
+</script>
 {% endblock %}

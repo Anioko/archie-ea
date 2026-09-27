@@ -13,7 +13,7 @@ Key Features:
 - Alert types: NEW_GAP, COVERAGE_DECREASE, MATURITY_REGRESSION, VENDOR_RISK_CHANGE
 - Alert severity levels: info, warning, critical
 - Integration with existing gap detection services
-- Scheduled scanning functionality
+- Scans run on request only (no scheduler); scan_interval_minutes is stored and reported, not acted on
 
 Reuses:
 - gap_discovery_service.py for scanning
@@ -27,17 +27,15 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, func, or_
 
 from app import db
-from app.models.application_portfolio import ApplicationComponent
 from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-from app.models.unified_capability import BusinessDomain, UnifiedCapability
+from app.models.unified_capability import UnifiedCapability
 
 logger = logging.getLogger(__name__)
 
@@ -984,8 +982,15 @@ class ArchitectureMonitoringService:
                         "domain_id": cap.domain_id,
                         "strategic_importance": cap.strategic_importance,
                         "business_criticality": cap.business_criticality,
-                        "target_maturity": cap.target_maturity,
-                        "current_maturity": cap.current_maturity,
+                        # T-002: these are UnifiedCapability rows (the maturity
+                        # authority) — the columns are *_maturity_level, not
+                        # *_maturity; the old names never existed on this model
+                        # and silently raised AttributeError, caught by this
+                        # method's outer try/except and logged as "Error
+                        # capturing capabilities snapshot" instead of reaching
+                        # the caller.
+                        "target_maturity": cap.target_maturity_level,
+                        "current_maturity": cap.current_maturity_level,
                         "mapping_count": mapping_count,
                     }
                 )
@@ -1039,7 +1044,7 @@ class ArchitectureMonitoringService:
 
         except Exception as e:
             logger.error(f"Error capturing coverage snapshot: {e}")
-            return {"average_coverage": 0, "total_capabilities": 0}
+            raise  # do not persist a fabricated zero-coverage snapshot; caller returns an honest failure
 
     def _capture_health_snapshot(self) -> Dict[str, Any]:
         """Capture snapshot of health metrics."""
@@ -1060,7 +1065,7 @@ class ArchitectureMonitoringService:
 
         except Exception as e:
             logger.warning(f"Could not capture health snapshot: {e}")
-            return {"average_health": 0, "total_capabilities": 0}
+            raise  # do not persist a fabricated zero-health snapshot; caller returns an honest failure
 
     def _capture_gap_snapshot(self) -> List[Dict[str, Any]]:
         """Capture snapshot of current gaps."""
@@ -1244,8 +1249,13 @@ class ArchitectureMonitoringService:
         for cap in current_caps:
             cap_id = cap.get("id")
             if cap_id in baseline_map:
-                baseline_maturity = baseline_map[cap_id].get("current_maturity") or 0
-                current_maturity = cap.get("current_maturity") or 0
+                baseline_maturity = baseline_map[cap_id].get("current_maturity")
+                current_maturity = cap.get("current_maturity")
+                # Cannot compare against an unassessed state: neither None baseline nor
+                # None current may be coerced to 0, which would fabricate a CMM level 0
+                # that does not exist on the scale (fabricated-data gate).
+                if baseline_maturity is None or current_maturity is None:
+                    continue
                 if current_maturity < baseline_maturity:
                     maturity_regressions.append(
                         {
@@ -1276,7 +1286,7 @@ class ArchitectureMonitoringService:
 
             service = GapDiscoveryService()
             return service.discover_all_gaps()
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty gap list on discovery failure, no fabricated scalar
             logger.warning(f"Could not run gap discovery: {e}")
             return {"gaps": [], "summary": {}}
 

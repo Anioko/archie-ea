@@ -14,14 +14,17 @@
 {% endblock %}
 
 {% block content %}
+{# Builds the href for a row's record, or an empty string when the blueprint that
+   owns the destination failed to register -- blueprints register non-fatally here,
+   so an unguarded url_for would raise BuildError and 500 every page rendering the
+   sidebar. Callers keep the <a> in the row itself so the link is visible both to a
+   reader and to scripts/check_actionable_rows.py. #}
+{% macro row_href(endpoint) %}{% if endpoint in flask.current_app.view_functions %}{{ url_for(endpoint, **kwargs) }}{% endif %}{% endmacro %}
+
 <div class="flex flex-col space-y-8 animate-in fade-in duration-500">
     {{ page_header(
         title='Capability Health Dashboard',
         description='Real-time assessment of business capabilities based on maturity, coverage, and technical risk.',
-        breadcrumbs=[
-            {'label': 'Home', 'href': url_for('main.index')},
-            {'label': 'Capability Health'}
-        ],
         actions=[
             {'text': 'Create Plan', 'icon': 'lightbulb', 'onclick': "document.dispatchEvent(new CustomEvent('open-initiative-health-remediation-modal'))", 'variant': 'default'}
         ]
@@ -29,11 +32,21 @@
 
     {# ── Metrics (v4 SectionCards) ────────────────────────────────────────── #}
     <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {#
+          An em dash when nothing has been assessed, and a description that says
+          how many capabilities the average is actually over. The QA audit of
+          30 Aug 2026 (Medium #5) noted this page's claim of a "real-time
+          assessment based on maturity, coverage and technical risk" while every
+          domain read an identical 60% and 0 of 191 capabilities had any recorded
+          maturity assessment. Averaging unmeasured capabilities is what produced
+          that uniformity; they are now excluded and counted separately.
+        #}
         {{ metrics_card(
             title='Avg. Portfolio Health',
-            value=metrics.average_health|string + '%',
+            value=(metrics.average_health|string + '%') if metrics.average_health is not none else '—',
             icon='activity',
-            description='Across ' + metrics.total_capabilities|string + ' business capabilities'
+            description=('Across ' + metrics.assessed_capabilities|string + ' of ' + metrics.total_capabilities|string + ' capabilities with recorded data')
+                        if metrics.assessed_capabilities else 'No capability has recorded maturity, coverage or delivery data yet'
         ) }}
         {{ metrics_card(
             title='Critical Capabilities',
@@ -49,10 +62,10 @@
             value_class='text-warning'
         ) }}
         {{ metrics_card(
-            title='Active Gaps',
+            title='Capability Gap Signals',
             value=metrics.gaps_summary.gaps_identified|string,
             icon='git-branch',
-            description=metrics.gaps_summary.gaps_with_decisions|string + ' already have linked solutions or requirements'
+            description='Coverage/maturity shortfalls across capabilities — ' + metrics.gaps_summary.gaps_with_decisions|string + ' already have linked solutions or requirements'
         ) }}
     </div>
 
@@ -72,8 +85,8 @@
                                 <span class="mr-2">{{ domain.name }}</span>
                                 <span class="text-xs text-muted-foreground font-normal">({{ domain.count }} caps)</span>
                             </div>
-                            <span class="{% if domain.score < 60 %}text-destructive{% elif domain.score < 80 %}text-warning{% else %}text-success{% endif %}">
-                                {{ domain.score }}%
+                            <span class="{% if domain.score is none %}text-muted-foreground{% elif domain.score < 60 %}text-destructive-emphasis{% elif domain.score < 80 %}text-warning-emphasis{% else %}text-success-emphasis{% endif %}">
+                                {{ (domain.score|string + '%') if domain.score is not none else '—' }}
                             </span>
                         </div>
                         <div class="h-2 w-full bg-secondary rounded-full overflow-hidden">
@@ -99,15 +112,15 @@
                 <div class="grid grid-cols-3 gap-8 mt-8 text-center w-full">
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Healthy</div>
-                        <div class="text-sm font-bold text-success" id="healthy-count">0</div>
+                        <div class="text-sm font-bold text-success-emphasis" id="healthy-count">0</div>
                     </div>
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Warning</div>
-                        <div class="text-sm font-bold text-warning" id="warning-count">0</div>
+                        <div class="text-sm font-bold text-warning-emphasis" id="warning-count">0</div>
                     </div>
                     <div>
                         <div class="text-xs text-muted-foreground mb-1">Critical</div>
-                        <div class="text-sm font-bold text-destructive" id="critical-count">0</div>
+                        <div class="text-sm font-bold text-destructive-emphasis" id="critical-count">0</div>
                     </div>
                 </div>
             </div>
@@ -136,7 +149,11 @@
                     {% for item in metrics.at_risk_list %}
                     <tr class="hover:bg-muted/50 transition-colors">
                         <td class="p-4 font-medium">
-                            <div>{{ item.name }}</div>
+                            <div>
+                                {% if item.id %}
+                                {% set _h = row_href('archimate_crud.detail_element', layer='strategy', element_type='Capability', element_id=item.id)|trim %}{% if _h %}<a href="{{ _h }}" class="font-medium text-primary hover:underline">{{ item.name }}</a>{% else %}{{ item.name }}{% endif %}
+                                {% else %}{{ item.name }}{% endif %}
+                            </div>
                             <div class="mt-1 text-xs text-muted-foreground">
                                 {{ item.application_count }} apps · {{ item.planned_solution_count }} solutions · {{ item.requirement_count }} reqs
                             </div>
@@ -155,7 +172,8 @@
                                 <span class="text-xs text-muted-foreground">{{ item.compliance_score|round }}%</span>
                             </div>
                         </td>
-                        <td class="p-4 font-bold">{{ item.score }}%</td>
+                        {# "Not assessed" is a fact; 60% would be an invention. #}
+                        <td class="p-4 font-bold">{{ (item.score|string + '%') if item.score is not none else '—' }}</td>
                         <td class="p-4">
                             <div class="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80">
                                 {{ item.status }}
@@ -176,14 +194,18 @@
 </div>
 
 <!-- Chart.js and Initialization -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const healthData = {{ metrics.health_by_capability|tojson }};
     
-    const healthy = healthData.filter(h => h.score >= 80).length;
-    const warning = healthData.filter(h => h.score >= 60 && h.score < 80).length;
-    const critical = healthData.filter(h => h.score < 60).length;
+    // A null score is "not assessed", not a low score: `null >= 80` is false and
+    // `null < 60` is TRUE in JavaScript, so without this guard every unassessed
+    // capability would have been counted as critical.
+    const scored = healthData.filter(h => h.score !== null && h.score !== undefined);
+    const healthy = scored.filter(h => h.score >= 80).length;
+    const warning = scored.filter(h => h.score >= 60 && h.score < 80).length;
+    const critical = scored.filter(h => h.score < 60).length;
 
     document.getElementById('healthy-count').textContent = healthy;
     document.getElementById('warning-count').textContent = warning;
@@ -215,7 +237,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <!-- LLM-Powered Recommendations -->
-{% from 'components/llm_recommendations.html' import llm_recommendations %}
+{% from 'components/llm_recommendations.html' import llm_recommendations with context %}
 
 {{ llm_recommendations(
     dashboard='capability_health',

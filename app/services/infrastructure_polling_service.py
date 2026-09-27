@@ -2,7 +2,7 @@
 Real-time Infrastructure Polling Service
 
 Checks configured API endpoints and cloud connectors against the modelled
-state in ARCHIE. Reports delta: what's modelled vs what's reachable.
+state in Entelim. Reports delta: what's modelled vs what's reachable.
 
 Scope (MVP):
   - ABACUSConnector endpoints (already configured, just check reachability)
@@ -11,14 +11,14 @@ Scope (MVP):
   - Generic endpoint health: accepts a list of URLs, returns up/down/timeout
 
 Not included: cloud hyperscaler APIs (Azure/AWS) — require OAuth tokens not
-yet stored in ARCHIE. Tracked as INFRA-002.
+yet stored in Entelim. Tracked as INFRA-002.
 """
 
 import logging
 import socket
 import urllib.error
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 from urllib.parse import urlparse
 

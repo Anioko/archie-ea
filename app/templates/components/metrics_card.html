@@ -41,6 +41,7 @@
     title='',
     value='',
     value_id='',
+    value_testid='',
     value_alpine='',
     change='',
     change_type='neutral',
@@ -59,10 +60,10 @@
         <p data-slot="card-description" class="text-sm font-medium tracking-tight">{{ title }}</p>
         <div data-slot="card-title" class="text-2xl font-bold tabular-nums {{ value_class }}">
             {%- if value_alpine -%}
-                <span {% if value_id %}id="{{ value_id }}"{% endif %} x-text="{{ value_alpine }}">{{ value or '0' }}</span>
+                <span {% if value_id %}id="{{ value_id }}"{% endif %} {% if value_testid %}data-testid="{{ value_testid }}"{% endif %} x-text="{{ value_alpine }}">{{ value or '0' }}</span>
             {%- else -%}
-                {% if value_id %}
-                <span id="{{ value_id }}">{{ value }}</span>
+                {% if value_id or value_testid %}
+                <span {% if value_id %}id="{{ value_id }}"{% endif %} {% if value_testid %}data-testid="{{ value_testid }}"{% endif %}>{{ value }}</span>
                 {% else %}
                 {{ value }}
                 {% endif %}
@@ -71,8 +72,8 @@
         {% if change %}
         <div data-slot="card-action" class="absolute top-4 right-4">
             <span class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors
-                {% if change_type == 'positive' %}text-success border-success/30
-                {% elif change_type == 'negative' %}text-destructive border-destructive/30
+                {% if change_type == 'positive' %}text-success-emphasis border-success/30
+                {% elif change_type == 'negative' %}text-destructive-emphasis border-destructive/30
                 {% else %}text-muted-foreground{% endif %}">
                 {% if change_type == 'positive' %}
                 <i data-lucide="trending-up" class="h-3 w-3" aria-hidden="true"></i>

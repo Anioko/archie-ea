@@ -134,10 +134,19 @@ class ConsolidationListEntry(db.Model):
         """Convert to dictionary for API responses"""
         app = self.application
         status = CONSOLIDATION_STATUS_MAP.get(self.status, self.status) or "identified"
+        # M4: this used to say "Unknown" for a row whose application_id points
+        # at a since-deleted ApplicationComponent (an orphaned FK) -- reading
+        # identically to a real application that happens to have no name, or to
+        # any other data gap. `application_orphaned` lets the UI flag this row
+        # distinctly rather than folding "the reference is broken" into the
+        # same "Unknown" text as "the value was never set".
         return {
             "id": self.id,
             "application_id": self.application_id,
-            "application_name": app.name if app else "Unknown",
+            "application_orphaned": app is None,
+            "application_name": (
+                app.name if app else f"Deleted application (#{self.application_id})"
+            ),
             "application_owner": getattr(app, "application_owner", None) if app else None,
             "business_domain": getattr(app, "business_domain", None) if app else None,
             "business_criticality": getattr(app, "business_criticality", None) if app else None,

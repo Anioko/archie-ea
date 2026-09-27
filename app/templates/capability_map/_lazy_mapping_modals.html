@@ -1,0 +1,71 @@
+{# ARCH-064: the capability map's five "map X to Y" dialogs are closed on every
+   page load, yet they were all serialised into the initial HTML — roughly 90 KB
+   of markup nobody had asked for. They are now fetched from
+   ``capability_map.mapping_modal_partial`` the first time something opens one
+   (see app/static/js/capability_map/lazy_modals.js).
+
+   This template renders exactly ONE variant per request. Each branch is the
+   markup that previously sat inline in capability_map/index.html, moved
+   verbatim — same ids, same handler names, same nesting — so the injected DOM
+   is identical to what the page used to ship. Anything added here is shipped
+   on demand, not saved: keep it to the dialog itself. #}
+{% from 'capability_map/_mapping_modal.html' import mapping_modal %}
+{%- if variant == 'acm-mapping-modal' -%}
+{{ mapping_modal(
+    modal_id="acm-mapping-modal",
+    title_label="Map Applications to",
+    name_span_id="acm-modal-capability-name",
+    accent_class="text-info",
+    close_fn="closeACMMappingModal",
+    close_aria="Close ACM mapping modal",
+    close_btn_class="text-muted-foreground hover:text-muted-foreground",
+    id_prefix="acm-",
+    search_fn="filterACMApplications",
+    select_all_fn="selectAllACMFiltered",
+    deselect_fn="deselectAllACM",
+    cancel_aria="Cancel ACM mapping",
+    save_fn="saveACMMappings",
+    save_bg_class="bg-info",
+    save_aria="Save ACM mappings"
+) }}
+{%- elif variant == 'process-mapping-modal' -%}
+{{ mapping_modal(
+    modal_id="process-mapping-modal",
+    title_label="Map Applications to",
+    name_span_id="process-modal-process-name",
+    accent_class="text-primary",
+    close_fn="closeProcessMappingModal",
+    close_aria="Close process mapping modal",
+    close_btn_class="text-muted-foreground hover:text-muted-foreground",
+    id_prefix="process-",
+    search_fn="filterProcessApplications",
+    select_all_fn="selectAllProcessFiltered",
+    deselect_fn="deselectAllProcess",
+    cancel_aria="Cancel process mapping",
+    save_fn="saveProcessMappings",
+    save_bg_class="bg-primary",
+    save_aria="Save process mappings"
+) }}
+{%- elif variant == 'mapping-modal' -%}
+{{ mapping_modal(
+    modal_id="mapping-modal",
+    title_label="Map Applications to",
+    name_span_id="modal-capability-name",
+    accent_class="text-primary",
+    close_fn="closeMappingModal",
+    close_aria="Close application mapping modal",
+    close_btn_class="text-muted-foreground hover:text-foreground",
+    id_prefix="",
+    search_fn="filterApplications",
+    select_all_fn="selectAllFiltered",
+    deselect_fn="deselectAll",
+    cancel_aria="Cancel mapping",
+    save_fn="saveMappings",
+    save_bg_class="bg-primary",
+    save_aria="Save mappings"
+) }}
+{%- elif variant == 'apqc-mapping-modal' -%}
+{% include 'components/apqc_mapping_modal.html' %}
+{%- elif variant == 'archimate-mapping-modal' -%}
+{% include 'components/archimate_mapping_modal.html' %}
+{%- endif -%}

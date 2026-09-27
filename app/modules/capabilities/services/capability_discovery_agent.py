@@ -8,10 +8,8 @@ semantic search and LLM analysis.
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from app import db
 from app.models.business_capabilities import BusinessCapability
 from app.models.constants import ArchiMateLayer, CapabilityType
 from app.services.llm_service import LLMService
@@ -128,7 +126,6 @@ RESPOND WITH JSON:
 
     async def classify_capability(self, capability: BusinessCapability) -> CapabilityClassification:
         """Classify capability type and ArchiMate mapping using semantic matching."""
-        text = f"{capability.name} - {capability.description or ''}"
 
         prompt = f"""Classify this business capability:
 
@@ -214,7 +211,7 @@ RESPOND WITH JSON:
 
             return json.loads(cleaned)
 
-        except Exception as e:
+        except Exception as e:  # fabricated-ok: empty suggestion lists are the honest result when the LLM call or JSON parse fails
             logger.error(f"Error suggesting hierarchy: {e}")
             return {"hierarchy_suggestions": [], "root_capabilities": []}
 

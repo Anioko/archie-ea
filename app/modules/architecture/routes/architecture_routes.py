@@ -13,7 +13,7 @@ Provides REST API endpoints for the new architecture models:
 
 import logging
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import Blueprint, current_app, flash, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 from flask_login import login_required
 
@@ -83,7 +83,7 @@ def api_solutions():
                 for s in solutions
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -111,7 +111,7 @@ def api_solution_patterns():
                 for p in patterns
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -144,7 +144,7 @@ def api_contracts():
                 for c in contracts
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -181,7 +181,7 @@ def api_software_modules():
                 for m in modules
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -211,7 +211,7 @@ def api_design_patterns():
                 for p in patterns
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -248,7 +248,7 @@ def api_software_dependencies():
                 for d in dependencies
             ]
         )
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -295,7 +295,7 @@ def create_solution():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -341,7 +341,7 @@ def create_software_module():
             201,
         )
 
-    except Exception as e:
+    except Exception:
         return jsonify({"error": "An internal error occurred"}), 500
 
 
@@ -455,15 +455,23 @@ def solutions_architecture_dashboard():
             relationship_count=relationship_count,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading solutions architecture dashboard: {e}")
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception(
+            "Error loading solutions architecture dashboard: %s", e
+        )
+        flash("Error loading solutions architecture dashboard.", "error")
+        # None, not 0 - nothing was counted, so nothing may be reported.
         return render_template(
             "enterprise/solutions_architecture_dashboard.html",
             solutions=[],
-            solution_count=0,
-            pattern_count=0,
-            contract_count=0,
-            archimate_app_count=0,
-            relationship_count=0,
+            solution_count=None,
+            pattern_count=None,
+            contract_count=None,
+            archimate_app_count=None,
+            relationship_count=None,
+            load_error="The solutions architecture inventory could not be read.",
         )
 
 
@@ -552,17 +560,28 @@ def software_architecture_dashboard():
 
     try:
         from app.models.application_portfolio import ApplicationComponent
+        from app.models.archimate_core import ArchiMateElement
 
         component_count = ApplicationComponent.query.count()
 
-        service_count = db.session.execute(  # tenant-filtered: scoped via parent FK (application tables)
-            text("SELECT COUNT(*) FROM application_services")
+        from flask import g as _g
+        _org = getattr(_g, "current_org_id", None)
+        _oc = " WHERE organization_id = :org" if _org is not None else ""
+        _pp = {"org": _org} if _org is not None else {}
+        # application_services has no organization_id — scope via its app component.
+        service_count = db.session.execute(
+            text(
+                "SELECT COUNT(*) FROM application_services s"
+                + (" JOIN application_components ac ON ac.id = s.application_component_id"
+                   " WHERE ac.organization_id = :org" if _org is not None else "")
+            ), _pp
         ).scalar() or 0
-        interface_count = db.session.execute(  # tenant-filtered: scoped via parent FK
-            text("SELECT COUNT(*) FROM application_interfaces")
-        ).scalar() or 0
-        dependency_count = db.session.execute(  # tenant-filtered: scoped via parent FK
-            text("SELECT COUNT(*) FROM application_dependencies")  # tenant-filtered
+        interface_count = ArchiMateElement.query.filter(
+            ArchiMateElement.type == 'ApplicationInterface',
+            ArchiMateElement.layer == 'Application',
+        ).count()
+        dependency_count = db.session.execute(
+            text(f"SELECT COUNT(*) FROM application_dependencies{_oc}"), _pp
         ).scalar() or 0
 
         raw_components = ApplicationComponent.query.with_entities(
@@ -614,15 +633,49 @@ def software_architecture_dashboard():
             components=components,
         )
     except Exception as e:
-        current_app.logger.error(f"Error loading application architecture dashboard: {e}")
+        db.session.rollback()
+        current_app.logger.exception(
+            "Error loading application architecture dashboard: %s", e
+        )
+        flash("Error loading application architecture dashboard.", "error")
         return render_template(
             "enterprise/software_architecture_dashboard.html",
-            component_count=0,
-            service_count=0,
-            interface_count=0,
-            dependency_count=0,
+            component_count=None,
+            service_count=None,
+            interface_count=None,
+            dependency_count=None,
             components=[],
+            load_error="The application architecture inventory could not be read.",
         )
+
+
+def _assemble_investment_priorities_context():
+    """Assemble the Investment Priorities dashboard's real analysis data.
+
+    Returns (analysis, mapping_count). analysis is None when no capability
+    mapping data exists yet (mirrors investment_priorities()'s own prereq
+    check) — callers decide what to do with that case rather than this
+    helper silently substituting anything.
+
+    Factored out of investment_priorities() so the AI suggestion endpoint
+    can be handed the exact same, already-computed analysis rather than
+    re-querying (or worse, inventing numbers). Exceptions from the service
+    call are intentionally NOT caught here — each caller has its own
+    fallback behaviour for that case.
+    """
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+
+    mapping_count = UnifiedApplicationCapabilityMapping.query.count()
+    if mapping_count == 0:
+        return None, mapping_count
+
+    from app.modules.solutions_strategic.v2.services.investment_prioritization_service import (
+        InvestmentPrioritizationService,
+    )
+
+    service = InvestmentPrioritizationService()
+    analysis = service.analyze_investment_priorities(include_risk_analysis=True)
+    return analysis, mapping_count
 
 
 @architecture_bp.route("/investment-priorities")
@@ -635,33 +688,18 @@ def investment_priorities():
     budget data where available (via RoadmapItem.linked_capabilities linkage).
     Canonical URL under /architecture/ for ArchiMate architects.
     """
-    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
-
-    mapping_count = UnifiedApplicationCapabilityMapping.query.count()
-    if mapping_count == 0:
-        return render_template(
-            "strategic/investment_matrix_prereq.html",
-            mapping_count=0,
-        )
-
-    from app.modules.solutions_strategic.v2.services.investment_prioritization_service import (
-        InvestmentPrioritizationService,
-    )
+    # DEF-051, Capgemini dry-run: this rendered a literal "$" regardless of
+    # tenant currency, while Spend Analytics/Contracts on the same tenant
+    # show £ — use the tenant's real configured currency, matching the
+    # currency_symbol pattern the rest of the codebase already uses.
+    from config import CurrencyConfig
+    try:
+        currency_symbol = CurrencyConfig.get_currency_config().get("symbol", "£")
+    except Exception:
+        currency_symbol = "£"
 
     try:
-        service = InvestmentPrioritizationService()
-        analysis = service.analyze_investment_priorities(include_risk_analysis=True)
-
-        return render_template(
-            "strategic/investment_matrix.html",
-            capability_scores=analysis["capability_scores"],
-            critical_investments=analysis["critical_investments"],
-            high_investments=analysis["high_investments"],
-            medium_investments=analysis["medium_investments"],
-            low_investments=analysis["low_investments"],
-            portfolio_metrics=analysis["portfolio_metrics"],
-            recommendations=analysis["recommendations"],
-        )
+        analysis, mapping_count = _assemble_investment_priorities_context()
     except Exception as e:
         current_app.logger.error(f"Error loading investment priorities: {e}")
         return render_template(
@@ -682,10 +720,137 @@ def investment_priorities():
                 "average_coverage_score": 0,
                 "average_maturity_score": 0,
                 "average_risk_score": 0,
-                "investment_currency": "USD",
+                "investment_currency": currency_symbol,
             },
             recommendations=[],
+            currency_symbol=currency_symbol,
         )
+
+    if analysis is None:
+        return render_template(
+            "strategic/investment_matrix_prereq.html",
+            mapping_count=mapping_count,
+        )
+
+    return render_template(
+        "strategic/investment_matrix.html",
+        capability_scores=analysis["capability_scores"],
+        critical_investments=analysis["critical_investments"],
+        high_investments=analysis["high_investments"],
+        medium_investments=analysis["medium_investments"],
+        low_investments=analysis["low_investments"],
+        portfolio_metrics=analysis["portfolio_metrics"],
+        recommendations=analysis["recommendations"],
+        currency_symbol=currency_symbol,
+    )
+
+
+def _org_scoped_investment_context(analysis, limit=50):
+    """Filter the whole-portfolio investment analysis down to capability
+    names this org has actually mapped, capped at `limit` entries.
+
+    InvestmentPrioritizationService.analyze_investment_priorities() is built
+    from UnifiedCapability.query.all() + UnifiedApplicationCapabilityMapping
+    .query.all() — neither model carries an organization_id column, so the
+    raw analysis spans every organization on the install. Reuses the same
+    org-scoped-name derivation as the value-stream AI suggest endpoint
+    (value_stream_ai_service._org_scoped_capability_names, join through
+    CapabilityValueStreamMapping and UnifiedApplicationCapabilityMapping ->
+    ApplicationComponent, both TenantMixin) so only what this org has
+    actually mapped — never another org's capability catalog — ever reaches
+    the LLM prompt.
+
+    Returns None when this org has no capability in the analysis that it has
+    actually mapped, so the caller can short-circuit before calling the LLM
+    at all (mirrors value_stream_ai_routes.ai_suggest_mappings).
+    """
+    from app.modules.capabilities.services.value_stream_ai_service import (
+        _org_scoped_capability_names,
+    )
+
+    org_names = set(_org_scoped_capability_names(limit=limit))
+    if not org_names:
+        return None
+
+    filtered_scores = [
+        c for c in analysis.get("capability_scores", [])
+        if c.get("capability_name") in org_names
+    ][:limit]
+    if not filtered_scores:
+        return None
+
+    kept_names = {c["capability_name"] for c in filtered_scores}
+
+    def _filtered(key, name_key="capability_name"):
+        return [
+            item for item in (analysis.get(key) or [])
+            if item.get(name_key) in kept_names
+        ]
+
+    return {
+        "capability_scores": filtered_scores,
+        "critical_investments": _filtered("critical_investments"),
+        "high_investments": _filtered("high_investments"),
+        "medium_investments": _filtered("medium_investments"),
+        "low_investments": _filtered("low_investments"),
+        "recommendations": _filtered("recommendations", name_key="capability"),
+    }
+
+
+@architecture_bp.route("/api/investment-priorities/ai-suggest", methods=["POST"])
+@login_required
+def ai_investment_suggestions():
+    """POST /architecture/api/investment-priorities/ai-suggest
+
+    Generates AI investment-priority suggestions for the CTO from the
+    Investment Priorities dashboard's own analysis data. Advisory only —
+    nothing here is persisted; sequencing decisions remain manual.
+    """
+    from app.services.feature_flag_service import FeatureFlagService
+
+    feature_guard = FeatureFlagService.require_ai_for_route(
+        FeatureFlagService.FEATURE_SUGGESTIONS,
+        endpoint_name="architecture.ai_investment_suggestions",
+    )
+    if feature_guard:
+        return feature_guard
+
+    from app.modules.dashboard.v2.services.executive_briefing_service import (
+        ExecutiveBriefingAIError,
+        generate_investment_suggestions,
+    )
+
+    try:
+        analysis, mapping_count = _assemble_investment_priorities_context()
+    except Exception as e:
+        current_app.logger.error(f"Error loading investment priorities for AI suggestions: {e}")
+        return jsonify({"error": f"Investment priorities data could not be loaded: {e}"}), 502
+
+    if analysis is None:
+        return jsonify({
+            "error": "Investment priorities data is not yet available "
+                     "(no capability mappings for this organization)."
+        }), 502
+
+    # analysis spans every organization on the install (see
+    # _org_scoped_investment_context) — never hand it to the LLM as-is.
+    org_context = _org_scoped_investment_context(analysis)
+    if org_context is None:
+        return jsonify({
+            "suggestions": None,
+            "message": "No capabilities mapped in this organization yet",
+        })
+
+    try:
+        suggestions = generate_investment_suggestions(org_context)
+    except ExecutiveBriefingAIError as e:
+        logger.warning("Investment priority suggestions unparseable: %s", e)
+        return jsonify({"error": f"AI investment suggestions failed: {e}"}), 502
+    except Exception as e:
+        logger.exception("Investment priority suggestion generation failed")
+        return jsonify({"error": f"AI investment suggestions failed: {e}"}), 502
+
+    return jsonify(suggestions)
 
 
 @architecture_bp.route("/vendor-templates")
@@ -700,8 +865,60 @@ def vendor_templates():
             "architecture/vendor_templates.html", templates=templates
         )
     except Exception:
-        # Return empty list on error
-        return render_template("architecture/vendor_templates.html", templates=[])
+        from app import db
+
+        db.session.rollback()
+        current_app.logger.exception("Error loading vendor templates")
+        flash("Error loading vendor templates.", "error")
+        return render_template(
+            "architecture/vendor_templates.html",
+            templates=[],
+            load_error="Vendor templates could not be read.",
+        )
+
+
+@architecture_bp.route("/archimate-vendor-templates")
+@login_required
+def archimate_vendor_templates():
+    """Browse the canonical vendor→ArchiMate element templates.
+
+    Distinct from /vendor-templates (which lists VendorStackTemplate solution
+    stacks): this page surfaces VendorArchiMateTemplate — the deterministic,
+    versioned SAP/Microsoft vendor→ArchiMate element mappings that
+    VendorTemplateService.populate_from_vendor() applies when an architect links
+    a vendor product. The Technology Architect persona reports a count of these;
+    this is the page a human can open to inspect them.
+    """
+    grouped = {}
+    version = None
+    try:
+        from app.models.vendor.vendor_organization import VendorArchiMateTemplate
+
+        rows = (
+            VendorArchiMateTemplate.query
+            .order_by(
+                VendorArchiMateTemplate.vendor_key,
+                VendorArchiMateTemplate.display_order,
+                VendorArchiMateTemplate.element_name,
+            )
+            .all()
+        )
+        for row in rows:
+            grouped.setdefault(row.vendor_key, []).append(row)
+            version = version or row.version
+    except Exception:
+        current_app.logger.warning(
+            "archimate_vendor_templates: could not load VendorArchiMateTemplate",
+            exc_info=True,
+        )
+        grouped = {}
+
+    return render_template(
+        "architecture/vendor_archimate_templates.html",
+        grouped=grouped,
+        total=sum(len(v) for v in grouped.values()),
+        version=version,
+    )
 
 
 @architecture_bp.route("/vendors/<int:vendor_id>/products")

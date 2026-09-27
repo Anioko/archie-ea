@@ -8,16 +8,13 @@ and stakeholder review.
 import io
 import json
 import logging
-from datetime import datetime
-from decimal import Decimal
-from typing import Optional
 
 import openpyxl
-from openpyxl.chart import BarChart, RadarChart, Reference
+from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from app.models import OptionsAnalysis, VendorOption
+from app.models import OptionsAnalysis
 
 logger = logging.getLogger(__name__)
 

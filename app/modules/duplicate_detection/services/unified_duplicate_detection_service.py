@@ -10,7 +10,6 @@ Phase 2: Service consolidation (2 → 1) with full preservation
 """
 
 import hashlib
-import json  # dead-code-ok
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,7 +30,7 @@ from app.services.fuzzy_matcher import FuzzyMatcher
 logger = logging.getLogger(__name__)
 
 # Estimated annual savings per redundant application (used for ROI projections)
-ESTIMATED_SAVINGS_PER_REDUNDANT_APP = 10000  # fabricated-values-ok
+ESTIMATED_SAVINGS_PER_REDUNDANT_APP = 10000  # fabricated-ok: declared estimation constant for ROI projection, not a measured value
 
 
 @dataclass
@@ -1437,6 +1436,74 @@ class UnifiedDuplicateDetectionService:
             self.logger.error(f"Failed to get duplicate groups: {str(e)}")
             return []
 
+    def get_archimate_element_duplicate_groups(self) -> List[Dict[str, Any]]:
+        """H-01: duplicate detection over ArchiMate ELEMENTS, not just applications
+        — 17 duplicate name groups covering 51/137 elements (37%) live here, and
+        the module never looked.
+
+        Reuses DuplicateDetectionUtils.find_duplicates (exact, case-insensitive
+        name match) — the same engine the import pipeline uses, and the same
+        exact-match approach the EA Briefing's duplicate-name gatherer landed in
+        352836e. Deliberately NOT the semantic/embedding engine from Data
+        Stewardship (_semantic_pairs): that threshold (0.58) was tuned against
+        data-object naming and 352836e explicitly scoped estate-wide semantic
+        matching out because per-ArchiMate-layer thresholds need separate
+        tuning. Exact-name matching needs no threshold and is what actually
+        surfaces the 17 known groups, so it ships now; semantic matching over
+        the full catalogue stays a follow-up, not a silent gap.
+
+        Grouped per (layer, type) so a Business Process named the same as an
+        Application Component is not treated as a collision — same reasoning
+        352836e used per-name-space.
+        """
+        from app.models.archimate_core import ArchiMateElement
+        from app.modules.duplicate_detection.services.duplicate_detection_utils import (
+            DuplicateDetectionUtils,
+        )
+
+        try:
+            elements = ArchiMateElement.query.with_entities(
+                ArchiMateElement.id,
+                ArchiMateElement.name,
+                ArchiMateElement.type,
+                ArchiMateElement.layer,
+            ).all()
+        except Exception as exc:
+            self.logger.warning("ArchiMate element duplicate scan unavailable: %s", exc)
+            raise
+
+        buckets: Dict[tuple, List[Any]] = {}
+        for el in elements:
+            if not el.name or not el.name.strip():
+                continue
+            key = (el.layer or "unknown", el.type or "unknown")
+            buckets.setdefault(key, []).append(el)
+
+        groups: List[Dict[str, Any]] = []
+        gid = 0
+        for (layer, etype), bucket_elements in buckets.items():
+            names = [e.name for e in bucket_elements]
+            dupes = DuplicateDetectionUtils.find_duplicates(names, mode="exact")
+            for norm_name, indices in dupes.items():
+                gid += 1
+                members = [bucket_elements[i] for i in indices]
+                groups.append(
+                    {
+                        "id": f"element-dup:{layer}:{etype}:{gid}",
+                        "name": members[0].name,
+                        "layer": layer,
+                        "type": etype,
+                        "element_count": len(members),
+                        "elements": [
+                            {"id": m.id, "name": m.name} for m in members
+                        ],
+                        "match_mode": "exact",
+                    }
+                )
+
+        groups.sort(key=lambda g: -g["element_count"])
+        return groups
+
     def run_unified_detection(self, mode: str = "enterprise", **kwargs) -> Dict[str, Any]:
         """Run unified duplicate detection with specified mode"""
         if mode == "enterprise":
@@ -1462,7 +1529,7 @@ unified_duplicate_bp = Blueprint("unified_duplicate", __name__, url_prefix="/dup
 def status():
     """Get status of unified duplicate detection service."""
     try:
-        service = UnifiedDuplicateDetectionService()
+        UnifiedDuplicateDetectionService()
         return {
             "status": "active",
             "service": "unified_duplicate_detection",

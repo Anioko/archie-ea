@@ -11,24 +11,17 @@ This service validates:
 - Data governance (100% target)
 """
 
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List
 
-from sqlalchemy import inspect, text
-from sqlalchemy.orm import joinedload, sessionmaker
+from sqlalchemy import inspect
 
 from app.models import (
-    ApplicationComponent,
-    ArchiMateElement,
-    ArchiMateRelationship,
-    BusinessCapability,
     BusinessObject,
-    BusinessProcess,
     CommunicationNetwork,
     ConceptualDataModel,
     DataEntity,
     DataLineage,
     DataObject,
-    DataObjectStorage,
     DataTransformation,
     LogicalDataModel,
     Meaning,
@@ -411,7 +404,7 @@ class DataModelValidationService:
                     hierarchy_violations.append(f"LogicalDataModel {logical.name} references non-existent ConceptualDataModel")
 
             for physical in physical_models:
-                if physical.logical_model_id and not any(l.id == physical.logical_model_id for l in logical_models):
+                if physical.logical_model_id and not any(item.id == physical.logical_model_id for item in logical_models):
                     hierarchy_violations.append(f"PhysicalDataModel {physical.name} references non-existent LogicalDataModel")
 
         except Exception as e:
@@ -652,13 +645,13 @@ class DataModelValidationService:
                 columns = inspect(model_class).columns
                 id_column = next((col for col in columns if col.name == 'id'), None)
 
-                if id_column and id_column.type.python_type != int:
+                if id_column and id_column.type.python_type is not int:
                     issues.append(f"{model_class.__name__} id field should be Integer")
-                    recommendations.append(f"Change id field to Integer in {model_class__name__}")
+                    recommendations.append(f"Change id field to Integer in {model_class.__name__}")
 
                 # Check name field
                 name_column = next((col for col in columns if col.name == 'name'), None)
-                if name_column and name_column.type.python_type != str:
+                if name_column and name_column.type.python_type is not str:
                     issues.append(f"{model_class.__name__} name field should be String")
                     recommendations.append(f"Change name field to String in {model_class.__name__}")
 
@@ -675,11 +668,6 @@ class DataModelValidationService:
         recommendations = []
 
         # Check nullable constraints
-        nullable_fields = [
-            ('archimate_element_id', 'should be nullable=True'),
-            ('business_domain', 'should be nullable=True'),
-            ('data_classification', 'should be nullable=True')
-        ]
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -690,9 +678,6 @@ class DataModelValidationService:
         recommendations = []
 
         # Check for indexes on frequently queried fields
-        indexed_fields = [
-            'name', 'archimate_element_id', 'created_at'
-        ]
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -745,7 +730,7 @@ class DataModelValidationService:
 
                 if not classification_col:
                     issues.append(f"{model_class.__name__} missing data classification field")
-                    recommendations.append(f"Add data classification field to {model_class__name__}")
+                    recommendations.append(f"Add data classification field to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking data classification for {model_class.__name__}: {str(e)}")
@@ -770,11 +755,11 @@ class DataModelValidationService:
 
                 if not pii_fields and not contains_pii:
                     issues.append(f"{model_class.__name__} missing PII tracking")
-                    recommendations.append(f"Add PII tracking to {model_class__name__}")
+                    recommendations.append(f"Add PII tracking to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking PII compliance for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix PII compliance in {model_class__name__}")
+                recommendations.append(f"Fix PII compliance in {model_class.__name__}")
 
         score = 100 - (len(issues) * 4)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -798,7 +783,7 @@ class DataModelValidationService:
 
             except Exception as e:
                 issues.append(f"Error checking access control for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix access control in {model_class__name__}")
+                recommendations.append(f"Fix access control in {model_class.__name__}")
 
         score = 100 - (len(issues) * 3)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -824,11 +809,11 @@ class DataModelValidationService:
 
                 if missing_audit_fields:
                     issues.append(f"{model_class.__name__} missing audit fields: {', '.join(missing_audit_fields)}")
-                    recommendations.append(f"Add missing audit fields to {model_class__name__}")
+                    recommendations.append(f"Add missing audit fields to {model_class.__name__}")
 
             except Exception as e:
                 issues.append(f"Error checking audit trail for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix audit trail in {model_class__name__}")
+                recommendations.append(f"Fix audit trail in {model_class.__name__}")
 
         score = 100 - (len(issues) * 2)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}
@@ -852,7 +837,7 @@ class DataModelValidationService:
 
             except Exception as e:
                 issues.append(f"Error checking retention policy for {model_class.__name__}: {str(e)}")
-                recommendations.append(f"Fix retention policy in {model_class__name__}")
+                recommendations.append(f"Fix retention policy in {model_class.__name__}")
 
         score = 100 - (len(issues) * 3)
         return {'score': max(0, score), 'issues': issues, 'recommendations': recommendations}

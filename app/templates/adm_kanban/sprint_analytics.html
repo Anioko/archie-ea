@@ -11,7 +11,7 @@
      x-cloak>
 
     {{ page_header(
-        title='Sprint Analytics: ' ~ sprint.name,
+        title='Sprint Analytics: ', breadcrumbs=[{'label': 'Home', 'href': '/'}, {'label': 'Sprint Analytics: '}] ~ sprint.name,
         description='Throughput, cycle time, and cumulative flow diagram for this sprint.'
     ) }}
 
@@ -23,7 +23,7 @@
         </div>
     </template>
     <template x-if="error">
-        <div class="rounded-xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-destructive text-sm"
+        <div class="rounded-xl border border-destructive/40 bg-destructive/5 px-5 py-4 text-destructive-emphasis text-sm"
              x-text="error"></div>
     </template>
 
@@ -126,8 +126,8 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"
-        integrity="sha384-eSAy1CNbEqo36QVKWe3yV2yHVQXMJzpPrm4iMZ4K4A/IaM5LOKMzXHfMBbFG02k"
+<script src="/static/vendor/chart.umd.min.js"
+        integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF"
         crossorigin="anonymous"></script>
 <script>
 function sprintAnalytics(sprintId) {
@@ -149,16 +149,10 @@ function sprintAnalytics(sprintId) {
             this.loading = true;
             this.error = null;
             try {
-                const r = await fetch(`/api/sprints/${this.sprintId}/analytics`, {
-                    credentials: 'same-origin',
+                this.analytics = await Platform.fetch(`/api/sprints/${this.sprintId}/analytics`, {
                     headers: { 'Accept': 'application/json' },
+                    silent: true, // because we handle errors inline
                 });
-                if (!r.ok) {
-                    this.error = `Failed to load analytics (HTTP ${r.status})`;
-                    this.loading = false;
-                    return;
-                }
-                this.analytics = await r.json();
                 this.$nextTick(() => {
                     this.renderThroughputChart();
                     this.renderCycleTimeChart();
@@ -166,7 +160,12 @@ function sprintAnalytics(sprintId) {
                     lucide.createIcons();
                 });
             } catch (e) {
-                this.error = 'Network error: ' + e.message;
+                // Platform.fetch throws on non-ok responses and network errors
+                if (e.status) {
+                    this.error = `Failed to load analytics (HTTP ${e.status})`;
+                } else {
+                    this.error = 'Network error: ' + e.message;
+                }
             } finally {
                 this.loading = false;
             }
