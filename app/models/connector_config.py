@@ -3,6 +3,11 @@ ConnectorConfig model — per-organisation connector credentials and settings.
 
 Stores encrypted credentials for external connectors (ServiceNow, Jira, M365).
 Unique per (organization_id, connector_type).
+
+PR 1 (TB-0148): Added ``OrganizationEncryptionKey`` for per-org key storage and
+``OrgConnectorCredential`` as the single credential store. Existing models
+retained for backward compatibility but marked RETIRED — new credentials must
+use ``OrgConnectorCredential`` via ``OrgCredentialVault``.
 """
 
 import logging
@@ -156,7 +161,13 @@ class SyncLog(db.Model):
 
 
 class OrgConnectorConfig(db.Model):
-    """Per-organisation connector configuration with encrypted credentials."""
+    """Per-organisation connector configuration with encrypted credentials.
+
+    .. deprecated:: 1.0
+       Use ``OrgConnectorCredential`` via ``OrgCredentialVault`` for new
+       credentials. This model is RETIRED — kept for backward compatibility
+       with existing rows. Setters log a deprecation warning.
+    """
 
     __tablename__ = "org_connector_configs"
     __table_args__ = (
@@ -217,6 +228,10 @@ class OrgConnectorConfig(db.Model):
 
 class DevOpsConnectorConfig(db.Model):  # migration-exempt — COM-018
     """Per-org GitHub / Azure DevOps connector configuration.
+
+    .. deprecated:: 1.0
+       RETIRED. Use ``OrgConnectorCredential`` via ``OrgCredentialVault``.
+       Kept for backward compatibility with existing rows.
 
     One record per organisation. Access token is Fernet-encrypted using
     ``CREDENTIAL_ENCRYPTION_KEY``; the setter raises if no key is configured.
@@ -281,7 +296,12 @@ class DevOpsConnectorConfig(db.Model):  # migration-exempt — COM-018
 
 
 class LucidchartConnectorConfig(db.Model):  # migration-exempt — LUC-001
-    """Per-org Lucidchart OAuth configuration with encrypted token storage."""
+    """Per-org Lucidchart OAuth configuration with encrypted token storage.
+
+    .. deprecated:: 1.0
+       RETIRED. Use ``OrgConnectorCredential`` via ``OrgCredentialVault``.
+       Kept for backward compatibility with existing rows.
+    """
 
     __tablename__ = "lucidchart_connector_configs"
     __table_args__ = (
@@ -387,3 +407,105 @@ class LucidchartConnectorConfig(db.Model):  # migration-exempt — LUC-001
 
     def __repr__(self) -> str:
         return f"<LucidchartConnectorConfig org={self.organization_id} enabled={self.enabled}>"
+
+
+# ============================================================================
+# PR 1 (TB-0148): Per-organisation encryption key store
+# ============================================================================
+
+class OrganizationEncryptionKey(db.Model):  # migration-exempt — MIG-C-0028
+    """One Fernet encryption key per organisation, itself encrypted with a
+    master key from ``ORG_ENCRYPTION_MASTER_KEY``.
+
+    ``key_version`` supports zero-downtime rotation: after re-encrypting every
+    credential row with the new key, increment the version. Old credentials
+    encrypted under a previous version must be re-encrypted by the rotation
+    service before the old key is discarded.
+    """
+
+    __tablename__ = "organization_encryption_keys"
+    __table_args__ = (
+        db.UniqueConstraint("organization_id", name="uq_org_encryption_key"),
+        {"extend_existing": True},
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    # The org's Fernet key, encrypted with the master key
+    encrypted_key = db.Column(db.LargeBinary, nullable=False)
+    key_version = db.Column(db.Integer, nullable=False, default=1)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    organization = db.relationship(
+        "Organization",
+        backref=db.backref("encryption_key", uselist=False),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<OrganizationEncryptionKey org={self.organization_id} "
+            f"version={self.key_version}>"
+        )
+
+
+class OrgConnectorCredential(db.Model):  # migration-exempt — MIG-C-0041
+    """Single credential store for all connector types, encrypted with the
+    organisation's own Fernet key (see ``OrganizationEncryptionKey``).
+
+    Replaces the retired per-model stores (``OrgConnectorConfig``,
+    ``DevOpsConnectorConfig``, ``LucidchartConnectorConfig``). New credentials
+    must be stored here via ``OrgCredentialVault``.
+    """
+
+    __tablename__ = "org_connector_credentials"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id", "connector_type", "credential_type",
+            name="uq_org_connector_credential",
+        ),
+        {"extend_existing": True},
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    connector_type = db.Column(db.String(50), nullable=False)
+    # Distinguishes credential kinds: "api_key", "client_secret", "access_token",
+    # "refresh_token", "credentials" (full JSON blob)
+    credential_type = db.Column(db.String(50), nullable=False, default="credentials")
+    # Fernet-encrypted JSON blob or single value, encrypted with the org's key
+    encrypted_value = db.Column(db.LargeBinary, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    organization = db.relationship(
+        "Organization",
+        backref=db.backref("connector_credentials", lazy="dynamic"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<OrgConnectorCredential org={self.organization_id} "
+            f"type={self.connector_type}/{self.credential_type}>"
+        )
