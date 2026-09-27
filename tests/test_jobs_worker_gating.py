@@ -15,7 +15,6 @@ Two things are exercised here:
 
 from __future__ import annotations
 
-import os
 
 import pytest
 
@@ -344,37 +343,76 @@ def test_undeclared_job_id_is_removed(app, monkeypatch):
 
 def test_every_init_scheduler_job_is_declared(app, monkeypatch):
     """Every job id that init_scheduler registers is in exactly one of the two
-    declared sets. A new job added to init_scheduler must also be added to
+    declared sets.  A new job added to init_scheduler must also be added to
     PLATFORM_JOBS or TENANT_JOBS."""
     import apscheduler.schedulers.background
     from app._bootstrap.extensions import init_scheduler
     from app.jobs.tenant_safe_job import PLATFORM_JOBS, TENANT_JOBS
 
-    all_declared = PLATFORM_JOBS | TENANT_JOBS
-    real_cls = apscheduler.schedulers.background.BackgroundScheduler
-    scheduler = real_cls()
+    # Disjointness: no id belongs to both sets
+    assert PLATFORM_JOBS & TENANT_JOBS == frozenset(), (
+        f"Job id(s) {PLATFORM_JOBS & TENANT_JOBS} are in both PLATFORM_JOBS "
+        f"and TENANT_JOBS — every id must be in exactly one set"
+    )
 
-    # Register only the abacus job with standalone init_abacus_scheduler
-    # so we can inspect the ids init_scheduler would register.
-    # We monkeypatch to capture job ids without actually starting a scheduler.
+    all_declared = PLATFORM_JOBS | TENANT_JOBS
+
+    # Capture every job id init_scheduler registers
     captured_ids = []
 
-    original_add_job = scheduler.add_job
+    class _CaptureScheduler:
+        def __init__(self):
+            self._jobs = {}
+            self.started = False
 
-    def _capture_add_job(**kwargs):
-        captured_ids.append(kwargs["id"])
-        return original_add_job(**kwargs)
+        def add_job(self, **kwargs):
+            captured_ids.append(kwargs["id"])
+            self._jobs[kwargs["id"]] = kwargs["func"]
 
-    monkeypatch.setattr(scheduler, "add_job", _capture_add_job)
+        def get_jobs(self):
+            _Job = type("_FakeJob", (), {"__init__": lambda self, jid: setattr(self, "id", jid)})
+            return [_Job(jid) for jid in self._jobs]
 
-    from app.tasks.abacus_sync_task import init_abacus_scheduler
+        def get_job(self, job_id):
+            return self._jobs.get(job_id)
 
-    init_abacus_scheduler(app, scheduler=scheduler)
+        def remove_job(self, job_id):
+            self._jobs.pop(job_id, None)
 
-    # Now test that every id is declared
+        def start(self):
+            self.started = True
+
+        def pause(self):
+            pass
+
+        def shutdown(self, wait=False):
+            pass
+
+    monkeypatch.setattr(
+        apscheduler.schedulers.background, "BackgroundScheduler", _CaptureScheduler
+    )
+
+    # Set RUNNING_AS_JOBS_WORKER so init_scheduler does not skip itself
+    monkeypatch.setenv("RUNNING_AS_JOBS_WORKER", "1")
+
+    original_testing = app.testing
+    app.testing = False
+    try:
+        init_scheduler(app)
+    finally:
+        app.testing = original_testing
+        # Shut down the captured scheduler stored in extensions
+        leaked = app.extensions.pop("ea_workflow_scheduler", None)
+        if leaked is not None:
+            try:
+                leaked.shutdown(wait=False)
+            except Exception:
+                pass
+
+    # Every captured id is in exactly one declared set
     for job_id in captured_ids:
         assert job_id in all_declared, (
-            f"Job id {job_id!r} registered by init_abacus_scheduler "
+            f"Job id {job_id!r} registered by init_scheduler "
             f"but not found in PLATFORM_JOBS or TENANT_JOBS"
         )
 
@@ -384,13 +422,12 @@ def test_abacus_incremental_sync_on_existing_scheduler(app, monkeypatch):
     abacus_incremental_sync is registered on that scheduler, and no separate
     BackgroundScheduler was created."""
     import apscheduler.schedulers.background
-    from app._bootstrap.extensions import init_scheduler
     from app.tasks.abacus_sync_task import init_abacus_scheduler
 
     # Use a real scheduler, not a mock — the assertion is on the stored
     # instance in app.extensions, not on a capturer.
     real_scheduler = apscheduler.schedulers.background.BackgroundScheduler()
-    app.extensions["ea_workflow_scheduler"] = real_scheduler
+    monkeypatch.setitem(app.extensions, "ea_workflow_scheduler", real_scheduler)
 
     n_created = 0
     original_cls = apscheduler.schedulers.background.BackgroundScheduler
@@ -412,10 +449,12 @@ def test_abacus_incremental_sync_on_existing_scheduler(app, monkeypatch):
         "abacus_incremental_sync was not registered on the passed scheduler"
     )
 
-    # No new BackgroundScheduler was created (the counting constructor
-    # will fire once for the real_scheduler itself above, plus the
-    # import of the class; we only care about init_abacus_scheduler not
-    # instantiating one internally — verify by checking the job exists)
+    # No new BackgroundScheduler was created inside init_abacus_scheduler
+    assert n_created == 0, (
+        f"init_abacus_scheduler created {n_created} new BackgroundScheduler "
+        f"instance(s) instead of using the passed scheduler"
+    )
+
     real_scheduler.remove_job("abacus_incremental_sync")
 
 
@@ -427,8 +466,6 @@ def test_abacus_incremental_sync_on_existing_scheduler(app, monkeypatch):
 def test_worker_main_exits_one_when_no_scheduler(app, monkeypatch):
     """worker.main() exits with SystemExit(1) when create_app() registers
     no scheduler -- the error path in the worker."""
-    import threading
-
     import app as _app_module
     import app.jobs.worker as worker_mod
 
@@ -437,7 +474,7 @@ def test_worker_main_exits_one_when_no_scheduler(app, monkeypatch):
 
     monkeypatch.setattr(_app_module, "create_app", _make_app)
     # Remove the scheduler so the worker sees None
-    app.extensions.pop("ea_workflow_scheduler", None)
+    monkeypatch.delitem(app.extensions, "ea_workflow_scheduler", raising=False)
 
     with pytest.raises(SystemExit) as exc:
         worker_mod.main()
@@ -464,7 +501,7 @@ def test_worker_main_registers_abacus_job(app, monkeypatch):
 
     real_scheduler = BackgroundScheduler()
     real_scheduler.start()
-    app.extensions["ea_workflow_scheduler"] = real_scheduler
+    monkeypatch.setitem(app.extensions, "ea_workflow_scheduler", real_scheduler)
 
     # Validate registration inside the capture — worker.main() shuts down the
     # scheduler after Event.wait() returns, so checking after main() exits
