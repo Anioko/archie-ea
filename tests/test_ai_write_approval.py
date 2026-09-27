@@ -130,9 +130,12 @@ class TestShouldQueue:
         schema = {"tier": "auto", "mutates": True}
         assert AgentRunner._should_queue(schema, auto_execute=False) is True
 
-    def test_mutates_and_auto_execute_on_executes(self):
+    def test_mutates_and_auto_execute_on_still_queues(self):
         schema = {"tier": "auto", "mutates": True}
-        assert AgentRunner._should_queue(schema, auto_execute=True) is False
+        # The TB-0091 guard: with auto-execute on, writes still queue.
+        # auto_execute only controls whether reads run unconfirmed,
+        # not whether writes do.
+        assert AgentRunner._should_queue(schema, auto_execute=True) is True
 
     def test_read_only_never_queues_regardless_of_auto_execute(self):
         schema = {"tier": "auto", "mutates": False}

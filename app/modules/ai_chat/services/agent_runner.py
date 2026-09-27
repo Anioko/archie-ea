@@ -971,17 +971,21 @@ class AgentRunner:
     def _should_queue(schema: dict, auto_execute: bool) -> bool:
         """True if a tool call must be queued for confirmation, not executed now.
 
-        Two independent reasons, either one is sufficient:
+        Three independent reasons, any one is sufficient:
           - tier == "approve": always queued. These are destructive/significant
-            regardless of the write-approval gate, and unaffected by
-            auto_execute either way (update_application_status,
-            submit_for_arb_review, generate_blueprint_narrative).
-          - mutates is True and auto_execute is False: the write-approval gate
-            itself. A read tool (mutates False, e.g. find_applications,
-            query_capability_gaps) is never queued by this rule - gating reads
-            would put every search behind a confirmation prompt, which is the
-            failure mode toggle_auto_execute's docstring warned against before
-            'mutates' existed on the registry.
+            regardless of the write-approval gate.
+          - mutates is True: the write-approval gate. A tool that writes must
+            always queue — the auto_execute switch only controls whether reads
+            run unconfirmed, not whether writes do.
+          - risk_class in {"write", "external_action"}: a tool that writes
+            directly or triggers external side effects must always queue,
+            even if auto_execute is on. This is the backup guard for the 17
+            tier="auto" mutating tools.
+
+        Read and propose tools (risk_class "read" or "propose", mutates False)
+        are never queued by this rule — gating reads would put every search
+        behind a confirmation prompt, which is the failure mode
+        toggle_auto_execute's docstring warned against.
 
         Pure and schema-driven so it can be exhaustively unit-tested without a
         DB, an LLM, or a Flask request/session.
@@ -1001,7 +1005,14 @@ class AgentRunner:
         mutates = schema.get("mutates")
         if mutates is None:
             return True
-        return bool(mutates) and not auto_execute
+        # Always queue if the tool writes or triggers side effects,
+        # regardless of auto_execute. The auto_execute flag only affects
+        # whether reads bypass confirmation.
+        if bool(mutates):
+            return True
+        if schema.get("risk_class") in ("write", "external_action"):
+            return True
+        return False
 
     def _queue_approval(self, tc: "ToolCall") -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""

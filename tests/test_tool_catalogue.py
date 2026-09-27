@@ -186,14 +186,20 @@ class TestFailClosedConfirmation:
         )
 
     @pytest.mark.parametrize("name", MUTATING_AUTO_TOOLS)
-    def test_mutating_auto_tool_executes_when_auto_execute_on(self, name):
-        """When auto_execute=True the tool executes immediately (it is not
-        always-approve — only tier='approve' overrides auto_execute)."""
+    def test_mutating_auto_tool_queues_even_when_auto_execute_on(self, name):
+        """Each of the 17 tools queues for confirmation even when auto_execute=True,
+        because _should_queue returns True for any tool with mutates=True or
+        risk_class in {'write', 'external_action'} regardless of auto_execute.
+
+        This is the TB-0091 guard: with the approval switch off, every mutating
+        tool still requires confirmation, closing the 17 tier='auto' mutating
+        tools that would otherwise run unconfirmed.
+        """
         from app.modules.ai_chat.services.agent_runner import AgentRunner
 
         schema = TOOL_SCHEMA_BY_NAME[name]
-        assert AgentRunner._should_queue(schema, auto_execute=True) is False, (
-            f"{name} must NOT queue when auto_execute=True"
+        assert AgentRunner._should_queue(schema, auto_execute=True) is True, (
+            f"{name} must queue even when auto_execute=True"
         )
 
     def test_approve_tier_tools_always_queue(self):
