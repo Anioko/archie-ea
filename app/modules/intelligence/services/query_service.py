@@ -1055,25 +1055,66 @@ class IntelligenceQueryService:
             }
 
         def _cost_by_period_block(component, org_id: int) -> Dict[str, Any]:
-            """The ``cost_by_period`` key: reads the annual cost from the
-            accessor (``ApplicationComponent.total_cost_of_ownership``), the
-            system-of-record for annual cost. ``total_budget`` and
-            ``variance`` are not recorded in the accessor and return None.
-            ``ApplicationCost`` (the predecessor table) is no longer the
-            authoritative source.
+            """The ``cost_by_period`` key: the single latest
+            ``ApplicationCost`` row for *component* -- the first of this
+            method's two remaining selects, ordered newest fiscal
+            year/quarter first, one row only regardless of how many
+            periods exist. ``variance`` is the stored column, disclosed
+            only when both ``total_cost`` and ``total_budget`` on that same
+            row are themselves recorded -- nothing here recomputes it from
+            the two; a stored ``variance`` is withheld, not recalculated,
+            when either input is absent. Joins through ``ApplicationComponent``
+            for an explicit ``organization_id ==`` predicate (same rationale
+            as ``_licence_entries``'s ``_licence_tenant_predicate`` -- the FK
+            from ``application_costs`` to ``application_components`` carries
+            no tenant check of its own, so this is what keeps the read
+            correct when called with no ambient request context).
             """
-            from app.services.application_cost_accessor import get_annual_cost
+            from app.models.enterprise_intelligence import ApplicationCost
 
-            annual_cost = get_annual_cost(component)
-            total_cost = float(annual_cost) if annual_cost is not None else None
+            row = (
+                db.session.execute(
+                    db.select(ApplicationCost)
+                    .join(ApplicationComponent, ApplicationCost.application_id == ApplicationComponent.id)
+                    .where(
+                        ApplicationCost.application_id == component.id,
+                        ApplicationComponent.organization_id == org_id,
+                    )
+                    .order_by(
+                        ApplicationCost.fiscal_year.desc(),
+                        ApplicationCost.fiscal_quarter.desc().nulls_last(),
+                        ApplicationCost.id.desc(),
+                    )
+                )
+                .scalars()
+                .first()
+            )
 
+            if row is None:
+                return {
+                    "fiscal_year": None,
+                    "fiscal_quarter": None,
+                    "total_cost": None,
+                    "total_budget": None,
+                    "variance": None,
+                    "reason": NO_COST_RECORDED_REASON,
+                    "access_reason": None,
+                }
+
+            total_cost = float(row.total_cost) if row.total_cost is not None else None
+            total_budget = float(row.total_budget) if row.total_budget is not None else None
+            variance = (
+                float(row.variance)
+                if row.variance is not None and total_cost is not None and total_budget is not None
+                else None
+            )
             return {
-                "fiscal_year": None,
-                "fiscal_quarter": None,
+                "fiscal_year": row.fiscal_year,
+                "fiscal_quarter": row.fiscal_quarter,
                 "total_cost": total_cost,
-                "total_budget": None,
-                "variance": None,
-                "reason": None if total_cost is not None else NO_COST_RECORDED_REASON,
+                "total_budget": total_budget,
+                "variance": variance,
+                "reason": None,
                 "access_reason": None,
             }
 
