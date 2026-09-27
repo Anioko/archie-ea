@@ -388,8 +388,18 @@ def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
         if ai_protocol_stub is not None:
             from app.models.models import APISettings
 
+            # Clean up any stale protocol-stub records from interrupted runs.
+            # The live_server subprocess may have created a record, then the
+            # seeder's own app_context reads the same database.  Without this
+            # cleanup a previous run whose finalizer did not execute leaves an
+            # enabled provider behind, and every smoke test errors at setup.
+            for stale in APISettings.query.filter_by(key_label="ci-protocol-stub").all():
+                db.session.delete(stale)
+            db.session.commit()
+
             # This app context is intentionally unscoped: reject ANY existing
-            # enabled provider before exercising AI in a candidate database.
+            # enabled provider (other than our own, which was just removed)
+            # before exercising AI in a candidate database.
             if APISettings.query.filter_by(enabled=True).count():
                 pytest.fail("AI protocol qualification requires a candidate database without enabled provider records")
         Role.insert_roles()
