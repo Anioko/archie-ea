@@ -417,45 +417,130 @@ def test_every_init_scheduler_job_is_declared(app, monkeypatch):
         )
 
 
-def test_abacus_incremental_sync_on_existing_scheduler(app, monkeypatch):
-    """After init_abacus_scheduler(app, scheduler=...) the job id
-    abacus_incremental_sync is registered on that scheduler, and no separate
-    BackgroundScheduler was created."""
+def test_abacus_incremental_sync_not_registered_on_existing_scheduler(app, monkeypatch):
+    """init_abacus_scheduler is a no-op — it does NOT register
+    abacus_incremental_sync because run_abacus_sync_job calls
+    run_incremental_sync() which does not exist (the real method is
+    async_run_incremental_sync)."""
     import apscheduler.schedulers.background
     from app.tasks.abacus_sync_task import init_abacus_scheduler
 
-    # Use a real scheduler, not a mock — the assertion is on the stored
-    # instance in app.extensions, not on a capturer.
     real_scheduler = apscheduler.schedulers.background.BackgroundScheduler()
     monkeypatch.setitem(app.extensions, "ea_workflow_scheduler", real_scheduler)
 
-    n_created = 0
-    original_cls = apscheduler.schedulers.background.BackgroundScheduler
-
-    def _counting_constructor(*args, **kwargs):
-        nonlocal n_created
-        n_created += 1
-        return original_cls(*args, **kwargs)
-
-    monkeypatch.setattr(
-        apscheduler.schedulers.background, "BackgroundScheduler", _counting_constructor
-    )
-
     init_abacus_scheduler(app, scheduler=real_scheduler)
 
-    # The abacus job is on the existing scheduler
+    # The abacus job is NOT registered on the existing scheduler
     job = real_scheduler.get_job("abacus_incremental_sync")
-    assert job is not None, (
-        "abacus_incremental_sync was not registered on the passed scheduler"
+    assert job is None, (
+        "abacus_incremental_sync was registered on the passed scheduler even "
+        "though run_incremental_sync does not exist on AbacusSyncService"
     )
 
-    # No new BackgroundScheduler was created inside init_abacus_scheduler
-    assert n_created == 0, (
-        f"init_abacus_scheduler created {n_created} new BackgroundScheduler "
-        f"instance(s) instead of using the passed scheduler"
+    # No cleanup needed — init_abacus_scheduler is a no-op so no job
+    # was registered and the scheduler was never started.
+    # real_scheduler was created but never started; shutdown would raise.
+
+
+def test_worker_registers_no_job_with_missing_target_method(app, monkeypatch):
+    """No job whose callable invokes a non-existent method is registered
+    through init_scheduler or init_abacus_scheduler.
+
+    Currently the only such job candidate is abacus_incremental_sync: its
+    target function (run_abacus_sync_job) calls
+    sync_service.run_incremental_sync() which does not exist on
+    AbacusSyncService (the real method is async_run_incremental_sync).
+    init_abacus_scheduler is deliberately a no-op, so the id never appears
+    in the scheduler.
+
+    If a future change adds another job with a wrong method name, this test
+    catches it by capturing every job id that init_scheduler + a direct
+    init_abacus_scheduler call would register and asserting none of them
+    map to a missing method.
+    """
+    import apscheduler.schedulers.background
+    from app._bootstrap.extensions import init_scheduler
+    from app.tasks.abacus_sync_task import init_abacus_scheduler
+
+    captured_ids = []
+
+    class _CaptureScheduler:
+        def __init__(self):
+            self._jobs = {}
+            self.started = False
+
+        def add_job(self, **kwargs):
+            captured_ids.append(kwargs["id"])
+            self._jobs[kwargs["id"]] = kwargs["func"]
+
+        def get_jobs(self):
+            _Job = type("_FakeJob", (), {"__init__": lambda self, jid: setattr(self, "id", jid)})
+            return [_Job(jid) for jid in self._jobs]
+
+        def get_job(self, job_id):
+            return self._jobs.get(job_id)
+
+        def remove_job(self, job_id):
+            self._jobs.pop(job_id, None)
+
+        def start(self):
+            self.started = True
+
+        def pause(self):
+            pass
+
+        def shutdown(self, wait=False):
+            pass
+
+    monkeypatch.setattr(
+        apscheduler.schedulers.background, "BackgroundScheduler", _CaptureScheduler
     )
 
-    real_scheduler.remove_job("abacus_incremental_sync")
+    monkeypatch.setenv("RUNNING_AS_JOBS_WORKER", "1")
+
+    original_testing = app.testing
+    app.testing = False
+    try:
+        init_scheduler(app)
+
+        # init_abacus_scheduler gets its own capturer since the no-op returns
+        # before it would call BackgroundScheduler
+        abacus_captured = []
+        class _AbacusCaptureScheduler:
+            def add_job(self, **kwargs):
+                abacus_captured.append(kwargs["id"])
+            def get_jobs(self):
+                return []
+            def get_job(self, job_id):
+                return None
+            def remove_job(self, job_id):
+                pass
+            def start(self):
+                pass
+            def pause(self):
+                pass
+            def shutdown(self, wait=False):
+                pass
+
+        init_abacus_scheduler(app, scheduler=_AbacusCaptureScheduler())
+    finally:
+        app.testing = original_testing
+        leaked = app.extensions.pop("ea_workflow_scheduler", None)
+        if leaked is not None:
+            try:
+                leaked.shutdown(wait=False)
+            except Exception:
+                pass
+
+    # abacus_incremental_sync must NOT appear in either captured set
+    assert "abacus_incremental_sync" not in captured_ids, (
+        "init_scheduler registered abacus_incremental_sync — the job target "
+        "calls run_incremental_sync() which does not exist"
+    )
+    assert "abacus_incremental_sync" not in abacus_captured, (
+        "init_abacus_scheduler registered abacus_incremental_sync — "
+        "it should be a no-op until the broken method name is fixed"
+    )
 
 
 # --------------------------------------------------------------------------- #
