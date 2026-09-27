@@ -50,7 +50,6 @@ from app.models.models import (  # dead-code-ok
     ArchiMateRelationship,
     ArchitectureModel,
 )
-from app.models.user import User
 from app.services.archimate.archimate_llm_service import ArchiMateLLMService
 from app.decorators import audit_log, require_roles
 from app.services.rate_limiter import rate_limit
