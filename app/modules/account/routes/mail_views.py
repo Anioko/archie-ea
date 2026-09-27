@@ -253,4 +253,5 @@ def _join_existing_view(token, invitation, organisation_name):
         email=invitation.user.email,
         inviter=invitation.inviter,
         role=invitation.role,
+        join_url=url_for("account.join", token=token),
     )
