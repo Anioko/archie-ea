@@ -67,6 +67,10 @@ POLICY = {
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
     "/admin/errors":           set(),
+    # Billing: plan, checkout, limits, invoices. Gated by admin_required, which
+    # no ordinary persona role carries; only the administrator can buy, change
+    # or cancel the organisation's plan.
+    "/admin/billing/":         set(),
     # Interface Register (SAP S/4HANA Interface Register, Task 02): gated by
     # can_access_section(current_user, "data_integration") -- the same
     # section-based predicate the sidebar uses, not a requires_role()-style

@@ -4,7 +4,7 @@ Admin User Service - Business logic for admin user management.
 Extracted from: app/admin/views.py (user CRUD, invitations, role changes)
 """
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 from flask import g, url_for
 from sqlalchemy import func
@@ -99,7 +99,8 @@ class AdminUserService:
 
     @staticmethod
     def create_user(first_name: str, last_name: str, email: str,
-                    password: str, role: Role) -> User:
+                    password: str, role: Role,
+                    organization_id: Optional[int] = None) -> User:
         """Create a new user with a password.
 
         Args:
@@ -119,6 +120,8 @@ class AdminUserService:
             password=password,
             confirmed=True,
             role=role,
+            # The admin's organisation; None falls back to the default org.
+            organization_id=organization_id,
         )
         db.session.add(user)
         db.session.commit()
@@ -126,7 +129,7 @@ class AdminUserService:
 
     @staticmethod
     def invite_user(first_name: str, last_name: str, email: str,
-                    role: Role) -> User:
+                    role: Role, organization_id: Optional[int] = None) -> User:
         """Create a new user via invitation and send invite email.
 
         Args:
@@ -143,6 +146,7 @@ class AdminUserService:
             last_name=last_name,
             email=email,
             role=role,
+            organization_id=organization_id,
         )
         db.session.add(user)
         db.session.commit()
