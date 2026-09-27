@@ -1582,6 +1582,17 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         return api_keys
     
     @staticmethod
+    def _resolve_org_id() -> Optional[int]:
+        """Resolve current organisation ID from the request context, if any."""
+        try:
+            from flask import g, has_request_context
+            if has_request_context():
+                return getattr(g, "current_org_id", None)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
     def _call_llm_with_failover(
         prompt: str,
         model: str,
@@ -1590,6 +1601,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         pipeline_stage_id: Optional[int] = None,
         _already_tried: Optional[List[str]] = None,
         timeout: Optional[float] = None,
+        organization_id: Optional[int] = None,
+        prompt_version: Optional[str] = None,
+        retention_setting: Optional[str] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Call LLM with automatic API key failover.
@@ -1696,6 +1710,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     token_count_output=token_output,
                     cost=cost,
                     pipeline_stage_id=pipeline_stage_id,
+                    organization_id=organization_id,
+                    prompt_version=prompt_version,
+                    retention_setting=retention_setting,
                 )
                 
                 return response_text, interaction
@@ -1770,6 +1787,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     pipeline_stage_id=pipeline_stage_id,
                     _already_tried=_already_tried,
                     timeout=timeout,
+                    organization_id=organization_id,
+                    prompt_version=prompt_version,
+                    retention_setting=retention_setting,
                 )
             except Exception as fb_err:
                 logger.warning(f"Cross-provider fallback to {fallback_provider} also failed: {str(fb_err)[:80]}")
@@ -1793,6 +1813,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         expected_schema: Optional[str] = None,
         job_id: Optional[int] = None,
         timeout: Optional[float] = None,
+        prompt_version: Optional[str] = None,
+        retention_setting: Optional[str] = None,
     ) -> Tuple[str, LLMInteraction]:
         """
         Internal method to call LLM API and track the interaction.
@@ -1802,6 +1824,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         - Budget enforcement via LLMCostTracker
         - Intelligent model routing
         - Cost tracking in GBP
+        - Organisation-scoped recording via gateway
 
         Args:
             prompt: The prompt to send to the LLM
@@ -1812,10 +1835,25 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             project_id: Optional project ID for budget tracking
             timeout: Optional per-call client-level timeout override (seconds),
                 passed through to the provider client for this call only.
+            prompt_version: Optional semver-style prompt version string.
+            retention_setting: Optional retention policy (forever, 30d, 90d, 1y).
 
         Returns:
             Tuple of (response_text, LLMInteraction instance)
         """
+        # Resolve organisation from request context
+        organization_id = LLMService._resolve_org_id()
+
+        # R1-B23 gateway: check provider register restriction
+        if organization_id is not None:
+            from app.models.model_provider import ModelProvider
+            if not ModelProvider.is_allowed_for_org(provider, model, organization_id):
+                raise ValueError(
+                    f"Provider '{provider}/{model}' is not allowed for "
+                    f"organisation {organization_id}. "
+                    f"Contact your administrator to update the provider register."
+                )
+
         # Initialize cost tracker
         cost_tracker = LLMCostTracker()
 
@@ -1845,6 +1883,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 max_tokens=max_tokens,
                 pipeline_stage_id=pipeline_stage_id,
                 timeout=timeout,
+                organization_id=organization_id,
+                prompt_version=prompt_version,
+                retention_setting=retention_setting,
             )
         except RuntimeError as e:
             # All API keys failed
@@ -1884,6 +1925,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                         expected_schema=expected_schema,
                         job_id=job_id,
                         timeout=timeout,
+                        prompt_version=prompt_version,
+                        retention_setting=retention_setting,
                     )
                 except ValueError as fallback_error:
                     logger.error(f"❌ No alternative provider available: {fallback_error}")
@@ -1896,8 +1939,18 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
 
         # If interaction wasn't created by failover (no pipeline_stage_id), create it now
         latency_ms = int((time.time() - start_time) * 1000)
-        
-        if interaction is None and pipeline_stage_id is not None:
+
+        if interaction is not None:
+            # Primary path: interaction was created by _call_llm_with_failover
+            # but was not yet persisted or given latency.
+            interaction.latency_ms = latency_ms
+            db.session.add(interaction)
+            try:
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        elif pipeline_stage_id is not None:
             # Create a basic interaction record
             interaction = LLMInteraction(
                 pipeline_stage_id=pipeline_stage_id,
@@ -1909,6 +1962,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 token_count_output=0,
                 cost=0.0,
                 latency_ms=latency_ms,
+                organization_id=organization_id,
+                prompt_version=prompt_version,
+                retention_setting=retention_setting,
             )
             
             db.session.add(interaction)

@@ -52,6 +52,9 @@ class LLMCostTracker:
         user_id: Optional[int] = None,
         project_id: Optional[int] = None,
         department: Optional[str] = None,
+        organization_id: Optional[int] = None,
+        prompt_version: Optional[str] = None,
+        retention_setting: Optional[str] = None,
     ) -> Decimal:
         """
         Calculate and track cost for an LLM interaction.
@@ -80,6 +83,9 @@ class LLMCostTracker:
                 cost=cost,
                 user_id=user_id,
                 pipeline_stage_id=project_id,
+                organization_id=organization_id,
+                prompt_version=prompt_version,
+                retention_setting=retention_setting,
             )
             db.session.add(interaction)
             db.session.commit()
