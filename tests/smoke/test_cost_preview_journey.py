@@ -155,8 +155,8 @@ def test_cost_preview_journey(browser, live_server, seeded):
     page.wait_for_timeout(2000)
 
     # Assert the cost is visible on the application detail page
-    # The cost could be formatted as "$75,000" or "75,000" or similar
-    cost_display = page.locator("text=75000").first
+    # The fact_sheet.html formats as {:,.0f} producing "75,000"
+    cost_display = page.locator("text=75,000").first
     expect(cost_display).to_be_visible(timeout=PAGE_TIMEOUT)
 
     context.close()
