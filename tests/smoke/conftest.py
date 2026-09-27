@@ -171,8 +171,22 @@ def live_server(request, ai_protocol_stub, app):
     Integrity - which is precisely the class of defect these journeys exist to
     catch.
     """
+    server = boot_live_server(request, ai_protocol_stub, app)
+    yield server
+
+    if request.session.testsfailed:
+        print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
+
+
+def boot_live_server(request, ai_protocol_stub, app, extra_env=None):
+    """Start one app subprocess and return its SmokeServer; stopped by `request`'s finalizer.
+
+    `extra_env` overrides configuration for this server only, so a module can
+    exercise a feature flag without switching it on for every other journey.
+    """
     port = _free_port()
     env = dict(os.environ)
+    env.update(extra_env or {})
     _require_explicit_test_database(env)
     if ai_protocol_stub is not None:
         env = ai_protocol_stub.child_environment(env)
@@ -272,11 +286,7 @@ def live_server(request, ai_protocol_stub, app):
     except Exception as exc:
         print("[smoke] live_server at %s NOT serving: %s" % (base, exc))
 
-    server = SmokeServer(base, log_path, app)
-    yield server
-
-    if request.session.testsfailed:
-        print("\n[smoke] server log after journey failure:\n%s" % server.tail(300))
+    return SmokeServer(base, log_path, app)
 
 
 def _delete_api_settings(**filters):
@@ -302,8 +312,7 @@ def _delete_api_settings(**filters):
         return existing
 
 
-@pytest.fixture(scope="session")
-def seeded(live_server, request, ai_protocol_stub):
+def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
     """One organisation, one user per archetype, and the fixtures they need.
 
     Returns {archetype: email} plus the ids the journeys navigate to.
@@ -312,11 +321,30 @@ def seeded(live_server, request, ai_protocol_stub):
     have no create path for their own entity - which was itself a finding - and a
     journey should not be blocked from testing a read screen by a missing write
     screen.
+
+    A plain function, not a fixture: `seeded` below calls it once for the
+    session-wide organisation every ordinary smoke test shares, and a second
+    caller (test_visual_regression.py's `visual_org`) calls it again for a
+    dedicated organisation of exactly the same shape, so a screen capture
+    that needs real content does not also need the shared organisation to be
+    in whatever state 500 other tests have left it in.
+
+    Every name below embeds a per-call suffix so two calls in the same
+    database never collide. It is random (a fresh uuid) by default, which is
+    what every ordinary smoke test wants -- nothing about its own content is
+    asserted on. `fixed_suffix` overrides that with a caller-chosen, stable
+    value instead, for the one caller (test_visual_regression.py's
+    `visual_org`) whose whole point is a screen whose content -- not just its
+    shape -- must render identically every run. A fixed suffix reused across
+    two calls in the same database collides on the organisation's slug (and
+    the seeded users' emails): the caller is responsible for calling this at
+    most once per database when passing one (see `visual_org`'s own guard,
+    which pytest's fixture scope alone was not enough to provide).
     """
     from app import create_app, db
 
     app = create_app("testing")
-    suffix = uuid.uuid4().hex[:8]
+    suffix = fixed_suffix or uuid.uuid4().hex[:8]
     out = {"emails": {}, "ids": {}}
 
     with app.app_context():
@@ -592,6 +620,14 @@ def seeded(live_server, request, ai_protocol_stub):
         db.session.commit()
 
     return out
+
+
+@pytest.fixture(scope="session")
+def seeded(live_server, request, ai_protocol_stub):
+    """The one organisation, one user per archetype, and their fixtures
+    every ordinary smoke test in this session shares. See
+    `_seed_standard_org` above for what it contains."""
+    return _seed_standard_org(request, ai_protocol_stub)
 
 
 PAGE_TIMEOUT = int(os.environ.get("SMOKE_PAGE_TIMEOUT", "90000"))

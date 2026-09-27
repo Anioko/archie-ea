@@ -455,7 +455,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 62 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 65 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -476,6 +476,8 @@ to reconfirm the count before trusting it:**
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
 | `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
+| `untenanted-reads` | a read (`db.select`, `.query`, `session.get`) of ANY model with no `TenantMixin`, with no org predicate in the statement | ratchet @ 2988; a bare `tenant-scoping-ok` (no reason) or an org word inside another name does not clear a read |
+| `unfenced-tables` | a database table with no `TenantMixin` that is not listed in `scripts/unfenced_tables.txt` (a new one is a decision) | ratchet @ 0 |
 | `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
 | `evidence-contract` | behavioural changes/checkers missing evidence or provenance | ratchet @ 29 |
 | `role-gate-coverage` | a declared delivery role resolving to no verifier gate | ratchet @ 7 |
@@ -514,6 +516,7 @@ to reconfirm the count before trusting it:**
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `vendor-integrity` | a vendored asset not matching `VENDOR_MANIFEST.txt` | must pass |
+| `high-findings` | a HIGH-severity bandit finding left open, baselined or not; a bare `# nosec` does not close one | must be 0 |
 | `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | ratchet |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
 | `csrf-coverage` | a write route with no CSRF protection or justified opt-out | must pass |

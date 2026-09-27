@@ -160,17 +160,9 @@ def extensions():
         # Get available extensions
         extensions = FrameworkExtension.query.filter_by(status="active").all()
 
-        # Group by category
-        extensions_by_category = {}
-        for extension in extensions:
-            category = extension.extension_category or "other"
-            if category not in extensions_by_category:
-                extensions_by_category[category] = []
-            extensions_by_category[category].append(extension)
-
         return render_template(
-            "framework_config/dashboard.html",
-            extensions_by_category=extensions_by_category,
+            "framework_config/extensions.html",
+            extensions=extensions,
         )
 
     except Exception as e:
@@ -229,16 +221,8 @@ def templates():
             status="active"
         ).all()
 
-        # Group by type
-        templates_by_type = {}
-        for template in templates:
-            template_type = template.template_type or "other"
-            if template_type not in templates_by_type:
-                templates_by_type[template_type] = []
-            templates_by_type[template_type].append(template)
-
         return render_template(
-            "framework_config/dashboard.html", templates_by_type=templates_by_type
+            "framework_config/templates.html", templates=templates
         )
 
     except Exception as e:
@@ -357,9 +341,8 @@ def configuration_wizard():
         ).all()
 
         return render_template(
-            "framework_config/dashboard.html",
+            "framework_config/wizard.html",
             templates=templates,
-            step=1,
         )
 
     except Exception as e:

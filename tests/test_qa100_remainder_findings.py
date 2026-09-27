@@ -54,7 +54,9 @@ DIRECTORY_ONLY_ENDPOINTS = [
     "unified_duplicate.simple_dashboard",
     "strategic.impact_analysis",
     "consolidation_list.dashboard",
-    "batch_import_view.dashboard",
+    # Canvas/framework UI fix (24 Sep 2026): batch_import_view.dashboard was
+    # intentionally folded from platform_admin's Admin zone to stay within the
+    # link budget after adding Framework Management and Framework Configuration.
     "stakeholder_map.stakeholder_map_page",
     "maturity_management.frameworks_overview",
     "strategic.capability_health",

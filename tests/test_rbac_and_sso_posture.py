@@ -75,7 +75,7 @@ def _make_rbac_user(db_session, org, *, is_org_admin=False, is_platform_admin=Fa
         is_platform_admin=is_platform_admin,
         confirmed=True,
     )
-    user.password = "TestPassw0rd!23"
+    user.password = uuid.uuid4().hex
     db_session.add(user)
     db_session.flush()
     return user
@@ -163,6 +163,61 @@ def test_platform_admin_only_route_rejects_a_mere_org_admin(app, db_session, rba
     )
 
 
+def test_platform_admin_can_open_the_team_page(app, db_session, rbac_org, login_as):
+    """/admin/team gated only on the per-org OrgRole table (rbac_service),
+    a vocabulary a platform admin is not necessarily enrolled in for any one
+    org, so a platform admin with no OrgRole row here was refused a page
+    they are entitled to open. A platform admin (the flag plus
+    Permission.ADMINISTER, matching platform_admin_required elsewhere) must
+    reach it regardless of their per-org role.
+    """
+    admin = _make_rbac_user(db_session, rbac_org, is_platform_admin=True, admin_permission=True)
+    db_session.commit()
+    client = app.test_client()
+    login_as(client, admin)
+
+    resp = client.get("/admin/team")
+    assert resp.status_code == 200, (
+        f"a platform admin was refused /admin/team — got {resp.status_code}"
+    )
+
+
+def test_org_admin_via_orgrole_can_still_open_the_team_page(app, db_session, rbac_org, login_as):
+    """The pre-existing path — an OrgRole row of 'org_admin' for this org —
+    must keep working; broadening the gate to also admit platform admins
+    must not narrow it for the org_admin it already served.
+    """
+    from app.models.org_role import OrgRole
+
+    user = _make_rbac_user(db_session, rbac_org, admin_permission=False)
+    db_session.flush()
+    OrgRole.set_role(rbac_org.id, user.id, "org_admin", granted_by_id=user.id)
+    db_session.commit()
+    client = app.test_client()
+    login_as(client, user)
+
+    resp = client.get("/admin/team")
+    assert resp.status_code == 200, (
+        f"an org_admin (OrgRole table) was refused /admin/team — got {resp.status_code}"
+    )
+
+
+def test_plain_member_is_still_rejected_from_the_team_page(app, db_session, rbac_org, login_as):
+    """Broadening /admin/team to admit platform admins must not also admit
+    a plain org member who is neither an org_admin nor a platform admin.
+    """
+    user = _make_rbac_user(db_session, rbac_org, admin_permission=False)
+    db_session.commit()
+    client = app.test_client()
+    login_as(client, user)
+
+    resp = client.get("/admin/team")
+    assert resp.status_code == 403, (
+        f"a plain member (no org_admin, no platform admin) reached /admin/team "
+        f"— got {resp.status_code}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # SSO posture (R-32-adjacent scope: "is the identity boundary real")
 # ---------------------------------------------------------------------------
@@ -218,7 +273,7 @@ def test_oidc_sign_in_routes_404_when_disabled(app):
 
 # The single registered rule that names SAML: the per-organisation callback
 # (app/modules/auth/sso_routes.py). It is the explicit refusal for an
-# organisation whose SSO configuration says SAML: it answers 501 to every
+# organisation whose SSO configuration says SAML: it answers 400 to every
 # request, reads no assertion and signs nobody in. Any other rule that names
 # SAML, in its path or its endpoint, is a SAML sign-in route and must not exist.
 _SAML_REFUSAL = ("/auth/sso/callback/saml", "sso.sso_callback_saml")
@@ -247,7 +302,11 @@ def test_no_saml_sign_in_route_is_registered(app):
 
 
 def test_the_per_organisation_saml_callback_only_refuses(app):
-    """The one SAML-named rule is a GET-only refusal that answers 501."""
+    """The one SAML-named rule is a GET-only refusal that answers 400, never a 5xx.
+
+    A request here can never be a server fault — nothing is implemented to
+    fault — so the status line says so: 400, not 5xx.
+    """
     rules = [rule for rule in app.url_map.iter_rules() if rule.endpoint == _SAML_REFUSAL[1]]
     assert len(rules) == 1 and rules[0].rule == _SAML_REFUSAL[0]
     assert rules[0].methods - {"HEAD", "OPTIONS"} == {"GET"}, (
@@ -255,7 +314,8 @@ def test_the_per_organisation_saml_callback_only_refuses(app):
     )
 
     resp = app.test_client().get(_SAML_REFUSAL[0])
-    assert resp.status_code == 501
+    assert resp.status_code == 400
+    assert resp.status_code < 500
     assert "error" in resp.get_json()
 
 

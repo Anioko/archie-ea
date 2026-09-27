@@ -64,6 +64,7 @@ def compliance_frameworks_dashboard():
         total_controls=total_controls,
         total_mappings=len(mappings),
         mapped_by_status=mapped_by_status,
+        load_error=False,
     )
 
 
