@@ -17,7 +17,7 @@ and a row that cannot be attributed an owning organisation from anything it
 links to is left NULL -- the tenant filter's `=` comparison then matches no
 organisation, which is quarantine, not a guess.
 
-Attribution rule (R1-B04): the organisation of the work package's linked
+Attribution rule: the organisation of the work package's linked
 programme or element, else its creator, else quarantine. Run in this order:
 
     flask --app manage reconcile-schema
@@ -117,8 +117,8 @@ def backfill_work_package_org(dry_run):
         db.session.rollback()
         return
 
-    db.session.commit()
     remaining = _count(conn, "SELECT count(*) FROM unified_work_packages WHERE organization_id IS NULL")
+    db.session.commit()
     click.echo(f"backfill-work-package-org: done. {remaining} row(s) quarantined (unattributable).")
 
 
@@ -235,12 +235,16 @@ def _merge_one(conn, spec, dry_run):
         f"SELECT {', '.join(select_columns)} "
         f'FROM "{table}" s {spec["org_joins"]} '
         "WHERE s.retired_into_id IS NULL "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM unified_work_packages uwp "
+        "WHERE uwp.source_table = :source_table AND uwp.source_id = s.id"
+        ") "
         "RETURNING id AS new_id, source_id AS old_id"
         ") "
         f'UPDATE "{table}" SET retired_into_id = inserted.new_id '
         f'FROM inserted WHERE "{table}".id = inserted.old_id'
     )
-    conn.execute(text(sql))
+    conn.execute(text(sql), {"source_table": table})
     click.echo(f"  + {table}: merged {eligible} row(s), marked retired_into_id")
 
 
