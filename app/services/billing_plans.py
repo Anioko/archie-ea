@@ -342,13 +342,13 @@ def check_capacity(connection, org_id: int, change: "_Change") -> None:
     from app.models.subscription import Subscription, SubscriptionStatus
 
     orgs = Organization.__table__
-    org = connection.execute(
-        select(orgs.c.slug, orgs.c.plan, orgs.c.max_users)
-        .where(orgs.c.id == org_id)
-        .with_for_update()
-    ).first()
+    columns = select(orgs.c.slug, orgs.c.plan, orgs.c.max_users).where(orgs.c.id == org_id)
+    org = connection.execute(columns).first()
+    # The shared fallback organisation is never locked: it has no plan, and
+    # every sign-up without an organisation lands in it.
     if org is None or org.slug in _UNPLANNED_ORG_SLUGS:
         return
+    org = connection.execute(columns.with_for_update()).first()
     subs = Subscription.__table__
     row = connection.execute(
         select(subs.c.plan, subs.c.status, subs.c.seats_purchased)
