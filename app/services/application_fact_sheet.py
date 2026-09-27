@@ -38,24 +38,6 @@ _COMPLETENESS_FIELDS = [
     ("description", "Description", 1),
 ]
 
-# The fields that a well-governed application record should carry. Weighted so
-# the score reflects decision-relevance, not just field count: ownership, cost,
-# criticality and lifecycle matter more to a portfolio decision than a support
-# URL. This is the rubric the completeness ring is scored against.
-_WEIGHTED_FIELDS = [
-    ("_has_owner_record", "Owner", 3),
-    ("business_domain", "Business domain", 2),
-    ("business_criticality", "Business criticality", 3),
-    ("lifecycle_status", "Lifecycle", 3),
-    ("total_cost_of_ownership", "Total cost of ownership", 3),
-    ("technology_stack", "Technology stack", 2),
-    ("deployment_model", "Hosting / deployment", 2),
-    ("data_classification", "Data classification", 2),
-    ("vendor_name", "Vendor", 2),
-    ("disaster_recovery_enabled", "Disaster recovery", 1),
-    ("description", "Description", 1),
-]
-
 # Lifecycle stages we treat as "sunset" for the end-of-life signal.
 _SUNSET_STAGES = {"retiring", "sunset", "decommissioning", "end_of_life",
                   "end-of-life", "deprecated", "retire"}
@@ -69,19 +51,28 @@ def _has_value(v: Any) -> bool:
     return True
 
 
-def compute_completeness(app: Any, owner_count: int = 0) -> Dict[str, Any]:
+def _owner_count(app_id: int) -> int:
+    """Read ApplicationOwner rows for *app_id* so every caller sees the same count."""
+    from app.models.application_owner import ApplicationOwner
+    return ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app_id
+    ).count()
+
+
+def compute_completeness(app: Any) -> Dict[str, Any]:
     """Weighted % of key fields populated, plus the list of what is missing.
 
-    ``owner_count`` is the number of ApplicationOwner rows for this application.
-    When non-zero, the "Owner" field is considered populated regardless of the
-    legacy text column.
+    The "Owner" field is considered populated when there is at least one
+    ApplicationOwner row for this application, regardless of the legacy
+    text column.
     """
     got = 0
     total = 0
     missing: List[str] = []
-    for attr, label, weight in _WEIGHTED_FIELDS:
+    owner_count = _owner_count(app.id)
+    for attr, label, weight in _COMPLETENESS_FIELDS:
         total += weight
-        if attr == "_has_owner_record":
+        if attr == "application_owner":
             if owner_count > 0 or _has_value(getattr(app, "application_owner", None)):
                 got += weight
             else:
@@ -93,8 +84,8 @@ def compute_completeness(app: Any, owner_count: int = 0) -> Dict[str, Any]:
     pct = round(100 * got / total) if total else 0
     band = "good" if pct >= 80 else "warn" if pct >= 50 else "poor"
     return {"pct": pct, "band": band, "missing": missing,
-            "filled": len(_WEIGHTED_FIELDS) - len(missing),
-            "of": len(_WEIGHTED_FIELDS)}
+            "filled": len(_COMPLETENESS_FIELDS) - len(missing),
+            "of": len(_COMPLETENESS_FIELDS)}
 
 
 def _lifecycle_signal(app: Any) -> Dict[str, Any]:
@@ -103,7 +94,6 @@ def _lifecycle_signal(app: Any) -> Dict[str, Any]:
              or getattr(app, "current_lifecycle_state", None) or "").strip()
     retire: Optional[date] = getattr(app, "planned_retirement_date", None)
     days_left = None
-    # date.today() is unavailable-free here (real request context); guard anyway.
     if retire is not None:
         try:
             days_left = (retire - date.today()).days
@@ -129,9 +119,6 @@ def _capabilities(app_id: int, org_id: Optional[int]) -> List[Dict[str, Any]]:
     )
     from app.models.business_capabilities import BusinessCapability  # noqa: PLC0415
 
-    # ApplicationCapabilityMapping carries organization_id but does NOT inherit
-    # TenantMixin, so do_orm_execute injects no tenant predicate — it must be
-    # scoped by hand or the join reads every organisation's mappings.
     if org_id is None:
         raise ValueError(
             "application has no organization_id; refusing to run an unscoped "
@@ -187,8 +174,6 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
     el_id = getattr(app, "archimate_element_id", None)
     if not el_id:
         return []
-    # Unguarded for the same reason as _capabilities: an import failure here is a
-    # defect, and returning [] would read on the page as "appears in no diagrams".
     from app.models.archimate_core import (  # noqa: PLC0415
         SavedDiagram, SavedDiagramElement,
     )
@@ -200,26 +185,21 @@ def _diagrams(app: Any) -> List[Dict[str, Any]]:
 
 
 def _linked_risks(app_id: int) -> List[Dict[str, Any]]:
-    """H1: risks mapped to this application via the Risk Register's
-    "Map to…" picker (RiskEntityLink). Import deferred to avoid a module-load
-    cycle (risk_service imports app.services.archimate_backbone)."""
     from app.services.risk_service import links_for_entity
-
     return links_for_entity("application", app_id)
 
 
 def build_fact_sheet(app: Any) -> Dict[str, Any]:
     """Assemble the full fact sheet for one ApplicationComponent instance."""
     org_id = getattr(app, "organization_id", None)
-    # R1-B03: Load ApplicationOwner records for the fact sheet
     from app.models.application_owner import ApplicationOwner  # noqa: PLC0415
-    from app.models.user import User  # noqa: PLC0415
+    from app.utils.tenant_users import user_in_org  # noqa: PLC0415
 
     owner_rows = ApplicationOwner.get_owners_for_application(app.id, org_id) if org_id else []
     owner_labels = {"primary": "Primary", "backup": "Backup", "technical": "Technical", "business": "Business"}
     application_owners = []
     for o in owner_rows:
-        user = db.session.get(User, o.user_id)
+        user = user_in_org(o.user_id, org_id) if o.user_id else None
         application_owners.append({
             "id": o.id,
             "user_name": f"{user.first_name} {user.last_name}" if user else "Unknown",
@@ -230,7 +210,7 @@ def build_fact_sheet(app: Any) -> Dict[str, Any]:
 
     return {
         "app": app,
-        "completeness": compute_completeness(app, len(application_owners)),
+        "completeness": compute_completeness(app),
         "lifecycle": _lifecycle_signal(app),
         "capabilities": _capabilities(app.id, org_id),
         "dependencies": _dependencies(app),

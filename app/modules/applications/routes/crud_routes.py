@@ -77,6 +77,7 @@ from ._helpers import (  # dead-code-ok
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
 )
+from app.utils.tenant_users import user_in_org
 
 logger = logging.getLogger(__name__)
 
@@ -694,34 +695,6 @@ def application_edit(id):
                 else:
                     app.deployment_status = validated_status
 
-            # Validate business_owner
-            business_owner = request.form.get("business_owner")
-            if business_owner is not None:
-                is_valid, validated_owner, error = validate_string(
-                    business_owner, max_length=255, field_name="business_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.business_owner = (
-                        sanitize_html(validated_owner) if validated_owner else None
-                    )
-
-            # Validate technical_owner
-            technical_owner = request.form.get("technical_owner")
-            if technical_owner is not None:
-                is_valid, validated_tech_owner, error = validate_string(
-                    technical_owner, max_length=255, field_name="technical_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.technical_owner = (
-                        sanitize_html(validated_tech_owner)
-                        if validated_tech_owner
-                        else None
-                    )
-
             # Validate business_purpose
             business_purpose = request.form.get("business_purpose")
             if business_purpose is not None:
@@ -836,12 +809,12 @@ def application_edit(id):
             if ae is not None:
                 architecture_state = ae.togaf_plateau
 
-        # R1-B03: load ApplicationOwner records for the edit form
+        # Load ApplicationOwner records for the edit form
         org_id = g.current_org_id
         owner_rows = ApplicationOwner.get_owners_for_application(id, org_id)
         application_owners = []
         for o in owner_rows:
-            owner_user = db.session.get(User, o.user_id)
+            owner_user = user_in_org(o.user_id, org_id)
             application_owners.append({
                 "id": o.id,
                 "user_name": f"{owner_user.first_name} {owner_user.last_name}" if owner_user else "Unknown",
