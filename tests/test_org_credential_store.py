@@ -174,7 +174,6 @@ class TestTwoOrgIsolation:
     def test_cross_tenant_store_raises(self, vault, org, other_org, tenant_ctx):
         """Storing credentials for a different org inside a tenant context raises."""
         vault.store(org.id, "servicenow", "credentials", json.dumps({"key": "a"}))
-        org_a_id = org.id
         with tenant_ctx(org.id):
             with pytest.raises(ValueError, match="does not match current request"):
                 vault.store(other_org.id, "jira", "credentials",
