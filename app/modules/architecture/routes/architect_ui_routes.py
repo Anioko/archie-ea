@@ -19,7 +19,7 @@ Pages:
 import logging
 
 from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, url_for  # noqa: F401
-from flask_login import current_user, login_required
+from flask_login import login_required
 
 from app import db
 from app.utils.pagination import safe_int_arg
@@ -301,54 +301,95 @@ def _oef_wants_json():
 @architect_ui_bp.route("/architecture/import/oef", methods=["GET", "POST"])
 @login_required
 def import_oef():
-    """Import OEF XML file using ArchiMateExchangeService (deduplication-aware).
+    """The model-import screen, over the one OEF import engine.
 
-    O-03: this used to accept any POST, and on a missing/wrong-named file
-    field silently `flash()`+redirect to the GET form — an HTTP 200 with an
-    HTML body that gave an API caller zero signal the import did nothing.
-    Malformed submissions now return 4xx, and a JSON-preferring caller gets
-    JSON with per-record counts and errors instead of an HTML page.
+    ``ArchiMateImportService`` (ADR 0008) does the work; this route only
+    reads the document and the strategy from the request and renders or
+    serialises the result. The document may arrive as a multipart upload
+    (``oef_file`` from the screen's form, or ``file``), a JSON body with
+    ``xml_content``, or a raw XML body. ``strategy`` is one of
+    ``skip_duplicates`` (default), ``update_existing`` or ``create_all``.
+
+    O-03: a malformed submission answers 4xx, never a 200 HTML page, and a
+    JSON-preferring caller gets JSON with per-record counts and errors.
     """
-    from app.modules.architecture.services.archimate_exchange_service import (
-        get_archimate_exchange_service,
+    from app.services.archimate_import_service import (
+        STRATEGIES,
+        ArchiMateImportService,
+        ImportRequestError,
+        read_xml_from_request,
     )
 
     if request.method == "GET":
-        return render_template("archimate_crud/import_oef.html")
+        return render_template("archimate_crud/import_oef.html", strategy="skip_duplicates")
 
-    wants_json = _oef_wants_json()
+    wants_json = _oef_wants_json() or request.is_json
+    strategy = _oef_strategy()
 
-    file = request.files.get("oef_file")
-    if not file or not file.filename:
-        error = "No file uploaded. POST multipart/form-data with a field named 'oef_file'."
+    def _refuse(error, status_code):
         if wants_json:
-            return jsonify({"success": False, "errors": [error]}), 400
+            return jsonify({"success": False, "errors": [error]}), status_code
         flash(error, "error")
-        return render_template("archimate_crud/import_oef.html"), 400
+        chosen = strategy if strategy in STRATEGIES else "skip_duplicates"
+        return render_template("archimate_crud/import_oef.html", strategy=chosen), status_code
+
+    content = read_xml_from_request(request)
+    if content is None:
+        return _refuse(
+            "No file uploaded. POST multipart/form-data with a field named 'oef_file'.", 400
+        )
 
     try:
-        xml_content = file.read().decode("utf-8")
-    except UnicodeDecodeError:
-        error = "Uploaded file is not valid UTF-8 XML."
-        if wants_json:
-            return jsonify({"success": False, "errors": [error]}), 400
-        flash(error, "error")
-        return render_template("archimate_crud/import_oef.html"), 400
+        result = ArchiMateImportService().import_xml(content, strategy=strategy)
+    except ImportRequestError as exc:
+        return _refuse(str(exc), exc.status_code)
 
-    if not xml_content.strip():
-        error = "Uploaded file is empty."
-        if wants_json:
-            return jsonify({"success": False, "errors": [error]}), 400
-        flash(error, "error")
-        return render_template("archimate_crud/import_oef.html"), 400
-
-    service = get_archimate_exchange_service()
-    result = service.import_archimate_xml(xml_content, current_user.id)
-
-    status_code = 200 if result.get("success") else 400
+    result["success"] = True
+    result["strategy"] = strategy
+    # Field names this route answered with before it moved onto the engine,
+    # kept so existing JSON callers read the same counts.
+    result["elements_created"] = result["created"]
+    result["elements_skipped"] = result["skipped"]
     if wants_json:
-        return jsonify(result), status_code
-    return render_template("archimate_crud/import_oef.html", result=result), status_code
+        return jsonify(result), 200
+    return render_template("archimate_crud/import_oef.html", result=result, strategy=strategy), 200
+
+
+@architect_ui_bp.route("/architecture/import/oef/preview", methods=["POST"])
+@login_required
+def import_oef_preview():
+    """What an import of this document would do, writing nothing (JSON).
+
+    Same inputs as ``import_oef``; answers the engine's preview: every
+    element classified new / exists / conflict / invalid against the store,
+    every relationship valid / invalid against the ArchiMate matrix.
+    """
+    from app.services.archimate_import_service import (
+        ArchiMateImportService,
+        ImportRequestError,
+        read_xml_from_request,
+    )
+
+    content = read_xml_from_request(request)
+    if content is None:
+        return jsonify({"success": False, "errors": [
+            "No file uploaded. POST multipart/form-data with a field named 'oef_file'."
+        ]}), 400
+    try:
+        preview = ArchiMateImportService().preview_xml(content)
+    except ImportRequestError as exc:
+        return jsonify({"success": False, "errors": [str(exc)]}), exc.status_code
+    return jsonify({"success": True, **preview}), 200
+
+
+def _oef_strategy():
+    """The import strategy named by the request (form field or JSON key)."""
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        value = payload.get("strategy") if isinstance(payload, dict) else None
+    else:
+        value = request.form.get("strategy")
+    return value or "skip_duplicates"
 
 
 # =============================================================================
