@@ -4,7 +4,7 @@ Every embedding table except document_chunk_embeddings (which already has
 TenantMixin) must now carry an organisation_id column that can be used to scope
 semantic searches to a single tenant.
 
-PR 1 of R1-B33: nullable organisation column on the seven unscoped tables,
+Adds a nullable organisation column on the seven unscoped tables,
 backfilled per organisation from the owning record where possible.
 """
 
