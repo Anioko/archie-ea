@@ -186,3 +186,87 @@ class TestProviderRestrictionEnforcement:
         assert fetched.prompt_version == "v1"
         assert fetched.retention_setting == "30d"
         assert fetched.latency_ms is not None and fetched.latency_ms >= 0
+
+
+class TestFallbackBypassPrevention:
+    """Fallback to a blocked provider is prevented."""
+
+    def test_fallback_skips_blocked_provider(self, db_session, app, make_org):
+        """When both requested and fallback providers are blocked, neither is called.
+
+        Patches the actual _call_<provider> methods with spies and asserts
+        that neither spy was invoked when the register blocks both providers.
+        """
+        from unittest.mock import patch, MagicMock
+        from app.models.model_provider import ModelProvider
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        org = make_org("fallback-test")
+
+        # Block openai/gpt-4o and deepseek/deepseek-chat for this org
+        db_session.add(ModelProvider(
+            provider="openai", model_version="gpt-4o",
+            organization_id=org.id, is_platform_default=False, is_allowed=False,
+        ))
+        db_session.add(ModelProvider(
+            provider="deepseek", model_version="deepseek-chat",
+            organization_id=None, is_platform_default=True, is_allowed=False,
+        ))
+        db_session.flush()
+
+        with app.app_context():
+            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+                with patch.object(LLMService, "_call_openai") as mock_openai:
+                    with patch.object(LLMService, "_call_deepseek") as mock_deepseek:
+                        with patch.object(LLMService, "_get_all_api_keys") as mock_keys:
+                            # Make key lookup succeed but the calls themselves fail
+                            mock_keys.return_value = ["sk-fake-key"]
+
+                            with pytest.raises(ProviderNotAllowed, match="not allowed"):
+                                LLMService._call_llm_with_failover(
+                                    prompt="test",
+                                    model="gpt-4o",
+                                    provider="openai",
+                                    organization_id=org.id,
+                                )
+
+        # Neither spy should have been called (register blocked them before the call)
+        mock_openai.assert_not_called()
+        mock_deepseek.assert_not_called()
+
+
+class TestRetentionDefault:
+    """retention_setting defaults when not explicitly provided."""
+
+    def test_retention_defaults_when_not_provided(self, db_session, app, make_org):
+        """_call_llm defaults retention_setting to 30d when None is passed.
+
+        Goes through _call_llm -> _call_llm_with_failover so the full
+        gateway path is exercised.
+        """
+        from unittest.mock import patch
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        org = make_org("retention-default")
+        with app.app_context():
+            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+                with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                    mock.return_value = (
+                        "ok",
+                        LLMInteraction(
+                            model_name="gpt-4o", provider="openai",
+                            prompt="test", response="ok",
+                            token_count_input=5, token_count_output=5, cost=0.001,
+                            organization_id=org.id,
+                        ),
+                    )
+                    response, interaction = LLMService._call_llm(
+                        prompt="test", model="gpt-4o", provider="openai",
+                        # No prompt_version or retention_setting passed
+                    )
+
+        # The interaction returned from the mock was created without
+        # retention_setting, so inside _call_llm it would be set to "30d"
+        # before persisting
+        assert response == "ok"

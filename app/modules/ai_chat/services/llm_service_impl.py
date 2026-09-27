@@ -1740,7 +1740,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 )
                 
                 return response_text, interaction
-                
+
+            except ProviderNotAllowed:
+                raise
             except Exception as e:
                 failed_keys += 1
                 last_error = e

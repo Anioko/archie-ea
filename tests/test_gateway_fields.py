@@ -122,6 +122,21 @@ class TestLLMServiceGatewayHelpers:
             resolved = LLMService._resolve_org_id()
         assert resolved == org.id
 
+    def test_resolve_org_id_works_in_app_context(self, app, make_org):
+        """_resolve_org_id reads g.current_org_id when only has_app_context() is true.
+
+        This covers job/worker/CLI paths where tenant_scope sets
+        g.current_org_id without a request context.
+        """
+        from flask import g
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        org = make_org("appctx-test")
+        with app.app_context():
+            g.current_org_id = org.id
+            resolved = LLMService._resolve_org_id()
+        assert resolved == org.id
+
 
 class TestTwoOrgGatewayIsolation:
     """Call records are per-organisation; org B data is not visible to org A."""
@@ -209,3 +224,105 @@ class TestTwoOrgGatewayIsolation:
 
         assert a_provider_set == {"openai"}
         assert b_provider_set == {"anthropic"}
+
+    def test_cost_report_respects_org_boundary(
+        self, db_session, make_org, app, tenant_ctx
+    ):
+        """Cost report for org B does not include org A's interactions."""
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.llm_cost_tracker import LLMCostTracker
+        from datetime import datetime, timedelta
+
+        org_a = make_org("cost-a")
+        org_b = make_org("cost-b")
+
+        # Add one interaction for each org
+        for org in (org_a, org_b):
+            record = LLMInteraction(
+                model_name="gpt-4o",
+                provider="openai",
+                token_count_input=100,
+                token_count_output=50,
+                cost=0.005,
+                organization_id=org.id,
+            )
+            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            db_session.add(record)
+        db_session.flush()
+
+        with app.app_context():
+            with tenant_ctx(org_b.id):
+                tracker = LLMCostTracker()
+                report = tracker.get_cost_report(
+                    start_date=datetime.utcnow() - timedelta(days=1),
+                    end_date=datetime.utcnow(),
+                    organization_id=org_b.id,
+                )
+        # Only one interaction (org_b) should be in the report
+        assert report["totals"]["calls"] == 1
+        assert report["totals"]["cost"] > 0
+
+    def test_domain_analytics_respects_org_boundary(
+        self, db_session, make_org, app, tenant_ctx
+    ):
+        """Domain analytics for org B does not include org A's interactions."""
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
+        from datetime import datetime, timedelta
+
+        org_a = make_org("domain-a")
+        org_b = make_org("domain-b")
+
+        for org in (org_a, org_b):
+            record = LLMInteraction(
+                model_name="gpt-4o",
+                provider="openai",
+                token_count_input=10,
+                token_count_output=5,
+                cost=0.001,
+                organization_id=org.id,
+            )
+            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            db_session.add(record)
+        db_session.flush()
+
+        with app.app_context():
+            with tenant_ctx(org_b.id):
+                service = MultiDomainChatService()
+                analytics = service.get_domain_analytics()
+        # Should only count org_b's interactions
+        assert analytics["total_messages"] == 1
+
+    def test_quality_metrics_respects_org_boundary(
+        self, db_session, make_org, app, tenant_ctx
+    ):
+        """Quality metrics for org B does not include org A's interactions."""
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
+        from datetime import datetime, timedelta
+
+        org_a = make_org("quality-a")
+        org_b = make_org("quality-b")
+
+        for org in (org_a, org_b):
+            record = LLMInteraction(
+                model_name="gpt-4o",
+                provider="openai",
+                token_count_input=10,
+                token_count_output=5,
+                cost=0.001,
+                organization_id=org.id,
+                response="some response",
+                latency_ms=200,
+            )
+            record.created_at = datetime.utcnow() - timedelta(hours=1)
+            db_session.add(record)
+        db_session.flush()
+
+        with app.app_context():
+            with tenant_ctx(org_b.id):
+                service = MultiDomainChatService()
+                metrics = service.get_quality_metrics()
+        # Should only count org_b's interaction
+        assert metrics.get("response_quality_score") is not None
+        assert metrics["success_rate"] == 100.0
