@@ -427,6 +427,37 @@ class TestCurrencyRejection:
         assert result["cost_fields"]["total_cost_of_ownership"] == Decimal("100")
         assert result["cost_errors"] == {}
 
+    def test_unrecognised_currency_length_is_error(self):
+        """A currency that is not 3 letters is an error."""
+        result = parse_cost_cell("100", currency="Euro", period="annual", category="total_cost_of_ownership")
+        assert result["value"] is None
+        assert result["error"] is not None
+        assert "not a 3-letter code" in result["error"]
+
+    def test_merge_into_existing_rejects_currency_mismatch(self, app, db_session, make_org, tenant_ctx):
+        """EUR row in a USD organisation shows error and leaves stored cost unchanged."""
+        from app.modules.import_batch.services.batch_approval_service import BatchApprovalService
+        from app.models.batch_import import BatchImportApplication
+
+        org = make_org("currency-merge-1")
+        with tenant_ctx(org.id):
+            existing = ApplicationComponent(name="Existing", organization_id=org.id, total_cost_of_ownership=50000)
+            db_session.add(existing)
+            db_session.flush()
+
+            import_app = BatchImportApplication(
+                batch_id=1, row_number=1,
+                source_data={"name": "Existing Updated", "total_cost_of_ownership": "100", "currency": "EUR"},
+                application_name="Existing Updated", status="pending",
+            )
+
+            svc = BatchApprovalService()
+            svc._merge_into_existing(import_app, existing)
+            db_session.commit()
+
+            # Stored cost unchanged because EUR does not match GBP (default reporting currency)
+            assert get_annual_cost(existing) == Decimal("50000")
+
 
 class TestDetectCostColumns:
     """detect_cost_columns matches case-insensitively and shares one definition."""
@@ -744,6 +775,52 @@ class TestImportPreviewCostMapping:
             # Summary counts
             assert cost_mapping["summary"]["rows_with_cost"] == 1
             assert cost_mapping["summary"]["rows_with_errors"] == 1
+
+    def test_preview_shows_currency_mismatch_error(self, app, db_session, make_org, tenant_ctx):
+        """EUR row in a USD org shows an error in the preview."""
+        from app.modules.import_batch.services.import_preview_service import ImportPreviewService
+        from app.models.batch_import import BatchImportJob, BatchImportBatch, BatchImportApplication, BatchJobStatus, BatchStatus
+        from app.models.user import User
+
+        org = make_org("preview-curr-1")
+        with tenant_ctx(org.id):
+            user = User(email="currtest@example.com", organization_id=org.id, confirmed=True)
+            db_session.add(user)
+            db_session.flush()
+
+            job = BatchImportJob(
+                job_uuid="preview-curr-uuid", user_id=user.id,
+                name="Curr Test", filename="test.csv", file_path="/tmp/test.csv",
+                file_hash="abc123", total_applications=1, batch_size=10,
+                total_batches=1, status=BatchJobStatus.AWAITING_CONFIRMATION,
+                archimate_mode="standard", enable_ai_generation=False,
+            )
+            db_session.add(job)
+            db_session.flush()
+
+            batch = BatchImportBatch(job_id=job.id, batch_number=1, status=BatchStatus.QUEUED, total_applications=1)
+            db_session.add(batch)
+            db_session.flush()
+
+            app1 = BatchImportApplication(
+                batch_id=batch.id, row_number=1,
+                source_data={"name": "App1", "total_cost_of_ownership": "100", "currency": "EUR"},
+                application_name="App1", status="pending",
+            )
+            db_session.add(app1)
+            db_session.commit()
+
+            preview_service = ImportPreviewService()
+            preview = preview_service.generate_preview(job.id)
+
+            cost_mapping = preview.get("cost_mapping", {})
+            row_previews = cost_mapping.get("row_previews", [])
+            assert len(row_previews) == 1
+            row0 = row_previews[0]
+            # EUR does not match the default reporting currency (GBP), so it should be an error
+            assert len(row0.get("cost_errors", {})) > 0, (
+                "Expected a currency mismatch error for EUR in a GBP-default org"
+            )
 
 
 if __name__ == "__main__":

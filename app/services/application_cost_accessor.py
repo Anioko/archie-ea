@@ -9,6 +9,8 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
+from flask import current_app
+
 from app.models.application_portfolio import ApplicationComponent
 
 
@@ -29,6 +31,11 @@ COST_CATEGORIES = frozenset({
 
 # Recognised period values for normalisation.
 PERIOD_VALUES = frozenset({"annual", "monthly"})
+
+
+def get_reporting_currency() -> str:
+    """Return the default reporting currency code from app config."""
+    return current_app.config.get("DEFAULT_CURRENCY", "GBP")
 
 
 def get_annual_cost(app: ApplicationComponent) -> Optional[Decimal]:
@@ -98,7 +105,7 @@ def parse_cost_cell(
     if currency is not None:
         currency = currency.strip().upper()
         if len(currency) != 3:
-            warnings.append(f"Currency '{currency}' does not look like a 3-letter code; treating as unknown")
+            error = f"Currency '{currency}' is not a 3-letter code"
             currency = None
 
     # Normalise period

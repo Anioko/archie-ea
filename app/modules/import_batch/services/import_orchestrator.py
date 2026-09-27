@@ -23,6 +23,7 @@ from app.modules.import_batch.v2.services.unified_import.file_parser_v2 import F
 from app.services.application_cost_accessor import (
     apply_cost_to_application,
     detect_cost_columns,
+    get_reporting_currency,
     map_import_cost_columns,
 )
 
@@ -772,7 +773,7 @@ class ImportOrchestrator:
         # Apply cost fields through the accessor
         cost_mapping = self._extract_cost_mapping(columns)
         if cost_mapping:
-            parsed = map_import_cost_columns(row, cost_mapping)
+            parsed = map_import_cost_columns(row, cost_mapping, reporting_currency=get_reporting_currency())
             apply_cost_to_application(app, parsed["cost_fields"])
 
         return app
@@ -814,7 +815,7 @@ class ImportOrchestrator:
         # Apply cost fields through the accessor (only in overwrite mode or when cost is provided)
         cost_mapping = self._extract_cost_mapping(columns)
         if cost_mapping:
-            parsed = map_import_cost_columns(row, cost_mapping)
+            parsed = map_import_cost_columns(row, cost_mapping, reporting_currency=get_reporting_currency())
             # In merge mode, only apply cost if the import has a value for it
             if mode == "overwrite" or parsed["cost_fields"]:
                 apply_cost_to_application(app, parsed["cost_fields"])
