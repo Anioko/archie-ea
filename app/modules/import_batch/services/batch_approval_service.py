@@ -30,8 +30,8 @@ from app.models.batch_import import (  # dead-code-ok
     ElementApprovalStatus,
 )
 from app.services.application_cost_accessor import (
-    COST_CATEGORIES,
     apply_cost_to_application,
+    detect_cost_columns_from_dict,
     map_import_cost_columns,
 )
 
@@ -683,55 +683,9 @@ class BatchApprovalService:
         """
         Build a cost column mapping from the available source data keys.
 
-        Returns a dict mapping cost field names to keys in the source data.
+        Delegates to the shared detect_cost_columns_from_dict in the accessor module.
         """
-        cost_column_variants = {
-            "total_cost_of_ownership": [
-                "total_cost_of_ownership", "tco", "annual_cost", "annual_tco",
-                "total cost of ownership", "Total Cost of Ownership", "TCO",
-                "Annual Cost", "Annual TCO"
-            ],
-            "license_cost_annual": [
-                "license_cost_annual", "license_cost", "licence_cost", "annual_license_cost",
-                "license cost", "License Cost", "Annual License Cost"
-            ],
-            "maintenance_cost": [
-                "maintenance_cost", "annual_maintenance_cost", "maintenance cost",
-                "Maintenance Cost", "Annual Maintenance Cost"
-            ],
-            "infrastructure_cost": [
-                "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
-                "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost"
-            ],
-            "support_cost": [
-                "support_cost", "annual_support_cost", "support cost",
-                "Support Cost", "Annual Support Cost"
-            ],
-            "implementation_cost": [
-                "implementation_cost", "implementation cost", "Implementation Cost"
-            ],
-            "development_cost_annual": [
-                "development_cost_annual", "dev_cost", "annual_development_cost",
-                "development cost", "Development Cost", "Annual Development Cost"
-            ],
-            "currency": [
-                "currency", "cost_currency", "Currency", "Cost Currency"
-            ],
-            "period": [
-                "period", "cost_period", "billing_period", "Period", "Cost Period"
-            ],
-            "category": [
-                "category", "cost_category", "cost_type", "Category", "Cost Category"
-            ],
-        }
-
-        mapping = {}
-        for field_name, variants in cost_column_variants.items():
-            for variant in variants:
-                if variant in source:
-                    mapping[field_name] = variant
-                    break
-        return mapping
+        return detect_cost_columns_from_dict(source)
 
     def _merge_into_existing(
         self,

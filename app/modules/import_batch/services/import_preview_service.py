@@ -20,9 +20,8 @@ from app.modules.import_batch.v2.services.duplicate_detection_utils_v2 import (
     DuplicateDetectionUtils,
 )
 from app.services.application_cost_accessor import (
-    COST_CATEGORIES,
+    detect_cost_columns,
     map_import_cost_columns,
-    parse_cost_cell,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,22 +162,23 @@ class ImportPreviewService:
                 result = validator.validate(clean_rows)
                 return result.to_dict()
             else:
-                # Validator unavailable - return basic validation
+                # Validator unavailable - report as invalid so the UI
+                # shows an error rather than a false "all valid" state
                 return {
-                    "valid": True,
+                    "valid": False,
                     "mode": "lenient",
                     "summary": {
                         "total_rows": len(applications_data),
-                        "valid_rows": len(applications_data),
-                        "invalid_rows": 0,
+                        "valid_rows": 0,
+                        "invalid_rows": len(applications_data),
                         "rows_with_warnings": 0,
-                        "total_errors": 0,
+                        "total_errors": 1,
                         "total_warnings": 0,
                     },
                     "row_details": [],
                     "errors_by_field": {},
                     "warnings_by_field": {},
-                    "warning": "Full validation unavailable due to missing dependencies",
+                    "error": "Validation engine unavailable. Check system dependencies.",
                 }
         except Exception as e:
             logger.error(f"Validation failed during preview: {e}", exc_info=True)
@@ -382,57 +382,9 @@ class ImportPreviewService:
         first_row = applications_data[0]
         all_columns = [c for c in first_row.keys() if not c.startswith("_")]
 
-        # Known cost column variants (case-insensitive)
-        cost_column_variants = {
-            "total_cost_of_ownership": [
-                "total_cost_of_ownership", "tco", "annual_cost", "annual_tco",
-                "total cost of ownership", "Total Cost of Ownership", "TCO",
-                "Annual Cost", "Annual TCO"
-            ],
-            "license_cost_annual": [
-                "license_cost_annual", "license_cost", "licence_cost", "annual_license_cost",
-                "license cost", "License Cost", "Annual License Cost"
-            ],
-            "maintenance_cost": [
-                "maintenance_cost", "annual_maintenance_cost", "maintenance cost",
-                "Maintenance Cost", "Annual Maintenance Cost"
-            ],
-            "infrastructure_cost": [
-                "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
-                "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost"
-            ],
-            "support_cost": [
-                "support_cost", "annual_support_cost", "support cost",
-                "Support Cost", "Annual Support Cost"
-            ],
-            "implementation_cost": [
-                "implementation_cost", "implementation cost", "Implementation Cost"
-            ],
-            "development_cost_annual": [
-                "development_cost_annual", "dev_cost", "annual_development_cost",
-                "development cost", "Development Cost", "Annual Development Cost"
-            ],
-            "currency": [
-                "currency", "cost_currency", "Currency", "Cost Currency"
-            ],
-            "period": [
-                "period", "cost_period", "billing_period", "Period", "Cost Period"
-            ],
-            "category": [
-                "category", "cost_category", "cost_type", "Category", "Cost Category"
-            ],
-        }
-
-        # Detect which columns are present
-        detected_columns = []
-        column_mapping = {}
-
-        for field_name, variants in cost_column_variants.items():
-            for variant in variants:
-                if variant in all_columns:
-                    detected_columns.append(variant)
-                    column_mapping[field_name] = variant
-                    break
+        # Detect cost columns using the shared accessor function
+        column_mapping = detect_cost_columns(all_columns)
+        detected_columns = [v for v in column_mapping.values()]
 
         # Parse cost for each row using the detected mapping
         row_previews = []

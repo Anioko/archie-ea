@@ -1,14 +1,7 @@
 """
 Application Cost Accessor — the single accessor for "annual cost of an application".
-
-Release 1 decision (R1-B08 PR 1): the system of record for annual cost is
-ApplicationComponent.total_cost_of_ownership (labelled "Annual TCO" in the model).
-This module provides the one read/write path that all Release 1 screens and
-imports must use. The full Cost Fact consolidation (MIG-D-0090, Release 2) will
-replace this with a cost-fact table; until then this accessor isolates the
-choice so callers do not scatter direct column references.
-
-No cost-fact table is created in Release 1.
+The system of record for annual cost is ApplicationComponent.total_cost_of_ownership.
+This module provides the one read/write path that all import screens must use.
 """
 
 from __future__ import annotations
@@ -16,7 +9,6 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
-from app import db
 from app.models.application_portfolio import ApplicationComponent
 
 
@@ -79,7 +71,7 @@ def set_annual_cost(app: ApplicationComponent, value: Optional[Decimal]) -> None
 
 def parse_cost_cell(
     raw_value: Any,
-    currency: str = "USD",
+    currency: Optional[str] = None,
     period: str = "annual",
     category: str = "total_cost_of_ownership",
 ) -> Dict[str, Any]:
@@ -88,7 +80,7 @@ def parse_cost_cell(
 
     Returns a dict with keys:
         - "value": Decimal or None (None means unparseable → import as empty)
-        - "currency": normalised currency code (e.g. "USD")
+        - "currency": normalised currency code (e.g. "USD"), or None if not provided
         - "period": normalised period ("annual" or "monthly")
         - "category": normalised category (one of COST_CATEGORIES)
         - "warnings": list of warning strings (empty if clean)
@@ -101,11 +93,13 @@ def parse_cost_cell(
     error: Optional[str] = None
     value: Optional[Decimal] = None
 
-    # Normalise currency
-    currency = (currency or "USD").strip().upper()
-    if len(currency) != 3:
-        warnings.append(f"Currency '{currency}' does not look like a 3-letter code; using USD")
-        currency = "USD"
+    # Normalise currency (None means "not specified" — caller should
+    # resolve against the organisation's reporting currency)
+    if currency is not None:
+        currency = currency.strip().upper()
+        if len(currency) != 3:
+            warnings.append(f"Currency '{currency}' does not look like a 3-letter code; treating as unknown")
+            currency = None
 
     # Normalise period
     period = (period or "annual").strip().lower()
@@ -158,6 +152,7 @@ def parse_cost_cell(
 def map_import_cost_columns(
     row: Dict[str, Any],
     column_mapping: Dict[str, str],
+    reporting_currency: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Extract and parse cost columns from an import row using a column mapping.
@@ -169,6 +164,9 @@ def map_import_cost_columns(
             "maintenance_cost", "infrastructure_cost", "support_cost",
             "implementation_cost", "development_cost_annual",
             plus optional "currency", "period", "category" for per-row overrides.
+        reporting_currency: The organisation's reporting currency (3-letter code).
+            When set, a cell whose parsed currency does not match is rejected
+            and reported as an error rather than stored.
 
     Returns:
         Dict with parsed cost fields ready for the accessor, plus a "cost_warnings"
@@ -179,9 +177,13 @@ def map_import_cost_columns(
     cost_errors: Dict[str, str] = {}
 
     # Global overrides (apply to all cost fields in this row if present)
-    global_currency = row.get(column_mapping.get("currency", ""), "USD") if column_mapping.get("currency") else "USD"
+    has_currency_col = column_mapping.get("currency")
+    global_currency = row.get(has_currency_col, None) if has_currency_col else None
     global_period = row.get(column_mapping.get("period", ""), "annual") if column_mapping.get("period") else "annual"
     global_category = row.get(column_mapping.get("category", ""), "total_cost_of_ownership") if column_mapping.get("category") else "total_cost_of_ownership"
+
+    # Determine effective reporting currency
+    effective_reporting = reporting_currency
 
     for field_name in COST_CATEGORIES:
         col_name = column_mapping.get(field_name)
@@ -189,7 +191,7 @@ def map_import_cost_columns(
             continue
 
         raw_value = row[col_name]
-        currency = row.get(column_mapping.get("currency", ""), global_currency) if column_mapping.get("currency") else global_currency
+        currency = row.get(has_currency_col, global_currency) if has_currency_col else global_currency
         period = row.get(column_mapping.get("period", ""), global_period) if column_mapping.get("period") else global_period
         category = row.get(column_mapping.get("category", ""), global_category) if column_mapping.get("category") else global_category
 
@@ -199,7 +201,15 @@ def map_import_cost_columns(
             cost_errors[field_name] = parsed["error"]
             # Value stays None → will be imported as empty
         else:
-            result[field_name] = parsed["value"]
+            # Reject cells whose currency explicitly differs from reporting currency
+            cell_currency = parsed["currency"]
+            if cell_currency is not None and effective_reporting and cell_currency != effective_reporting:
+                cost_errors[field_name] = (
+                    f"Currency '{cell_currency}' does not match "
+                    f"reporting currency '{effective_reporting}'"
+                )
+            else:
+                result[field_name] = parsed["value"]
 
         cost_warnings.extend(parsed["warnings"])
 
@@ -217,22 +227,113 @@ def apply_cost_to_application(
     """
     Apply parsed cost fields to an ApplicationComponent via the accessor.
 
-    Only the canonical annual cost column (total_cost_of_ownership) is written
-    in Release 1. Other categories are accepted in the preview for future
-    compatibility but not persisted yet.
+    Writes total_cost_of_ownership (the system-of-record annual-cost column)
+    and each recognised cost category to its corresponding model column.
+    A field is written only when its key is present in cost_fields, so
+    a missing or unparseable cell never clears a stored value.
+
+    The non-TCO categories (license, maintenance, infrastructure, support,
+    implementation, development) are written to their model columns for
+    future releases; they may not yet be rendered in all portfolio views.
     """
-    # Release 1: only total_cost_of_ownership is the system of record
-    tco = cost_fields.get("total_cost_of_ownership")
-    set_annual_cost(app, tco)
+    if "total_cost_of_ownership" in cost_fields:
+        set_annual_cost(app, cost_fields["total_cost_of_ownership"])
+
+    # Write other cost categories to their model columns when present
+    other_fields = [k for k in COST_CATEGORIES if k != "total_cost_of_ownership"]
+    for field_name in other_fields:
+        if field_name in cost_fields:
+            try:
+                val = cost_fields[field_name]
+                if val is None:
+                    setattr(app, field_name, None)
+                else:
+                    setattr(app, field_name, float(Decimal(str(val))))
+            except (InvalidOperation, ValueError, TypeError):
+                setattr(app, field_name, None)
+
+
+# Cost column variant definitions for case-insensitive header detection.
+# Each logical field maps to a list of recognised column-name spellings.
+_COST_COLUMN_VARIANTS: Dict[str, List[str]] = {
+    "total_cost_of_ownership": [
+        "total_cost_of_ownership", "tco", "annual_cost", "annual_tco",
+        "total cost of ownership", "Total Cost of Ownership", "TCO",
+        "Annual Cost", "Annual TCO",
+    ],
+    "license_cost_annual": [
+        "license_cost_annual", "license_cost", "licence_cost", "annual_license_cost",
+        "license cost", "License Cost", "Annual License Cost",
+    ],
+    "maintenance_cost": [
+        "maintenance_cost", "annual_maintenance_cost", "maintenance cost",
+        "Maintenance Cost", "Annual Maintenance Cost",
+    ],
+    "infrastructure_cost": [
+        "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
+        "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost",
+    ],
+    "support_cost": [
+        "support_cost", "annual_support_cost", "support cost",
+        "Support Cost", "Annual Support Cost",
+    ],
+    "implementation_cost": [
+        "implementation_cost", "implementation cost", "Implementation Cost",
+    ],
+    "development_cost_annual": [
+        "development_cost_annual", "dev_cost", "annual_development_cost",
+        "development cost", "Development Cost", "Annual Development Cost",
+    ],
+    "currency": [
+        "currency", "cost_currency", "Currency", "Cost Currency",
+    ],
+    "period": [
+        "period", "cost_period", "billing_period", "Period", "Cost Period",
+    ],
+    "category": [
+        "category", "cost_category", "cost_type", "Category", "Cost Category",
+    ],
+}
+
+
+def detect_cost_columns(
+    columns: List[str],
+) -> Dict[str, str]:
+    """
+    Detect cost-column mapping from a list of available column headers.
+
+    Matching is case-insensitive and ignores surrounding whitespace.
+    Returns a dict mapping logical cost field names to the matched column name.
+    """
+    mapping: Dict[str, str] = {}
+    columns_lower = {c.strip().lower(): c for c in columns}
+    for field_name, variants in _COST_COLUMN_VARIANTS.items():
+        for variant in variants:
+            key = variant.strip().lower()
+            if key in columns_lower:
+                mapping[field_name] = columns_lower[key]
+                break
+    return mapping
+
+
+def detect_cost_columns_from_dict(
+    source: Dict[str, Any],
+) -> Dict[str, str]:
+    """
+    Detect cost-column mapping from a dictionary's keys.
+
+    Convenience wrapper around detect_cost_columns for dict-based source data.
+    """
+    return detect_cost_columns(list(source.keys()))
 
 
 def get_cost_summary_for_org(org_id: int) -> Dict[str, Any]:
     """
     Aggregate cost summary for an organisation (used by portfolio totals).
 
-    Returns dict with total_annual_cost, application_count, applications_with_cost.
+    Returns dict with total_annual_cost (None when nothing recorded),
+    application_count, applications_with_cost.
     """
-    # Use raw SQL to bypass ORM tenant filter since we explicitly filter by org_id
     from app import db
     from sqlalchemy import text
 
@@ -241,15 +342,17 @@ def get_cost_summary_for_org(org_id: int) -> Dict[str, Any]:
             SELECT 
                 COUNT(*) as application_count,
                 COUNT(total_cost_of_ownership) as applications_with_cost,
-                COALESCE(SUM(total_cost_of_ownership), 0) as total_annual_cost
+                SUM(total_cost_of_ownership) as total_annual_cost
             FROM application_components
             WHERE organization_id = :org_id
         """),
         {"org_id": org_id}
     ).fetchone()
 
+    apps_with_cost = result.applications_with_cost or 0
+
     return {
-        "total_annual_cost": Decimal(str(result.total_annual_cost)) if result.total_annual_cost else Decimal("0"),
+        "total_annual_cost": Decimal(str(result.total_annual_cost)) if result.total_annual_cost is not None and apps_with_cost > 0 else None,
         "application_count": result.application_count or 0,
-        "applications_with_cost": result.applications_with_cost or 0,
+        "applications_with_cost": apps_with_cost,
     }
