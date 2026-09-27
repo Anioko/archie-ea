@@ -16,6 +16,12 @@
       ]
   ) }}
 
+  {% if forbidden %}
+  <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6">
+    <p class="text-center text-muted-foreground py-8">You do not have access to this page.</p>
+  </div>
+  {% else %}
+
   {# Overview summary #}
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
     <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6">
@@ -28,11 +34,12 @@
     </div>
     <div data-slot="card" class="rounded-xl border border-border bg-card shadow-sm p-6">
       <p class="text-sm text-muted-foreground">Coverage</p>
-      <p class="text-3xl font-bold
-        {%- if overall_pct >= 80 %} text-success
+      <p class="text-3xl font-bold mt-1
+        {%- if overall_pct is none %} text-muted-foreground
+        {%- elif overall_pct >= 80 %} text-success
         {%- elif overall_pct >= 50 %} text-warning
-        {%- else %} text-destructive{% endif %} mt-1">
-        {{ overall_pct }}%</p>
+        {%- else %} text-destructive{% endif %}">
+        {% if overall_pct is none %}&mdash;{% else %}{{ overall_pct }}%{% endif %}</p>
     </div>
   </div>
 
@@ -93,5 +100,6 @@
     on the application record, or an application manager is assigned through the
     owner picker.
   </p>
+  {% endif %}
 </div>
 {% endblock %}

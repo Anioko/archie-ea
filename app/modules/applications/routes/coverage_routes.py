@@ -1,4 +1,4 @@
-"""Ownership coverage view for CTO and portfolio manager personas (PB-0069).
+"""Ownership coverage view for CTO and portfolio manager personas.
 
 Shows each business unit and which of its applications have a named owner,
 using the single ownership definition in my_applications/services.py.
@@ -14,6 +14,7 @@ from flask_login import login_required
 from app.decorators import audit_log
 from app.modules.my_applications.services import has_assigned_owner
 from app.models.application_portfolio import ApplicationComponent
+from app.models.user import ROLE_CTO, ROLE_PORTFOLIO_MANAGER
 
 from . import unified_applications_bp
 
@@ -30,9 +31,23 @@ def ownership_coverage():
     Shows every business unit with applications in the caller's organisation.
     A unit with no applications shows ``—`` as its coverage figures.
     """
+    from flask_login import current_user
+
+    # Persona gate: only CTO and portfolio manager may view
+    role = getattr(current_user, "enterprise_role", None)
+    if role not in (ROLE_CTO, ROLE_PORTFOLIO_MANAGER):
+        return render_template(
+            "applications/ownership_coverage.html",
+            rows=[],
+            total_apps=0,
+            total_owned=0,
+            overall_pct=None,
+            organisation_unit_count=0,
+            forbidden=True,
+        ), 403
+
     org_id = g.current_org_id
 
-    # Load organisation units with application counts
     from app.models.enterprise_intelligence import OrganizationUnit
 
     units = (
@@ -99,6 +114,7 @@ def ownership_coverage():
         rows=rows,
         total_apps=total_apps,
         total_owned=total_owned,
-        overall_pct=round(100 * total_owned / total_apps) if total_apps > 0 else 0,
+        overall_pct=round(100 * total_owned / total_apps) if total_apps > 0 else None,
         organisation_unit_count=len(units),
+        forbidden=False,
     )
