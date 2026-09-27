@@ -444,6 +444,7 @@ class PgvectorEmbeddingService:
                     "embedding": embedding_vector,
                     "embedding_text": text,
                     "model_version": MODEL_NAME,
+                    "organization_id": _gs_org_id,
                 }
             )
             self.session.add(record)
