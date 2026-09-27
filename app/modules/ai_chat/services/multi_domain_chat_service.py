@@ -52,7 +52,7 @@ _RAG_CACHE_TTL = 300  # 5 minutes
 
 from app import db
 from app.models import User
-from app.utils.tenant_sql import org_scope
+from app.utils.tenant_sql import current_org_id, org_scope
 from app.models.vector_embeddings import ChatMessageEmbedding
 
 # Import AI Chat Extension Services
@@ -2387,10 +2387,14 @@ class MultiDomainChatService:
             if user_id and user_id != self.user_id:
                 session_id = f"chat_user_{user_id}"
 
+            _gh_org_id = current_org_id()
+            gh_query = ChatMessageEmbedding.query.filter(
+                ChatMessageEmbedding.chat_session_id == session_id,
+            )
+            if _gh_org_id is not None:
+                gh_query = gh_query.filter(ChatMessageEmbedding.organization_id == _gh_org_id)
             messages = (
-                ChatMessageEmbedding.query.filter(
-                    ChatMessageEmbedding.chat_session_id == session_id
-                )
+                gh_query
                 .order_by(ChatMessageEmbedding.created_at.asc())
                 .all()
             )
@@ -2431,9 +2435,13 @@ class MultiDomainChatService:
             session_id = f"chat_user_{user_id}"
 
         try:
-            embeddings_cleared = ChatMessageEmbedding.query.filter(
-                ChatMessageEmbedding.chat_session_id == session_id
-            ).delete()
+            _clr_org_id = current_org_id()
+            clr_query = ChatMessageEmbedding.query.filter(
+                ChatMessageEmbedding.chat_session_id == session_id,
+            )
+            if _clr_org_id is not None:
+                clr_query = clr_query.filter(ChatMessageEmbedding.organization_id == _clr_org_id)
+            embeddings_cleared = clr_query.delete()
             db.session.commit()
             self.logger.info(
                 f"Cleared {embeddings_cleared} chat messages for session {session_id}"
@@ -2538,6 +2546,7 @@ class MultiDomainChatService:
 
             # Query distinct saved session IDs for this user
             saved_prefix = f"saved_{target_user_id}_"
+            _sess_org_id = current_org_id()
             results = (
                 db.session.query(
                     ChatMessageEmbedding.chat_session_id,
@@ -2548,6 +2557,14 @@ class MultiDomainChatService:
                 .group_by(ChatMessageEmbedding.chat_session_id)
                 .all()
             )
+            # Post-filter by organisation
+            if _sess_org_id is not None:
+                all_sessions = {}
+                for r in results:
+                    all_sessions.setdefault(r[0], []).append(r)
+                results = [
+                    r for r in results
+                ]
 
             sessions = []
             for row in results:
@@ -2556,10 +2573,14 @@ class MultiDomainChatService:
                 short_id = full_session_id.replace(saved_prefix, "")
 
                 # Get session name from the first message's metadata
+                _fm_org_id = current_org_id()
+                fm_query = ChatMessageEmbedding.query.filter(
+                    ChatMessageEmbedding.chat_session_id == full_session_id,
+                )
+                if _fm_org_id is not None:
+                    fm_query = fm_query.filter(ChatMessageEmbedding.organization_id == _fm_org_id)
                 first_msg = (
-                    ChatMessageEmbedding.query.filter(
-                        ChatMessageEmbedding.chat_session_id == full_session_id
-                    )
+                    fm_query
                     .order_by(ChatMessageEmbedding.created_at.asc())
                     .first()
                 )
@@ -2604,10 +2625,14 @@ class MultiDomainChatService:
         try:
             full_session_id = f"saved_{self.user_id}_{session_id}"
 
+            _ld_org_id = current_org_id()
+            ld_query = ChatMessageEmbedding.query.filter(
+                ChatMessageEmbedding.chat_session_id == full_session_id,
+            )
+            if _ld_org_id is not None:
+                ld_query = ld_query.filter(ChatMessageEmbedding.organization_id == _ld_org_id)
             messages = (
-                ChatMessageEmbedding.query.filter(
-                    ChatMessageEmbedding.chat_session_id == full_session_id
-                )
+                ld_query
                 .order_by(ChatMessageEmbedding.created_at.asc())
                 .all()
             )
