@@ -282,6 +282,7 @@ class LLMCostTracker:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         group_by: str = "provider",
+        organization_id: Optional[int] = None,  # TRNT-072: tenant scoping
     ) -> Dict:
         """
         Generate cost report for specified time period.
@@ -300,9 +301,12 @@ class LLMCostTracker:
             end_date = datetime.utcnow()
 
         # Get all interactions in period
-        interactions = LLMInteraction.query.filter(
+        interactions_q = LLMInteraction.query.filter(
             LLMInteraction.created_at >= start_date, LLMInteraction.created_at <= end_date
-        ).all()
+        )
+        if organization_id is not None:
+            interactions_q = interactions_q.filter(LLMInteraction.organization_id == organization_id)
+        interactions = interactions_q.all()
 
         # Calculate totals
         total_cost = sum(i.cost for i in interactions if i.cost)
