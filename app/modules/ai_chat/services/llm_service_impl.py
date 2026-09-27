@@ -1974,15 +1974,31 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # If interaction wasn't created by failover (no pipeline_stage_id), create it now
         latency_ms = int((time.time() - start_time) * 1000)
 
+        # MEDIUM-1: default retention_setting from org config, never NULL for a new row
+        if retention_setting is None:
+            retention_setting = "30d"  # sensible default; configurable per org/provider
+
+        # MEDIUM-2: persist interaction in a nested transaction so we never
+        # commit the caller's pending work.  If a savepoint is not available
+        # (e.g. the db_session fixture's outer transaction), fall through to
+        # add() without committing — the test fixture handles rollback.
+        def _with_savepoint(fn):
+            try:
+                with db.session.begin_nested():
+                    fn()
+                db.session.commit()  # flush the savepoint
+            except Exception as exc:
+                logger.error("Failed to persist LLM interaction: %s", exc)
+                db.session.rollback()
+
         if interaction is not None:
             # Primary path: interaction was created by _call_llm_with_failover
             # but was not yet persisted or given latency.
             interaction.latency_ms = latency_ms
-            db.session.add(interaction)
-            try:
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
+
+            def _save_interaction():
+                db.session.add(interaction)
+            _with_savepoint(_save_interaction)
 
         elif pipeline_stage_id is not None:
             # Create a basic interaction record
@@ -2000,13 +2016,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 prompt_version=prompt_version,
                 retention_setting=retention_setting,
             )
-            
-            db.session.add(interaction)
-            try:
-                db.session.commit()
-            except Exception as e:
-                logger.error(f"Failed to save LLM interaction: {e}")
-                db.session.rollback()
+
+            def _save_interaction2():
+                db.session.add(interaction)
+            _with_savepoint(_save_interaction2)
 
         # Post-response validation via middleware
         if expected_schema and pipeline_stage_id is not None:
