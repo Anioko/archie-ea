@@ -481,7 +481,11 @@ _ADMIN_LINKS = [
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
     _link("Governance Gates", "admin.governance_gates", "badge-check", requires="admin"),
-    _link("Seed Management", "admin.seed_management", "database"),
+    # The organisation's audit trail (query, export in full, verify). It takes
+    # Seed Management's place in this zone to hold the link budget; Seed
+    # Management stays one click away as a tile on Command Center
+    # (app/templates/admin/index.html).
+    _link("Audit Log", "admin.audit_log_viewer", "scroll-text", requires="admin"),
     _link("Settings", "main.settings", "settings"),
     # Added in the Task 3 fix round (review finding: orphaned real routes —
     # both existed, worked, and had no sidebar link of any kind).
@@ -791,6 +795,8 @@ _MY_WORK_LINKS = {
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # Read access to the organisation's audit trail: export and verify.
+        _link("Audit Log", "admin.audit_log_viewer", "scroll-text"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
