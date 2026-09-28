@@ -126,6 +126,8 @@ def team_invite():
 
     user = User.find_by_email(email)
     if user is None or invitation_service.is_unactivated(user):
+        from app.services.billing_plans import PlanLimitReached
+
         try:
             _, delivered, error = invitation_service.invite_new_person(
                 org_id, current_user, email, org_role=role,
@@ -134,6 +136,11 @@ def team_invite():
         except invitation_service.InvitationError as exc:
             db.session.rollback()
             return _render_team(org_id, exc.message, exc.status)
+        except PlanLimitReached as exc:
+            # Opening the invitee's account would take the organisation past
+            # its plan; nothing is created and nothing is sent.
+            db.session.rollback()
+            return _render_team(org_id, str(exc), 402)
         if delivered:
             flash(f"Invitation sent to {email}.", "success")
         else:

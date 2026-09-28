@@ -788,3 +788,23 @@ def test_renewing_an_expired_invitation_does_not_revive_its_old_link(
     team = client.get("/admin/team")
     assert 'data-invitation-email="{}"'.format(elsewhere.email).encode() in team.data
     assert b"Not e-mailed" in team.data
+
+
+def test_inviting_into_a_full_organisation_says_so_and_creates_nothing(
+    app, db_session, login_as, client, mail_on, outbox
+):
+    from app.models.user import User
+    from tests.test_plan_limit_guard import _fill
+
+    org = _make_org(db_session, "FULL")
+    admin = _make_user(db_session, org, org_admin=True)
+    _fill(db_session, org, 2)  # the free plan admits three people
+    db_session.commit()
+    email = "teammate-{}@example.com".format(uuid.uuid4().hex[:8])
+
+    resp = _invite(client, login_as, admin, email)
+
+    assert resp.status_code == 402
+    assert b"plan admits 3 people" in resp.data
+    assert User.find_by_email(email) is None
+    assert outbox == []

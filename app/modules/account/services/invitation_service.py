@@ -145,20 +145,32 @@ def invite_new_person(org_id, inviter, email, org_role="viewer", persona=None,
     """Invite an address with no activated account into ``org_id``.
 
     Returns ``(invitation, delivered, error)``. Raises InvitationError when the
-    invitation cannot be made; nothing is written in that case.
+    invitation cannot be made, and PlanLimitReached when opening the account
+    would take the organisation past its plan; nothing is written in either
+    case.
     """
     if org_role not in VALID_ORG_ROLES:
         raise InvitationError("Invalid role '{}'.".format(org_role))
     persona = persona or ROLE_SOLUTION_ARCHITECT
     if persona not in INVITABLE_PERSONAS:
         raise InvitationError("Invalid persona '{}'.".format(persona))
+
+    user = User.find_by_email(email)
+    if user is not None and not is_unactivated(user):
+        raise InvitationError("This address already has an account.", status=409)
+    if user is None or user.organization_id != org_id:
+        # A new member of this organisation would be opened. Say a full plan
+        # is full before anything else; the save itself is still checked
+        # (billing_plans), which also settles two admins taking the last place.
+        from app.services.billing_plans import PlanLimitReached, user_limit_status
+
+        status = user_limit_status(org_id)
+        if status.get("limit_reached"):
+            raise PlanLimitReached(status)
     if not mail_available():
         raise InvitationError(MAIL_UNAVAILABLE, status=503)
 
-    user = User.find_by_email(email)
     if user is not None:
-        if not is_unactivated(user):
-            raise InvitationError("This address already has an account.", status=409)
         if user.organization_id != org_id:
             # Another organisation opened this account. Its address is free to
             # take over only once every invitation for it has expired.
@@ -191,7 +203,7 @@ def invite_new_person(org_id, inviter, email, org_role="viewer", persona=None,
         db.session.flush()
 
     invitation, _ = PendingInvitation.create_for(
-        org_id, user.id, org_role, invited_by_id=inviter.id
+        org_id, user.id, org_role, invited_by_id=getattr(inviter, "id", None)
     )
     raw = invitation.issue_link()
     delivered, error = _send(invitation, raw, inviter)

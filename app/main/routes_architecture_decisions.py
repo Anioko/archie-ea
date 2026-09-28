@@ -1,6 +1,6 @@
 import logging
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for, flash
+from flask import Blueprint, g, jsonify, redirect, render_template, request, url_for, flash
 from flask_login import current_user, login_required
 
 from app import db
@@ -13,22 +13,90 @@ _log = logging.getLogger(__name__)
 arch_decisions_bp = Blueprint("arch_decisions", __name__, url_prefix="/architecture/decisions")
 
 
+def _org_id():
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        org_id = getattr(current_user, "organization_id", None)
+    return int(org_id) if org_id is not None else None
+
+
+def _own_elements(element_ids):
+    """The caller's organisation's elements among ``element_ids``, in the order given.
+
+    A decision is recorded against elements by id, and the ids arrive from the
+    browser. Anything that is not a whole number, or is not an element of the
+    caller's organisation, is dropped here rather than stored: a decision must
+    never point at another organisation's element.
+    """
+    wanted = []
+    for raw in element_ids or ():
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if value not in wanted:
+            wanted.append(value)
+    org_id = _org_id()
+    if not wanted or org_id is None:
+        return []
+    rows = db.session.execute(
+        db.select(ArchiMateElement).where(
+            ArchiMateElement.id.in_(wanted),
+            ArchiMateElement.organization_id == org_id,
+        )
+    ).scalars().all()
+    by_id = {row.id: row for row in rows}
+    return [by_id[i] for i in wanted if i in by_id]
+
+
+def _posted_element_ids():
+    """Element ids from the form's hidden field, kept only if they are the caller's own."""
+    import json
+
+    try:
+        raw = json.loads(request.form.get("archimate_element_ids") or "[]")
+    except (TypeError, ValueError):
+        raw = []
+    if not isinstance(raw, list):
+        raw = []
+    return [el.id for el in _own_elements(raw)]
+
+
 @arch_decisions_bp.route("/")
 @login_required
 def list_decisions():
     status_filter = request.args.get("status")
     phase_filter = request.args.get("phase")
-    query = ArchitectureDecision.query
-    if status_filter:
-        query = query.filter_by(status=status_filter)
-    if phase_filter:
-        query = query.filter_by(adm_phase=phase_filter)
-    decisions = query.order_by(ArchitectureDecision.created_at.desc()).all()
+    element_filter = request.args.get("element_id", type=int)
+    filter_element = None
+    if element_filter is not None:
+        # Decisions recorded against one element: the way a decision is found
+        # from the thing it governs.
+        own = _own_elements([element_filter])
+        filter_element = own[0] if own else None
+        decisions = (
+            ArchitectureDecision.affecting_elements([filter_element.id], _org_id())
+            if filter_element is not None
+            else []
+        )
+        if status_filter:
+            decisions = [d for d in decisions if d.status == status_filter]
+        if phase_filter:
+            decisions = [d for d in decisions if d.adm_phase == phase_filter]
+    else:
+        query = ArchitectureDecision.query
+        if status_filter:
+            query = query.filter_by(status=status_filter)
+        if phase_filter:
+            query = query.filter_by(adm_phase=phase_filter)
+        decisions = query.order_by(ArchitectureDecision.created_at.desc()).all()
     return render_template(
         "architecture_decisions/list.html",
         decisions=decisions,
         status_filter=status_filter,
         phase_filter=phase_filter,
+        element_filter=element_filter,
+        filter_element=filter_element,
     )
 
 
@@ -36,8 +104,6 @@ def list_decisions():
 @login_required
 def create_decision():
     if request.method == "POST":
-        import json
-
         decision = ArchitectureDecision(
             decision_id=ArchitectureDecision.next_decision_id(),
             title=request.form.get("title"),
@@ -47,7 +113,7 @@ def create_decision():
             decision=request.form.get("decision"),
             consequences=request.form.get("consequences"),
             alternatives=request.form.get("alternatives"),
-            archimate_element_ids=json.loads(request.form.get("archimate_element_ids", "[]")),
+            archimate_element_ids=_posted_element_ids(),
             created_by_id=current_user.id,
         )
         db.session.add(decision)
@@ -67,18 +133,19 @@ def create_decision():
             _log.warning("audit log failed for create_decision", _exc)
         flash(f"Architecture Decision {decision.decision_id} created", "success")
         return redirect(url_for("arch_decisions.view_decision", decision_id=decision.id))
-    return render_template("architecture_decisions/form.html", decision=None)
+    # Opened from an element ("Record a decision"): start with that element
+    # already chosen, provided it is one of the caller's own.
+    preselected = _own_elements([request.args.get("element_id")])
+    return render_template(
+        "architecture_decisions/form.html", decision=None, selected_elements=preselected
+    )
 
 
 @arch_decisions_bp.route("/<int:decision_id>")
 @login_required
 def view_decision(decision_id):
     decision = ArchitectureDecision.query.get_or_404(decision_id)
-    elements = []
-    if decision.archimate_element_ids:
-        elements = ArchiMateElement.query.filter(
-            ArchiMateElement.id.in_(decision.archimate_element_ids)
-        ).all()
+    elements = _own_elements(decision.archimate_element_ids)
     return render_template(
         "architecture_decisions/detail.html", decision=decision, elements=elements
     )
@@ -89,8 +156,6 @@ def view_decision(decision_id):
 def edit_decision(decision_id):
     decision = ArchitectureDecision.query.get_or_404(decision_id)
     if request.method == "POST":
-        import json
-
         decision.title = request.form.get("title")
         decision.status = request.form.get("status", "proposed")
         decision.adm_phase = request.form.get("adm_phase")
@@ -98,9 +163,7 @@ def edit_decision(decision_id):
         decision.decision = request.form.get("decision")
         decision.consequences = request.form.get("consequences")
         decision.alternatives = request.form.get("alternatives")
-        decision.archimate_element_ids = json.loads(
-            request.form.get("archimate_element_ids", "[]")
-        )
+        decision.archimate_element_ids = _posted_element_ids()
         db.session.commit()
         try:
             audit_logger.log_event(
@@ -117,11 +180,7 @@ def edit_decision(decision_id):
             _log.warning("audit log failed for edit_decision", _exc)
         flash("Decision updated", "success")
         return redirect(url_for("arch_decisions.view_decision", decision_id=decision.id))
-    elements = []
-    if decision.archimate_element_ids:
-        elements = ArchiMateElement.query.filter(
-            ArchiMateElement.id.in_(decision.archimate_element_ids)
-        ).all()
+    elements = _own_elements(decision.archimate_element_ids)
     return render_template(
         "architecture_decisions/form.html", decision=decision, selected_elements=elements
     )

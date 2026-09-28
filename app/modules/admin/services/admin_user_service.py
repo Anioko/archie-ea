@@ -4,7 +4,7 @@ Admin User Service - Business logic for admin user management.
 Extracted from: app/admin/views.py (user CRUD, invitations, role changes)
 """
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 from flask import g
 from sqlalchemy import func
@@ -99,7 +99,8 @@ class AdminUserService:
 
     @staticmethod
     def create_user(first_name: str, last_name: str, email: str,
-                    password: str, role: Role) -> User:
+                    password: str, role: Role,
+                    organization_id: Optional[int] = None) -> User:
         """Create a new user with a password.
 
         Args:
@@ -119,6 +120,8 @@ class AdminUserService:
             password=password,
             confirmed=True,
             role=role,
+            # The admin's organisation; None falls back to the default org.
+            organization_id=organization_id,
         )
         db.session.add(user)
         db.session.commit()
@@ -126,21 +129,24 @@ class AdminUserService:
 
     @staticmethod
     def invite_user(first_name: str, last_name: str, email: str,
-                    role: Role):
-        """Invite a new person into the signed-in administrator's organisation.
+                    role: Role, organization_id: Optional[int] = None):
+        """Invite a new person into an organisation, by default the signed-in administrator's.
 
         Goes through the same invitation as the Team page: the account is
         opened in the inviter's organisation and a single-use link is e-mailed.
 
         Returns ``(user, delivered, error)``. Raises ``InvitationError`` when
-        no invitation can be made (for example, e-mail is not available).
+        no invitation can be made (for example, e-mail is not available), and
+        ``PlanLimitReached`` when the organisation's plan has no place left.
         """
         from flask_login import current_user
 
         from app.modules.account.services import invitation_service
 
+        if organization_id is None:
+            organization_id = current_user.organization_id
         row, delivered, error = invitation_service.invite_new_person(
-            current_user.organization_id, current_user, email,
+            organization_id, current_user, email,
             org_role="viewer", first_name=first_name, last_name=last_name,
             platform_role=role,
         )
