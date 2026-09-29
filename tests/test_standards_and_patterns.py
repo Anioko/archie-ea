@@ -15,12 +15,37 @@ Three journeys, each checked for two organisations:
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 import uuid
 from datetime import date
 
 import pytest
 
 pytestmark = pytest.mark.usefixtures("db_session")
+
+ROOT = os.path.dirname(os.path.dirname(__file__))
+
+_CANONICAL_PRINCIPLE_SCRIPT = textwrap.dedent(
+    """
+    import app.models.motivation_extended as motivation_extended
+    import app.models.models as models_module
+    from app import db
+
+    assert motivation_extended.Principle is models_module.Principle, (
+        "motivation_extended must reuse the canonical Principle class"
+    )
+
+    principle_mappers = sorted(
+        f"{mapper.class_.__module__}.{mapper.class_.__name__}"
+        for mapper in db.Model.registry.mappers
+        if getattr(mapper.class_, "__tablename__", None) == "principles"
+    )
+    assert principle_mappers == ["app.models.models.Principle"], principle_mappers
+    """
+)
 
 
 # --------------------------------------------------------------------- #
@@ -510,3 +535,73 @@ class TestReferenceArchitecture:
         resp = client.post(f"/solutions/{sol_id}/reference-architecture/apply",
                            data={"pattern_id": event.id}, headers={"Accept": "application/json"})
         assert resp.status_code == 404
+
+
+# --------------------------------------------------------------------- #
+# Principle canonical store and citation count                           #
+# --------------------------------------------------------------------- #
+
+
+def test_principles_table_has_one_canonical_mapping_under_fast_init():
+    env = os.environ.copy()
+    env["APP_FAST_INIT"] = "1"
+    env["FLASK_CONFIG"] = "testing"
+    completed = subprocess.run(
+        [sys.executable, "-c", _CANONICAL_PRINCIPLE_SCRIPT],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_principle_citation_count_stays_inside_each_organisation(app, db_session, two_orgs, tenant_ctx):
+    from app.commands.reconcile_schema import _reconcile
+    from app.models.models import Principle
+
+    _reconcile(dry_run=False)
+
+    org_a, org_b = two_orgs
+    with tenant_ctx(org_a.id):
+        canonical = Principle(
+            name="One source of truth",
+            statement="Keep one authoritative record for each concept.",
+            citation_count=2,
+        )
+        retiring = Principle(
+            name="Legacy duplicate",
+            statement="This principle record has been retired.",
+            citation_count=1,
+            retired_into=canonical,
+        )
+        db_session.add_all([canonical, retiring])
+        db_session.flush()
+        canonical_id = canonical.id
+        retiring_id = retiring.id
+
+    with tenant_ctx(org_b.id):
+        other = Principle(
+            name="Protect customer data",
+            statement="Personal data stays within its intended boundary.",
+            citation_count=7,
+        )
+        db_session.add(other)
+        db_session.flush()
+        other_id = other.id
+
+    with tenant_ctx(org_a.id):
+        rows = Principle.query.order_by(Principle.id).all()
+        assert [(row.id, row.citation_count) for row in rows] == [
+            (canonical_id, 2),
+            (retiring_id, 1),
+        ]
+        retired = Principle.query.filter(Principle.id == retiring_id).one()
+        assert retired.retired_into_id == canonical_id
+        assert retired.retired_into.id == canonical_id
+
+    with tenant_ctx(org_b.id):
+        rows = Principle.query.order_by(Principle.id).all()
+        assert [(row.id, row.citation_count) for row in rows] == [(other_id, 7)]
