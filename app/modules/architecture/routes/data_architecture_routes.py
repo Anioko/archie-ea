@@ -11,11 +11,12 @@ Provides REST API endpoints and dashboard views for data architecture models:
 
 import logging
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, g, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log
+from app.modules.architecture.services import data_sor_service as sor
 
 from app.models import (
     ConceptualDataModel,
@@ -31,6 +32,21 @@ logger = logging.getLogger(__name__)
 data_architecture_bp = Blueprint(
     "data_architecture", __name__, url_prefix="/architecture"
 )
+
+
+def _current_org_id():
+    return getattr(g, "current_org_id", getattr(current_user, "organization_id", None))
+
+
+def _system_of_record_application_id_from_form():
+    application_id = request.form.get("application_id", type=int)
+    if not application_id:
+        return None
+    org_id = _current_org_id()
+    application = sor.get_application(org_id, application_id)
+    if application is None:
+        raise sor.DataSorError("Pick an application from your portfolio.")
+    return application.id
 
 
 # ============================================================================
@@ -568,6 +584,12 @@ def create_data_entity():
                 db.session.flush()
             domain_id = default_domain.id
 
+        try:
+            system_of_record_application_id = _system_of_record_application_id_from_form()
+        except sor.DataSorError as exc:
+            flash(str(exc), "error")
+            return redirect(request.url)
+
         entity = DataEntity(
             name=name,
             business_name=request.form.get("business_name", "").strip() or None,
@@ -576,7 +598,7 @@ def create_data_entity():
             entity_type=request.form.get("entity_type") or None,
             data_classification=request.form.get("data_classification") or None,
             contains_pii="contains_pii" in request.form,
-            system_of_record=request.form.get("system_of_record", "").strip() or None,
+            system_of_record_application_id=system_of_record_application_id,
             is_master_data="is_master_data" in request.form,
         )
         db.session.add(entity)
@@ -585,7 +607,13 @@ def create_data_entity():
         return redirect(url_for("data_architecture.data_entity_catalog"))
 
     domains = DataDomain.query.order_by(DataDomain.name).all()
-    return render_template("data_architecture/entity_form.html", entity=None, domains=domains, form_action="create")
+    return render_template(
+        "data_architecture/entity_form.html",
+        entity=None,
+        domains=domains,
+        form_action="create",
+        current_system_of_record_application=None,
+    )
 
 
 @data_architecture_bp.route("/data-entities/<int:entity_id>/edit", methods=["GET", "POST"])
@@ -596,8 +624,16 @@ def edit_data_entity(entity_id):
     from app.models.process_data import DataDomain, DataEntity
 
     entity = DataEntity.query.get_or_404(entity_id)
+    sor.backfill_system_of_record_application_links(_current_org_id(), [entity.id])
+    db.session.refresh(entity)
 
     if request.method == "POST":
+        try:
+            entity.system_of_record_application_id = _system_of_record_application_id_from_form()
+        except sor.DataSorError as exc:
+            flash(str(exc), "error")
+            return redirect(request.url)
+
         entity.name = request.form.get("name", "").strip() or entity.name
         entity.business_name = request.form.get("business_name", "").strip() or None
         entity.description = request.form.get("description", "").strip() or None
@@ -605,7 +641,6 @@ def edit_data_entity(entity_id):
         entity.entity_type = request.form.get("entity_type") or None
         entity.data_classification = request.form.get("data_classification") or None
         entity.contains_pii = "contains_pii" in request.form
-        entity.system_of_record = request.form.get("system_of_record", "").strip() or None
         entity.is_master_data = "is_master_data" in request.form
 
         # ArchiMate is the backbone: keep the mirrored element's name (and
@@ -623,7 +658,15 @@ def edit_data_entity(entity_id):
         return redirect(url_for("data_architecture.data_entity_catalog"))
 
     domains = DataDomain.query.order_by(DataDomain.name).all()
-    return render_template("data_architecture/entity_form.html", entity=entity, domains=domains, form_action="edit")
+    return render_template(
+        "data_architecture/entity_form.html",
+        entity=entity,
+        domains=domains,
+        form_action="edit",
+        current_system_of_record_application=sor.get_application(
+            _current_org_id(), entity.system_of_record_application_id
+        ),
+    )
 
 
 @data_architecture_bp.route("/data-entities/<int:entity_id>/delete", methods=["POST"])

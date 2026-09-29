@@ -1,8 +1,8 @@
 {# Live-search application picker (DESIGN.md "Entity Pickers"): search -> 300ms
    debounce -> /applications/api/list -> click to select -> hidden input holds
    the id. Usage: {{ app_picker(form_id, current_name) }} inside a <form>. #}
-{% macro app_picker(field_id, current_name=None, current_id=None) %}
-<div x-data="dataGovAppPicker()" data-testid="{{ field_id }}-picker" class="relative max-w-md">
+{% macro app_picker(field_id, current_name=None, current_id=None, show_submit=True) %}
+<div x-data="dataGovAppPicker({ initialName: {{ current_name|tojson }}, initialId: {{ current_id|tojson }} })" data-testid="{{ field_id }}-picker" class="relative max-w-md">
   <input type="hidden" name="application_id" x-model="selectedId" value="{{ current_id or '' }}">
   <label for="{{ field_id }}" class="block text-sm font-medium text-foreground mb-1">Application</label>
   <input id="{{ field_id }}" type="text" autocomplete="off" x-model="query" @input.debounce.300ms="search()"
@@ -21,18 +21,22 @@
     </template>
   </ul>
   <p class="mt-1 text-xs text-muted-foreground" x-show="searched && !results.length && !selectedName" x-cloak>No applications match.</p>
+  {% if show_submit %}
   <button type="submit" :disabled="!selectedId"
           class="mt-3 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 disabled:opacity-50">
     Save
   </button>
+  {% endif %}
 </div>
 {% endmacro %}
 
 {% macro app_picker_script() %}
 <script>
-function dataGovAppPicker() {
+function dataGovAppPicker(config) {
+    const initialName = (config && config.initialName) || '';
+    const initialId = (config && config.initialId) || '';
     return {
-        query: '', results: [], selectedId: '', selectedName: '', searched: false,
+        query: initialName, results: [], selectedId: initialId ? String(initialId) : '', selectedName: initialName, searched: false,
         search() {
             const q = this.query.trim();
             const self = this;

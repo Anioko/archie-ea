@@ -989,16 +989,16 @@ def test_data_architect_declares_system_of_record_and_checks_a_model(page, live_
 
     app = create_app("testing")
     with app.app_context():
-        crm = ApplicationComponent(name=crm_name, organization_id=org_id)
-        erp = ApplicationComponent(name=erp_name, organization_id=org_id)
+        crm = ApplicationComponent(name=crm_name, description="Customer master record", organization_id=org_id)
+        erp = ApplicationComponent(name=erp_name, description="Customer master consumer", organization_id=org_id)
         _db.session.add_all([crm, erp])
         _db.session.flush()
         _db.session.add_all([
-            DataObject(name=entity_name, application_component_id=crm.id, organization_id=org_id),
-            DataObject(name=entity_name, application_component_id=erp.id, organization_id=org_id),
+            DataObject(name="Customer Master", application_component_id=crm.id, organization_id=org_id),
+            DataObject(name="Customer Master", application_component_id=erp.id, organization_id=org_id),
         ])
         entity = DataEntity(name=entity_name, domain_id=seeded["ids"]["data_domain"],
-                            organization_id=org_id)
+                            organization_id=org_id, description="Customer master record")
         conceptual = ConceptualDataModel(name="Smoke concept %s" % ref, organization_id=org_id)
         conceptual.data_entities.append(DataEntity(
             name="tbl_%s" % ref, domain_id=seeded["ids"]["data_domain"], organization_id=org_id))

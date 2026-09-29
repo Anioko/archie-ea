@@ -80,7 +80,7 @@ def test_declare_persists_column_label_and_serving_link(db_session, make_org, te
         sor.declare_system_of_record(org.id, entity.id, application.id)
         db_session.refresh(entity)
         assert entity.system_of_record_application_id == application.id
-        assert entity.system_of_record == "Billing Core"
+        assert entity.system_of_record is None
         link = ArchiMateRelationship.query.filter_by(
             type="serving",
             source_id=application.archimate_element_id,
@@ -148,7 +148,8 @@ def test_holders_flag_copies_once_declared(db_session, make_org, tenant_ctx):
 
 
 def test_undeclared_copies_are_per_organisation_and_ranked(db_session, make_org, tenant_ctx):
-    from app.models.process_data import BusinessProcess, process_data_flow
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.application_capability import ApplicationCapabilityMapping
     from app.modules.architecture.services import data_sor_service as sor
 
     org_a, org_b = make_org("a"), make_org("b")
@@ -161,15 +162,26 @@ def test_undeclared_copies_are_per_organisation_and_ranked(db_session, make_org,
             _holds(db_session, org_a.id, a1, entity.name)
             _holds(db_session, org_a.id, a2, entity.name)
         _holds(db_session, org_a.id, a1, single.name)
-        for label in ("Order to cash", "Billing run"):
-            process = BusinessProcess(name=label + _uid(), organization_id=org_a.id)
-            db_session.add(process)
-            db_session.flush()
-            db_session.execute(
-                process_data_flow.insert().values(
-                    process_id=process.id, data_entity_id=busy.id, flow_type="input"
-                )
-            )
+        capability = BusinessCapability(name="Busy Capability " + _uid(), organization_id=org_a.id)
+        db_session.add(capability)
+        db_session.flush()
+        busy.owning_capability_id = capability.id
+        db_session.flush()
+
+        db_session.add_all(
+            [
+                ApplicationCapabilityMapping(
+                    organization_id=org_a.id,
+                    application_component_id=a1.id,
+                    business_capability_id=capability.id,
+                ),
+                ApplicationCapabilityMapping(
+                    organization_id=org_a.id,
+                    application_component_id=a2.id,
+                    business_capability_id=capability.id,
+                ),
+            ]
+        )
     with tenant_ctx(org_b.id):
         b1, b2 = _app(db_session, org_b.id, "B1"), _app(db_session, org_b.id, "B2")
         other = _entity(db_session, org_b.id, "Org B Entity")
@@ -179,9 +191,147 @@ def test_undeclared_copies_are_per_organisation_and_ranked(db_session, make_org,
     with tenant_ctx(org_a.id):
         rows = sor.undeclared_copies(org_a.id)
         assert [r["entity"].name for r in rows] == ["Busy Entity", "Quiet Entity"]
-        assert [r["consumer_count"] for r in rows] == [2, 0]
+        assert [r["consumer_count"] for r in rows] == [2, 2]
     with tenant_ctx(org_b.id):
         assert [r["entity"].name for r in sor.undeclared_copies(org_b.id)] == ["Org B Entity"]
+
+
+def test_similarity_matching_flags_near_match_copies_per_organisation(db_session, make_org, tenant_ctx):
+    from app.modules.architecture.services import data_sor_service as sor
+
+    org_a, org_b = make_org("sim-a"), make_org("sim-b")
+    with tenant_ctx(org_a.id):
+        crm = _app(db_session, org_a.id, "CRM")
+        erp = _app(db_session, org_a.id, "ERP")
+        _entity(
+            db_session,
+            org_a.id,
+            "Customer",
+            description="Customer master record",
+        )
+        _holds(db_session, org_a.id, crm, "Customer Master")
+        _holds(db_session, org_a.id, erp, "Customer Master")
+    with tenant_ctx(org_b.id):
+        other_a = _app(db_session, org_b.id, "Other A")
+        other_b = _app(db_session, org_b.id, "Other B")
+        _entity(db_session, org_b.id, "Supplier", description="Supplier reference")
+        _holds(db_session, org_b.id, other_a, "Supplier Master")
+        _holds(db_session, org_b.id, other_b, "Supplier Master")
+
+    with tenant_ctx(org_a.id):
+        rows = sor.undeclared_copies(org_a.id)
+        assert [row["entity"].name for row in rows] == ["Customer"]
+        assert rows[0]["applications"] == ["CRM", "ERP"]
+
+
+def test_master_domains_show_consumer_applications_not_process_names(db_session, make_org, tenant_ctx):
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.application_capability import ApplicationCapabilityMapping
+    from app.modules.architecture.services import data_sor_service as sor
+
+    org_a, org_b = make_org("dom-a"), make_org("dom-b")
+    with tenant_ctx(org_a.id):
+        crm = _app(db_session, org_a.id, "CRM")
+        erp = _app(db_session, org_a.id, "ERP")
+        domain = _domain(db_session, org_a.id)
+        capability = BusinessCapability(name="Customer Capability " + _uid(), organization_id=org_a.id)
+        db_session.add(capability)
+        db_session.flush()
+        entity = _entity(
+            db_session,
+            org_a.id,
+            "Customer",
+            domain=domain,
+            owning_capability_id=capability.id,
+        )
+        _holds(db_session, org_a.id, crm, "Customer")
+        _holds(db_session, org_a.id, erp, "Customer Master")
+        sor.declare_system_of_record(org_a.id, entity.id, crm.id)
+        db_session.add(
+            ApplicationCapabilityMapping(
+                organization_id=org_a.id,
+                application_component_id=erp.id,
+                business_capability_id=capability.id,
+            )
+        )
+    with tenant_ctx(org_b.id):
+        foreign_domain = _domain(db_session, org_b.id)
+        foreign_entity = _entity(db_session, org_b.id, "Customer", domain=foreign_domain)
+        foreign_app = _app(db_session, org_b.id, "Foreign ERP")
+        _holds(db_session, org_b.id, foreign_app, "Customer")
+        sor.declare_system_of_record(org_b.id, foreign_entity.id, foreign_app.id)
+
+    with tenant_ctx(org_a.id):
+        rows = sor.master_domains(org_a.id)
+        assert [row["domain"].id for row in rows] == [domain.id]
+        assert rows[0]["entities"][0]["consumers"] == ["ERP"]
+
+
+def test_backfill_links_legacy_system_of_record_text_without_second_authority(
+    app, client, db_session, make_org, login_as, tenant_ctx
+):
+    from app.models.process_data import DataEntity
+
+    org_a, org_b = make_org("route-a"), make_org("route-b")
+    architect = _user(db_session, org_a.id, "data_architect")
+    foreign_architect = _user(db_session, org_b.id, "data_architect")
+    local_domain = _domain(db_session, org_a.id)
+    foreign_domain = _domain(db_session, org_b.id)
+    local_app = _app(db_session, org_a.id, "ERP Canonical")
+    foreign_app = _app(db_session, org_b.id, "ERP Canonical")
+
+    with tenant_ctx(org_a.id):
+        legacy = _entity(
+            db_session,
+            org_a.id,
+            "Invoice",
+            domain=local_domain,
+            system_of_record="ERP Canonical",
+        )
+    with tenant_ctx(org_b.id):
+        _entity(
+            db_session,
+            org_b.id,
+            "Foreign Invoice",
+            domain=foreign_domain,
+            system_of_record="ERP Canonical",
+        )
+
+    login_as(client, architect)
+    catalog = client.get("/data-governance/entities")
+    assert catalog.status_code == 200
+    db_session.expire_all()
+    local_entity = db_session.get(DataEntity, legacy.id)
+    assert local_entity.system_of_record_application_id == local_app.id
+    assert local_entity.system_of_record == "ERP Canonical"
+    assert b"ERP Canonical" in catalog.data
+
+    page = client.get(f"/architecture/data-entities/{legacy.id}/edit")
+    assert page.status_code == 200
+    assert b"Legacy label" not in page.data
+
+    resp = client.post(
+        f"/architecture/data-entities/{legacy.id}/edit",
+        data={
+            "name": "Invoice",
+            "domain_id": local_domain.id,
+            "application_id": local_app.id,
+        },
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db_session.expire_all()
+    local_entity = db_session.get(DataEntity, legacy.id)
+    assert local_entity.system_of_record_application_id == local_app.id
+    assert local_entity.system_of_record == "ERP Canonical"
+
+    login_as(client, foreign_architect)
+    foreign_catalog = client.get("/data-governance/entities")
+    assert foreign_catalog.status_code == 200
+    db_session.expire_all()
+    reloaded = db_session.get(DataEntity, legacy.id)
+    assert reloaded.system_of_record_application_id == local_app.id
+    assert reloaded.system_of_record_application_id != foreign_app.id
 
 
 # --------------------------------------------------------- master domains
