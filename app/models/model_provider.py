@@ -171,7 +171,7 @@ def set_provider_restriction(org_id: int, provider: str,
     """Add or update an organisation's restriction for *(provider, model_version)*.
 
     This is the write interface for the gateway module, intended to be called
-    by the admin UI screen (PR 2). It creates a per-org row if none exists,
+    by the follow-up admin UI screen in PR 2. It creates a per-org row if none exists,
     or updates the ``is_allowed`` flag of an existing one.
 
     Returns the created/updated row.
