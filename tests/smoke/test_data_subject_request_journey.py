@@ -111,4 +111,9 @@ def test_dpo_scopes_assigns_and_erases_with_evidence(browser, live_server, seede
     with app.app_context():
         leaver = db.session.get(User, data["leaver_id"])
         assert leaver.email is None and leaver.first_name is None
+        # Leave nothing behind in the shared organisation for later journeys.
+        for user in (leaver, User.query.filter_by(email=data["owner"]).first()):
+            if user is not None:
+                db.session.delete(user)
+        db.session.commit()
         db.session.remove()

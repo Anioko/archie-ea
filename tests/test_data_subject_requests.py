@@ -481,3 +481,51 @@ def test_trace_page_cites_each_hop_and_shows_ai_leg_not_recorded(db_session, mak
     assert a["vendor"].name in page
     assert "AI systems:</span> not recorded" in page
     assert a["reporting"].name not in page
+
+
+# ---------------------------------------------------------------------------
+# An erased person must not break the people pickers of everyone else
+# ---------------------------------------------------------------------------
+
+
+def test_people_list_omits_an_erased_person_and_stays_organisation_scoped(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    from app.services.gdpr_service import GDPRService
+
+    org_a, org_b = make_org("dsr-people-a"), make_org("dsr-people-b")
+    dpo = _make_user(db_session, org_a, role="security_architect")
+    kept = _make_user(db_session, org_a)
+    erased = _make_user(db_session, org_a)
+    b_user = _make_user(db_session, org_b)
+
+    with tenant_ctx(org_a.id):
+        req = GDPRService.create_request(org_a.id, dpo, "erasure", subject_user_id=erased.id)
+        GDPRService.review_erasure(org_a.id, req, dpo)
+        GDPRService.run_erasure(org_a.id, req, dpo)
+
+    login_as(client, dpo)
+    people = client.get("/api/users").get_json()["users"]
+    ids = {p["id"] for p in people}
+    assert kept.id in ids and dpo.id in ids
+    assert erased.id not in ids
+    assert b_user.id not in ids
+    # Every person offered has a name and an address the pickers can search.
+    assert all(p["email"] for p in people)
+
+
+def test_people_pickers_tolerate_a_person_with_no_name_or_address():
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "app" / "templates"
+    for rel in (
+        "solutions/programme_wizard.html",
+        "solutions/edit.html",
+        "capability_management/governance_dashboard.html",
+        "applications/list_simple.html",
+        "applications/create.html",
+        "applications/rationalization.html",
+    ):
+        text = (root / rel).read_text(encoding="utf-8")
+        assert ".email.toLowerCase()" not in text, rel
+        assert ".email || '').toLowerCase()" in text, rel
