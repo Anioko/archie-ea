@@ -30,7 +30,12 @@ def init_extensions(app):
             resp = jsonify({"success": False, "error": "Authentication required"})
             resp.status_code = 401
             return resp
-        return redirect(url_for("account.login", next=request.url))
+        # Site-relative, with the query string: the login view only follows a
+        # rooted path (safe_next_url), so an absolute request.url here was
+        # always discarded and every signed-out visitor landed on the dashboard
+        # instead of the page they asked for.
+        next_path = request.full_path.rstrip("?") if request.query_string else request.path
+        return redirect(url_for("account.login", next=next_path))
 
     csrf.init_app(app)
 
@@ -158,6 +163,42 @@ def init_extensions(app):
                          "were editing it, so your changes were not saved.",
                 "recovery_action": "Reload the page to see their version, then "
                                    "re-apply your edits.",
+            },
+        ), 409
+
+    from app.services.billing_plans import PlanLimitReached
+
+    @app.errorhandler(PlanLimitReached)
+    def handle_plan_limit_reached(e):
+        """Someone could not be added because the organisation's plan is full.
+
+        Raised by the flush-time guard, so it reaches here from any path that
+        adds a person: single sign-on, invitations, signup, an API. The person
+        who triggered it is told why and nothing is saved.
+        """
+        from flask import jsonify, render_template, request
+
+        db.session.rollback()
+        logger.info("plan limit refused an addition: path=%s status=%s", request.path, e.status)
+        wants_json = (
+            "/api/" in request.path
+            or request.content_type == "application/json"
+            or request.accept_mimetypes.best == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+        if wants_json:
+            return jsonify({
+                "success": False,
+                "error": str(e),
+                "error_type": "plan_limit_reached",
+            }), 409
+        return render_template(
+            "errors/generic_error.html",
+            status_code=409,
+            error={
+                "error": str(e),
+                "recovery_action": "Ask an administrator of the organisation to upgrade "
+                                   "its plan, then try again.",
             },
         ), 409
 

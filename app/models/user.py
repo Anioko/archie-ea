@@ -297,30 +297,9 @@ class User(UserMixin, db.Model):
 
     # ---------------- Token Methods ----------------
 
-    def generate_confirmation_token(self):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        return s.dumps({"confirm": self.id})
-
     def generate_email_change_token(self, new_email):
         s = Serializer(current_app.config["SECRET_KEY"])
         return s.dumps({"change_email": self.id, "new_email": new_email})
-
-    def generate_password_reset_token(self):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        return s.dumps({"reset": self.id})
-
-    def confirm_account(self, token, expiration=604800):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        try:
-            data = s.loads(token, max_age=expiration)
-        except (BadSignature, SignatureExpired):
-            return False
-        if data.get("confirm") != self.id:
-            return False
-        self.confirmed = True
-        db.session.add(self)
-        db.session.commit()
-        return True
 
     def change_email(self, token, expiration=3600):
         s = Serializer(current_app.config["SECRET_KEY"])
@@ -344,18 +323,8 @@ class User(UserMixin, db.Model):
         db.session.commit()
         return True
 
-    def reset_password(self, token, new_password, expiration=3600):
-        s = Serializer(current_app.config["SECRET_KEY"])
-        try:
-            data = s.loads(token, max_age=expiration)
-        except (BadSignature, SignatureExpired):
-            return False
-        if data.get("reset") != self.id:
-            return False
-        self.password = new_password
-        db.session.add(self)
-        db.session.commit()
-        return True
+    # Password-reset links are single-use, stored as digests and issued by
+    # AccountService.request_password_reset (app/models/account_token.py).
 
     # ── Enterprise RBAC helpers (ENT-068) ────────────────────────────
 
@@ -496,3 +465,14 @@ def _assign_default_organization(mapper, connection, target):
             orgs.insert().values(name="Default Organization", slug="default")
         )
         target.organization_id = result.inserted_primary_key[0]
+
+
+def _install_plan_limit_guard():
+    """Every flush that adds a person to an organisation is checked against its
+    plan here, whichever path creates them (see billing_plans.check_capacity)."""
+    from app.services.billing_plans import install_user_limit_guard
+
+    install_user_limit_guard()
+
+
+_install_plan_limit_guard()
