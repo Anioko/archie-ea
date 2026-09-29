@@ -122,6 +122,27 @@ POLICY = {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
+    # Data governance (system of record, undeclared copies, master data
+    # domains, standards check): gated by the same data_integration section
+    # predicate as the Interface Register above, so the same five personas reach
+    # it and arb_member, portfolio_manager, cto, procurement and
+    # application_manager are refused.
+    "/data-governance/entities": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/undeclared-copies": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/domains": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/models": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
     # The organisation's audit trail (query, export, verify). Gated by
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.

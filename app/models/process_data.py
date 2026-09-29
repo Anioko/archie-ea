@@ -402,6 +402,11 @@ class DataDomain(TenantMixin, db.Model):
         db.Integer, db.ForeignKey("business_capability.id"), index=True
     )
 
+    # Golden source: the application that masters this domain's data (nullable)
+    golden_source_application_id = db.Column(
+        db.Integer, db.ForeignKey("application_components.id"), nullable=True, index=True
+    )
+
     # Data quality
     data_quality_score = db.Column(db.Integer)  # 0 - 100
     completeness_percentage = db.Column(db.Float)
@@ -428,6 +433,9 @@ class DataDomain(TenantMixin, db.Model):
     architecture = db.relationship("ArchitectureModel", backref="data_domains")
     created_by = db.relationship("User", backref="created_data_domains")
     owning_capability = db.relationship("BusinessCapability", backref="owned_data_domains")
+    golden_source_application = db.relationship(
+        "ApplicationComponent", foreign_keys=[golden_source_application_id]
+    )
     entities = db.relationship("DataEntity", back_populates="domain", cascade="all, delete-orphan")
 
     def __repr__(self):
@@ -505,6 +513,16 @@ class DataEntity(TenantMixin, db.Model):
 
     # System implementation
     system_of_record = db.Column(db.String(200))  # Which system is authoritative source
+    # The declared system of record as a real application (nullable: undeclared
+    # until a data architect declares it). The text column above is kept in step
+    # with this application's name when a declaration is made.
+    system_of_record_application_id = db.Column(
+        db.Integer, db.ForeignKey("application_components.id"), nullable=True, index=True
+    )
+    system_of_record_declared_by_id = db.Column(
+        db.Integer, db.ForeignKey("users.id"), nullable=True
+    )
+    system_of_record_declared_at = db.Column(db.DateTime, nullable=True)
     replication_frequency = db.Column(db.String(30))  # 'real_time', 'hourly', 'daily', 'batch'
 
     # Metadata
@@ -526,8 +544,13 @@ class DataEntity(TenantMixin, db.Model):
     domain = db.relationship("DataDomain", back_populates="entities")
     archimate_element = db.relationship("ArchiMateElement", foreign_keys=[archimate_element_id])
     architecture = db.relationship("ArchitectureModel", backref="data_entities")
-    created_by = db.relationship("User", backref="created_data_entities")
+    created_by = db.relationship(
+        "User", foreign_keys=[created_by_id], backref="created_data_entities"
+    )
     owning_capability = db.relationship("BusinessCapability", backref="owned_data_entities")
+    system_of_record_application = db.relationship(
+        "ApplicationComponent", foreign_keys=[system_of_record_application_id]
+    )
 
     # Data Architecture Relationships
     conceptual_models = db.relationship(

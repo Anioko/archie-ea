@@ -180,12 +180,16 @@ class ArchiMateRelationshipService:
             return None
 
         try:
+            # The relationship model has no ``properties`` column (passing one
+            # raised TypeError, so every call failed); optional properties are
+            # kept in its JSON ``connection_spec`` instead.
+            extra = {"connection_spec": dict(properties)} if properties else {}
             relationship = ArchiMateRelationship(
                 type=relationship_type,
                 source_id=source_element.id,
                 target_id=target_element.id,
                 architecture_id=architecture_id,
-                properties=str(properties) if properties else None,
+                **extra,
             )
 
             db.session.add(relationship)

@@ -1,0 +1,61 @@
+{# Live-search application picker (DESIGN.md "Entity Pickers"): search -> 300ms
+   debounce -> /applications/api/list -> click to select -> hidden input holds
+   the id. Usage: {{ app_picker(form_id, current_name) }} inside a <form>. #}
+{% macro app_picker(field_id, current_name=None, current_id=None) %}
+<div x-data="dataGovAppPicker()" data-testid="{{ field_id }}-picker" class="relative max-w-md">
+  <input type="hidden" name="application_id" x-model="selectedId" value="{{ current_id or '' }}">
+  <label for="{{ field_id }}" class="block text-sm font-medium text-foreground mb-1">Application</label>
+  <input id="{{ field_id }}" type="text" autocomplete="off" x-model="query" @input.debounce.300ms="search()"
+         placeholder="{{ current_name or 'Search applications…' }}"
+         class="w-full h-9 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+  <p class="mt-1 text-xs text-muted-foreground" x-show="selectedName" x-cloak>
+    Selected: <span class="font-medium text-foreground" x-text="selectedName"></span>
+  </p>
+  <ul x-show="results.length" x-cloak
+      class="absolute z-20 mt-1 w-full rounded-md border border-border bg-card shadow-sm max-h-60 overflow-auto">
+    <template x-for="r in results" :key="r.id">
+      <li>
+        <button type="button" @click="choose(r)"
+                class="w-full text-left px-3 py-2 text-sm hover:bg-muted" x-text="r.name"></button>
+      </li>
+    </template>
+  </ul>
+  <p class="mt-1 text-xs text-muted-foreground" x-show="searched && !results.length && !selectedName" x-cloak>No applications match.</p>
+  <button type="submit" :disabled="!selectedId"
+          class="mt-3 inline-flex items-center justify-center rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 disabled:opacity-50">
+    Save
+  </button>
+</div>
+{% endmacro %}
+
+{% macro app_picker_script() %}
+<script>
+function dataGovAppPicker() {
+    return {
+        query: '', results: [], selectedId: '', selectedName: '', searched: false,
+        search() {
+            const q = this.query.trim();
+            const self = this;
+            if (q.length < 2) { this.results = []; this.searched = false; return; }
+            Platform.fetch.get('/applications/api/list?search=' + encodeURIComponent(q) + '&limit=10', null, { silent: true })
+                .then(function (data) {
+                    const rows = data.applications || data.items || data || [];
+                    self.results = rows.map(function (r) { return { id: r.id, name: r.name }; });
+                    self.searched = true;
+                })
+                .catch(function (err) {
+                    self.results = [];
+                    Platform.toast.error('Could not search applications.');
+                    throw err;
+                });
+        },
+        choose(r) {
+            this.selectedId = String(r.id);
+            this.selectedName = r.name;
+            this.query = r.name;
+            this.results = [];
+        }
+    };
+}
+</script>
+{% endmacro %}
