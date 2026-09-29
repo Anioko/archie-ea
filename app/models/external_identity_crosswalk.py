@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, UTC
 
 from app import db
 from app.models.mixins import TenantMixin
@@ -34,11 +34,11 @@ class ExternalIdentityCrosswalk(TenantMixin, db.Model):  # migration-exempt
         index=True,
     )
     confidence = db.Column(db.Float, nullable=False, default=1.0, server_default="1")
-    first_seen = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    first_seen = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(UTC))
     last_seen = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
         index=True,
     )
 
