@@ -143,6 +143,13 @@ TRANSFORMATION_API_PERMITTED = {
     "platform_admin",
 }
 
+# Impact API (GET /api/v1/intelligence/impact/<id>): carries only
+# @login_required — no enterprise-role gate — so every archetype is expected
+# to reach it.  Pagination parameters (cursor, page_size) and response fields
+# (total, next_cursor, health) are on the same route.  Tested separately
+# below because the path includes a dynamic element id.
+IMPACT_API_PERMITTED = set(ARCHETYPES) | {"platform_admin"}
+
 
 def _login(page, base, email, _attempts=2):
     """Sign in, retrying once, and say which failure actually happened.
