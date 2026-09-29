@@ -364,12 +364,20 @@ def seeded_data_entity(seeded):
         org_id = seeded["ids"]["org"]
         entity = DataEntity.query.filter_by(organization_id=org_id).order_by(DataEntity.id.desc()).first()
         if entity is None:
-            domain = DataDomain(name="Auth-matrix probe domain", organization_id=org_id)
-            db.session.add(domain)
-            db.session.flush()
-            entity = DataEntity(name="Auth-matrix probe entity", domain_id=domain.id, organization_id=org_id)
-            db.session.add(entity)
-            db.session.commit()
+            domain_name = "Auth-matrix probe domain %s" % org_id
+            entity_name = "Auth-matrix probe entity %s" % org_id
+            domain = DataDomain.query.filter_by(name=domain_name, organization_id=org_id).first()
+            if domain is None:
+                domain = DataDomain(name=domain_name, organization_id=org_id)
+                db.session.add(domain)
+                db.session.flush()
+            entity = DataEntity.query.filter_by(name=entity_name, organization_id=org_id).first()
+            if entity is None:
+                entity = DataEntity(name=entity_name, domain_id=domain.id, organization_id=org_id)
+                db.session.add(entity)
+                db.session.commit()
+            else:
+                db.session.rollback()
         return entity.id
 
 
