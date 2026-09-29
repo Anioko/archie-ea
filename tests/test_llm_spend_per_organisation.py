@@ -1,9 +1,9 @@
 """LLMInteraction records the organisation a language-model call was made for.
 
-TB-0098 (this slice): the row needs an organisation so a later budget check can
-be scoped per organisation instead of summing every tenant's spend together.
-The budget check itself is handled separately; this only covers what gets
-written to ``llm_interactions``.
+The row needs an organisation so a later budget check can be scoped per
+organisation instead of summing every tenant's spend together. The budget
+check itself is handled separately; this only covers what gets written to
+``llm_interactions``.
 """
 
 from __future__ import annotations
