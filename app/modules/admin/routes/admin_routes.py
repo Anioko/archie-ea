@@ -43,6 +43,7 @@ except ImportError:
     get_queue = None
 
 from app.extensions import csrf, db
+from app.services.billing_plans import PlanLimitReached
 from ..forms.admin_forms import (
     APISettingsForm,
     ChangeAccountTypeForm,
@@ -131,6 +132,22 @@ def dashboard():
 # ============================================================================
 
 
+def _plan_limit():
+    """(org id, people-limit status) for the signed-in admin's organisation.
+
+    The form shows the limit and an upgrade link instead of the submit when
+    the plan is full. The refusal itself is made when the user is saved
+    (billing_plans.check_capacity), which also covers two admins adding the
+    last place at once: the second sees the same limit message.
+    """
+    org_id = getattr(current_user, "organization_id", None)
+    if org_id is None:
+        return None, None
+    from app.services.billing_plans import user_limit_status
+
+    return org_id, user_limit_status(org_id)
+
+
 @admin_bp.route("/new-user", methods=["GET", "POST"])
 @login_required
 @rbac_service.require_role("org_admin")
@@ -139,26 +156,24 @@ def dashboard():
 def new_user():
     """Create a new user."""
     form = NewUserForm()
-    if form.validate_on_submit():
-        # Enforce seat limit before creating the user
-        org_id = getattr(current_user, "organization_id", None)
-        if org_id is not None:
-            from app.services.usage_metering_service import UsageMeteringService
-            if not UsageMeteringService.check_seat_limit(org_id):
-                return jsonify({
-                    "error": "seat_limit_exceeded",
-                    "message": "Upgrade your plan to add more users.",
-                }), 402
-
-        user = _svc.create_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-            role=form.role.data,
-        )
-        flash("User {} successfully created".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
+        try:
+            user = _svc.create_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                password=form.password.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        else:
+            flash("User {} successfully created".format(user.full_name()), "form-success")
+            org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp.route("/invite-user", methods=["GET", "POST"])
@@ -169,25 +184,36 @@ def new_user():
 def invite_user():
     """Invites a new user to create an account and set their own password."""
     form = InviteUserForm()
-    if form.validate_on_submit():
-        # Enforce seat limit before inviting the user
-        org_id = getattr(current_user, "organization_id", None)
-        if org_id is not None:
-            from app.services.usage_metering_service import UsageMeteringService
-            if not UsageMeteringService.check_seat_limit(org_id):
-                return jsonify({
-                    "error": "seat_limit_exceeded",
-                    "message": "Upgrade your plan to add more users.",
-                }), 402
+    org_id, plan_limit = _plan_limit()
+    if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
+        from app.modules.account.services.invitation_service import InvitationError
 
-        user = _svc.invite_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            role=form.role.data,
-        )
-        flash("User {} successfully invited".format(user.full_name()), "form-success")
-    return render_template("admin/new_user.html", form=form)
+        try:
+            user, delivered, error = _svc.invite_user(
+                first_name=form.first_name.data,
+                last_name=form.last_name.data,
+                email=form.email.data,
+                role=form.role.data,
+                organization_id=org_id,
+            )
+        except PlanLimitReached as exc:
+            db.session.rollback()
+            plan_limit = exc.status
+        except InvitationError as exc:
+            db.session.rollback()
+            flash(exc.message, "form-error")
+        else:
+            if delivered:
+                flash("Invitation sent to {}.".format(user.email), "form-success")
+            else:
+                flash(
+                    "The invitation to {} could not be sent: {} Resend it from the Team page.".format(
+                        user.email, error
+                    ),
+                    "form-error",
+                )
+            org_id, plan_limit = _plan_limit()
+    return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 
 
 @admin_bp.route("/manage-users")
@@ -358,7 +384,7 @@ def delete_user(user_id):
 
 @admin_bp.route("/_update_editor_contents", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_editor_update")
 def update_editor_contents():
     """Update the contents of an editor."""
@@ -3548,7 +3574,7 @@ def vendor_pricing_import():
 
 @admin_bp.route("/vendor-pricing/confirm", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def vendor_pricing_confirm():
     """Confirm staged pricing items — write to VendorProductPricing as contract_verified."""
     from difflib import SequenceMatcher

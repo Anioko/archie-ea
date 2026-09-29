@@ -212,6 +212,60 @@ def test_row_altered_in_sql_fails_verification_at_that_row(db_session, make_org)
     assert AuditLog.verify_chain(org_b.id)["status"] == "intact"
 
 
+def _reseal_with_id_in_seal(db_session, org):
+    """Re-seal ``org``'s chain the way entries were sealed while the id was covered."""
+    from app.extensions import db
+    from app.models.audit_log import (
+        _CHAIN_INFO_KEY,
+        LEGACY_CHAINED_COLUMNS,
+        AuditLog,
+        chain_digest,
+    )
+
+    table = AuditLog.__table__
+    rows = db_session.execute(
+        db.select(table).where(table.c.organization_id == org.id).order_by(table.c.id)
+    ).mappings().all()
+    prev = None
+    for row in rows:
+        digest = chain_digest(prev, row, LEGACY_CHAINED_COLUMNS)
+        db_session.execute(
+            db.text("UPDATE soc2_audit_log SET prev_hash = :p, row_hash = :h WHERE id = :id"),
+            {"p": prev, "h": digest, "id": row["id"]},
+        )
+        prev = digest
+    # Those entries were sealed in earlier transactions; drop this
+    # transaction's cached chain tail, as a new transaction starts without it.
+    db_session.connection().info.pop(_CHAIN_INFO_KEY, None)
+    db_session.expire_all()
+    return rows
+
+
+def test_entries_sealed_with_their_id_still_verify_and_still_detect_tampering(db_session, make_org):
+    from app.extensions import db
+    from app.models.audit_log import AuditLog
+
+    org = make_org("id-sealed")
+    for i in range(3):
+        _log(org, record_id=i, new_value={"n": i})
+    rows = _reseal_with_id_in_seal(db_session, org)
+    # Entries sealed since then follow on from the older ones.
+    _log(org, record_id=3, new_value={"n": 3})
+
+    result = AuditLog.verify_chain(org.id)
+    assert result["status"] == "intact"
+    assert result["checked"] == 4
+
+    db_session.execute(
+        db.text("UPDATE soc2_audit_log SET new_value = '{\"n\": 99}' WHERE id = :id"),
+        {"id": rows[1]["id"]},
+    )
+    db_session.expire_all()
+    result = AuditLog.verify_chain(org.id)
+    assert result["status"] == "broken"
+    assert result["first_broken_id"] == rows[1]["id"]
+
+
 def test_row_deleted_in_sql_fails_verification_at_the_next_row(db_session, make_org):
     from app.extensions import db
     from app.models.audit_log import AuditLog
