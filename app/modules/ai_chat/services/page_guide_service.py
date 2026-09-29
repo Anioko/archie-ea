@@ -13,7 +13,10 @@ from app import db
 from app.models.vector_embeddings import ChatMessageEmbedding
 from app.modules.ai_chat.services.llm_service_impl import LLMService
 from app.modules.ai_chat.services.page_guide_registry import get_entry_for_page_key
-from app.utils.tenant_sql import current_org_id
+from app.services.pgvector_embedding_service import (
+    require_current_org_id,
+    scoped_chat_message_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,13 +104,10 @@ class PageGuideService:
 
     def get_history(self, page_key: str, scope_key: str) -> List[Dict[str, Any]]:
         session_id = self._build_session_id(page_key, scope_key)
-        _pg_org_id = current_org_id()
-        pg_query = ChatMessageEmbedding.query.filter(
+        pg_query = scoped_chat_message_query(session_id).filter(
             ChatMessageEmbedding.chat_session_id == session_id,
             ChatMessageEmbedding.user_id == self.user_id,
         )
-        if _pg_org_id is not None:
-            pg_query = pg_query.filter(ChatMessageEmbedding.organization_id == _pg_org_id)
         messages = (
             pg_query
             .order_by(ChatMessageEmbedding.created_at.asc())
@@ -125,13 +125,10 @@ class PageGuideService:
 
     def clear_history(self, page_key: str, scope_key: str) -> Dict[str, Any]:
         session_id = self._build_session_id(page_key, scope_key)
-        _clr_org_id = current_org_id()
-        clr_query = ChatMessageEmbedding.query.filter(
+        clr_query = scoped_chat_message_query(session_id).filter(
             ChatMessageEmbedding.chat_session_id == session_id,
             ChatMessageEmbedding.user_id == self.user_id,
         )
-        if _clr_org_id is not None:
-            clr_query = clr_query.filter(ChatMessageEmbedding.organization_id == _clr_org_id)
         cleared = clr_query.delete()
         db.session.commit()
         return {"success": True, "cleared_count": cleared}
@@ -188,7 +185,7 @@ class PageGuideService:
                 "page_key": page_key,
                 "scope_key": scope_key,
             },
-            organization_id=current_org_id(),
+            organization_id=require_current_org_id("page guide message persistence"),
         )
         db.session.add(record)
         db.session.commit()

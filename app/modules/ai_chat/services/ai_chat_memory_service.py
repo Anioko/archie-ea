@@ -17,12 +17,14 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, func
+from sqlalchemy import func
 
 from app import db
 from app.models.vector_embeddings import ChatMessageEmbedding
-from app.services.pgvector_embedding_service import get_pgvector_service
-from app.utils.tenant_sql import current_org_id
+from app.services.pgvector_embedding_service import (
+    get_pgvector_service,
+    scoped_chat_message_query,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +121,8 @@ class AIChatMemoryService:
             List of recent ChatMessageEmbedding objects
         """
         try:
-            _corg_id = current_org_id()
-            filters = [ChatMessageEmbedding.chat_session_id == self.session_id]
-            if _corg_id is not None:
-                filters.append(ChatMessageEmbedding.organization_id == _corg_id)
             messages = (
-                ChatMessageEmbedding.query.filter(*filters)
+                scoped_chat_message_query(self.session_id)
                 .order_by(ChatMessageEmbedding.created_at.desc())
                 .limit(limit)
                 .all()
@@ -142,42 +140,20 @@ class AIChatMemoryService:
             Dictionary with session metadata
         """
         try:
-            _sorg_id = current_org_id()
-            base_filter = (
-                [ChatMessageEmbedding.chat_session_id == self.session_id]
-                if _sorg_id is None
-                else [
-                    ChatMessageEmbedding.chat_session_id == self.session_id,
-                    ChatMessageEmbedding.organization_id == _sorg_id,
-                ]
-            )
+            base_query = scoped_chat_message_query(self.session_id)
 
-            total_messages = ChatMessageEmbedding.query.filter(
-                *base_filter
+            total_messages = base_query.count()
+
+            user_messages = base_query.filter(
+                ChatMessageEmbedding.message_role == "user"
             ).count()
 
-            user_messages = ChatMessageEmbedding.query.filter(
-                and_(
-                    ChatMessageEmbedding.chat_session_id == self.session_id,
-                    ChatMessageEmbedding.message_role == "user",
-                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
-                )
-            ).count()
-
-            assistant_messages = ChatMessageEmbedding.query.filter(
-                and_(
-                    ChatMessageEmbedding.chat_session_id == self.session_id,
-                    ChatMessageEmbedding.message_role == "assistant",
-                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
-                )
+            assistant_messages = base_query.filter(
+                ChatMessageEmbedding.message_role == "assistant"
             ).count()
 
             domains = (
-                db.session.query(ChatMessageEmbedding.domain, func.count())
-                .filter(
-                    ChatMessageEmbedding.chat_session_id == self.session_id,
-                    *([ChatMessageEmbedding.organization_id == _sorg_id] if _sorg_id is not None else []),
-                )
+                base_query.with_entities(ChatMessageEmbedding.domain, func.count())
                 .group_by(ChatMessageEmbedding.domain)
                 .all()
             )
@@ -240,13 +216,7 @@ class AIChatMemoryService:
             True if successful, False otherwise
         """
         try:
-            _clr_org_id = current_org_id()
-            clr_query = ChatMessageEmbedding.query.filter(
-                ChatMessageEmbedding.chat_session_id == self.session_id,
-            )
-            if _clr_org_id is not None:
-                clr_query = clr_query.filter(ChatMessageEmbedding.organization_id == _clr_org_id)
-            clr_query.delete()
+            scoped_chat_message_query(self.session_id).delete()
             db.session.commit()
             logger.info(f"Cleared session {self.session_id}")
             return True

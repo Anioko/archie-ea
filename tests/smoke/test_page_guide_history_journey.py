@@ -48,6 +48,7 @@ def history_records(providerless_guide_configuration, app, seeded):
     other_scope = f"solutions.detail:{seeded['ids']['solution']}"
     texts = {key: f'Saved guide fixture {marker}: {key}'
              for key in ['question', 'answer', 'other user', 'other scope']}
+    org_by_user_id = {}
 
     def snapshot():
         with app.app_context():
@@ -71,6 +72,7 @@ def history_records(providerless_guide_configuration, app, seeded):
                 user = User.query.filter_by(email=seeded['emails'][persona],
                                             organization_id=seeded['ids']['org']).one()
                 user_ids.append(user.id)
+                org_by_user_id[user.id] = user.organization_id
             definitions = [
                 (user_ids[0], 'applications.detail', scope, 'user', texts['question']),
                 (user_ids[0], 'applications.detail', scope, 'assistant', texts['answer']),
@@ -87,7 +89,9 @@ def history_records(providerless_guide_configuration, app, seeded):
                     user_id=user_id, chat_session_id=f'guide_user_{user_id}_{page_key}_{scope_key}',
                     message_role=role, message_text=text, domain='guide',
                     created_at=datetime(2026, 1, 1) + timedelta(seconds=index),
-                    metadata_json={'guide_mode': True, 'page_key': page_key, 'scope_key': scope_key})
+                    metadata_json={'guide_mode': True, 'page_key': page_key, 'scope_key': scope_key},
+                    organization_id=org_by_user_id[user_id],
+                )
                 db.session.add(row)
                 db.session.flush()
                 ids.append(row.id)
