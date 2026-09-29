@@ -1,7 +1,7 @@
 """
 flask reconcile-admin-flags — reconcile is_org_admin with is_admin().
 
-R1-B12: Permission.ADMINISTER via is_admin() is the system of record for
+Permission.ADMINISTER via is_admin() is the system of record for
 "is this user an organisation administrator".  The ``is_org_admin`` database
 column is a denormalised copy.  This command reconciles them per organisation,
 listing every disagreement it found and what it changed.

@@ -37,7 +37,7 @@ def provisioning(monkeypatch):
 
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
-            # R1-B12: is_org_admin derives from is_admin().  The real User.__init__
+            # is_org_admin derives from is_admin().  The real User.__init__
             # assigns the Administrator role when the email matches ADMIN_EMAIL.
             # In this mock, set role to Administrator so is_admin() returns True.
             if getattr(self, 'email', None) == 'new-admin@example.com':

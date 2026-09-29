@@ -5498,7 +5498,7 @@ _ORG_USER_SORT_COLUMNS = {
     "name": (User.first_name, User.last_name),
     "email": (User.email,),
     "persona": (User.enterprise_role,),
-    # R1-B12: is_org_admin is a derived property; sort by the denormalised
+    # is_org_admin is a derived property; sort by the denormalised
     # column for display purposes.  Auth decisions use is_admin().
     "org_admin": (User._is_org_admin,),
 }
@@ -5601,7 +5601,7 @@ def toggle_org_admin(org_id, user_id):
     if user.organization_id != org_id:
         flash("User does not belong to this organization.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
-    # R1-B12: is_org_admin derives from is_admin() (Permission.ADMINISTER).
+    # is_org_admin derives from is_admin() (Permission.ADMINISTER).
     # Toggle the Administrator role assignment instead of the denormalised column.
     admin_role = Role.query.filter_by(name="Administrator").first()
     if user.is_admin():
@@ -5665,7 +5665,7 @@ def remove_user_from_org(org_id, user_id):
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
     user.organization_id = default_org.id
-    # R1-B12: is_org_admin derives from is_admin().  Remove the Administrator
+    # is_org_admin derives from is_admin().  Remove the Administrator
     # role so the user is no longer an org admin after moving.
     default_role = Role.query.filter_by(default=True).first()
     if default_role is not None:

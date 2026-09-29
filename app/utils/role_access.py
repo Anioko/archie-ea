@@ -165,7 +165,7 @@ EXCLUSIVE_SECTIONS: Dict[str, List[str]] = {
 DEFAULT_ROLE = ROLE_SOLUTION_ARCHITECT
 
 
-# R1-B12: one cost-visibility rule.  Every surface that redacts financial
+# One cost-visibility rule.  Every surface that redacts financial
 # figures (cost, budget, TCO, licence unit cost) checks this single set.
 # Previously each surface maintained its own copy of the same three roles;
 # a fourth surface that forgot to update its copy would leak cost data.
@@ -246,7 +246,7 @@ def get_visible_sections(user) -> List[str]:
 def is_admin(user) -> bool:
     """Check if user has admin role.
 
-    R1-B12: the system of record for "is an administrator" is
+    The system of record for "is an administrator" is
     Permission.ADMINISTER via user.is_admin().  This function delegates to it
     rather than re-deriving the answer from enterprise_role, so every caller
     that uses this accessor shares one authority.

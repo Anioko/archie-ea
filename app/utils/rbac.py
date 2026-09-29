@@ -41,7 +41,7 @@ def _get_user_role(user):
     """Map the current *user* to a role name in ``_ROLE_HIERARCHY``."""
     if getattr(user, "is_platform_admin", False):
         return "super_admin"
-    # R1-B12: org_admin derives from Permission.ADMINISTER (is_admin()),
+    # org_admin derives from Permission.ADMINISTER (is_admin()),
     # not from the denormalised is_org_admin column.
     try:
         if user.is_admin():

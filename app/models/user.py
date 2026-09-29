@@ -186,7 +186,7 @@ class User(UserMixin, db.Model):
     # Multi-tenancy: every user belongs to exactly one organization
     organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False)
 
-    # R1-B12: is_org_admin is now a derived property (see below).  The column
+    # is_org_admin is now a derived property (see below).  The column
     # stays for backward compatibility (never dropped — consolidation rule 6)
     # but the system of record for "is this user an organisation administrator"
     # is Permission.ADMINISTER via is_admin().  The backfill command
@@ -216,7 +216,8 @@ class User(UserMixin, db.Model):
         the denormalised flag.  This setter exists as a migration path for the
         common ``user.is_org_admin = True`` pattern found across the codebase."""
         if value:
-            admin_role = Role.query.filter_by(name="Administrator").first()
+            with db.session.no_autoflush:
+                admin_role = Role.query.filter_by(name="Administrator").first()
             if admin_role is not None:
                 self.role = admin_role
 
@@ -272,7 +273,8 @@ class User(UserMixin, db.Model):
                     permissions=Permission.ADMINISTER
                 ).first()
             if self.role is None:
-                self.role = Role.query.filter_by(default=True).first()
+                with db.session.no_autoflush:
+                    self.role = Role.query.filter_by(default=True).first()
 
     def full_name(self):
         parts = [part for part in (self.first_name, self.last_name) if part]

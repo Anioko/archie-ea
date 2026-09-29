@@ -72,7 +72,7 @@ def _make_admin(db_session, make_org, *, org_admin: bool, platform_admin: bool):
 
 
 GUARDED = [
-    # R1-B12: is_org_admin now derives from is_admin() (Permission.ADMINISTER),
+    # is_org_admin now derives from is_admin() (Permission.ADMINISTER),
     # so @org_admin_required is equivalent to @admin_required.  /admin/api-settings
     # is therefore reachable by every admin user and no longer needs a separate
     # org_admin guard entry here.  /admin/feature-flags is still independently

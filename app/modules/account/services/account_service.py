@@ -112,7 +112,7 @@ class AccountService:
             confirmed=confirmed,
             organization_id=org.id,
         )
-        # R1-B12: is_org_admin derives from is_admin() (Permission.ADMINISTER).
+        # is_org_admin derives from is_admin() (Permission.ADMINISTER).
         # Assign the Administrator role so is_admin() returns True.
         admin_role = Role.query.filter_by(name="Administrator").first()
         if admin_role is not None:

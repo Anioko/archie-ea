@@ -40,7 +40,7 @@ _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 _FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
 
-# R1-B12: the single cost-visibility rule lives in role_access.py so every
+# The single cost-visibility rule lives in role_access.py so every
 # surface that redacts financial figures shares one authority.  Import it;
 # do not define a second list.
 from app.utils.role_access import COST_VISIBILITY_ROLES, get_user_role
