@@ -55,6 +55,13 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # Traceability check and element properties: @login_required and no role
+    # gate on the page, so every archetype reads them; the answer is fenced
+    # per tenant by the service behind each page. Saving a property definition
+    # is role-gated on its POST route and pinned in
+    # tests/test_metamodel_properties.py.
+    "/intelligence/traceability": set(ARCHETYPES),
+    "/metamodel/properties":   set(ARCHETYPES),
     # ArchiMate OEF import (dogfood-import-fixes, Task 01; retired as its own
     # screen by T-L1-IMPORT-OPS): this URL now redirects to the canonical
     # import screen at /architecture/import/oef, which carries the same
