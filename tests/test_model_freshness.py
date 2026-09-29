@@ -94,7 +94,12 @@ def _relationship(db_session, org, source, target, updated):
 
 @pytest.fixture
 def two_orgs(db_session, make_org):
+    from app.services.billing_plans import set_contract_plan
+
     org_a, org_b = make_org("fresh-a"), make_org("fresh-b")
+    for org in (org_a, org_b):
+        set_contract_plan(org, "enterprise", None)  # more people than Community admits
+    db_session.flush()
     a_recent = _user(db_session, org_a, "Recent")
     a_stale = _user(db_session, org_a, "Stalest")
     a_middle = _user(db_session, org_a, "Middle")
