@@ -51,6 +51,7 @@ capability_value_stream_mapping
 compliance_status
 courses_of_action
 enterprise_raci_assignments
+extraction_feedback
 gaps
 governance_gates
 implementation_events
