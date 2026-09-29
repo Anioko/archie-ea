@@ -1197,6 +1197,7 @@ def update_element(layer, element_type, element_id):
     if request.method == "POST":
         try:
             data = request.get_json() if request.is_json else request.form.to_dict()
+            _ae_before = _archimate_element_state(element, _from_ae)
 
             # Update basic fields
             if hasattr(
@@ -1235,6 +1236,8 @@ def update_element(layer, element_type, element_id):
             # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
             # Works for a native ArchiMateElement (element itself) and a linked one.
             _apply_architecture_state(element, data)
+
+            _record_element_update(_ae_before, _archimate_element_state(element, _from_ae))
 
             db.session.commit()
 
@@ -1275,6 +1278,45 @@ def update_element(layer, element_type, element_id):
         selected_layer=_selected_layer_for(layer),
         element_field_configs=ELEMENT_FIELD_CONFIGS,
     )
+
+
+def _archimate_element_state(element, from_ae):
+    """(id, name, description) of the ArchiMate element behind ``element``."""
+    target = element
+    if not from_ae:
+        linked = getattr(element, "archimate_element_id", None)
+        target = ArchiMateElement.query.get(linked) if linked else None
+    if target is None or not isinstance(target, ArchiMateElement):
+        return None
+    return {"id": target.id, "name": target.name, "description": target.description}
+
+
+def _record_element_update(before, after):
+    """Record an edit of an ArchiMate element in the organisation's audit trail.
+
+    Same transaction as the edit; the restore-before-import screen reads these
+    entries to offer later changes for applying again.
+    """
+    if not before or not after or before == after:
+        return
+    from flask import g
+    from flask_login import current_user
+
+    from app.models.audit_log import AuditLog
+
+    changed = [k for k in ("name", "description") if before.get(k) != after.get(k)]
+    if not changed:
+        return
+    org_id = getattr(g, "current_org_id", None) or getattr(current_user, "organization_id", None)
+    db.session.add(AuditLog(
+        organization_id=org_id,
+        user_id=getattr(current_user, "id", None),
+        action="update",
+        table_name="archimate_elements",
+        record_id=after["id"],
+        old_value={k: before[k] for k in changed},
+        new_value={k: after[k] for k in changed},
+    ))
 
 
 @archimate_crud.route(
