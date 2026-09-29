@@ -105,9 +105,9 @@ def test_the_five_screens_walk_through_to_the_dashboard(live_server, fresh_user,
         page.get_by_role("link", name="Continue").click()
         page.wait_for_url(lambda url: "/onboarding/twin" in url, timeout=PAGE_TIMEOUT)
 
-        # Screen 5: Your twin -- finish
-        page.click("input[value='solution_architect']")
-        page.wait_for_timeout(200)
+        # Screen 5: Your twin -- finish. The role is set on Screen 2 (workspace
+        # setup fields) and shown here as read-only text (x-text), not an
+        # editable control, so there is nothing to click before finishing.
         page.click("button:has-text('Start Architecture Journey'), button:has-text('Go to Dashboard')")
         page.wait_for_url(lambda url: "/onboarding" not in url, timeout=PAGE_TIMEOUT)
         page.wait_for_timeout(500)
