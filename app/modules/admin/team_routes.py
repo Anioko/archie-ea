@@ -236,6 +236,21 @@ def team_change_role():
         abort(404)
 
     OrgRole.set_role(org_id, user_id, role, granted_by_id=current_user.id)
+    # Keep the User.role (Permission.ADMINISTER authority) in step with the
+    # OrgRole grant so every surface that answers "is this user an org admin"
+    # sees the same answer.  org_admin → Administrator role; anything else
+    # → default Architect role (only if the user currently holds Administrator
+    # and is not a platform admin).
+    from app.models.user import Role as UserRole
+
+    if role == "org_admin":
+        admin_role = UserRole.query.filter_by(name="Administrator").first()
+        if admin_role is not None:
+            user.role = admin_role
+    elif user.is_admin() and not user.is_platform_admin:
+        default_role = UserRole.query.filter_by(default=True).first()
+        if default_role is not None:
+            user.role = default_role
     db.session.commit()
     return redirect(url_for("team.team"))
 

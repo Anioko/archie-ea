@@ -313,6 +313,14 @@ def accept_new(raw_token, password):
         offered["organization_id"], user.id, offered["role"] or "viewer",
         granted_by_id=offered["invited_by"],
     )
+    # Keep User.role in step with the OrgRole grant so every surface that
+    # answers "is this user an org admin" sees the same answer.
+    if offered["role"] == "org_admin":
+        from app.models.user import Role as UserRole
+
+        admin_role = UserRole.query.filter_by(name="Administrator").first()
+        if admin_role is not None:
+            user.role = admin_role
     db.session.commit()
     _log.info("invitation taken up into organisation %s", offered["organization_id"])
     return user
@@ -336,5 +344,12 @@ def answer_existing(raw_token, user, accept):
             offered["organization_id"], user.id, offered["role"] or "viewer",
             granted_by_id=offered["invited_by"],
         )
+        # Keep User.role in step with the OrgRole grant.
+        if offered["role"] == "org_admin":
+            from app.models.user import Role as UserRole
+
+            admin_role = UserRole.query.filter_by(name="Administrator").first()
+            if admin_role is not None:
+                user.role = admin_role
     db.session.commit()
     return offered["organization_id"]

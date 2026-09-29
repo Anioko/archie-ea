@@ -34,8 +34,21 @@ class RBACService:
         return role if role else "viewer"
 
     def is_org_admin(self, org_id, user_id):
-        """True if the user is an org_admin in the given org."""
-        return self.get_user_role(org_id, user_id) == "org_admin"
+        """True if the user is an org_admin in the given org.
+
+        Checks both the OrgRole table (team/invitation grants) and
+        user.is_admin() (Permission.ADMINISTER, the system of record).
+        The two must agree; this accessor returns True if either says yes
+        so that every consumer shares one authority.
+        """
+        if self.get_user_role(org_id, user_id) == "org_admin":
+            return True
+        from app.models.user import User
+
+        user = User.query.get(user_id)  # tenant-scoping-ok: primary-key lookup, not a list
+        if user is not None and user.is_admin():
+            return True
+        return False
 
     def can_edit(self, org_id, user_id):
         """True if role is org_admin or architect (hierarchy level >= 1)."""
