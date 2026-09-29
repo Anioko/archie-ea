@@ -18,8 +18,27 @@ TRACKER = "/trust-centre/security-findings/"
 
 
 
-def test_security_architect_takes_a_finding_from_record_to_published_summary(page, live_server, seeded):  # noqa: F811
+@pytest.fixture
+def _remove_created_findings(app):
+    """Findings are platform-level and the live server commits them to the shared
+    database, so remove what this journey created, whatever its outcome."""
+    created = []
+    yield created
+    from sqlalchemy import text
+
+    from app import db
+
+    with app.app_context():
+        with db.engine.begin() as conn:
+            for title in created:
+                conn.execute(text("DELETE FROM security_findings WHERE title = :t"), {"t": title})
+
+
+def test_security_architect_takes_a_finding_from_record_to_published_summary(  # noqa: F811
+    page, live_server, seeded, _remove_created_findings
+):
     title = "Session cookie missing Secure flag %s" % uuid.uuid4().hex[:8]
+    _remove_created_findings.append(title)
     _login(page, live_server, seeded["emails"]["security_architect"])
     _visit(page, live_server, TRACKER)
 

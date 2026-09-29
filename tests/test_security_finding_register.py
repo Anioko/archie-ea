@@ -17,6 +17,18 @@ TRACKER = "/trust-centre/security-findings/"
 SUMMARY = "/trust-centre/closed-findings"
 
 
+@pytest.fixture(autouse=True)
+def _empty_register(db_session):
+    """The register is platform-level, so rows committed by an earlier test (or the
+    live-server journey) are visible to every test. Clear it inside this test's
+    transaction; the rollback at teardown restores whatever was there."""
+    from app.models.security_finding import SecurityFinding
+
+    db_session.query(SecurityFinding).delete()
+    db_session.flush()
+    yield
+
+
 def _user(db_session, org, role):
     from app.models.user import Role, User
 
