@@ -177,16 +177,6 @@ COST_VISIBILITY_ROLES: frozenset = frozenset({
 })
 
 
-def _user_has_cost_visibility(user) -> bool:
-    """True when *user* belongs to a role that may see financial figures."""
-    from flask_login import current_user
-
-    try:
-        return get_user_role(user) in COST_VISIBILITY_ROLES
-    except Exception:  # noqa: BLE001
-        return False
-
-
 def get_user_role(user) -> str:
     """Get user's enterprise role with fallback to default.
 
