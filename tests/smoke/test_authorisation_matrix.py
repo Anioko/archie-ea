@@ -55,6 +55,13 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # Traceability check and element properties: @login_required and no role
+    # gate on the page, so every archetype reads them; the answer is fenced
+    # per tenant by the service behind each page. Saving a property definition
+    # is role-gated on its POST route and pinned in
+    # tests/test_metamodel_properties.py.
+    "/intelligence/traceability": set(ARCHETYPES),
+    "/metamodel/properties":   set(ARCHETYPES),
     # ArchiMate OEF import (dogfood-import-fixes, Task 01; retired as its own
     # screen by T-L1-IMPORT-OPS): this URL now redirects to the canonical
     # import screen at /architecture/import/oef, which carries the same
@@ -126,13 +133,18 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
-    # Security finding tracker: the same reader predicate as the audit trail
+# Security finding tracker: the same reader predicate as the audit trail
     # (administrators plus security architects). Every other persona is denied.
     "/trust-centre/security-findings/": {"security_architect"},
     # Published summary of findings closed after a passing re-test: signed-in
     # only, no role gate, because it is the same for every organisation and
     # lists only findings a security architect chose to publish.
     "/trust-centre/closed-findings": set(ARCHETYPES),
+    # Service status: current platform health, incident history and a
+    # subscribe action. @login_required and no role gate -- every signed-in
+    # persona reaches it from the sidebar footer. The state it shows is
+    # platform-wide; the only thing a user changes is their own subscription.
+    "/status":                 set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")

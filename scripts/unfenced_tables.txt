@@ -359,6 +359,7 @@ scoring_configurations
 security_findings
 security_scans
 service_dependency
+service_incidents
 service_level_agreements
 service_realization
 sidebar_menu_items
