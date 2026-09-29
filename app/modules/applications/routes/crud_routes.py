@@ -21,6 +21,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping  # dead-code-ok
@@ -75,6 +76,7 @@ from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
+    _verify_app_in_org,
 )
 
 logger = logging.getLogger(__name__)
@@ -348,7 +350,7 @@ def application_fact_sheet(id):
     """
     from app.services.application_fact_sheet import build_fact_sheet  # noqa: PLC0415
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    app_obj = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
     sheet = build_fact_sheet(app_obj)
     return render_template("applications/fact_sheet.html", **sheet)
 
@@ -588,7 +590,7 @@ def generate_application_archimate(id):
 def application_edit(id):
     """Edit Application - ALWAYS returns HTML"""
     try:
-        app = ApplicationComponent.query.get_or_404(id)
+        app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
         if request.method == "POST":
             # Optimistic locking: check if another user modified the record
@@ -818,6 +820,8 @@ def application_edit(id):
             application_owners=application_owners,
         )
 
+    except HTTPException:
+        raise
     except Exception:
         db.session.rollback()
         flash("Error updating application. Please try again.", "error")

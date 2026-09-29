@@ -20,21 +20,12 @@ from flask_login import current_user, login_required
 from app import db
 from app.decorators import audit_log
 from app.models.application_owner import ApplicationOwner
-from app.models.application_portfolio import ApplicationComponent
 from app.utils.tenant_users import user_in_org
 
 from . import unified_applications_bp
+from ._helpers import _verify_app_in_org
 
 logger = logging.getLogger(__name__)
-
-
-def _verify_app_in_org(app_id: int, org_id: int) -> ApplicationComponent | None:
-    """Return the application iff it exists and belongs to *org_id*."""
-    return ApplicationComponent.query.filter_by(
-        id=app_id, organization_id=org_id
-    ).first()
-
-
 def _duplicate_owner(app_id: int, user_id: int, ownership_type: str, org_id: int, exclude_owner_id: int | None = None):
     """Return an existing owner row with the same user and type, if any."""
     query = ApplicationOwner.query.filter(

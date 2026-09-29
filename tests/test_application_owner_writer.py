@@ -1082,3 +1082,113 @@ def test_backfill_two_legacy_rows_same_type_same_user(db_session, make_org):
     assert stats["legacy_ownership_rows"] == 1
     assert stats["skipped_existing"] >= 1
     assert stats["merged_legacy_rows"] >= 1
+def test_edit_page_cross_org_returns_404(two_orgs, client, login_as):
+    """Edit page returns 404 for another organisation's application."""
+    editor = _make_user(
+        two_orgs["db_session"],
+        two_orgs["org_a"],
+        "architect",
+        "crossorgeditor",
+    )
+    login_as(client, editor)
+
+    resp = client.get(f"/applications/{two_orgs['app_b'].id}/edit")
+
+    assert resp.status_code == 404
+
+
+def test_fact_sheet_cross_org_returns_404(two_orgs, client, login_as):
+    """Fact sheet returns 404 for another organisation's application."""
+    login_as(client, two_orgs["manager_a"])
+
+    resp = client.get(f"/applications/{two_orgs['app_b'].id}/fact-sheet")
+
+    assert resp.status_code == 404
+
+
+def test_edit_post_cross_org_returns_404_and_leaves_foreign_row_unchanged(app, two_orgs, client, login_as):
+    """Cross-org POST to the edit form 404s and does not mutate the foreign row."""
+    from app.models.application_portfolio import ApplicationComponent
+    from tests.test_cross_tenant_documents import _csrf_token
+
+    db_session = two_orgs["db_session"]
+    editor = _make_user(db_session, two_orgs["org_a"], "architect", "crossorgpost")
+    foreign_app = two_orgs["app_b"]
+    foreign_app.technology_stack = "OldStack"
+    db_session.commit()
+
+    login_as(client, editor)
+    csrf = _csrf_token(client, app)
+    resp = client.post(
+        f"/applications/{foreign_app.id}/edit",
+        data={
+            "csrf_token": csrf,
+            "updated_at": foreign_app.updated_at.isoformat() if foreign_app.updated_at else "",
+            "name": foreign_app.name,
+            "description": foreign_app.description or "",
+            "application_code": foreign_app.application_code or "",
+            "application_type": foreign_app.component_type or "",
+            "criticality": foreign_app.business_criticality or "",
+            "technology_stack": "NewStack",
+            "business_purpose": foreign_app.business_purpose or "",
+            "deployment_status": foreign_app.deployment_status or "",
+            "lifecycle_status": foreign_app.lifecycle_status or "",
+            "business_domain": foreign_app.business_domain or "",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 404
+    db_session.expire_all()
+    saved = ApplicationComponent.query.get(foreign_app.id)
+    assert saved.technology_stack == "OldStack"
+
+
+@pytest.mark.parametrize(
+    ("path_template", "form_data"),
+    [
+        ("/applications/{id}/overview-update", {"technology_stack": "OverviewStack"}),
+        ("/applications/{id}/health-quality-update", {"technical_debt_hours": "42"}),
+        ("/applications/{id}/governance-update", {"contains_pii": "true"}),
+        ("/applications/{id}/resources-update", {"business_domain": "Finance"}),
+        ("/applications/{id}/layers/strategy-update", {}),
+    ],
+)
+def test_update_routes_cross_org_return_404_and_leave_foreign_row_unchanged(
+    app,
+    two_orgs,
+    client,
+    login_as,
+    path_template,
+    form_data,
+):
+    """Changed application update routes 404 for foreign ids before mutating."""
+    from app.models.application_portfolio import ApplicationComponent
+    from tests.test_cross_tenant_documents import _csrf_token
+
+    db_session = two_orgs["db_session"]
+    foreign_app = two_orgs["app_b"]
+    foreign_app.technology_stack = "OldStack"
+    db_session.commit()
+
+    login_as(client, two_orgs["manager_a"])
+    payload = dict(form_data)
+    if path_template in {
+        "/applications/{id}/governance-update",
+        "/applications/{id}/resources-update",
+        "/applications/{id}/layers/strategy-update",
+    }:
+        payload["csrf_token"] = _csrf_token(client, app)
+
+    resp = client.post(
+        path_template.format(id=foreign_app.id),
+        data=payload,
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 404
+    db_session.expire_all()
+    saved = ApplicationComponent.query.get(foreign_app.id)
+    assert saved.technology_stack == "OldStack"
+
+

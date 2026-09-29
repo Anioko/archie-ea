@@ -13,15 +13,14 @@ All 5 routes use @csrf.exempt before @login_required and handle both AJAX
 
 import logging
 
-from flask import current_app, flash, jsonify, redirect, request, session, url_for
+from flask import current_app, flash, g, jsonify, redirect, request, session, url_for
 from flask_login import current_user, login_required
 from flask_wtf.csrf import CSRFError, validate_csrf
 
 from app import db
 from app.decorators import audit_log
-from app.models.application_portfolio import ApplicationComponent
-
 from . import unified_applications_bp
+from ._helpers import _verify_app_in_org
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ logger = logging.getLogger(__name__)
 @audit_log("update_application_overview")
 def update_overview(id):
     """Unified save for Overview: updates app metadata and vendor classifications atomically."""
-    app = ApplicationComponent.query.get_or_404(id)
+    app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
     try:
         # Validate and sanitize input fields
@@ -103,7 +102,7 @@ def update_overview(id):
 @audit_log("update_health_quality")
 def update_health_quality(id):
     """Update health and quality metrics for an application."""
-    app = ApplicationComponent.query.get_or_404(id)
+    app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
     try:
         # Validate and coerce numeric health/quality metrics
@@ -173,7 +172,7 @@ def update_health_quality(id):
 @audit_log("update_governance")
 def update_governance(id):
     """Update governance and compliance fields for an application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
     # Validate CSRF token manually (route exempted from global CSRF)
     try:
@@ -259,7 +258,7 @@ def update_governance(id):
 @audit_log("update_resources")
 def update_resources(id):
     """Update resource and capacity planning fields for an application"""
-    app = ApplicationComponent.query.get_or_404(id)
+    app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
     # Validate CSRF token manually (route exempted from global CSRF)
     try:
@@ -350,7 +349,7 @@ def update_resources(id):
 @audit_log("update_strategy_layer")
 def update_strategy_layer(id):
     """Update Strategy Layer elements (Capabilities, Resources, Value Streams, Courses of Action)"""
-    ApplicationComponent.query.get_or_404(id)
+    _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
     try:
         token = request.form.get("csrf_token")
