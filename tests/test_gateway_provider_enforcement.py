@@ -2,7 +2,7 @@
 
 Tests:
 - ModelProvider.is_allowed_for_org resolution (platform default, org override)
-- Provider restriction enforced in _call_llm raises ValueError
+- Provider restriction enforced in _call_llm raises ProviderNotAllowed
 - Allowed provider proceeds through the gateway
 - Interaction persisted with latency
 """
@@ -12,6 +12,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session
 
 from app import db
 from app.models import LLMInteraction
@@ -107,9 +109,9 @@ class TestProviderRestrictionEnforcement:
     """Gateway enforces the provider register in _call_llm."""
 
     def test_call_blocked_when_provider_not_allowed(self, db_session, app, make_org):
-        """_call_llm raises ValueError when the org restricts the provider."""
+        """_call_llm raises ProviderNotAllowed when the org restricts the provider."""
         from app.models.model_provider import ModelProvider
-        from app.modules.ai_chat.services.llm_service_impl import LLMService
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
 
         org = make_org("restricted")
         db_session.add(ModelProvider(
@@ -118,34 +120,34 @@ class TestProviderRestrictionEnforcement:
         ))
         db_session.flush()
 
-        with app.app_context(), pytest.raises(ValueError, match="not allowed"):
+        with app.app_context(), pytest.raises(ProviderNotAllowed, match="not allowed"):
             with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
-                LLMService._call_llm(prompt="test", model="gpt-4o", provider="openai")
+                with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                    LLMService._call_llm(prompt="test", model="gpt-4o", provider="openai")
 
-    def test_call_allowed_when_no_register_entry(self, db_session, app, make_org):
+    def test_call_allowed_when_no_register_entry(self, db_session, make_org):
         """_call_llm proceeds when there is no register entry (default allowed)."""
         from app.modules.ai_chat.services.llm_service_impl import LLMService
 
         org = make_org("unrestricted")
-        with app.app_context():
-            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
-                with patch.object(LLMService, "_call_llm_with_failover") as mock:
-                    mock.return_value = (
-                        "ok",
-                        LLMInteraction(
-                            model_name="gpt-4o", provider="openai",
-                            prompt="test", response="ok",
-                            token_count_input=5, token_count_output=5, cost=0.001,
-                            organization_id=org.id,
-                        ),
-                    )
-                    response, interaction = LLMService._call_llm(
-                        prompt="test", model="gpt-4o", provider="openai",
-                    )
+        with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+            with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                mock.return_value = (
+                    "ok",
+                    LLMInteraction(
+                        model_name="gpt-4o", provider="openai",
+                        prompt="test", response="ok",
+                        token_count_input=5, token_count_output=5, cost=0.001,
+                        organization_id=org.id,
+                    ),
+                )
+                response, interaction = LLMService._call_llm(
+                    prompt="test", model="gpt-4o", provider="openai",
+                )
 
         assert response == "ok"
 
-    def test_interaction_persisted_with_latency(self, db_session, app, make_org):
+    def test_interaction_persisted_with_latency(self, db_session, make_org):
         """A successful call through the gateway persists the LLMInteraction with latency."""
         from app.models.model_provider import ModelProvider
         from app.modules.ai_chat.services.llm_service_impl import LLMService
@@ -157,28 +159,25 @@ class TestProviderRestrictionEnforcement:
         ))
         db_session.flush()
 
-        interaction_id = None
-        with app.app_context():
-            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
-                with patch.object(LLMService, "_call_llm_with_failover") as mock:
-                    mock.return_value = (
-                        "latency test",
-                        LLMInteraction(
-                            model_name="gpt-4o", provider="openai",
-                            prompt="latency", response="latency test",
-                            token_count_input=10, token_count_output=10, cost=0.001,
-                            organization_id=org.id,
-                            prompt_version="v1", retention_setting="30d",
-                        ),
-                    )
-                    response, interaction = LLMService._call_llm(
-                        prompt="latency", model="gpt-4o", provider="openai",
+        with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+            with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                mock.return_value = (
+                    "latency test",
+                    LLMInteraction(
+                        model_name="gpt-4o", provider="openai",
+                        prompt="latency", response="latency test",
+                        token_count_input=10, token_count_output=10, cost=0.001,
+                        organization_id=org.id,
                         prompt_version="v1", retention_setting="30d",
-                    )
-            interaction_id = interaction.id
+                    ),
+                )
+                response, interaction = LLMService._call_llm(
+                    prompt="latency", model="gpt-4o", provider="openai",
+                    prompt_version="v1", retention_setting="30d",
+                )
 
-        assert interaction_id is not None
-        fetched = db.session.get(LLMInteraction, interaction_id)
+        assert interaction.id is not None
+        fetched = db_session.get(LLMInteraction, interaction.id)
         assert fetched is not None
         assert fetched.organization_id == org.id
         assert fetched.model_name == "gpt-4o"
@@ -197,7 +196,7 @@ class TestFallbackBypassPrevention:
         Patches the actual _call_<provider> methods with spies and asserts
         that neither spy was invoked when the register blocks both providers.
         """
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from app.models.model_provider import ModelProvider
         from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
 
@@ -238,8 +237,8 @@ class TestFallbackBypassPrevention:
 class TestRetentionDefault:
     """retention_setting defaults when not explicitly provided."""
 
-    def test_retention_defaults_when_not_provided(self, db_session, app, make_org):
-        """_call_llm defaults retention_setting to 30d when None is passed.
+    def test_retention_defaults_when_not_provided(self, db_session, make_org):
+        """_call_llm persists non-null gateway defaults when none are passed.
 
         Goes through _call_llm -> _call_llm_with_failover so the full
         gateway path is exercised.
@@ -249,24 +248,131 @@ class TestRetentionDefault:
         from app.modules.ai_chat.services.llm_service_impl import LLMService
 
         org = make_org("retention-default")
-        with app.app_context():
-            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
-                with patch.object(LLMService, "_call_llm_with_failover") as mock:
-                    mock.return_value = (
-                        "ok",
-                        LLMInteraction(
-                            model_name="gpt-4o", provider="openai",
-                            prompt="test", response="ok",
-                            token_count_input=5, token_count_output=5, cost=0.001,
-                            organization_id=org.id,
-                        ),
-                    )
-                    response, interaction = LLMService._call_llm(
-                        prompt="test", model="gpt-4o", provider="openai",
-                        # No prompt_version or retention_setting passed
-                    )
+        with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+            with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                mock.return_value = (
+                    "ok",
+                    LLMInteraction(
+                        model_name="gpt-4o", provider="openai",
+                        prompt="test", response="ok",
+                        token_count_input=5, token_count_output=5, cost=0.001,
+                        organization_id=org.id,
+                    ),
+                )
+                response, interaction = LLMService._call_llm(
+                    prompt="test", model="gpt-4o", provider="openai",
+                    # No prompt_version or retention_setting passed
+                )
 
-        # The interaction returned from the mock was created without
-        # retention_setting, so inside _call_llm it would be set to "30d"
-        # before persisting
         assert response == "ok"
+        saved = db_session.get(LLMInteraction, interaction.id)
+        assert saved is not None
+        assert saved.prompt_version == "unknown"
+        assert saved.retention_setting == "30d"
+
+
+class TestGatewayPersistenceUsesSavepoints:
+    """Gateway persistence must not commit or roll back caller work."""
+
+    def test_persisting_interaction_does_not_commit_outer_transaction(self, app):
+        """_call_llm leaves caller work rollbackable after interaction persistence."""
+        from app.models.organization import Organization
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, db as llm_db
+
+        slug = "savepoint-org-commit-check"
+        prompt = "savepoint-commit-check"
+
+        with app.app_context():
+            session = Session(bind=db.engine)
+            try:
+                session.add(Organization(name="Savepoint Commit Check", slug=slug))
+
+                with patch.object(llm_db, "session", session):
+                    with patch.object(LLMService, "_resolve_org_id", return_value=None):
+                        with patch(
+                            "app.modules.ai_chat.services.llm_service_impl.LLMCostTracker.check_budget_before_call",
+                            return_value=(True, None),
+                        ):
+                            with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                                mock.return_value = (
+                                    "ok",
+                                    LLMInteraction(
+                                        model_name="gpt-4o",
+                                        provider="openai",
+                                        prompt=prompt,
+                                        response="ok",
+                                        token_count_input=5,
+                                        token_count_output=5,
+                                        cost=0.001,
+                                    ),
+                                )
+                                LLMService._call_llm(prompt=prompt, model="gpt-4o", provider="openai")
+
+                session.rollback()
+                persisted = session.execute(
+                    select(db.func.count()).select_from(Organization).where(Organization.slug == slug)
+                ).scalar_one()
+            finally:
+                session.execute(delete(LLMInteraction).where(LLMInteraction.prompt == prompt))
+                session.execute(delete(Organization).where(Organization.slug == slug))
+                session.commit()
+                session.close()
+
+        assert persisted == 0
+
+    def test_persist_failure_does_not_rollback_caller_transaction(self, app):
+        """A failed interaction save leaves caller work intact in the outer transaction."""
+        from app.models.organization import Organization
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, db as llm_db
+
+        slug = "savepoint-org-rollback-check"
+        prompt = "savepoint-rollback-check"
+
+        with app.app_context():
+            session = Session(bind=db.engine)
+            try:
+                session.add(Organization(name="Savepoint Rollback Check", slug=slug))
+                real_add = session.add
+
+                def add_with_failure(obj):
+                    if isinstance(obj, LLMInteraction):
+                        raise RuntimeError("simulated interaction persistence failure")
+                    return real_add(obj)
+
+                with patch.object(llm_db, "session", session):
+                    with patch.object(LLMService, "_resolve_org_id", return_value=None):
+                        with patch(
+                            "app.modules.ai_chat.services.llm_service_impl.LLMCostTracker.check_budget_before_call",
+                            return_value=(True, None),
+                        ):
+                            with patch.object(session, "add", side_effect=add_with_failure):
+                                with patch.object(LLMService, "_call_llm_with_failover") as mock:
+                                    mock.return_value = (
+                                        "ok",
+                                        LLMInteraction(
+                                            model_name="gpt-4o",
+                                            provider="openai",
+                                            prompt=prompt,
+                                            response="ok",
+                                            token_count_input=5,
+                                            token_count_output=5,
+                                            cost=0.001,
+                                        ),
+                                    )
+                                    LLMService._call_llm(prompt=prompt, model="gpt-4o", provider="openai")
+
+                count_inside_txn = session.execute(
+                    select(db.func.count()).select_from(Organization).where(Organization.slug == slug)
+                ).scalar_one()
+            finally:
+                session.rollback()
+                cleanup = Session(bind=db.engine)
+                try:
+                    cleanup.execute(delete(LLMInteraction).where(LLMInteraction.prompt == prompt))
+                    cleanup.execute(delete(Organization).where(Organization.slug == slug))
+                    cleanup.commit()
+                finally:
+                    cleanup.close()
+                session.close()
+
+        assert count_inside_txn == 1
