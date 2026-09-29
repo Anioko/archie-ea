@@ -418,12 +418,18 @@ def test_editing_an_element_is_recorded_in_the_audit_trail(client, db_session, l
     db_session.add(el)
     db_session.flush()
     login_as(client, user)
-    assert client.post(f"/architecture/technology/Node/{el.id}/edit",
-                       json={"name": "Edit me", "description": "two"}).status_code == 200
+    assert client.post(
+        f"/architecture/technology/Node/{el.id}/edit",
+        json={"name": "Edit me", "description": "two"},
+        headers={"User-Agent": "restore-test-agent"},
+        environ_overrides={"REMOTE_ADDR": "198.51.100.8"},
+    ).status_code == 200
     entry = AuditLog.query.filter(AuditLog.org_predicate(org.id), AuditLog.table_name == "archimate_elements",
                                   AuditLog.record_id == el.id).one()
     assert entry.action == "update"
     assert entry.old_value == {"description": "one"} and entry.new_value == {"description": "two"}
+    assert entry.ip_address == "198.51.100.8"
+    assert entry.user_agent == "restore-test-agent"
 
 
 def test_a_chosen_later_custom_property_change_is_applied_again(client, db_session, login_as, make_org, app):

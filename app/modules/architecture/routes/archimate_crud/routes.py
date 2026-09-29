@@ -1308,6 +1308,7 @@ def _record_element_update(before, after):
     from flask_login import current_user
 
     from app.models.audit_log import AuditLog
+    from app.services.audit_log_service import AuditLogService
 
     changed = [k for k in ("name", "description", "custom_properties") if before.get(k) != after.get(k)]
     if not changed:
@@ -1321,6 +1322,8 @@ def _record_element_update(before, after):
         record_id=after["id"],
         old_value={k: before[k] for k in changed},
         new_value={k: after[k] for k in changed},
+        ip_address=AuditLogService._resolve_ip(),
+        user_agent=(AuditLogService._resolve_ua() or None),
     ))
 
 
