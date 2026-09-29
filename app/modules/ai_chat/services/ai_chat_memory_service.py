@@ -120,17 +120,15 @@ class AIChatMemoryService:
         """
         try:
             _corg_id = current_org_id()
+            filters = [ChatMessageEmbedding.chat_session_id == self.session_id]
+            if _corg_id is not None:
+                filters.append(ChatMessageEmbedding.organization_id == _corg_id)
             messages = (
-                ChatMessageEmbedding.query.filter(
-                    ChatMessageEmbedding.chat_session_id == self.session_id,
-                )
+                ChatMessageEmbedding.query.filter(*filters)
                 .order_by(ChatMessageEmbedding.created_at.desc())
                 .limit(limit)
                 .all()
             )
-            # Post-filter by organisation (tenant table: strict equality)
-            if _corg_id is not None:
-                messages = [m for m in messages if m.organization_id == _corg_id]
             return list(reversed(messages))  # Return in chronological order
         except Exception as e:
             logger.error(f"Failed to retrieve recent messages: {e}")

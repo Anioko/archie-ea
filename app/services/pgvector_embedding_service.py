@@ -409,9 +409,13 @@ class PgvectorEmbeddingService:
             if not query_embedding:
                 return []
 
+            filters = [ChatMessageEmbedding.chat_session_id == chat_session_id]
+            _chat_org_id = current_org_id()
+            if _chat_org_id is not None:
+                filters.append(ChatMessageEmbedding.organization_id == _chat_org_id)
             results = (
                 self.session.query(ChatMessageEmbedding)
-                .filter(ChatMessageEmbedding.chat_session_id == chat_session_id)
+                .filter(*filters)
                 .filter(
                     ChatMessageEmbedding.embedding.cosine_distance(query_embedding)
                     < (1 - threshold)
@@ -420,10 +424,6 @@ class PgvectorEmbeddingService:
                 .limit(limit)
                 .all()
             )
-            # Scope results to current organisation via scoped_embedding_query
-            _chat_org_id = current_org_id()
-            if _chat_org_id is not None:
-                results = [r for r in results if r.organization_id == _chat_org_id]
 
             return [
                 {
