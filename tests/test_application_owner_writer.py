@@ -242,6 +242,41 @@ def test_change_owner_type(db_session, make_org, client, login_as):
     assert resp.get_json()["owner"]["ownership_type"] == "business"
 
 
+def test_change_owner_type_duplicate_refused(db_session, make_org, client, login_as):
+    """Changing into a type the same user already holds returns 409."""
+    from app.models.application_owner import ApplicationOwner
+
+    org = make_org("own-change-dup")
+    manager = _make_user(db_session, org, "application_manager", "changedupmanager")
+    app = _make_app(db_session, org, "Change Dup Test")
+
+    db_session.add(ApplicationOwner(
+        application_id=app.id,
+        user_id=manager.id,
+        organization_id=org.id,
+        ownership_type="business",
+    ))
+    db_session.add(ApplicationOwner(
+        application_id=app.id,
+        user_id=manager.id,
+        organization_id=org.id,
+        ownership_type="technical",
+    ))
+    db_session.flush()
+    technical_owner = ApplicationOwner.query.filter_by(
+        application_id=app.id,
+        ownership_type="technical",
+    ).first()
+
+    login_as(client, manager)
+    resp = _put_json(client, f"/applications/{app.id}/owners/{technical_owner.id}", {
+        "ownership_type": "business",
+    })
+
+    assert resp.status_code == 409, resp.get_data(as_text=True)
+    assert "already assigned as business owner" in resp.get_json()["error"]
+
+
 def test_remove_owner(db_session, make_org, client, login_as):
     """An owner can be removed."""
     from app.models.application_owner import ApplicationOwner
@@ -286,44 +321,42 @@ def test_owner_picker_finds_users(db_session, make_org, client, login_as):
     org = make_org("own-picker")
     alice = _make_user(db_session, org, "application_manager", "alice")
     bob = _make_user(db_session, org, "application_manager", "bob")
-    app = _make_app(db_session, org, "Picker Test")
+    _make_app(db_session, org, "Picker Test")
     login_as(client, alice)
 
-    resp = client.get(f"/applications/{app.id}/owners/search?q=alice")
+    resp = client.get("/api/users?q=alice&limit=20")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["results"]) == 1
-    assert data["results"][0]["id"] == alice.id
+    assert len(data["users"]) == 1
+    assert data["users"][0]["id"] == alice.id
 
-    resp = client.get(f"/applications/{app.id}/owners/search?q=bob")
+    resp = client.get("/api/users?q=bob&limit=20")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["results"]) == 1
-    assert data["results"][0]["id"] == bob.id
+    assert len(data["users"]) == 1
+    assert data["users"][0]["id"] == bob.id
 
 
 def test_owner_picker_short_query_returns_empty(db_session, make_org, client, login_as):
-    """The person picker requires at least 2 characters."""
+    """The canonical user picker returns no matches for a non-matching short query."""
     org = make_org("own-short")
     manager = _make_user(db_session, org, "application_manager", "shortmgr")
-    app = _make_app(db_session, org, "Short Query")
+    _make_app(db_session, org, "Short Query")
     login_as(client, manager)
 
-    resp = client.get(f"/applications/{app.id}/owners/search?q=a")
+    resp = client.get("/api/users?q=z&limit=20")
     assert resp.status_code == 200
-    assert resp.get_json()["results"] == []
+    assert resp.get_json()["users"] == []
 
 
 def test_owner_picker_scoped_to_org(two_orgs, client, login_as):
     """The person picker only returns users within the caller's organisation."""
     login_as(client, two_orgs["manager_a"])
 
-    resp = client.get(
-        f"/applications/{two_orgs['app_a'].id}/owners/search?q={two_orgs['manager_b'].first_name}"
-    )
+    resp = client.get(f"/api/users?q={two_orgs['manager_b'].first_name}&limit=20")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["results"]) == 0, "cross-org user should not appear"
+    assert len(data["users"]) == 0, "cross-org user should not appear"
 
 
 # ── 5. Backfill command ─────────────────────────────────────────────────────
@@ -601,6 +634,59 @@ def test_edit_form_has_readonly_text_owners(db_session, make_org, client, login_
     assert "Migrated to owner records" in html
 
 
+def test_edit_post_leaves_owner_text_columns_unchanged(app, db_session, make_org, client, login_as):
+    """Posting the edit form leaves legacy owner text columns untouched."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.user import Role
+    from tests.test_cross_tenant_documents import _csrf_token
+
+    org = make_org("own-edit-legacy")
+    Role.insert_roles()
+    role_obj = Role.query.filter_by(name="Administrator").first() or Role.query.filter_by(name="User").first()
+    editor = _make_user(db_session, org, "architect", "legacyeditor")
+    editor.role_id = role_obj.id if role_obj else None
+    app_obj = _make_app(
+        db_session,
+        org,
+        "Legacy Edit",
+        business_owner="Jane Legacy",
+        technical_owner="John Legacy",
+        business_domain="Finance",
+        technology_stack="Python",
+    )
+    db_session.commit()
+
+    login_as(client, editor)
+    csrf = _csrf_token(client, app)
+    resp = client.post(
+        f"/applications/{app_obj.id}/edit",
+        data={
+            "csrf_token": csrf,
+            "updated_at": app_obj.updated_at.isoformat() if app_obj.updated_at else "",
+            "name": app_obj.name,
+            "description": app_obj.description or "",
+            "application_code": app_obj.application_code or "",
+            "application_type": app_obj.component_type or "",
+            "criticality": app_obj.business_criticality or "",
+            "technology_stack": "Python 3.12",
+            "business_owner": "Changed Legacy Business",
+            "technical_owner": "Changed Legacy Technical",
+            "business_purpose": app_obj.business_purpose or "",
+            "deployment_status": app_obj.deployment_status or "",
+            "lifecycle_status": app_obj.lifecycle_status or "",
+            "business_domain": app_obj.business_domain or "",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302, resp.get_data(as_text=True)
+
+    db_session.expire_all()
+    saved = ApplicationComponent.query.get(app_obj.id)
+    assert saved.business_owner == "Jane Legacy"
+    assert saved.technical_owner == "John Legacy"
+    assert saved.technology_stack == "Python 3.12"
+
+
 def test_edit_form_has_business_purpose(db_session, make_org, client, login_as):
     """Business purpose input is present in the edit form."""
     org = make_org("own-bp")
@@ -729,20 +815,113 @@ def test_owner_picker_escapes_special_chars(db_session, make_org, client, login_
     unique = "te_st_user_100"
     manager.first_name = unique
     db_session.flush()
-    app = _make_app(db_session, org, "Escape Test")
+    _make_app(db_session, org, "Escape Test")
     login_as(client, manager)
 
     # Searching with % should not match everything
-    resp = client.get(f"/applications/{app.id}/owners/search?q=%")
+    resp = client.get("/api/users?q=%&limit=20")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["results"]) == 0, "% wildcard should not match all users"
+    assert len(data["users"]) == 0, "% wildcard should not match all users"
 
     # Searching with _ should be literal
-    resp = client.get(f"/applications/{app.id}/owners/search?q={unique}")
+    resp = client.get(f"/api/users?q={unique}&limit=20")
     assert resp.status_code == 200
     data = resp.get_json()
-    assert len(data["results"]) == 1, "should match the exact name"
+    assert len(data["users"]) == 1, "should match the exact name"
+
+
+def test_backfill_mismatched_legacy_row_goes_to_unresolved(db_session, make_org):
+    """A legacy row pointing at another organisation's app is not backfilled."""
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org_a = make_org("own-mismatch-a")
+    org_b = make_org("own-mismatch-b")
+    user_a = _make_user(db_session, org_a, "application_manager", "mismatcha")
+    app_b = _make_app(db_session, org_b, "Foreign App")
+    unit_a = OrganizationUnit(name="Mismatch Unit", organization_id=org_a.id)
+    db_session.add(unit_a)
+    db_session.flush()
+    db_session.add(ApplicationOwnership(
+        application_id=app_b.id,
+        organization_id=org_a.id,
+        organization_unit_id=unit_a.id,
+        ownership_type="Business Owner",
+        primary_contact=f"{user_a.first_name} {user_a.last_name}",
+    ))
+    db_session.commit()
+
+    stats = backfill_owner_data(dry_run=False, organization_ids=[org_a.id])
+
+    rows = ApplicationOwner.query.filter(ApplicationOwner.organization_id == org_a.id).all()
+    assert rows == []
+    assert stats["legacy_ownership_rows"] == 0
+    assert stats["unresolved_orgs"] == 1
+
+
+def test_completeness_counts_application_owner_rows_not_legacy_text(db_session, make_org, tenant_ctx):
+    """Completeness is satisfied by owner rows and not by legacy owner text alone."""
+    from app.models.application_owner import ApplicationOwner
+    from app.models.application_portfolio import ApplicationComponent
+    from app.services.application_fact_sheet import compute_completeness
+
+    org = make_org("own-complete-owner")
+    owner_user = _make_user(db_session, org, "application_manager", "completeowner")
+    with tenant_ctx(org.id):
+        text_only = ApplicationComponent(
+            name="Legacy Owner Text",
+            organization_id=org.id,
+            application_owner="Jane Doe",
+        )
+        owner_row_app = ApplicationComponent(
+            name="Owner Row App",
+            organization_id=org.id,
+        )
+        db_session.add_all([text_only, owner_row_app])
+        db_session.flush()
+        db_session.add(ApplicationOwner(
+            application_id=owner_row_app.id,
+            user_id=owner_user.id,
+            organization_id=org.id,
+            ownership_type="primary",
+        ))
+        db_session.commit()
+
+        text_only_score = compute_completeness(text_only)
+        owner_row_score = compute_completeness(owner_row_app)
+
+        assert "Owner" in text_only_score["missing"]
+        assert "Owner" not in owner_row_score["missing"]
+        assert owner_row_score["pct"] > text_only_score["pct"]
+
+
+def test_coverage_view_matches_business_domains_with_normalized_text(db_session, make_org, client, login_as):
+    """Coverage groups apps when the domain differs only by case and whitespace."""
+    from app.models.application_owner import ApplicationOwner
+    from app.models.enterprise_intelligence import OrganizationUnit
+
+    org = make_org("own-cov-normalized")
+    cto = _make_user(db_session, org, "cto", "ctonormalized")
+    manager = _make_user(db_session, org, "application_manager", "ownernormalized")
+    app_obj = _make_app(db_session, org, "Finance App", business_domain="  finance  ")
+    db_session.add(OrganizationUnit(name="Finance", organization_id=org.id))
+    db_session.add(ApplicationOwner(
+        application_id=app_obj.id,
+        user_id=manager.id,
+        organization_id=org.id,
+        ownership_type="primary",
+    ))
+    db_session.commit()
+
+    login_as(client, cto)
+    resp = client.get("/applications/ownership-coverage")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "Finance" in html
+    assert ">1<" in html or "1%" in html
 
 
 # ── 12. Backfill collision / merge handling ─────────────────────────────────

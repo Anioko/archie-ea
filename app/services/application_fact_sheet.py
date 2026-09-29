@@ -60,7 +60,7 @@ def _owner_count(app_id: int, org_id: int) -> int:
     ).count()
 
 
-def compute_completeness(app: Any) -> Dict[str, Any]:
+def compute_completeness(app: Any, owner_count: Optional[int] = None) -> Dict[str, Any]:
     """Weighted % of key fields populated, plus the list of what is missing.
 
     The "Owner" field is considered populated when there is at least one
@@ -71,11 +71,11 @@ def compute_completeness(app: Any) -> Dict[str, Any]:
     got = 0
     total = 0
     missing: List[str] = []
-    owner_count = _owner_count(app.id, org_id) if org_id else 0
+    owner_count = owner_count if owner_count is not None else (_owner_count(app.id, org_id) if org_id else 0)
     for attr, label, weight in _COMPLETENESS_FIELDS:
         total += weight
         if attr == "application_owner":
-            if owner_count > 0 or _has_value(getattr(app, "application_owner", None)):
+            if owner_count > 0:
                 got += weight
             else:
                 missing.append(label)
@@ -205,24 +205,12 @@ def build_fact_sheet(app: Any) -> Dict[str, Any]:
     """Assemble the full fact sheet for one ApplicationComponent instance."""
     org_id = getattr(app, "organization_id", None)
     from app.models.application_owner import ApplicationOwner  # noqa: PLC0415
-    from app.utils.tenant_users import user_in_org  # noqa: PLC0415
 
-    owner_rows = ApplicationOwner.get_owners_for_application(app.id, org_id) if org_id else []
-    owner_labels = {"primary": "Primary", "backup": "Backup", "technical": "Technical", "business": "Business"}
-    application_owners = []
-    for o in owner_rows:
-        user = user_in_org(o.user_id, org_id) if o.user_id else None
-        application_owners.append({
-            "id": o.id,
-            "user_name": f"{user.first_name} {user.last_name}" if user else "Unknown",
-            "user_email": user.email if user else None,
-            "ownership_type": o.ownership_type,
-            "ownership_type_label": owner_labels.get(o.ownership_type, o.ownership_type.capitalize()),
-        })
+    application_owners = ApplicationOwner.get_display_rows_for_application(app.id, org_id) if org_id else []
 
     return {
         "app": app,
-        "completeness": compute_completeness(app),
+        "completeness": compute_completeness(app, owner_count=len(application_owners)),
         "lifecycle": _lifecycle_signal(app),
         "capabilities": _capabilities(app.id, org_id),
         "dependencies": _dependencies(app),

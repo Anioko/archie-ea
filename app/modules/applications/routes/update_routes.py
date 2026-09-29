@@ -64,22 +64,12 @@ def update_overview(id):
         if technology_stack and len(technology_stack) > 500:
             technology_stack = technology_stack[:500]
 
-        business_owner = request.form.get("business_owner", app.business_owner)
-        if business_owner and len(business_owner) > 255:
-            business_owner = business_owner[:255]
-
-        technical_owner = request.form.get("technical_owner", app.technical_owner)
-        if technical_owner and len(technical_owner) > 255:
-            technical_owner = technical_owner[:255]
-
         # Update application fields with validated values
         app.name = name
         app.description = description
         app.component_type = component_type
         app.business_criticality = business_criticality
         app.technology_stack = technology_stack
-        app.business_owner = business_owner
-        app.technical_owner = technical_owner
         app.updated_by = current_user.id
 
         db.session.commit()
@@ -301,7 +291,6 @@ def update_resources(id):
 
     try:
         # Update personnel/key resource fields
-        business_owner = request.form.get("business_owner")
         technical_lead = request.form.get("technical_lead")
         development_team = request.form.get("development_team")
         support_team = request.form.get("support_team")
@@ -310,10 +299,6 @@ def update_resources(id):
 
         # Track changes
         changes = []
-
-        if business_owner is not None and business_owner != app.business_owner:
-            app.business_owner = business_owner.strip() or None
-            changes.append("Business Owner")
 
         if technical_lead is not None and technical_lead != app.technical_lead:
             app.technical_lead = technical_lead.strip() or None

@@ -10,6 +10,7 @@ import logging
 
 from flask import g, render_template
 from flask_login import login_required
+from sqlalchemy import func
 
 from app.decorators import audit_log, role_required
 from app.modules.my_applications.services import has_assigned_owner
@@ -19,6 +20,12 @@ from app.models.user import ROLE_CTO, ROLE_PORTFOLIO_MANAGER
 from . import unified_applications_bp
 
 logger = logging.getLogger(__name__)
+
+
+def _domain_matches_unit(unit_name: str):
+    """Case- and whitespace-normalised business-domain match for one unit."""
+    normalized_unit = (unit_name or "").strip().lower()
+    return func.lower(func.trim(ApplicationComponent.business_domain)) == normalized_unit
 
 
 @unified_applications_bp.route("/ownership-coverage")
@@ -53,7 +60,7 @@ def ownership_coverage():
         unit_apps = (
             ApplicationComponent.query
             .filter(ApplicationComponent.organization_id == org_id)
-            .filter(ApplicationComponent.business_domain == unit.name)
+            .filter(_domain_matches_unit(unit.name))
             .count()
         )
         unit_owned = 0
@@ -61,7 +68,7 @@ def ownership_coverage():
             unit_owned = (
                 ApplicationComponent.query
                 .filter(ApplicationComponent.organization_id == org_id)
-                .filter(ApplicationComponent.business_domain == unit.name)
+                .filter(_domain_matches_unit(unit.name))
                 .filter(owner_predicate)
                 .count()
             )

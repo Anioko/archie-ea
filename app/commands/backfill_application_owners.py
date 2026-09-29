@@ -39,6 +39,17 @@ from app import db
 logger = logging.getLogger(__name__)
 
 
+def _application_in_org(app_id: int, org_id: int):
+    """Return the application only when it belongs to *org_id*."""
+    from app.models.application_portfolio import ApplicationComponent
+
+    return db.session.execute(
+        db.select(ApplicationComponent)
+        .where(ApplicationComponent.id == app_id)
+        .where(ApplicationComponent.organization_id == org_id)
+    ).scalar_one_or_none()
+
+
 def _resolve_user_by_name(name: str, org_id: int) -> Optional[object]:
     """Find a user in *org_id* whose display name or email matches *name*.
 
@@ -134,6 +145,17 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
             .all()
         )
         for lo in legacy_rows:
+            app_obj_lo = _application_in_org(lo.application_id, org_id)
+            if app_obj_lo is None:
+                _record_unresolved(
+                    org_id,
+                    f"App #{lo.application_id}",
+                    "application_ownership (application outside organisation)",
+                    lo.primary_contact or "(no contact)",
+                    unresolved,
+                )
+                continue
+
             # Map legacy ownership_type to the new vocabulary
             legacy_type = (lo.ownership_type or "").lower()
             type_map = {
@@ -145,9 +167,13 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
             new_type = type_map.get(legacy_type)
             if new_type is None:
                 # Unknown legacy type: go to unresolved list, never guessed
-                app_obj_lo = db.session.get(ApplicationComponent, lo.application_id)
-                app_name_lo = app_obj_lo.name if app_obj_lo else f"App #{lo.application_id}"
-                _record_unresolved(org_id, app_name_lo, "application_ownership (unknown type)", lo.primary_contact or "(no name)", unresolved)
+                _record_unresolved(
+                    org_id,
+                    app_obj_lo.name,
+                    "application_ownership (unknown type)",
+                    lo.primary_contact or "(no name)",
+                    unresolved,
+                )
                 continue
 
             # Check for existing row by provenance (source_table, source_id)
@@ -175,9 +201,7 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
             if user is None:
                 # No contact name either: record as "(no contact)"
                 display_name = contact_name if contact_name else "(no contact)"
-                app_obj = db.session.get(ApplicationComponent, lo.application_id)
-                app_name = app_obj.name if app_obj else f"App #{lo.application_id}"
-                _record_unresolved(org_id, app_name, "application_ownership", display_name, unresolved)
+                _record_unresolved(org_id, app_obj_lo.name, "application_ownership", display_name, unresolved)
                 continue
 
             # Check for duplicate (application_id, user_id, ownership_type) from any source
