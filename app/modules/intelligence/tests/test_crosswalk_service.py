@@ -164,5 +164,6 @@ def test_concurrent_write_for_same_triple_updates_instead_of_failing(
             .all()
         )
         assert len(rows) == 1
+        assert result.id == rows[0].id
         assert rows[0].element_id == element.id
         assert rows[0].confidence == 0.99
