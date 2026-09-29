@@ -537,6 +537,8 @@ class DocumentProcessor:
             prompt_tokens = len(result.prompt) // 4
             response_tokens = len(result.response_text) // 4
 
+        from app.middleware.tenant_context import current_org_id
+
         interaction = LLMInteraction(
             model_name=model_name,
             provider="gemini",
@@ -545,6 +547,7 @@ class DocumentProcessor:
             token_count_input=prompt_tokens,
             token_count_output=response_tokens,
             cost=LLMService.estimate_cost(prompt_tokens * 4, response_tokens * 4, model=model_name),
+            organization_id=current_org_id(),
         )
 
         return parsed, [interaction]

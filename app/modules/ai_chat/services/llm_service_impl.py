@@ -1687,6 +1687,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 logger.info(f"✅ API key #{idx + 1} succeeded for {provider}")
                 
                 # Create interaction record
+                from app.middleware.tenant_context import current_org_id
+
                 interaction = LLMInteraction(
                     prompt=prompt,
                     response=response_text,
@@ -1696,6 +1698,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     token_count_output=token_output,
                     cost=cost,
                     pipeline_stage_id=pipeline_stage_id,
+                    organization_id=current_org_id(),
                 )
                 
                 return response_text, interaction
@@ -1899,6 +1902,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         
         if interaction is None and pipeline_stage_id is not None:
             # Create a basic interaction record
+            from app.middleware.tenant_context import current_org_id
+
             interaction = LLMInteraction(
                 pipeline_stage_id=pipeline_stage_id,
                 model_name=model,
@@ -1909,6 +1914,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 token_count_output=0,
                 cost=0.0,
                 latency_ms=latency_ms,
+                organization_id=current_org_id(),
             )
             
             db.session.add(interaction)
@@ -2937,6 +2943,8 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             })
 
             # Create LLMInteraction record for audit
+            from app.middleware.tenant_context import current_org_id
+
             interaction = LLMInteraction(
                 provider="decision_log",
                 model_name="audit_trail",
@@ -2946,6 +2954,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 token_count_output=len(json.dumps(decision)),  # Approximate
                 cost=0.0,
                 user_id=user_id,
+                organization_id=current_org_id(),
             )
 
             db.session.add(interaction)
@@ -3032,7 +3041,12 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                             if interaction.created_at
                             else None,
                             "user_id": interaction.user_id,
-                            "project_id": interaction.project_id,
+                            # LLMInteraction has no project_id column; this
+                            # attribute never existed and reading it raised
+                            # AttributeError on every call, caught by the
+                            # bare except below, so get_decision_log always
+                            # returned [] -- pre-existing, one-line fix
+                            "project_id": getattr(interaction, "project_id", None),
                         }
                     )
                 except json.JSONDecodeError:

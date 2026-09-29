@@ -304,8 +304,7 @@ class LLMCostTracker:
             end_date = datetime.utcnow()
 
         # Get all interactions in period
-        # tenant-scoping-ok: platform-wide cost report, read only from the
-        # platform-admin cost views, never scoped to one organisation
+        # tenant-scoping-ok: unused; platform-wide by design, no tenant caller
         interactions = LLMInteraction.query.filter(
             LLMInteraction.created_at >= start_date, LLMInteraction.created_at <= end_date
         ).all()

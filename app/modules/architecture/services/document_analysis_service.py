@@ -610,6 +610,8 @@ IMPORTANT: Extract ALL elements mentioned in the document. Be thorough and compr
                         if "analysis_prompt" in locals()
                         else f"Enhanced extraction for {context} context"
                     )
+                    from app.middleware.tenant_context import current_org_id
+
                     interaction = LLMInteraction(
                         model_name=model,
                         provider=provider_name,
@@ -620,6 +622,7 @@ IMPORTANT: Extract ALL elements mentioned in the document. Be thorough and compr
                         token_count_input=len(text_content) // 4,
                         token_count_output=500,
                         cost=0.05,
+                        organization_id=current_org_id(),
                     )
                     interactions.append(interaction)
                 except ValueError as ve:
@@ -2848,10 +2851,13 @@ create a relationship: ApplicationInterface "Salesforce API" → ApplicationServ
             # Final fallback
             provider_name, model_name = provider, "unknown"
 
+        from app.middleware.tenant_context import current_org_id
+
         interaction = LLMInteraction(
             provider=provider_name,
             model_name=model_name,
             prompt=f"Spreadsheet analysis for {analysis_type}: {file_path}"[:1000],
+            organization_id=current_org_id(),
         )
 
         # Prepare analysis prompt based on analysis type
@@ -3104,11 +3110,14 @@ IMPORTANT: Extract elements from THIS CHUNK ONLY. Do not try to process the enti
         )
 
         # Create interaction record for the overall analysis
+        from app.middleware.tenant_context import current_org_id
+
         interaction = LLMInteraction(
             provider=provider,
             model_name=model,
             prompt=f"Chunked spreadsheet analysis: {len(chunks)} chunks",
             response=f"Extracted {len(unique_elements)} elements from {len(records)} records using chunking",
+            organization_id=current_org_id(),
         )
 
         return {

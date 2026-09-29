@@ -218,6 +218,8 @@ class MultiModalLLMService:
             if total is not None:
                 token_output = max(total - token_input, 0)
 
+        from app.middleware.tenant_context import current_org_id
+
         interaction = LLMInteraction(
             model_name=model,
             provider="gemini",
@@ -226,6 +228,7 @@ class MultiModalLLMService:
             token_count_input=token_input,
             token_count_output=token_output,
             cost=LLMService.estimate_cost(len(prompt), len(response_text), model=model),
+            organization_id=current_org_id(),
         )
 
         return response_text, interaction
@@ -333,6 +336,8 @@ class MultiModalLLMService:
             if total is not None:
                 token_output = max(total - token_input, 0)
 
+        from app.middleware.tenant_context import current_org_id
+
         interaction = LLMInteraction(
             model_name=model,
             provider="gemini",
@@ -341,6 +346,7 @@ class MultiModalLLMService:
             token_count_input=token_input,
             token_count_output=token_output,
             cost=LLMService.estimate_cost(token_input, token_output, model=model),
+            organization_id=current_org_id(),
         )
 
         return response_text, interaction
@@ -442,6 +448,8 @@ class MultiModalLLMService:
                 if total is not None:
                     token_output = max(total - token_input, 0)
 
+            from app.middleware.tenant_context import current_org_id
+
             interaction = LLMInteraction(
                 model_name=model,
                 provider="gemini",
@@ -450,6 +458,7 @@ class MultiModalLLMService:
                 token_count_input=token_input,
                 token_count_output=token_output,
                 cost=LLMService.estimate_cost(token_input, token_output, model=model),
+                organization_id=current_org_id(),
             )
 
             return response_text, interaction
@@ -698,6 +707,8 @@ Be conservative - only extract elements you can clearly identify. If uncertain a
                 if provider == "claude"
                 else "gpt - 4 - turbo-preview"
             )
+            from app.middleware.tenant_context import current_org_id
+
             interaction = LLMInteraction(
                 model_name=model,
                 provider="claude" if "claude" in model else "openai",
@@ -706,6 +717,7 @@ Be conservative - only extract elements you can clearly identify. If uncertain a
                 token_count_input=len(text) // 4,
                 token_count_output=500,  # Estimate
                 cost=0.05,  # Multi-pass cost
+                organization_id=current_org_id(),
             )
 
             return parsed, interaction
@@ -730,6 +742,8 @@ Be conservative - only extract elements you can clearly identify. If uncertain a
             # Create interaction record manually since we don't have async version
             from app.models import LLMInteraction
 
+            from app.middleware.tenant_context import current_org_id
+
             interaction = LLMInteraction(
                 model_name=model,
                 provider="claude" if "claude" in model else "openai",
@@ -738,6 +752,7 @@ Be conservative - only extract elements you can clearly identify. If uncertain a
                 token_count_input=len(prompt) // 4,  # Rough estimate
                 token_count_output=len(response_text) // 4,  # Rough estimate
                 cost=0.01,  # Placeholder cost
+                organization_id=current_org_id(),
             )
 
             # Parse JSON
