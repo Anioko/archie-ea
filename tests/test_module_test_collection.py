@@ -45,10 +45,7 @@ def test_every_module_test_directory_is_collected():
     )
     assert _module_test_dirs(), "no module test directories found; the layout changed"
     assert missing == [], f"module tests CI never runs: {missing}"
-
-
-def test_tests_directory_is_still_collected():
-    assert (ROOT / "tests").resolve() in _collected_dirs()
+    assert (ROOT / "tests").resolve() in collected
 
 
 def test_module_tests_get_the_shared_fixtures_from_one_bridge():

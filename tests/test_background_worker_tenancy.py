@@ -251,14 +251,8 @@ def test_batch_import_task_runs_in_the_job_owners_organisation(
     assert second["org"] == org_a.id
     assert f"A-{tag}" in second["components"] and f"B-{tag}" not in second["components"]
 
-
-def test_batch_import_task_for_a_missing_job_runs_nothing(app, monkeypatch):
-    from app.services import batch_processor_service
-    from app.tasks.import_tasks import _process_job_batches
-
-    _RecordingProcessor.seen = []
-    monkeypatch.setattr(batch_processor_service, "BatchProcessorService", _RecordingProcessor)
+    # A job that does not exist is refused before anything runs unscoped.
     with app.app_context():
-        result = _process_job_batches(2_000_000_000)
-    assert result["success"] is False
-    assert _RecordingProcessor.seen == []
+        missing = _process_job_batches(2_000_000_000)
+    assert missing["success"] is False
+    assert len(_RecordingProcessor.seen) == 2
