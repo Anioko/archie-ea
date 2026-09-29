@@ -165,6 +165,28 @@ EXCLUSIVE_SECTIONS: Dict[str, List[str]] = {
 DEFAULT_ROLE = ROLE_SOLUTION_ARCHITECT
 
 
+# R1-B12: one cost-visibility rule.  Every surface that redacts financial
+# figures (cost, budget, TCO, licence unit cost) checks this single set.
+# Previously each surface maintained its own copy of the same three roles;
+# a fourth surface that forgot to update its copy would leak cost data.
+# Import this constant — do not define a second list.
+COST_VISIBILITY_ROLES: frozenset = frozenset({
+    ROLE_CTO,
+    ROLE_PORTFOLIO_MANAGER,
+    ROLE_PLATFORM_ADMIN,
+})
+
+
+def _user_has_cost_visibility(user) -> bool:
+    """True when *user* belongs to a role that may see financial figures."""
+    from flask_login import current_user
+
+    try:
+        return get_user_role(user) in COST_VISIBILITY_ROLES
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def get_user_role(user) -> str:
     """Get user's enterprise role with fallback to default.
 
@@ -222,8 +244,17 @@ def get_visible_sections(user) -> List[str]:
 
 
 def is_admin(user) -> bool:
-    """Check if user has admin role."""
-    return get_user_role(user) == ROLE_PLATFORM_ADMIN
+    """Check if user has admin role.
+
+    R1-B12: the system of record for "is an administrator" is
+    Permission.ADMINISTER via user.is_admin().  This function delegates to it
+    rather than re-deriving the answer from enterprise_role, so every caller
+    that uses this accessor shares one authority.
+    """
+    try:
+        return bool(user.is_admin())
+    except Exception:  # noqa: BLE001 - a nav gate must not be able to 500 a page
+        return False
 
 
 # Roles whose job is to author the capability model. The capability pages used
