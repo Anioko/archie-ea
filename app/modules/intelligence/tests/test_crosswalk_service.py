@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 
 def _element(db_session, org_id: int, name: str):
@@ -51,7 +51,7 @@ def test_reimport_updates_existing_crosswalk_row_instead_of_creating_duplicate(
     from app.modules.intelligence.services.crosswalk_service import CrosswalkService
 
     org = make_org("crosswalk-rename")
-    original_seen = datetime.utcnow() - timedelta(days=2)
+    original_seen = (datetime.now(UTC) - timedelta(days=2)).replace(tzinfo=None)
     renamed_seen = original_seen + timedelta(days=1)
 
     with tenant_ctx(org.id):
@@ -107,3 +107,62 @@ def test_real_crosswalk_writer_is_clean_under_the_gate_scanner():
     )
 
     assert scan_file(str(service_path)) == []
+
+
+# crosswalk-gate-ok: test helper simulating a concurrent insert to exercise ON CONFLICT DO UPDATE
+def test_concurrent_write_for_same_triple_updates_instead_of_failing(
+    db_session, make_org, tenant_ctx
+):
+    from sqlalchemy import text
+
+    from app.models.external_identity_crosswalk import ExternalIdentityCrosswalk
+    from app.modules.intelligence.services.crosswalk_service import CrosswalkService
+
+    org = make_org("crosswalk-race")
+
+    now = datetime.now(UTC)
+    now_naive = now.replace(tzinfo=None)
+
+    with tenant_ctx(org.id):
+        element = _element(db_session, org.id, "Target App")
+
+        # Simulate a row inserted by a concurrent transaction: write it
+        # directly via raw SQL so the ORM identity map does not cache it,
+        # then call write_link for the same triple.  The INSERT … ON
+        # CONFLICT DO UPDATE must update the existing row instead of
+        # raising IntegrityError.
+        db_session.execute(
+            text(
+                "INSERT INTO external_identity_crosswalk "
+                "(organization_id, source_system, external_id, element_id, "
+                "confidence, first_seen, last_seen) "
+                "VALUES (:org_id, :source, :ext_id, :elem_id, :conf, :first, :last)"
+            ),
+            {
+                "org_id": org.id,
+                "source": "jira",
+                "ext_id": "APP-RACE",
+                "elem_id": element.id,
+                "conf": 0.5,
+                "first": now_naive,
+                "last": now_naive,
+            },
+        )
+        db_session.flush()
+
+        result = CrosswalkService.write_link(
+            "jira", "APP-RACE", element.id, confidence=0.99
+        )
+
+        rows = (
+            db_session.query(ExternalIdentityCrosswalk)
+            .filter_by(
+                organization_id=org.id,
+                source_system="jira",
+                external_id="APP-RACE",
+            )
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].element_id == element.id
+        assert rows[0].confidence == 0.99
