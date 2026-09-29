@@ -442,3 +442,11 @@ def init_cli(app):
         app.logger.info("✅ Clear foreign assignees CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
+
+    # R1-B94: Production test organisations for post-deploy cross-org check
+    try:
+        from app.commands import seed_production_test_organisations
+        seed_production_test_organisations.init_app(app)
+        app.logger.info("✅ Production test organisations seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register production test organisations seed CLI: {e}")
