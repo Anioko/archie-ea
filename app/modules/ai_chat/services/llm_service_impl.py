@@ -1643,6 +1643,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         Raises:
             RuntimeError: If ALL API keys fail
         """
+        if organization_id is not None and provider != "openrouter":
+            LLMService._check_register(provider, model, organization_id)
+
         # Track providers already tried across recursive fallback calls to prevent looping
         if _already_tried is None:
             _already_tried = []
@@ -1666,10 +1669,6 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Try each API key in sequence
         for idx, api_key in enumerate(api_keys):
             try:
-                # Provider register check before making any call
-                if organization_id is not None:
-                    LLMService._check_register(provider, model, organization_id)
-
                 logger.info(f"Trying API key #{idx + 1} for {provider}...")
                 
                 # Call the appropriate provider method
@@ -1803,14 +1802,6 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             if not fb_model:
                 continue
 
-            # Provider register check: skip blocked fallback providers
-            if organization_id is not None:
-                try:
-                    LLMService._check_register(fallback_provider, fb_model, organization_id)
-                except ProviderNotAllowed:
-                    logger.info(f"Fallback provider {fallback_provider}/{fb_model} is blocked by register — skipping")
-                    continue
-
             logger.info(f"🔄 Cross-provider fallback: trying {fallback_provider} ({fb_model})")
             try:
                 return LLMService._call_llm_with_failover(
@@ -1825,6 +1816,11 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     prompt_version=prompt_version,
                     retention_setting=retention_setting,
                 )
+            except ProviderNotAllowed:
+                logger.info(
+                    f"Fallback provider {fallback_provider}/{fb_model} is blocked by register — skipping"
+                )
+                continue
             except Exception as fb_err:
                 logger.warning(f"Cross-provider fallback to {fallback_provider} also failed: {str(fb_err)[:80]}")
                 continue
@@ -1878,15 +1874,10 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # Resolve organisation from request context
         organization_id = LLMService._resolve_org_id()
 
-        # Gateway: check provider register restriction before calling LLM
-        if organization_id is not None:
-            from app.models.model_provider import ModelProvider
-            if not ModelProvider.is_allowed_for_org(provider, model, organization_id):
-                raise ValueError(
-                    f"Provider '{provider}/{model}' is not allowed for "
-                    f"organisation {organization_id}. "
-                    f"Contact your administrator to update the provider register."
-                )
+        if prompt_version is None:
+            prompt_version = "unknown"
+        if retention_setting is None:
+            retention_setting = "30d"
 
         # Initialize cost tracker
         cost_tracker = LLMCostTracker()
@@ -1974,10 +1965,6 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         # If interaction wasn't created by failover (no pipeline_stage_id), create it now
         latency_ms = int((time.time() - start_time) * 1000)
 
-        # Default retention_setting from org config, never NULL for a new row
-        if retention_setting is None:
-            retention_setting = "30d"  # sensible default; configurable per org/provider
-
         # Persist interaction in a nested transaction so we never
         # commit the caller's pending work.  If a savepoint is not available
         # (e.g. the db_session fixture's outer transaction), fall through to
@@ -1986,15 +1973,18 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
             try:
                 with db.session.begin_nested():
                     fn()
-                db.session.commit()  # flush the savepoint
+                    db.session.flush()
             except Exception as exc:
                 logger.error("Failed to persist LLM interaction: %s", exc)
-                db.session.rollback()
 
         if interaction is not None:
             # Primary path: interaction was created by _call_llm_with_failover
             # but was not yet persisted or given latency.
             interaction.latency_ms = latency_ms
+            if interaction.prompt_version is None:
+                interaction.prompt_version = prompt_version
+            if interaction.retention_setting is None:
+                interaction.retention_setting = retention_setting
 
             def _save_interaction():
                 db.session.add(interaction)

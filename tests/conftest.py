@@ -84,27 +84,6 @@ def _schema(app):
         db.create_all()
     return True
 
-
-def _add_column_if_not_exists(engine, table, column, definition):
-    """Add *column* to *table* if it does not already exist."""
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    if column not in {c["name"] for c in inspector.get_columns(table)}:
-        with engine.connect() as conn:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {definition}"))
-            conn.commit()
-
-
-def _create_table_if_not_exists(engine, table, ddl):
-    """Create *table* if it does not already exist."""
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    if table not in inspector.get_table_names():
-        with engine.connect() as conn:
-            conn.execute(text(ddl))
-            conn.commit()
-
-
 @pytest.fixture
 def db_session(app, _schema):
     """A database session whose work is always rolled back.
