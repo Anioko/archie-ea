@@ -97,7 +97,9 @@ SKIP_DIRS = ("app/models/", "app/commands/", "app/_bootstrap/")
 AMBIGUOUS: set[str] = set()
 
 # Global reference data: shared by every organisation by design. Each needs a reason.
-GLOBAL_MODELS: dict[str, str] = {}
+GLOBAL_MODELS: dict[str, str] = {
+    "SecurityFinding": "platform-level security finding register: facts about the platform itself, the same for every organisation, written only by security architects and platform administrators",
+}
 
 
 class ModelInfo:
