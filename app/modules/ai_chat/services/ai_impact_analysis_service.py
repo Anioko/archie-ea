@@ -221,7 +221,7 @@ class AIImpactAnalysisService:
         """
         Perform graph-based dependency analysis using the canonical cross_layer_impact walk.
 
-        Repointed to IntelligenceQueryService.cross_layer_impact (R1-B11) — the one
+        Repointed to IntelligenceQueryService.cross_layer_impact — the one
         engine for impact traversal, replacing the previous RelationshipService path.
         """
         if not app.archimate_element_id:

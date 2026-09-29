@@ -47,7 +47,7 @@ class ImpactAnalysisService:
         Returns:
             Full impact analysis with risk assessment
         """
-        # Repointed to the canonical cross_layer_impact walk (R1-B11).
+        # Repointed to the canonical cross_layer_impact walk.
         # max_depth=3 in cross_layer_impact (3 hops) matches the old
         # _get_dependencies(depth=4) which returned levels 2-4 (3 hops from seed).
         from app.modules.intelligence.services.query_service import IntelligenceQueryService

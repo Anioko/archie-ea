@@ -28,7 +28,7 @@ from sqlalchemy import event
 FOUR_KEYS = {"id", "name", "type", "layer"}
 
 # The row and relation shapes the impact endpoint returns.
-ROW_KEYS = {"element_id", "relation", "owner", "reason"}
+ROW_KEYS = {"element_id", "relation", "owner", "reason", "health"}
 RELATION_KEYS = {
     "kind", "type", "depth", "rule_id", "chain", "chain_elements", "confidence",
     "provenance", "computed_at", "stale", "derived_id", "engine_version", "plain_terms",
