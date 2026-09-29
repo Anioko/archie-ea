@@ -55,6 +55,13 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # Traceability check and element properties: @login_required and no role
+    # gate on the page, so every archetype reads them; the answer is fenced
+    # per tenant by the service behind each page. Saving a property definition
+    # is role-gated on its POST route and pinned in
+    # tests/test_metamodel_properties.py.
+    "/intelligence/traceability": set(ARCHETYPES),
+    "/metamodel/properties":   set(ARCHETYPES),
     # ArchiMate OEF import (dogfood-import-fixes, Task 01; retired as its own
     # screen by T-L1-IMPORT-OPS): this URL now redirects to the canonical
     # import screen at /architecture/import/oef, which carries the same
@@ -126,11 +133,16 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
-    # Data-subject requests and the personal-data trace: the Data Protection
+# Data-subject requests and the personal-data trace: the Data Protection
     # Officer's work, carried by the security architect persona (it owns the
     # compliance section). Every other persona is denied.
     "/compliance/data-subject-requests": {"security_architect"},
     "/compliance/personal-data-trace":   {"security_architect"},
+    # Service status: current platform health, incident history and a
+    # subscribe action. @login_required and no role gate -- every signed-in
+    # persona reaches it from the sidebar footer. The state it shows is
+    # platform-wide; the only thing a user changes is their own subscription.
+    "/status":                 set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
