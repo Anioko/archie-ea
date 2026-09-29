@@ -213,15 +213,16 @@
             {% if elements %}
             <div class="space-y-2">
                 {% for el in elements %}
-                <div class="flex items-center gap-3 p-2.5 rounded-md bg-muted/40 hover:bg-muted transition-colors">
+                <div class="flex items-center gap-3 p-2.5 rounded-md bg-muted/40 hover:bg-muted transition-colors" data-decision-element>
                     <div class="flex-1 min-w-0">
-                        <span class="font-medium text-sm text-foreground">{{ el.name }}</span>
+                        <a href="{{ url_for('archimate.element_impact_graph_page', element_id=el.id) }}"
+                           class="font-medium text-sm text-primary hover:underline break-words">{{ el.name }}</a>
                     </div>
                     {% if el.layer %}
                     <span class="text-xs px-2 py-0.5 rounded bg-secondary text-secondary-foreground">{{ el.layer }}</span>
                     {% endif %}
-                    {% if el.element_type %}
-                    <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ el.element_type }}</span>
+                    {% if el.type %}
+                    <span class="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{{ el.type }}</span>
                     {% endif %}
                 </div>
                 {% endfor %}

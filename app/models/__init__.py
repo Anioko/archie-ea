@@ -447,3 +447,8 @@ else:
     # app/modules/data_lineage/services.py.
     from .waitlist_signup import WaitlistSignup  # noqa: F401
     from .pending_invitation import PendingInvitation  # noqa: F401
+    from .account_token import AccountToken  # noqa: F401
+
+    # The one audit store. Imported at boot so its integrity-chain and
+    # copy-from-other-audit-stores hooks are registered before any insert.
+    from .audit_log import AuditLog  # noqa: F401
