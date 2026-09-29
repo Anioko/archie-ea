@@ -69,6 +69,19 @@ _SHARED_EMBEDDING_TABLES = {
     VendorOrganizationEmbedding,
 }
 
+# Canonical table-name classification (used by rag_engine.py and elsewhere)
+TENANT_EMBEDDING_TABLE_NAMES = {
+    "business_capability_embeddings",
+    "solution_embeddings",
+    "application_component_embeddings",
+    "chat_message_embeddings",
+}
+SHARED_EMBEDDING_TABLE_NAMES = {
+    "vendor_product_embeddings",
+    "process_embeddings",
+    "vendor_organization_embeddings",
+}
+
 
 def scoped_embedding_query(model_cls):
     """Return a base query on *model_cls* filtered to the current organisation.

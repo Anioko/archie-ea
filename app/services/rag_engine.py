@@ -33,7 +33,11 @@ from sqlalchemy.orm import relationship
 from ... import db
 from .llm_cache import get_llm_cache
 from .llm_service import get_llm_service
-from .pgvector_embedding_service import get_embedding_model  # dead-code-ok
+from .pgvector_embedding_service import (
+    SHARED_EMBEDDING_TABLE_NAMES,
+    TENANT_EMBEDDING_TABLE_NAMES,
+    get_embedding_model,  # dead-code-ok
+)
 from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
@@ -78,19 +82,10 @@ EMBEDDING_TABLES = {
     ),
 }
 
-# Tenant embedding tables (strict org equality)
-_TENANT_EMBEDDING_TABLES_SQL = {
-    "application_component_embeddings",
-    "business_capability_embeddings",
-    "solution_embeddings",
-    "chat_message_embeddings",
-}
-# Shared embedding tables (NULL-or-org)
-_SHARED_EMBEDDING_TABLES_SQL = {
-    "process_embeddings",
-    "vendor_product_embeddings",
-    "vendor_organization_embeddings",
-}
+# Tenant/shared embedding table classification imported from
+# pgvector_embedding_service (canonical location).
+_TENANT_EMBEDDING_TABLES_SQL = TENANT_EMBEDDING_TABLE_NAMES
+_SHARED_EMBEDDING_TABLES_SQL = SHARED_EMBEDDING_TABLE_NAMES
 
 
 def _org_predicate(table_name: str) -> str:
