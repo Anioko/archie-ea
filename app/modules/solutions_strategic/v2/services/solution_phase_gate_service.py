@@ -22,6 +22,12 @@ PHASE_LABELS = {
 }
 
 
+def _normalize_phase_letter(phase_letter):
+    """Return a valid phase letter, defaulting unknown values to phase A."""
+    normalized = str(phase_letter or "A").upper()[:1]
+    return normalized if normalized in PHASE_ORDER else "A"
+
+
 def _count_drivers(solution):
     """Count SolutionDriver records linked via analysis session."""
     if not solution.analysis_session_id:
@@ -315,9 +321,7 @@ class SolutionPhaseGateService:
             }
         """
         solution = Solution.query.get_or_404(solution_id)
-        phase_letter = str(phase_letter or "A").upper()[:1]
-        if phase_letter not in PHASE_ORDER:
-            phase_letter = "A"
+        phase_letter = _normalize_phase_letter(phase_letter)
 
         checks = GATE_DEFINITIONS.get(phase_letter, [])
         idx = PHASE_ORDER.index(phase_letter)
@@ -372,7 +376,7 @@ class SolutionPhaseGateService:
         current adm_phase automatically.
         """
         solution = Solution.query.get_or_404(solution_id)
-        current_phase = solution.adm_phase or "A"
+        current_phase = _normalize_phase_letter(solution.adm_phase)
         return self.check_gate(solution_id, current_phase)
 
     def get_all_phases_status(self, solution_id):
@@ -383,9 +387,8 @@ class SolutionPhaseGateService:
         is 'completed', 'current', or 'upcoming'.
         """
         solution = Solution.query.get_or_404(solution_id)
-        current_phase = solution.adm_phase or "A"
+        current_phase = _normalize_phase_letter(solution.adm_phase)
         completed_phases = solution.adm_phases_completed
-        PHASE_ORDER.index(current_phase)
 
         results = []
         for i, letter in enumerate(PHASE_ORDER):
