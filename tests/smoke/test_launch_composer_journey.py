@@ -55,12 +55,17 @@ def _drop_from_palette(page, label, x, y):
 
 def _add_new(page, label, name, x, y):
     overlay = _drop_from_palette(page, label, x, y)
-    overlay.get_by_label("New Element Name").fill(name)
+    field = overlay.get_by_label("New Element Name")
+    expect(field).to_be_visible(timeout=PAGE_TIMEOUT)
+    field.click()
+    field.press_sequentially(name, delay=15)
+    create = overlay.locator(".search-create-btn")
+    expect(create).to_be_enabled(timeout=PAGE_TIMEOUT)
     with page.expect_response(
         lambda r: "/api/architecture-assistant/create-element" in r.url and r.request.method == "POST",
         timeout=PAGE_TIMEOUT,
     ) as resp:
-        overlay.locator(".search-create-btn").click()
+        create.click()
     assert resp.value.status < 400, "element create failed: %d %s" % (resp.value.status, resp.value.text()[:300])
     expect(_node(page, name)).to_be_visible(timeout=PAGE_TIMEOUT)
 

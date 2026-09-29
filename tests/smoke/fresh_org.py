@@ -38,18 +38,21 @@ def create_fresh_org(enterprise_role, *, org_admin=False, extra_roles=()):
         out["org_id"] = org.id
         for role in (enterprise_role,) + tuple(extra_roles):
             email = "launch.%s.%s@example.com" % (role.replace("_", "-"), suffix)
+            is_org_admin = bool(org_admin and role == enterprise_role)
             user = User(email=email, first_name="Launch", last_name=role[:12],
                         organization_id=org.id, enterprise_role=role, confirmed=True)
             user.role = architect_role
-            user.is_org_admin = bool(org_admin and role == enterprise_role)
+            user.is_org_admin = is_org_admin
             user.password = PASSWORD
             db.session.add(user)
+            db.session.flush()
+            user_id = user.id
             db.session.commit()
-            if user.is_org_admin:
-                OrgRole.set_role(org.id, user.id, "org_admin", granted_by_id=user.id)
+            if is_org_admin:
+                OrgRole.set_role(org.id, user_id, "org_admin", granted_by_id=user_id)
                 db.session.commit()
             out["emails"][role] = email
-            out["user_ids"][role] = user.id
+            out["user_ids"][role] = user_id
         db.session.remove()
     return out
 

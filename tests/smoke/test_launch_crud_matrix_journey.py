@@ -35,11 +35,13 @@ def _add_application(page, base, name):
     modal = page.locator("#modal-create")
     expect(modal).to_be_visible(timeout=PAGE_TIMEOUT)
     modal.locator("#ca-name").fill(name)
-    with page.expect_response(
-        lambda r: "/applications/create" in r.url and r.request.method == "POST", timeout=PAGE_TIMEOUT,
-    ) as resp:
-        modal.get_by_role("button", name="Submit").click()
+    with page.expect_navigation(timeout=PAGE_TIMEOUT):
+        with page.expect_response(
+            lambda r: "/applications/create" in r.url and r.request.method == "POST", timeout=PAGE_TIMEOUT,
+        ) as resp:
+            modal.get_by_role("button", name="Add Application", exact=True).click()
     assert resp.value.status < 400, "application create failed: %d %s" % (resp.value.status, resp.value.text()[:300])
+    page.wait_for_load_state("networkidle", timeout=PAGE_TIMEOUT)
 
 
 def _record(page, app_name, operations):
