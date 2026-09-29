@@ -175,3 +175,76 @@ def test_the_backfill_derives_each_tenant_from_the_capability_and_never_guesses(
 
     assert analyses == {100: 10, 101: None}
     assert inputs == {1000: 10, 1001: None}
+
+
+# -- VendorOption: fenced through its analysis, not through a column of its own -------
+
+
+def _option(db_session, analysis, *, vendor_name, total_score=77.0, vendor_organization_id=None):
+    from app.models.vendor_analysis import VendorOption
+
+    option = VendorOption(
+        analysis_id=analysis.id, vendor_name=vendor_name, total_score=total_score,
+        vendor_organization_id=vendor_organization_id,
+    )
+    db_session.add(option)
+    db_session.flush()
+    return option
+
+
+def test_vendor_ranking_and_score_do_not_cross_organisations(app, db_session, login_as, client):
+    """The reproduced leak: /api/vendors/ranking and /<id>/score read VendorOption with no
+    predicate of its own; the fence has to come from a join to the tenant-fenced analysis."""
+    org_a, org_b = _org(db_session, "vopt-a"), _org(db_session, "vopt-b")
+    user_a = _user(db_session, org_a, role_name="Administrator")
+    user_b = _user(db_session, org_b, role_name="Administrator")
+    analysis_a, analysis_b = _analysis(db_session, org_a, user_a), _analysis(db_session, org_b, user_b)
+
+    from app.models.vendor.vendor_organization import VendorOrganization
+
+    vendor = VendorOrganization(name=f"Vendor {uuid.uuid4().hex[:8]}")
+    db_session.add(vendor)
+    db_session.flush()
+
+    _option(db_session, analysis_a, vendor_name="OWN-VENDOR-A", vendor_organization_id=vendor.id)
+    _option(db_session, analysis_b, vendor_name="SECRET-VENDOR-B", vendor_organization_id=vendor.id)
+    db_session.commit()
+
+    login_as(client, user_a)
+    ranking = client.get("/api/vendors/ranking")
+    score = client.get(f"/api/vendors/{vendor.id}/score")
+
+    assert ranking.status_code == 200
+    ranked_names = [row["vendor_name"] for row in ranking.get_json()["ranking"]]
+    assert "OWN-VENDOR-A" in ranked_names
+    assert "SECRET-VENDOR-B" not in ranked_names
+
+    assert score.status_code == 200
+    scored_names = [row["vendor_name"] for row in score.get_json()["scores"]]
+    assert "OWN-VENDOR-A" in scored_names
+    assert "SECRET-VENDOR-B" not in scored_names
+
+
+def test_compare_options_skips_a_foreign_option_id(app, db_session, tenant_ctx):
+    """The reproduced leak: compare_options resolves option_ids (request-supplied) with a bare
+    db.session.get(VendorOption, ...); a foreign id must be skipped, not resolved. The isolation
+    listener is a deliberate no-op with no ambient g.current_org_id, so this must run inside
+    tenant_ctx, the same as a real request would."""
+    from app.services.architecture_assistant_service import ArchitectureAssistantService
+
+    org_a, org_b = _org(db_session, "cmp-a"), _org(db_session, "cmp-b")
+    user_a = _user(db_session, org_a, role_name="Administrator")
+    user_b = _user(db_session, org_b, role_name="Administrator")
+    analysis_a, analysis_b = _analysis(db_session, org_a, user_a), _analysis(db_session, org_b, user_b)
+
+    own = _option(db_session, analysis_a, vendor_name="OWN-OPTION")
+    foreign = _option(db_session, analysis_b, vendor_name="SECRET-FOREIGN-OPTION")
+    db_session.commit()
+
+    service = ArchitectureAssistantService()
+    with tenant_ctx(org_a.id):
+        result = service.compare_options(option_ids=[own.id, foreign.id])
+
+    names = [o["vendor_name"] for o in result["options"]]
+    assert "OWN-OPTION" in names
+    assert "SECRET-FOREIGN-OPTION" not in names
