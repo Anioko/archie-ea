@@ -82,6 +82,58 @@ def test_no_tenant_context_does_not_poison_a_tenant_entry(app, db_session, two_t
     assert compute_nav_counts(small.id)["applications"] == 1
 
 
+def test_unknown_organisation_never_returns_global_tenant_counts(app, db_session, make_org):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.business_capabilities import BusinessCapability
+
+    before = {
+        "applications": db_session.query(ApplicationComponent).count(),
+        "elements": db_session.query(ArchiMateElement).count(),
+        "capabilities": db_session.query(BusinessCapability).count(),
+    }
+
+    first = make_org("nav-unknown-a")
+    second = make_org("nav-unknown-b")
+    db_session.add_all([
+        ApplicationComponent(name="First app", organization_id=first.id),
+        ApplicationComponent(name="Second app", organization_id=second.id),
+        ArchiMateElement(
+            name="First element",
+            type="ApplicationComponent",
+            organization_id=first.id,
+        ),
+        ArchiMateElement(
+            name="Second element",
+            type="ApplicationComponent",
+            organization_id=second.id,
+        ),
+        BusinessCapability(name="First capability", organization_id=first.id),
+        BusinessCapability(name="Second capability", organization_id=second.id),
+    ])
+    db_session.commit()
+
+    global_counts = {
+        "applications": db_session.query(ApplicationComponent).count(),
+        "elements": db_session.query(ArchiMateElement).count(),
+        "capabilities": db_session.query(BusinessCapability).count(),
+    }
+    assert global_counts["applications"] > before["applications"]
+    assert global_counts["elements"] > before["elements"]
+    assert global_counts["capabilities"] > before["capabilities"]
+
+    counts = compute_nav_counts(None)
+
+    assert counts["applications"] == 0
+    assert counts["elements"] == 0
+    assert counts["capabilities"] == 0
+    assert {
+        "applications": counts["applications"],
+        "elements": counts["elements"],
+        "capabilities": counts["capabilities"],
+    } != global_counts, "unknown organisation leaked another tenant's totals"
+
+
 def test_a_record_created_after_a_read_is_counted_on_the_next_read(
     app, db_session, two_tenants
 ):

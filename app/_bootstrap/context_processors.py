@@ -103,9 +103,10 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
             return dict(hit["data"])
 
     def _scoped(model):
+        if org_id is None:
+            return 0
         q = db.session.query(db.func.count(model.id))
-        if org_id is not None:
-            q = q.filter(model.organization_id == org_id)
+        q = q.filter(model.organization_id == org_id)
         return q.scalar() or 0
 
     counts = {

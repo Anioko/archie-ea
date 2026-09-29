@@ -31,6 +31,9 @@ def _workspace_counts_available() -> bool:
     whether it worked. An unreadable count is never treated as an empty
     workspace.
     """
+    if getattr(g, "current_org_id", None) is None:
+        return False
+
     try:
         from app._bootstrap.context_processors import compute_nav_counts
 

@@ -319,6 +319,16 @@ def test_unreadable_counts_never_read_as_an_empty_workspace(
     assert "Nothing is modelled yet" not in html
 
 
+def test_unknown_organisation_makes_workspace_counts_unavailable(app):
+    from flask import g
+
+    from app.modules.intelligence.routes.ui import _workspace_counts_available
+
+    with app.test_request_context("/intelligence/ask"):
+        g.current_org_id = None
+        assert _workspace_counts_available() is False
+
+
 # --- what a person reads ----------------------------------------------------
 
 # Page copy is written for the people who use the page. It carries no status
