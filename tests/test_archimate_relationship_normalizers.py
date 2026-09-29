@@ -25,3 +25,11 @@ def test_routes_normalize_relationship_aliases_to_canonical_lowercase():
     assert _normalize_rel_type("Uses") == "serving"
     assert _normalize_rel_type("Realises") == "realization"
     assert _normalize_rel_type("RealisationRelationship") == "realization"
+
+
+def test_viewpoint_service_normalizes_relationship_aliases_to_canonical_lowercase():
+    from app.services.archimate_viewpoint_service import _normalize_rel_type
+
+    assert _normalize_rel_type("Uses") == "serving"
+    assert _normalize_rel_type("RealisationRelationship") == "realization"
+    assert _normalize_rel_type(None) == "association"
