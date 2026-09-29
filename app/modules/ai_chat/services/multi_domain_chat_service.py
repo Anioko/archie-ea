@@ -6435,6 +6435,12 @@ Instructions:
         Each provider has a slightly different multi-content message format.
         Returns the assistant's text response.
         """
+        provider, model, _ = LLMService._guard_provider_call(
+            provider,
+            model,
+            prompt=system_prompt + "\n\n" + user_message,
+        )
+
         if provider == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)

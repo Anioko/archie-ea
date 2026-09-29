@@ -1,14 +1,15 @@
 """Gateway bypass enumeration -- AST-based scanning.
 
-Scans the codebase with the `ast` module for:
-1. Provider SDK constructors: `OpenAI(`, `Anthropic(`, `genai.GenerativeModel`,
-   `SentenceTransformer(`
-2. Provider SDK calls: `.chat.completions.create`, `.messages.create`, `.embeddings.create`
-3. Gateway bypass calls: `LLMService._call_<provider>(` and
-   `_call_llm_with_failover(` outside llm_service_impl.py
+Scans the codebase with the `ast` module for direct provider calls that do not
+go through the shared provider-register guard helper. It covers:
 
-Every bypass site must be accounted for in `EXPECTED_BYPASSES` or the
-gateway file. A site not listed is a defect.
+1. SDK method calls such as `.chat.completions.create`, `.messages.create`,
+   `.embeddings.create`, `.generate_content`, and `openai.Model.list()`.
+2. Raw `requests`/`http_requests` calls to provider hosts such as OpenAI,
+   Anthropic, OpenRouter, Gemini, and DeepSeek.
+
+Every discovered direct provider call must sit in a function that invokes
+`LLMService._guard_provider_call(...)` before the outbound call.
 """
 
 from __future__ import annotations
@@ -35,12 +36,49 @@ SKIP_DIR_PREFIXES = (
     "migrations/",
 )
 
-# Files that still contain direct model calls pending remediation
-R1_BYPASS_FILES = {
-    "app/modules/ai_chat/services/agent_runner.py",
-    "app/modules/ai_chat/services/multi_domain_chat_service.py",
-    "app/modules/ai_chat/services/ai_chat_multi_model.py",
+GUARD_HELPER = "_guard_provider_call"
+
+REQUEST_TARGETS = {
+    "requests.get",
+    "requests.post",
+    "requests.put",
+    "requests.delete",
+    "http_requests.get",
+    "http_requests.post",
+    "http_requests.put",
+    "http_requests.delete",
 }
+
+RAW_PROVIDER_HOST_MARKERS = (
+    "api.openai.com",
+    "api.anthropic.com",
+    "openrouter.ai",
+    "generativelanguage.googleapis.com",
+    "api.deepseek.com",
+    "GENERATIVE_BASE_URL",
+    "UPLOAD_BASE_URL",
+)
+
+NON_PROMPT_SURFACES = {
+    "app/api/v1/llm.py",
+    "app/services/infrastructure_polling_service.py",
+}
+
+REQUIRED_GUARDED_CALLS = [
+    ("app/modules/ai_chat/services/agent_runner.py", "client.messages.create", 1, "assistant agent anthropic call"),
+    ("app/modules/ai_chat/services/agent_runner.py", "client.chat.completions.create", 2, "assistant agent openai-compatible call"),
+    ("app/modules/ai_chat/services/ai_chat_multi_model.py", "self.openai_client.chat.completions.create", 1, "multi-model openai call"),
+    ("app/modules/ai_chat/services/ai_chat_multi_model.py", "self.anthropic_client.messages.create", 1, "multi-model anthropic call"),
+    ("app/modules/ai_chat/services/ai_semantic_discovery_service.py", "openai.Model.list", 1, "semantic discovery availability probe"),
+    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "client.chat.completions.create", 1, "vision openai call"),
+    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "client.messages.create", 1, "vision anthropic call"),
+    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "gen_model.generate_content", 1, "vision gemini call"),
+    ("app/modules/architecture/services/gemini_file_search_service.py", "raw-provider-http", 4, "gemini file search HTTP calls"),
+    ("app/modules/architecture/services/inference_providers.py", "client.messages.create", 1, "inference anthropic call"),
+    ("app/modules/architecture/services/inference_providers.py", "client.chat.completions.create", 1, "inference openai call"),
+    ("app/modules/architecture/services/multi_modal_llm_service.py", "raw-provider-http", 5, "multi-modal gemini HTTP calls"),
+    ("app/services/vector_embedding_service.py", "client.embeddings.create", 1, "embedding openai call"),
+]
 
 # ---------------------------------------------------------------------------
 # Expected bypass site list
@@ -55,61 +93,7 @@ R1_BYPASS_FILES = {
 # so adding blank lines or reordering code within a file does not break it.
 # ---------------------------------------------------------------------------
 
-EXPECTED_BYPASSES = [
-    # Provider SDK constructors - assistant agent work
-    ("app/modules/ai_chat/services/agent_runner.py", "OpenAI(", 2, "assistant agent work"),
-    ("app/modules/ai_chat/services/agent_runner.py", "Anthropic(", 2, "assistant agent work"),
-    # Provider SDK constructors - multi-model chat service
-    ("app/modules/ai_chat/services/ai_chat_multi_model.py", "OpenAI(", 1, "multi-model chat service"),
-    ("app/modules/ai_chat/services/ai_chat_multi_model.py", "Anthropic(", 1, "multi-model chat service"),
-    # Provider SDK constructors - multi-domain chat service
-    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "OpenAI(", 1, "multi-domain chat service"),
-    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "Anthropic(", 1, "multi-domain chat service"),
-    ("app/modules/ai_chat/services/multi_domain_chat_service.py", "genai.GenerativeModel", 1, "multi-domain chat service"),
-    # Provider SDK constructors - inference provider setup
-    ("app/modules/architecture/services/inference_providers.py", "Anthropic(", 1, "inference provider setup"),
-    ("app/modules/architecture/services/inference_providers.py", "OpenAI(", 1, "inference provider setup"),
-    # Provider SDK constructors - vector embedding service
-    ("app/services/vector_embedding_service.py", "OpenAI(", 1, "vector embedding service"),
-    ("app/services/vector_embedding_service.py", "SentenceTransformer(", 2, "vector embedding service"),
-    # Provider SDK constructors - pgvector embedding service
-    ("app/services/pgvector_embedding_service.py", "SentenceTransformer(", 1, "pgvector embedding service"),
-    # Provider SDK constructors - chromadb embedding service
-    ("app/services/chromadb_apqc_service.py", "SentenceTransformer(", 1, "chromadb embedding service"),
-    # Provider SDK constructors - faiss embedding service
-    ("app/services/faiss_apqc_service.py", "SentenceTransformer(", 1, "faiss embedding service"),
-    # Provider SDK constructors - semantic vendor discovery
-    ("app/modules/vendors/services/semantic_vendor_discovery.py", "SentenceTransformer(", 1, "semantic vendor discovery"),
-    # Provider SDK constructors - conversation history embedding
-    ("app/services/conversation_history.py", "SentenceTransformer(", 1, "conversation history embedding"),
-    # Provider SDK constructors - duplicate detection embedding
-    ("app/modules/duplicate_detection/services/ai_duplicate_detection_service.py", "SentenceTransformer(", 1, "duplicate detection embedding"),
-    # Provider SDK constructors - semantic discovery embedding
-    ("app/modules/ai_chat/services/ai_semantic_discovery_service.py", "SentenceTransformer(", 1, "semantic discovery embedding"),
-    # Provider SDK constructors - mapping routes embedding
-    ("app/modules/capabilities/routes/mapping_routes.py", "SentenceTransformer(", 1, "mapping routes embedding"),
-    # Provider SDK calls - assistant agent work
-    ("app/modules/ai_chat/services/agent_runner.py", ".messages.create", 1, "assistant agent work"),
-    ("app/modules/ai_chat/services/agent_runner.py", ".chat.completions.create", 2, "assistant agent work"),
-    # Provider SDK calls - multi-model chat service
-    ("app/modules/ai_chat/services/ai_chat_multi_model.py", ".chat.completions.create", 1, "multi-model chat service"),
-    ("app/modules/ai_chat/services/ai_chat_multi_model.py", ".messages.create", 1, "multi-model chat service"),
-    # Provider SDK calls - multi-domain chat service
-    ("app/modules/ai_chat/services/multi_domain_chat_service.py", ".chat.completions.create", 1, "multi-domain chat service"),
-    ("app/modules/ai_chat/services/multi_domain_chat_service.py", ".messages.create", 1, "multi-domain chat service"),
-    # Provider SDK calls - inference provider setup
-    ("app/modules/architecture/services/inference_providers.py", ".messages.create", 1, "inference provider setup"),
-    ("app/modules/architecture/services/inference_providers.py", ".chat.completions.create", 1, "inference provider setup"),
-    # Provider SDK calls - vector embedding service
-    ("app/services/vector_embedding_service.py", ".embeddings.create", 1, "vector embedding service"),
-    # Gateway bypass - _call_llm_with_failover outside llm_service_impl
-    ("app/modules/ai_chat/services/agent_runner.py", "_call_llm_with_failover", 1, "assistant agent work"),
-    ("app/services/technology_analyzer.py", "_call_llm_with_failover", 2, "technology analyzer gateway bypass"),
-    ("app/services/capability_design_composition_service.py", "_call_llm_with_failover", 1, "capability design composition gateway bypass"),
-    ("app/services/intelligent_analyzer.py", "_call_llm_with_failover", 1, "intelligent analyzer gateway bypass"),
-    ("app/modules/applications/services/application_architecture_mapper.py", "_call_llm_with_failover", 1, "application architecture mapper gateway bypass"),
-    ("app/modules/applications/services/application_capability_mapper.py", "_call_llm_with_failover", 1, "application capability mapper gateway bypass"),
-]
+EXPECTED_BYPASSES = []
 
 # ---- helpers ------------------------------------------------------------
 
@@ -158,31 +142,84 @@ def _is_sentence_transformer(name):
     return name.endswith(".SentenceTransformer")
 
 
-SDK_CONSTRUCTOR_PATTERNS = [
-    ("OpenAI(", _is_openai_constructor),
-    ("Anthropic(", _is_anthropic_constructor),
-    ("genai.GenerativeModel", _is_genai_generative_model),
-    ("SentenceTransformer(", _is_sentence_transformer),
-]
-
 SDK_CALL_PATTERNS = [
     ".chat.completions.create",
     ".messages.create",
     ".embeddings.create",
+    ".generate_content",
+    "Model.list",
 ]
 
-GATEWAY_BYPASS_FNS = [
-    "_call_llm_with_failover",
-]
 
-LLMSERVICE_PROVIDER_CALLS = [
-    "LLMService._call_openi",
-    "LLMService._call_anthropic",
-    "LLMService._call_gemini",
-    "LLMService._call_deepsek",
-    "LLMService._call_huggingface",
-    "LLMSerice._call_openruter",
-]
+def _is_provider_sdk_call(target):
+    return any(target.endswith(pat) for pat in SDK_CALL_PATTERNS)
+
+
+def _contains_provider_host(segment: str | None) -> bool:
+    if not segment:
+        return False
+    return any(marker in segment for marker in RAW_PROVIDER_HOST_MARKERS)
+
+
+def _is_raw_provider_http_call(node, target, source):
+    if target not in REQUEST_TARGETS:
+        return None
+    segment = ast.get_source_segment(source, node)
+    if _contains_provider_host(segment):
+        return "raw-provider-http"
+    return None
+
+
+def _scan_callable(node, rel, source):
+    has_guard = False
+    findings = []
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        target = _resolve_call_target(sub.func)
+        if target is None:
+            continue
+        if target.endswith(GUARD_HELPER):
+            has_guard = True
+            continue
+        if _is_provider_sdk_call(target):
+            findings.append((rel, sub.lineno, target))
+            continue
+        raw_label = _is_raw_provider_http_call(sub, target, source)
+        if raw_label is not None:
+            findings.append((rel, sub.lineno, raw_label))
+
+    if findings and not has_guard:
+        return findings
+    return []
+
+
+def _scan_callable_all(node, rel, source):
+    findings = []
+    for sub in ast.walk(node):
+        if not isinstance(sub, ast.Call):
+            continue
+        target = _resolve_call_target(sub.func)
+        if target is None:
+            continue
+        if _is_provider_sdk_call(target):
+            findings.append((rel, sub.lineno, target))
+            continue
+        raw_label = _is_raw_provider_http_call(sub, target, source)
+        if raw_label is not None:
+            findings.append((rel, sub.lineno, raw_label))
+    return findings
+
+
+def _iter_callable_nodes(tree):
+    def _walk_body(body):
+        for node in body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                yield node
+            elif isinstance(node, ast.ClassDef):
+                yield from _walk_body(node.body)
+
+    yield from _walk_body(tree.body)
 
 
 def scan_file(file_path, rel):
@@ -197,33 +234,25 @@ def scan_file(file_path, rel):
         return []
 
     results = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        target = _resolve_call_target(func)
-        if target is None:
-            continue
-        # Check SDK constructors
-        for label, check_fn in SDK_CONSTRUCTOR_PATTERNS:
-            if check_fn(target):
-                results.append((rel, node.lineno, label))
-                break
-        # Check gateway bypass fns
-        for gwfn in GATEWAY_BYPASS_FNS:
-            if target.endswith(gwfn):
-                results.append((rel, node.lineno, gwfn))
-                break
-        # Check LLMService._call_<provider>
-        for prov in LLMSERVICE_PROVIDER_CALLS:
-            if target == prov:
-                results.append((rel, node.lineno, prov))
-                break
-        # Check SDK method calls
-        for pat in SDK_CALL_PATTERNS:
-            if target.endswith(pat):
-                results.append((rel, node.lineno, pat))
-                break
+    for node in _iter_callable_nodes(tree):
+        results.extend(_scan_callable(node, rel, source))
+    return results
+
+
+def scan_file_all(file_path, rel):
+    try:
+        source = file_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return []
+
+    try:
+        tree = ast.parse(source, filename=str(file_path))
+    except SyntaxError:
+        return []
+
+    results = []
+    for node in _iter_callable_nodes(tree):
+        results.extend(_scan_callable_all(node, rel, source))
     return results
 
 
@@ -235,7 +264,24 @@ def discover_bypass_sites():
             continue
         if rel in GATEWAY_FILES:
             continue
+        if rel in NON_PROMPT_SURFACES:
+            continue
         sites = scan_file(path, rel)
+        all_results.extend(sites)
+    return all_results
+
+
+def discover_provider_call_sites():
+    all_results = []
+    for path in sorted(REPO_ROOT.rglob("*.py")):
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if _should_skip_path(rel):
+            continue
+        if rel in GATEWAY_FILES:
+            continue
+        if rel in NON_PROMPT_SURFACES:
+            continue
+        sites = scan_file_all(path, rel)
         all_results.extend(sites)
     return all_results
 
@@ -277,19 +323,18 @@ def test_no_unaccounted_bypasses():
 
 
 def test_known_bypasses_still_present():
-    discovered = discover_bypass_sites()
+    discovered = discover_provider_call_sites()
     discovered_grouped = _group_discovered(discovered)
 
     mismatches = []
-    for entry in EXPECTED_BYPASSES:
+    for entry in REQUIRED_GUARDED_CALLS:
         key = (entry[0], entry[1])
         expected_count = entry[2]
         actual_count = discovered_grouped.get(key, 0)
         if actual_count != expected_count:
             mismatches.append((entry[0], entry[1], expected_count, actual_count, entry[3]))
     assert mismatches == [], (
-        "Expected bypass site count mismatch -- "
-        "update EXPECTED_BYPASSES if refactored:\n"
+        "Expected guarded provider call count mismatch:\n"
         + "\n".join(
             f"  {f}:{p} expected={e} actual={a} ({d})"
             for f, p, e, a, d in mismatches
@@ -297,49 +342,8 @@ def test_known_bypasses_still_present():
     )
 
 
-def test_r1_bypasses_are_xfail():
-    discovered = discover_bypass_sites()
-    discovered_grouped = _group_discovered(discovered)
-
-    r1_expected = [e for e in EXPECTED_BYPASSES if e[0] in R1_BYPASS_FILES]
-    r1_expected_keys = {(e[0], e[1]) for e in r1_expected}
-
-    # Every discovered R1 site must be in EXPECTED_BYPASSES
-    for key in discovered_grouped:
-        if key[0] in R1_BYPASS_FILES:
-            assert key in r1_expected_keys, (
-                f"R1 bypass site {key[0]}:{key[1]} not in EXPECTED_BYPASSES"
-            )
-
-    # Every expected R1 site must still be discovered
-    for key in r1_expected_keys:
-        assert key in discovered_grouped, (
-            f"Expected R1 bypass {key[0]}:{key[1]} no longer exists"
-        )
-
-    assert r1_expected_keys, "No R1 bypass sites in EXPECTED_BYPASSES"
-
-
-def test_r1_bypasses_still_present():
-    """R1 files still contain bypass sites (remediation not complete).
-
-    While bypass sites remain in R1 files, this test PASSES. When bypass
-    sites are fully removed from R1 files, this test FAILS, signaling
-    that remediation is complete and the test can be removed.
-    """
-    discovered = discover_bypass_sites()
-    r1_sites = [(r, ln, p) for r, ln, p in discovered if r in R1_BYPASS_FILES]
-    assert r1_sites, (
-        "No bypass sites remain in R1 files -- remediation complete."
-    )
-
-
-def test_seeded_openai_call_detected():
-    """A file outside the gateway that calls OpenAI() is detected.
-
-    Writes a temporary non-test file with an OpenAI() call, runs the
-    scanner, and asserts the site is found. Then cleans up.
-    """
+def test_seeded_direct_provider_call_detected():
+    """A function that calls a provider SDK without the guard helper is detected."""
     tmp_dir = REPO_ROOT / "tmp_bypass_check"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     tmp_file = tmp_dir / "_seed_bypass.py"
@@ -349,9 +353,12 @@ def test_seeded_openai_call_detected():
         from openai import OpenAI
 
 
-        def do_thing():
+        def do_thing(prompt):
             client = OpenAI(api_key="sk-test-1234")
-            return client
+            return client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": prompt}],
+            )
     """)
 
     try:
@@ -359,12 +366,12 @@ def test_seeded_openai_call_detected():
         rel = tmp_file.relative_to(REPO_ROOT).as_posix()
         sites = scan_file(tmp_file, rel)
         assert len(sites) >= 1, (
-            f"Seeded OpenAI() call in {rel} was NOT detected. "
+            f"Seeded provider SDK call in {rel} was NOT detected. "
             f"AST scan returned: {sites}"
         )
-        openai_sites = [s for s in sites if "OpenAI(" in s[2]]
-        assert openai_sites, (
-            f"Expected OpenAI( detection in seeded file but got: {sites}"
+        provider_sites = [s for s in sites if s[2].endswith(".chat.completions.create")]
+        assert provider_sites, (
+            f"Expected direct provider call detection in seeded file but got: {sites}"
         )
     finally:
         if tmp_file.exists():
@@ -376,8 +383,8 @@ def test_seeded_openai_call_detected():
 
 
 def test_bypass_check_line_number_independent():
-    """Adding a blank line above an allowed call does not break detection,
-    while a new direct call in a new file is still reported.
+    """Adding a blank line above an unguarded provider call does not break detection,
+    while a new direct raw-HTTP call is still reported.
 
     This proves the check matches on (file_path, pattern) not on line numbers.
     """
@@ -385,7 +392,7 @@ def test_bypass_check_line_number_independent():
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # -- Part 1: file with an allowed call pattern --
+        # -- Part 1: file with an unguarded provider call pattern --
         tmp_file = tmp_dir / "_test_ln_indep.py"
         code_v1 = textwrap.dedent("""\
             \"\"\"Test line-number independence.\"\"\"
@@ -394,15 +401,18 @@ def test_bypass_check_line_number_independent():
 
             def make_client():
                 client = OpenAI(api_key="sk-test")
-                return client
+                return client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": "hi"}],
+                )
         """)
         tmp_file.write_text(code_v1, encoding="utf-8")
         rel = tmp_file.relative_to(REPO_ROOT).as_posix()
 
         sites_v1 = scan_file(tmp_file, rel)
-        openai_v1 = [s for s in sites_v1 if "OpenAI(" in s[2]]
+        openai_v1 = [s for s in sites_v1 if s[2].endswith(".chat.completions.create")]
         assert len(openai_v1) == 1, (
-            f"V1: expected 1 OpenAI() call, got {len(openai_v1)}: {sites_v1}"
+            f"V1: expected 1 provider call, got {len(openai_v1)}: {sites_v1}"
         )
 
         # Add a blank line above the call (line number changes)
@@ -414,34 +424,39 @@ def test_bypass_check_line_number_independent():
             def make_client():
 
                 client = OpenAI(api_key="sk-test")
-                return client
+                return client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": "hi"}],
+                )
         """)
         tmp_file.write_text(code_v2, encoding="utf-8")
 
         sites_v2 = scan_file(tmp_file, rel)
-        openai_v2 = [s for s in sites_v2 if "OpenAI(" in s[2]]
+        openai_v2 = [s for s in sites_v2 if s[2].endswith(".chat.completions.create")]
         assert len(openai_v2) == 1, (
-            f"V2 (blank line added): expected 1 OpenAI() call, "
+            f"V2 (blank line added): expected 1 provider call, "
             f"got {len(openai_v2)}: {sites_v2}"
         )
 
-        # -- Part 2: new file with a direct call not in EXPECTED_BYPASSES --
+        # -- Part 2: new file with a direct raw HTTP call not in EXPECTED_BYPASSES --
         new_file = tmp_dir / "_test_new_direct_call.py"
         new_code = textwrap.dedent("""\
             \"\"\"New direct call file.\"\"\"
-            import anthropic
+            import requests
 
 
             def do_thing():
-                client = anthropic.Anthropic(api_key="sk-test")
-                return client
+                return requests.post(
+                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+                    json={"contents": []},
+                )
         """)
         new_file.write_text(new_code, encoding="utf-8")
         new_rel = new_file.relative_to(REPO_ROOT).as_posix()
 
         new_sites = scan_file(new_file, new_rel)
-        anthro_sites = [s for s in new_sites if "Anthropic(" in s[2]]
-        assert len(anthro_sites) == 1, (
+        raw_sites = [s for s in new_sites if s[2] == "raw-provider-http"]
+        assert len(raw_sites) == 1, (
             f"New direct call not detected: {new_sites}"
         )
 
