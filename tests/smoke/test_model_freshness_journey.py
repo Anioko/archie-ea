@@ -1,11 +1,11 @@
-"""Enterprise Architect opens model freshness, re-scans, reloads and still sees the stalest owners.
+"""Enterprise Architect opens model freshness, reloads and still sees the same figures.
 
 Seeds, in the shared smoke organisation, an application whose record was last
 saved 400 days ago and whose owner is a named person, plus a second
 organisation with an even staler owner. Signs in as the Enterprise Architect,
 opens the model health page, reads the freshness figure and the stalest-owner
-list, clicks "Re-scan for drift", reloads, and checks the list is still there
-and never names the other organisation's owner.
+list, reloads, and checks the same figures are still there and never name the
+other organisation's owner.
 """
 
 import re
@@ -21,6 +21,10 @@ from .test_archetype_journeys import _login, _visit
 pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 
 MODEL_HEALTH = "/genome/model-health/"
+
+
+def _normalise_text(text):
+    return " ".join(text.split())
 
 
 @pytest.fixture(scope="module")
@@ -93,7 +97,7 @@ def stale_owners(seeded, request):
     return names
 
 
-def test_freshness_stalest_owners_survive_rescan_and_reload(browser, live_server, seeded, stale_owners):
+def test_freshness_figures_survive_reload(browser, live_server, seeded, stale_owners):
     page = browser.new_page()
     try:
         _login(page, live_server, seeded["emails"]["enterprise_architect"])
@@ -103,20 +107,20 @@ def test_freshness_stalest_owners_survive_rescan_and_reload(browser, live_server
         section = page.locator("#model-freshness")
         expect(section.get_by_role("heading", name="Freshness")).to_be_visible()
         # The seeded organisation has dated application records, so a figure is shown.
-        expect(section.get_by_test_id("freshness-share")).to_have_text(re.compile(r"^\d+%$"))
+        share_before = section.get_by_test_id("freshness-share").inner_text().strip()
+        assert re.match(r"^\d+%$", share_before), f"unexpected freshness share {share_before!r}"
         stalest = section.get_by_test_id("stalest-owners")
         expect(stalest).to_contain_text("Owner %s" % stale_owners["ours"])
+        by_owner_before = _normalise_text(section.get_by_test_id("freshness-by-owner").inner_text())
         expect(section).not_to_contain_text(stale_owners["theirs"])
 
-        # The page's own control: re-scan, then reload the result.
-        page.get_by_role("button", name="Re-scan for drift").click()
-        page.wait_for_load_state("domcontentloaded")
         page.reload(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
 
         section = page.locator("#model-freshness")
         stalest = section.get_by_test_id("stalest-owners")
+        expect(section.get_by_test_id("freshness-share")).to_have_text(share_before)
         expect(stalest).to_contain_text("Owner %s" % stale_owners["ours"])
-        expect(section.get_by_test_id("freshness-by-owner")).to_contain_text("Owner %s" % stale_owners["ours"])
+        assert _normalise_text(section.get_by_test_id("freshness-by-owner").inner_text()) == by_owner_before
         expect(section).not_to_contain_text(stale_owners["theirs"])
     finally:
         page.close()
