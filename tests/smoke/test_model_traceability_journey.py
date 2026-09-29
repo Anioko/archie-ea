@@ -62,15 +62,71 @@ def _seed(org_id):
         db.session.commit()
         return {
             "noun": noun,
+            "org": org_id,
+            "component_row": component.id,
+            "unified_capability": unified.id,
+            "elements": [component_element, process.id, node.id, capability.id],
             "component": component_element,
             "component_name": "%s Hub" % noun,
             "capability_name": capability.name,
         }
 
 
+def _cleanup(seed):
+    """Remove everything this module put in the shared seeded organisation.
+
+    The property definition the first journey creates is required, so leaving
+    it would refuse later property writes on application components in that
+    organisation. Rows are deleted child first, each step in its own
+    transaction so a table that refuses a delete does not stop the rest.
+    """
+    from app import create_app, db
+    from app.models.acm_property_template import AcmPropertyTemplate
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+    from app.models.unified_application_capability_mapping import UnifiedApplicationCapabilityMapping
+    from app.models.unified_capability import UnifiedCapability
+
+    org_id = seed["org"]
+    ids = seed["elements"]
+    app = create_app("testing")
+    with app.app_context():
+        steps = [
+            lambda: AcmPropertyTemplate.query.filter(
+                AcmPropertyTemplate.organization_id == org_id,
+                AcmPropertyTemplate.property_key.like("recovery_hours_%"),
+            ).delete(synchronize_session=False),
+            lambda: ArchiMateRelationship.query.filter(
+                ArchiMateRelationship.organization_id == org_id,
+                db.or_(ArchiMateRelationship.source_id.in_(ids), ArchiMateRelationship.target_id.in_(ids)),
+            ).delete(synchronize_session=False),
+            lambda: UnifiedApplicationCapabilityMapping.query.filter(
+                UnifiedApplicationCapabilityMapping.application_component_id == seed["component_row"],
+            ).delete(synchronize_session=False),
+            lambda: UnifiedCapability.query.filter(
+                UnifiedCapability.organization_id == org_id,
+                UnifiedCapability.archimate_element_id.in_(ids),
+            ).delete(synchronize_session=False),
+            lambda: ApplicationComponent.query.filter(
+                ApplicationComponent.id == seed["component_row"],
+            ).delete(synchronize_session=False),
+            lambda: ArchiMateElement.query.filter(
+                ArchiMateElement.organization_id == org_id, ArchiMateElement.id.in_(ids),
+            ).delete(synchronize_session=False),
+        ]
+        for step in steps:
+            try:
+                step()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+
 @pytest.fixture(scope="module")
 def trace_graph(seeded, live_server):
-    return _seed(seeded["ids"]["org"])
+    seed = _seed(seeded["ids"]["org"])
+    yield seed
+    _cleanup(seed)
 
 
 def _login(page, base, email):
