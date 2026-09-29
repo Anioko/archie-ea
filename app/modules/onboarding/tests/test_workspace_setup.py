@@ -356,3 +356,78 @@ def test_deselected_answer_cleanup_is_isolated_between_organisations(app, db_ses
     assert len(risks_a) == 1
     assert risks_a[0].title == "GDPR compliance"
     assert len(risks_b) == 2, "org B's iso27001 risk must not be touched by org A's cleanup"
+
+
+def test_deselecting_a_framework_with_a_raci_assignment_keeps_the_capability(app, db_session, make_org):
+    """``enterprise_raci_assignments.capability_id`` is declared
+    ``ondelete="CASCADE"`` against ``unified_capabilities.id``. Once a person
+    has assigned a RACI stakeholder to a capability onboarding created, that
+    assignment is their own real data -- deselecting the framework answer
+    later must not silently take it out via the database's own cascade."""
+    from app.models.organization_model import EnterpriseRaciAssignment
+    from app.models.unified_capability import UnifiedCapability
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-raci-guard")
+    tell_us_more.save_section(org, "how_you_work", {
+        "frameworks_in_use": ["agile-methodology", "devops-practices"],
+    })
+    devops_cap = UnifiedCapability.query.filter_by(
+        organization_id=org.id, source_table="onboarding", source_id="tell_us_more:how_you_work:in_use:devops-practices"
+    ).one()
+
+    assignment = EnterpriseRaciAssignment(
+        organization_id=org.id,
+        stakeholder_type="user",
+        stakeholder_id=1,
+        stakeholder_name="Test Stakeholder",
+        capability_id=devops_cap.id,
+        raci="A",
+    )
+    db_session.add(assignment)
+    db_session.flush()
+
+    # Deselect devops-practices, the one carrying the RACI assignment.
+    tell_us_more.save_section(org, "how_you_work", {"frameworks_in_use": ["agile-methodology"]})
+
+    assert UnifiedCapability.query.filter_by(id=devops_cap.id).first() is not None, (
+        "a capability carrying a real RACI assignment must not be deleted"
+    )
+    assert EnterpriseRaciAssignment.query.filter_by(organization_id=org.id).count() == 1, (
+        "the RACI assignment must not be cascade-deleted by deselecting the onboarding answer"
+    )
+
+
+def test_deselecting_a_compliance_standard_with_a_requirement_keeps_the_risk(app, db_session, make_org):
+    """A compliance requirement someone attached to the risk's element is
+    their own real data too -- deselecting the standard later must not
+    delete the risk/element (and orphan or lose the requirement)."""
+    from app.models.compliance_models import ComplianceRequirement
+    from app.models.risk import Risk
+    from app.modules.onboarding.services import tell_us_more
+
+    org = make_org("ws-compliance-guard")
+    tell_us_more.save_section(org, "compliance", {
+        "standards": {"gdpr": "partial", "iso27001": "full"},
+    })
+    risk = Risk.query.filter_by(organization_id=org.id, title="GDPR compliance").one()
+
+    requirement = ComplianceRequirement(
+        archimate_element_id=risk.archimate_element_id,
+        title="Data processing agreement on file",
+        description="Attached by a person after onboarding created this risk.",
+        requirement_type="regulatory",
+    )
+    db_session.add(requirement)
+    db_session.flush()
+    requirement_id = requirement.id
+
+    # Deselect gdpr, the one carrying the compliance requirement.
+    tell_us_more.save_section(org, "compliance", {"standards": {"iso27001": "full"}})
+
+    assert Risk.query.filter_by(id=risk.id).first() is not None, (
+        "a risk carrying a real compliance requirement must not be deleted"
+    )
+    assert ComplianceRequirement.query.filter_by(id=requirement_id).first() is not None, (
+        "the compliance requirement must survive deselecting the onboarding answer"
+    )

@@ -59,7 +59,9 @@ import re
 
 from app import db
 from app.models.archimate_core import ArchiMateElement
+from app.models.compliance_models import ComplianceRequirement, ProjectConstraint, QualityAttribute
 from app.models.organization import Organization
+from app.models.organization_model import EnterpriseRaciAssignment
 from app.models.risk import Risk
 from app.models.unified_capability import UnifiedCapability
 from app.models.unified_work_package import UnifiedWorkPackage
@@ -117,6 +119,42 @@ def _find_elements_by_marker_prefix(org_id: int, prefix: str, *, layer: str | No
     return result
 
 
+def _capability_has_raci_assignment(capability_id: int) -> bool:
+    return (
+        db.session.query(EnterpriseRaciAssignment.id).filter_by(capability_id=capability_id).first()
+        is not None
+    )
+
+
+def _element_has_compliance_records(element_id: int) -> bool:
+    """True if a person has attached a compliance requirement, quality
+    attribute or project constraint to this element since onboarding
+    created it -- ``unified_capabilities`` and ``archimate_elements`` are
+    both real workspace records once created, reachable and editable like
+    any other, so a later attachment is real data, not onboarding
+    scaffolding."""
+    return (
+        db.session.query(ComplianceRequirement.id).filter_by(archimate_element_id=element_id).first()
+        is not None
+        or db.session.query(QualityAttribute.id).filter_by(archimate_element_id=element_id).first()
+        is not None
+        or db.session.query(ProjectConstraint.id).filter_by(archimate_element_id=element_id).first()
+        is not None
+    )
+
+
+def _capability_deletion_is_safe(capability: UnifiedCapability) -> bool:
+    """False when deleting *capability* (and its element) would cascade
+    away a RACI assignment (``EnterpriseRaciAssignment.capability_id`` is
+    ``ondelete="CASCADE"`` against ``unified_capabilities.id``) or orphan a
+    compliance record someone has since attached to its element."""
+    if _capability_has_raci_assignment(capability.id):
+        return False
+    if capability.archimate_element_id and _element_has_compliance_records(capability.archimate_element_id):
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Compliance standards -> Risk (the Risk lens's own model)
 # ---------------------------------------------------------------------------
@@ -140,6 +178,8 @@ def _apply_compliance(org: Organization, answers: dict) -> dict:
     for element in _find_elements_by_marker_prefix(org.id, "tell_us_more:compliance:", layer="Motivation"):
         marker = (element.custom_properties or {}).get(_MARKER_KEY, "")
         if marker not in keep_markers:
+            if _element_has_compliance_records(element.id):
+                continue
             risk = Risk.query.filter_by(organization_id=org.id, archimate_element_id=element.id).first()
             if risk is not None:
                 db.session.delete(risk)
@@ -273,6 +313,8 @@ def _apply_frameworks(org: Organization, answers: dict) -> dict:
     ).all()
     for cap in existing:
         if (cap.source_id or "").startswith("tell_us_more:how_you_work:") and cap.source_id not in keep_markers:
+            if not _capability_deletion_is_safe(cap):
+                continue
             if cap.archimate_element_id:
                 element = db.session.get(ArchiMateElement, cap.archimate_element_id)
                 if element is not None:
@@ -400,6 +442,8 @@ def _apply_transformation(org: Organization, answers: dict) -> dict:
     for cap in existing_caps:
         sid = cap.source_id or ""
         if sid.startswith("tell_us_more:whats_changing:capability:") and sid not in keep_capability_markers:
+            if not _capability_deletion_is_safe(cap):
+                continue
             if cap.archimate_element_id:
                 element = db.session.get(ArchiMateElement, cap.archimate_element_id)
                 if element is not None:
@@ -523,6 +567,8 @@ def _apply_implementation(org: Organization, answers: dict) -> dict:
     for cap in existing_caps:
         sid = cap.source_id or ""
         if sid.startswith("tell_us_more:how_you_build:") and sid not in keep_capability_markers:
+            if not _capability_deletion_is_safe(cap):
+                continue
             if cap.archimate_element_id:
                 element = db.session.get(ArchiMateElement, cap.archimate_element_id)
                 if element is not None:
@@ -534,6 +580,8 @@ def _apply_implementation(org: Organization, answers: dict) -> dict:
     for element in _find_elements_by_marker_prefix(org.id, "tell_us_more:how_you_build:", layer="technology"):
         marker = (element.custom_properties or {}).get(_MARKER_KEY, "")
         if marker not in keep_technology_markers:
+            if _element_has_compliance_records(element.id):
+                continue
             db.session.delete(element)
             technology_removed += 1
 
