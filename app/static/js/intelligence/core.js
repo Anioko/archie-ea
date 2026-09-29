@@ -151,6 +151,15 @@
        ask.js's template reads -- costVariancePct is null (not 0) when the
        package was never costed, matching the server's own not_costed
        reason rather than inventing a number. */
+    /* A signed percentage to one decimal place, e.g. "12.5%" or "-3.0%". The
+       one place a variance is turned into text; templates only show it. */
+    function percentText(value) {
+        if (value == null) return null;
+        return Number(value).toLocaleString('en-GB', {
+            minimumFractionDigits: 1, maximumFractionDigits: 1
+        }) + '%';
+    }
+
     function workPackageModel(wp) {
         var hasCostVariance = wp.cost_variance_pct != null;
         var costRedacted = wp.cost_reason === 'financial_data_restricted';
@@ -165,6 +174,7 @@
             isOverdue: wp.is_overdue,
             owner: wp.owner || null,
             costVariancePct: hasCostVariance ? wp.cost_variance_pct : null,
+            costVarianceText: hasCostVariance ? percentText(wp.cost_variance_pct) : null,
             hasCostVariance: hasCostVariance,
             costRedacted: costRedacted,
             costReason: wp.cost_reason || null,
@@ -212,6 +222,7 @@
             executiveSponsor: initiative.executive_sponsor || null,
             programManager: initiative.program_manager || null,
             budgetVariancePct: hasBudgetVariance ? initiative.budget_variance_pct : null,
+            budgetVarianceText: hasBudgetVariance ? percentText(initiative.budget_variance_pct) : null,
             hasBudgetVariance: hasBudgetVariance,
             budgetRedacted: budgetRedacted,
             budgetReason: initiative.budget_reason || null,
