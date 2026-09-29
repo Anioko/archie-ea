@@ -52,6 +52,10 @@ NAV_PAGES = {
         "/admin/errors",
         "Deduplicated server + client errors, aggregated by fingerprint across every organization.",
     ),
+    "intelligence_ui.value_streams_at_risk": (
+        "/intelligence/value-streams-at-risk",
+        "Value streams at risk",
+    ),
     # Canvas/framework UI fix (24 Sep 2026): batch_import_view.dashboard was
     # intentionally folded from platform_admin's Admin zone to stay within the
     # link budget.
