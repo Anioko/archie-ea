@@ -10,6 +10,7 @@ shows it only to that organisation's administrator.
 
 import json
 import uuid
+import warnings
 from datetime import datetime, timedelta
 
 import pytest
@@ -147,3 +148,25 @@ def test_the_audit_screen_shows_refusals_to_their_own_organisation_only(
     page = client.get("/admin/audit-log?action=tool_refused").get_data(as_text=True)
     assert "create_solution" not in page
     assert ">tool_refused<" not in page, "another organisation's action names leaked into the filter"
+
+
+def test_refusal_entry_resolves_user_email_without_legacy_query_get(db_session, make_org):
+    from app.models.audit_log import AuditLog
+
+    org = make_org("refused-email")
+    viewer = _user(db_session, org, "viewer", "Viewer")
+    entry = AuditLog(
+        organization_id=org.id,
+        user_id=viewer.id,
+        action="tool_refused",
+        table_name="ai_tool_call",
+        new_value={"tool": "create_solution"},
+    )
+    db_session.add(entry)
+    db_session.flush()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert entry.user_email == viewer.email
+
+    assert not any("Query.get()" in str(w.message) for w in caught)

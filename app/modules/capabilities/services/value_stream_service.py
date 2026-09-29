@@ -11,10 +11,10 @@ state instead of a 500.
 """
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app import db
+from app.datetime_helpers import utcnow
 from app.models.unified_capability import (
     CapabilityValueStreamMapping,
     UnifiedCapability,
@@ -86,7 +86,7 @@ def list_value_streams() -> List[Dict[str, Any]]:
 def get_value_stream(value_stream_id: int) -> Optional[ValueStream]:
     """Fetch a single ValueStream by id, or None."""
     try:
-        return ValueStream.query.get(value_stream_id)
+        return ValueStream.query.filter_by(id=value_stream_id).first()
     except Exception:
         logger.error("Failed to fetch value stream %s", value_stream_id, exc_info=True)
         return None
@@ -142,7 +142,7 @@ def create_value_stream(data: Dict[str, Any]) -> ValueStream:
     "no value streams modelled" while the value-stream page listed them. The column
     now exists (see ValueStream.archimate_element_id), so the ORM path is safe.
     """
-    now = datetime.utcnow()
+    now = utcnow().replace(tzinfo=None)
     vs = ValueStream(
         name=data.get("name"),
         code=data.get("code") or None,
@@ -301,7 +301,7 @@ def create_stage(value_stream_id: int, data: Dict[str, Any]) -> Optional[ValueSt
 def update_stage(stage_id: int, data: Dict[str, Any]) -> Optional[ValueStreamStage]:
     """Update an existing stage."""
     try:
-        stage = ValueStreamStage.query.get(stage_id)
+        stage = ValueStreamStage.query.filter_by(id=stage_id).first()
     except Exception:
         logger.error("Failed to fetch stage %s", stage_id, exc_info=True)
         return None

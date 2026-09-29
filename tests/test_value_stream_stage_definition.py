@@ -3,6 +3,10 @@ value items, and the capability x stage grid carries each mapped
 capability's own maturity (None when never assessed, never a level).
 """
 
+import warnings
+
+from app.datetime_helpers import utcnow
+from app.models.unified_capability import ValueStreamStage
 from app.modules.capabilities.services import value_stream_service as vs_service
 
 
@@ -68,3 +72,43 @@ def test_grid_rows_carry_capability_maturity(db_session, make_org, tenant_ctx):
     assert rows["Identity Verification"]["target_maturity_level"] == 4
     assert rows["Customer Onboarding Mgmt"]["current_maturity_level"] is None
     assert rows["Customer Onboarding Mgmt"]["target_maturity_level"] is None
+
+
+def test_create_value_stream_avoids_deprecated_utcnow(db_session, make_org, tenant_ctx):
+    org = make_org("vs-stage-now")
+
+    with tenant_ctx(org.id):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            vs = vs_service.create_value_stream({"name": "Servicing"})
+
+    assert vs.name == "Servicing"
+    assert not any(
+        "value_stream_service.py" in str(getattr(w, "filename", ""))
+        and "datetime.datetime.utcnow()" in str(w.message)
+        for w in caught
+    )
+
+
+def test_fetch_and_update_stage_avoid_legacy_query_get(db_session, make_org, tenant_ctx):
+    org = make_org("vs-stage-fetch")
+    now = utcnow().replace(tzinfo=None)
+
+    with tenant_ctx(org.id):
+        vs = vs_service.create_value_stream({"name": "Claims"})
+        stage = ValueStreamStage(
+            name="Assess claim",
+            value_stream_id=vs.id,
+            stage_order=1,
+            created_at=now,
+            updated_at=now,
+        )
+        db_session.add(stage)
+        db_session.flush()
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            assert vs_service.get_value_stream(vs.id).id == vs.id
+            assert vs_service.update_stage(stage.id, {"exit_criteria": "Decision issued"}).id == stage.id
+
+    assert not any("Query.get()" in str(w.message) for w in caught)

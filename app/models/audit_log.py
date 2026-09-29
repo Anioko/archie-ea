@@ -155,7 +155,7 @@ class AuditLog(db.Model):
         try:
             from app.models.user import User
 
-            u = User.query.get(self.user_id)
+            u = User.query.filter_by(id=self.user_id).first()
             return u.email if u and getattr(u, "email", None) else str(self.user_id)
         except Exception:
             return str(self.user_id)
