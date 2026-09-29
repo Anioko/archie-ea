@@ -7,7 +7,7 @@ module — no inline ``UserSession.query`` in routes or other services (ADR
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.user_session import UserSession
@@ -97,7 +97,7 @@ def touch(sid):
         row = db.session.get(UserSession, sid)
         if row is None or row.revoked_at is not None:
             return
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if row.last_seen_at is not None and (now - row.last_seen_at) < timedelta(seconds=_TOUCH_THROTTLE_SECONDS):
             return
         row.last_seen_at = now
@@ -116,7 +116,7 @@ def revoke(sid, reason):
         row = db.session.get(UserSession, sid)
         if row is None or row.revoked_at is not None:
             return
-        row.revoked_at = datetime.utcnow()
+        row.revoked_at = datetime.now(timezone.utc)
         row.revoked_reason = reason
         db.session.commit()
     except Exception:
