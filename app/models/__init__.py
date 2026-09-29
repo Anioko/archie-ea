@@ -79,8 +79,6 @@ else:
     # Session registry (server-side revocation on logout / password change).
     from .user_session import UserSession  # noqa: F401
     from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
-    from .external_identity_crosswalk import ExternalIdentityCrosswalk  # noqa: F401
-    from .service_incident import ServiceIncident  # noqa: F401 - service-status incident history
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa
@@ -88,6 +86,7 @@ else:
     # revision, and deploys do not run `flask db upgrade` — so a fresh database
     # had no chat history tables at all and /ai-chat/threads 500'd.
     from .conversation import ConversationMessageRecord, ConversationThreadRecord  # noqa
+    from .external_identity_crosswalk import ExternalIdentityCrosswalk  # noqa: F401
     from .consulting_partner import *  # noqa
     from .capability_archimate_mapping import *  # noqa
     from .copilot_insight import *  # noqa
