@@ -19,6 +19,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    g,
     redirect,
     render_template,
     request,
@@ -31,6 +32,13 @@ _log = logging.getLogger(__name__)
 
 from app.core.compat import mark_blueprint_guardrailed
 from app.core.decorators import timed_route
+from app.extensions import db
+from app.middleware.tenant_context import (
+    ACTIVE_ORG_SESSION_KEY,
+    accessible_organizations,
+    clear_tenant_context_cache,
+    user_can_access_org,
+)
 from app.security.audit import audit_logger
 from app.services.rate_limiter import rate_limit
 
@@ -180,6 +188,37 @@ def manage():
         last_login_entry=last_login_entry,
         recent_auth_events=auth_audit.recent_auth_events(current_user.id),
     )
+
+
+@account_bp_v2.route("/switch-organization", methods=["POST"])
+@login_required
+@timed_route
+def switch_organization():
+    """Switch the signed-in user's active organisation."""
+    requested_org_id = request.form.get("organization_id", type=int)
+    memberships = accessible_organizations(current_user)
+    if requested_org_id is None:
+        flash("Select an organisation to continue.", "error")
+        return redirect(url_for("account.manage"))
+
+    if not any(org.id == requested_org_id for org in memberships) or not user_can_access_org(
+        current_user, requested_org_id
+    ):
+        session.pop(ACTIVE_ORG_SESSION_KEY, None)
+        clear_tenant_context_cache()
+        flash("You do not have access to that organisation.", "error")
+        return redirect(url_for("account.manage"))
+
+    from app.models.organization import Organization
+
+    session[ACTIVE_ORG_SESSION_KEY] = requested_org_id
+    session.modified = True
+    clear_tenant_context_cache()
+    active_org = db.session.get(Organization, requested_org_id)
+    g.current_org_id = requested_org_id
+    g.current_org = active_org
+    flash(f"Now working in {active_org.name if active_org else 'the selected organisation'}.", "success")
+    return redirect(url_for("account.manage"))
 
 
 @account_bp_v2.route("/session/keepalive", methods=["GET"])

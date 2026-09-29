@@ -350,6 +350,27 @@ def init_context_processors(app):
             return {"nav_counts": dict(_EMPTY_NAV_COUNTS)}
 
     @app.context_processor
+    def inject_active_organization():
+        """Expose the active organisation and memberships to templates."""
+        from flask_login import current_user
+
+        from app.middleware.tenant_context import accessible_organizations, current_org
+
+        try:
+            org = current_org()
+            memberships = accessible_organizations(current_user)
+        except Exception as e:  # noqa: BLE001 — header identity must not 500 pages
+            app.logger.warning(f"active organization context unavailable: {e}")
+            org = None
+            memberships = []
+
+        return {
+            "active_organization": org,
+            "active_organization_name": getattr(org, "name", None),
+            "organization_memberships": memberships,
+        }
+
+    @app.context_processor
     def inject_legal_links():
         """The legal pages live right now, for the public footer and checkout."""
         from app.services.legal_pages import legal_links
