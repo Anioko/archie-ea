@@ -614,6 +614,30 @@ def test_fact_sheet_shows_owners(db_session, make_org, client, login_as):
     assert manager.first_name.encode() in resp.data
 
 
+def test_edit_page_cross_org_returns_404(two_orgs, client, login_as):
+    """Edit page returns 404 for another organisation's application."""
+    editor = _make_user(
+        two_orgs["db_session"],
+        two_orgs["org_a"],
+        "architect",
+        "crossorgeditor",
+    )
+    login_as(client, editor)
+
+    resp = client.get(f"/applications/{two_orgs['app_b'].id}/edit")
+
+    assert resp.status_code == 404
+
+
+def test_fact_sheet_cross_org_returns_404(two_orgs, client, login_as):
+    """Fact sheet returns 404 for another organisation's application."""
+    login_as(client, two_orgs["manager_a"])
+
+    resp = client.get(f"/applications/{two_orgs['app_b'].id}/fact-sheet")
+
+    assert resp.status_code == 404
+
+
 # ── 8. Edit form shows legacy text fields as read-only ──────────────────────
 
 
@@ -687,6 +711,44 @@ def test_edit_post_leaves_owner_text_columns_unchanged(app, db_session, make_org
     assert saved.technology_stack == "Python 3.12"
 
 
+def test_edit_post_cross_org_returns_404_and_leaves_foreign_row_unchanged(app, two_orgs, client, login_as):
+    """Cross-org POST to the edit form 404s and does not mutate the foreign row."""
+    from app.models.application_portfolio import ApplicationComponent
+    from tests.test_cross_tenant_documents import _csrf_token
+
+    db_session = two_orgs["db_session"]
+    editor = _make_user(db_session, two_orgs["org_a"], "architect", "crossorgpost")
+    foreign_app = two_orgs["app_b"]
+    foreign_app.technology_stack = "OldStack"
+    db_session.commit()
+
+    login_as(client, editor)
+    csrf = _csrf_token(client, app)
+    resp = client.post(
+        f"/applications/{foreign_app.id}/edit",
+        data={
+            "csrf_token": csrf,
+            "updated_at": foreign_app.updated_at.isoformat() if foreign_app.updated_at else "",
+            "name": foreign_app.name,
+            "description": foreign_app.description or "",
+            "application_code": foreign_app.application_code or "",
+            "application_type": foreign_app.component_type or "",
+            "criticality": foreign_app.business_criticality or "",
+            "technology_stack": "NewStack",
+            "business_purpose": foreign_app.business_purpose or "",
+            "deployment_status": foreign_app.deployment_status or "",
+            "lifecycle_status": foreign_app.lifecycle_status or "",
+            "business_domain": foreign_app.business_domain or "",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 404
+    db_session.expire_all()
+    saved = ApplicationComponent.query.get(foreign_app.id)
+    assert saved.technology_stack == "OldStack"
+
+
 def test_edit_form_has_business_purpose(db_session, make_org, client, login_as):
     """Business purpose input is present in the edit form."""
     org = make_org("own-bp")
@@ -699,6 +761,54 @@ def test_edit_form_has_business_purpose(db_session, make_org, client, login_as):
     html = resp.get_data(as_text=True)
     assert 'id="business_purpose"' in html
     assert 'name="business_purpose"' in html
+
+
+@pytest.mark.parametrize(
+    ("path_template", "form_data"),
+    [
+        ("/applications/{id}/overview-update", {"technology_stack": "OverviewStack"}),
+        ("/applications/{id}/health-quality-update", {"technical_debt_hours": "42"}),
+        ("/applications/{id}/governance-update", {"contains_pii": "true"}),
+        ("/applications/{id}/resources-update", {"business_domain": "Finance"}),
+        ("/applications/{id}/layers/strategy-update", {}),
+    ],
+)
+def test_update_routes_cross_org_return_404_and_leave_foreign_row_unchanged(
+    app,
+    two_orgs,
+    client,
+    login_as,
+    path_template,
+    form_data,
+):
+    """Changed application update routes 404 for foreign ids before mutating."""
+    from app.models.application_portfolio import ApplicationComponent
+    from tests.test_cross_tenant_documents import _csrf_token
+
+    db_session = two_orgs["db_session"]
+    foreign_app = two_orgs["app_b"]
+    foreign_app.technology_stack = "OldStack"
+    db_session.commit()
+
+    login_as(client, two_orgs["manager_a"])
+    payload = dict(form_data)
+    if path_template in {
+        "/applications/{id}/governance-update",
+        "/applications/{id}/resources-update",
+        "/applications/{id}/layers/strategy-update",
+    }:
+        payload["csrf_token"] = _csrf_token(client, app)
+
+    resp = client.post(
+        path_template.format(id=foreign_app.id),
+        data=payload,
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 404
+    db_session.expire_all()
+    saved = ApplicationComponent.query.get(foreign_app.id)
+    assert saved.technology_stack == "OldStack"
 
 
 # ── 9. application_owners store-agreement concept ──────────────────────────
@@ -1082,113 +1192,52 @@ def test_backfill_two_legacy_rows_same_type_same_user(db_session, make_org):
     assert stats["legacy_ownership_rows"] == 1
     assert stats["skipped_existing"] >= 1
     assert stats["merged_legacy_rows"] >= 1
-def test_edit_page_cross_org_returns_404(two_orgs, client, login_as):
-    """Edit page returns 404 for another organisation's application."""
-    editor = _make_user(
-        two_orgs["db_session"],
-        two_orgs["org_a"],
-        "architect",
-        "crossorgeditor",
+
+
+def test_backfill_merged_legacy_rows_are_idempotent(db_session, make_org):
+    """A second backfill run leaves merged legacy rows fully retired."""
+    from app.commands.backfill_application_owners import backfill_owner_data
+    from app.models.enterprise_intelligence import ApplicationOwnership, OrganizationUnit
+
+    org = make_org("own-merge4")
+    user = _make_user(db_session, org, "application_manager", "mergemgr4")
+    app = _make_app(db_session, org, "Merge Idempotent")
+
+    unit = OrganizationUnit(name="Test", organization_id=org.id)
+    db_session.add(unit)
+    db_session.flush()
+
+    row1 = ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Business Owner",
+        primary_contact=f"{user.first_name} {user.last_name}",
     )
-    login_as(client, editor)
-
-    resp = client.get(f"/applications/{two_orgs['app_b'].id}/edit")
-
-    assert resp.status_code == 404
-
-
-def test_fact_sheet_cross_org_returns_404(two_orgs, client, login_as):
-    """Fact sheet returns 404 for another organisation's application."""
-    login_as(client, two_orgs["manager_a"])
-
-    resp = client.get(f"/applications/{two_orgs['app_b'].id}/fact-sheet")
-
-    assert resp.status_code == 404
-
-
-def test_edit_post_cross_org_returns_404_and_leaves_foreign_row_unchanged(app, two_orgs, client, login_as):
-    """Cross-org POST to the edit form 404s and does not mutate the foreign row."""
-    from app.models.application_portfolio import ApplicationComponent
-    from tests.test_cross_tenant_documents import _csrf_token
-
-    db_session = two_orgs["db_session"]
-    editor = _make_user(db_session, two_orgs["org_a"], "architect", "crossorgpost")
-    foreign_app = two_orgs["app_b"]
-    foreign_app.technology_stack = "OldStack"
+    row2 = ApplicationOwnership(
+        application_id=app.id,
+        organization_id=org.id,
+        organization_unit_id=unit.id,
+        ownership_type="Budget Holder",
+        primary_contact=f"{user.first_name} {user.last_name}",
+    )
+    db_session.add_all([row1, row2])
     db_session.commit()
 
-    login_as(client, editor)
-    csrf = _csrf_token(client, app)
-    resp = client.post(
-        f"/applications/{foreign_app.id}/edit",
-        data={
-            "csrf_token": csrf,
-            "updated_at": foreign_app.updated_at.isoformat() if foreign_app.updated_at else "",
-            "name": foreign_app.name,
-            "description": foreign_app.description or "",
-            "application_code": foreign_app.application_code or "",
-            "application_type": foreign_app.component_type or "",
-            "criticality": foreign_app.business_criticality or "",
-            "technology_stack": "NewStack",
-            "business_purpose": foreign_app.business_purpose or "",
-            "deployment_status": foreign_app.deployment_status or "",
-            "lifecycle_status": foreign_app.lifecycle_status or "",
-            "business_domain": foreign_app.business_domain or "",
-        },
-        follow_redirects=False,
-    )
-
-    assert resp.status_code == 404
+    first_run = backfill_owner_data(dry_run=False, organization_ids=[org.id])
     db_session.expire_all()
-    saved = ApplicationComponent.query.get(foreign_app.id)
-    assert saved.technology_stack == "OldStack"
 
+    retired_one = ApplicationOwnership.query.get(row1.id).retired_into_id
+    retired_two = ApplicationOwnership.query.get(row2.id).retired_into_id
 
-@pytest.mark.parametrize(
-    ("path_template", "form_data"),
-    [
-        ("/applications/{id}/overview-update", {"technology_stack": "OverviewStack"}),
-        ("/applications/{id}/health-quality-update", {"technical_debt_hours": "42"}),
-        ("/applications/{id}/governance-update", {"contains_pii": "true"}),
-        ("/applications/{id}/resources-update", {"business_domain": "Finance"}),
-        ("/applications/{id}/layers/strategy-update", {}),
-    ],
-)
-def test_update_routes_cross_org_return_404_and_leave_foreign_row_unchanged(
-    app,
-    two_orgs,
-    client,
-    login_as,
-    path_template,
-    form_data,
-):
-    """Changed application update routes 404 for foreign ids before mutating."""
-    from app.models.application_portfolio import ApplicationComponent
-    from tests.test_cross_tenant_documents import _csrf_token
-
-    db_session = two_orgs["db_session"]
-    foreign_app = two_orgs["app_b"]
-    foreign_app.technology_stack = "OldStack"
-    db_session.commit()
-
-    login_as(client, two_orgs["manager_a"])
-    payload = dict(form_data)
-    if path_template in {
-        "/applications/{id}/governance-update",
-        "/applications/{id}/resources-update",
-        "/applications/{id}/layers/strategy-update",
-    }:
-        payload["csrf_token"] = _csrf_token(client, app)
-
-    resp = client.post(
-        path_template.format(id=foreign_app.id),
-        data=payload,
-        follow_redirects=False,
-    )
-
-    assert resp.status_code == 404
+    second_run = backfill_owner_data(dry_run=False, organization_ids=[org.id])
     db_session.expire_all()
-    saved = ApplicationComponent.query.get(foreign_app.id)
-    assert saved.technology_stack == "OldStack"
 
-
+    assert first_run["merged_legacy_rows"] >= 2
+    assert retired_one is not None
+    assert retired_two is not None
+    assert retired_one == retired_two
+    assert ApplicationOwnership.query.get(row1.id).retired_into_id == retired_one
+    assert ApplicationOwnership.query.get(row2.id).retired_into_id == retired_two
+    assert second_run["legacy_ownership_rows"] == 0
+    assert second_run["merged_legacy_rows"] == 0

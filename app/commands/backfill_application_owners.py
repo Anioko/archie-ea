@@ -104,6 +104,15 @@ def _owner_key_in_run(seen: set, app_id: int, user_id: int, ownership_type: str)
     return False
 
 
+def _canonical_owner_id(existing_by_provenance, existing_by_type) -> Optional[int]:
+    """Return the real ApplicationOwner id a legacy row should retire into."""
+    if existing_by_provenance is not None:
+        return existing_by_provenance.id
+    if existing_by_type is not None and hasattr(existing_by_type, "id"):
+        return existing_by_type.id
+    return None
+
+
 def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[int]] = None) -> Dict:
     """Run the full backfill, returning stats per organisation.
 
@@ -218,8 +227,9 @@ def backfill_owner_data(dry_run: bool = False, organization_ids: Optional[List[i
 
             if existing_by_provenance is not None or existing_by_type is not None:
                 # Merge: mark the legacy row as retired but don't insert
-                if not dry_run and not lo.retired_into_id:
-                    lo.retired_into_id = existing_by_provenance.id if existing_by_provenance else None
+                canonical_owner_id = _canonical_owner_id(existing_by_provenance, existing_by_type)
+                if not dry_run and lo.retired_into_id != canonical_owner_id and canonical_owner_id is not None:
+                    lo.retired_into_id = canonical_owner_id
                     total_merged += 1
                 total_skipped += 1
                 continue
