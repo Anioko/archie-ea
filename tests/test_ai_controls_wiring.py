@@ -59,6 +59,14 @@ def _costs_for(org_id, model):
     return [r for r in records if r.organization_id == org_id and r.metadata.get("model") == model]
 
 
+def _all_costs_for(org_id):
+    from app.ai.cost_monitor import ai_cost_monitor
+
+    with ai_cost_monitor._lock:
+        records = list(ai_cost_monitor._cost_records)
+    return [r for r in records if r.organization_id == org_id]
+
+
 def _request_event(org_id, model):
     requests = [
         e for e in _events_for(org_id)
@@ -102,6 +110,55 @@ def test_direct_failover_callers_are_covered_too(make_org, tenant_ctx, stub_prov
     kinds = sorted(e["event_type"] for e in _events_for(org.id, request["correlation_id"]))
     assert kinds == ["ai_request", "ai_response", "data_classification"]
     assert len(_costs_for(org.id, model)) == 1
+
+
+def test_cross_provider_failover_runs_each_control_once(make_org, tenant_ctx, monkeypatch):
+    from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+    provider_calls = []
+
+    def fake_keys(provider):
+        if provider == "openai":
+            return ["openai-key"]
+        if provider == "anthropic":
+            return ["anthropic-key"]
+        return []
+
+    def failing_openai(prompt, model, api_key, max_tokens=None, timeout=None):
+        provider_calls.append(("openai", model, api_key))
+        raise RuntimeError("quota exceeded for openai")
+
+    def successful_anthropic(prompt, model, api_key, max_tokens=None, timeout=None):
+        provider_calls.append(("anthropic", model, api_key))
+        return "fallback answer", 13, 8, 0.0061
+
+    monkeypatch.setattr(LLMService, "_get_all_api_keys", staticmethod(fake_keys))
+    monkeypatch.setattr(LLMService, "_call_openai", staticmethod(failing_openai))
+    monkeypatch.setattr(LLMService, "_call_anthropic", staticmethod(successful_anthropic))
+
+    org = make_org("controls-cross-provider")
+    model = _marker()
+    with tenant_ctx(org.id):
+        text, interaction = LLMService._call_llm_with_failover(
+            prompt="Map this application",
+            model=model,
+            provider="openai",
+        )
+
+    assert text == "fallback answer"
+    assert interaction.provider == "anthropic"
+    assert [call[0] for call in provider_calls] == ["openai", "anthropic"]
+
+    request = _request_event(org.id, model)
+    related = _events_for(org.id, request["correlation_id"])
+    assert sorted(e["event_type"] for e in related) == ["ai_request", "ai_response", "data_classification"]
+    assert len([e for e in related if e["event_type"] == "ai_request"]) == 1
+    assert len([e for e in related if e["event_type"] == "data_classification"]) == 1
+    assert len([e for e in related if e["event_type"] == "ai_response"]) == 1
+    costs = _all_costs_for(org.id)
+    assert len(costs) == 1
+    assert costs[0].cost_amount == pytest.approx(0.0061)
+    assert costs[0].metadata["provider"] == "anthropic"
 
 
 def test_a_failed_call_is_audited_as_an_error(make_org, tenant_ctx, monkeypatch):
