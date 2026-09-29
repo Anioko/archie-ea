@@ -10,6 +10,7 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import validates
 
 from .. import db  # main SQLAlchemy object
+from .constants import ArchiMateLayer
 from .mixins import TenantMixin
 
 _key_log = logging.getLogger(__name__)
@@ -161,7 +162,8 @@ def canonical_archimate_layer(value):
     """
     if not isinstance(value, str):
         return value
-    return _LayerName(value.strip().lower())
+    canonical = ArchiMateLayer.normalize(value)
+    return _LayerName(canonical) if isinstance(canonical, str) else canonical
 
 
 class _ArchiMateLayerType(types.TypeDecorator):
