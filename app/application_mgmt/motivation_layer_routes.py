@@ -13,6 +13,7 @@ from .. import db
 from ..models.application_portfolio import ApplicationComponent
 from ..models.models import Requirement
 from ..models.motivation import Driver, Goal
+from ..middleware.tenant_context import current_org_id
 from . import application_mgmt
 from .routes import _add_archimate_element, _delete_archimate_element
 
@@ -53,6 +54,27 @@ def delete_requirement(app_id, id):
 # ============================================================================
 
 
+def _linkable_in_caller_org(entity) -> bool:
+    """Whether an unlinked motivation-layer entity (Goal/Driver/Requirement -- none carry an
+    organisation column of their own) may be linked into the caller's application.
+
+    The standard creation path always pairs one of these with an ArchiMateElement first
+    (archimate_element_id set) -- see motivation_layer_service.py's "Basecoat pattern" comment --
+    and ArchiMateElement is TenantMixin. An entity with no archimate_element_id has no reliable
+    signal of which organisation it belongs to, so it fails closed rather than being guessed at,
+    the same convention scripts/commands/backfill_layer_tenancy.py uses for provenance-only rows.
+    """
+    org_id = current_org_id()
+    if org_id is None or not getattr(entity, "archimate_element_id", None):
+        return False
+    from ..models.archimate_core import ArchiMateElement
+
+    fenced = db.session.execute(
+        db.select(ArchiMateElement).where(ArchiMateElement.id == entity.archimate_element_id)
+    ).scalar_one_or_none()
+    return fenced is not None
+
+
 @application_mgmt.route("/applications/<int:id>/goals/add", methods=["POST"])
 @login_required
 def goal_add(id):
@@ -77,6 +99,8 @@ def goal_add(id):
         )
     elif goal.application_component_id == app.id:
         flash(f'Goal "{goal.name}" is already linked to this application', "warning")
+    elif not _linkable_in_caller_org(goal):
+        flash("Goal not found", "error")
     else:
         try:
             goal.application_component_id = app.id
@@ -118,6 +142,8 @@ def driver_add(id):
         flash(
             f'Driver "{driver.name}" is already linked to this application', "warning"
         )
+    elif not _linkable_in_caller_org(driver):
+        flash("Driver not found", "error")
     else:
         try:
             driver.application_component_id = app.id
@@ -157,19 +183,21 @@ def application_requirement_add(id):
     ):
         other_app = ApplicationComponent.query.get(requirement.application_component_id)
         flash(
-            f'Requirement "{requirement.name}" is already linked to "{other_app.name if other_app else "another application"}"',
+            f'Requirement "{requirement.title}" is already linked to "{other_app.name if other_app else "another application"}"',
             "warning",
         )
     elif requirement.application_component_id == app.id:
         flash(
-            f'Requirement "{requirement.name}" is already linked to this application',
+            f'Requirement "{requirement.title}" is already linked to this application',
             "warning",
         )
+    elif not _linkable_in_caller_org(requirement):
+        flash("Requirement not found", "error")
     else:
         try:
             requirement.application_component_id = app.id
             db.session.commit()
-            flash(f'Requirement "{requirement.name}" linked successfully!', "success")
+            flash(f'Requirement "{requirement.title}" linked successfully!', "success")
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(
