@@ -5498,7 +5498,9 @@ _ORG_USER_SORT_COLUMNS = {
     "name": (User.first_name, User.last_name),
     "email": (User.email,),
     "persona": (User.enterprise_role,),
-    "org_admin": (User.is_org_admin,),
+    # R1-B12: is_org_admin is a derived property; sort by the denormalised
+    # column for display purposes.  Auth decisions use is_admin().
+    "org_admin": (User._is_org_admin,),
 }
 
 
@@ -5599,9 +5601,16 @@ def toggle_org_admin(org_id, user_id):
     if user.organization_id != org_id:
         flash("User does not belong to this organization.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
-    user.is_org_admin = not user.is_org_admin
+    # R1-B12: is_org_admin derives from is_admin() (Permission.ADMINISTER).
+    # Toggle the Administrator role assignment instead of the denormalised column.
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    if user.is_admin():
+        # Downgrade to default Architect role
+        user.role = Role.query.filter_by(default=True).first()
+    elif admin_role is not None:
+        user.role = admin_role
     db.session.commit()
-    role_label = "granted" if user.is_org_admin else "revoked"
+    role_label = "granted" if user.is_admin() else "revoked"
     flash(f'Org-admin role {role_label} for {user.full_name() or user.email}.', "success")
     return redirect(url_for("admin.organization_detail", org_id=org_id))
 
@@ -5625,7 +5634,7 @@ def organization_delete(org_id):
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
     moved = User.query.filter_by(organization_id=org.id).update(
-        {"organization_id": default_org.id, "is_org_admin": False},
+        {"organization_id": default_org.id, "_is_org_admin": False},
         synchronize_session=False,
     )
 
@@ -5656,7 +5665,11 @@ def remove_user_from_org(org_id, user_id):
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
     user.organization_id = default_org.id
-    user.is_org_admin = False
+    # R1-B12: is_org_admin derives from is_admin().  Remove the Administrator
+    # role so the user is no longer an org admin after moving.
+    default_role = Role.query.filter_by(default=True).first()
+    if default_role is not None:
+        user.role = default_role
     db.session.commit()
     flash(f'{user.full_name() or user.email} moved to Default organization.', "success")
     return redirect(url_for("admin.organization_detail", org_id=org_id))

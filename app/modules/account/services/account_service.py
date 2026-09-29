@@ -19,7 +19,7 @@ except ImportError:
 
 from app.extensions import db
 from app.flask_email import send_email
-from app.models import User
+from app.models import Role, User
 from app.models.org_role import OrgRole
 from app.services import session_registry
 
@@ -112,8 +112,11 @@ class AccountService:
             confirmed=confirmed,
             organization_id=org.id,
         )
-        if hasattr(user, "is_org_admin"):
-            user.is_org_admin = True
+        # R1-B12: is_org_admin derives from is_admin() (Permission.ADMINISTER).
+        # Assign the Administrator role so is_admin() returns True.
+        admin_role = Role.query.filter_by(name="Administrator").first()
+        if admin_role is not None:
+            user.role = admin_role
         db.session.add(user)
         try:
             db.session.flush()
