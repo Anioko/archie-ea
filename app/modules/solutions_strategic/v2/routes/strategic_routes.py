@@ -435,12 +435,16 @@ def api_impact_analysis():
         data = request.get_json()
         element_id = data.get("element_id")
         change_type = data.get("change_type", "MODIFY")
+        cursor = data.get("cursor")
+        page_size = data.get("page_size")
 
         if not element_id:
             return jsonify({"error": "element_id is required"}), 400
 
         service = ImpactAnalysisService()
-        analysis = service.analyze_change_impact(element_id, change_type)
+        analysis = service.analyze_change_impact(
+            element_id, change_type, cursor=cursor, page_size=page_size
+        )
         fallback_analysis = _build_solution_impact_fallback(element_id, change_type)
         if (
             fallback_analysis

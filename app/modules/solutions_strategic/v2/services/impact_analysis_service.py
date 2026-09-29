@@ -8,10 +8,7 @@ All analysis results are stored via this ORM model only.
 """
 from typing import Dict, List
 
-from sqlalchemy import text
-
 from app import db
-from app.middleware.tenant_context import current_org_id
 from .decorators import transactional
 
 
@@ -34,7 +31,8 @@ class ImpactAnalysisService:
 
     @classmethod
     def analyze_change_impact(
-        cls, element_id: int, change_type: str = "MODIFY", scenario: str = None
+        cls, element_id: int, change_type: str = "MODIFY", scenario: str = None,
+        cursor: int = None, page_size: int = None,
     ) -> Dict:
         """
         Analyze complete impact of changing an element.
@@ -43,13 +41,13 @@ class ImpactAnalysisService:
             element_id: Element being changed
             change_type: MODIFY, RETIRE, REPLACE
             scenario: Optional API scenario name (e.g. retirement, modification) for persistence.
+            cursor: Optional pagination cursor (0-based index into the full result set).
+            page_size: Optional page size for pagination.
 
         Returns:
             Full impact analysis with risk assessment
         """
-        # Repointed to the canonical cross_layer_impact walk.
-        # max_depth=3 in cross_layer_impact (3 hops) matches the old
-        # _get_dependencies(depth=4) which returned levels 2-4 (3 hops from seed).
+        # Repointed to the canonical cross_layer_impact walk (max_depth=3, 3 hops from seed).
         from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
         result = IntelligenceQueryService.cross_layer_impact(
@@ -58,6 +56,8 @@ class ImpactAnalysisService:
             max_depth=3,
             direction="downstream",
             with_owner=True,
+            cursor=cursor,
+            page_size=page_size,
         )
         rows = result.get("rows") or []
         elements = result.get("elements") or {}
@@ -135,82 +135,9 @@ class ImpactAnalysisService:
             "risk_level": risk_level,
             "estimated_financial_risk": estimated_financial_risk,
             "analysis_id": analysis_id,
+            "total": result.get("total"),
+            "next_cursor": result.get("next_cursor"),
         }
-
-    @classmethod
-    def _get_dependencies(cls, element_id: int, depth: int = 3) -> List[Dict]:
-        """Get dependencies with specified depth, enriched with application portfolio data."""
-
-        # Every arm of the walk carries an explicit organization_id predicate.
-        # It previously carried only the comment "scoped via element_id FK",
-        # which is an assumption rather than a filter: archimate_elements ids are
-        # global, so ANY id -- including one from a different tenant, and
-        # including an application_components id that happens to collide with a
-        # foreign element id -- seeded the recursion and returned that other
-        # organisation's dependency graph. Measured: an architect in org A asked
-        # "what breaks if I retire Nimbus Billing?" and was shown a capability
-        # belonging to org B, presented as their own. Fail closed instead: with
-        # no tenant in context (CLI, scheduler) return nothing rather than
-        # everything.
-        org_id = current_org_id()
-        if org_id is None:
-            return []
-
-        query = """
-            WITH RECURSIVE dependencies AS (
-                SELECT
-                    e.id, e.name, e.type, 1 as level,
-                    ARRAY[e.id] as path,
-                    e.dependency_level,
-                    e.application_component_id
-                FROM archimate_elements e
-                WHERE e.id = :element_id
-                  AND e.organization_id = :org_id
-
-                UNION ALL
-
-                SELECT
-                    e.id, e.name, e.type, d.level + 1,
-                    d.path || e.id,
-                    e.dependency_level,
-                    e.application_component_id
-                FROM archimate_elements e
-                JOIN archimate_relationships r ON r.target_id = e.id
-                JOIN dependencies d ON r.source_id = d.id
-                WHERE e.id NOT IN (SELECT unnest(d.path))
-                AND d.level < :depth
-                AND e.organization_id = :org_id
-            )
-            SELECT
-                d.id, d.name, d.type, d.level, d.dependency_level,
-                ac.name AS app_name,
-                ac.criticality AS app_criticality,
-                COALESCE(ac.total_cost_of_ownership, 0) AS app_tco
-            FROM dependencies d
-            LEFT JOIN application_components ac
-                   ON d.application_component_id = ac.id
-                  AND ac.organization_id = :org_id
-            WHERE d.level > 1
-            ORDER BY d.level, d.name
-        """
-
-        result = db.session.execute(  # tenancy-ok: explicit organization_id predicate on every arm
-            text(query), {"element_id": element_id, "depth": depth, "org_id": org_id}
-        ).fetchall()
-
-        return [
-            {
-                "id": row[0],
-                "name": row[1],
-                "type": row[2],
-                "level": row[3],
-                "dependency_level": row[4],
-                "app_name": row[5],
-                "criticality": row[6],
-                "tco": float(row[7]) if row[7] else 0.0,
-            }
-            for row in result
-        ]
 
     @classmethod
     @transactional
