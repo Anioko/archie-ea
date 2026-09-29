@@ -141,10 +141,14 @@ def test_prospect_opens_the_demonstration_then_starts_a_trial(
         page.get_by_test_id("demonstration-enter").click()
         page.wait_for_url(lambda u: "/demonstration" not in u, timeout=PAGE_TIMEOUT)
 
-        # Labelled on this screen and after a reload.
+        # Labelled on this screen, on the composer, and after a reload.
         banner = page.get_by_test_id("demonstration-banner")
         banner.wait_for(timeout=PAGE_TIMEOUT)
         assert "not yours" in banner.inner_text()
+        page.goto(live_server + "/archimate/composer", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        composer_banner = page.get_by_test_id("demonstration-banner")
+        composer_banner.wait_for(timeout=PAGE_TIMEOUT)
+        assert composer_banner.count() == 1
         page.reload(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         assert page.get_by_test_id("demonstration-banner").is_visible()
 
