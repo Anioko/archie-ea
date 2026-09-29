@@ -2,12 +2,18 @@
 
 from pathlib import Path
 
+import yaml
+
 
 CI = Path(".github/workflows/ci.yml")
 
 
 def _workflow():
     return CI.read_text(encoding="utf-8")
+
+
+def _parsed_workflow():
+    return yaml.safe_load(_workflow())
 
 
 def test_ci_runs_critical_journeys_in_firefox_and_webkit():
@@ -44,3 +50,24 @@ def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
     )[0]
 
     assert "playwright install --with-deps chromium" in tests_job
+
+
+def test_every_postgres_service_mounts_pgdata_on_tmpfs():
+    workflow = _parsed_workflow()
+    postgres_jobs = {
+        name: job
+        for name, job in workflow["jobs"].items()
+        if job.get("services", {}).get("postgres")
+    }
+
+    assert postgres_jobs
+    missing_tmpfs = []
+    for job_name, job in postgres_jobs.items():
+        options = job["services"]["postgres"].get("options", "")
+        if "--tmpfs /var/lib/postgresql/data" not in options:
+            missing_tmpfs.append(job_name)
+
+    assert not missing_tmpfs, (
+        "postgres services must mount /var/lib/postgresql/data on tmpfs: "
+        + ", ".join(sorted(missing_tmpfs))
+    )
