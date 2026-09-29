@@ -29,7 +29,6 @@ class OrgService:
             last_name=admin_last_name,
             role=admin_role,
             organization_id=org.id,
-            is_org_admin=True,
             confirmed=True
         )
         db.session.add(user)
