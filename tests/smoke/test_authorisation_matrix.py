@@ -126,6 +126,11 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
+    # Service status: current platform health, incident history and a
+    # subscribe action. @login_required and no role gate -- every signed-in
+    # persona reaches it from the sidebar footer. The state it shows is
+    # platform-wide; the only thing a user changes is their own subscription.
+    "/status":                 set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
