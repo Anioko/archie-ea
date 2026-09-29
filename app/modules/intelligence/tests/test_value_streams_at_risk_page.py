@@ -187,6 +187,32 @@ def test_the_threshold_in_the_address_bar_is_the_one_the_page_opens_on(
     assert offered == ["1", "2", "3", "4", "5"]
 
 
+@pytest.mark.parametrize(
+    "query, expected_threshold",
+    [
+        ("", "3"),
+        ("?threshold=0", "3"),
+        ("?threshold=6", "3"),
+        ("?threshold=abc", "3"),
+    ],
+)
+def test_invalid_or_missing_threshold_is_canonicalised_to_three_in_the_address_bar(
+    app, db_session, make_org, client, login_as, query, expected_threshold
+):
+    org = make_org("vsrp-canonical")
+    user = _user(db_session, org.id)
+    login_as(client, user)
+
+    html = client.get(PAGE + query).get_data(as_text=True)
+
+    match = re.search(r'x-data="valueStreamsAtRisk\(\)"[^>]*data-threshold="(\d)"', html)
+    assert match and match.group(1) == "3"
+    result = _run_init("http://example.test" + PAGE + query)
+    assert result["threshold"] == 3
+    assert result["loaded"] is True
+    assert result["replaceStateCalls"] == [PAGE + "?threshold=" + expected_threshold]
+
+
 def test_the_business_architect_sidebar_carries_the_page_and_no_other_persona_does():
     from app.utils.role_access import SIDEBAR_ZONES
 
@@ -236,6 +262,36 @@ process.stdout.write(JSON.stringify(sandbox.window.ValueStreamsAtRisk.buildRows(
 """
 
 
+_INIT_HARNESS = r"""
+const fs = require('fs');
+const vm = require('vm');
+const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
+const calls = [];
+const sandbox = {
+  URL,
+  window: {
+    location: { href: payload.href },
+    history: {
+      replaceState: function (_state, _title, url) {
+        calls.push(url);
+      }
+    }
+  }
+};
+vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), sandbox);
+const component = sandbox.window.valueStreamsAtRisk();
+component.$el = { getAttribute: function (name) { return name === 'data-threshold' ? payload.dataThreshold : null; } };
+component.load = function () { this.loaded = true; };
+component.init();
+process.stdout.write(JSON.stringify({
+  threshold: component.threshold,
+  loaded: component.loaded === true,
+  replaceStateCalls: calls
+}));
+"""
+
+
 def _page_rows(payload):
     node = shutil.which("node")
     if not node:
@@ -243,6 +299,22 @@ def _page_rows(payload):
     proc = subprocess.run(
         [node, "-e", _HARNESS, str(SCRIPT)],
         input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def _run_init(href: str, data_threshold: str = "3"):
+    node = shutil.which("node")
+    if not node:
+        pytest.fail("Node.js is required to run the page's own init path")
+    proc = subprocess.run(
+        [node, "-e", _INIT_HARNESS, str(SCRIPT)],
+        input=json.dumps({"href": href, "dataThreshold": data_threshold}),
         capture_output=True,
         text=True,
         timeout=60,
@@ -307,5 +379,6 @@ def test_the_page_asks_the_existing_api_and_nothing_else():
     assert set(re.findall(r"'(/[a-z0-9_/.-]*)'", code)) == {API}
     assert "Platform.fetch.get(API_URL" in code
     assert not re.search(r"(?<![.\w])fetch\(", code)
+    assert "global.history.replaceState" in code
     template = TEMPLATE.read_text(encoding="utf-8")
     assert "/api/" not in template

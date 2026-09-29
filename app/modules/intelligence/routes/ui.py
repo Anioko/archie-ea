@@ -71,9 +71,9 @@ def twin_map():
 
 
 # The maturity threshold the value-streams-at-risk answer is asked for. The
-# same bounds and default as the API route that answers it; a value outside
-# them is ignored here and the page opens on the default, so the address bar
-# never carries a threshold the API would refuse.
+# page shell opens on the same bounds and default as the API route that answers
+# it; the browser then canonicalises the address bar to that same allowed
+# threshold set.
 VALUE_STREAMS_AT_RISK_THRESHOLDS = (1, 2, 3, 4, 5)
 VALUE_STREAMS_AT_RISK_DEFAULT_THRESHOLD = 3
 

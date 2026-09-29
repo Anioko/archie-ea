@@ -27,6 +27,7 @@ import os
 import pathlib
 import re
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from playwright.sync_api import expect
@@ -38,6 +39,12 @@ pytestmark = [pytest.mark.smoke, pytest.mark.journey]
 PAGE_PATH = "/intelligence/value-streams-at-risk"
 API_PATH = "/api/v1/intelligence/value-streams-at-risk"
 SIDEBAR_LABEL = "Value Streams at Risk"
+
+
+def _assert_path_and_threshold(page, path, threshold):
+    parsed = urlparse(page.url)
+    assert parsed.path == path
+    assert parse_qs(parsed.query).get("threshold") == [str(threshold)]
 
 
 def _login(page, base, email):
@@ -210,7 +217,7 @@ def test_business_architect_reaches_the_page_from_the_sidebar_and_sees_the_apis_
         assert link.count() == 1
         with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
             link.click()
-        assert page.url.endswith(PAGE_PATH)
+        _assert_path_and_threshold(page, PAGE_PATH, 3)
         expect(page.get_by_role("heading", level=1, name="Value streams at risk")).to_be_visible()
         _wait_for_rows(page)
 
@@ -349,7 +356,7 @@ def test_who_reaches_the_page_and_whose_sidebar_carries_it(browser, live_server,
         _login(page, live_server, seeded["emails"][archetype])
         response = page.goto(live_server + PAGE_PATH, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
         assert response.status == 200
-        assert page.url.endswith(PAGE_PATH)
+        _assert_path_and_threshold(page, PAGE_PATH, 3)
         expect(page.get_by_role("heading", level=1, name="Value streams at risk")).to_be_visible()
         links = page.get_by_test_id("sidebar").get_by_role("link", name=SIDEBAR_LABEL, exact=True)
         assert links.count() == (1 if archetype == "business_architect" else 0)

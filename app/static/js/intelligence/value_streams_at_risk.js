@@ -85,6 +85,15 @@
         return ((payload && payload.rows) || []).map(rowModel);
     }
 
+    function canonicalThreshold(value) {
+        return value >= 1 && value <= 5 ? value : 3;
+    }
+
+    function parseThreshold(raw) {
+        if (typeof raw !== 'string' || !/^[1-5]$/.test(raw)) return NaN;
+        return parseInt(raw, 10);
+    }
+
     function valueStreamsAtRisk() {
         return {
             state: 'loading',
@@ -97,8 +106,17 @@
             _seq: 0,
 
             init() {
+                var params = new URL(global.location.href).searchParams;
+                var incoming = params.get('threshold');
+                var fromUrl = parseThreshold(incoming);
                 var initial = parseInt(this.$el.getAttribute('data-threshold'), 10);
-                this.threshold = initial >= 1 && initial <= 5 ? initial : 3;
+                var next = canonicalThreshold(isNaN(fromUrl) ? initial : fromUrl);
+                this.threshold = canonicalThreshold(initial);
+                if (incoming === null || String(next) !== incoming) {
+                    var url = new URL(global.location.href);
+                    url.searchParams.set('threshold', String(next));
+                    global.history.replaceState(null, '', url.pathname + url.search + url.hash);
+                }
                 this.load();
             },
 
