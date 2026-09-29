@@ -12,25 +12,19 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import abort, g, jsonify, render_template, request
+from flask import g, jsonify, render_template, request
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from app import db
+from app.middleware.tenant_decorators import platform_admin_required
+from app.decorators import admin_required
 from app.models.ai_service import AIPromptTemplate
 from app.modules.ai_chat.services.multi_domain_chat_service import PERSONA_CONFIGS
 
 from . import unified_ai_chat_bp
 
 logger = logging.getLogger(__name__)
-
-
-def _require_admin():
-    """Abort 403 if current user is not an admin."""
-    if not (hasattr(current_user, "is_admin") and current_user.is_admin):
-        # Fallback: check role attribute
-        if not (hasattr(current_user, "role") and current_user.role == "admin"):
-            abort(403)
 
 
 def _override_key(persona_key):
@@ -88,17 +82,17 @@ def _build_persona_data(persona_key, config, override=None):
 
 @unified_ai_chat_bp.route("/admin/prompts")
 @login_required
+@platform_admin_required
 def admin_prompts_page():
     """Render the admin persona prompt management page."""
-    _require_admin()
     return render_template("ai_chat/admin_prompts.html")
 
 
 @unified_ai_chat_bp.route("/admin/prompts/data")
 @login_required
+@platform_admin_required
 def admin_prompts_data():
     """JSON API: return all persona configs merged with DB overrides."""
-    _require_admin()
 
     personas = []
     for key, config in PERSONA_CONFIGS.items():
@@ -110,9 +104,9 @@ def admin_prompts_data():
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/update", methods=["POST"])
 @login_required
+@platform_admin_required
 def admin_prompt_update(persona_key):
     """Update (or create) a DB override for a persona's prompt config."""
-    _require_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404
@@ -165,9 +159,9 @@ def admin_prompt_update(persona_key):
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/reset", methods=["POST"])
 @login_required
+@platform_admin_required
 def admin_prompt_reset(persona_key):
     """Remove the DB override for a persona, reverting to hardcoded defaults."""
-    _require_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404
@@ -222,21 +216,21 @@ def _safe_import_analytics_models():
 
 @unified_ai_chat_bp.route("/admin/analytics")
 @login_required
+@admin_required
 def admin_analytics_dashboard():
     """Render the AI Chat feedback analytics dashboard."""
-    _require_admin()
     return render_template("ai_chat/analytics_dashboard.html")
 
 
 @unified_ai_chat_bp.route("/admin/analytics/data")
 @login_required
+@admin_required
 def admin_analytics_data():
     """Return aggregated AI Chat analytics as JSON.
 
     Query params:
         days (int): Look-back window in days (default 30, max 365).
     """
-    _require_admin()
 
     try:
         days = min(int(request.args.get("days", 30)), 365)
