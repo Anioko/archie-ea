@@ -2,7 +2,7 @@
 Shape-B trigger.
 
 Fixtures (app, db_session, make_org, tenant_ctx, client, login_as) are
-discovered via app/modules/intelligence/tests/conftest.py's own import of
+discovered via app/modules/conftest.py's import of
 tests.conftest (same pattern as test_impact_route.py).
 """
 
