@@ -247,6 +247,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register AI chat approval tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_review_queue_org import init_app as init_review_queue_org
+        init_review_queue_org(app)
+        app.logger.info("Review queue tenancy backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
@@ -332,6 +339,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
 
+    try:
+        from app.commands.backfill_audit_trail import init_app as init_audit_trail_backfill
+        init_audit_trail_backfill(app)
+        app.logger.info("Audit trail backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register audit trail backfill CLI: {e}")
+
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
         from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy
@@ -399,6 +413,20 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register session registry purge CLI: {e}")
 
+    try:
+        from app.commands.purge_copilot_insights import init_app as init_purge_copilot_insights
+        init_purge_copilot_insights(app)
+        app.logger.info("Copilot insights purge CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
+    try:
+        from app.commands.service_incident_commands import init_app as init_service_incident
+        init_service_incident(app)
+        app.logger.info("Service incident CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register service incident CLI: {e}")
+
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:
         from app.commands import seed_strategic_demo
@@ -406,3 +434,18 @@ def init_cli(app):
         app.logger.info("✅ Strategic demo seed CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register strategic demo seed CLI: {e}")
+
+    # T-DEMO-1: Lantern Quay demonstration company
+    try:
+        from app.commands import seed_demo_company
+        seed_demo_company.init_app(app)
+        app.logger.info("✅ Demo company seed CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register demo company seed CLI: {e}")
+
+    try:
+        from app.commands.clear_foreign_assignees import init_app as init_clear_foreign_assignees
+        init_clear_foreign_assignees(app)
+        app.logger.info("✅ Clear foreign assignees CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")

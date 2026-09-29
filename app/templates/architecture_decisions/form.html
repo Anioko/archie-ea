@@ -174,7 +174,7 @@ function elementPicker() {
             {% if selected_elements %}
             this.selectedElements = [
                 {% for el in selected_elements %}
-                { id: {{ el.id }}, name: {{ el.name | tojson }}, layer: {{ (el.layer or '') | tojson }}, element_type: {{ (el.element_type or '') | tojson }} }{% if not loop.last %},{% endif %}
+                { id: {{ el.id }}, name: {{ el.name | tojson }}, layer: {{ (el.layer or '') | tojson }}, element_type: {{ (el.type or '') | tojson }} }{% if not loop.last %},{% endif %}
                 {% endfor %}
             ];
             {% endif %}

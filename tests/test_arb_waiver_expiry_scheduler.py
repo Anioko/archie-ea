@@ -19,6 +19,19 @@ class _Scheduler:
             raise self.optional_add_error
         self.jobs.append(kwargs)
 
+    def get_jobs(self):
+        _Job = type("_FakeJob", (), {"__init__": lambda self, jid: setattr(self, "id", jid)})
+        return [_Job(j["id"]) for j in self.jobs]
+
+    def get_job(self, job_id):
+        for j in self.jobs:
+            if j["id"] == job_id:
+                return j
+        return None
+
+    def remove_job(self, job_id):
+        self.jobs = [j for j in self.jobs if j["id"] != job_id]
+
     def start(self):
         self.started = True
 

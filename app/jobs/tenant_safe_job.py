@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS
 ====================
-Multi-tenancy in Archie is enforced *implicitly*, by two SQLAlchemy event
+Multi-tenancy in Entelim is enforced *implicitly*, by two SQLAlchemy event
 listeners in ``app/middleware/tenant_isolation.py`` that key off
 ``flask.g.current_org_id``:
 
@@ -50,6 +50,24 @@ full traceback, counted, and re-surfaced in the returned ``JobRun`` — and
 ``JobRun.failed`` is what the CLI exit code and the operator page read.
 
 Intended home: ``app/jobs/tenant_safe_job.py``.
+
+Job declaration maps
+--------------------
+Every scheduled job id registered in ``init_scheduler`` or
+``init_abacus_scheduler`` must be listed in exactly one of the two sets below.
+``_remove_undeclared_jobs`` is called after registration to enforce this: a job
+whose id is in neither set is removed with an ERROR log, so an undeclared job
+never runs.
+
+The two categories:
+
+* **PLATFORM_JOBS**: no per-organisation association — the work is global
+  (error_events, capability projection, the Abacus connection). These jobs are
+  guarded by ``job_lock`` alone.
+* **TENANT_JOBS**: visited per organisation through ``run_for_each_tenant`` /
+  ``tenant_scope``, so each tenant's rows are isolated by the ORM listeners.
+  (EA workflow schedules are tenant-scoped because ``EAWorkflowSchedule`` is a
+  ``TenantMixin`` model.)
 """
 
 from __future__ import annotations
@@ -64,8 +82,50 @@ from typing import Callable, Iterator, Sequence
 from flask import g
 
 from app.extensions import db
+from app.utils.tracing import trace_scope
 
 logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------- #
+# Job declaration maps — every registered job id belongs in exactly one set.
+# --------------------------------------------------------------------------- #
+
+PLATFORM_JOBS: frozenset[str] = frozenset({
+    "error_digest",            # error_events carries no organisation predicate
+    "capability_projection",   # all-tenant lock-guarded pass
+    "abacus_incremental_sync", # ExternalSystem has no organisation predicate
+})
+
+TENANT_JOBS: frozenset[str] = frozenset({
+    "data_maturity_digest",         # visited via run_for_each_tenant
+    "executive_summary",            # visited via run_for_each_tenant
+    "teams_subscription_renewal",   # visited via run_for_each_tenant
+    "typed_arb_waiver_expiry",      # config-driven organisation ids
+    "derived_facts_recompute",      # visited via run_for_each_tenant
+    "ea_workflow_scheduler",        # visited via run_for_each_tenant
+})
+
+
+def _remove_undeclared_jobs(scheduler) -> None:
+    """Remove every job whose id is in neither PLATFORM_JOBS nor TENANT_JOBS.
+
+    Runs after ``add_job`` calls in ``init_scheduler`` / ``init_abacus_scheduler``.
+    An undeclared job is always a defect: it means no reviewer decided whether it
+    should be tenant-scoped or a named platform job, so it would run unfiltered.
+    """
+    all_declared = PLATFORM_JOBS | TENANT_JOBS
+    for job in scheduler.get_jobs():
+        if job.id not in all_declared:
+            logger.error(
+                "Job id %r is in neither PLATFORM_JOBS nor TENANT_JOBS — "
+                "removing it. Every registered job must be declared in "
+                "app/jobs/tenant_safe_job.py",
+                job.id,
+            )
+            try:
+                scheduler.remove_job(job.id)
+            except Exception:
+                logger.exception("Failed to remove undeclared job %r", job.id)
 
 
 # --------------------------------------------------------------------------- #
@@ -277,6 +337,28 @@ def active_organization_ids() -> list[int]:
     return [int(row[0]) for row in rows]
 
 
+def organization_id_of(model, record_id) -> int | None:
+    """The organisation that owns one record, for work handed off to run later.
+
+    A background worker (a spawned process, a Celery task) is given a record id
+    by the request that started it, and runs with no request and therefore no
+    tenant. It resolves the owner here, then does its real work inside
+    ``tenant_scope(owner)``, so every read is filtered and every new row is
+    stamped exactly as the originating request would have done.
+
+    Like ``active_organization_ids`` this is a deliberate, single-column global
+    read by primary key, taken before any tenant is entered. It returns a plain
+    int, never an ORM object, so nothing enters an identity map that a later
+    ``get()`` under the tenant could be served from. ``None`` means there is no
+    such record (or it has no owner); callers refuse rather than run unscoped.
+    """
+    table = model.__table__
+    value = db.session.execute(
+        db.select(table.c.organization_id).where(table.c.id == record_id)
+    ).scalar()
+    return int(value) if value is not None else None
+
+
 # --------------------------------------------------------------------------- #
 # The harness
 # --------------------------------------------------------------------------- #
@@ -336,7 +418,7 @@ def run_for_each_tenant(
             for organization_id in ids:
                 started = time.monotonic()
                 try:
-                    with tenant_scope(organization_id):
+                    with tenant_scope(organization_id), trace_scope("job", job_name):
                         value = func(organization_id)
                         # Commit inside the tenant scope so the flush still
                         # carries this tenant's stamp from before_flush.
@@ -424,10 +506,13 @@ def tenant_job(job_name: str, **harness_kwargs):
 __all__ = [
     "JobLockUnavailable",
     "JobRun",
+    "PLATFORM_JOBS",
+    "TENANT_JOBS",
     "TenantResult",
     "active_organization_ids",
     "job_lock",
     "run_for_each_tenant",
     "tenant_job",
     "tenant_scope",
+    "_remove_undeclared_jobs",
 ]

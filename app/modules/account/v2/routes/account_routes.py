@@ -37,12 +37,9 @@ from app.services.rate_limiter import rate_limit
 from app.modules.account.forms.account_forms import (
     ChangeEmailForm,
     ChangePasswordForm,
-    CreatePasswordForm,
     LoginForm,
-    RegistrationForm,
-    RequestResetPasswordForm,
-    ResetPasswordForm,
 )
+from app.modules.account.routes import mail_views
 from app.modules.account.services.account_service import AccountService
 
 # Blueprint name MUST be "account" (not "account_v2") because the shared
@@ -60,6 +57,23 @@ _svc = AccountService
 @timed_route
 def login():
     """Log in an existing user."""
+    # Opening /login while already signed in must not disturb the existing
+    # session (it is still fully valid) -- send the user on rather than
+    # re-rendering the sign-in form, which otherwise reads as an unexpected
+    # sign-out even though the session was never touched. Same
+    # already-authenticated guard as reset_password_request()/reset_password()
+    # below, reused here rather than duplicated with new logic. Honour a
+    # same-origin ?next= the way a successful login below already does --
+    # arriving here signed in from a deep link (e.g. a bookmarked page whose
+    # session just outlived a tab) must land back on that page, not always
+    # the dashboard; safe_next_url() is the same allow-list guard against an
+    # off-site next, reused rather than re-implemented here.
+    if current_user.is_authenticated:
+        from app.utils.safe_redirect import safe_next_url
+
+        return redirect(
+            safe_next_url(request.args.get("next"), url_for("dashboard.overview"))
+        )
     form = LoginForm()
     if form.validate_on_submit():
         # COM-005: Check email-domain SSO config before password auth.
@@ -122,17 +136,7 @@ def login():
 @timed_route
 def register():
     """Register a new user, and send them a confirmation email."""
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        (_svc.register_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-        ))
-        flash("Account created successfully. Welcome to A.R.C.H.I.E.!", "success")
-        return redirect(url_for("main.index"))
-    return render_template("account/register.html", form=form)
+    return mail_views.register_view()
 
 
 @account_bp_v2.route("/logout")
@@ -204,38 +208,19 @@ def session_keepalive():
 
 
 @account_bp_v2.route("/reset-password", methods=["GET", "POST"])
+@rate_limit(5, "1m", methods=("POST",))  # SECURITY: each POST can send mail
 @timed_route
 def reset_password_request():
     """Respond to existing user's request to reset their password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = RequestResetPasswordForm()
-    if form.validate_on_submit():
-        from flask import current_app as _ca
-        try:
-            _svc.request_password_reset(form.email.data)
-        except Exception:
-            _ca.logger.exception("password reset request failed for %s", form.email.data)
-        flash("If an account exists for {}, a password reset link has been sent.".format(form.email.data), "info")
-        return redirect(url_for("account.login"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_request_view()
 
 
 @account_bp_v2.route("/reset-password/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
 @timed_route
 def reset_password(token):
     """Reset an existing user's password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        success, message = _svc.reset_password(token, form.email.data, form.new_password.data)
-        flash_cat = "form-success" if success else "form-error"
-        flash(message, flash_cat)
-        if success:
-            return redirect(url_for("account.login"))
-        return redirect(url_for("main.index"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_view(token)
 
 
 @account_bp_v2.route("/manage/change-password", methods=["GET", "POST"])
@@ -303,67 +288,60 @@ def change_email(token):
     return redirect(url_for("main.index"))
 
 
-@account_bp_v2.route("/confirm-account")
+@account_bp_v2.route("/confirm-account", methods=["GET", "POST"])
 @login_required
+@rate_limit(3, "1m", methods=("POST",))  # SECURITY: each POST sends mail
 @timed_route
 def confirm_request():
     """Respond to new user's request to confirm their account."""
-    from flask import current_app as _ca
-    if _ca.config.get("MAIL_USERNAME") or _ca.config.get("MAIL_PASSWORD"):
-        try:
-            _svc.send_confirmation_email(current_user)
-        except Exception:
-            _ca.logger.warning("confirmation email send failed")
-    else:
-        _ca.logger.info("mail not configured; skipping confirmation email")
-    flash("A new confirmation link has been sent to {}.".format(current_user.email), "warning")
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_request_view()
 
 
 @account_bp_v2.route("/confirm-account/<token>")
-@login_required
 @timed_route
 def confirm(token):
     """Confirm new user's account with provided token."""
-    if current_user.confirmed:
-        return redirect(url_for("main.index"))
-    success, message = _svc.confirm_account(current_user, token)
-    flash_cat = "success" if success else "error"
-    flash(message, flash_cat)
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_view(token)
+
+
+@account_bp_v2.route("/join/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
+@timed_route
+def join(token):
+    """Accept an e-mailed invitation into an organisation by setting a password."""
+    return mail_views.join_view(token)
 
 
 @account_bp_v2.route("/join-from-invite/<int:user_id>/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m")
 @timed_route
 def join_from_invite(user_id, token):
-    """Confirm new user's account with provided token and prompt them to set a password."""
-    if current_user is not None and current_user.is_authenticated:
-        flash("You are already logged in.", "error")
-        return redirect(url_for("main.index"))
+    """Retired invitation link: it is served by the one invitation flow.
 
-    new_user, token_valid, message = _svc.join_from_invite(user_id, token)
+    Links of this shape carried a reusable signed token that was never
+    stored. They set no password and send no mail any more; the token is
+    handed to ``/join/<token>``, which refuses anything it did not issue.
+    """
+    return redirect(url_for("account.join", token=token))
 
-    if new_user is None:
-        return redirect(404)
 
-    if not token_valid and new_user.password_hash is not None:
-        flash(message, "error")
-        return redirect(url_for("main.index"))
+@account_bp_v2.route("/invitation/<int:invitation_id>/accept", methods=["POST"])
+@login_required
+@timed_route
+def accept_invitation(invitation_id):
+    """Accept a pending invitation and gain the offered role."""
+    success, message = _svc.accept_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
+    return redirect(url_for("main.index"))
 
-    if token_valid:
-        form = CreatePasswordForm()
-        if form.validate_on_submit():
-            _svc.set_password(new_user, form.password.data)
-            flash(
-                "Your password has been set. After you log in, you can "
-                'go to the "Your Account" page to review your account '
-                "information and settings.",
-                "success",
-            )
-            return redirect(url_for("account.login"))
-        return render_template("account/join_invite.html", form=form)
-    else:
-        flash(message, "error")
+
+@account_bp_v2.route("/invitation/<int:invitation_id>/decline", methods=["POST"])
+@login_required
+@timed_route
+def decline_invitation(invitation_id):
+    """Decline a pending invitation — no role is granted."""
+    success, message = _svc.decline_invitation(current_user, invitation_id)
+    flash(message, "success" if success else "error")
     return redirect(url_for("main.index"))
 
 
@@ -380,13 +358,14 @@ def before_request():
         return redirect(url_for("account.unconfirmed"))
 
 
-@account_bp_v2.route("/manage/notification-preferences", methods=["POST"])
+@account_bp_v2.route("/manage/preferences", methods=["POST"])
 @login_required
 @timed_route
-def save_notification_preferences():
-    """PLT-017: Save in-app notification preferences for the current user."""
+def save_preferences():
+    """Save user preferences (notifications and display) for the current user."""
     from app import db
 
+    form_type = request.form.get("form_type", "")
     known_keys = [
         "arb_decisions",
         "solution_updates",
@@ -394,14 +373,20 @@ def save_notification_preferences():
         "weekly_digest",
         "mention_notifications",
     ]
-    prefs = {key: (request.form.get(key) == "on") for key in known_keys}
     try:
-        current_user.set_notification_preferences(prefs)
+        if form_type == "notifications":
+            prefs = {key: (request.form.get(key) == "on") for key in known_keys}
+            current_user.set_notification_preferences(prefs)
+        elif form_type == "display":
+            current_user.show_archimate_names = (request.form.get("show_archimate_names") == "on")
+        else:
+            flash("Unknown preference form type.", "error")
+            return redirect(url_for("account.manage"))
         db.session.add(current_user)
         db.session.commit()
-        flash("Notification preferences saved.", "success")
+        flash("Preferences saved.", "success")
     except Exception as exc:
-        _log.error("Failed to save notification preferences for user %s: %s", current_user.id, exc)
+        _log.error("Failed to save preferences for user %s: %s", current_user.id, exc)
         db.session.rollback()
         flash("Could not save preferences. Please try again.", "error")
     return redirect(url_for("account.manage"))
@@ -411,9 +396,7 @@ def save_notification_preferences():
 @timed_route
 def unconfirmed():
     """Catch users with unconfirmed emails."""
-    if current_user.is_anonymous or current_user.confirmed:
-        return redirect(url_for("main.index"))
-    return render_template("account/unconfirmed.html")
+    return mail_views.unconfirmed_view()
 
 
 # ---------------------------------------------------------------------------
