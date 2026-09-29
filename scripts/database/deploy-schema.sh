@@ -15,6 +15,12 @@ flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy ba
 flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram tenancy backfill skipped - composer diagrams keep nullable organization_id until it runs; rows left NULL are invisible to every org (CMP-01)'
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
 flask --app manage backfill-architect-role
+# RUN-01: copy ARB, ArchiMate composer and rationalisation audit history into
+# soc2_audit_log (the system of record per ADR 0008). Runs here because
+# CREATE INDEX IF NOT EXISTS ix_soc2_audit_org_id requires table ownership
+# (the schema-deploy service connects as the deploy role that owns the tables).
+# Idempotent: a row whose retired_into_id is set is skipped.
+flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipped - older audit entries from ARB, ArchiMate composer and rationalisation stores remain uncopied until it runs (RUN-01)' >&2
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
 # app/models/unified_capability.py and docs/adr/0008-one-system-of-record.md) a

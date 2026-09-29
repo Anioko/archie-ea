@@ -422,6 +422,9 @@ def create_solution_plateau(solution_id):
 @login_required
 def update_solution_tco_item(solution_id, tco_id):
     """Update a TCO line item."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_lifecycle_models import SolutionTCOItem
     item = SolutionTCOItem.query.filter_by(id=tco_id, solution_id=solution_id).first_or_404()
     data = request.get_json()
@@ -436,6 +439,9 @@ def update_solution_tco_item(solution_id, tco_id):
 @login_required
 def delete_solution_tco_item(solution_id, tco_id):
     """Delete a TCO line item."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_lifecycle_models import SolutionTCOItem
     item = SolutionTCOItem.query.filter_by(id=tco_id, solution_id=solution_id).first_or_404()
     db.session.delete(item)
@@ -447,6 +453,9 @@ def delete_solution_tco_item(solution_id, tco_id):
 @login_required
 def update_solution_plateau(solution_id, plateau_id):
     """Update a transition architecture plateau."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_lifecycle_models import SolutionPlateau
     plateau = SolutionPlateau.query.filter_by(id=plateau_id, solution_id=solution_id).first_or_404()
     data = request.get_json()
@@ -471,6 +480,9 @@ def update_solution_plateau(solution_id, plateau_id):
 @login_required
 def delete_solution_plateau(solution_id, plateau_id):
     """Delete a transition architecture plateau."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_lifecycle_models import SolutionPlateau
     plateau = SolutionPlateau.query.filter_by(id=plateau_id, solution_id=solution_id).first_or_404()
     db.session.delete(plateau)
@@ -572,6 +584,9 @@ def create_solution_business_element(solution_id):
 @login_required
 def delete_solution_business_element(solution_id, row_id):
     """Delete a business layer element."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_sad_models import SolutionBusinessElement
     row = SolutionBusinessElement.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
@@ -617,6 +632,9 @@ def create_solution_app_element(solution_id):
 @login_required
 def delete_solution_app_element(solution_id, row_id):
     """Delete an application layer element."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_sad_models import SolutionAppElement
     row = SolutionAppElement.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
@@ -665,6 +683,9 @@ def create_solution_tech_element(solution_id):
 @login_required
 def delete_solution_tech_element(solution_id, row_id):
     """Delete a technology layer element."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_sad_models import SolutionTechElement
     row = SolutionTechElement.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
@@ -711,6 +732,9 @@ def create_solution_quality_attribute(solution_id):
 @login_required
 def delete_solution_quality_attribute(solution_id, row_id):
     """Delete a quality attribute."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_sad_models import SolutionQualityAttribute
     row = SolutionQualityAttribute.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
@@ -759,6 +783,9 @@ def create_solution_sla(solution_id):
 @login_required
 def delete_solution_sla(solution_id, row_id):
     """Delete an SLA."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_sad_models import SolutionSLA
     row = SolutionSLA.query.filter_by(id=row_id, solution_id=solution_id).first_or_404()
     db.session.delete(row)
@@ -2427,6 +2454,9 @@ def create_solution_capability(solution_id):
 @login_required
 def update_solution_capability(solution_id, mapping_id):
     """Update a capability mapping."""
+    # The child row carries no organisation of its own; the solution does. Load it
+    # first so another organisation's solution id is a 404 before its rows are reached.
+    Solution.query.get_or_404(solution_id)
     from app.models.solution_models import SolutionCapabilityMapping
 
     mapping = SolutionCapabilityMapping.query.filter_by(

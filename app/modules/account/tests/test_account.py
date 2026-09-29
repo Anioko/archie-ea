@@ -53,11 +53,11 @@ class TestAccountService:
             from app.modules.account.services.account_service import AccountService
             assert hasattr(AccountService, 'confirm_account')
 
-    def test_join_from_invite_method_exists(self, app):
-        """join_from_invite() method exists on AccountService."""
+    def test_join_from_invite_is_retired(self, app):
+        """The reusable-token invitation path is gone; /account/join/<token> is the one flow."""
         with app.app_context():
             from app.modules.account.services.account_service import AccountService
-            assert hasattr(AccountService, 'join_from_invite')
+            assert not hasattr(AccountService, 'join_from_invite')
 
 
 class TestAccountForms:
