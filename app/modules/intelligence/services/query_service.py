@@ -872,25 +872,17 @@ class IntelligenceQueryService:
 
         summary["latency_ms"] = scope.latency_ms
 
-        # Stable pagination: sort by element_id, slice by cursor.
+        # Stable pagination: preserve canonical walk order (explicit rows
+        # first in BFS order, then derived rows).  The cursor is a 0-based
+        # index into the full unpaginated list; next_cursor is the index of
+        # the first row that would appear on the next page.
         total = len(rows)
         next_cursor = None
         if page_size is not None and page_size > 0:
-            rows.sort(key=lambda r: r["element_id"])
-            if cursor is not None:
-                # Skip rows whose element_id <= cursor (the cursor is the last
-                # element_id from the previous page).
-                slice_start = 0
-                for i, r in enumerate(rows):
-                    if r["element_id"] > cursor:
-                        slice_start = i
-                        break
-                else:
-                    slice_start = len(rows)
-                rows = rows[slice_start:]
-            page = rows[:page_size]
-            if len(page) < len(rows):
-                next_cursor = page[-1]["element_id"] if page else None
+            slice_start = cursor if cursor is not None else 0
+            page = rows[slice_start : slice_start + page_size]
+            if slice_start + page_size < total:
+                next_cursor = slice_start + page_size
             rows = page
 
         return {
