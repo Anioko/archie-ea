@@ -2,7 +2,7 @@
  * Owner Picker for the Application Edit form.
  *
  * Provides:
- *  - Debounced live-search (300 ms) against the person-picker endpoint
+ *  - Debounced live-search (300 ms) against the canonical user-search endpoint
  *  - Enables the "Add owner" button only when a user is selected
  *  - POST /applications/<id>/owners to add
  *  - DELETE /applications/<id>/owners/<id> to remove
@@ -57,9 +57,15 @@
             return;
         }
 
-        Platform.fetch.get('/applications/' + appId + '/owners/search', { q: query }, { silent: true })
+        Platform.fetch.get('/api/users', { q: query, limit: 20 }, { silent: true })
             .then(function (data) {
-                renderResults(data.results || []);
+                renderResults((data.users || []).map(function (u) {
+                    return {
+                        id: u.id,
+                        label: u.name || u.email || '',
+                        email: u.email || '',
+                    };
+                }));
             })
             .catch(function () {
                 // Type-ahead errors are transient and not shown to the user

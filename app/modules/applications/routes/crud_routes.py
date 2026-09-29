@@ -76,7 +76,6 @@ from ._helpers import (  # dead-code-ok
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
 )
-from app.utils.tenant_users import user_in_org
 
 logger = logging.getLogger(__name__)
 
@@ -810,15 +809,7 @@ def application_edit(id):
 
         # Load ApplicationOwner records for the edit form
         org_id = g.current_org_id
-        owner_rows = ApplicationOwner.get_owners_for_application(id, org_id)
-        application_owners = []
-        for o in owner_rows:
-            owner_user = user_in_org(o.user_id, org_id)
-            application_owners.append({
-                "id": o.id,
-                "user_name": f"{owner_user.first_name} {owner_user.last_name}" if owner_user else "Unknown",
-                "ownership_type": o.ownership_type,
-            })
+        application_owners = ApplicationOwner.get_display_rows_for_application(id, org_id)
 
         return render_template(
             "applications/edit.html", application=app, architecture_state=architecture_state,

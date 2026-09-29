@@ -1,7 +1,6 @@
 """Owner writer routes for the Applications module.
 
 Provides:
-- Person picker: debounced live-search for users in the caller's organisation
 - Add an owner (POST, JSON)
 - Change an owner's type (PUT, JSON)
 - Remove an owner (DELETE, JSON)
@@ -22,29 +21,11 @@ from app import db
 from app.decorators import audit_log
 from app.models.application_owner import ApplicationOwner
 from app.models.application_portfolio import ApplicationComponent
-from app.models.user import User
 from app.utils.tenant_users import user_in_org
 
 from . import unified_applications_bp
 
 logger = logging.getLogger(__name__)
-
-
-# Shared ILIKE escape — backslash, percent and underscore stand for themselves.
-def _search_clause(search: str):
-    """Return a SQL expression that matches user name/email literally.
-    
-    The search text is escaped so that ``%`` and ``_`` stand for themselves
-    rather than acting as pattern characters.  Compare
-    ``my_applications/services.py``'s ``_search_clause``.
-    """
-    escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    term = f"%{escaped}%"
-    return db.or_(
-        User.first_name.ilike(term, escape="\\"),
-        User.last_name.ilike(term, escape="\\"),
-        User.email.ilike(term, escape="\\"),
-    )
 
 
 def _verify_app_in_org(app_id: int, org_id: int) -> ApplicationComponent | None:
@@ -54,40 +35,17 @@ def _verify_app_in_org(app_id: int, org_id: int) -> ApplicationComponent | None:
     ).first()
 
 
-@unified_applications_bp.route("/<int:app_id>/owners/search")
-@login_required
-def owner_picker_search(app_id: int):
-    """Debounced live-search for users in the caller's organisation.
-
-    Called by the person-picker widget with a 300 ms debounce. Returns up to
-    20 matching users by name or email, scoped to the caller's organisation.
-    The search text is matched literally (``%`` and ``_`` are escaped).
-    """
-    q = (request.args.get("q") or "").strip()
-    if len(q) < 2:
-        return jsonify({"results": []})
-
-    org_id = g.current_org_id
-    users = (
-        User.query.filter(
-            User.organization_id == org_id,
-            _search_clause(q),
-        )
-        .order_by(User.first_name, User.last_name)
-        .limit(20)
-        .all()
+def _duplicate_owner(app_id: int, user_id: int, ownership_type: str, org_id: int, exclude_owner_id: int | None = None):
+    """Return an existing owner row with the same user and type, if any."""
+    query = ApplicationOwner.query.filter(
+        ApplicationOwner.application_id == app_id,
+        ApplicationOwner.user_id == user_id,
+        ApplicationOwner.ownership_type == ownership_type,
+        ApplicationOwner.organization_id == org_id,
     )
-
-    return jsonify({
-        "results": [
-            {
-                "id": u.id,
-                "label": f"{u.first_name} {u.last_name}" if u.first_name else u.email,
-                "email": u.email,
-            }
-            for u in users
-        ]
-    })
+    if exclude_owner_id is not None:
+        query = query.filter(ApplicationOwner.id != exclude_owner_id)
+    return query.first()
 
 
 @unified_applications_bp.route("/<int:app_id>/owners", methods=["POST"])
@@ -128,12 +86,7 @@ def add_owner(app_id: int):
         }), 404
 
     # Check for duplicate (same user + same type)
-    existing = ApplicationOwner.query.filter(
-        ApplicationOwner.application_id == app_id,
-        ApplicationOwner.user_id == user.id,
-        ApplicationOwner.ownership_type == ownership_type,
-        ApplicationOwner.organization_id == org_id,
-    ).first()
+    existing = _duplicate_owner(app_id, user.id, ownership_type, org_id)
     if existing is not None:
         return jsonify({
             "success": False,
@@ -187,6 +140,13 @@ def change_owner_type(app_id: int, owner_id: int):
             "error": f"ownership_type must be one of {ApplicationOwner.OWNERSHIP_TYPES}",
         }), 400
 
+    existing = _duplicate_owner(app_id, owner.user_id, new_type, org_id, exclude_owner_id=owner.id)
+    if existing is not None:
+        return jsonify({
+            "success": False,
+            "error": f"User already assigned as {new_type} owner",
+        }), 409
+
     owner.ownership_type = new_type
     db.session.commit()
 
@@ -232,19 +192,4 @@ def list_owners(app_id: int):
         return jsonify({"success": False, "error": "Application not found"}), 404
 
     org_id = g.current_org_id
-    owners = ApplicationOwner.get_owners_for_application(app_id, org_id)
-
-    result = []
-    for o in owners:
-        user = user_in_org(o.user_id, org_id)
-        result.append({
-            "id": o.id,
-            "user_id": o.user_id,
-            "user_name": f"{user.first_name} {user.last_name}" if user else "Unknown",
-            "user_email": user.email if user else None,
-            "ownership_type": o.ownership_type,
-            "assigned_at": o.assigned_at.isoformat() if o.assigned_at else None,
-            "assigned_by": o.assigned_by,
-        })
-
-    return jsonify({"owners": result})
+    return jsonify({"owners": ApplicationOwner.get_display_rows_for_application(app_id, org_id)})
