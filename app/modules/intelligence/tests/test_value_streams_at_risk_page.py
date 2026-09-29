@@ -30,6 +30,10 @@ TEMPLATE = (
     REPO_ROOT / "app" / "modules" / "intelligence" / "templates" / "intelligence"
     / "value_streams_at_risk.html"
 )
+TABLE_TEMPLATE = (
+    REPO_ROOT / "app" / "modules" / "intelligence" / "templates" / "intelligence"
+    / "_value_streams_at_risk_table.html"
+)
 SCRIPT = REPO_ROOT / "app" / "static" / "js" / "intelligence" / "value_streams_at_risk.js"
 
 
@@ -205,6 +209,17 @@ def test_the_rendered_sidebar_links_to_the_page_for_a_business_architect(
     html = client.get(PAGE).get_data(as_text=True)
     assert f'href="{PAGE}"' in html
     assert "Value Streams at Risk" in html
+
+
+def test_the_page_reuses_the_shared_table_component_via_its_macro():
+    page = TEMPLATE.read_text(encoding="utf-8")
+    table_macro = TABLE_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "from 'intelligence/_value_streams_at_risk_table.html' import value_streams_at_risk_table" in page
+    assert "{{ value_streams_at_risk_table() }}" in page
+    assert "<table class=\"w-full text-sm\" data-vsr-table>" not in page
+    assert "from 'components/table.html' import table" in table_macro
+    assert "{% call table() %}" in table_macro
 
 
 # --- the page's rows are the API's rows ---------------------------------------
