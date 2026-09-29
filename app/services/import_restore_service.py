@@ -127,13 +127,15 @@ def _dependent_relationships(org_id: int, element_ids: Sequence[int], own: set) 
     return list(found.values())
 
 
-def _foreign_key_columns():
-    """Every column, in any table, that refers to an ArchiMate element."""
+def _foreign_key_columns(target_tables: Optional[Sequence[str]] = None):
+    """Every column, in any table, that refers to one of ``target_tables``."""
+    allowed = set(target_tables or ())
     out = []
     for table in db.metadata.tables.values():
         for fk in table.foreign_keys:
-            if fk.column.table.name == ELEMENT_TABLE:
-                out.append((table, fk.parent))
+            if allowed and fk.column.table.name not in allowed:
+                continue
+            out.append((table, fk.parent, fk.column.table))
     return out
 
 
@@ -148,32 +150,46 @@ def _blocking_references(
     refused until it is dealt with, so a restore never silently breaks or
     deletes someone's later work.
     """
-    blockers: List[Dict[str, Any]] = []
-    if not element_ids:
-        return blockers
-    for table, column in _foreign_key_columns():
-        if table.name == RELATIONSHIP_TABLE:
+    blockers_by_table: Dict[str, Dict[str, Any]] = {}
+    watched: Dict[str, List[int]] = {ELEMENT_TABLE: list(element_ids)}
+    watched.update({table_name: list(ids) for table_name, ids in domain_ids.items() if ids})
+    if not watched[ELEMENT_TABLE] and len(watched) == 1:
+        return []
+    for table, column, target_table in _foreign_key_columns(tuple(watched)):
+        if table.name == RELATIONSHIP_TABLE and target_table.name == ELEMENT_TABLE:
+            continue
+        watched_ids = watched.get(target_table.name) or []
+        if not watched_ids:
             continue
         pk = list(table.primary_key.columns)
         excluded = domain_ids.get(table.name, set())
         count = 0
-        for chunk in _chunks(element_ids):
+        for chunk in _chunks(watched_ids):
             stmt = sa.select(*(pk or [column])).where(column.in_(chunk))
             if "organization_id" in table.c:
                 stmt = stmt.where(table.c.organization_id == org_id)
+            else:
+                stmt = stmt.where(
+                    column.in_(
+                        sa.select(target_table.c.id).where(
+                            target_table.c.id.in_(chunk),
+                            _org_filter(target_table, org_id),
+                        )
+                    )
+                )
             for row in db.session.execute(stmt).all():
-                if table.name == ELEMENT_TABLE and row[0] in element_id_set:
+                if table.name == ELEMENT_TABLE and target_table.name == ELEMENT_TABLE and row[0] in element_id_set:
                     continue
                 if pk and len(pk) == 1 and row[0] in excluded:
                     continue
                 count += 1
         if count:
-            blockers.append({
-                "table": table.name,
-                "label": table.name.replace("_", " "),
-                "count": count,
-            })
-    return blockers
+            blocker = blockers_by_table.setdefault(
+                table.name,
+                {"table": table.name, "label": table.name.replace("_", " "), "count": 0},
+            )
+            blocker["count"] += count
+    return [blockers_by_table[name] for name in sorted(blockers_by_table)]
 
 
 def _changes_since(org_id: int, log, watched_ids: Sequence[int], updated_ids: set) -> List[Dict[str, Any]]:

@@ -284,6 +284,67 @@ def test_domain_rows_the_import_created_are_removed_with_it(client, db_session, 
     assert ApplicationComponent.query.filter_by(organization_id=org.id, name="Dom Node A").count() == 0
 
 
+def test_restore_is_blocked_when_a_domain_row_has_new_references(client, db_session, login_as, make_org):
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.requirements import Requirement
+
+    org = make_org("domain-block")
+    user = make_user(db_session, org)
+    xml = OEF_TEMPLATE.replace('xsi:type="Node"><name xml:lang="en">{prefix} Node A',
+                               'xsi:type="ApplicationComponent"><name xml:lang="en">{prefix} Node A')
+    post_import(client, login_as, user, xml.format(prefix="Block", model="m", desc="d").encode())
+    imported = ApplicationComponent.query.filter_by(organization_id=org.id, name="Block Node A").one()
+    db_session.add(Requirement(title="Needs the imported app", application_component_id=imported.id))
+    db_session.flush()
+
+    log_id = restore_point_id(org.id)
+    login_as(client, user)
+    preview = client.get(f"/architecture/import/oef/restore-points/{log_id}",
+                         headers={"Accept": "application/json"}).get_json()
+    assert preview["can_restore"] is False
+    assert preview["blockers"] == [{"table": "requirements", "label": "requirements", "count": 1}]
+
+    resp = restore_json(client, login_as, user, log_id)
+    assert resp.status_code == 409
+    assert "1 in requirements" in resp.get_data(as_text=True)
+    assert ApplicationComponent.query.filter_by(organization_id=org.id, name="Block Node A").count() == 1
+
+
+def test_preview_lists_one_blocker_entry_per_referencing_table(client, db_session, login_as, make_org):
+    from app.models.archimate_core import ArchiMateElement
+    from app.models.integration_metadata import SystemDependency
+    from app.models.requirements import Requirement
+
+    org = make_org("blocker-agg")
+    user = make_user(db_session, org)
+    result = post_import(client, login_as, user, oef("Agg"))
+    imported_id = result["created_ids"][0]
+    db_session.add(Requirement(
+        title="Requirement with two links",
+        archimate_element_id=imported_id,
+        source_element_id=imported_id,
+    ))
+    db_session.add(SystemDependency(
+        source_system_id=imported_id,
+        target_system_id=imported_id,
+        interface_id=imported_id,
+        dependency_type="service",
+    ))
+    db_session.flush()
+
+    log_id = restore_point_id(org.id)
+    login_as(client, user)
+    preview = client.get(f"/architecture/import/oef/restore-points/{log_id}",
+                         headers={"Accept": "application/json"}).get_json()
+    blockers = {item["table"]: item for item in preview["blockers"]}
+
+    assert sorted(blockers) == ["requirements", "system_dependencies"]
+    assert len(preview["blockers"]) == 2
+    assert blockers["requirements"]["count"] == 2
+    assert blockers["system_dependencies"]["count"] == 3
+    assert ArchiMateElement.query.get(imported_id).organization_id == org.id
+
+
 def test_a_faulty_import_of_4000_relationships_is_fully_undone(db_session, make_org, tenant_ctx):
     """Bulk inserts, not per-row commits: the fixture stands in for the import's writes."""
     import sqlalchemy as sa
