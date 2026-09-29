@@ -233,3 +233,55 @@ class TestTwoOrgProviderRegister:
         assert ("openai", "gpt-4o") in provider_models
         assert ("anthropic", "claude-opus-5") in provider_models
         assert ("custom-llm", "v1") in provider_models
+
+
+class TestProviderRestrictionWriter:
+    """set_provider_restriction persists normalized per-org decisions."""
+
+    def test_creates_org_override_when_missing(self, db_session, make_org):
+        """Writer creates a normalized org row when no override exists."""
+        from app.models.model_provider import ModelProvider, set_provider_restriction
+
+        org = make_org("writer-create")
+
+        row = set_provider_restriction(org.id, " OpenAI ", " GPT-4O-MINI ", allowed=False)
+        db_session.flush()
+
+        saved = db_session.get(ModelProvider, row.id)
+        assert saved is not None
+        assert saved.organization_id == org.id
+        assert saved.provider == "openai"
+        assert saved.model_version == "gpt-4o-mini"
+        assert saved.is_platform_default is False
+        assert saved.is_allowed is False
+
+    def test_updates_existing_org_override_in_place(self, db_session, make_org):
+        """Writer updates the normalized existing row instead of inserting a duplicate."""
+        from app.models.model_provider import ModelProvider, set_provider_restriction
+
+        org = make_org("writer-update")
+        existing = ModelProvider(
+            provider=" anthropic ",
+            model_version=" claude-opus-5 ",
+            organization_id=org.id,
+            is_platform_default=False,
+            is_allowed=False,
+        )
+        db_session.add(existing)
+        db_session.flush()
+
+        row = set_provider_restriction(org.id, "ANTHROPIC", "CLAUDE-OPUS-5", allowed=True)
+        db_session.flush()
+
+        assert row.id == existing.id
+        refreshed = db_session.get(ModelProvider, existing.id)
+        assert refreshed is not None
+        assert refreshed.provider == "anthropic"
+        assert refreshed.model_version == "claude-opus-5"
+        assert refreshed.is_allowed is True
+        count = db_session.query(ModelProvider).filter_by(
+            provider="anthropic",
+            model_version="claude-opus-5",
+            organization_id=org.id,
+        ).count()
+        assert count == 1

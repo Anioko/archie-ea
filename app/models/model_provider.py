@@ -176,17 +176,21 @@ def set_provider_restriction(org_id: int, provider: str,
 
     Returns the created/updated row.
     """
-    existing = ModelProvider.query.filter_by(
-        provider=provider,
-        model_version=model_version,
-        organization_id=org_id,
+    normalized_provider = ModelProvider._normalize_provider(provider)
+    normalized_model_version = ModelProvider._normalize_model(model_version)
+    existing = ModelProvider._normalized_query(
+        normalized_provider,
+        normalized_model_version,
+        org_id,
     ).first()
     if existing is not None:
+        existing.provider = normalized_provider
+        existing.model_version = normalized_model_version
         existing.is_allowed = allowed
         return existing
     row = ModelProvider(
-        provider=provider,
-        model_version=model_version,
+        provider=normalized_provider,
+        model_version=normalized_model_version,
         organization_id=org_id,
         is_platform_default=False,
         is_allowed=allowed,
