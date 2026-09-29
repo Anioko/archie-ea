@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, UTC
+
+from sqlalchemy import text
 
 from app import db
 from app.middleware.tenant_context import current_org_id
@@ -73,32 +75,43 @@ class CrosswalkService:
         assert_connector_permitted(source_system)
         cls._assert_element_belongs_to_org(element_id, org_id)
 
-        observed_at = last_seen or datetime.utcnow()
+        observed_at = last_seen or datetime.now(UTC)
+        first_seen_value = first_seen or observed_at
+
+        # Strip timezone for the naive DateTime column.
+        observed_naive = observed_at.replace(tzinfo=None)
+        first_seen_naive = first_seen_value.replace(tzinfo=None)
+
+        db.session.execute(
+            text(
+                "INSERT INTO external_identity_crosswalk "
+                "(organization_id, source_system, external_id, element_id, "
+                "confidence, first_seen, last_seen) "
+                "VALUES (:org_id, :source, :ext_id, :elem_id, :conf, :first, :last) "
+                "ON CONFLICT (organization_id, source_system, external_id) "
+                "DO UPDATE SET element_id = EXCLUDED.element_id, "
+                "confidence = EXCLUDED.confidence, "
+                "last_seen = EXCLUDED.last_seen, "
+                "first_seen = LEAST(external_identity_crosswalk.first_seen, EXCLUDED.first_seen)"
+            ),
+            {
+                "org_id": org_id,
+                "source": source_system,
+                "ext_id": external_id,
+                "elem_id": element_id,
+                "conf": confidence,
+                "first": first_seen_naive,
+                "last": observed_naive,
+            },
+        )
+        db.session.flush()
+
         row = ExternalIdentityCrosswalk.query.filter_by(
             organization_id=org_id,
             source_system=source_system,
             external_id=external_id,
-        ).first()
-
-        if row is None:
-            row = ExternalIdentityCrosswalk(
-                organization_id=org_id,
-                source_system=source_system,
-                external_id=external_id,
-                element_id=element_id,
-                confidence=confidence,
-                first_seen=first_seen or observed_at,
-                last_seen=observed_at,
-            )
-            db.session.add(row)
-        else:
-            row.element_id = element_id
-            row.confidence = confidence
-            row.last_seen = observed_at
-            if first_seen is not None and first_seen < row.first_seen:
-                row.first_seen = first_seen
-
-        db.session.flush()
+        ).populate_existing().first()
+        assert row is not None, "crosswalk row must exist after upsert"
         return row
 
     @classmethod
