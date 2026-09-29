@@ -47,13 +47,39 @@ class ImpactAnalysisService:
         Returns:
             Full impact analysis with risk assessment
         """
-        # Get direct dependencies (depth=2: level 1 is self, level 2 is direct)
-        direct_deps = cls._get_dependencies(element_id, depth=2)
+        # Repointed to the canonical cross_layer_impact walk (R1-B11).
+        # max_depth=3 in cross_layer_impact (3 hops) matches the old
+        # _get_dependencies(depth=4) which returned levels 2-4 (3 hops from seed).
+        from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
-        # Get transitive dependencies (4 levels deep)
-        all_deps = cls._get_dependencies(element_id, depth=4)
-        direct_ids = {d["id"] for d in direct_deps}
-        indirect_deps = [d for d in all_deps if d["id"] not in direct_ids]
+        result = IntelligenceQueryService.cross_layer_impact(
+            element_id,
+            include_derived=False,
+            max_depth=3,
+            direction="downstream",
+            with_owner=True,
+        )
+        rows = result.get("rows") or []
+        elements = result.get("elements") or {}
+
+        def _row_to_dep(row):
+            el = elements.get(str(row["element_id"]), {})
+            return {
+                "id": row["element_id"],
+                "name": el.get("name"),
+                "type": el.get("type"),
+                "level": row["relation"]["depth"],
+                "dependency_level": "medium",
+                "app_name": None,
+                "criticality": None,
+                "tco": 0.0,
+                "owner": row.get("owner"),
+                "health": row.get("health"),
+            }
+
+        all_deps = [_row_to_dep(r) for r in rows]
+        direct_deps = [d for d in all_deps if d["level"] == 1]
+        indirect_deps = [d for d in all_deps if d["level"] > 1]
 
         # Severity-weighted risk: critical elements count 5x, high 3x, medium 2x, low/unknown 1x
         _dep_weights = {"critical": 5, "high": 3, "medium": 2, "low": 1}
