@@ -9,7 +9,6 @@ writes the denormalised is_org_admin column, leaving OrgRole untouched, so
 the team page (which reads OrgRole via rbac_service) returns 403.
 """
 import pytest
-from playwright.sync_api import expect
 
 from .conftest import PAGE_TIMEOUT, PASSWORD
 
@@ -60,13 +59,26 @@ def test_org_admin_toggle_grants_and_revokes_team_access(
     )
     page.wait_for_selector("table", timeout=PAGE_TIMEOUT)
 
-    # Accept the JavaScript confirm dialog that the data-confirm
-    # attribute triggers.
-    page.once("dialog", lambda d: d.accept())
-
-    # Click the "Make Admin" button for the solution_architect user.
-    # The button text is "Make Admin" when the user is not yet an admin.
-    page.click("button:has-text('Make Admin')")
+    # The data-confirm attribute on the form triggers a custom
+    # Platform.modal.confirm dialog (ui/modal.js), not a native browser
+    # dialog.  The handler sets form.dataset.confirmed = 'yes' and calls
+    # requestSubmit() when the user confirms.  We do the same directly
+    # so the toggle takes effect without depending on modal DOM details.
+    #
+    # Users are sorted by name; target the solution_architect row by email
+    # so we toggle the right user.
+    row = page.locator(f"tr:has-text('{target_email}')")
+    row.locator("button:has-text('Make Admin')").click()
+    page.evaluate(f"""() => {{
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {{
+            if (row.textContent.includes('{target_email}')) {{
+                const form = row.querySelector('form');
+                if (form) {{ form.dataset.confirmed = 'yes'; form.requestSubmit(); }}
+                break;
+            }}
+        }}
+    }}""")
     page.wait_for_load_state("networkidle")
 
     # ── Verify team access after grant ───────────────────────────────
@@ -87,8 +99,18 @@ def test_org_admin_toggle_grants_and_revokes_team_access(
     )
     page.wait_for_selector("table", timeout=PAGE_TIMEOUT)
 
-    page.once("dialog", lambda d: d.accept())
-    page.click("button:has-text('Revoke Admin')")
+    row = page.locator(f"tr:has-text('{target_email}')")
+    row.locator("button:has-text('Revoke Admin')").click()
+    page.evaluate(f"""() => {{
+        const rows = document.querySelectorAll('tr');
+        for (const row of rows) {{
+            if (row.textContent.includes('{target_email}')) {{
+                const form = row.querySelector('form');
+                if (form) {{ form.dataset.confirmed = 'yes'; form.requestSubmit(); }}
+                break;
+            }}
+        }}
+    }}""")
     page.wait_for_load_state("networkidle")
 
     # ── Verify team access after revoke ──────────────────────────────
