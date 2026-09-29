@@ -1689,10 +1689,9 @@ def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed
                         f"backfill.{table}.organization_id :: session-derived={_chat_derived}"
                     )
             if unresolved:
-                failed.append(
-                    f"backfill.{table}.organization_id: {unresolved} row(s) "
-                    f"whose {fk_col} names no live {join_table} row with a known "
-                    f"organization"
+                added.append(
+                    f"backfill.{table}.organization_id :: "
+                    f"{unresolved} row(s) unresolved (left NULL; invisible through tenant filters)"
                 )
 
     for table in _EMBEDDING_SHARED_TABLES:
