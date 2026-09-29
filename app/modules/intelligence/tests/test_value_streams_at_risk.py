@@ -1,7 +1,7 @@
 """T-S1: `IntelligenceQueryService.value_streams_at_risk` and its route.
 
 Fixtures (app, db_session, make_org, tenant_ctx, client, login_as) are
-discovered via app/modules/intelligence/tests/conftest.py's own import of
+discovered via app/modules/conftest.py's import of
 tests.conftest -- no import needed here, matching test_impact_route.py's
 own pattern.
 
