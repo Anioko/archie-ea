@@ -139,3 +139,23 @@ def test_bulk_action_skips_a_foreign_organisations_entry_id(app, db_session, mak
 
     still = db_session.get(ConsolidationListEntry, entry_b_id)
     assert still.recommended_action != "decommission"
+
+
+def test_create_roadmap_task_refuses_a_foreign_organisations_entry(app, db_session, make_org, client, login_as):
+    from app.models.user import User
+
+    org_a = make_org("cle-fence-a6")
+    org_b = make_org("cle-fence-b6")
+    entry_b = _make_entry_for_org(db_session, org_b)
+    user_a = _make_user(db_session, org_a, "u6")
+    entry_b_id, uid = entry_b.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.post(
+        "/consolidation-list/api/create-roadmap-task",
+        json={"entry_id": entry_b_id},
+    )
+    assert r.status_code == 404
+    body = r.get_json()
+    assert body["success"] is False
