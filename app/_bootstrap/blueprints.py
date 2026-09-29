@@ -544,6 +544,12 @@ def _register_always_on_apis(app, csrf):
     app.register_blueprint(error_events_bp)
     app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
 
+    # Service status: current health, incident history, subscribe (any signed-in user).
+    from app.modules.monitoring.routes.status_routes import status_bp
+
+    app.register_blueprint(status_bp)
+    app.logger.info("[BLUEPRINT] Service status registered at /status")
+
     # Security API
     from app.routes.security_api import security_bp
 

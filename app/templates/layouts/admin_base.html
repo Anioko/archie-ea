@@ -184,6 +184,19 @@
                     {% block content %}{% endblock %}
                 </div>
             </main>
+            {# Page footer: the service-status page (platform health, incident
+               history, subscribe) for every signed-in user. Outside the sidebar
+               so it does not spend a navigation slot. #}
+            {% if current_user.is_authenticated and 'service_status.status_page' in flask.current_app.view_functions %}
+            <footer class="border-t border-border bg-background px-6 py-3 text-xs text-muted-foreground" data-testid="app-footer">
+                <a href="{{ url_for('service_status.status_page') }}"
+                   class="inline-flex items-center gap-1.5 hover:text-foreground"
+                   data-testid="footer-service-status">
+                    <i data-lucide="activity" class="h-3.5 w-3.5" aria-hidden="true"></i>
+                    <span>Service status</span>
+                </a>
+            </footer>
+            {% endif %}
         </div>
     </div>
 
