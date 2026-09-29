@@ -89,6 +89,38 @@ def _rule_id(type_a: str, type_b: str) -> str:
     return f"{branch}:{type_a}:{type_b}"
 
 
+def describe_rule(rule_id):
+    """The rule named by a stored ``rule_id``, in words, or ``None``.
+
+    Reads the same table ``_derive_type`` applies, so the description can only
+    say what the rule actually does. An id this table did not produce (another
+    engine's, or a malformed one) is not guessed at: ``None`` means the rule
+    that produced the connection is not recorded in a form this engine knows.
+    """
+    if not isinstance(rule_id, str):
+        return None
+    parts = rule_id.split(":")
+    if len(parts) != 3:
+        return None
+    branch, type_a, type_b = parts
+    if type_a not in STRENGTH_RANK or type_b not in STRENGTH_RANK:
+        return None
+    if _rule_id(type_a, type_b) != rule_id:
+        return None
+    result = _derive_type(type_a, type_b)
+
+    def kind(type_name):
+        word = type_name.lower()
+        return f"{'an' if word[0] in 'aeiou' else 'a'} {word} link"
+
+    words = f"{kind(type_a).capitalize()} followed by {kind(type_b)} gives {kind(result)}"
+    if branch == "transparent":
+        return f"{words}: composition, aggregation, realization and assignment pass a connection through unchanged."
+    if branch == "table":
+        return f"{words}, by the ArchiMate derivation table."
+    return f"{words}: no stronger rule applies, so only the weakest kind of link follows."
+
+
 class ArchiMateDerivationService:
     """Compute derived relationships from a set of elements and relationships."""
 
