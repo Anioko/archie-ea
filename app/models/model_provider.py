@@ -32,6 +32,7 @@ from __future__ import annotations
 from app import db
 from app.models.mixins import TimestampMixin
 from app.models.unified_capability import HybridCapabilityTenantMixin
+from sqlalchemy import func
 
 
 class ModelProvider(HybridCapabilityTenantMixin, TimestampMixin, db.Model):  # type: ignore[valid-type]
@@ -80,6 +81,26 @@ class ModelProvider(HybridCapabilityTenantMixin, TimestampMixin, db.Model):  # t
         status = "ALLOW" if self.is_allowed else "BLOCK"
         return f"<ModelProvider {self.provider}/{self.model_version} {scope} {status}>"
 
+    @staticmethod
+    def _normalize_provider(provider: str | None) -> str | None:
+        if provider is None:
+            return None
+        return provider.strip().lower()
+
+    @staticmethod
+    def _normalize_model(model_version: str | None) -> str | None:
+        if model_version is None:
+            return None
+        return model_version.strip().lower()
+
+    @classmethod
+    def _normalized_query(cls, provider: str, model_version: str, organization_id: int | None):
+        return cls.query.filter(
+            func.lower(func.trim(cls.provider)) == provider,
+            func.lower(func.trim(cls.model_version)) == model_version,
+            cls.organization_id == organization_id,
+        )
+
     @classmethod
     def is_allowed_for_org(cls, provider: str, model_version: str | None,
                            organization_id: int | None = None,
@@ -97,43 +118,32 @@ class ModelProvider(HybridCapabilityTenantMixin, TimestampMixin, db.Model):  # t
 
         When ``model_version`` is None only wildcard rows are consulted (steps 2, 4).
         """
+        provider = cls._normalize_provider(provider)
+        model_version = cls._normalize_model(model_version)
+
         # 1. Per-org exact match
         if organization_id is not None and model_version is not None:
-            row = cls.query.filter_by(
-                provider=provider,
-                model_version=model_version,
-                organization_id=organization_id,
-            ).first()
+            row = cls._normalized_query(provider, model_version, organization_id).first()
             if row is not None:
                 return row.is_allowed
 
         # 2. Per-org provider-wide wildcard
         if organization_id is not None:
-            row = cls.query.filter_by(
-                provider=provider,
-                model_version="*",
-                organization_id=organization_id,
-            ).first()
+            row = cls._normalized_query(provider, "*", organization_id).first()
             if row is not None:
                 return row.is_allowed
 
         # 3. Platform exact match
         if model_version is not None:
-            row = cls.query.filter_by(
-                provider=provider,
-                model_version=model_version,
-                organization_id=None,
-                is_platform_default=True,
+            row = cls._normalized_query(provider, model_version, None).filter(
+                cls.is_platform_default.is_(True)
             ).first()
             if row is not None:
                 return row.is_allowed
 
         # 4. Platform provider-wide wildcard
-        row = cls.query.filter_by(
-            provider=provider,
-            model_version="*",
-            organization_id=None,
-            is_platform_default=True,
+        row = cls._normalized_query(provider, "*", None).filter(
+            cls.is_platform_default.is_(True)
         ).first()
         if row is not None:
             return row.is_allowed

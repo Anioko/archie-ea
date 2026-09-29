@@ -147,6 +147,107 @@ class TestProviderRestrictionEnforcement:
 
         assert response == "ok"
 
+    def test_direct_failover_call_resolves_org_and_persists(self, db_session, app, make_org, tenant_ctx):
+        """Direct _call_llm_with_failover callers inherit org context and save the interaction."""
+        from app.modules.ai_chat.services.llm_service_impl import LLMService
+
+        org = make_org("direct-failover")
+        db_session.flush()
+
+        with tenant_ctx(org.id):
+            with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                with patch.object(
+                    LLMService,
+                    "_call_openai",
+                    return_value=("ok", 11, 7, 0.0021),
+                ):
+                    response, interaction = LLMService._call_llm_with_failover(
+                        prompt="direct-failover",
+                        model="gpt-4o",
+                        provider="openai",
+                    )
+
+                    assert response == "ok"
+                    assert interaction.organization_id == org.id
+                    assert interaction.id is not None
+                    saved = db_session.get(LLMInteraction, interaction.id)
+                    assert saved is not None
+                    assert saved.organization_id == org.id
+                    assert saved.provider == "openai"
+                    assert saved.model_name == "gpt-4o"
+
+    def test_platform_block_applies_without_org_context(self, db_session, app):
+        """Platform-default blocks still apply when no organisation is resolved."""
+        from app.models.model_provider import ModelProvider
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        db_session.add(ModelProvider(
+            provider="openai", model_version="gpt-4o",
+            organization_id=None, is_platform_default=True, is_allowed=False,
+        ))
+        db_session.flush()
+
+        with app.app_context(), pytest.raises(ProviderNotAllowed, match="not allowed"):
+            with patch.object(LLMService, "_resolve_org_id", return_value=None):
+                with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                    with patch.object(LLMService, "_call_openai") as mock_openai:
+                        LLMService._call_llm_with_failover(
+                            prompt="blocked-without-org",
+                            model="gpt-4o",
+                            provider="openai",
+                        )
+        mock_openai.assert_not_called()
+
+    def test_platform_block_with_org_override_only_allows_that_org(self, db_session, app, make_org):
+        """Platform block applies with no org and remains isolated from an explicit org allow."""
+        from app.models.model_provider import ModelProvider
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        org_a = make_org("allow-a")
+        org_b = make_org("allow-b")
+
+        db_session.add(ModelProvider(
+            provider="openai", model_version="gpt-4o",
+            organization_id=None, is_platform_default=True, is_allowed=False,
+        ))
+        db_session.add(ModelProvider(
+            provider="openai", model_version="gpt-4o",
+            organization_id=org_a.id, is_platform_default=False, is_allowed=True,
+        ))
+        db_session.flush()
+
+        with app.app_context():
+            with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                with patch.object(
+                    LLMService,
+                    "_call_openai",
+                    return_value=("ok", 2, 3, 0.0004),
+                ):
+                    with patch.object(LLMService, "_resolve_org_id", return_value=org_a.id):
+                        response, interaction = LLMService._call_llm_with_failover(
+                            prompt="allowed-org-a",
+                            model="gpt-4o",
+                            provider="openai",
+                        )
+                        assert response == "ok"
+                        assert interaction.organization_id == org_a.id
+
+                    with patch.object(LLMService, "_resolve_org_id", return_value=org_b.id):
+                        with pytest.raises(ProviderNotAllowed, match="not allowed"):
+                            LLMService._call_llm_with_failover(
+                                prompt="blocked-org-b",
+                                model="gpt-4o",
+                                provider="openai",
+                            )
+
+                    with patch.object(LLMService, "_resolve_org_id", return_value=None):
+                        with pytest.raises(ProviderNotAllowed, match="not allowed"):
+                            LLMService._call_llm_with_failover(
+                                prompt="blocked-no-org",
+                                model="gpt-4o",
+                                provider="openai",
+                            )
+
     def test_interaction_persisted_with_latency(self, db_session, make_org):
         """A successful call through the gateway persists the LLMInteraction with latency."""
         from app.models.model_provider import ModelProvider
@@ -232,6 +333,86 @@ class TestFallbackBypassPrevention:
         # Neither spy should have been called (register blocked them before the call)
         mock_openai.assert_not_called()
         mock_deepseek.assert_not_called()
+
+    def test_openrouter_vendor_prefix_obeys_blocked_vendor(self, db_session, app, make_org):
+        """An OpenRouter vendor-prefixed model is blocked by the mapped provider rule."""
+        from app.models.model_provider import ModelProvider
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        org = make_org("openrouter-vendor-block")
+        db_session.add(ModelProvider(
+            provider="openai", model_version="gpt-4o",
+            organization_id=org.id, is_platform_default=False, is_allowed=False,
+        ))
+        db_session.flush()
+
+        with app.app_context(), pytest.raises(ProviderNotAllowed, match="not allowed"):
+            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+                with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                    with patch.object(LLMService, "_call_openrouter") as mock_openrouter:
+                        LLMService._call_llm_with_failover(
+                            prompt="blocked-openrouter",
+                            model=" OpenAI/GPT-4O ",
+                            provider="openrouter",
+                        )
+        mock_openrouter.assert_not_called()
+
+    def test_model_name_normalization_blocks_variants(self, db_session, app, make_org):
+        """Case and whitespace variants of a blocked model are refused."""
+        from app.models.model_provider import ModelProvider
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        org = make_org("normalized-model-block")
+        db_session.add(ModelProvider(
+            provider="deepseek", model_version="deepseek-chat",
+            organization_id=org.id, is_platform_default=False, is_allowed=False,
+        ))
+        db_session.flush()
+
+        with app.app_context(), pytest.raises(ProviderNotAllowed, match="not allowed"):
+            with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+                with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                    with patch.object(LLMService, "_call_deepseek") as mock_deepseek:
+                        LLMService._call_llm_with_failover(
+                            prompt="blocked-normalized-model",
+                            model="  DeepSeek-Chat  ",
+                            provider="DeepSeek ",
+                        )
+        mock_deepseek.assert_not_called()
+
+    def test_allow_list_only_org_with_no_rows_refuses_and_records(self, db_session, app, make_org, tenant_ctx):
+        """An allow-list-only org with no register rows reaches no provider and records the refusal."""
+        from app.models.organization import Organization
+        from app.modules.ai_chat.services.llm_service_impl import LLMService, ProviderNotAllowed
+
+        org = make_org("allow-list-only")
+        org.settings = {"allow_list_only": True}
+        db_session.flush()
+
+        with tenant_ctx(org.id):
+            with pytest.raises(ProviderNotAllowed, match="not allowed"):
+                with patch.object(LLMService, "_resolve_org_id", return_value=org.id):
+                    with patch.object(LLMService, "_get_all_api_keys", return_value=["sk-fake-key"]):
+                        with patch.object(LLMService, "_call_openai") as mock_openai:
+                            LLMService._call_llm_with_failover(
+                                prompt="allow-list-only refusal",
+                                model="gpt-4o",
+                                provider="openai",
+                            )
+            mock_openai.assert_not_called()
+
+            refusal = (
+                db_session.query(LLMInteraction)
+                .filter(LLMInteraction.prompt == "allow-list-only refusal")
+                .order_by(LLMInteraction.id.desc())
+                .first()
+            )
+            assert refusal is not None
+            assert refusal.organization_id == org.id
+            assert refusal.provider == "openai"
+            assert refusal.model_name == "gpt-4o"
+            assert refusal.cost == 0
+            assert "not allowed" in (refusal.response or "")
 
 
 class TestRetentionDefault:

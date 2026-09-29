@@ -262,6 +262,78 @@ class TestTwoOrgGatewayIsolation:
         assert report["totals"]["calls"] == 1
         assert report["totals"]["cost"] > 0
 
+    def test_organization_spending_uses_current_org_only(
+        self, db_session, make_org, app, tenant_ctx
+    ):
+        """Organisation spending sums only the current tenant's interactions."""
+        from datetime import datetime, timedelta, timezone
+
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.llm_cost_tracker import LLMCostTracker
+
+        org_a = make_org("spend-a")
+        org_b = make_org("spend-b")
+
+        a_record = LLMInteraction(
+            model_name="gpt-4o",
+            provider="openai",
+            token_count_input=10,
+            token_count_output=5,
+            cost=1.25,
+            organization_id=org_a.id,
+        )
+        a_record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db_session.add(a_record)
+
+        b_record = LLMInteraction(
+            model_name="gpt-4o",
+            provider="openai",
+            token_count_input=10,
+            token_count_output=5,
+            cost=123.00,
+            organization_id=org_b.id,
+        )
+        b_record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db_session.add(b_record)
+        db_session.flush()
+
+        since = datetime.now(timezone.utc) - timedelta(days=1)
+        with app.app_context():
+            with tenant_ctx(org_a.id):
+                tracker = LLMCostTracker()
+                assert float(tracker._get_organization_spending(since)) == pytest.approx(1.25)
+            with tenant_ctx(org_b.id):
+                tracker = LLMCostTracker()
+                assert float(tracker._get_organization_spending(since)) == pytest.approx(123.00)
+
+    def test_organization_spending_fails_closed_without_org(
+        self, db_session, make_org, app
+    ):
+        """Organisation spending returns zero when no tenant is resolved."""
+        from datetime import datetime, timedelta, timezone
+        from decimal import Decimal
+
+        from app.models import LLMInteraction
+        from app.modules.ai_chat.services.llm_cost_tracker import LLMCostTracker
+
+        org = make_org("spend-none")
+        record = LLMInteraction(
+            model_name="gpt-4o",
+            provider="openai",
+            token_count_input=10,
+            token_count_output=5,
+            cost=9.99,
+            organization_id=org.id,
+        )
+        record.created_at = datetime.now(timezone.utc) - timedelta(hours=1)
+        db_session.add(record)
+        db_session.flush()
+
+        since = datetime.now(timezone.utc) - timedelta(days=1)
+        with app.app_context():
+            tracker = LLMCostTracker()
+            assert tracker._get_organization_spending(since) == Decimal("0")
+
     def test_domain_analytics_respects_org_boundary(
         self, db_session, make_org, app, tenant_ctx
     ):

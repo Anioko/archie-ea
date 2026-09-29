@@ -17,6 +17,7 @@ from sqlalchemy import func
 
 from app import db
 from app.models import LLMInteraction
+from app.utils.tenant_sql import current_org_id
 
 # from app.services.decorators import transactional  # Temporarily disabled
 
@@ -246,9 +247,16 @@ class LLMCostTracker:
 
     def _get_organization_spending(self, since: datetime) -> Decimal:
         """Get total organization spending since a given date."""
+        org_id = current_org_id()
+        if org_id is None:
+            return Decimal("0")
+
         result = (
             db.session.query(func.sum(LLMInteraction.cost))
-            .filter(LLMInteraction.created_at >= since)
+            .filter(
+                LLMInteraction.created_at >= since,
+                LLMInteraction.organization_id == org_id,
+            )
             .scalar()
         )
 

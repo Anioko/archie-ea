@@ -68,6 +68,7 @@ from flask import current_app
 
 from app import db
 from app.models import LLMInteraction
+from app.models.organization import Organization
 
 # Provider register exceptions
 class ProviderNotAllowed(Exception):
@@ -180,6 +181,141 @@ class LLMService:
             "base_url": "https://openrouter.ai/api/v1",
         },
     }
+
+    OPENROUTER_VENDOR_PROVIDER_MAP = {
+        "anthropic": "anthropic",
+        "deepseek": "deepseek",
+        "google": "gemini",
+        "meta": "huggingface",
+        "mistralai": "huggingface",
+        "openai": "openai",
+    }
+
+    @staticmethod
+    def _normalize_provider_name(provider: str | None) -> str | None:
+        if provider is None:
+            return None
+        return provider.strip().lower()
+
+    @staticmethod
+    def _normalize_model_name(model: str | None) -> str | None:
+        if model is None:
+            return None
+        return model.strip().lower()
+
+    @staticmethod
+    def _clean_model_name(model: str | None) -> str | None:
+        if model is None:
+            return None
+        return model.strip()
+
+    @staticmethod
+    def _openrouter_vendor_target(model: str | None) -> tuple[str, str] | None:
+        normalized_model = LLMService._normalize_model_name(model)
+        if not normalized_model or "/" not in normalized_model:
+            return None
+        vendor_prefix, vendor_model = normalized_model.split("/", 1)
+        mapped_provider = LLMService.OPENROUTER_VENDOR_PROVIDER_MAP.get(vendor_prefix.strip())
+        if not mapped_provider:
+            return None
+        return mapped_provider, vendor_model.strip()
+
+    @staticmethod
+    def _resolve_allow_list_only(organization_id: int | None) -> bool:
+        if organization_id is None:
+            return False
+        org = db.session.get(Organization, organization_id)
+        settings = getattr(org, "settings", None) or {}
+        return bool(settings.get("allow_list_only"))
+
+    @staticmethod
+    def _persist_interaction_record(interaction: LLMInteraction) -> LLMInteraction:
+        try:
+            if interaction.id is None:
+                db.session.add(interaction)
+            db.session.flush()
+        except Exception as exc:
+            logger.error("Failed to persist LLM interaction: %s", exc)
+        return interaction
+
+    @staticmethod
+    def _record_refused_call(
+        provider: str,
+        model: str | None,
+        organization_id: int | None,
+        reason: str,
+        prompt: str | None = None,
+        prompt_version: str | None = None,
+        retention_setting: str | None = None,
+    ) -> None:
+        interaction = LLMInteraction(
+            prompt=prompt,
+            response=reason,
+            model_name=LLMService._clean_model_name(model),
+            provider=provider,
+            token_count_input=0,
+            token_count_output=0,
+            cost=0,
+            organization_id=organization_id,
+            prompt_version=prompt_version,
+            retention_setting=retention_setting,
+        )
+        LLMService._persist_interaction_record(interaction)
+
+    @staticmethod
+    def _guard_provider_call(
+        provider: str,
+        model: str | None,
+        organization_id: int | None = None,
+        *,
+        prompt: str | None = None,
+        prompt_version: str | None = None,
+        retention_setting: str | None = None,
+    ) -> tuple[str, str | None, int | None]:
+        normalized_provider = LLMService._normalize_provider_name(provider)
+        cleaned_model = LLMService._clean_model_name(model)
+        normalized_model = LLMService._normalize_model_name(model)
+        resolved_organization_id = (
+            organization_id if organization_id is not None else LLMService._resolve_org_id()
+        )
+        allow_list_only = LLMService._resolve_allow_list_only(resolved_organization_id)
+
+        from app.models.model_provider import ModelProvider
+
+        def _blocked(check_provider: str, check_model: str | None) -> bool:
+            return not ModelProvider.is_allowed_for_org(
+                check_provider,
+                check_model,
+                resolved_organization_id,
+                allow_list_only=allow_list_only,
+            )
+
+        blocked = _blocked(normalized_provider, normalized_model)
+        vendor_target = None
+        if normalized_provider == "openrouter":
+            vendor_target = LLMService._openrouter_vendor_target(cleaned_model)
+            if vendor_target is not None:
+                vendor_provider, vendor_model = vendor_target
+                blocked = blocked or _blocked(vendor_provider, vendor_model)
+
+        if blocked:
+            refused_label = f"Provider '{normalized_provider}/{normalized_model}' is not allowed"
+            if resolved_organization_id is not None:
+                refused_label += f" for organisation {resolved_organization_id}."
+            else:
+                refused_label += "."
+            LLMService._record_refused_call(
+                provider=normalized_provider,
+                model=cleaned_model,
+                organization_id=resolved_organization_id,
+                reason=refused_label,
+                prompt=prompt,
+                prompt_version=prompt_version,
+                retention_setting=retention_setting,
+            )
+            raise ProviderNotAllowed(refused_label)
+
+        return normalized_provider, cleaned_model, resolved_organization_id
 
     @staticmethod
     def _get_configured_provider(exclude_providers: List[str] = None, user_id: int = None) -> Tuple[str, str]:
@@ -1600,14 +1736,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
     @staticmethod
     def _check_register(provider: str, model: str, organization_id: int | None) -> None:
         """Raise ProviderNotAllowed if the (provider, model) is blocked for the org."""
-        if organization_id is None:
-            return
-        from app.models.model_provider import ModelProvider
-        if not ModelProvider.is_allowed_for_org(provider, model, organization_id):
-            raise ProviderNotAllowed(
-                f"Provider '{provider}/{model}' is not allowed for "
-                f"organisation {organization_id}."
-            )
+        LLMService._guard_provider_call(provider, model, organization_id)
 
     @staticmethod
     def _call_llm_with_failover(
@@ -1643,8 +1772,14 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         Raises:
             RuntimeError: If ALL API keys fail
         """
-        if organization_id is not None and provider != "openrouter":
-            LLMService._check_register(provider, model, organization_id)
+        provider, model, organization_id = LLMService._guard_provider_call(
+            provider,
+            model,
+            organization_id,
+            prompt=prompt,
+            prompt_version=prompt_version,
+            retention_setting=retention_setting,
+        )
 
         # Track providers already tried across recursive fallback calls to prevent looping
         if _already_tried is None:
@@ -1700,9 +1835,14 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     or_last_error = None
                     for or_model in or_models:
                         try:
-                            # Check each OpenRouter model against the register
-                            if organization_id is not None:
-                                LLMService._check_register(provider, or_model, organization_id)
+                            _, or_model, _ = LLMService._guard_provider_call(
+                                provider,
+                                or_model,
+                                organization_id,
+                                prompt=prompt,
+                                prompt_version=prompt_version,
+                                retention_setting=retention_setting,
+                            )
                             response_text, token_input, token_output, cost = LLMService._call_openrouter(
                                 prompt, or_model, api_key, max_tokens=max_tokens, timeout=timeout
                             )
@@ -1737,6 +1877,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                     prompt_version=prompt_version,
                     retention_setting=retention_setting,
                 )
+                LLMService._persist_interaction_record(interaction)
                 
                 return response_text, interaction
 
@@ -1987,7 +2128,9 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
                 interaction.retention_setting = retention_setting
 
             def _save_interaction():
-                db.session.add(interaction)
+                if interaction.id is None:
+                    db.session.add(interaction)
+                db.session.flush()
             _with_savepoint(_save_interaction)
 
         elif pipeline_stage_id is not None:
