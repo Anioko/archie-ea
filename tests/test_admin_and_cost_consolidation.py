@@ -260,3 +260,243 @@ def test_reconcile_admin_flags_command_is_registered(app):
     result = runner.invoke(args=["reconcile-admin-flags", "--dry-run"])
     # The command should run (exit 0) even if there are no organisations.
     assert result.exit_code == 0, result.output
+
+
+# ---------------------------------------------------------------------------
+# Role preservation during organisation moves (Defects 1 & 2)
+# ---------------------------------------------------------------------------
+
+
+def test_org_delete_preserves_viewer_role(app, db_session, make_org):
+    """Moving a Viewer out of a deleted organisation keeps them a Viewer;
+    only an Administrator is downgraded to the default role."""
+    from app.models.organization import Organization
+    from app.models.org_role import OrgRole
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = make_org("default")
+        default_org.slug = "default"
+        db_session.add(default_org)
+        db_session.flush()
+
+    doomed = make_org("doomed-viewer")
+    viewer_role = Role.query.filter_by(name="Viewer").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    default_role = Role.query.filter_by(default=True).first()
+
+    viewer = User(
+        first_name="V", last_name="Only",
+        email=f"viewer-keep-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=doomed.id, confirmed=True, role=viewer_role,
+    )
+    admin = User(
+        first_name="A", last_name="Dmin",
+        email=f"admin-down-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=doomed.id, confirmed=True, role=admin_role,
+    )
+    db_session.add_all([viewer, admin])
+    db_session.commit()
+
+    # Simulate the org-delete move logic (Defect 1 fix).
+    for user in [viewer, admin]:
+        user.organization_id = default_org.id
+        if user.is_admin() and default_role is not None:
+            user.role = default_role
+    OrgRole.query.filter_by(organization_id=doomed.id).delete(
+        synchronize_session=False
+    )
+    db_session.commit()
+
+    db_session.expire_all()
+    moved_viewer = db_session.get(User, viewer.id)
+    moved_admin = db_session.get(User, admin.id)
+
+    assert moved_viewer.role.name == "Viewer", (
+        f"Viewer was upgraded to {moved_viewer.role.name}; should stay Viewer"
+    )
+    assert moved_admin.role.name == default_role.name, (
+        f"Administrator should be downgraded to {default_role.name}"
+    )
+
+
+def test_remove_user_preserves_viewer_role(app, db_session, make_org):
+    """Removing a Viewer from an organisation keeps them a Viewer;
+    only an Administrator is downgraded."""
+    from app.models.organization import Organization
+    from app.models.org_role import OrgRole
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = make_org("default")
+        default_org.slug = "default"
+        db_session.add(default_org)
+        db_session.flush()
+
+    source = make_org("source-viewer")
+    viewer_role = Role.query.filter_by(name="Viewer").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    default_role = Role.query.filter_by(default=True).first()
+
+    viewer = User(
+        first_name="V", last_name="Only",
+        email=f"viewer-rm-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=source.id, confirmed=True, role=viewer_role,
+    )
+    admin = User(
+        first_name="A", last_name="Dmin",
+        email=f"admin-rm-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=source.id, confirmed=True, role=admin_role,
+    )
+    db_session.add_all([viewer, admin])
+    db_session.commit()
+
+    # Simulate the remove-user move logic (Defect 2 fix).
+    for user in [viewer, admin]:
+        user.organization_id = default_org.id
+        if user.is_admin():
+            if default_role is not None:
+                user.role = default_role
+        OrgRole.query.filter_by(
+            organization_id=source.id, user_id=user.id
+        ).delete(synchronize_session=False)
+    db_session.commit()
+
+    db_session.expire_all()
+    moved_viewer = db_session.get(User, viewer.id)
+    moved_admin = db_session.get(User, admin.id)
+
+    assert moved_viewer.role.name == "Viewer", (
+        f"Viewer was upgraded to {moved_viewer.role.name}; should stay Viewer"
+    )
+    assert moved_admin.role.name == default_role.name, (
+        f"Administrator should be downgraded to {default_role.name}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# One org-admin authority — OrgRole and is_admin() agree (Defect 3)
+# ---------------------------------------------------------------------------
+
+
+def test_org_role_grant_syncs_user_role(app, db_session, make_org):
+    """Granting org_admin through OrgRole.set_role() also assigns the
+    Administrator role so user.is_admin() and rbac_service.is_org_admin()
+    return the same answer."""
+    from app.models.org_role import OrgRole
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("sync-org")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    user = User(
+        first_name="Sync", last_name="Test",
+        email=f"sync-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=architect_role,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    # Grant org_admin through OrgRole (the invitation/team path).
+    OrgRole.set_role(org.id, user.id, "org_admin")
+    # Sync User.role (the Defect 3 fix in team_routes / invitation_service).
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    if admin_role is not None:
+        user.role = admin_role
+    db_session.commit()
+
+    db_session.expire_all()
+    refreshed = db_session.get(User, user.id)
+
+    # Both authorities must agree.
+    assert refreshed.is_admin() is True, (
+        "user.is_admin() must be True after org_admin grant"
+    )
+    assert refreshed.is_org_admin is True, (
+        "user.is_org_admin must be True after org_admin grant"
+    )
+    assert rbac_service.is_org_admin(org.id, user.id) is True, (
+        "rbac_service.is_org_admin must be True after org_admin grant"
+    )
+
+
+def test_org_role_revoke_syncs_user_role(app, db_session, make_org):
+    """Revoking org_admin also downgrades the User.role so the two
+    authorities stay in step."""
+    from app import db
+    from app.models.org_role import OrgRole
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("revoke-org")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    default_role = Role.query.filter_by(default=True).first()
+    user = User(
+        first_name="Revoke", last_name="Test",
+        email=f"revoke-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    # Grant org_admin through OrgRole.
+    OrgRole.set_role(org.id, user.id, "org_admin")
+    db_session.commit()
+
+    # Now revoke: change OrgRole to viewer and downgrade User.role.
+    OrgRole.set_role(org.id, user.id, "viewer")
+    if user.is_admin() and not user.is_platform_admin:
+        if default_role is not None:
+            user.role = default_role
+    db.session.commit()
+
+    db_session.expire_all()
+    refreshed = db_session.get(User, user.id)
+
+    assert refreshed.is_admin() is False, (
+        "user.is_admin() must be False after org_admin revoke"
+    )
+    assert refreshed.is_org_admin is False, (
+        "user.is_org_admin must be False after org_admin revoke"
+    )
+    assert rbac_service.is_org_admin(org.id, user.id) is False, (
+        "rbac_service.is_org_admin must be False after org_admin revoke"
+    )
+
+
+def test_rbac_service_is_org_admin_falls_back_to_is_admin(app, db_session, make_org):
+    """rbac_service.is_org_admin() returns True when user.is_admin() is True
+    even if no OrgRole row exists, so the two authorities never disagree."""
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("rbac-fallback")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    user = User(
+        first_name="Fall", last_name="Back",
+        email=f"fallback-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+    )
+    db_session.add(user)
+    db_session.commit()
+
+    # No OrgRole row exists, but user.is_admin() is True.
+    assert user.is_admin() is True
+    assert rbac_service.is_org_admin(org.id, user.id) is True, (
+        "rbac_service.is_org_admin must return True when user.is_admin() is True, "
+        "even without an OrgRole row"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Deploy script includes reconcile-admin-flags (Defect 4)
+# ---------------------------------------------------------------------------
+
+
+def test_deploy_schema_includes_reconcile_admin_flags():
+    """The deploy-schema.sh script runs reconcile-admin-flags so existing
+    databases are reconciled to the new derived admin authority during deploy."""
+    from pathlib import Path
+
+    script = Path(__file__).parent.parent / "scripts" / "database" / "deploy-schema.sh"
+    text = script.read_text()
+    assert "reconcile-admin-flags" in text, (
+        "deploy-schema.sh must include reconcile-admin-flags"
+    )
