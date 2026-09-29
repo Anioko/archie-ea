@@ -216,6 +216,8 @@ class ArchiMateLayer:
 
     ALIASES = {
         "implementation & migration": IMPLEMENTATION,
+        "implementation&migration": IMPLEMENTATION,
+        "implementation/migration": IMPLEMENTATION,
         "implementation migration": IMPLEMENTATION,
         "implementation and migration": IMPLEMENTATION,
         "implementation_migration": IMPLEMENTATION,
@@ -294,6 +296,7 @@ class ArchiMateRelationshipType:
         "realises": REALIZATION,
         "servingrelationship": SERVING,
         "serves": SERVING,
+        "uses": SERVING,
         "accessrelationship": ACCESS,
         "accesses": ACCESS,
         "influencerelationship": INFLUENCE,
@@ -304,6 +307,7 @@ class ArchiMateRelationshipType:
         "flows": FLOW,
         "specializationrelationship": SPECIALIZATION,
         "specialisationrelationship": SPECIALIZATION,
+        "specialisation": SPECIALIZATION,
         "specialises": SPECIALIZATION,
         "specializes": SPECIALIZATION,
         "associationrelationship": ASSOCIATION,
