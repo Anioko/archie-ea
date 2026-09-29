@@ -38,6 +38,10 @@ pytestmark = pytest.mark.usefixtures("db_session")
 # emits; for the two redirect endpoints it is the Location they must send the
 # user to, asserted instead of the body.
 NAV_PAGES = {
+    "admin.audit_log_viewer": (
+        "/admin/audit-log",
+        "Each entry is sealed to the one before it",
+    ),
     "admin.governance_gates": ("/admin/governance-gates", "Governance Gates"),
     "admin.power_platform_integration": (
         "/admin/integrations/power-platform",
@@ -47,17 +51,26 @@ NAV_PAGES = {
         "/admin/integrations/salesforce",
         "Salesforce Org Discovery",
     ),
-    "admin.seed_management": ("/admin/seed-management", "Seed Management"),
+    # admin.seed_management was folded from platform_admin's Admin zone to
+    # make room for "Audit Log" within the link budget; it is a tile on the
+    # admin dashboard page (Command Center) instead.
     "error_events.errors_dashboard": (
         "/admin/errors",
         "Deduplicated server + client errors, aggregated by fingerprint across every organization.",
     ),
-    "batch_import_view.dashboard": ("/batch-import/", "Batch Import Dashboard"),
+    # Canvas/framework UI fix (24 Sep 2026): batch_import_view.dashboard was
+    # intentionally folded from platform_admin's Admin zone to stay within the
+    # link budget.
     "consolidation_list.dashboard": (
         "/consolidation-list/",
         "Consolidation List Dashboard",
     ),
-    "dashboard_pages.import_history": ("/dashboard/import-history", "Import History"),
+    # Canvas/framework UI fix, round 2 (25 Sep 2026): dashboard_pages.
+    # import_history was intentionally folded from platform_admin's Admin
+    # zone (with Batch Import above) to stay within the link budget once
+    # "Canvases" and "Frameworks" joined every role's Library zone. Both are
+    # tiles on the admin dashboard page instead of a sidebar zone entry --
+    # see app/utils/role_access.py's _ADMIN_LINKS comment.
     "dashboard_pages.rationalization_scorecard": (
         "/dashboard/rationalization/scorecard",
         "Executive Rationalization Scorecard",

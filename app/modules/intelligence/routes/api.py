@@ -1,7 +1,7 @@
 """The intelligence module's query surfaces.
 
   POST /api/v1/intelligence/derivation/recompute
-  GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/derived/<derived_id>   (with its explanation)
   GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
@@ -188,8 +188,6 @@ def get_derived_fact_provenance(derived_id: int):
     if fact is None:
         return not_found_response("Derived relationship")
 
-    from app.extensions import db
-
     # No tenant_scope() here (round-1 refuter finding D4): this route already
     # runs inside a request with g.current_org_id set by the normal request
     # lifecycle, and the existing do_orm_execute tenant-isolation listener
@@ -197,43 +195,20 @@ def get_derived_fact_provenance(derived_id: int):
     # harness whose db.session.remove() calls destroy the REQUEST's own
     # session (detaching flask_login's cached current_user, clobbering
     # g.current_org for the rest of the request) when used inside a request.
-    expanded = []
-    if fact["chain"]:
-        from app.models import ArchiMateRelationship
+    #
+    # The chain is read once, by the explanation: each drawn link with its two
+    # elements, who drew it and when, the rule, and the decisions recorded
+    # against those elements -- all of this organisation. ``expanded_chain``
+    # is the same links in the id-and-endpoint shape this route has always
+    # returned, so the two cannot disagree. A chain link that no longer
+    # resolves stays in both as an explicit unresolved marker (D6) rather than
+    # silently shortening the chain.
+    from app.modules.intelligence.services.explanation import expanded_chain, explain_fact
 
-        rows = (
-            db.session.execute(
-                db.select(ArchiMateRelationship).where(
-                    ArchiMateRelationship.id.in_(fact["chain"]),
-                    ArchiMateRelationship.organization_id == organization_id,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        by_id = {r.id: r for r in rows}
-        for rel_id in fact["chain"]:
-            rel = by_id.get(rel_id)
-            if rel is None:
-                # A chain link that no longer resolves (D6): recording an
-                # explicit unresolved marker instead of silently shortening
-                # the array -- a shorter-but-complete-looking chain is
-                # exactly the kind of fabricated-looking gap CLAUDE.md's
-                # "never invent data" rule warns about.
-                expanded.append({"id": rel_id, "unresolved": True, "derived_from": fact["id"]})
-                continue
-            expanded.append(
-                {
-                    "id": rel.id,
-                    "type": rel.type,
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                    "derived_from": fact["id"],
-                }
-            )
-
+    explanation = explain_fact(organization_id, fact)
     fact_out = dict(fact)
-    fact_out["expanded_chain"] = expanded
+    fact_out["expanded_chain"] = expanded_chain(explanation)
+    fact_out["explanation"] = explanation
     return success_response(fact_out)
 
 
@@ -487,6 +462,7 @@ def cross_layer_impact(element_id: int):
             "summary": result["summary"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+            "maturity_flags": result.get("maturity_flags"),
         }
     )
 
@@ -562,13 +538,32 @@ def risk_for_element(element_id: int):
     )
 
 
+# The component block's seven entered cost fields (matches
+# IntelligenceQueryService.portfolio_component_for_element's ``cost`` key) --
+# named once here so the redaction call below and any future caller share
+# the one list rather than each spelling it out.
+_SEVEN_COST_FIELDS = (
+    "total_cost_of_ownership",
+    "license_cost_annual",
+    "maintenance_cost",
+    "infrastructure_cost",
+    "support_cost",
+    "implementation_cost",
+    "development_cost_annual",
+)
+
+
 @intelligence_api.route("/portfolio/<int:element_id>", methods=["GET"])
 @login_required
 def portfolio_component_for_element(element_id: int):
-    """L3: resolves an element to its ApplicationComponent, the only fact
-    the frontend needs to build the one genuine deep link that exists today
-    (rationalization planning). No inline rows or cost figures -- see
-    ``IntelligenceQueryService.portfolio_component_for_element`` for why
+    """L3: resolves an element to its ApplicationComponent and the
+    ``component`` block -- name, owner-recorded health, entered cost/TCO
+    figures, latest fiscal-period cost row and licence position -- built by
+    ``IntelligenceQueryService.portfolio_component_for_element`` off that
+    same resolution. Financial figures in the block are redacted for a
+    caller without budget authority, same role set and same
+    ``_redact_financial_fields`` helper the Strategy/Programme routes
+    already use; see the service method's own docstring for why
     duplicate-detection and TCO history are not offered here.
     """
     organization_id = _current_organization_id()
@@ -595,10 +590,21 @@ def portfolio_component_for_element(element_id: int):
 
     result = IntelligenceQueryService.portfolio_component_for_element(element_id)
 
+    component = result.get("component")
+    if component is not None:
+        _redact_financial_fields([component["cost"]], _SEVEN_COST_FIELDS, "access_reason")
+        _redact_financial_fields(
+            [component["cost_by_period"]],
+            ("total_cost", "total_budget", "variance"),
+            "access_reason",
+        )
+        _redact_financial_fields(component["licences"] or [], ("unit_cost",), "access_reason")
+
     return success_response(
         {
             "application_component_id": result.get("application_component_id"),
             "reasons": result.get("reasons") or [],
+            "component": component,
         }
     )
 
@@ -666,6 +672,9 @@ def programme_for_element(element_id: int):
 
     work_packages = result["work_packages"]
     _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+    _redact_financial_fields(
+        [wp["gap"] for wp in work_packages], ("estimated_cost",), "access_reason"
+    )
 
     return success_response(
         {
@@ -795,6 +804,7 @@ def accountability_for_element(element_id: int):
             "owners": result["owners"],
             "capacity_not_available": result.get("capacity_not_available", True),
             "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 

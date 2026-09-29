@@ -40,10 +40,10 @@ def _component(db_session, org_id, element, name="A App"):
     return component
 
 
-def _unit(db_session, *, name="Finance", unit_type="Department", head_of_unit=None):
+def _unit(db_session, org_id, *, name="Finance", unit_type="Department", head_of_unit=None):
     from app.models.enterprise_intelligence import OrganizationUnit
 
-    unit = OrganizationUnit(name=name, unit_type=unit_type, head_of_unit=head_of_unit)
+    unit = OrganizationUnit(organization_id=org_id, name=name, unit_type=unit_type, head_of_unit=head_of_unit)
     db_session.add(unit)
     db_session.flush()
     return unit
@@ -54,6 +54,7 @@ def _ownership(db_session, component, unit, *, ownership_type="Business Owner",
     from app.models.enterprise_intelligence import ApplicationOwnership
 
     ownership = ApplicationOwnership(
+        organization_id=component.organization_id,
         application_id=component.id,
         organization_unit_id=unit.id,
         ownership_type=ownership_type,
@@ -111,7 +112,7 @@ def test_seeded_ownership_is_never_returned_the_regression_guard_that_matters(
     org = make_org("accountability-lens-withdrawn-guard")
     a = _element(db_session, org.id, "A")
     component = _component(db_session, org.id, a)
-    unit = _unit(db_session, name="Finance", head_of_unit="Pat Head")
+    unit = _unit(db_session, org.id, name="Finance", head_of_unit="Pat Head")
     _ownership(
         db_session, component, unit, ownership_type="Business Owner",
         primary_contact="Jordan Owner", contact_email="jordan@example.com",

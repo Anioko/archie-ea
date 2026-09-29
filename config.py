@@ -103,7 +103,7 @@ else:
 
 
 class Config:
-    APP_NAME = os.environ.get("APP_NAME", "A.R.C.H.I.E.")
+    APP_NAME = os.environ.get("APP_NAME", "Entelim")
     SECRET_KEY = os.environ.get("SECRET_KEY")
     if not SECRET_KEY:
         import secrets
@@ -247,8 +247,8 @@ class Config:
     # Stripe Billing (COM-001) — platform works without these; set in production .env
     STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
     STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
-    STRIPE_PRICE_PRO = os.environ.get("STRIPE_PRICE_PRO", "")
-    STRIPE_PRICE_ENTERPRISE = os.environ.get("STRIPE_PRICE_ENTERPRISE", "")
+    # Price ids are read from the environment by app/services/billing_plans.py
+    # (STRIPE_PRICE_{STARTUP,TEAM}_{MONTHLY,ANNUAL}); Enterprise is sold by contract.
 
     # Jira inbound webhook (TPM-008). POST /webhooks/jira is unauthenticated and
     # csrf-exempt by necessity, so this HMAC secret is its ONLY access control.
@@ -378,6 +378,10 @@ class Config:
     # Architecture monitoring API is off by default; mounted only when this
     # flag is explicitly enabled.
     ARCHITECTURE_MONITORING_API_ENABLED = _env_bool("ARCHITECTURE_MONITORING_API_ENABLED", False)
+
+    # Data processing agreement, cookie, refund and commercial licence pages
+    # stay unpublished (404, unlinked) until their text is approved.
+    LEGAL_PAGES_ENABLED = _env_bool("LEGAL_PAGES_ENABLED", False)
 
     # File Upload Settings
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size

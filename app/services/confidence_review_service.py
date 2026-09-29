@@ -25,6 +25,8 @@ from app import db
 
 # Import models
 from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+from app.utils.route_guards import load_entity
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,46 @@ class ConfidenceThresholdConfig:
     review_queue_priority: int = 5
     validation_rules: Dict[str, Any] = None
     quality_gates: Dict[str, Any] = None
+
+
+# Item-type → table mapping for resolving the reviewed entity's organisation.
+# Used by add_to_review_queue and the backfill command.  Keep in sync with
+# app/commands/backfill_review_queue_org.py:_ITEM_TYPE_TABLE.
+_ITEM_TYPE_TABLE = {
+    "capability_mapping": "application_components",
+    "process_classification": "application_components",
+    "process_mapping": "application_components",
+    "vendor_analysis": "application_components",
+    "taxonomy_validation": "application_components",
+    "archimate_generation": "application_components",
+    "archimate_element": "archimate_elements",
+}
+
+
+def _resolve_org_id_from_item(item_type: str, item_id: int) -> Optional[int]:
+    """Return the organisation id for a reviewed entity, or None.
+
+    Each item_type value refers to a single ``TenantMixin`` table whose
+    ``id`` column maps to ``item_id``.  The table provides
+    ``organization_id``.
+
+    Returns None when the type is unrecognised or the row is missing.
+    """
+    table_name = _ITEM_TYPE_TABLE.get(item_type)
+    if table_name is None or item_id is None or item_id <= 0:
+        return None
+    try:
+        from app.extensions import db
+
+        row = db.session.execute(
+            db.text(
+                f"SELECT organization_id FROM {table_name} WHERE id = :id"  # nosec B608 -- only fixed table and column names from a mapping in code are interpolated; values are bound parameters
+            ),
+            {"id": item_id},
+        ).first()
+        return row[0] if row else None
+    except Exception:
+        return None
 
 
 @dataclass
@@ -301,20 +343,18 @@ class ConfidenceReviewService:
         page: int = 1,
         per_page: int = 50,
     ) -> list:
-        """Return review queue items (wrapper around get_review_queue)."""
-        result = self.get_review_queue(status=status, assigned_to_id=user_id, limit=per_page)
-        if result.get("success"):
-            from app.models.confidence_review import ReviewQueueItem
+        """Return review queue items as ORM objects for the current tenant."""
+        from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
-            # Route expects ORM objects (calls .to_dict() on each), so re-query
-            items = result.get("items", [])
-            # items are already dicts from get_review_queue; route does
-            # `[item.to_dict() for item in items]` so we need ORM objects.
-            item_ids = [i["id"] for i in items if isinstance(i, dict) and "id" in i]
-            if item_ids:
-                return ReviewQueueItem.query.filter(ReviewQueueItem.id.in_(item_ids)).all()
-            return []
-        return []
+        query = ReviewQueueItem.query
+        if status:
+            query = query.filter(ReviewQueueItem.status == ReviewStatus(status))
+        if user_id:
+            query = query.filter(ReviewQueueItem.assigned_to_id == user_id)
+        query = query.order_by(
+            ReviewQueueItem.review_priority.asc(), ReviewQueueItem.created_at.asc()
+        )
+        return query.limit(per_page).all()
 
     def get_queue_statistics(self) -> Dict[str, Any]:
         """Return review statistics (wrapper around get_review_statistics)."""
@@ -325,7 +365,7 @@ class ConfidenceReviewService:
         from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
         # Ensure item is in IN_REVIEW state first
-        review_item = ReviewQueueItem.query.get(item_id)
+        review_item = load_entity(ReviewQueueItem, item_id)
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
@@ -353,7 +393,7 @@ class ConfidenceReviewService:
         """Reject a review item (wrapper around submit_review_decision)."""
         from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
-        review_item = ReviewQueueItem.query.get(item_id)
+        review_item = load_entity(ReviewQueueItem, item_id)
         if not review_item:
             return {"success": False, "error": "Review item not found"}
         if review_item.status == ReviewStatus.PENDING:
@@ -692,6 +732,15 @@ class ConfidenceReviewService:
             estimated_review_time = evaluation_result["action"].get("estimated_review_time", 24)
             review_deadline = datetime.utcnow() + timedelta(hours=estimated_review_time)
 
+            # Resolve the reviewed item's organisation so new rows always have an
+            # org even outside a request context (background jobs, CLI seeds).
+            # The TenantMixin before_flush listener stamps organization_id from
+            # g.current_org_id when that is set; this explicit lookup covers the
+            # paths that lack one and is a no-op when g is already set.
+            resolved_org_id = _resolve_org_id_from_item(
+                item_data.item_type, item_data.item_id
+            )
+
             # Create review queue item
             review_item = ReviewQueueItem(
                 threshold_id=evaluation_result.get("threshold_id"),
@@ -706,6 +755,7 @@ class ConfidenceReviewService:
                 status=ReviewStatus.PENDING,
                 review_priority=review_priority,
                 review_deadline=review_deadline,
+                organization_id=resolved_org_id,
             )
 
             db.session.add(review_item)
@@ -788,7 +838,7 @@ class ConfidenceReviewService:
         try:
             from app.models.confidence_review import ReviewQueueItem, ReviewStatus
 
-            review_item = ReviewQueueItem.query.get(review_item_id)
+            review_item = load_entity(ReviewQueueItem, review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
 
@@ -831,7 +881,7 @@ class ConfidenceReviewService:
         try:
             from app.models.confidence_review import ReviewDecision, ReviewQueueItem, ReviewStatus
 
-            review_item = ReviewQueueItem.query.get(decision_data.review_item_id)
+            review_item = load_entity(ReviewQueueItem, decision_data.review_item_id)
             if not review_item:
                 return {"success": False, "error": "Review item not found"}
 
@@ -860,8 +910,8 @@ class ConfidenceReviewService:
                 review_item_id=decision_data.review_item_id,
                 decision_type=decision_data.decision_type,
                 decision_reason=decision_data.decision_reason,
-                confidence_adjustment=decision_data.human_confidence_estimate
-                - review_item.confidence_score,
+                confidence_adjustment=Decimal(str(decision_data.human_confidence_estimate))
+                - Decimal(str(review_item.confidence_score)),
                 quality_assessment=json.dumps(decision_data.quality_assessment),
                 identified_issues=json.dumps(decision_data.identified_issues),
                 suggested_improvements=json.dumps(decision_data.suggested_improvements),

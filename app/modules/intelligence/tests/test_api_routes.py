@@ -879,11 +879,11 @@ def test_accountability_endpoint_never_returns_seeded_ownership_data(
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Finance", unit_type="Department", head_of_unit="Pat Head")
+    unit = OrganizationUnit(organization_id=org.id, name="Finance", unit_type="Department", head_of_unit="Pat Head")
     db_session.add(unit)
     db_session.flush()
     ownership = ApplicationOwnership(
-        application_id=component.id, organization_unit_id=unit.id,
+        organization_id=org.id, application_id=component.id, organization_unit_id=unit.id,
         ownership_type="Business Owner", primary_contact="Jordan Owner",
     )
     db_session.add(ownership)
@@ -910,11 +910,11 @@ def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
     component = ApplicationComponent(name="A App", organization_id=org_a.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Tenant A Finance", unit_type="Department")
+    unit = OrganizationUnit(organization_id=org_a.id, name="Tenant A Finance", unit_type="Department")
     db_session.add(unit)
     db_session.flush()
     db_session.add(ApplicationOwnership(
-        application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
+        organization_id=org_a.id, application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
     ))
     db_session.commit()
 

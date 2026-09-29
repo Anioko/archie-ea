@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Archie is an AGPL-3.0 enterprise architecture platform (TOGAF 9.2 / ArchiMate 3.2): application
+Entelim is an AGPL-3.0 enterprise architecture platform (TOGAF 9.2 / ArchiMate 3.2): application
 portfolio, capability/value-stream modelling, an AI-assisted solution-design journey, and an
 Architecture Review Board (ARB) governance workflow. Flask + Jinja2 + PostgreSQL, server-rendered,
 with Tailwind/shadcn tokens and Alpine.js on the front end.
@@ -286,6 +286,37 @@ assign each row a real `organization_id`/`scope="reference"` or retire it;
 running that command remains out of scope for this bucket and is recorded here
 as an open follow-up.
 
+**Updated 26 Sep 2026 — ratchet 1 → 4.** The gate now asks every store and
+screen for work packages, gaps, risks, application owners, architecture
+decisions, three pending-proposal queues, applications with a recorded annual
+cost, contracts and vendors, and its screens are asked as a real signed-in
+session (before, every screen answered 401 and only stores were compared). A
+surface is compared only with surfaces answering the SAME question: the gaps
+register is split by `gap_kind` (every row / capability shortfall / plateau
+transition), and each pending-proposal record type is its own concept until
+one approval queue lands. Deliberately not registered, each because it answers
+a different question: the live-computed `/capability-map/api/roadmap/gaps` and
+the `RoadmapGap` rows converted out of it (what a gap is there is a product
+decision), `ComplianceGap`, `TechnologyRoadmapInitiative` and `DecisionLedger`.
+Measured on the demonstration organisation (`flask seed-demo-company`), four
+concepts genuinely disagree, each closed by writing the ADR 0008 projection
+for that concept on its own branch:
+
+- `capabilities` — `UnifiedCapability` vs `BusinessCapability` (the existing
+  finding above); closed by `feat/r1-one-capability-store`.
+- `work packages` — `UnifiedWorkPackage` holds the seeded packages while every
+  list screen reads the other stores and shows 0; closed by
+  `feat/r1-one-work-package-store`.
+- `application owners` — `ApplicationOwner` holds owners while
+  `ApplicationOwnership` and the owner text columns on the application are
+  empty; closed by `feat/r1-one-owner-record`.
+- `applications with a recorded annual cost` — cost columns on the application
+  hold costs while `ApplicationCost` is empty; closed by
+  `feat/r1-one-application-cost`.
+
+Each consolidation lowers the ratchet again. A fresh CI database with no
+organisation measures 0.
+
 ## Done means DEMONSTRATED — standing instruction from the owner (1 Sep 2026)
 
 **A feature is not done because a test passed, a gate went green, or it deployed.
@@ -455,7 +486,7 @@ counts only the families in `BANNED_FAMILIES` (`scripts/check_design_tokens.py`)
 `orange` or `cyan` class is right per DESIGN.md but moves this number by zero, and a
 line carrying a `token-migration-ok` marker is already excluded from the count.
 
-**All 62 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
+**All 65 gates, in registry order (`scripts/verify.py`, `build_gates`) — this table
 is a snapshot, not generated. Run `grep -oE '^\s*Gate\("[a-z-]+"' scripts/verify.py`
 to reconfirm the count before trusting it:**
 
@@ -476,6 +507,8 @@ to reconfirm the count before trusting it:**
 | `air-gap` | a UI asset loaded from a public CDN | ratchet @ 0 |
 | `raw-sql-tenancy` | raw SQL on a tenant table with no `organization_id` predicate | ratchet @ 0 |
 | `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
+| `untenanted-reads` | a read (`db.select`, `.query`, `session.get`) of ANY model with no `TenantMixin`, with no org predicate in the statement | ratchet @ 2988; a bare `tenant-scoping-ok` (no reason) or an org word inside another name does not clear a read |
+| `unfenced-tables` | a database table with no `TenantMixin` that is not listed in `scripts/unfenced_tables.txt` (a new one is a decision) | ratchet @ 0 |
 | `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
 | `evidence-contract` | behavioural changes/checkers missing evidence or provenance | ratchet @ 29 |
 | `role-gate-coverage` | a declared delivery role resolving to no verifier gate | ratchet @ 7 |
@@ -488,7 +521,7 @@ to reconfirm the count before trusting it:**
 | `template-references` | an `include`/`extends` target that does not exist (TemplateNotFound at render) | must be 0 |
 | `broken-surfaces` | a front-end target that resolves to no real route | ratchet, boot-only |
 | `dynamic-link-prefixes` | a concatenated href/fetch whose literal prefix is a dead route | ratchet @ 0, boot-only |
-| `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 1, boot-only |
+| `store-agreement` | two surfaces answering one question with different numbers | ratchet @ 4, boot-only |
 | `canonical-store` | a table gaining a second mapped SQLAlchemy model class | ratchet @ 0 |
 | `fetch-guards` | a `fetch()` parsed without checking the response | ratchet @ 0 |
 | `ui-contract` | a native dialog / `onclick=` / typeless button / arbitrary `px` (DESIGN.md) | ratchet @ 0 |
@@ -514,6 +547,7 @@ to reconfirm the count before trusting it:**
 | `css-build` | committed `tailwind-output.css` stale vs a rebuild | must pass (needs Tailwind CLI) |
 | `sri` | `integrity=` hash not matching the file it guards | must be 0 |
 | `vendor-integrity` | a vendored asset not matching `VENDOR_MANIFEST.txt` | must pass |
+| `high-findings` | a HIGH-severity bandit finding left open, baselined or not; a bare `# nosec` does not close one | must be 0 |
 | `dependency-cves` | known CVEs in shipped dependencies (`pip-audit`) | ratchet |
 | `boot-health` | unregistered blueprints; unresolved `url_for` | must pass |
 | `csrf-coverage` | a write route with no CSRF protection or justified opt-out | must pass |
@@ -754,7 +788,7 @@ map is in `DESIGN.md`. A plain textarea is not an acceptable substitute — the 
 - **No `console.log` in shipped templates/JS**, no stray `print()` in request handlers. User-facing
   notifications go through `Platform.toast`, never native `alert()`/`confirm()`.
 - **Null display:** em dash (`—`), never `0` or blank. Currency via `window.currencyManager.format()`.
-- **Never invent data.** Archie is a system of record: a screen that fabricates a plausible
+- **Never invent data.** Entelim is a system of record: a screen that fabricates a plausible
   value when the real one is missing is worse than one showing nothing, because the user
   cannot tell the difference and acts on it. Concretely — no fake fallback in a `catch`
   (render the error), no literal metric passed to `render_template` that looks computed

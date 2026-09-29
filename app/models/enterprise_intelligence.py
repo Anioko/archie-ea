@@ -14,6 +14,7 @@ These models bridge the gap between strategic initiatives and tactical execution
 from datetime import datetime
 
 from app import db
+from app.models.mixins import TenantMixin
 
 # ============================================================================
 # Priority 1: Portfolio Initiative <-> Application Linkage
@@ -126,7 +127,7 @@ class InitiativeSuccessMetric(db.Model):
 # ============================================================================
 
 
-class OrganizationUnit(db.Model):
+class OrganizationUnit(TenantMixin, db.Model):
     """
     Business units, departments, teams within the enterprise
     Maps organizational structure for stakeholder management
@@ -177,7 +178,7 @@ class OrganizationUnit(db.Model):
     used_applications = db.relationship("ApplicationUsage", back_populates="organization_unit")
 
 
-class ApplicationOwnership(db.Model):
+class ApplicationOwnership(TenantMixin, db.Model):
     """
     Which organization unit OWNS/is responsible for an application
     (Product owner, budget holder, strategic direction)

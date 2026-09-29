@@ -17,7 +17,7 @@ from app.models.framework_configuration import (
     FrameworkExtension,
     FrameworkInstance,
 )
-from flask_login import login_required
+from app.middleware.tenant_decorators import platform_admin_required
 
 framework_management_bp = Blueprint(
     "framework_management", __name__, url_prefix="/framework-management"
@@ -25,17 +25,18 @@ framework_management_bp = Blueprint(
 
 
 @framework_management_bp.route("/")
-@login_required
+@platform_admin_required
 def dashboard():
     """Framework Management Dashboard"""
-    return render_template("framework_management/dashboard.html")
+    has_manufacturing = db.session.query(FrameworkInstance).count() > 0
+    return render_template("framework_management/dashboard.html", has_manufacturing=has_manufacturing)
 
 
 MATURITY_LABELS = {1: "Initial", 2: "Developing", 3: "Defined", 4: "Managed", 5: "Optimizing"}
 
 
 @framework_management_bp.route("/manufacturing/dashboard")
-@login_required
+@platform_admin_required
 def framework_dashboard():
     """Manufacturing Excellence Framework Dashboard — real data only, no fabricated values."""
     instance_count = db.session.query(FrameworkInstance).count()
@@ -69,14 +70,14 @@ def framework_dashboard():
 
 
 @framework_management_bp.route("/manufacturing/table")
-@login_required
+@platform_admin_required
 def framework_table():
     """Manufacturing Excellence Framework Data Table"""
     return render_template("framework_management/manufacturing_table.html")
 
 
 @framework_management_bp.route("/api/manufacturing/instances")
-@login_required
+@platform_admin_required
 def get_manufacturing_instances():
     """Return framework instances for manufacturing table — real data only."""
     instances = FrameworkInstance.query.order_by(FrameworkInstance.instance_name).all()
@@ -98,7 +99,7 @@ def get_manufacturing_instances():
 
 
 @framework_management_bp.route("/extensions/<extension_name>")
-@login_required
+@platform_admin_required
 def extension_dashboard(extension_name):
     """Framework Extension Dashboard"""
     return render_template(
@@ -107,7 +108,7 @@ def extension_dashboard(extension_name):
 
 
 @framework_management_bp.route("/templates/<template_name>")
-@login_required
+@platform_admin_required
 def template_dashboard(template_name):
     """Framework Template Dashboard"""
     return render_template(
@@ -116,7 +117,7 @@ def template_dashboard(template_name):
 
 
 @framework_management_bp.route("/api/available-frameworks")
-@login_required
+@platform_admin_required
 def get_available_frameworks():
     """Get available frameworks, extensions, and templates"""
 
@@ -194,7 +195,7 @@ def get_available_frameworks():
 
 
 @framework_management_bp.route("/api/deploy-configuration", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("deploy_configuration")
 def deploy_configuration():
     """Deploy a framework configuration"""
@@ -236,7 +237,7 @@ def deploy_configuration():
 
 @framework_management_bp.route("/api/activate-extension", methods=["POST"])
 @framework_management_bp.route("/api/activate-extension/<int:extension_id>", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("activate_extension")
 def activate_extension(extension_id=None):
     """Activate a framework extension by ID (URL param) or name (JSON body)."""
@@ -276,7 +277,7 @@ def activate_extension(extension_id=None):
 
 
 @framework_management_bp.route("/api/apply-template", methods=["POST"])
-@login_required
+@platform_admin_required
 @audit_log("apply_template")
 def apply_template():
     """Apply a framework template"""
@@ -334,7 +335,7 @@ def apply_template():
 
 
 @framework_management_bp.route("/api/statistics")
-@login_required
+@platform_admin_required
 def get_statistics():
     """Get framework management statistics"""
 
@@ -390,7 +391,7 @@ def get_statistics():
 
 
 @framework_management_bp.route("/api/active-framework")
-@login_required
+@platform_admin_required
 def get_active_framework():
     """Get the currently active framework configuration"""
     active_config = CapabilityFrameworkConfiguration.query.filter_by(status="active").first()
