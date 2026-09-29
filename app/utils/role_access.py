@@ -793,7 +793,7 @@ _MY_WORK_LINKS = {
         _link("Interface Register", "interface_register.index", "cable"),
         # Read access to the organisation's audit trail: export and verify.
         _link("Audit Log", "admin.audit_log_viewer", "scroll-text"),
-        _link("Security Findings", "trust_centre.findings", "shield-alert"),
+        _link("Security Findings", "trust_centre.findings", "shield-half"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
