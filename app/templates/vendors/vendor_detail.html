@@ -230,55 +230,16 @@
                             {% endif %}
                         </dd>
                     </div>
-                    <div data-testid="vendor-parent-group">
-                        <dt class="text-muted-foreground">Parent group</dt>
-                        <dd class="mt-1 font-medium">
-                            {% if vendor.parent_vendor %}
-                            <a href="{{ url_for('unified_applications.vendor_detail', vendor_id=vendor.parent_vendor.id) }}" class="text-primary hover:underline">{{ vendor.parent_vendor.name }}</a>
-                            {% else %}—{% endif %}
-                        </dd>
-                    </div>
-                    <div data-testid="vendor-group-members">
-                        <dt class="text-muted-foreground">Group members</dt>
-                        <dd class="mt-1 font-medium">
-                            {% if vendor.group_members %}
-                            <ul class="space-y-0.5">
-                                {% for member in vendor.group_members %}
-                                <li><a href="{{ url_for('unified_applications.vendor_detail', vendor_id=member.id) }}" class="text-primary hover:underline">{{ member.name }}</a></li>
-                                {% endfor %}
-                            </ul>
-                            {% else %}—{% endif %}
-                        </dd>
-                    </div>
-                    <div class="sm:col-span-2" data-testid="vendor-legal-entities">
-                        <dt class="text-muted-foreground">Legal entities</dt>
-                        <dd class="mt-1">
-                            {% if vendor.legal_entities %}
-                            <ul class="divide-y divide-border rounded-md border border-border">
-                                {% for entity in vendor.legal_entities %}
-                                <li class="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                                    <span class="font-medium break-words">{{ entity.name }}</span>
-                                    <span class="font-mono text-xs text-muted-foreground">{{ entity.identifier or '—' }}</span>
-                                </li>
-                                {% endfor %}
-                            </ul>
-                            {% else %}<span class="font-medium">—</span>{% endif %}
-                        </dd>
-                    </div>
                     <div class="sm:col-span-2">
                         <dt class="text-muted-foreground">Enterprise Readiness</dt>
                         <dd class="mt-1">
-                            {% set readiness = vendor.enterprise_readiness_score %}
-                            {% if readiness is none %}
-                            <span class="font-medium">—</span>
-                            {% else %}
+                            {% set readiness = vendor.enterprise_readiness_score or 0 %}
                             <div class="flex items-center gap-3">
                                 <div class="w-full max-w-sm h-2 rounded-full bg-muted overflow-hidden">
                                     <div class="h-full {% if readiness >= 80 %}bg-success{% elif readiness >= 60 %}bg-warning{% else %}bg-destructive{% endif %}" style="width: {{ readiness }}%;"></div>
                                 </div>
                                 <span class="text-xs font-semibold min-w-[3rem]">{{ readiness }}%</span>
                             </div>
-                            {% endif %}
                         </dd>
                     </div>
                 </dl>

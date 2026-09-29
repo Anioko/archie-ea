@@ -71,10 +71,6 @@
                     {% endif %}
                 </div>
 
-                <div class="mb-6">
-                    {% include 'vendors/_corporate_structure_fields.html' %}
-                </div>
-
                 <!-- Submit Buttons -->
                 <div class="flex items-center justify-end space-x-4">
                     <a href="{{ url_for('application_mgmt.vendors_dashboard') }}"
@@ -82,7 +78,7 @@
                         Cancel
                     </a>
                     <button type="submit"
-                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring">
+                            class="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ring" aria-label="Submit">
                         Update Vendor
                     </button>
                 </div>

@@ -421,12 +421,6 @@ def edit_vendor(vendor_id):
             vendor.contract_end_date = form.contract_end_date.data
             vendor.contract_value_annual = form.contract_value_annual.data
             vendor.updated_at = datetime.utcnow()
-            try:
-                vendor.apply_corporate_structure(request.form)
-            except ValueError as exc:
-                db.session.rollback()
-                flash(str(exc), "error")
-                return render_template("vendors/edit.html", form=form, vendor=vendor), 400
 
             db.session.commit()
             flash(f'Vendor "{vendor.name}" updated successfully.', "success")

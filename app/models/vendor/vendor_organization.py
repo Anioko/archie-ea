@@ -356,21 +356,6 @@ class VendorOrganization(db.Model):
     )
     created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
 
-    # Corporate structure - facts about the vendor in the world, so they live
-    # on this shared record like the rest of it. The parent group is another
-    # vendor record (e.g. a subsidiary under its holding company); the legal
-    # entities are the companies a customer actually contracts with, each
-    # {"name": ..., "identifier": ...} where the identifier is whatever
-    # registry number the buyer holds (LEI, DUNS, company number). Both are
-    # optional: NULL means "not recorded" and the detail page shows a dash.
-    parent_vendor_id = db.Column(
-        db.Integer,
-        db.ForeignKey("vendor_organizations.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    legal_entities = db.Column(db.JSON, nullable=True)
-
     # Seed data tracking (for UnifiedVendorSeeder)
     # NOTE: Migration backfills existing vendors with generated code/seed_source_id
     # After migration, these columns are required (NOT NULL) and unique
@@ -406,11 +391,6 @@ class VendorOrganization(db.Model):
 
     # Relationships
     created_by = db.relationship("User", backref="created_vendor_orgs")
-    parent_vendor = db.relationship(
-        "VendorOrganization",
-        remote_side="VendorOrganization.id",
-        backref=db.backref("group_members", order_by="VendorOrganization.name"),
-    )
     products = db.relationship(
         "VendorProduct",
         back_populates="vendor_organization",
@@ -520,58 +500,9 @@ class VendorOrganization(db.Model):
             "enterprise_readiness_score": self.enterprise_readiness_score,
             "partnership_level": self.partnership_level,
             "status": self.status,
-            "parent_vendor_id": self.parent_vendor_id,
-            "legal_entities": self.legal_entities or [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }
-
-    def apply_corporate_structure(self, form):
-        """Set the parent group and legal entities from a submitted form.
-
-        ``form`` carries ``parent_vendor_id`` (blank for none) and the
-        parallel lists ``legal_entity_name`` / ``legal_entity_identifier``.
-        Raises ValueError with a message a person can act on when the parent
-        does not exist or would make the group structure circular. Rows with
-        no name are dropped; an identifier with no name is refused rather than
-        kept as an unnamed entity.
-        """
-        raw_parent = (form.get("parent_vendor_id") or "").strip()
-        if raw_parent:
-            try:
-                parent_id = int(raw_parent)
-            except ValueError as exc:
-                raise ValueError("Choose the parent group from the vendor list.") from exc
-            parent = db.session.get(VendorOrganization, parent_id)
-            if parent is None:
-                raise ValueError("The chosen parent group no longer exists.")
-            ancestor, seen = parent, set()
-            while ancestor is not None and ancestor.id not in seen:
-                if self.id is not None and ancestor.id == self.id:
-                    raise ValueError(
-                        "%s cannot be its own parent group, directly or through another vendor."
-                        % (self.name or "A vendor")
-                    )
-                seen.add(ancestor.id)
-                ancestor = ancestor.parent_vendor
-            self.parent_vendor_id = parent.id
-        else:
-            self.parent_vendor_id = None
-
-        getlist = getattr(form, "getlist", None)
-        names = getlist("legal_entity_name") if getlist else form.get("legal_entity_name") or []
-        identifiers = getlist("legal_entity_identifier") if getlist else form.get("legal_entity_identifier") or []
-        entities = []
-        for index, raw_name in enumerate(names):
-            name = (raw_name or "").strip()[:200]
-            identifier = (identifiers[index] if index < len(identifiers) else "") or ""
-            identifier = identifier.strip()[:100]
-            if not name:
-                if identifier:
-                    raise ValueError("Give the legal entity with identifier %s a name." % identifier)
-                continue
-            entities.append({"name": name, "identifier": identifier or None})
-        self.legal_entities = entities or None
 
     def __repr__(self):
         return f"<VendorOrganization {self.name}>"
