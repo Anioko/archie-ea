@@ -22,6 +22,7 @@
     var DATA_URL = '/api/v1/intelligence/data/';
     var COMPLIANCE_URL = '/api/v1/intelligence/compliance/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
+    var DERIVED_URL = '/api/v1/intelligence/derived/';
 
     var ERROR_LINE = 'We could not answer that just now.';
     var BUSY_LINE = 'A recalculation is already running. Try again shortly.';
@@ -70,6 +71,18 @@
 
     function recompute() {
         return Platform.fetch.post(RECOMPUTE_URL, { scope: 'tenant' }, { silent: true });
+    }
+
+    /* Why a worked-out connection exists: the recorded links behind it, who drew
+       each and when, the rule, and the decisions recorded against those
+       elements. Written by the server; the drawer shows it as it arrives. */
+    function fetchExplanation(derivedId) {
+        return Platform.fetch.get(DERIVED_URL + derivedId, {}, { silent: true }).then(function (resp) {
+            if (!resp || !resp.data || !resp.data.explanation) {
+                throw new Error('The explanation was missing from the answer.');
+            }
+            return resp.data.explanation;
+        });
     }
 
     /* L6: risks seeded on an element, each with its own blast-radius rows.
@@ -591,6 +604,7 @@
         buildControls: buildControls,
         buildViolations: buildViolations,
         recompute: recompute,
+        fetchExplanation: fetchExplanation,
         timeText: timeText,
         refreshIcons: refreshIcons,
         keepPlace: keepPlace,
