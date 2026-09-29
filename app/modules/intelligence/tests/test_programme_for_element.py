@@ -198,6 +198,11 @@ def test_owner_absent_reads_as_honest_none_not_a_placeholder(app, db_session, ma
 
 
 def test_work_package_blast_radius_reuses_cross_layer_impact(app, db_session, make_org):
+    """Pin extended (plateau/gap addition): the programme lens adds ``plateau``/
+    ``plateau_reason`` to every affected row in place, so the rows are no
+    longer byte-for-byte identical to a fresh ``cross_layer_impact`` call --
+    they are identical apart from those two added keys, which is what this
+    now checks explicitly rather than a bare equality."""
     from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
     org = make_org("programme-lens-blast")
@@ -215,7 +220,12 @@ def test_work_package_blast_radius_reuses_cross_layer_impact(app, db_session, ma
         direct_impact = IntelligenceQueryService.cross_layer_impact(a.id, max_depth=3, with_owner=True)
 
     assert len(programme_result["work_packages"]) == 1
-    assert programme_result["work_packages"][0]["affected_rows"] == direct_impact["rows"]
+    affected_rows = programme_result["work_packages"][0]["affected_rows"]
+    assert len(affected_rows) == len(direct_impact["rows"]) == 1
+    for affected_row, direct_row in zip(affected_rows, direct_impact["rows"]):
+        assert "plateau" in affected_row and "plateau_reason" in affected_row
+        stripped = {k: v for k, v in affected_row.items() if k not in ("plateau", "plateau_reason")}
+        assert stripped == direct_row
 
 
 def test_multiple_work_packages_on_one_element_each_get_their_own_row(app, db_session, make_org):

@@ -99,6 +99,10 @@ def provisioning(monkeypatch):
         'app.extensions': dict(db=db),
         'app.services': dict(session_registry=SessionRegistry),
         'app.flask_email': dict(send_email=lambda *args, **kwargs: pytest.fail('No email expected')),
+        # The address is free: no invitation-only account holds it.
+        'app.modules.account.services.invitation_service': dict(
+            release_for_registration=lambda email: False,
+        ),
         'flask_login': dict(login_user=lambda user: logged_in.append(user), logout_user=lambda: None),
     }
     for name, attributes in modules.items():
