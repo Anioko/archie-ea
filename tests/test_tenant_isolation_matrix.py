@@ -38,6 +38,12 @@ INTENTIONALLY_GLOBAL = {
     # Authentication and platform administration must resolve across tenants.
     "User": "login resolves by email before an org context exists",
     "AuditLog": "platform-wide audit trail; scoping it would hide cross-tenant events",
+    "PendingInvitation": (
+        "an invitation belongs to the inviting organisation but is read by an "
+        "invitee from another one, and redeemed from an e-mailed link before any "
+        "organisation is known; the Team page, resend and withdraw put "
+        "organization_id in their own predicates"
+    ),
     "SSOConfig": "read during authentication, before a tenant is known",
     "Subscription": "billing is administered platform-side",
     "UsageEvent": "metering is aggregated platform-side",

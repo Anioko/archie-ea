@@ -440,8 +440,10 @@ def invite_user():
     form = InviteUserForm()
     org_id, plan_limit = _plan_limit()
     if form.validate_on_submit() and not (plan_limit and plan_limit["limit_reached"]):
+        from app.modules.account.services.invitation_service import InvitationError
+
         try:
-            user = _svc.invite_user(
+            user, delivered, error = _svc.invite_user(
                 first_name=form.first_name.data,
                 last_name=form.last_name.data,
                 email=form.email.data,
@@ -451,8 +453,19 @@ def invite_user():
         except PlanLimitReached as exc:
             db.session.rollback()
             plan_limit = exc.status
+        except InvitationError as exc:
+            db.session.rollback()
+            flash(exc.message, "form-error")
         else:
-            flash("User {} successfully invited".format(user.full_name()), "form-success")
+            if delivered:
+                flash("Invitation sent to {}.".format(user.email), "form-success")
+            else:
+                flash(
+                    "The invitation to {} could not be sent: {} Resend it from the Team page.".format(
+                        user.email, error
+                    ),
+                    "form-error",
+                )
             org_id, plan_limit = _plan_limit()
     return render_template("admin/new_user.html", form=form, plan_limit=plan_limit)
 

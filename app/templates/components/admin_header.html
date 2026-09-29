@@ -191,6 +191,14 @@
                         <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
                         Workspace setup
                     </a>
+                    {% if (current_user.is_org_admin or current_user.is_platform_admin) and 'team.team' in flask.current_app.view_functions %}
+                    <a href="{{ url_for('team.team') }}"
+                       role="menuitem"
+                       class="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent transition-colors">
+                        <i data-lucide="user-plus" class="h-4 w-4"></i>
+                        Invite your team
+                    </a>
+                    {% endif %}
 
                     <div class="h-px bg-border my-1" role="separator"></div>
                     <button type="button"

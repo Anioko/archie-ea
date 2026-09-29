@@ -67,6 +67,12 @@ POLICY = {
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
     "/admin/errors":           set(),
+    # Team page (invitations by e-mail): gated to the organisation's own
+    # administrators (an org_admin OrgRole row) or a platform admin. No seeded
+    # archetype except platform_admin holds org_admin, so every other persona
+    # is refused -- inviting people into an organisation is not a persona's
+    # job, it is its administrator's.
+    "/admin/team":             set(),
     # Billing: plan, checkout, limits, invoices. Gated by admin_required, which
     # no ordinary persona role carries; only the administrator can buy, change
     # or cancel the organisation's plan.
