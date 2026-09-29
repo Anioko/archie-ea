@@ -33,7 +33,27 @@ def provisioning(monkeypatch):
     class User(SimpleNamespace):
         kind = 'user'
         query = Query('user')
-        is_org_admin = False
+        role = None
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            # R1-B12: is_org_admin derives from is_admin().  The real User.__init__
+            # assigns the Administrator role when the email matches ADMIN_EMAIL.
+            # In this mock, set role to Administrator so is_admin() returns True.
+            if getattr(self, 'email', None) == 'new-admin@example.com':
+                self.role = SimpleNamespace(name='Administrator')
+
+        def is_admin(self):
+            return getattr(self.role, 'name', None) == 'Administrator'
+
+        @property
+        def is_org_admin(self):
+            return self.is_admin()
+
+        @is_org_admin.setter
+        def is_org_admin(self, value):
+            if value:
+                self.role = SimpleNamespace(name='Administrator')
 
     class Organization(SimpleNamespace):
         kind = 'organization'
@@ -89,11 +109,24 @@ def provisioning(monkeypatch):
             logged_in.append(user)
 
     db = SimpleNamespace(session=session)
+
+    class Role(SimpleNamespace):
+        kind = 'role'
+        query = Query('role')
+
+        @staticmethod
+        def insert_roles():
+            return None
+
+    # Seed the Administrator role so Role.query.filter_by(name="Administrator")
+    # resolves in the registration path (account_service assigns it as the
+    # org-admin authority).
+    rows.append(Role(name='Administrator'))
+
     modules = {
         'manage': dict(app=SimpleNamespace(app_context=nullcontext), db=db),
         'config': dict(Config=SimpleNamespace(ADMIN_EMAIL='new-admin@example.com', ADMIN_PASSWORD='fixture-only')),
-        'app.models': dict(User=User, Organization=Organization,
-                           Role=SimpleNamespace(insert_roles=lambda: None)),
+        'app.models': dict(User=User, Organization=Organization, Role=Role),
         'app.models.organization': dict(Organization=Organization),
         'app.models.org_role': dict(OrgRole=OrgRole),
         'app.extensions': dict(db=db),
