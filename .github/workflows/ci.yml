@@ -245,7 +245,13 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # A truncated file in the restored pip cache fails every job that
+          # restores it with the same IncompleteRead, before any test runs;
+          # fall back to a clean download once rather than fail the shard.
+          pip install -r requirements.txt || {
+            echo "::warning::pip install from the cache failed; retrying without it"
+            pip install --no-cache-dir -r requirements.txt
+          }
           pip install pytest-cov
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
       # tests/test_archimate_dashboard_init_runtime.py runs the dashboard script
@@ -352,7 +358,13 @@ jobs:
         # shards wrote it in.
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # A truncated file in the restored pip cache fails every job that
+          # restores it with the same IncompleteRead, before any test runs;
+          # fall back to a clean download once rather than fail the shard.
+          pip install -r requirements.txt || {
+            echo "::warning::pip install from the cache failed; retrying without it"
+            pip install --no-cache-dir -r requirements.txt
+          }
           pip install pytest-cov
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
       # if: always() from here down -- a shard that failed on real test
