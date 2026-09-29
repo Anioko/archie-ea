@@ -12,6 +12,14 @@ def init_extensions(app):
 
     mail.init_app(app)
     db.init_app(app)
+
+    # Request/job/assistant-run tracing (app/utils/tracing.py). Registered
+    # before every other request hook so a request that an earlier hook turns
+    # away (rate limit, session timeout, tenant check) still gets its id.
+    from app.utils.tracing import install_tracing
+
+    install_tracing(app)
+
     login_manager.init_app(app)
 
     # JSON 401 for API endpoints instead of redirect

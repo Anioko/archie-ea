@@ -64,6 +64,7 @@ from typing import Callable, Iterator, Sequence
 from flask import g
 
 from app.extensions import db
+from app.utils.tracing import trace_scope
 
 logger = logging.getLogger(__name__)
 
@@ -358,7 +359,7 @@ def run_for_each_tenant(
             for organization_id in ids:
                 started = time.monotonic()
                 try:
-                    with tenant_scope(organization_id):
+                    with tenant_scope(organization_id), trace_scope("job", job_name):
                         value = func(organization_id)
                         # Commit inside the tenant scope so the flush still
                         # carries this tenant's stamp from before_flush.
