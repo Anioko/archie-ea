@@ -339,6 +339,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
 
+    try:
+        from app.commands.backfill_audit_trail import init_app as init_audit_trail_backfill
+        init_audit_trail_backfill(app)
+        app.logger.info("Audit trail backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register audit trail backfill CLI: {e}")
+
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
         from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy
@@ -428,3 +435,10 @@ def init_cli(app):
         app.logger.info("✅ Demo company seed CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register demo company seed CLI: {e}")
+
+    try:
+        from app.commands.clear_foreign_assignees import init_app as init_clear_foreign_assignees
+        init_clear_foreign_assignees(app)
+        app.logger.info("✅ Clear foreign assignees CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
