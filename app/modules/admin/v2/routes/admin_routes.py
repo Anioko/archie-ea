@@ -5604,12 +5604,18 @@ def toggle_org_admin(org_id, user_id):
         return redirect(url_for("admin.organization_detail", org_id=org_id))
     # is_org_admin derives from is_admin() (Permission.ADMINISTER).
     # Toggle the Administrator role assignment instead of the denormalised column.
+    # Also sync the OrgRole table so team-management routes (which read
+    # OrgRole via rbac_service.is_org_admin) see the same answer.
     admin_role = Role.query.filter_by(name="Administrator").first()
     if user.is_admin():
         # Downgrade to default Architect role
         user.role = Role.query.filter_by(default=True).first()
+        OrgRole.query.filter_by(
+            organization_id=org_id, user_id=user_id
+        ).delete(synchronize_session=False)
     elif admin_role is not None:
         user.role = admin_role
+        OrgRole.set_role(org_id, user_id, "org_admin")
     db.session.commit()
     role_label = "granted" if user.is_admin() else "revoked"
     flash(f'Org-admin role {role_label} for {user.full_name() or user.email}.', "success")
@@ -5684,6 +5690,11 @@ def remove_user_from_org(org_id, user_id):
     default_role = Role.query.filter_by(default=True).first()
     if default_role is not None:
         user.role = default_role
+    # Remove OrgRole rows for the old organisation so team-management
+    # routes (which read OrgRole via rbac_service) see the same answer.
+    OrgRole.query.filter_by(
+        organization_id=org_id, user_id=user_id
+    ).delete(synchronize_session=False)
     db.session.commit()
     flash(f'{user.full_name() or user.email} moved to Default organization.', "success")
     return redirect(url_for("admin.organization_detail", org_id=org_id))
