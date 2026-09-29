@@ -45,6 +45,7 @@ from app.exceptions import (
 from . import capability_map
 from .map_views import build_nodes_edges
 import logging
+from app.services.pgvector_embedding_service import scoped_embedding_query
 from app.utils.pagination import safe_int_arg
 logger = logging.getLogger(__name__)
 
@@ -291,14 +292,9 @@ def api_capabilities_semantic_search():
                 for c in caps
             ], "method": "keyword_fallback"})
 
-        embeddings = BusinessCapabilityEmbedding.query.all()
+        embeddings = scoped_embedding_query(BusinessCapabilityEmbedding).all()
         if not embeddings:
             return jsonify({"capabilities": [], "method": "no_embeddings"})
-
-        # Post-filter by organisation (tenant table: strict equality)
-        _map_org_id = getattr(g, "current_org_id", None)
-        if _map_org_id is not None:
-            embeddings = [e for e in embeddings if e.organization_id == _map_org_id]
         if not embeddings:
             return jsonify({"capabilities": [], "method": "no_embeddings"})
 

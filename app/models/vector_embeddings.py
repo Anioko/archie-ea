@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from typing import Optional  # dead-code-ok: used by type hints
 
-from sqlalchemy import Index, Text, UniqueConstraint
+from sqlalchemy import Index, Text, UniqueConstraint, text as sql_text
 
 from app import db
 from app.models.mixins.core import TenantMixin
@@ -80,6 +80,12 @@ class BusinessCapabilityEmbedding(db.Model):
     __tablename__ = "business_capability_embeddings"
     __table_args__ = (
         UniqueConstraint("business_capability_id", "organization_id", name="uq_capability_embedding"),
+        Index(
+            "uq_capability_embedding_null_org",
+            "business_capability_id",
+            unique=True,
+            postgresql_where=sql_text("organization_id IS NULL"),
+        ),
         Index("ix_capability_embedding_created", "created_at"),
     )
 

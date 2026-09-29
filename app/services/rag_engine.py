@@ -30,7 +30,7 @@ from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, Strin
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
-from ... import db
+from app import db
 from .llm_cache import get_llm_cache
 from .llm_service import get_llm_service
 from .pgvector_embedding_service import (
@@ -38,7 +38,7 @@ from .pgvector_embedding_service import (
     TENANT_EMBEDDING_TABLE_NAMES,
     get_embedding_model,  # dead-code-ok
 )
-from app.utils.tenant_sql import current_org_id
+from app.utils.tenant_sql import org_scope
 
 logger = logging.getLogger(__name__)
 
@@ -88,22 +88,14 @@ _TENANT_EMBEDDING_TABLES_SQL = TENANT_EMBEDDING_TABLE_NAMES
 _SHARED_EMBEDDING_TABLES_SQL = SHARED_EMBEDDING_TABLE_NAMES
 
 
-def _org_predicate(table_name: str) -> str:
-    """Return a SQL WHERE clause fragment scoping *table_name* to the current org.
-
-    Returns '' when there is no tenant context.
-    """
-    org_id = current_org_id()
-    if org_id is None:
-        return ""
-    if table_name in _TENANT_EMBEDDING_TABLES_SQL:
-        return f" AND {table_name}.organization_id = {org_id} "
-    if table_name in _SHARED_EMBEDDING_TABLES_SQL:
-        return (
-            f" AND ({table_name}.organization_id = {org_id} "
-            f"OR {table_name}.organization_id IS NULL) "
-        )
-    return ""
+def _org_scope_for_embedding_table(table_name: str):
+    """Return a bound SQL org-scope fragment for an embedding table."""
+    return org_scope(
+        prefix=f"{table_name}.",
+        keyword="AND",
+        include_shared=table_name in _SHARED_EMBEDDING_TABLES_SQL,
+        fail_closed=True,
+    )
 
 
 Base = declarative_base()
@@ -142,7 +134,7 @@ class RAGResult(Base):
     query_id = Column(String(36), ForeignKey('rag_queries.id'))
     rank = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
-    metadata = Column(JSON)
+    result_metadata = Column('metadata', JSON)
     similarity_score = Column(Float)
     source_type = Column(String(50))  # document, kg_node, vendor_data, etc.
     source_id = Column(String(36))
@@ -403,7 +395,7 @@ class RAGEngine:
 
         for entity_type, (table, id_col, text_col) in EMBEDDING_TABLES.items():
             try:
-                org_clause = _org_predicate(table)
+                org_clause, org_params = _org_scope_for_embedding_table(table)
                 sql = text(
                     f"SELECT {id_col} AS entity_id, "  # noqa: S608
                     f"       {text_col} AS text_content, "
@@ -414,7 +406,7 @@ class RAGEngine:
                     f"LIMIT :lim"
                 )
                 rows = db.session.execute(
-                    sql, {"qvec": embedding_str, "lim": limit}
+                    sql, {"qvec": embedding_str, "lim": limit, **org_params}
                 ).fetchall()
                 for row in rows:
                     merged.append({

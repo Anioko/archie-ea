@@ -32,6 +32,7 @@ import click
 from flask.cli import with_appcontext
 
 from app import db
+from app.services.pgvector_embedding_service import SHARED_EMBEDDING_TABLE_NAMES
 
 
 _TRANSFORMATION_TABLES = (
@@ -1509,11 +1510,7 @@ _EMBEDDING_TENANT_FKS = (
     ),
 )
 # Tables with no FK chain to an org -- shared reference data, expected to stay NULL.
-_EMBEDDING_SHARED_TABLES = (
-    "vendor_product_embeddings",
-    "process_embeddings",
-    "vendor_organization_embeddings",
-)
+_EMBEDDING_SHARED_TABLES = tuple(sorted(SHARED_EMBEDDING_TABLE_NAMES))
 _ALL_EMBEDDING_TABLES = tuple(
     [e[0] for e in _EMBEDDING_TENANT_FKS] + list(_EMBEDDING_SHARED_TABLES)
 )
@@ -1760,6 +1757,33 @@ def _ensure_embedding_composite_unique_constraints(*, dry_run, existing_tables, 
         added.append(
             f"{label} :: replaced with composite {columns}"
         )
+
+
+def _ensure_embedding_null_org_unique_indexes(*, dry_run, existing_tables, added, failed):
+    """Keep one NULL-organisation capability embedding per capability id."""
+    from sqlalchemy import text
+
+    table_name = "business_capability_embeddings"
+    index_name = "uq_capability_embedding_null_org"
+    if table_name not in existing_tables:
+        return
+
+    label = f"index.{table_name}.{index_name}"
+    ddl = (
+        f'CREATE UNIQUE INDEX IF NOT EXISTS "{index_name}" '
+        f'ON "{table_name}" ("business_capability_id") '
+        f'WHERE organization_id IS NULL'
+    )
+    if dry_run:
+        added.append(f"{label} :: would ensure NULL-org uniqueness")
+        return
+    try:
+        db.session.execute(text(ddl))
+        db.session.commit()
+        added.append(f"{label} :: ensured NULL-org uniqueness")
+    except Exception as exc:  # noqa: BLE001
+        db.session.rollback()
+        failed.append(f"{label}: {str(exc)[:120]}")
 
 
 def _ensure_condition_evidence_canonical_document(
@@ -2015,6 +2039,12 @@ def _reconcile(dry_run=False):
         added=added,
         failed=failed,
     )
+    _ensure_embedding_null_org_unique_indexes(
+        dry_run=dry_run,
+        existing_tables=existing_tables,
+        added=added,
+        failed=failed,
+    )
     _backfill_webhook_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
@@ -2237,13 +2267,13 @@ def reembed(org_id):
         VendorProductEmbedding,
     )
     from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    from sqlalchemy import text
 
     svc = PgvectorEmbeddingService()
 
     if org_id is not None:
         org_ids = [org_id]
     else:
-        from sqlalchemy import text
         org_ids = [
             row[0]
             for row in db.session.execute(text("SELECT id FROM organizations")).fetchall()
@@ -2257,7 +2287,7 @@ def reembed(org_id):
             caps = db.session.execute(
                 text(
                     "SELECT bc.id, bc.name || ' ' || COALESCE(bc.description, '') "
-                    "FROM business_capabilities bc "
+                    "FROM business_capability bc "
                     "JOIN business_capability_embeddings e ON e.business_capability_id = bc.id "
                     "WHERE bc.organization_id = :oid",
                 ),

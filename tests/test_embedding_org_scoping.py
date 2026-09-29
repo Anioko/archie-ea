@@ -818,7 +818,7 @@ def test_embedding_stats_scoped_to_org(db_session, make_org, tenant_ctx):
 
 
 def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx):
-    """generate_and_store's delete-before-insert uses the parent row's org."""
+    """generate_and_store refuses to rewrite another organisation's embedding."""
     from app.models.vector_embeddings import BusinessCapabilityEmbedding
 
     org_a = make_org("genstore-a")
@@ -841,10 +841,9 @@ def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx
 
     from app.services.pgvector_embedding_service import PgvectorEmbeddingService
     svc = PgvectorEmbeddingService()
+    svc.generate_embedding = lambda text: [0.1] * 384
 
     with tenant_ctx(org_a.id):
-        # generate_and_store deletes by parent id alone and re-creates
-        # with the parent row's org (org_b, not the caller's org_a)
         new_emb = svc.generate_and_store(
             entity_type="capability",
             entity_id=bcap.id,
@@ -853,8 +852,379 @@ def test_generate_and_store_delete_respects_org(db_session, make_org, tenant_ctx
             fk_field="business_capability_id",
         )
 
-    assert new_emb is not None, "generate_and_store returned None"
-    assert new_emb.organization_id == org_b.id, (
-        f"generate_and_store should use parent row's org ({org_b.id}), "
-        f"got {new_emb.organization_id}"
+    assert new_emb is None, "cross-tenant generate_and_store should be refused"
+    rows = BusinessCapabilityEmbedding.query.filter_by(
+        business_capability_id=bcap.id
+    ).all()
+    if not rows:
+        db_session.rollback()
+        rows = BusinessCapabilityEmbedding.query.filter_by(
+            business_capability_id=bcap.id
+        ).all()
+    assert len(rows) == 1
+    assert rows[0].organization_id == org_b.id
+    assert rows[0].embedding_text == "belongs to b"
+
+
+def test_create_capability_embedding_refuses_cross_tenant_rewrite(
+    db_session, make_org, tenant_ctx
+):
+    """create_capability_embedding must not rewrite another organisation's row."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+
+    org_a = make_org("cap-write-a")
+    org_b = make_org("cap-write-b")
+
+    capability = BusinessCapability(
+        organization_id=org_b.id,
+        name="Cross-tenant capability",
+        code="CTC",
+        level=1,
     )
+    db_session.add(capability)
+    db_session.flush()
+
+    original = BusinessCapabilityEmbedding(
+        business_capability_id=capability.id,
+        embedding_text="original",
+        organization_id=org_b.id,
+        embedding=[0.2] * 384,
+    )
+    db_session.add(original)
+    db_session.flush()
+
+    svc = PgvectorEmbeddingService()
+    svc.generate_embedding = lambda text: [0.3] * 384
+
+    with tenant_ctx(org_a.id):
+        created = svc.create_capability_embedding(capability.id, "replacement")
+
+    assert created is None
+    rows = BusinessCapabilityEmbedding.query.filter_by(
+        business_capability_id=capability.id
+    ).all()
+    if not rows:
+        db_session.rollback()
+        rows = BusinessCapabilityEmbedding.query.filter_by(
+            business_capability_id=capability.id
+        ).all()
+    assert len(rows) == 1
+    assert rows[0].organization_id == org_b.id
+    assert rows[0].embedding_text == "original"
+
+
+def test_search_chat_history_fails_closed_without_tenant(db_session, make_org):
+    """Chat history search must not return rows outside a tenant context."""
+    from app.models.user import User
+    from app.models.vector_embeddings import ChatMessageEmbedding
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+
+    org = make_org("chat-none")
+    user = User(
+        email=f"chat-none-{org.id}@example.com",
+        first_name="No",
+        last_name="Tenant",
+        organization_id=org.id,
+    )
+    db_session.add(user)
+    db_session.flush()
+    db_session.add(
+        ChatMessageEmbedding(
+            chat_session_id="no-tenant-session",
+            user_id=user.id,
+            message_text="hidden without tenant",
+            message_role="user",
+            organization_id=org.id,
+            embedding=[0.1] * 384,
+        )
+    )
+    db_session.flush()
+
+    svc = PgvectorEmbeddingService()
+    svc.generate_embedding = lambda text: [0.1] * 384
+
+    assert svc.search_chat_history(
+        "hidden",
+        chat_session_id="no-tenant-session",
+        limit=10,
+        threshold=0.0,
+    ) == []
+
+
+def test_search_similar_messages_returns_user_results_across_sessions(
+    db_session, make_org, tenant_ctx
+):
+    """Cross-session search must return the user's rows when session_id is omitted."""
+    from app.models.user import User
+    from app.models.vector_embeddings import ChatMessageEmbedding
+    from app.modules.ai_chat.services.ai_chat_memory_service import AIChatMemoryService
+
+    org = make_org("similar-org")
+    other_org = make_org("similar-other")
+    user = User(
+        email=f"similar-{org.id}@example.com",
+        first_name="Similar",
+        last_name="User",
+        organization_id=org.id,
+    )
+    other = User(
+        email=f"similar-{other_org.id}@example.com",
+        first_name="Other",
+        last_name="User",
+        organization_id=other_org.id,
+    )
+    db_session.add_all([user, other])
+    db_session.flush()
+
+    db_session.add_all(
+        [
+            ChatMessageEmbedding(
+                chat_session_id="session-a",
+                user_id=user.id,
+                message_text="first user session",
+                message_role="user",
+                organization_id=org.id,
+                embedding=[0.1] * 384,
+            ),
+            ChatMessageEmbedding(
+                chat_session_id="session-b",
+                user_id=user.id,
+                message_text="second user session",
+                message_role="assistant",
+                organization_id=org.id,
+                embedding=[0.1] * 384,
+            ),
+            ChatMessageEmbedding(
+                chat_session_id="session-c",
+                user_id=other.id,
+                message_text="other tenant session",
+                message_role="user",
+                organization_id=other_org.id,
+                embedding=[0.1] * 384,
+            ),
+        ]
+    )
+    db_session.flush()
+
+    svc = AIChatMemoryService(user_id=user.id, session_id="session-a")
+    svc.pgvector_service.generate_embedding = lambda text: [0.1] * 384
+
+    with tenant_ctx(org.id):
+        results = svc.search_similar_messages("user", limit=5, threshold=0.0)
+
+    assert [result["message"] for result in results] == [
+        "first user session",
+        "second user session",
+    ]
+    assert {result["session_id"] for result in results} == {"session-a", "session-b"}
+
+
+def test_reembed_cli_runs_for_selected_org(app, db_session, make_org, monkeypatch):
+    """The scoped reembed command must run without UnboundLocalError."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    from sqlalchemy import text
+
+    org_a = make_org("reembed-a")
+    org_b = make_org("reembed-b")
+    cap_a = BusinessCapability(
+        organization_id=org_a.id,
+        name="Capability A",
+        description="Org A",
+        code="REA",
+        level=1,
+    )
+    cap_b = BusinessCapability(
+        organization_id=org_b.id,
+        name="Capability B",
+        description="Org B",
+        code="REB",
+        level=1,
+    )
+    db_session.add_all([cap_a, cap_b])
+    db_session.flush()
+    org_a_id = org_a.id
+    org_b_id = org_b.id
+    cap_a_id = cap_a.id
+    cap_b_id = cap_b.id
+    db_session.add_all(
+        [
+            BusinessCapabilityEmbedding(
+                business_capability_id=cap_a.id,
+                embedding_text="stale a",
+                organization_id=org_a.id,
+                embedding=[0.0] * 384,
+            ),
+            BusinessCapabilityEmbedding(
+                business_capability_id=cap_b.id,
+                embedding_text="stale b",
+                organization_id=org_b.id,
+                embedding=[0.0] * 384,
+            ),
+        ]
+    )
+    db_session.flush()
+    db_session.commit()
+
+    monkeypatch.setattr(
+        PgvectorEmbeddingService,
+        "generate_embedding",
+        lambda self, text: [0.4] * 384,
+    )
+
+    result = app.test_cli_runner().invoke(args=["reembed", "--org-id", str(org_a_id)])
+    assert result.exit_code == 0, result.output
+    assert f"Re-embedding organisation {org_a_id}..." in result.output
+    db_session.expire_all()
+
+    rows = db_session.execute(
+        text(
+            "SELECT business_capability_id, organization_id, embedding_text "
+            "FROM business_capability_embeddings WHERE business_capability_id IN (:cap_a, :cap_b)"
+        ),
+        {"cap_a": cap_a_id, "cap_b": cap_b_id},
+    ).fetchall()
+    by_cap_id = {row.business_capability_id: row for row in rows}
+    assert by_cap_id[cap_a_id].organization_id == org_a_id
+    assert by_cap_id[cap_a_id].embedding_text == "Capability A Org A"
+    assert by_cap_id[cap_b_id].organization_id == org_b_id
+    assert by_cap_id[cap_b_id].embedding_text == "stale b"
+
+
+def test_reembed_cli_runs_all_organizations(app, db_session, make_org, monkeypatch):
+    """The all-organisations reembed path must use the live capability table name."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+    from sqlalchemy import text
+
+    org_a = make_org("reembed-all-a")
+    org_b = make_org("reembed-all-b")
+    cap_a = BusinessCapability(
+        organization_id=org_a.id,
+        name="All Capability A",
+        description="First",
+        code="RAA",
+        level=1,
+    )
+    cap_b = BusinessCapability(
+        organization_id=org_b.id,
+        name="All Capability B",
+        description="Second",
+        code="RAB",
+        level=1,
+    )
+    db_session.add_all([cap_a, cap_b])
+    db_session.flush()
+    org_a_id = org_a.id
+    org_b_id = org_b.id
+    cap_a_id = cap_a.id
+    cap_b_id = cap_b.id
+    db_session.add_all(
+        [
+            BusinessCapabilityEmbedding(
+                business_capability_id=cap_a.id,
+                embedding_text="old all a",
+                organization_id=org_a.id,
+                embedding=[0.0] * 384,
+            ),
+            BusinessCapabilityEmbedding(
+                business_capability_id=cap_b.id,
+                embedding_text="old all b",
+                organization_id=org_b.id,
+                embedding=[0.0] * 384,
+            ),
+        ]
+    )
+    db_session.flush()
+    db_session.commit()
+
+    monkeypatch.setattr(
+        PgvectorEmbeddingService,
+        "generate_embedding",
+        lambda self, text: [0.5] * 384,
+    )
+
+    result = app.test_cli_runner().invoke(args=["reembed"])
+    assert result.exit_code == 0, result.output
+    assert "Re-embedding complete." in result.output
+    db_session.expire_all()
+
+    rows = db_session.execute(
+        text(
+            "SELECT business_capability_id, organization_id, embedding_text "
+            "FROM business_capability_embeddings WHERE business_capability_id IN (:cap_a, :cap_b)"
+        ),
+        {"cap_a": cap_a_id, "cap_b": cap_b_id},
+    ).fetchall()
+    by_cap_id = {row.business_capability_id: row for row in rows}
+    assert by_cap_id[cap_a_id].organization_id == org_a_id
+    assert by_cap_id[cap_a_id].embedding_text == "All Capability A First"
+    assert by_cap_id[cap_b_id].organization_id == org_b_id
+    assert by_cap_id[cap_b_id].embedding_text == "All Capability B Second"
+
+
+def test_rag_cross_entity_search_uses_bound_org_scope(app, make_org, tenant_ctx, monkeypatch):
+    """Cross-entity search must import cleanly and bind organisation scope."""
+    from app import db
+    from app.services.rag_engine import RAGEngine
+
+    org = make_org("rag-scope")
+    captured = []
+
+    class _FakeResult:
+        def fetchall(self):
+            return []
+
+    def _capture(sql, params):
+        captured.append((str(sql), dict(params)))
+        return _FakeResult()
+
+    engine = RAGEngine()
+    monkeypatch.setattr(engine, "_get_query_embedding", lambda query_text: [0.1, 0.2])
+    monkeypatch.setattr(db.session, "execute", _capture)
+
+    with tenant_ctx(org.id):
+        assert engine.cross_entity_search("scope me", limit=2) == []
+
+    assert captured, "cross_entity_search should execute raw SQL"
+    assert all(":org_id" in sql for sql, _ in captured)
+    assert all(params.get("org_id") == org.id for _, params in captured)
+    assert not any(f"= {org.id}" in sql for sql, _ in captured)
+    shared_sql = next(sql for sql, _ in captured if "vendor_product_embeddings" in sql)
+    assert "organization_id IS NULL" in shared_sql
+
+
+def test_capability_semantic_search_uses_scoped_embedding_query_source():
+    """Capability semantic search must scope before loading embeddings."""
+    import io
+    import os
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(
+        repo_root,
+        "app",
+        "modules",
+        "capabilities",
+        "routes",
+        "mapping_routes.py",
+    )
+    source = io.open(path, encoding="utf-8").read()
+    assert "scoped_embedding_query(BusinessCapabilityEmbedding).all()" in source
+    assert "BusinessCapabilityEmbedding.query.all()" not in source
+
+
+def test_business_capability_embedding_guards_null_org_duplicates():
+    """Capability embeddings need a separate uniqueness guard for NULL-org rows."""
+    from app.models.vector_embeddings import BusinessCapabilityEmbedding
+
+    indexes = {
+        index.name: index for index in BusinessCapabilityEmbedding.__table__.indexes
+    }
+    index = indexes.get("uq_capability_embedding_null_org")
+    assert index is not None
+    where = str(index.dialect_options["postgresql"].get("where"))
+    assert "organization_id IS NULL" in where
