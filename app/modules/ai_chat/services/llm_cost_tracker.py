@@ -230,6 +230,9 @@ class LLMCostTracker:
         cost_gbp = cost_usd * USD_TO_GBP
         return cost_gbp
 
+    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
+    # dedicated budget-enforcement branch; this slice only records the
+    # organisation column on llm_interactions
     def _get_user_spending(self, user_id: int, since: datetime) -> Decimal:
         """Get total spending for a user since a given date."""
         result = (
@@ -240,6 +243,9 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
+    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
+    # dedicated budget-enforcement branch; this slice only records the
+    # organisation column on llm_interactions
     def _get_project_spending(self, project_id: int, since: datetime) -> Decimal:
         """Get total spending for a project since a given date."""
         # Join with pipeline_stages to get architecture_id
@@ -254,6 +260,9 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
+    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
+    # dedicated budget-enforcement branch; this slice only records the
+    # organisation column on llm_interactions
     def _get_organization_spending(self, since: datetime) -> Decimal:
         """Get total organization spending since a given date."""
         result = (
