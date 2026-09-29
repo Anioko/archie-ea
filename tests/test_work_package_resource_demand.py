@@ -95,3 +95,24 @@ def test_the_demand_is_listed_as_a_tenant_table():
     listed = Path(__file__).resolve().parent.parent.joinpath("scripts", "tenant_tables.txt").read_text().split()
 
     assert "work_package_resource_demand" in listed
+
+
+def test_demand_rows_are_isolated_between_two_real_organisations(app, db_session, make_org, tenant_ctx):
+    from app.models.work_package_resource_demand import WorkPackageResourceDemand
+
+    org_a, package_a = _org_and_package(db_session, make_org)
+    org_b, package_b = _org_and_package(db_session, make_org)
+    row_a = _row(org_a, package_a, role="Org A architect")
+    row_b = _row(org_b, package_b, role="Org B architect")
+    db_session.add_all([row_a, row_b])
+    db_session.commit()
+
+    with tenant_ctx(org_a.id):
+        seen_a = WorkPackageResourceDemand.query.all()
+        assert [r.role for r in seen_a] == ["Org A architect"]
+        assert package_a.resource_demand == [row_a]
+
+    with tenant_ctx(org_b.id):
+        seen_b = WorkPackageResourceDemand.query.all()
+        assert [r.role for r in seen_b] == ["Org B architect"]
+        assert package_b.resource_demand == [row_b]
