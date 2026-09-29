@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 class OrgService:
     @staticmethod
-    def create_org(name, admin_email, plan="starter", admin_password=None, admin_first_name=None, admin_last_name=None):
+    def create_org(name, admin_email, admin_password=None, admin_first_name=None, admin_last_name=None):
         from app.models.user import Role
         from app.models.user import Permission
         import re
@@ -14,7 +14,7 @@ class OrgService:
         slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
         if Organization.query.filter_by(slug=slug).first():
             slug = f"{slug}-{uuid.uuid4().hex[:6]}"
-        org = Organization(name=name, slug=slug, plan=plan)
+        org = Organization(name=name, slug=slug)
         db.session.add(org)
         db.session.flush()  # get org.id
         admin_role = Role.query.filter_by(name="Administrator").first()

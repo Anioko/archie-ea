@@ -55,17 +55,28 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
-    # ArchiMate OEF import (dogfood-import-fixes, Task 01): the route carries
-    # only @login_required -- no role gate at all -- despite update_existing
-    # being able to overwrite elements across the whole enterprise model, per
-    # refuter M9. Recording it here pins the actual (wide-open) boundary so a
-    # role gate added later shows up as a row change, and a further widening
-    # (e.g. an unauthenticated route) would also be visible.
+    # ArchiMate OEF import (dogfood-import-fixes, Task 01; retired as its own
+    # screen by T-L1-IMPORT-OPS): this URL now redirects to the canonical
+    # import screen at /architecture/import/oef, which carries the same
+    # @login_required-only boundary -- no role gate at all. Recording it
+    # here pins the actual (wide-open) boundary so a role gate added later
+    # shows up as a row change, and a further widening (e.g. an
+    # unauthenticated route) would also be visible.
     "/solutions/import/archimate": set(ARCHETYPES),
     # Error telemetry (10 Sep 2026): cross-tenant by design -- an error is an
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
     "/admin/errors":           set(),
+    # Team page (invitations by e-mail): gated to the organisation's own
+    # administrators (an org_admin OrgRole row) or a platform admin. No seeded
+    # archetype except platform_admin holds org_admin, so every other persona
+    # is refused -- inviting people into an organisation is not a persona's
+    # job, it is its administrator's.
+    "/admin/team":             set(),
+    # Billing: plan, checkout, limits, invoices. Gated by admin_required, which
+    # no ordinary persona role carries; only the administrator can buy, change
+    # or cancel the organisation's plan.
+    "/admin/billing/":         set(),
     # Interface Register (SAP S/4HANA Interface Register, Task 02): gated by
     # can_access_section(current_user, "data_integration") -- the same
     # section-based predicate the sidebar uses, not a requires_role()-style
@@ -111,6 +122,10 @@ POLICY = {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
+    # The organisation's audit trail (query, export, verify). Gated by
+    # governance_gate_reader_required: administrators, plus security
+    # architects as readers. Every other persona is denied.
+    "/admin/audit-log":        {"security_architect"},
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")

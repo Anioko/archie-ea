@@ -27,6 +27,8 @@ from flask import (
 from flask_login import current_user
 
 from app.decorators import admin_required
+from app.extensions import db
+from app.services.billing_plans import PlanLimitReached
 from app.services.sso_service import SSONotConfiguredError, SSOService
 
 _log = logging.getLogger(__name__)
@@ -63,6 +65,7 @@ def sso_initiate():
         if config.protocol == "oidc":
             result = _svc.initiate_oidc_flow(config, redirect_uri)
             session["sso_state"] = result["state"]
+            session["sso_nonce"] = result["nonce"]
             session["sso_org_id"] = config.organization_id
             session["sso_email"] = email
             return redirect(result["redirect_url"])
@@ -96,6 +99,7 @@ def sso_callback_oidc():
     if not expected_state or expected_state != state:
         return render_template("errors/400.html"), 400
 
+    expected_nonce = session.pop("sso_nonce", None)
     org_id = session.pop("sso_org_id", None)
     session.pop("sso_email", None)
 
@@ -113,7 +117,9 @@ def sso_callback_oidc():
             return redirect(url_for("account.login"))
 
         redirect_uri = url_for("sso.sso_callback_oidc", _external=True)
-        userinfo = _svc.handle_oidc_callback(config, code, state, redirect_uri)
+        userinfo = _svc.handle_oidc_callback(
+            config, code, state, redirect_uri, expected_nonce=expected_nonce
+        )
         user = _svc.provision_user(org, userinfo)
 
         from app.services import session_registry
@@ -125,6 +131,13 @@ def sso_callback_oidc():
     except SSONotConfiguredError as exc:
         _log.error("OIDC callback failed: %s", exc)
         flash(f"SSO login failed: {exc}", "error")
+        return redirect(url_for("account.login"))
+    except PlanLimitReached as exc:
+        # Just-in-time provisioning of a new person into a full plan: nothing
+        # is saved and the person is told why, rather than "unexpected error".
+        db.session.rollback()
+        _log.info("OIDC provisioning refused by plan limit for org %s", org_id)
+        flash(f"Your account could not be created. {exc}", "error")
         return redirect(url_for("account.login"))
     except Exception:
         _log.exception("Unexpected error during OIDC callback")

@@ -3,8 +3,15 @@ Context processors — global template variables.
 """
 
 import flask
+from sqlalchemy import event
 
 _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabilities": 0}
+
+# Non-request callers (CLI/tests) still use a short-lived per-process cache so
+# repeated reads do not re-count on every call. Request paths read fresh and are
+# memoised only for the life of the request below.
+_nav_counts_cache: dict = {}
+_NAV_COUNTS_TTL = 300
 
 # Not cached across requests. These counts were held for five minutes in a
 # per-process dict, so after a create or an import the pages that decide "is
@@ -16,12 +23,49 @@ _EMPTY_NAV_COUNTS = {"applications": 0, "vendors": 0, "elements": 0, "capabiliti
 # because a single page asks for them more than once.
 _NAV_COUNTS_MEMO_KEY = "entelim.nav_counts_by_org"  # in the WSGI environ: one request
 
+_NAV_COUNT_MODELS = (
+    "ApplicationComponent",
+    "ArchiMateElement",
+    "BusinessCapability",
+    "VendorOrganization",
+)
+
 EM_DASH = "—"
 
 
+def _invalidate_nav_counts(session, flush_context):
+    """Evict nav-count cache entries for every organisation whose counted
+    records changed in this flush. Registered once at module level so that
+    multiple ``create_app()`` calls do not stack listeners."""
+    touched = set(session.new) | set(session.deleted)
+    if not touched:
+        return
+    org_ids = set()
+    clear_all = False
+    for obj in touched:
+        cls_name = type(obj).__name__
+        if cls_name not in _NAV_COUNT_MODELS:
+            continue
+        if cls_name == "VendorOrganization":
+            clear_all = True
+        else:
+            org_id = getattr(obj, "organization_id", None)
+            if org_id is not None:
+                org_ids.add(org_id)
+    if clear_all:
+        _nav_counts_cache.clear()
+    for org_id in org_ids:
+        _nav_counts_cache.pop(org_id, None)
 
-def compute_nav_counts(org_id):
-    """Sidebar entity counts for one organisation, read fresh for each request.
+
+from app.extensions import db  # noqa: E402 — module-level db import safe here
+if not event.contains(db.session, "after_flush", _invalidate_nav_counts):
+    event.listen(db.session, "after_flush", _invalidate_nav_counts)
+
+
+
+def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
+    """Sidebar entity counts for one organisation.
 
     Scoping is explicit. ``db.session.query(db.func.count(Model.id))`` is a
     COLUMN query, and the tenant isolation in this codebase is
@@ -32,7 +76,13 @@ def compute_nav_counts(org_id):
     ``VendorOrganization`` has no organization_id column at all, so its count is
     global by construction; that matches what the vendor list itself shows and
     is called out here rather than silently scoped to something it isn't.
+
+    In request context these counts are read fresh and memoised only on the
+    WSGI environ for the life of one page render, so a create is visible on the
+    very next load. Non-request callers fall back to the short-lived process
+    cache above.
     """
+    import time
     from flask import has_request_context, request
 
     from app import db
@@ -46,6 +96,11 @@ def compute_nav_counts(org_id):
         memo = request.environ.setdefault(_NAV_COUNTS_MEMO_KEY, {})
         if org_id in memo:
             return dict(memo[org_id])
+    else:
+        now = time.time()
+        hit = _nav_counts_cache.get(org_id)
+        if hit is not None and now - hit["timestamp"] < hit.get("ttl", ttl):
+            return dict(hit["data"])
 
     def _scoped(model):
         q = db.session.query(db.func.count(model.id))
@@ -62,6 +117,11 @@ def compute_nav_counts(org_id):
     }
     if memo is not None:
         memo[org_id] = dict(counts)
+    else:
+        entry = {"data": dict(counts), "timestamp": time.time()}
+        if all(v == 0 for v in counts.values()):
+            entry["ttl"] = 5
+        _nav_counts_cache[org_id] = entry
     return counts
 
 
@@ -294,6 +354,13 @@ def init_context_processors(app):
         except Exception as e:  # noqa: BLE001 — a sidebar label can't 500 a page
             app.logger.warning(f"nav counts unavailable: {e}")
             return {"nav_counts": dict(_EMPTY_NAV_COUNTS)}
+
+    @app.context_processor
+    def inject_legal_links():
+        """The legal pages live right now, for the public footer and checkout."""
+        from app.services.legal_pages import legal_links
+
+        return {"legal_links": legal_links()}
 
     @app.context_processor
     def inject_feature_flags():

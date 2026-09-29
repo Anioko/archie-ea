@@ -1,3 +1,4 @@
+{# smoke-coverage-ok: label-only change — plain-language rename, no functional change #}
 {% extends 'layouts/admin_base.html' %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/empty_state.html' import empty_state %}
@@ -40,7 +41,7 @@
     {{ empty_state(
         icon='radar',
         title='No technology-layer elements yet',
-        description='The Tech Radar classifies the Technology layer of the ArchiMate model — Nodes, Devices, System Software and Technology Services. Once infrastructure is recorded (directly, or through an application\'s technology stack), it will appear here to classify as Adopt, Trial, Assess or Hold.',
+        description='The Tech Radar classifies the Technology layer of the architecture model — Nodes, Devices, System Software and Technology Services. Once infrastructure is recorded (directly, or through an application\'s technology stack), it will appear here to classify as Adopt, Trial, Assess or Hold.',
         cta_text=None
     ) }}
     {% else %}
