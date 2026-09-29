@@ -424,3 +424,52 @@ def test_editing_an_element_is_recorded_in_the_audit_trail(client, db_session, l
                                   AuditLog.record_id == el.id).one()
     assert entry.action == "update"
     assert entry.old_value == {"description": "one"} and entry.new_value == {"description": "two"}
+
+
+def test_a_chosen_later_custom_property_change_is_applied_again(client, db_session, login_as, make_org, app):
+    from flask import g
+
+    from app.models.archimate_core import ArchiMateElement
+    from app.modules.architecture.routes.archimate_crud.routes import (
+        _archimate_element_state,
+        _record_element_update,
+    )
+
+    org = make_org("props")
+    user = make_user(db_session, org)
+    db_session.add(ArchiMateElement(
+        name="Props Node A",
+        type="Node",
+        layer="Technology",
+        description="before",
+        custom_properties={"classification": "initial"},
+        organization_id=org.id,
+    ))
+    db_session.flush()
+
+    post_import(client, login_as, user, oef("Props", desc="imported"), strategy="update_existing")
+    node = ArchiMateElement.query.filter_by(organization_id=org.id, name="Props Node A").one()
+    log_id = restore_point_id(org.id)
+
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        before = _archimate_element_state(node, True)
+        node.custom_properties = {"classification": "restricted", "owner": "EA"}
+        after = _archimate_element_state(node, True)
+        _record_element_update(before, after)
+        db_session.flush()
+
+    login_as(client, user)
+    preview = client.get(f"/architecture/import/oef/restore-points/{log_id}",
+                         headers={"Accept": "application/json"}).get_json()
+    change = next(c for c in preview["changes_since"] if c["fields"].get("custom_properties"))
+    assert change["reappliable"] is True
+    assert change["fields"]["custom_properties"] == {"classification": "restricted", "owner": "EA"}
+
+    restore = restore_json(client, login_as, user, log_id, reapply=[change["audit_id"]])
+    assert restore.status_code == 200, restore.get_data(as_text=True)
+
+    db_session.expire_all()
+    restored = ArchiMateElement.query.get(node.id)
+    assert restored.custom_properties == {"classification": "restricted", "owner": "EA"}
+    assert restored.description == "before"

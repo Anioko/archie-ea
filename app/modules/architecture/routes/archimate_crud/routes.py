@@ -3,6 +3,7 @@ Architecture CRUD Routes
 Unified dashboard for managing Motivation, Strategy, and Business layer elements
 """
 
+import copy
 import re
 from datetime import datetime
 
@@ -1232,7 +1233,6 @@ def update_element(layer, element_type, element_id):
                         archimate_element.description = getattr(
                             element, "description", ""
                         )  # model-safety-ok: polymorphic ArchiMate elements
-
             # As-is / to-be state (ArchiMateElement.plateau), if the form set it.
             # Works for a native ArchiMateElement (element itself) and a linked one.
             _apply_architecture_state(element, data)
@@ -1281,14 +1281,19 @@ def update_element(layer, element_type, element_id):
 
 
 def _archimate_element_state(element, from_ae):
-    """(id, name, description) of the ArchiMate element behind ``element``."""
+    """(id, name, description, custom_properties) of the ArchiMate element behind ``element``."""
     target = element
     if not from_ae:
         linked = getattr(element, "archimate_element_id", None)
         target = ArchiMateElement.query.get(linked) if linked else None
     if target is None or not isinstance(target, ArchiMateElement):
         return None
-    return {"id": target.id, "name": target.name, "description": target.description}
+    return {
+        "id": target.id,
+        "name": target.name,
+        "description": target.description,
+        "custom_properties": copy.deepcopy(target.custom_properties or {}),
+    }
 
 
 def _record_element_update(before, after):
@@ -1304,7 +1309,7 @@ def _record_element_update(before, after):
 
     from app.models.audit_log import AuditLog
 
-    changed = [k for k in ("name", "description") if before.get(k) != after.get(k)]
+    changed = [k for k in ("name", "description", "custom_properties") if before.get(k) != after.get(k)]
     if not changed:
         return
     org_id = getattr(g, "current_org_id", None) or getattr(current_user, "organization_id", None)
