@@ -18,7 +18,6 @@ an import of thousands of relationships restores in a handful of queries.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import sqlalchemy as sa
