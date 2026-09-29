@@ -3,7 +3,7 @@ page_family: site
 title: "Pricing"
 page_role: "The pricing page — mirrors the four tiers on the home page, in full."
 source: app/templates/main/index.html (pricing section, read 2026-09-25)
-cta: waiting_list
+cta: plans
 ---
 
 # Priced per company, never per application
@@ -39,4 +39,4 @@ as you want, is always free — that path is not a trial, it is the product. A c
 exists for organisations that want Entelim run for them or need different terms;
 [get in touch](/contact) either way.
 
-[Join the waiting list](/#waitlist) or [sign in if you already have an account](/account/login).
+Start on Community for free, or buy Startup or Team below. [Sign in if you already have an account](/account/login).

@@ -616,18 +616,30 @@ def test_no_waiting_list_on_non_cta_pages(app):
         assert "Join the waiting list" not in html
 
 
-def test_page_count_consistency():
-    """load_all_pages count matches the number of .md files in content/pages/."""
-    pages = load_all_pages()
-    md_count = sum(
-        1
-        for family_dir_name in FAMILY_DIR_MAP.values()
-        for _ in (CONTENT_ROOT / family_dir_name).glob("*.md")
-        if (CONTENT_ROOT / family_dir_name).is_dir()
-    )
-    assert len(pages) == md_count, (
-        f"load_all_pages returned {len(pages)} pages but {md_count} .md files exist"
-    )
+def test_page_count_consistency(app):
+    """load_all_pages publishes every .md file in content/pages/, except that the
+    legal family is held back until LEGAL_PAGES_ENABLED is on."""
+
+    def md_count(families):
+        return sum(
+            1
+            for family, family_dir_name in FAMILY_DIR_MAP.items()
+            if family in families and (CONTENT_ROOT / family_dir_name).is_dir()
+            for _ in (CONTENT_ROOT / family_dir_name).glob("*.md")
+        )
+
+    everything = set(FAMILY_DIR_MAP)
+    for enabled, families in ((False, everything - {"legal"}), (True, everything)):
+        with app.app_context():
+            app.config["LEGAL_PAGES_ENABLED"] = enabled
+            try:
+                pages = load_all_pages()
+            finally:
+                app.config["LEGAL_PAGES_ENABLED"] = False
+        assert len(pages) == md_count(families), (
+            f"flag={enabled}: load_all_pages returned {len(pages)} pages "
+            f"but {md_count(families)} .md files exist"
+        )
 
 
 # ── Tests for review findings ─────────────────────────────────────────────

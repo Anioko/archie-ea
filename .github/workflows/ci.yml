@@ -29,6 +29,18 @@ on:
   # Run the full suite against a work-in-progress branch without opening a PR.
   workflow_dispatch:
 
+# A pull request's own earlier CI run for the same PR is superseded the moment
+# a new commit lands on it -- nothing still reads its result. Without this,
+# three pushes to one PR in quick succession run three full, uncancelled CI
+# suites at once, each competing with the others for the same shared runner
+# capacity and queuing every job behind itself. Scoped to pull_request only:
+# a push to main/master never cancels another push's run, so every commit
+# that lands there still gets its own complete CI (and release-image build)
+# rather than losing to whichever push landed after it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -42,6 +54,10 @@ env:
   # change under review. Bump this and re-run `scripts/verify.py --update-baseline`
   # in the same commit. Keep in step with .pre-commit-config.yaml.
   RUFF_VERSION: "0.16.0"
+  # Pinned for the same reason: a new bandit release can add checks, and the
+  # high-findings gate would then fail for a reason unrelated to the change.
+  # Keep in step with requirements-test.txt.
+  BANDIT_VERSION: "1.9.4"
 
 jobs:
   secret-scan:
@@ -84,7 +100,7 @@ jobs:
       - name: Install gate tooling
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit
+          pip install -r requirements.txt "ruff==${RUFF_VERSION}" pip-audit "bandit==${BANDIT_VERSION}"
           mkdir -p scripts/bin
           curl --fail --location --retry 3 \
             --output scripts/bin/tailwindcss \
@@ -136,46 +152,136 @@ jobs:
       - name: Real requests survive worker recycling
         run: python scripts/qa/check_worker_recycling.py
 
-  tests:
-    name: Tests (pytest + coverage)
-    runs-on: ubuntu-latest
+  # Split across 8 matrix shards, each with its own PostgreSQL service (no
+  # shared database), because this job alone had grown to ~2 hours and every
+  # merge waits on it. tests-shard does the running; tests (below) combines
+  # the shards' coverage data and route-verification evidence and applies the
+  # existing gates — kept as job id `tests` because release-image's `needs:`
+  # references that id, and because "Tests (pytest + coverage)" is the
+  # required-check name branch protection was configured against.
+  #
+  # Splitting: no per-test duration history exists for this suite (producing
+  # one means running the full two-hour suite once first, which defeats the
+  # purpose), and a plain hash of each test file's path was measured to put
+  # 1,194 of 6,690 tests in one bucket against an 836 average — 43% over,
+  # already enough on its own to miss the 30-minute target. Instead,
+  # scripts/ci/test_sharding.py has every shard collect the full test set (as
+  # pytest always does before filtering), group items by file, and run the
+  # same deterministic greedy bin-pack by file size that every shard process
+  # computes independently and agrees on. Measured on this suite: 836-837
+  # tests per shard, within 0.1% of even, and it re-derives file sizes from
+  # the real collection every run rather than a committed file that goes
+  # stale. All tests in one file stay in one shard, so file-local shared
+  # state (a module- or class-scoped fixture) is never split across two
+  # database sessions; it does not protect against state shared ACROSS files.
+  tests-shard:
+    name: Tests (pytest + coverage) — shard ${{ matrix.shard }}
+    # Self-hosted ibm-vsi runners only serve push/dispatch on this repository and PRs
+    # whose head repository is this one — a PR from a fork never runs job code on
+    # our runners. Everything else (forked PRs) falls back to GitHub-hosted
+    # ubuntu-latest. Several jobs run at once on the same ibm-vsi machine, so the
+    # postgres service below must not bind a fixed host port either way.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
+    strategy:
+      # A failing shard should not hide failures in the others.
+      fail-fast: false
+      # Only three ibm-vsi runners exist. On them, run at most three shards at
+      # once so one CI run's eight shards cannot take every dedicated runner
+      # for its whole duration; GitHub-hosted runners (forked PRs) have no
+      # such limit, so all eight shards start together there.
+      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 3 || 8 }}
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: archie_test
-        ports: ["5432:5432"]
+        ports: ["5432"]
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
     env:
-      # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
-      # workflow set only DATABASE_URL and passed by coincidence, because the
-      # TestingConfig fallback happened to match this service's host/port/dbname.
-      TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
-      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
       # create_app() selects config from FLASK_CONFIG. FLASK_ENV (set here before)
       # has no effect on config selection.
       FLASK_CONFIG: testing
       SECRET_KEY: ci-only-not-secret
+      # Must match matrix.shard's length above — scripts/ci/test_sharding.py
+      # takes this on trust rather than deriving it.
+      # tests/test_ci_nav_verification_lifecycle.py fails when this, the
+      # matrix and the tests job's combine count disagree.
+      CI_SHARD_TOTAL: "8"
+      COVERAGE_FILE: .coverage.${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # A self-hosted runner keeps its home directory between jobs. Installing
+        # straight into setup-python's interpreter can silently resolve against
+        # whatever an earlier job already left in ~/.local (pip's per-user
+        # site-packages, which sits outside both the venv and setup-python's own
+        # install and is picked up ahead of it) — observed in practice as Flask
+        # reported "already satisfied" from ~/.local while its console script was
+        # never on PATH, failing every later `flask` invocation. A venv scoped to
+        # this checkout disables the user-site fallback entirely and is removed by
+        # the next job's checkout, so nothing here depends on machine state.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Resolve the postgres service's mapped port
+        # The service no longer binds host port 5432 (several of these jobs can run
+        # at once on one self-hosted machine), so the docker-assigned host port has
+        # to be read from the job context and exported for every later step.
+        # TestingConfig reads TEST_DATABASE_URL — not DATABASE_URL. The previous
+        # workflow set only DATABASE_URL and passed by coincidence, because the
+        # TestingConfig fallback happened to match this service's host/port/dbname.
+        run: |
+          echo "TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/archie_test" >> "$GITHUB_ENV"
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          # A truncated file in the restored pip cache fails every job that
+          # restores it with the same IncompleteRead, before any test runs;
+          # fall back to a clean download once rather than fail the shard.
+          pip install -r requirements.txt || {
+            echo "::warning::pip install from the cache failed; retrying without it"
+            pip install --no-cache-dir -r requirements.txt
+          }
           pip install pytest-cov
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+      # tests/test_archimate_dashboard_init_runtime.py runs the dashboard script
+      # under Node and fails without it. GitHub-hosted runners ship Node; the
+      # ibm-vsi hosts do not all have it, so install it here like Python above.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       # tests/csp/test_csp_evaluator.py is part of this job and contains four
       # real-browser assertions. Without the binary pytest reports four skips,
-      # which is not valid release evidence.
+      # which is not valid release evidence. Every shard installs all three
+      # browsers because which shard this file lands in is a hash-independent
+      # bin-pack outcome, not a fixed assignment.
       - name: Install browsers for rendered UI regression tests
-        run: python -m playwright install --with-deps chromium firefox webkit
+        # Several runners share one ibm-vsi host, so two shards can reach this
+        # step at once; --with-deps runs apt-get, and the second one failed on
+        # the host's dpkg lock before any test ran. The host-wide flock makes
+        # this job's shards take turns, and the retries (about ten minutes in
+        # all) wait out any other apt process holding the lock: on 3afb5625 one
+        # apt-get held it across two shards' installs a minute apart.
+        run: |
+          for attempt in $(seq 1 10); do
+            if flock /tmp/archie-ci-browser-install.lock \
+                python -m playwright install --with-deps chromium firefox webkit; then
+              exit 0
+            fi
+            echo "Browser install attempt $attempt failed; retrying in 60 seconds."
+            sleep 60
+          done
+          exit 1
       - name: Create schema
         run: |
           python -c "import psycopg2" 2>/dev/null || pip install psycopg2-binary
@@ -187,22 +293,112 @@ jobs:
       # that projection would fail or skip here on a schema production never has.
       - name: Apply the capability provenance migration
         run: flask --app manage apply-unified-capability-provenance-migration
-      - name: Run non-smoke tests with coverage and route verification
-        # route_verification.json is ignored execution evidence. Delete any
-        # stale copy, create it from this job's non-smoke pytest run, then
-        # enforce it immediately. This job includes rendered UI regressions;
-        # the separate smoke jobs own full-app browser journeys.
+      - name: Run this shard's tests with coverage and route verification
+        # route_verification.json is ignored execution evidence, scoped to
+        # this shard's slice of the suite; the tests job below unions every
+        # shard's copy before the nav-verified gate reads it.
         # --maxfail keeps the log readable while still surfacing many failures.
+        env:
+          CI_SHARD_INDEX: ${{ matrix.shard }}
         run: |
           rm -f route_verification.json
           pytest -q --maxfail=20 --ignore=tests/smoke \
-            --cov=app --cov-report=term-missing:skip-covered --cov-report=xml \
-            -o xfail_strict=true --junitxml=backend-tests.xml \
-            -p scripts.route_verification_audit
-          python scripts/verify.py --gate nav-verified
+            --cov=app --cov-report= \
+            -o xfail_strict=true --junitxml=backend-tests-${{ matrix.shard }}.xml \
+            -p scripts.route_verification_audit -p scripts.ci.test_sharding
+      # if: always() -- a failing shard (real test failures) must still upload
+      # its junit/coverage/route evidence, so the combine job can report which
+      # tests failed rather than only "a shard's artifact never arrived".
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: tests-shard-${{ matrix.shard }}
+          path: |
+            .coverage.${{ matrix.shard }}
+            backend-tests-${{ matrix.shard }}.xml
+            route_verification.json
+          if-no-files-found: error
+          # .coverage.N is a dotfile, which upload-artifact leaves out unless
+          # told otherwise -- and the tests job's coverage combine then finds
+          # nothing to combine.
+          include-hidden-files: true
+
+  tests:
+    name: Tests (pytest + coverage)
+    needs: tests-shard
+    if: always()
+    # Same runner selection as tests-shard above: the dedicated ibm-vsi runners
+    # for push/dispatch and this repository's own PR branches, GitHub-hosted
+    # ubuntu-latest for forked PRs. It runs after every shard has finished, so
+    # it never competes with them for a runner.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
+    # No PostgreSQL service here: this job only imports the app to build its
+    # route/nav sets (for nav-verified) and combines files (coverage, junit).
+    # Confirmed by running route_verification_audit.py against an unreachable
+    # database -- the endpoint and nav counts it reports are identical with
+    # and without a live database, since building the url_map needs no query.
+    env:
+      FLASK_CONFIG: testing
+      SECRET_KEY: ci-only-not-secret
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Create an isolated virtual environment for this job's dependencies
+        # Same reason as in tests-shard: a self-hosted runner's leftover
+        # ~/.local site-packages must not shadow this job's dependencies.
+        run: |
+          python -m venv --clear .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install deps
+        # Needed to re-run the nav-verified gate (imports the app to build its
+        # route/nav sets) and to combine coverage data in the same format the
+        # shards wrote it in.
+        run: |
+          python -m pip install --upgrade pip
+          # A truncated file in the restored pip cache fails every job that
+          # restores it with the same IncompleteRead, before any test runs;
+          # fall back to a clean download once rather than fail the shard.
+          pip install -r requirements.txt || {
+            echo "::warning::pip install from the cache failed; retrying without it"
+            pip install --no-cache-dir -r requirements.txt
+          }
+          pip install pytest-cov
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+      # if: always() from here down -- a shard that failed on real test
+      # failures still uploaded its junit/coverage/route evidence (see that
+      # step's own if: always()), and reporting exactly which tests failed is
+      # more useful than stopping at the first red step. The final step below
+      # is the one that actually fails this job for a shard that failed.
+      - uses: actions/download-artifact@v6
+        if: always()
+        with:
+          pattern: tests-shard-*
+          path: shard-artifacts
+      # Evidence lifecycle, once over the whole suite: drop any stale copy,
+      # rebuild it as the union of every shard's fresh file (refusing when a
+      # shard's file is missing), then enforce nav-verified against it.
+      - name: Merge shard route-verification evidence
+        if: always()
+        run: |
+          rm -f route_verification.json
+          python scripts/ci/combine_shard_results.py shard-artifacts 8
+      - name: Route verification (nav-verified)
+        if: always()
+        run: python scripts/verify.py --gate nav-verified
       - name: Require executed backend tests without skips
         if: always()
-        run: python scripts/ci/check_junit_qualification.py backend-tests.xml
+        run: >-
+          python scripts/ci/check_junit_qualification.py
+          shard-artifacts/tests-shard-*/backend-tests-*.xml
+      - name: Combine coverage and summarize
+        if: always()
+        run: |
+          coverage combine shard-artifacts/tests-shard-*/.coverage.*
+          coverage xml
+          coverage report -m --skip-covered
       - name: Coverage summary
         # Published, not gated. Establishing the number is step one; a
         # do-not-decrease gate follows once a baseline exists on main.
@@ -226,8 +422,17 @@ jobs:
           name: coverage-xml
           path: |
             coverage.xml
-            backend-tests.xml
+            shard-artifacts/tests-shard-*/backend-tests-*.xml
           if-no-files-found: ignore
+      # Final safety net: a shard can fail for a reason none of the evidence
+      # checks above see (its runner died before uploading anything at all,
+      # or GitHub cancelled it). Those checks already fail this job for any
+      # failure that left evidence behind; this catches the rest.
+      - name: Fail if any shard did not succeed
+        if: always() && needs.tests-shard.result != 'success'
+        run: |
+          echo "one or more tests-shard matrix jobs did not succeed (${{ needs.tests-shard.result }})"
+          exit 1
 
   # main grew a parallel `verify` job that ran --tag static / boot-health /
   # schema-drift with --require-db. Its coverage is already provided here by the
@@ -311,7 +516,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install bandit
-        run: python -m pip install --upgrade pip bandit
+        run: python -m pip install --upgrade pip "bandit==${BANDIT_VERSION}"
       # Ratchet, not a big bang. .bandit-baseline.json records the MEDIUM+HIGH
       # findings that existed on 2026-07-30, so this job fails only on NEW ones.
       # That stops the bleeding immediately without blocking every change behind
@@ -324,6 +529,10 @@ jobs:
       # (test_id, normalised path, source line) instead.
       - name: bandit (fail on new findings only)
         run: python scripts/ci/bandit_gate.py
+      # The baseline above may accept a medium finding; it may not accept a high
+      # one. This fails while any HIGH-severity finding is open, baselined or not.
+      - name: bandit (fail on any open high-severity finding)
+        run: python scripts/ci/bandit_gate.py --high
 
   smoke:
     name: Browser journeys (one per archetype)
