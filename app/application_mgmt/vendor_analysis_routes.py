@@ -2545,8 +2545,8 @@ def api_remove_stakeholder(analysis_id, input_id):
     try:
         from app.models.vendor_analysis import OptionsAnalysis, StakeholderInput
 
-        # tenant-scoping-ok: access is decided by _check_analysis_access (owner or admin)
-        # on the next line; the organisation fence arrives with OptionsAnalysis's tenant column.
+        # The organisation fence arrives with OptionsAnalysis's tenant column.
+        # tenant-scoping-ok: access is decided by _check_analysis_access (owner or admin) on the next line
         denied = _check_analysis_access(db.session.get(OptionsAnalysis, analysis_id))
         if denied:
             return denied
