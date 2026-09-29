@@ -4255,6 +4255,10 @@
    "uploaded_by": {
     "has_default": false,
     "nullable": true
+   },
+   "uploaded_by_id": {
+    "has_default": false,
+    "nullable": true
    }
   },
   "application_duplication_reports": {
