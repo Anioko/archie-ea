@@ -26,10 +26,12 @@
     The demonstration is not available right now. You can still start a trial with your own organisation.
   </p>
   {% endif %}
+  {% if not real_user %}
   <p class="text-sm text-muted-foreground">
     Ready to use your own data?
     <a href="{{ url_for('main.demonstration_trial') }}" class="text-primary underline" data-testid="demonstration-start-trial">Start a trial</a>.
     It creates a separate, empty organisation.
   </p>
+  {% endif %}
 </div>
 {% endblock %}

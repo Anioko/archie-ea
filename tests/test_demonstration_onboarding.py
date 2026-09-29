@@ -123,6 +123,13 @@ def test_pricing_page_offers_the_demonstration(client):
     assert 'href="/demonstration"' in resp.get_data(as_text=True)
 
 
+def test_demo_viewer_sees_the_banner_on_the_composer(client, demo_org):
+    client.post("/demonstration")
+    text = client.get("/archimate/composer").get_data(as_text=True)
+    assert 'data-testid="demonstration-banner"' in text
+    assert text.count('data-testid="demonstration-banner"') == 1
+
+
 def test_entering_signs_in_as_the_viewer_and_every_screen_is_labelled(
     client, demo_org
 ):
@@ -143,13 +150,18 @@ def test_a_real_organisation_never_sees_the_banner(client, login_as, real_user):
     text = client.get("/dashboard/").get_data(as_text=True)
     assert "demonstration-banner" not in text
 
+    composer_text = client.get("/archimate/composer").get_data(as_text=True)
+    assert "demonstration-banner" not in composer_text
+
 
 def test_a_signed_in_real_user_keeps_their_own_session(client, login_as, demo_org, real_user):
     _, user = real_user
     login_as(client, user)
     resp = client.post("/demonstration")
     assert resp.status_code == 200
-    assert "demonstration-signed-in" in resp.get_data(as_text=True)
+    text = resp.get_data(as_text=True)
+    assert "demonstration-signed-in" in text
+    assert "demonstration-start-trial" not in text
     text = client.get("/dashboard/").get_data(as_text=True)
     assert "demonstration-banner" not in text
 
