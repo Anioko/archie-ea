@@ -427,6 +427,31 @@ class TestInterfaceCheck:
                            data={"interface_ids": [bad_id]}, headers={"Accept": "application/json"})
         assert resp.status_code == 404
 
+    def test_other_organisation_conformance_page_404s_even_with_identity_map_hit(
+        self, app, db_session, two_orgs, tenant_ctx
+    ):
+        from flask import g
+        from flask_login import login_user, logout_user
+
+        from app.models.solution_models import Solution
+        from app.modules.solutions_strategic.v2.routes.programme_routes import solution_conformance
+
+        org_a, org_b = two_orgs
+        user_b = _user(db_session, org_b.id, "IntegrationB")
+        with tenant_ctx(org_a.id):
+            sol, _good, _bad, _loose = self._setup(db_session, org_a)
+
+        with app.test_request_context(f"/solutions/{sol.id}/conformance"):
+            login_user(user_b)
+            g.current_org_id = user_b.organization_id
+            g.current_org = None
+            assert db_session.get(Solution, sol.id).id == sol.id
+            response = solution_conformance(sol.id)
+            logout_user()
+
+        assert isinstance(response, tuple)
+        assert response[1] == 404
+
 
 # --------------------------------------------------------------------- #
 # Reference architectures                                                #

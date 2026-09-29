@@ -302,7 +302,7 @@ def solution_conformance(solution_id):
         ConformanceReviewer,
     )
 
-    solution = db.session.get(Solution, solution_id)
+    solution = Solution.query.filter(Solution.id == solution_id).first()
     if solution is None:
         return render_template("errors/404.html"), 404
     review = ConformanceReviewer.review(solution_id)
