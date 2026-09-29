@@ -688,6 +688,8 @@ class IntelligenceQueryService:
         direction: str = "downstream",
         layer: Optional[str] = None,
         with_owner: bool = True,
+        cursor: Optional[int] = None,
+        page_size: Optional[int] = None,
     ) -> Dict[str, Any]:
         if direction not in VALID_DIRECTIONS:
             raise ValueError(f"direction must be one of {sorted(VALID_DIRECTIONS)}")
@@ -834,6 +836,9 @@ class IntelligenceQueryService:
                         # this block (the block carries its own reason).
                         if elements.get(str(row["element_id"]), {}).get("type") == "Capability":
                             row["maturity"] = maturity_by_element[row["element_id"]]
+                            row["health"] = maturity_by_element[row["element_id"]]
+                        else:
+                            row["health"] = None
                         # NEW-5: keep element_id on every row -- this task's
                         # whole point is "what stops", so a row that cannot
                         # name what element it is about is not answering the
@@ -866,12 +871,36 @@ class IntelligenceQueryService:
                     maturity_flags = _maturity_flags(NO_CAPABILITY_IN_CHAIN_REASON, maturity_by_element)
 
         summary["latency_ms"] = scope.latency_ms
+
+        # Stable pagination: sort by element_id, slice by cursor.
+        total = len(rows)
+        next_cursor = None
+        if page_size is not None and page_size > 0:
+            rows.sort(key=lambda r: r["element_id"])
+            if cursor is not None:
+                # Skip rows whose element_id <= cursor (the cursor is the last
+                # element_id from the previous page).
+                slice_start = 0
+                for i, r in enumerate(rows):
+                    if r["element_id"] > cursor:
+                        slice_start = i
+                        break
+                else:
+                    slice_start = len(rows)
+                rows = rows[slice_start:]
+            page = rows[:page_size]
+            if len(page) < len(rows):
+                next_cursor = page[-1]["element_id"] if page else None
+            rows = page
+
         return {
             "rows": rows,
             "summary": summary,
             "reasons": reasons,
             "elements": elements,
             "maturity_flags": maturity_flags,
+            "total": total,
+            "next_cursor": next_cursor,
         }
 
     @staticmethod
