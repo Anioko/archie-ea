@@ -265,7 +265,6 @@ def test_an_empty_workspace_shows_the_setup_state_instead_of_the_picker(
     {"applications": 1, "elements": 0, "capabilities": 0, "vendors": 0},
     {"applications": 0, "elements": 5, "capabilities": 0, "vendors": 0},
     {"applications": 0, "elements": 0, "capabilities": 2, "vendors": 0},
-    {"applications": 0, "elements": 0, "capabilities": 0, "vendors": 3},
 ])
 def test_a_populated_workspace_shows_the_picker_and_no_setup_state(
     app, db_session, make_org, client, login_as, monkeypatch, path, counts
@@ -277,6 +276,20 @@ def test_a_populated_workspace_shows_the_picker_and_no_setup_state(
     html = _main_html(client.get(path).get_data(as_text=True))
     assert 'role="combobox"' in html
     assert "Nothing is modelled yet" not in html
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_global_vendor_counts_do_not_hide_the_empty_workspace_state(
+    app, db_session, make_org, client, login_as, monkeypatch, path
+):
+    _patch_counts(monkeypatch, {"applications": 0, "elements": 0, "capabilities": 0, "vendors": 3})
+    org = make_org("ui-vendors-only")
+    user = _user(db_session, org.id)
+    login_as(client, user)
+    html = _main_html(client.get(path).get_data(as_text=True))
+    text = _visible_text(html)
+    assert "Nothing is modelled yet" in text
+    assert 'role="combobox"' not in html
 
 
 @pytest.mark.parametrize("path", PAGES)
@@ -436,7 +449,7 @@ def test_no_second_show_more_affordance_exists():
                    "vsr-row" if "data-vsr-toggle" in tag else "OTHER")
             owners.setdefault(key, []).append(name)
     assert set(owners) == {"full-detail", "combobox", "question", "rail", "vsr-row"}, owners
-    assert owners["vsr-row"] == ["value_streams_at_risk.html"], owners
+    assert owners["vsr-row"] == ["_value_streams_at_risk_table.html"], owners
 
 
 def test_the_map_table_is_present_without_a_toggle():

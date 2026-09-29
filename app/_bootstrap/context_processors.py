@@ -103,7 +103,9 @@ def compute_nav_counts(org_id, ttl=_NAV_COUNTS_TTL):
         "vendors": db.session.query(db.func.count(VendorOrganization.id)).scalar() or 0,
     }
     entry = {"data": dict(counts), "timestamp": now}
-    if all(v == 0 for v in counts.values()):
+    # ``vendors`` is shared across the product rather than tenant-scoped, so it
+    # must not stop a brand-new organisation being treated as empty here.
+    if counts["applications"] == 0 and counts["elements"] == 0 and counts["capabilities"] == 0:
         entry["ttl"] = 5
     _nav_counts_cache[org_id] = entry
     return counts

@@ -43,13 +43,38 @@ def _workspace_counts_available() -> bool:
         return False
 
 
+def _workspace_is_empty() -> bool | None:
+    """Whether the current organisation has no tenant-scoped modelled records.
+
+    The sidebar's vendor count is global rather than tenant-scoped, so it is
+    useful for navigation but not for deciding whether one organisation has an
+    empty workspace. Ask and Twin map only gate on the tenant-scoped counts.
+    ``None`` means the counts could not be read and the caller must not treat
+    the workspace as empty.
+    """
+    try:
+        from app._bootstrap.context_processors import compute_nav_counts
+
+        counts = compute_nav_counts(getattr(g, "current_org_id", None))
+    except Exception:
+        current_app.logger.warning("[MODULE] intelligence: workspace counts unavailable")
+        return None
+    return (
+        (counts.get("applications", 0) or 0)
+        + (counts.get("elements", 0) or 0)
+        + (counts.get("capabilities", 0) or 0)
+    ) == 0
+
+
 @intelligence_ui.route("/ask", methods=["GET"])
 @login_required
 def ask():
     """Ask a plain business question about what depends on a chosen element."""
+    workspace_is_empty = _workspace_is_empty()
     return render_template(
         "intelligence/ask.html",
-        workspace_counts_available=_workspace_counts_available(),
+        workspace_counts_available=workspace_is_empty is not None,
+        workspace_is_empty=workspace_is_empty,
     )
 
 
@@ -63,10 +88,12 @@ def twin_map():
     not a whole number is ignored and the page opens on its picker.
     """
     initial_element_id = request.args.get("element", type=int)
+    workspace_is_empty = _workspace_is_empty()
     return render_template(
         "intelligence/twin_map.html",
         initial_element_id=initial_element_id,
-        workspace_counts_available=_workspace_counts_available(),
+        workspace_counts_available=workspace_is_empty is not None,
+        workspace_is_empty=workspace_is_empty,
     )
 
 
