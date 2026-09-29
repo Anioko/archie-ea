@@ -43,8 +43,13 @@ def test_is_org_admin_equals_is_admin(app, db_session, make_org, role_name):
         assert user.is_org_admin is False
 
 
-def test_org_admin_of_A_is_not_org_admin_of_B(app, db_session, make_org, login_as):
-    """An administrator of organisation A is not an administrator of B."""
+def test_org_admin_of_A_is_not_org_admin_of_B(app, db_session, make_org, client, login_as):
+    """An administrator of organisation A is not an administrator of B.
+
+    The boolean flag alone is not enough — the test must also exercise
+    cross-organisation access control: sign in as admin_a and reach an
+    org-B-scoped administration route, asserting that org B's data is
+    invisible (no rows returned for the other organisation)."""
     org_a = make_org("admin-a")
     org_b = make_org("admin-b")
     admin_role = Role.query.filter_by(name="Administrator").first()
@@ -73,6 +78,18 @@ def test_org_admin_of_A_is_not_org_admin_of_B(app, db_session, make_org, login_a
     # Cross-org isolation is enforced by organization_id, not by is_org_admin.
     assert admin_a.is_admin() is True
     assert plain_b.is_admin() is False
+
+    # Cross-organisation access control: sign in as admin_a and reach the
+    # org-scoped /admin/users route.  The route filters by g.current_org_id
+    # (set from the logged-in user's organization_id), so org B's users
+    # must not appear.
+    login_as(client, admin_a)
+    resp = client.get("/admin/users")
+    assert resp.status_code == 200
+    # admin_a's own email should be present
+    assert admin_a.email in resp.get_data(as_text=True)
+    # plain_b belongs to org_b and must not leak into org_a's view
+    assert plain_b.email not in resp.get_data(as_text=True)
 
 
 def test_is_platform_admin_is_independent_of_is_org_admin(app, db_session, make_org):
