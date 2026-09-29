@@ -148,7 +148,7 @@ def test_cost_preview_journey(browser, live_server, seeded):
 
     # Navigate to the application detail page via browser and verify cost is displayed
     page.goto(
-        live_server + "/applications/%d" % app_id,
+        live_server + "/applications/%d?tab=cost" % app_id,
         wait_until="domcontentloaded",
         timeout=PAGE_TIMEOUT,
     )
