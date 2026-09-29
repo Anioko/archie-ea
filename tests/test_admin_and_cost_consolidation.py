@@ -97,7 +97,6 @@ def test_is_platform_admin_is_independent_of_is_org_admin(app, db_session, make_
     from is_admin().  A plain (non-admin) user may hold neither, and an
     org admin need not be a platform admin."""
     org = make_org("platform-ind")
-    architect_role = Role.query.filter_by(name="Architect").first()
     admin_role = Role.query.filter_by(name="Administrator").first()
 
     org_admin = User(

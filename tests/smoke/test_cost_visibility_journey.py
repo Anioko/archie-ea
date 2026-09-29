@@ -95,8 +95,6 @@ def test_platform_admin_sets_finance_role_and_cost_visibility_follows(
 
     # Find the target user's row and navigate to their role edit page.
     # The admin user list renders each user with a link to their info page.
-    body = page.content()
-    # The user list page renders user emails; find the target.
     page.wait_for_selector("table", timeout=PAGE_TIMEOUT)
     # Click through to the user's detail page via the registered users list.
     # We need the user id — extract it from the page or use a known route.
