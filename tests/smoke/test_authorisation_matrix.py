@@ -126,6 +126,11 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
+    # Data-subject requests and the personal-data trace: the Data Protection
+    # Officer's work, carried by the security architect persona (it owns the
+    # compliance section). Every other persona is denied.
+    "/compliance/data-subject-requests": {"security_architect"},
+    "/compliance/personal-data-trace":   {"security_architect"},
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")

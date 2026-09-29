@@ -786,6 +786,9 @@ _MY_WORK_LINKS = {
         # this degrades safely if application_mgmt fails to import.
         _link("Compliance", "application_mgmt.compliance_frameworks_dashboard",
               "clipboard-check"),
+        # The Data Protection Officer's work: scope data-subject requests,
+        # assign the searches, and run access and erasure with evidence.
+        _link("Data Subject Requests", "gdpr_bp.dsr_index", "user-x"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
