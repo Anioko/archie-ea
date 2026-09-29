@@ -196,7 +196,7 @@
                     <p class="mt-1 text-sm text-foreground" x-show="wp.owner"><span x-text="wp.owner"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!wp.owner">No owner recorded</p>
                     <template x-if="wp.hasCostVariance">
-                        <p class="mt-1 text-sm text-foreground" x-text="'Cost variance: ' + wp.costVariancePct.toFixed(1) + '%'"></p>
+                        <p class="mt-1 text-sm text-foreground" x-text="'Cost variance: ' + wp.costVariancePct + '%'"></p>
                     </template>
                     <template x-if="!wp.hasCostVariance && !wp.costRedacted">
                         <p class="mt-1 text-sm text-muted-foreground">Not costed</p>
@@ -240,7 +240,7 @@
                     <p class="mt-1 text-sm text-foreground" x-show="initiative.executiveSponsor"><span x-text="initiative.executiveSponsor"></span></p>
                     <p class="mt-1 text-sm text-muted-foreground" x-show="!initiative.executiveSponsor">No sponsor recorded</p>
                     <template x-if="initiative.hasBudgetVariance">
-                        <p class="mt-1 text-sm text-foreground" x-text="'Budget variance: ' + initiative.budgetVariancePct.toFixed(1) + '%'"></p>
+                        <p class="mt-1 text-sm text-foreground" x-text="'Budget variance: ' + initiative.budgetVariancePct + '%'"></p>
                     </template>
                     <template x-if="!initiative.hasBudgetVariance && !initiative.budgetRedacted">
                         <p class="mt-1 text-sm text-muted-foreground">Not costed</p>

@@ -696,7 +696,7 @@ def programme_for_element(element_id: int):
     )
 
     work_packages = result["work_packages"]
-    _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+    _redact_financial_fields(work_packages, ("cost_variance_pct", "cost_variance_pct_display"), "cost_reason")
     _redact_financial_fields(
         [wp["gap"] for wp in work_packages], ("estimated_cost",), "access_reason"
     )
@@ -772,7 +772,7 @@ def strategy_for_element(element_id: int):
     )
 
     initiatives = result["initiatives"]
-    _redact_financial_fields(initiatives, ("budget_variance_pct",), "budget_reason")
+    _redact_financial_fields(initiatives, ("budget_variance_pct", "budget_variance_pct_display"), "budget_reason")
 
     return success_response(
         {
