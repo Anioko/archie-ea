@@ -518,6 +518,14 @@ def test_the_drawer_renders_the_supplied_sentence_in_one_paragraph_and_nothing_e
     assert 'x-show="drawer.plainTerms"' in source
 
 
+def test_programme_and_strategy_cards_use_server_formatted_variance_text():
+    source = _templates()["ask.html"]
+    assert "wp.costVarianceText" in source
+    assert "initiative.budgetVarianceText" in source
+    assert "costVariancePct" not in source
+    assert "budgetVariancePct" not in source
+
+
 # --- colour and copy of the map ---------------------------------------------
 
 
