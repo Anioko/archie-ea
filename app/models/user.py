@@ -185,8 +185,40 @@ class User(UserMixin, db.Model):
 
     # Multi-tenancy: every user belongs to exactly one organization
     organization_id = db.Column(db.Integer, db.ForeignKey("organizations.id"), nullable=False)
-    is_org_admin = db.Column(db.Boolean, default=False)
+
+    # R1-B12: is_org_admin is now a derived property (see below).  The column
+    # stays for backward compatibility (never dropped — consolidation rule 6)
+    # but the system of record for "is this user an organisation administrator"
+    # is Permission.ADMINISTER via is_admin().  The backfill command
+    # `flask reconcile-admin-flags` sets every row's is_org_admin to match
+    # is_admin() and lists any disagreements it found.
+    _is_org_admin = db.Column("is_org_admin", db.Boolean, default=False)
+
+    # Cross-tenant super-admin flag.  Distinct from org-level admin:
+    # is_platform_admin gates @platform_admin_required routes (organisation
+    # list, error telemetry) and is NOT derived from is_admin() — a platform
+    # admin must hold BOTH this flag AND Permission.ADMINISTER.
     is_platform_admin = db.Column(db.Boolean, default=False)
+
+    @property
+    def is_org_admin(self):
+        """True when this user holds Permission.ADMINISTER (the system of record
+        for organisation-level administration).  The ``is_org_admin`` database
+        column is a denormalised copy kept current by ``flask reconcile-admin-flags``;
+        this property is the authority for auth decisions."""
+        return self.is_admin()
+
+    @is_org_admin.setter
+    def is_org_admin(self, value):
+        """Assign the Administrator role when set to True, so is_admin()
+        returns True.  The False case is a no-op — revoking org-admin status
+        should be done by assigning a different Role directly, not by writing
+        the denormalised flag.  This setter exists as a migration path for the
+        common ``user.is_org_admin = True`` pattern found across the codebase."""
+        if value:
+            admin_role = Role.query.filter_by(name="Administrator").first()
+            if admin_role is not None:
+                self.role = admin_role
 
     # PLT-018: Business unit scoping — links user to a BusinessActor (actor_type='Department' or similar)
     business_unit_id = db.Column(db.Integer, db.ForeignKey("business_actors.id"), nullable=True)  # migration-exempt
