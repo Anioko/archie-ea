@@ -463,6 +463,7 @@ def cross_layer_impact(element_id: int):
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
             "maturity_flags": result.get("maturity_flags"),
+            "centre_owner": result.get("centre_owner"),
         }
     )
 
