@@ -5,6 +5,7 @@ set -eu
 
 flask --app manage init-db
 flask --app manage reconcile-schema
+flask --app manage reconcile-admin-flags || echo 'WARN reconcile-admin-flags skipped - stale is_org_admin flags may disagree with is_admin() until it runs'
 flask --app manage backfill-ai-chat-approval-org || echo 'WARN AI chat approval tenancy backfill skipped - legacy approvals remain unavailable for review until requester organization ownership is restored'
 flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'
 flask --app manage backfill-layer-tenancy || echo 'WARN layer tenancy backfill skipped - newly tenant-scoped tables keep nullable organization_id until it runs; rows left NULL are invisible to every org'
