@@ -172,3 +172,88 @@ def test_a_foreign_organisations_unlinked_goal_and_driver_are_refused(app, db_se
         text("select application_component_id from drivers where id = :i"), {"i": driver_b_id}
     ).scalar()
     assert goal_linked is None and driver_linked is None
+
+
+# ---------------------------------------------------------------------------
+# Same fence, exercised through the canonical /applications/... routes
+# (unified_applications_bp -> app/modules/applications/routes/element_routes.py),
+# a separate blueprint carrying its own copy of the link-existing-entity logic.
+# See DEFECT-1/2/3, pr290-v1.md review.
+# ---------------------------------------------------------------------------
+
+
+def test_unified_routes_foreign_organisations_unlinked_requirement_is_refused(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("mo-u-req-a"), make_org("mo-u-req-b")
+    app_a = _app_component(db_session, org_a)
+    element_b = _archimate_element(db_session, org_b)
+    req_b = _requirement(db_session, archimate_element_id=element_b.id, title="SECRET-U-REQUIREMENT-B")
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, req_b_id, user_a_id = app_a.id, req_b.id, user_a.id
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    response = client.post(f"/applications/{app_a_id}/requirements/add",
+                           data={"element_id": str(req_b_id)}, follow_redirects=True)
+
+    assert response.status_code == 200
+    stored = db_session.execute(
+        text("select application_component_id from requirements where id = :i"), {"i": req_b_id}
+    ).scalar()
+    assert stored is None
+
+
+def test_unified_routes_callers_own_requirement_still_links(app, db_session, make_org, client, login_as):
+    org_a = make_org("mo-u-req-own")
+    app_a = _app_component(db_session, org_a)
+    element_a = _archimate_element(db_session, org_a)
+    req_a = _requirement(db_session, archimate_element_id=element_a.id, title="Own U requirement")
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, req_a_id, user_a_id = app_a.id, req_a.id, user_a.id
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    response = client.post(f"/applications/{app_a_id}/requirements/add",
+                           data={"element_id": str(req_a_id)}, follow_redirects=True)
+
+    assert response.status_code == 200
+    stored = db_session.execute(
+        text("select application_component_id from requirements where id = :i"), {"i": req_a_id}
+    ).scalar()
+    assert stored == app_a_id
+
+
+def test_unified_routes_foreign_organisations_unlinked_goal_and_driver_are_refused(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("mo-u-gd-a"), make_org("mo-u-gd-b")
+    app_a = _app_component(db_session, org_a)
+    element_b_goal = _archimate_element(db_session, org_b)
+    element_b_driver = _archimate_element(db_session, org_b)
+    goal_b = _goal(db_session, archimate_element_id=element_b_goal.id, name="SECRET-U-GOAL-B")
+    driver_b = _driver(db_session, archimate_element_id=element_b_driver.id, name="SECRET-U-DRIVER-B")
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, goal_b_id, driver_b_id, user_a_id = app_a.id, goal_b.id, driver_b.id, user_a.id
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    client.post(f"/applications/{app_a_id}/goals/add", data={"element_id": str(goal_b_id)})
+    client.post(f"/applications/{app_a_id}/drivers/add", data={"element_id": str(driver_b_id)})
+
+    goal_linked = db_session.execute(
+        text("select application_component_id from goals where id = :i"), {"i": goal_b_id}
+    ).scalar()
+    driver_linked = db_session.execute(
+        text("select application_component_id from drivers where id = :i"), {"i": driver_b_id}
+    ).scalar()
+    assert goal_linked is None and driver_linked is None
