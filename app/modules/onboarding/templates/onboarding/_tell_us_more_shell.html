@@ -9,7 +9,11 @@
    wizard one; a person arriving from the directory or returning later should
    land somewhere they can also navigate away from normally. Same card
    chrome as the wizard shell's screens for visual consistency of the
-   sections themselves. #}
+   sections themselves.
+   shell-ok: a centred single-card wizard shell, not a list/detail admin
+   page -- the back-link above the card is the section's own navigation,
+   and a page_shell breadcrumb/title row would duplicate the card's own
+   heading each of the five sections already renders. #}
 {% extends 'layouts/admin_base.html' %}
 
 {% block title %}{{ page_title | default('Tell us more') }} — {{ config.APP_NAME }}{% endblock %}
