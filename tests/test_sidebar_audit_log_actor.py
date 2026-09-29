@@ -27,3 +27,11 @@ def test_a_signed_out_caller_is_unknown_not_a_crash(app, monkeypatch):
         toggled = audit.SidebarMenuAuditLog.log_toggle("section.home", False)
 
     assert (toggled["user_id"], toggled["user_name"]) == (None, "unknown")
+
+
+def test_the_legacy_module_reexports_the_one_fixed_implementation():
+    """The legacy admin route (guardrail flag off) must not carry its own copy of the same bug."""
+    from app.services.sidebar_menu_audit_log import SidebarMenuAuditLog as legacy
+    from app.modules.admin.v2.services.sidebar_menu_audit_log_v2 import SidebarMenuAuditLog as v2
+
+    assert legacy is v2
