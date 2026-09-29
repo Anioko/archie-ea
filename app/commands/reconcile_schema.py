@@ -1604,6 +1604,88 @@ def _backfill_chat_from_session_id(dry_run: bool) -> int:
     return updated
 
 
+def _backfill_chat_from_conversation_owner(dry_run: bool, existing_tables: set[str]) -> int:
+    """Derive chat embedding organisation from the owning conversation thread.
+
+    Legacy chat_message_embeddings rows can predate organisation_id and user_id
+    population while still carrying a durable chat_session_id equal to the
+    conversation thread id. That thread is owned by a user, and the user's
+    organisation is the tenant boundary for the whole conversation.
+    """
+    from sqlalchemy import text
+
+    if not {"conversation_threads", "users"} <= existing_tables:
+        return 0
+
+    eligible = db.session.scalar(
+        text(
+            """
+            SELECT count(*)
+            FROM chat_message_embeddings e
+            JOIN conversation_threads t ON t.id = e.chat_session_id
+            JOIN users u ON u.id = t.user_id
+            WHERE e.organization_id IS NULL
+              AND u.organization_id IS NOT NULL
+            """
+        )
+    )
+    updated = eligible
+    if not dry_run and eligible:
+        result = db.session.execute(
+            text(
+                """
+                UPDATE chat_message_embeddings AS e
+                SET organization_id = u.organization_id
+                FROM conversation_threads AS t
+                JOIN users AS u ON u.id = t.user_id
+                WHERE t.id = e.chat_session_id
+                  AND e.organization_id IS NULL
+                  AND u.organization_id IS NOT NULL
+                """
+            )
+        )
+        updated = result.rowcount
+        db.session.commit()
+
+    return updated
+
+
+def _list_unresolved_chat_embedding_rows() -> list[str]:
+    """Return a stable, human-readable list of chat embedding rows still NULL."""
+    from sqlalchemy import text
+
+    rows = db.session.execute(
+        text(
+            """
+            SELECT id, chat_session_id
+            FROM chat_message_embeddings
+            WHERE organization_id IS NULL
+            ORDER BY id
+            """
+        )
+    ).fetchall()
+    return [f"{row.id}:{row.chat_session_id}" for row in rows]
+
+
+def _remove_unresolved_chat_embeddings(dry_run: bool) -> int:
+    """Delete legacy chat embeddings whose tenant provenance cannot be recovered."""
+    from sqlalchemy import text
+
+    removable = db.session.scalar(
+        text(
+            "SELECT count(*) FROM chat_message_embeddings WHERE organization_id IS NULL"
+        )
+    )
+    if dry_run or not removable:
+        return removable or 0
+
+    result = db.session.execute(
+        text("DELETE FROM chat_message_embeddings WHERE organization_id IS NULL")
+    )
+    db.session.commit()
+    return result.rowcount or 0
+
+
 def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed):
     """Backfill organization_id on embedding tables that have a reachable org
     through their FK chain.
@@ -1685,11 +1767,32 @@ def _backfill_embedding_organizations(*, dry_run, existing_tables, added, failed
                     added.append(
                         f"backfill.{table}.organization_id :: session-derived={_chat_derived}"
                     )
-            if unresolved:
-                added.append(
-                    f"backfill.{table}.organization_id :: "
-                    f"{unresolved} row(s) unresolved (left NULL; invisible through tenant filters)"
+                _conversation_derived = _backfill_chat_from_conversation_owner(
+                    dry_run, existing_tables
                 )
+                if _conversation_derived:
+                    updated += _conversation_derived
+                    unresolved = before - updated
+                    added.append(
+                        f"backfill.{table}.organization_id :: conversation-derived={_conversation_derived}"
+                    )
+            if unresolved:
+                unresolved_rows = _list_unresolved_chat_embedding_rows() if table == "chat_message_embeddings" else []
+                if unresolved_rows:
+                    added.append(
+                        f"backfill.{table}.organization_id :: unresolved_rows={unresolved_rows}"
+                    )
+                if table == "chat_message_embeddings":
+                    removed = _remove_unresolved_chat_embeddings(dry_run)
+                    action = "would remove" if dry_run else "removed"
+                    added.append(
+                        f"backfill.{table}.organization_id :: {action}={removed} unresolved row(s) with no tenant provenance"
+                    )
+                else:
+                    added.append(
+                        f"backfill.{table}.organization_id :: "
+                        f"{unresolved} row(s) unresolved (left NULL; invisible through tenant filters)"
+                    )
 
     for table in _EMBEDDING_SHARED_TABLES:
         if table not in present:

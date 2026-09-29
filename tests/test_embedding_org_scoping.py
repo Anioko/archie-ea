@@ -562,6 +562,153 @@ def test_backfill_embedding_organizations_fills_tenant_scoped_tables(
     )
 
 
+def test_backfill_chat_embeddings_uses_conversation_owner_and_scopes_search(
+    db_session, make_org, app, tenant_ctx
+):
+    """Legacy chat embeddings inherit the thread owner's org before scoped reads."""
+    from datetime import datetime
+    from sqlalchemy import inspect
+
+    from app.commands.reconcile_schema import _backfill_embedding_organizations
+    from app.models.conversation import ConversationThreadRecord
+    from app.models.user import User
+    from app.models.vector_embeddings import ChatMessageEmbedding
+    from app.services.pgvector_embedding_service import PgvectorEmbeddingService
+
+    org_a = make_org("chat-backfill-a")
+    org_b = make_org("chat-backfill-b")
+
+    user_a = User(
+        email=f"chat-backfill-{org_a.id}@example.com",
+        first_name="Chat",
+        last_name="Owner",
+        organization_id=org_a.id,
+    )
+    db_session.add(user_a)
+    db_session.flush()
+
+    thread = ConversationThreadRecord(
+        id=f"thread-{org_a.id}",
+        user_id=user_a.id,
+        title="Legacy chat thread",
+        model="test-model",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+        message_count=1,
+    )
+    db_session.add(thread)
+    db_session.flush()
+
+    legacy = ChatMessageEmbedding(
+        chat_session_id=thread.id,
+        user_id=None,
+        message_text="legacy org a thread message",
+        message_role="user",
+        embedding=[0.1] * 384,
+    )
+    db_session.add(legacy)
+    db_session.flush()
+    assert legacy.organization_id is None
+
+    with app.app_context():
+        from app import db as app_db
+
+        inspector = inspect(app_db.engine)
+        existing_tables = set(inspector.get_table_names())
+        added, failed = [], []
+        _backfill_embedding_organizations(
+            dry_run=False,
+            existing_tables=existing_tables,
+            added=added,
+            failed=failed,
+        )
+
+    db_session.refresh(legacy)
+    assert legacy.organization_id == org_a.id
+    assert any(
+        line == "backfill.chat_message_embeddings.organization_id :: conversation-derived=1"
+        for line in added
+    ), added
+    assert not failed, failed
+
+    svc = PgvectorEmbeddingService()
+    svc.generate_embedding = lambda text: [0.1] * 384
+
+    with tenant_ctx(org_a.id):
+        org_a_results = svc.search_chat_history(
+            "legacy org a",
+            chat_session_id=thread.id,
+            limit=10,
+            threshold=0.0,
+        )
+    assert [result["message"] for result in org_a_results] == [
+        "legacy org a thread message"
+    ]
+
+    with tenant_ctx(org_b.id):
+        org_b_results = svc.search_chat_history(
+            "legacy org a",
+            chat_session_id=thread.id,
+            limit=10,
+            threshold=0.0,
+        )
+    assert org_b_results == []
+
+
+def test_backfill_chat_embeddings_lists_and_removes_unresolved_rows(
+    db_session, app
+):
+    """Unrecoverable legacy chat embeddings are reported and removed with a count."""
+    from sqlalchemy import text
+    from sqlalchemy import inspect
+
+    from app.commands.reconcile_schema import _backfill_embedding_organizations
+    from app.models.vector_embeddings import ChatMessageEmbedding
+
+    orphan = ChatMessageEmbedding(
+        chat_session_id="unknown-session",
+        user_id=None,
+        message_text="orphaned legacy message",
+        message_role="user",
+        embedding=[0.1] * 384,
+    )
+    db_session.add(orphan)
+    db_session.flush()
+    orphan_id = orphan.id
+
+    with app.app_context():
+        from app import db as app_db
+
+        inspector = inspect(app_db.engine)
+        existing_tables = set(inspector.get_table_names())
+        added, failed = [], []
+        _backfill_embedding_organizations(
+            dry_run=False,
+            existing_tables=existing_tables,
+            added=added,
+            failed=failed,
+        )
+
+    db_session.expire_all()
+    assert db_session.scalar(
+        text("SELECT count(*) FROM chat_message_embeddings WHERE id = :id"),
+        {"id": orphan_id},
+    ) == 0
+    assert any(
+        line == (
+            "backfill.chat_message_embeddings.organization_id :: "
+            f"unresolved_rows=['{orphan_id}:unknown-session']"
+        )
+        for line in added
+    ), added
+    assert any(
+        line
+        == "backfill.chat_message_embeddings.organization_id :: removed=1 unresolved row(s) with no tenant provenance"
+        for line in added
+    ), added
+    assert not failed, failed
+
+
 def test_backfill_embedding_organizations_skips_shared_tables(
     db_session, app
 ):
