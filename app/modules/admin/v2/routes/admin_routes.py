@@ -66,6 +66,7 @@ from app.decorators import admin_required, audit_log, governance_gate_reader_req
 from app.middleware.tenant_decorators import org_admin_required, platform_admin_required
 from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
+from app.models.org_role import OrgRole
 from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.modules.admin.v2.services.llm_service_v2 import test_api_key
@@ -5633,9 +5634,22 @@ def organization_delete(org_id):
         flash("Cannot delete — no Default organization to reassign users.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
-    moved = User.query.filter_by(organization_id=org.id).update(
-        {"organization_id": default_org.id, "_is_org_admin": False},
-        synchronize_session=False,
+    # Move all users to Default org and revoke admin through role, not the
+    # denormalised flag.  is_org_admin derives from is_admin() which reads
+    # the Administrator role; writing _is_org_admin=False leaves the role
+    # intact and the user still an admin after the move.
+    default_role = Role.query.filter_by(default=True).first()
+    users = User.query.filter_by(organization_id=org.id).all()
+    moved = 0
+    for user in users:
+        user.organization_id = default_org.id
+        if default_role is not None:
+            user.role = default_role
+        moved += 1
+    # Remove OrgRole rows for the deleted organisation so no stale
+    # per-organisation role grants survive.
+    OrgRole.query.filter_by(organization_id=org.id).delete(
+        synchronize_session=False
     )
 
     org_name = org.name
