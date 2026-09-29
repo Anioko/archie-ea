@@ -48,9 +48,11 @@ def _surface_impact_analysis_service(element_id):
     result = ImpactAnalysisService.analyze_change_impact(element_id, change_type="MODIFY")
     direct = result.get("direct_dependencies") or []
     indirect = result.get("indirect_dependencies") or []
-    # Return sorted (id, name) pairs for comparison.
     all_deps = direct + indirect
-    return [(d["id"], d.get("name")) for d in all_deps]
+    return [
+        {"id": d["id"], "name": d.get("name"), "health": d.get("health")}
+        for d in all_deps
+    ]
 
 
 # ── surface 2: AIImpactAnalysisService (assistant) ───────────────────────
@@ -71,7 +73,10 @@ def _surface_ai_impact_service(app_id):
     for depth_items in (graph.get("indirect_impacts") or {}).values():
         indirect_list.extend(depth_items)
     all_impacts = direct + indirect_list
-    return [(i["id"], i.get("name")) for i in all_impacts]
+    return [
+        {"id": i["id"], "name": i.get("name"), "health": i.get("health")}
+        for i in all_impacts
+    ]
 
 
 # ── surface 3: cross_layer_impact directly (Ask screen) ──────────────────
@@ -91,7 +96,11 @@ def _surface_cross_layer_impact(element_id):
     rows = result.get("rows") or []
     elements = result.get("elements") or {}
     return [
-        (r["element_id"], elements.get(str(r["element_id"]), {}).get("name"))
+        {
+            "id": r["element_id"],
+            "name": elements.get(str(r["element_id"]), {}).get("name"),
+            "health": r.get("health"),
+        }
         for r in rows
     ]
 
@@ -100,15 +109,27 @@ def _surface_cross_layer_impact(element_id):
 
 
 def test_three_surfaces_return_same_element_set_and_order(app, db_session, make_org):
-    """The three impact surfaces return the same element set
-    and order for the same seed element."""
+    """The three impact surfaces return the same element set, the same
+    canonical walk order, and a health field on every row.
+
+    Uses a branching diamond graph where the old per-surface engines
+    (recursive CTE with ORDER BY level, name vs. RelationshipService vs.
+    canonical BFS) would produce different traversal orders.  The test
+    fails on main and passes only when all three surfaces are repointed
+    to the single canonical walk.
+    """
     org = make_org("one-engine")
     a = _element(db_session, org.id, "Platform-A")
-    b = _element(db_session, org.id, "Service-B")
-    c = _element(db_session, org.id, "Database-C")
+    # Insert B before C so the canonical BFS order is B, C at depth 1.
+    # Name them so alphabetical order (Alpha, Zebra) differs from
+    # insertion order (Zebra, Alpha) — the old CTE sorted by name.
+    b = _element(db_session, org.id, "Zebra-B")
+    c = _element(db_session, org.id, "Alpha-C")
     d = _element(db_session, org.id, "Capability-D", etype="Capability", layer="business")
+    # Diamond: A → B, A → C, B → D, C → D
     _relationship(db_session, org.id, a, b)
-    _relationship(db_session, org.id, b, c)
+    _relationship(db_session, org.id, a, c)
+    _relationship(db_session, org.id, b, d)
     _relationship(db_session, org.id, c, d)
     app_comp = _application_component(db_session, org.id, a.id, name="Platform App")
     db_session.commit()
@@ -123,23 +144,34 @@ def test_three_surfaces_return_same_element_set_and_order(app, db_session, make_
         surface3 = _surface_cross_layer_impact(a.id)
 
     # All three surfaces must return the same element ids in the same order.
-    ids1 = [eid for eid, _name in surface1]
-    ids2 = [eid for eid, _name in surface2]
-    ids3 = [eid for eid, _name in surface3]
+    ids1 = [d["id"] for d in surface1]
+    ids2 = [d["id"] for d in surface2]
+    ids3 = [d["id"] for d in surface3]
 
     assert ids1 == ids2, (
         f"ImpactAnalysisService ({ids1}) and AIImpactAnalysisService ({ids2}) "
-        f"return different element sets"
+        f"return different element sets or order"
     )
     assert ids1 == ids3, (
         f"ImpactAnalysisService ({ids1}) and cross_layer_impact ({ids3}) "
-        f"return different element sets"
+        f"return different element sets or order"
     )
 
     # All three surfaces must return non-empty results.
     assert len(surface1) > 0, "ImpactAnalysisService returned no dependencies"
     assert len(surface2) > 0, "AIImpactAnalysisService returned no dependencies"
     assert len(surface3) > 0, "cross_layer_impact returned no dependencies"
+
+    # Every row from every surface must carry a health field.
+    for label, rows in [
+        ("ImpactAnalysisService", surface1),
+        ("AIImpactAnalysisService", surface2),
+        ("cross_layer_impact", surface3),
+    ]:
+        for row in rows:
+            assert "health" in row, (
+                f"{label} row {row['id']} missing health field"
+            )
 
 
 def test_two_organisation_impact_never_crosses_org_boundary(app, db_session, make_org):
@@ -170,13 +202,13 @@ def test_two_organisation_impact_never_crosses_org_boundary(app, db_session, mak
     org_a_ids = {a1.id, a2.id}
     org_b_ids = {b1.id, b2.id}
 
-    for eid, _name in surface1:
-        assert eid in org_a_ids, f"Org A impact walk leaked org B element {eid}"
-        assert eid not in org_b_ids, f"Org A impact walk leaked org B element {eid}"
+    for row in surface1:
+        assert row["id"] in org_a_ids, f"Org A impact walk leaked org B element {row['id']}"
+        assert row["id"] not in org_b_ids, f"Org A impact walk leaked org B element {row['id']}"
 
-    for eid, _name in surface3:
-        assert eid in org_a_ids, f"Org A cross_layer_impact leaked org B element {eid}"
-        assert eid not in org_b_ids, f"Org A cross_layer_impact leaked org B element {eid}"
+    for row in surface3:
+        assert row["id"] in org_a_ids, f"Org A cross_layer_impact leaked org B element {row['id']}"
+        assert row["id"] not in org_b_ids, f"Org A cross_layer_impact leaked org B element {row['id']}"
 
 
 def test_health_field_present_on_every_row(app, db_session, make_org):
