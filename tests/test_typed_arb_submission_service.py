@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 import uuid
 
 import pytest
-import psycopg
-from psycopg import sql
+import psycopg2
+from psycopg2 import sql
 from sqlalchemy.orm import configure_mappers
 
 from app.models.architecture_review_board import ARBReviewItem
@@ -694,7 +694,7 @@ def test_direct_snapshot_commit_rejects_cross_tenant_subject(app, _schema):
         org_a, _user_a, _model_a = _seed_org_user_model(cursor, "snapshot-a")
         _org_b, _user_b, model_b = _seed_org_user_model(cursor, "snapshot-b")
         _insert_model_snapshot(cursor, org_a, model_b)
-        with pytest.raises(psycopg.Error, match="snapshot subject is outside its tenant"):
+        with pytest.raises(psycopg2.Error, match="snapshot subject is outside its tenant"):
             raw.commit()
     finally:
         raw.rollback()
@@ -728,7 +728,7 @@ def test_direct_cycle_commit_requires_adapter_snapshot_membership_and_review(app
             snapshot_id=snapshot_b,
             cycle_id=cycle_id,
         )
-        with pytest.raises(psycopg.Error, match="cycle snapshot does not belong"):
+        with pytest.raises(psycopg2.Error, match="cycle snapshot does not belong"):
             raw.commit()
     finally:
         raw.rollback()
@@ -748,7 +748,7 @@ def test_direct_cycle_commit_requires_exactly_one_review_projection(app, _schema
             model_id=model_id,
             snapshot_id=snapshot_id,
         )
-        with pytest.raises(psycopg.Error, match="cycle review projection is missing"):
+        with pytest.raises(psycopg2.Error, match="cycle review projection is missing"):
             raw.commit()
     finally:
         raw.rollback()
@@ -780,7 +780,7 @@ def test_direct_cycle_commit_requires_review_status_projection(app, _schema):
             "UPDATE arb_review_items SET status = 'under_review' WHERE id = %s",
             (review_id,),
         )
-        with pytest.raises(psycopg.Error, match="cycle review projection"):
+        with pytest.raises(psycopg2.Error, match="cycle review projection"):
             raw.commit()
     finally:
         raw.rollback()
@@ -827,7 +827,7 @@ def test_direct_cycle_commit_rejects_non_monotonic_predecessor(app, _schema):
             snapshot_id=snapshot_id,
             cycle_id=third_cycle,
         )
-        with pytest.raises(psycopg.Error, match="cycle predecessor is not monotonic"):
+        with pytest.raises(psycopg2.Error, match="cycle predecessor is not monotonic"):
             raw.commit()
     finally:
         raw.rollback()
@@ -855,7 +855,7 @@ def test_database_rejects_two_open_cycles_for_one_typed_subject(app, _schema):
             snapshot_id=snapshot_id,
             cycle_id=first_cycle,
         )
-        with pytest.raises(psycopg.Error):
+        with pytest.raises(psycopg2.Error):
             _insert_model_cycle(
                 cursor,
                 organization_id=org_id,
@@ -1014,7 +1014,7 @@ def test_direct_sql_cannot_rewrite_typed_snapshot_or_history(app, _schema, state
             if "arb_review_cycles" in statement
             else review_id
         )
-        with pytest.raises(psycopg.Error, match="append-only|immutable"):
+        with pytest.raises(psycopg2.Error, match="append-only|immutable"):
             cursor.execute(statement, (target_id,))
     finally:
         raw.rollback()
@@ -1071,7 +1071,7 @@ def test_direct_commit_rejects_all_typed_membership_mismatches(
             subject=subject,
             evidence_subject=evidence_subject,
         )
-        with pytest.raises(psycopg.Error, match="outside its tenant|does not belong"):
+        with pytest.raises(psycopg2.Error, match="outside its tenant|does not belong"):
             raw.commit()
     finally:
         raw.rollback()
@@ -1102,7 +1102,7 @@ def test_parent_subject_cannot_be_retenanted_away_from_committed_cycle(
             "architecture_model": "architecture_models",
             "adr": "architecture_decisions",
         }[subject_type]
-        with pytest.raises(psycopg.Error, match="tenant.*typed ARB|typed ARB.*tenant"):
+        with pytest.raises(psycopg2.Error, match="tenant.*typed ARB|typed ARB.*tenant"):
             cursor.execute(
                 f"UPDATE {table} SET organization_id = %s WHERE id = %s",
                 (org_b, subject["subject_id"]),
@@ -1125,7 +1125,7 @@ def test_historical_unverified_cannot_carry_canonical_decision(
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-decision")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
-        with pytest.raises(psycopg.Error):
+        with pytest.raises(psycopg2.Error):
             _insert_historical_graph(
                 cursor,
                 organization_id=org_id,
@@ -1241,7 +1241,7 @@ def test_linked_historical_review_rejects_every_post_insert_mutation(
             cursor, organization_id=org_id, user_id=user_id, subject=subject
         )
         cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        with pytest.raises(psycopg.Error, match="historical.*immutable"):
+        with pytest.raises(psycopg2.Error, match="historical.*immutable"):
             cursor.execute(
                 f"UPDATE arb_review_items SET {mutation} WHERE id = %s",
                 (review_id,),
@@ -1258,7 +1258,7 @@ def test_submitted_cycle_cannot_be_falsely_closed_to_open_successor(app, _schema
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "false-close")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "false-close")
-        with pytest.raises(psycopg.Error, match="ck_arb_review_cycle_shape"):
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
             _insert_typed_graph(
                 cursor,
                 organization_id=org_id,
@@ -1319,7 +1319,7 @@ def test_cycle_and_review_numbers_must_match(app, _schema):
             cycle_review_number=f"CYCLE-{uuid.uuid4().hex[:16]}",
             item_review_number=f"REVIEW-{uuid.uuid4().hex[:16]}",
         )
-        with pytest.raises(psycopg.Error, match="review projection"):
+        with pytest.raises(psycopg2.Error, match="review projection"):
             raw.commit()
     finally:
         raw.rollback()
@@ -1380,7 +1380,7 @@ def test_historical_unverified_requires_non_null_terminal_outcome(app, _schema):
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "historical-null")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "historical")
-        with pytest.raises(psycopg.Error, match="ck_arb_review_cycle_shape"):
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
             _insert_historical_graph(
                 cursor,
                 organization_id=org_id,
@@ -1401,7 +1401,7 @@ def test_terminal_cycle_requires_non_null_canonical_outcome(app, _schema):
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "terminal-null-outcome")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "terminal")
-        with pytest.raises(psycopg.Error, match="ck_arb_review_cycle_shape"):
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_cycle_shape"):
             _insert_typed_graph(
                 cursor,
                 organization_id=org_id,
@@ -1425,7 +1425,7 @@ def test_terminal_review_requires_non_null_canonical_decision(app, _schema):
         cursor = raw.cursor()
         org_id, user_id, _model_id = _seed_org_user_model(cursor, "terminal-null-decision")
         subject = _seed_subject_material(cursor, "adr", org_id, user_id, "terminal")
-        with pytest.raises(psycopg.Error, match="ck_arb_review_item_typed_shape"):
+        with pytest.raises(psycopg2.Error, match="ck_arb_review_item_typed_shape"):
             _insert_typed_graph(
                 cursor,
                 organization_id=org_id,
@@ -1465,7 +1465,7 @@ def test_successor_rejects_predecessor_without_complete_terminal_projection(app,
         cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
         cursor.execute("SET CONSTRAINTS ALL DEFERRED")
         with pytest.raises(
-            psycopg.Error, match="cycle predecessor is not monotonic"
+            psycopg2.Error, match="cycle predecessor is not monotonic"
         ):
             _insert_typed_graph(
                 cursor,
@@ -1567,7 +1567,7 @@ def test_parent_retenant_and_child_insert_share_subject_concurrency_fence(
         def commit_child():
             try:
                 child.commit()
-            except psycopg.Error as error:
+            except psycopg2.Error as error:
                 child.rollback()
                 return error
             return None
@@ -1580,13 +1580,13 @@ def test_parent_retenant_and_child_insert_share_subject_concurrency_fence(
                 early_result = "blocked"
             if early_result != "blocked":
                 parent.rollback()
-                assert isinstance(early_result, psycopg.Error), (
+                assert isinstance(early_result, psycopg2.Error), (
                     "child committed while the parent re-tenant was uncommitted"
                 )
             else:
                 parent.commit()
                 child_error = pending_commit.result(timeout=10)
-                assert isinstance(child_error, psycopg.Error)
+                assert isinstance(child_error, psycopg2.Error)
 
         verification = setup.cursor()
         verification.execute(

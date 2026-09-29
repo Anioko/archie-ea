@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import uuid
 
 from flask import g
-import psycopg
+import psycopg2
 import pytest
 from sqlalchemy import event, select, text
 from sqlalchemy.orm import Session
@@ -868,7 +868,7 @@ def test_real_solution_snapshot_is_database_immutable(
 
     raw = db.engine.raw_connection()
     try:
-        with pytest.raises(psycopg.Error, match="append-only"):
+        with pytest.raises(psycopg2.Error, match="append-only"):
             with raw.cursor() as cursor:
                 cursor.execute(
                     "UPDATE arb_submission_evidence_snapshots "
