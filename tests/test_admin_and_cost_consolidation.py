@@ -267,23 +267,26 @@ def test_reconcile_admin_flags_command_is_registered(app):
 # ---------------------------------------------------------------------------
 
 
-def test_org_delete_preserves_viewer_role(app, db_session, make_org):
-    """Moving a Viewer out of a deleted organisation keeps them a Viewer;
-    only an Administrator is downgraded to the default role."""
-    from app.models.organization import Organization
-    from app.models.org_role import OrgRole
+def test_org_delete_preserves_viewer_role(app, db_session, make_org, client, login_as):
+    """POST /admin/organizations/<id>/delete preserves a Viewer's role;
+    only an Administrator is downgraded to the default role.
 
+    Exercises the real production handler (organization_delete), not a
+    simulation, so this test fails on main where the handler downgrades
+    every user indiscriminately."""
+    from app.models.organization import Organization
+    from app.models.user import Role
+
+    # Ensure a Default org exists (the handler moves users there).
     default_org = Organization.query.filter_by(slug="default").first()
     if default_org is None:
-        default_org = make_org("default")
-        default_org.slug = "default"
+        default_org = Organization(name="Default", slug="default")
         db_session.add(default_org)
         db_session.flush()
 
     doomed = make_org("doomed-viewer")
     viewer_role = Role.query.filter_by(name="Viewer").first()
     admin_role = Role.query.filter_by(name="Administrator").first()
-    default_role = Role.query.filter_by(default=True).first()
 
     viewer = User(
         first_name="V", last_name="Only",
@@ -295,23 +298,25 @@ def test_org_delete_preserves_viewer_role(app, db_session, make_org):
         email=f"admin-down-{uuid.uuid4().hex[:8]}@example.com",
         organization_id=doomed.id, confirmed=True, role=admin_role,
     )
-    db_session.add_all([viewer, admin])
+    # Platform admin who can invoke the delete route.
+    platform_admin = User(
+        first_name="P", last_name="Admin",
+        email=f"plat-admin-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([viewer, admin, platform_admin])
     db_session.commit()
 
-    # Simulate the org-delete move logic (Defect 1 fix).
-    for user in [viewer, admin]:
-        user.organization_id = default_org.id
-        if user.is_admin() and default_role is not None:
-            user.role = default_role
-    OrgRole.query.filter_by(organization_id=doomed.id).delete(
-        synchronize_session=False
-    )
-    db_session.commit()
+    login_as(client, platform_admin)
+    resp = client.post(f"/admin/organizations/{doomed.id}/delete", follow_redirects=True)
+    assert resp.status_code == 200
 
     db_session.expire_all()
     moved_viewer = db_session.get(User, viewer.id)
     moved_admin = db_session.get(User, admin.id)
 
+    default_role = Role.query.filter_by(default=True).first()
     assert moved_viewer.role.name == "Viewer", (
         f"Viewer was upgraded to {moved_viewer.role.name}; should stay Viewer"
     )
@@ -320,23 +325,26 @@ def test_org_delete_preserves_viewer_role(app, db_session, make_org):
     )
 
 
-def test_remove_user_preserves_viewer_role(app, db_session, make_org):
-    """Removing a Viewer from an organisation keeps them a Viewer;
-    only an Administrator is downgraded."""
-    from app.models.organization import Organization
-    from app.models.org_role import OrgRole
+def test_remove_user_preserves_viewer_role(app, db_session, make_org, client, login_as):
+    """POST /admin/organizations/<id>/users/<uid>/remove preserves a Viewer's
+    role; only an Administrator is downgraded.
 
+    Exercises the real production handler (remove_user_from_org), not a
+    simulation, so this test fails on main where the handler downgrades
+    every user indiscriminately."""
+    from app.models.organization import Organization
+    from app.models.user import Role
+
+    # Ensure a Default org exists.
     default_org = Organization.query.filter_by(slug="default").first()
     if default_org is None:
-        default_org = make_org("default")
-        default_org.slug = "default"
+        default_org = Organization(name="Default", slug="default")
         db_session.add(default_org)
         db_session.flush()
 
     source = make_org("source-viewer")
     viewer_role = Role.query.filter_by(name="Viewer").first()
     admin_role = Role.query.filter_by(name="Administrator").first()
-    default_role = Role.query.filter_by(default=True).first()
 
     viewer = User(
         first_name="V", last_name="Only",
@@ -348,27 +356,42 @@ def test_remove_user_preserves_viewer_role(app, db_session, make_org):
         email=f"admin-rm-{uuid.uuid4().hex[:8]}@example.com",
         organization_id=source.id, confirmed=True, role=admin_role,
     )
-    db_session.add_all([viewer, admin])
+    platform_admin = User(
+        first_name="P", last_name="Admin",
+        email=f"plat-admin-rm-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([viewer, admin, platform_admin])
     db_session.commit()
 
-    # Simulate the remove-user move logic (Defect 2 fix).
-    for user in [viewer, admin]:
-        user.organization_id = default_org.id
-        if user.is_admin():
-            if default_role is not None:
-                user.role = default_role
-        OrgRole.query.filter_by(
-            organization_id=source.id, user_id=user.id
-        ).delete(synchronize_session=False)
-    db_session.commit()
+    # Remove the viewer through the real route.
+    login_as(client, platform_admin)
+    resp = client.post(
+        f"/admin/organizations/{source.id}/users/{viewer.id}/remove",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
 
     db_session.expire_all()
     moved_viewer = db_session.get(User, viewer.id)
-    moved_admin = db_session.get(User, admin.id)
 
     assert moved_viewer.role.name == "Viewer", (
         f"Viewer was upgraded to {moved_viewer.role.name}; should stay Viewer"
     )
+
+    # Remove the admin through the real route.
+    login_as(client, platform_admin)
+    resp = client.post(
+        f"/admin/organizations/{source.id}/users/{admin.id}/remove",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    moved_admin = db_session.get(User, admin.id)
+
+    default_role = Role.query.filter_by(default=True).first()
     assert moved_admin.role.name == default_role.name, (
         f"Administrator should be downgraded to {default_role.name}"
     )
