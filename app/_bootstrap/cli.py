@@ -449,3 +449,10 @@ def init_cli(app):
         app.logger.info("✅ Clear foreign assignees CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
+
+    try:
+        from app.commands.consolidate_gaps import init_app as init_consolidate_gaps
+        init_consolidate_gaps(app)
+        app.logger.info("✅ Gap register consolidation CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register gap register consolidation CLI: {e}")

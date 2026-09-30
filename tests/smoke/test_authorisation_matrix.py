@@ -138,6 +138,10 @@ POLICY = {
     # persona reaches it from the sidebar footer. The state it shows is
     # platform-wide; the only thing a user changes is their own subscription.
     "/status":                 set(ARCHETYPES),
+    # Gap register (R1-B05): @login_required and no role gate on the
+    # implementation_planning blueprint, so every signed-in persona reaches
+    # it; the gaps it shows are fenced per organisation by Gap's TenantMixin.
+    "/implementation/gaps":    set(ARCHETYPES),
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")

@@ -659,6 +659,14 @@ class Gap(TenantMixin, db.Model):
     source_capability_type = db.Column(db.String(20), index=True)  # business, technical, process
     source_capability_id = db.Column(db.Integer, index=True)
 
+    # Provenance for a row merged in from a superseded gap store (roadmap_gaps,
+    # implementation_gaps, compliance_gaps -- see app/commands/consolidate_gaps.py).
+    # NULL on a row created directly against this table. Together, unique per
+    # source row (enforced by the merge's NOT EXISTS check, not a DB
+    # constraint -- reconcile-schema is ADD-COLUMN-nullable-only, ADR 0002).
+    source_table = db.Column(db.String(64), nullable=True, index=True)
+    source_id = db.Column(db.Integer, nullable=True, index=True)
+
     # Timeline for roadmap display
     estimated_start_date = db.Column(db.Date)  # When gap resolution should begin
     target_resolution_date = db.Column(db.Date)  # Target date to resolve the gap
