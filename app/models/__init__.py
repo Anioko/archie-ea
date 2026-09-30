@@ -416,6 +416,9 @@ else:
     # AC-8: Versioned LLM prompt registry with A/B testing and metrics
     from .llm_prompt_version import LLMPromptVersion  # noqa: F401
 
+    # Provider register — platform defaults + per-org allow/restrict rows
+    from .model_provider import ModelProvider  # noqa: F401
+
     # Solution Blueprint, Cost, Outcomes, Scoring — tables created via db.create_all()
     from .solution_blueprint_proposal import SolutionBlueprintProposal  # noqa: F401
     from .solution_cost_model import (  # noqa: F401

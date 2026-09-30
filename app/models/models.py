@@ -1128,6 +1128,20 @@ class LLMInteraction(db.Model):
     latency_ms = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=db.func.now())
 
+    # Gateway fields on llm_interactions for provider register
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    prompt_version = db.Column(
+        db.String(32), nullable=True,
+        comment="Semver-style version string, e.g. v1.3; references LLMPromptVersion.version",
+    )
+    retention_setting = db.Column(
+        db.String(50), nullable=True,
+        comment="Data retention policy: forever, 30d, 90d, 1y",
+    )
+
     def __repr__(self):
         input_tokens = self.token_count_input or 0
         output_tokens = self.token_count_output or 0
