@@ -107,7 +107,7 @@ def compute_blocking_key(name: str) -> str:
         A lowercase first-token string, or the empty string for a blank name.
         Deterministic: same name always yields the same key.
     """
-    if not name:
+    if not name or not name.strip():
         return ""
     return (name.strip().split()[0] or "").lower()
 

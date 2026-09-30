@@ -30,6 +30,7 @@ def test_blocking_key_normalizes_to_lowercase_first_token():
 def test_blocking_key_empty_and_none():
     assert compute_blocking_key("") == ""
     assert compute_blocking_key(None) == ""
+    assert compute_blocking_key("   ") == ""
 
 
 def test_blocking_key_single_word():
