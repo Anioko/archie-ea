@@ -15,36 +15,18 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-
-def _user(db_session, org, *, platform=False):
-    from app.models import Role
-    from app.models.user import User
-
-    role = Role.query.filter_by(name="Administrator").first()
-    if role is None:
-        pytest.skip("no Administrator role seeded in this database")
-    user = User(email=f"rp-{uuid.uuid4().hex[:6]}@example.test", first_name="Role", last_name="Tester",
-                organization_id=org.id, confirmed=True, role=role)
-    user.password = uuid.uuid4().hex
-    user.is_org_admin = True
-    user.is_platform_admin = platform
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-
-def _login(db_session, client, login_as, user_id):
-    from app.models.user import User
-
-    db_session.expunge_all()
-    login_as(client, db_session.get(User, user_id))
+from tests._platform_admin_world import (
+    login_platform_admin_world_user as _login,
+    platform_admin_user as _user,
+)
 
 
 def _world(db_session, make_org):
     from app.models import Role
 
     org = make_org("roles-prompts")
-    tenant, platform = _user(db_session, org), _user(db_session, org, platform=True)
+    tenant = _user(db_session, org, prefix="rp")
+    platform = _user(db_session, org, prefix="rp", platform=True)
     custom = Role(name=f"probe-{uuid.uuid4().hex[:8]}", permissions=1, index="main", default=False)
     db_session.add(custom)
     db_session.commit()

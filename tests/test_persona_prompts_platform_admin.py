@@ -11,41 +11,17 @@ analytics, not a shared table) and are asserted reachable here as a regression g
 
 from __future__ import annotations
 
-import uuid
-
 import pytest
 from sqlalchemy import text
 
-
-def _user(db_session, org, *, platform=False):
-    from app.models import Role
-    from app.models.user import User
-
-    role = Role.query.filter_by(name="Administrator").first()
-    if role is None:
-        pytest.skip("no Administrator role seeded in this database")
-    user = User(email=f"pp-{uuid.uuid4().hex[:6]}@example.test", first_name="Persona", last_name="Tester",
-                organization_id=org.id, confirmed=True, role=role)
-    user.password = uuid.uuid4().hex
-    user.is_org_admin = True
-    user.is_platform_admin = platform
-    db_session.add(user)
-    db_session.flush()
-    return user
-
-
-def _login(db_session, client, login_as, user_id):
-    from app.models.user import User
-
-    db_session.expunge_all()
-    login_as(client, db_session.get(User, user_id))
+from tests._platform_admin_world import (
+    login_platform_admin_world_user as _login,
+    platform_admin_world as _world_base,
+)
 
 
 def _world(db_session, make_org):
-    org = make_org("persona-prompts")
-    tenant, platform = _user(db_session, org), _user(db_session, org, platform=True)
-    db_session.commit()
-    return tenant.id, platform.id
+    return _world_base(db_session, make_org, org_prefix="persona-prompts", user_prefix="pp")
 
 
 @pytest.mark.parametrize("method,path", [
@@ -105,3 +81,59 @@ def test_the_unrelated_analytics_routes_stay_reachable_to_a_tenant_administrator
 
     assert dashboard.status_code == 200
     assert data.status_code in (200, 500)  # 500 only from an unrelated missing-model import guard, not auth
+
+
+def test_analytics_data_does_not_count_a_foreign_organisations_activity(
+    app, db_session, make_org, client, login_as
+):
+    """Final-check review (pr242-final-check-v1.md), HIGH: neither AIChatAuditLog
+    nor AIInteractionLog carries an organization_id of its own -- ownership is
+    only reachable via their user_id FK to User. The analytics route counted
+    every organisation's rows together. Seeds two real organisations and
+    proves org A's counts do not include org B's activity."""
+    from datetime import datetime, timedelta
+
+    from app.models.ai_chat_audit_log import AIChatAuditLog, AuditEventType
+    from app.models.ai_service import AIInteractionLog, AIPromptTemplate
+
+    org_a = make_org("persona-analytics-a")
+    org_b = make_org("persona-analytics-b")
+    from tests._platform_admin_world import platform_admin_user
+
+    user_a = platform_admin_user(db_session, org_a, prefix="pa-a")
+    user_b = platform_admin_user(db_session, org_b, prefix="pa-b")
+    db_session.commit()
+
+    now = datetime.utcnow()
+    db_session.add(AIChatAuditLog(
+        event_type=AuditEventType.CHAT_MESSAGE, user_id=user_a.id,
+        domain="finance", persona="enterprise_architect", provider_used="openrouter",
+        processing_time_ms=100, created_at=now,
+    ))
+    for _ in range(5):
+        db_session.add(AIChatAuditLog(
+            event_type=AuditEventType.CHAT_MESSAGE, user_id=user_b.id,
+            domain="hr", persona="business_architect", provider_used="openrouter",
+            processing_time_ms=200, created_at=now,
+        ))
+    template = AIPromptTemplate.query.first()
+    if template is not None:
+        db_session.add(AIInteractionLog(
+            user_id=user_b.id, prompt_template_id=template.id, timestamp=now,
+        ))
+    db_session.commit()
+    user_a_id = user_a.id
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    resp = client.get("/ai-chat/admin/analytics/data", query_string={"days": "30"})
+
+    if resp.status_code != 200:
+        pytest.skip("analytics/data route not reachable in this environment (missing-model guard)")
+    data = resp.get_json()
+    assert data.get("total_messages", 0) == 1, (
+        "org A must only count its own AIChatAuditLog row, not org B's 5"
+    )
+    assert data.get("active_users", 0) == 1
