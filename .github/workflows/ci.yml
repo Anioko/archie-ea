@@ -64,6 +64,7 @@ jobs:
   secret-scan:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -87,6 +88,7 @@ jobs:
   static-gates:
     name: Static gates (compile + ratchets)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # The static tag includes route/navigation and CSRF coverage, which import
     # the real app, plus the reproducible CSS build. Install the application
     # dependencies and the exact standalone Tailwind binary those gates need;
@@ -118,6 +120,7 @@ jobs:
   boot-health:
     name: Boot health (no database)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # Catches the class of failure nothing else here can see: a blueprint that
     # silently fails to register, or a url_for() endpoint that no longer resolves
     # (a BuildError 500 on every page rendering the sidebar).
@@ -177,6 +180,7 @@ jobs:
   # database sessions; it does not protect against state shared ACROSS files.
   tests-shard:
     name: Tests (pytest + coverage) — shard ${{ matrix.shard }}
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # Same-repository runs (push/dispatch and same-repo PRs) select a runner
     # via repository variables: vars.CI_FAST_RUNNER takes precedence when the
     # PR carries the ci-fast label, vars.CI_SHARD_RUNNER routes to a managed
@@ -193,7 +197,7 @@ jobs:
       # same-repository runs (default 6 when the variable is unset).
       # GitHub-hosted runners (forked PRs) have no such limit, so all eight
       # shards start together there.
-      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (vars.CI_SHARD_MAX_PARALLEL || 6) || 8 }}
+      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (vars.CI_FAST_RUNNER && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-fast') && 8 || vars.CI_SHARD_MAX_PARALLEL || 6) || 8 }}
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
@@ -330,7 +334,7 @@ jobs:
   tests:
     name: Tests (pytest + coverage)
     needs: tests-shard
-    if: always()
+    if: ${{ always() && (github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast')) }}
     # Same runner selection as tests-shard above: the dedicated ibm-vsi runners
     # for push/dispatch and this repository's own PR branches, GitHub-hosted
     # ubuntu-latest for forked PRs. It runs after every shard has finished, so
@@ -446,6 +450,7 @@ jobs:
   db-gates:
     name: Database gates (schema drift)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     services:
       postgres:
         image: postgres:16
@@ -513,6 +518,7 @@ jobs:
   security-sast:
     name: SAST (bandit)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -541,6 +547,7 @@ jobs:
   smoke:
     name: Browser journeys (one per archetype)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # Renders real pages in a real browser against a real database. Every cheaper
     # layer has passed defects this catches: a front end blocked by integrity
     # hashes, handlers that 500 on their first row, and pages returning 200 while
@@ -628,6 +635,7 @@ jobs:
   browser-compatibility:
     name: Browser compatibility (${{ matrix.browser }})
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     strategy:
       fail-fast: false
       matrix:
@@ -720,6 +728,7 @@ jobs:
   walkthrough:
     name: Level 10 archetype walkthrough
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # docs/TESTING_STANDARD.md level 10: not "does it break?" but "can this
     # archetype do their job, and could they have FOUND the page?". It runs as a
     # non-admin per persona, measures geometry at a fixed viewport rather than
@@ -786,6 +795,7 @@ jobs:
   dependency-audit:
     name: Dependency CVEs (pip-audit)
     runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast') }}
     # A ratchet against scripts/ci/dependency_baseline.json: the count may fall,
     # never rise. The baseline is accepted risk, not proof of safety - every entry
     # is a real advisory a security review will ask about.
