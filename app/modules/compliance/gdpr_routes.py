@@ -5,10 +5,11 @@ from flask import Blueprint, Response, abort, flash, jsonify, redirect, render_t
 from flask_login import current_user, login_required
 
 from app.decorators import requires_role
+from app.decorators.requires_role import DATA_SUBJECT_REQUEST_ROLES
 from app.extensions import db
 from app.middleware.tenant_decorators import platform_admin_required
 from app.models.gdpr_request import REQUEST_TYPES, GDPRRequest
-from app.models.user import ROLE_SECURITY_ARCHITECT, User
+from app.models.user import User
 from app.services.gdpr_service import DataSubjectRequestError, GDPRService
 from app.utils.route_guards import require_entity
 
@@ -100,7 +101,7 @@ def gdpr_status(user_id):
 # owns the compliance section; platform administrators also pass.
 # ---------------------------------------------------------------------------
 
-_DPO_ROLES = [ROLE_SECURITY_ARCHITECT]
+_DPO_ROLES = DATA_SUBJECT_REQUEST_ROLES
 
 
 def _org_id():

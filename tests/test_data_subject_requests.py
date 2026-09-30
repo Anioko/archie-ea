@@ -529,3 +529,30 @@ def test_people_pickers_tolerate_a_person_with_no_name_or_address():
         text = (root / rel).read_text(encoding="utf-8")
         assert ".email.toLowerCase()" not in text, rel
         assert ".email || '').toLowerCase()" in text, rel
+
+
+# ---------------------------------------------------------------------------
+# The link is offered only to people who can open the page
+# ---------------------------------------------------------------------------
+
+
+def test_data_subject_requests_link_is_offered_only_to_people_who_can_open_it(
+    db_session, make_org, client, login_as
+):
+    offered = {}
+    for role in (
+        "security_architect", "enterprise_architect", "solution_architect",
+        "business_architect", "data_architect", "procurement",
+    ):
+        # A Community organisation admits three people, so one organisation each.
+        user = _make_user(db_session, make_org("dsr-directory"), role=role)
+        login_as(client, user)
+        html = client.get("/modules").get_data(as_text=True)
+        login_as(client, user)
+        opens = client.get("/compliance/data-subject-requests").status_code == 200
+        offered[role] = ("/compliance/data-subject-requests" in html, opens)
+
+    # What is offered is exactly what opens.
+    assert all(shown == opens for shown, opens in offered.values()), offered
+    assert offered["security_architect"] == (True, True)
+    assert offered["enterprise_architect"] == (False, False)
