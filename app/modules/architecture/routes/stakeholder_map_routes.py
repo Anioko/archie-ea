@@ -2,8 +2,10 @@
 import logging
 
 from flask import Blueprint, g, jsonify, render_template, request
+from sqlalchemy import String, cast
 
 from app import db
+from app.models.solution_models import Solution
 from app.models.solution_stakeholder import SolutionStakeholder, SolutionStakeholderMapping
 from app.modules.architecture.services.stakeholder_service import StakeholderService
 from app.services.feature_flag_service import FeatureFlagService
@@ -13,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 stakeholder_map_ui_bp = Blueprint("stakeholder_map", __name__)
 stakeholder_map_api_bp = Blueprint("stakeholder_map_api", __name__, url_prefix="/api/stakeholders")
+
+
+def _solution_for_current_organisation(solution_id: int):
+    """Return the caller-visible solution, or None when it is not in scope."""
+    return Solution.query.filter_by(id=solution_id).first()
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +75,8 @@ def map_data():
             SolutionStakeholder.id.in_(linked_ids)
         ).order_by(SolutionStakeholder.name).all()
     elif solution_id:
+        if _solution_for_current_organisation(solution_id) is None:
+            return jsonify({"error": "Solution not found"}), 404
         # Stakeholders linked to this solution via mapping table
         linked_ids = db.session.query(SolutionStakeholderMapping.stakeholder_id).filter_by(
             solution_id=solution_id
@@ -75,9 +84,6 @@ def map_data():
         stakeholders = SolutionStakeholder.query.filter(
             SolutionStakeholder.id.in_(linked_ids)
         ).all()
-        # Fallback: return all if none linked
-        if not stakeholders:
-            stakeholders = SolutionStakeholder.query.limit(500).all()
     else:
         stakeholders = SolutionStakeholder.query.limit(500).all()
 
@@ -118,6 +124,11 @@ def search_people():
             User.first_name.ilike(f"%{q}%"),
             User.last_name.ilike(f"%{q}%"),
             User.email.ilike(f"%{q}%"),
+            db.func.concat(
+                db.func.coalesce(cast(User.first_name, String), ""),
+                " ",
+                db.func.coalesce(cast(User.last_name, String), ""),
+            ).ilike(f"%{q}%"),
         )
     ).limit(10).all()
     for u in users:
@@ -141,6 +152,7 @@ def create_stakeholder():
     from app.models.solution_stakeholder import StakeholderType, StakeholderAttitude
 
     programme_id = data.get("programme_id")
+    solution_id = data.get("solution_id")
     if programme_id:
         from app.modules.architecture.services.stakeholder_service import programme_for_map
 
@@ -150,6 +162,14 @@ def create_stakeholder():
             return jsonify({"error": "programme_id must be an integer"}), 400
         if programme_for_map(programme_id) is None:
             return jsonify({"error": "Programme not found"}), 404
+
+    if solution_id:
+        try:
+            solution_id = int(solution_id)
+        except (ValueError, TypeError):
+            return jsonify({"error": "solution_id must be an integer"}), 400
+        if _solution_for_current_organisation(solution_id) is None:
+            return jsonify({"error": "Solution not found"}), 404
 
     # Check if linking to existing entity
     business_actor_id = data.get("business_actor_id")
@@ -184,13 +204,7 @@ def create_stakeholder():
     db.session.flush()
 
     # Link to solution if provided
-    solution_id = data.get("solution_id")
     if solution_id:
-        try:
-            solution_id = int(solution_id)
-        except (ValueError, TypeError):
-            db.session.rollback()
-            return jsonify({"error": "solution_id must be an integer"}), 400
         mapping = SolutionStakeholderMapping(
             stakeholder_id=s.id,
             solution_id=solution_id,

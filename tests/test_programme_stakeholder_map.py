@@ -51,6 +51,15 @@ def _capability(db_session, org, name, business_owner=None, it_owner=None):
     return capability
 
 
+def _solution(db_session, org, name="Solution"):
+    from app.models.solution_models import Solution
+
+    solution = Solution(name=name, organization_id=org.id)
+    db_session.add(solution)
+    db_session.flush()
+    return solution
+
+
 def test_a_programme_with_nothing_affected_has_no_suggestions(app, db_session, make_org, tenant_ctx):
     from app.modules.architecture.services.stakeholder_service import programme_owner_suggestions
 
@@ -136,3 +145,43 @@ def test_another_organisations_programme_cannot_be_read_or_written(
         "name": "Intruder", "programme_id": programme.id}).status_code == 404
     assert client.get(
         "/api/stakeholders/programme-suggestions?programme_id=%d" % programme.id).status_code == 404
+
+
+def test_another_organisations_solution_cannot_be_read_or_written(
+    app, db_session, client, signed_in
+):
+    theirs = signed_in("stk-sol-theirs")
+    foreign_solution = _solution(db_session, theirs, "Foreign Solution")
+    signed_in("stk-sol-mine")
+
+    read_resp = client.get("/api/stakeholders/map-data?solution_id=%d" % foreign_solution.id)
+    assert read_resp.status_code == 404
+
+    write_resp = client.post(
+        "/api/stakeholders/",
+        json={"name": "Intruder Mapping", "solution_id": foreign_solution.id},
+    )
+    assert write_resp.status_code == 404
+
+
+def test_a_solution_with_no_mappings_returns_an_empty_list(
+    app, db_session, client, signed_in
+):
+    org = signed_in("stk-sol-empty")
+    solution = _solution(db_session, org, "Empty Solution")
+
+    resp = client.get("/api/stakeholders/map-data?solution_id=%d" % solution.id)
+
+    assert resp.status_code == 200
+    assert resp.get_json() == []
+
+
+def test_people_search_matches_full_display_name_for_a_user(
+    app, db_session, client, signed_in
+):
+    signed_in("stk-sol-search")
+
+    resp = client.get("/api/stakeholders/search-people?q=Stk stk-sol-search")
+
+    assert resp.status_code == 200
+    assert [item["name"] for item in resp.get_json()] == ["Stk stk-sol-search"]
