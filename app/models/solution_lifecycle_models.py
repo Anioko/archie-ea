@@ -16,7 +16,22 @@ from app.models.mixins import TenantMixin
 
 
 class SolutionRisk(TenantMixin, db.Model):
-    """Risk register entry for a solution (TOGAF Phase C-D)."""
+    """Risk register entry for a solution (TOGAF Phase C-D).
+
+    Superseded store: ``risks`` (app/models/risk.py) plus its link table
+    ``risk_entity_links`` is now the one writer for every risk, per
+    app/services/risk_service.py. ``flask backfill-solution-risk-merge``
+    (app/commands/backfill_solution_risk_merge.py) copies each row still
+    unmerged into a canonical Risk (linked back to this solution via a
+    RiskEntityLink of entity_type="solution") and sets
+    ``retired_into_risk_id`` here so re-running the backfill is a no-op. This
+    table's own create/update/delete routes
+    (app/modules/solutions_strategic/v2/routes/solution_phase_routes.py)
+    still write here directly until the solution risk tab is repointed to
+    risk_service.py in a later change -- the backfill is idempotent and runs
+    on every deploy, so a row created after this PR is swept in on the next
+    deploy rather than left stranded.
+    """
     __tablename__ = "solution_risks"
     __table_args__ = {"extend_existing": True}
 
@@ -42,6 +57,11 @@ class SolutionRisk(TenantMixin, db.Model):
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     constraint_id = Column(Integer, ForeignKey("solution_constraints.id", ondelete="SET NULL"), nullable=True, index=True)  # migration-exempt
+    # NULL until flask backfill-solution-risk-merge copies this row into the
+    # canonical risks table; set once, never cleared. See the class docstring.
+    retired_into_risk_id = Column(
+        Integer, ForeignKey("risks.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     solution = relationship("Solution", backref="risks")
     created_by = relationship("User", foreign_keys=[created_by_id])
@@ -57,6 +77,7 @@ class SolutionRisk(TenantMixin, db.Model):
             "mitigation": self.mitigation,
             "status": self.status,
             "owner": self.owner,
+            "retired_into_risk_id": self.retired_into_risk_id,
         }
 
 
