@@ -408,6 +408,19 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ARB/EA tenancy backfill CLI: {e}")
 
+    # R1-B09: decision register consolidation (ADR records paired into
+    # architecture_decisions; decision_ledger tenant-fenced)
+    try:
+        from app.commands.backfill_decision_register_consolidation import (
+            init_app as init_decision_register_consolidation,
+        )
+        init_decision_register_consolidation(app)
+        app.logger.info("\u2705 Decision register consolidation backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(
+            f"\u26a0\ufe0f  Failed to register decision register consolidation backfill CLI: {e}"
+        )
+
     try:
         from app.commands.process_arb_waiver_expiries import init_app as init_arb_expiry
         init_arb_expiry(app)

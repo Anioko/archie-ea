@@ -91,6 +91,18 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
     # Related ADRs
     related_adr_ids = db.Column(db.Text)  # JSON: Array of related ADR IDs
 
+    # R1-B09 consolidation: the canonical architecture_decisions row this ADR
+    # is also visible through (dual-write, not a move -- this record stays the
+    # system of record for its rich review-board fields, which architecture_
+    # decisions has no columns for: capability/process links, governance_
+    # decision_id, implementation_plan, risk_register, cost_analysis,
+    # arb_review, decision_matrix and the rest). Nullable: set on backfilled
+    # rows and every new one going forward; NULL only on a row created before
+    # this consolidation shipped and not yet backfilled.
+    retired_into_id = db.Column(
+        db.Integer, db.ForeignKey("architecture_decisions.id"), nullable=True, index=True
+    )
+
     # Governance snapshot stored on ADR after migration
     governance_blob = db.Column(db.JSON, nullable=True)
 
@@ -168,6 +180,57 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
 
     def __repr__(self):
         return f"<ADR-{self.adr_number}: {self.title} ({self.status})>"
+
+    def pair_with_canonical_register(self):
+        """R1-B09: create (or return the existing) paired ArchitectureDecision row.
+
+        Dual-write, not a move: this record stays the system of record for
+        its own rich review-board fields; the paired row is what makes it
+        visible in the one canonical register. Idempotent -- a record already
+        paired (retired_into_id set) returns its existing pair instead of
+        creating a second one. Skips (returns None) when this record has no
+        organisation to preserve; never guesses a tenant.
+        """
+        import json
+
+        from app import db
+        from app.models.architecture_decision import ArchitectureDecision
+
+        if self.retired_into_id is not None:
+            return ArchitectureDecision.query.get(self.retired_into_id)
+        if self.organization_id is None:
+            return None
+
+        def _safe_json(value):
+            if not value:
+                return None
+            try:
+                return json.loads(value)
+            except (TypeError, ValueError):
+                return {"legacy_text": value}
+
+        context = self.context
+        if self.decided_by:
+            context = f"{context}\n\n(Decided by: {self.decided_by})" if context else f"(Decided by: {self.decided_by})"
+
+        canonical = ArchitectureDecision(
+            organization_id=self.organization_id,
+            title=self.title,
+            status="deprecated" if self.status == "rejected" else (self.status or "proposed"),
+            context=context,
+            decision=self.decision,
+            consequences=self.consequences,
+            alternatives=_safe_json(self.alternatives_considered),
+            rationale=self.rationale,
+            constraints=_safe_json(self.constraints),
+            decision_type=self.category,
+            source_table="architecture_decision_records",
+            source_id=self.id,
+        )
+        db.session.add(canonical)
+        db.session.flush()
+        self.retired_into_id = canonical.id
+        return canonical
 
     def to_dict(self, include_content=True):
         """

@@ -225,6 +225,9 @@ class SolutionOptionsAdvisor:
             decided_by="AI Solution Architect (proposed)",
         )
         db.session.add(adr)
+        db.session.flush()
+        # R1-B09: also visible in the one canonical decision register.
+        adr.pair_with_canonical_register()
         db.session.commit()
         logger.info("AI-3 ADR %s generated for solution %s (%d options)",
                     adr.id, solution.id, len(options))

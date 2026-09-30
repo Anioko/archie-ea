@@ -151,7 +151,15 @@ def view_adr(adr_id: int):
 @adr_bp.route("/records/<int:adr_id>", methods=["GET"])
 @login_required
 def view_record(adr_id: int):
-    """View the canonical tenant-scoped ArchitectureDecisionRecord."""
+    """R1-B09: this record's own detail (still the system of record for its
+    review-board fields), plus, when paired, the one canonical register's id
+    so a caller can also reach it at `arch_decisions.view_decision`.
+
+    Redirects were not possible here (this is a JSON API, not a page GET) --
+    the pairing is surfaced in the response instead, completing "ADR routes
+    point at the one register" for the one route that still reads
+    architecture_decision_records directly.
+    """
     adr = db.session.execute(
         db.select(ArchitectureDecisionRecord).where(
             ArchitectureDecisionRecord.id == adr_id,
@@ -160,7 +168,14 @@ def view_record(adr_id: int):
     ).scalar_one_or_none()
     if adr is None:
         abort(404)
-    return jsonify({"adr": adr.to_dict(include_content=True)})
+    payload = adr.to_dict(include_content=True)
+    payload["canonical_decision_id"] = adr.retired_into_id
+    payload["canonical_decision_url"] = (
+        url_for("arch_decisions.view_decision", decision_id=adr.retired_into_id)
+        if adr.retired_into_id
+        else None
+    )
+    return jsonify({"adr": payload})
 
 
 @adr_bp.route("/<int:adr_id>/edit", methods=["GET"])
