@@ -70,11 +70,17 @@ _ATTRIBUTION_SQL = {
     ),
 }
 
-# source table -> (operation_type, entity_type, summary column expression)
+# source table -> (operation_type, entity_type). entity_type is either a
+# fixed string (matching what the live constructor site always passes, e.g.
+# create_solution_blueprint_proposal's entity_type="solution_blueprint_element")
+# or None, meaning "read it from the row instead" -- review_queue_items'
+# constructor site (ConfidenceReviewService.add_to_review_queue) passes
+# entity_type=item_data.item_type, a per-row value (archimate_element,
+# capability, ...), not a fixed one.
 _APPROVAL_SHAPE = {
-    "review_queue_items": ("review", "item_type", "item_name"),
-    "relationship_suggestions": ("suggest_relationship", "relationship", "relationship_type"),
-    "solution_blueprint_proposals": ("propose", "solution_blueprint_element", "name"),
+    "review_queue_items": ("review", None),
+    "relationship_suggestions": ("suggest_relationship", "relationship"),
+    "solution_blueprint_proposals": ("propose", "solution_blueprint_element"),
 }
 
 _ROWS_SQL = {
@@ -179,7 +185,7 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
             click.echo(f"organisation {org_id}: {source} {len(ids)} row(s) to copy")
             if dry_run:
                 continue
-            operation_type, entity_type, _summary_col = _APPROVAL_SHAPE[source]
+            operation_type, entity_type_fixed = _APPROVAL_SHAPE[source]
             for start in range(0, len(ids), _BATCH):
                 chunk = ids[start:start + _BATCH]
                 conn = db.session.connection()
@@ -189,17 +195,20 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
                 for row in rows:
                     row = dict(row)
                     if source == "review_queue_items":
+                        entity_type = row["item_type"]
                         summary = f"Confidence review: {row['item_name']}"
                         payload = {"review_queue_item_id": row["id"],
                                    "item_type": row["item_type"], "item_id": row["item_id"]}
                         entity_id = row["item_id"]
                     elif source == "relationship_suggestions":
+                        entity_type = entity_type_fixed
                         summary = f"Suggested relationship: {row['relationship_type']}"
                         payload = {"relationship_suggestion_id": row["id"],
                                    "source_element_id": row["source_element_id"],
                                    "target_element_id": row["target_element_id"]}
                         entity_id = row["source_element_id"]
                     else:
+                        entity_type = entity_type_fixed
                         summary = f"Blueprint proposal: {row['name']} ({row['archimate_type']})"
                         payload = {"solution_blueprint_proposal_id": row["id"],
                                    "solution_id": row["solution_id"], "archimate_type": row["archimate_type"]}

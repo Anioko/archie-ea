@@ -112,6 +112,10 @@ def test_backfilled_row_keeps_its_source_organisation(db_session, make_org, tena
     assert approval_b.organization_id == org_b_id
     assert approval_a.source_table == "review_queue_items"
     assert approval_a.source_id == item_a_id
+    # Regression: entity_type must be the row's own item_type
+    # ("archimate_element"), not the literal string "item_type" that named
+    # the column to read it from.
+    assert approval_a.entity_type == "archimate_element"
 
 
 # --------------------------------------------------------------------- #
