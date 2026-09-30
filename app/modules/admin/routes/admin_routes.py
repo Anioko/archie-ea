@@ -1217,7 +1217,7 @@ def feature_flags_create_from_sidebar():
 
 @admin_bp.route("/abacus-settings", methods=["GET", "POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_settings_save")
 def abacus_settings():
     """Manage Abacus connector configuration."""
@@ -1409,7 +1409,7 @@ def abacus_settings():
 
 @admin_bp.route("/abacus-settings/test-connection", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("test_abacus_connection")
 def test_abacus_connection():
     """Test Abacus connection."""
@@ -1497,7 +1497,7 @@ def test_abacus_connection():
 
 @admin_bp.route("/abacus-settings/trigger-sync", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_sync_trigger")
 def trigger_abacus_sync():
     """Trigger manual Abacus synchronization."""
@@ -1580,7 +1580,7 @@ def abacus_sync_status():
 
 @admin_bp.route("/abacus-settings/cancel-job/<int:job_id>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_job_cancel")
 def cancel_abacus_job(job_id):
     """Cancel a running or pending Abacus sync job."""
