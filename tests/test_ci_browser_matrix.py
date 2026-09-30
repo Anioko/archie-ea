@@ -2,18 +2,12 @@
 
 from pathlib import Path
 
-import yaml
-
 
 CI = Path(".github/workflows/ci.yml")
 
 
 def _workflow():
     return CI.read_text(encoding="utf-8")
-
-
-def _parsed_workflow():
-    return yaml.safe_load(_workflow())
 
 
 def test_ci_runs_critical_journeys_in_firefox_and_webkit():
@@ -43,17 +37,45 @@ def test_ci_fails_when_required_browser_is_missing_and_retains_evidence():
     assert "${{ github.sha }}" in workflow
 
 
-def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
-    workflow = _workflow()
-    tests_job = workflow.split("\n  tests:\n", 1)[1].split(
-        "\n  db-gates:\n", 1
-    )[0]
+def _jobs_running_non_smoke_pytest():
+    """Every CI job with a step that runs the non-smoke pytest suite, as
+    (job id, steps, index of that step)."""
+    import yaml
 
-    assert "playwright install --with-deps chromium" in tests_job
+    jobs = yaml.safe_load(_workflow())["jobs"]
+    found = []
+    for job_id, job in jobs.items():
+        steps = job.get("steps", [])
+        for index, step in enumerate(steps):
+            run = step.get("run", "")
+            if "pytest" in run and "--ignore=tests/smoke" in run:
+                found.append((job_id, steps, index))
+                break
+    return found
+
+
+def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
+    """tests/csp/test_csp_evaluator.py is collected by the non-smoke run, so
+    every job that runs it — each backend-test shard, since which shard it
+    lands in is decided at collection time — must install Chromium first."""
+    runners = _jobs_running_non_smoke_pytest()
+
+    assert "tests-shard" in {job_id for job_id, _, _ in runners}
+    for job_id, steps, pytest_index in runners:
+        installs = [
+            i for i, step in enumerate(steps)
+            if "playwright install --with-deps" in step.get("run", "")
+            and "chromium" in step["run"].split("playwright install --with-deps", 1)[1].split("\n", 1)[0]
+        ]
+        assert installs and installs[0] < pytest_index, (
+            f"{job_id} runs the non-smoke pytest suite without installing Chromium first"
+        )
 
 
 def test_every_postgres_service_mounts_pgdata_on_tmpfs():
-    workflow = _parsed_workflow()
+    import yaml
+
+    workflow = yaml.safe_load(_workflow())
     postgres_jobs = {
         name: job
         for name, job in workflow["jobs"].items()
