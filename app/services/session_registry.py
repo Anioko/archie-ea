@@ -7,7 +7,7 @@ module — no inline ``UserSession.query`` in routes or other services (ADR
 
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.extensions import db
 from app.models.user_session import UserSession
@@ -47,7 +47,7 @@ def issue(user, remember=False):
         sid=sid,
         user_id=user.id,
         organization_id=getattr(user, "organization_id", None),
-        created_at=datetime.now(datetime.UTC),
+        created_at=datetime.now(timezone.utc),
         ip=ip,
         user_agent=ua,
     )
@@ -97,7 +97,7 @@ def touch(sid):
         row = db.session.get(UserSession, sid)
         if row is None or row.revoked_at is not None:
             return
-        now = datetime.now(datetime.UTC)
+        now = datetime.now(timezone.utc)
         if row.last_seen_at is not None and (now - row.last_seen_at) < timedelta(seconds=_TOUCH_THROTTLE_SECONDS):
             return
         row.last_seen_at = now
@@ -116,7 +116,7 @@ def revoke(sid, reason):
         row = db.session.get(UserSession, sid)
         if row is None or row.revoked_at is not None:
             return
-        row.revoked_at = datetime.now(datetime.UTC)
+        row.revoked_at = datetime.now(timezone.utc)
         row.revoked_reason = reason
         db.session.commit()
     except Exception:
@@ -147,7 +147,7 @@ def revoke_all_for_user(user_id, reason, except_sid=None):
         if except_sid:
             q = q.filter(UserSession.sid != except_sid)
         rows = q.all()
-        now = datetime.now(datetime.UTC)
+        now = datetime.now(timezone.utc)
         for row in rows:
             row.revoked_at = now
             row.revoked_reason = reason
