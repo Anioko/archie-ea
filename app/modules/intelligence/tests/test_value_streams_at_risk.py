@@ -179,8 +179,8 @@ def _relax_not_null(db_session, table: str, column: str) -> None:
     This recreates exactly that shape for one test, not a schema change that
     survives it.
 
-    Delegates to the production ``relax_not_null`` (R1-B15) rather than
-    duplicating the ``ALTER TABLE`` statement. ``relax_not_null`` needs an
+    Delegates to the production ``relax_not_null`` rather than duplicating
+    the ``ALTER TABLE`` statement. ``relax_not_null`` needs an
     actual ``Connection`` (it reads ``.dialect`` to quote identifiers), not
     the ``scoped_session`` itself -- ``db_session.connection()`` returns the
     one bound to this test's own transaction.
