@@ -82,7 +82,7 @@ def test_impact_api_pagination_owner_health(page, live_server, seeded, paginatio
     pages = 0
 
     while True:
-        url = live_server + "/api/v1/intelligence/impact/%d?page_size=3" % root_id
+        url = live_server + "/api/v1/intelligence/impact/%d?page_size=3&max_depth=6" % root_id
         if cursor is not None:
             url += "&cursor=%d" % cursor
 

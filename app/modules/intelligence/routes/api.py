@@ -394,13 +394,13 @@ def cross_layer_impact(element_id: int):
             max_depth = int(max_depth_raw)
         except (TypeError, ValueError):
             return error_response(
-                "max_depth must be an integer between 1 and 5",
+                "max_depth must be an integer between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
-        if not (1 <= max_depth <= 5):
+        if not (1 <= max_depth <= 10):
             return error_response(
-                "max_depth must be between 1 and 5",
+                "max_depth must be between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
@@ -530,13 +530,13 @@ def risk_for_element(element_id: int):
             max_depth = int(max_depth_raw)
         except (TypeError, ValueError):
             return error_response(
-                "max_depth must be an integer between 1 and 5",
+                "max_depth must be an integer between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
-        if not (1 <= max_depth <= 5):
+        if not (1 <= max_depth <= 10):
             return error_response(
-                "max_depth must be between 1 and 5",
+                "max_depth must be between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
@@ -671,13 +671,13 @@ def programme_for_element(element_id: int):
             max_depth = int(max_depth_raw)
         except (TypeError, ValueError):
             return error_response(
-                "max_depth must be an integer between 1 and 5",
+                "max_depth must be an integer between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
-        if not (1 <= max_depth <= 5):
+        if not (1 <= max_depth <= 10):
             return error_response(
-                "max_depth must be between 1 and 5",
+                "max_depth must be between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
@@ -747,13 +747,13 @@ def strategy_for_element(element_id: int):
             max_depth = int(max_depth_raw)
         except (TypeError, ValueError):
             return error_response(
-                "max_depth must be an integer between 1 and 5",
+                "max_depth must be an integer between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )
-        if not (1 <= max_depth <= 5):
+        if not (1 <= max_depth <= 10):
             return error_response(
-                "max_depth must be between 1 and 5",
+                "max_depth must be between 1 and 10",
                 code="INVALID_PARAMETER",
                 status_code=400,
             )

@@ -693,8 +693,8 @@ class IntelligenceQueryService:
     ) -> Dict[str, Any]:
         if direction not in VALID_DIRECTIONS:
             raise ValueError(f"direction must be one of {sorted(VALID_DIRECTIONS)}")
-        if not (1 <= max_depth <= 5):
-            raise ValueError("max_depth must be between 1 and 5")
+        if not (1 <= max_depth <= 10):
+            raise ValueError("max_depth must be between 1 and 10")
 
         org_id = current_org_id()
 
