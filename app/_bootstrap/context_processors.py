@@ -314,13 +314,13 @@ def init_context_processors(app):
         partials/_head.html) so JS-rendered figures agree with server ones.
         """
         from flask import has_request_context
-        from flask_login import current_user
+        from app.middleware.tenant_context import current_org
         from config import CurrencyConfig
 
         organization = None
         try:
-            if has_request_context() and getattr(current_user, "is_authenticated", False):
-                organization = getattr(current_user, "organization", None)
+            if has_request_context():
+                organization = current_org()
         except Exception:  # noqa: BLE001 — currency display can't 500 a page
             organization = None
 
@@ -679,13 +679,13 @@ def init_context_processors(app):
         if value is None:
             return EM_DASH
         from flask import has_request_context
-        from flask_login import current_user
+        from app.middleware.tenant_context import current_org
         from config import CurrencyConfig
 
         organization = None
         try:
-            if has_request_context() and getattr(current_user, "is_authenticated", False):
-                organization = getattr(current_user, "organization", None)
+            if has_request_context():
+                organization = current_org()
         except Exception:
             organization = None
         cfg = CurrencyConfig.get_org_currency_config(organization)
