@@ -339,6 +339,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
 
+    try:
+        from app.commands.backfill_audit_trail import init_app as init_audit_trail_backfill
+        init_audit_trail_backfill(app)
+        app.logger.info("Audit trail backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register audit trail backfill CLI: {e}")
+
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
         from app.commands.backfill_saved_diagram_tenancy import init_app as init_saved_diagram_tenancy
@@ -412,6 +419,13 @@ def init_cli(app):
         app.logger.info("Copilot insights purge CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
+    try:
+        from app.commands.service_incident_commands import init_app as init_service_incident
+        init_service_incident(app)
+        app.logger.info("Service incident CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register service incident CLI: {e}")
 
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:

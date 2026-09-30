@@ -398,6 +398,12 @@ def _seed_standard_org(request, ai_protocol_stub, fixed_suffix=None):
 
         org = Organization(name="Smoke Org %s" % suffix, slug="smoke-%s" % suffix)
         db.session.add(org)
+        db.session.flush()
+        # One person per archetype is more than Community admits; the plan is
+        # recorded where every limit is read from, the subscriptions row.
+        from app.services.billing_plans import set_contract_plan
+
+        set_contract_plan(org, "enterprise", None)
         db.session.commit()
         out["ids"]["org"] = org.id
 

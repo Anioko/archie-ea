@@ -79,6 +79,7 @@ else:
     # Session registry (server-side revocation on logout / password change).
     from .user_session import UserSession  # noqa: F401
     from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
+    from .service_incident import ServiceIncident  # noqa: F401 - service-status incident history
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa
@@ -449,3 +450,8 @@ else:
     # app/modules/data_lineage/services.py.
     from .waitlist_signup import WaitlistSignup  # noqa: F401
     from .pending_invitation import PendingInvitation  # noqa: F401
+    from .account_token import AccountToken  # noqa: F401
+
+    # The one audit store. Imported at boot so its integrity-chain and
+    # copy-from-other-audit-stores hooks are registered before any insert.
+    from .audit_log import AuditLog  # noqa: F401

@@ -16,6 +16,7 @@ from app.modules.ai_chat.tools.executor import ToolCall
 import json
 import logging
 from typing import Callable, Optional
+from app.utils.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -391,6 +392,7 @@ class AgentRunner:
             messages.append({"role": "assistant", "content": assistant_text})
         return messages
 
+    @traced("agent-run", "assistant")
     def run(
         self,
         user_message: str,

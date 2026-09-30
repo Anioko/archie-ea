@@ -171,6 +171,9 @@ class ARBAuditLog(TenantMixin, db.Model):
     user_agent = db.Column(db.String(500))
     request_id = db.Column(db.String(100))
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    # Set when this row has been copied into the one audit store
+    # (soc2_audit_log); points at the copy. NULL until copied.
+    retired_into_id = db.Column(db.BigInteger, db.ForeignKey("soc2_audit_log.id"), nullable=True)
 
 
 class ARBException(TenantMixin, db.Model):

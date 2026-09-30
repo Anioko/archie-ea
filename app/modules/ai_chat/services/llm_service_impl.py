@@ -78,6 +78,7 @@ class ProviderNotAllowed(Exception):
 # from .llm_validator import LLMValidator  # Temporarily disabled
 from app.services.core.retry_handler import retry_on_transient_error
 from app.services.llm_cost_tracker import LLMCostTracker
+from app.utils.tracing import traced_model_call
 from app.services.llm_model_router import LLMModelRouter, TaskComplexity
 
 logger = logging.getLogger(__name__)
@@ -1973,6 +1974,7 @@ Format as JSON: {{"quality_score": 85, "issues": ["issue1", "issue2"], "comments
         )
 
     @staticmethod
+    @traced_model_call
     def _call_llm(
         prompt: str,
         model: str,
