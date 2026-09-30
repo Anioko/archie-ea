@@ -183,10 +183,8 @@ class AcmDomainService:
         self.initialize_domains(solution_id, industry_overlay)
 
         # Create baseline proposals with pre-filled properties
-        from app.models.solution_blueprint_proposal import (
-            SolutionBlueprintProposal,
-            create_solution_blueprint_proposal,
-        )
+        from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
+        from app.services.solution_blueprint_service import create_solution_blueprint_proposal
         from app.modules.architecture_assistant.property_service import PropertyService
         prop_svc = PropertyService()
 

@@ -32,6 +32,14 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
     """
 
     __tablename__ = "ai_chat_crud_approvals"
+    __table_args__ = (
+        # R1-B07: (source_table, source_id) is the consolidation's foreign
+        # key from canonical row back to its source row -- at most one
+        # canonical approval per source row. PostgreSQL treats NULL as
+        # distinct from any other NULL, so this does not block the normal
+        # case of many directly-created rows with both columns NULL.
+        db.UniqueConstraint("source_table", "source_id", name="uq_approval_source"),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 

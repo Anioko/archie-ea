@@ -139,7 +139,7 @@ class DocumentIngestionService:
             org_id = solution.organization_id if solution else None
 
             # Create proposal rows
-            from app.models.solution_blueprint_proposal import create_solution_blueprint_proposal
+            from app.services.solution_blueprint_service import create_solution_blueprint_proposal
 
             proposals = []
             for el in elements:

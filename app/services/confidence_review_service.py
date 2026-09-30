@@ -776,7 +776,7 @@ class ConfidenceReviewService:
                     create_approval_record,
                 )
 
-                create_approval_record(
+                approval = create_approval_record(
                     organization_id=resolved_org_id,
                     operation_type="review",
                     entity_type=item_data.item_type,
@@ -799,6 +799,12 @@ class ConfidenceReviewService:
                         1, int((review_deadline - datetime.utcnow()).total_seconds() // 60)
                     ),
                 )
+                # Mark superseded immediately (consolidation pattern step 5):
+                # without this the backfill's idempotency check (`WHERE
+                # retired_into_id IS NULL`) would re-copy this row and create
+                # a second approval for it the next time it runs.
+                review_item.retired_into_id = approval.id
+                db.session.flush()
 
             db.session.commit()
 

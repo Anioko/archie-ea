@@ -608,7 +608,7 @@ class JourneyOrchestrator:
                                 acm_props["capability_source"] = {
                                     "value": el_data["capability_source"], "source": "derived"
                                 }
-                            from app.models.solution_blueprint_proposal import (
+                            from app.services.solution_blueprint_service import (
                                 create_solution_blueprint_proposal,
                             )
                             proposal = create_solution_blueprint_proposal(
@@ -709,7 +709,7 @@ class JourneyOrchestrator:
                                     ).first()
                                     if not _existing_proposal2:
                                         from app.modules.architecture_assistant.property_service import PropertyService
-                                        from app.models.solution_blueprint_proposal import (
+                                        from app.services.solution_blueprint_service import (
                                             create_solution_blueprint_proposal,
                                         )
                                         _acm_props2 = PropertyService().get_default_properties(_gel_type)

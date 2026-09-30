@@ -289,3 +289,71 @@ def test_review_queue_item_creation_also_creates_an_approval(db_session, make_or
     ).first()
     assert approval is not None
     assert approval.organization_id == org.id
+    # DEFECT-002 regression: the source row must be marked superseded
+    # immediately, or the backfill command would re-copy it and create a
+    # second approval for the same source row the next time it runs.
+    from app.models.confidence_review import ReviewQueueItem
+    review_item = ReviewQueueItem.query.get(result["review_item_id"])
+    assert review_item.retired_into_id == approval.id
+
+
+def test_blueprint_proposal_creation_also_creates_an_approval(db_session, make_org, tenant_ctx):
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+    from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
+    from app.services.solution_blueprint_service import create_solution_blueprint_proposal
+    from app.models.solution_models import Solution
+
+    org = make_org("blueprint")
+
+    with tenant_ctx(org.id):
+        solution = Solution(name="Test Solution", organization_id=org.id)
+        db_session.add(solution)
+        db_session.flush()
+
+        proposal = create_solution_blueprint_proposal(
+            solution_id=solution.id,
+            archimate_type="ApplicationComponent",
+            name="Proposed Component",
+            organization_id=org.id,
+        )
+        db_session.commit()
+
+    approval = AIChatCRUDApproval.query.filter_by(
+        source_table="solution_blueprint_proposals", source_id=proposal.id
+    ).first()
+    assert approval is not None
+    assert approval.organization_id == org.id
+    assert approval.entity_type == "solution_blueprint_element"
+
+    # DEFECT-001 regression: the source row must be marked superseded
+    # immediately, or the backfill command would re-copy it and create a
+    # second approval for the same source row the next time it runs.
+    reloaded = SolutionBlueprintProposal.query.filter_by(id=proposal.id).first()
+    assert reloaded.retired_into_id == approval.id
+
+
+def test_approval_source_pair_is_unique(db_session, make_org, tenant_ctx):
+    """DEFECT-003 regression: at most one canonical approval per source row."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+
+    org = make_org("uniq")
+
+    with tenant_ctx(org.id):
+        db_session.add(AIChatCRUDApproval(
+            organization_id=org.id, operation_type="review", entity_type="x",
+            original_command="", operation_payload="{}", summary="first",
+            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            source_table="review_queue_items", source_id=999,
+        ))
+        db_session.flush()
+
+        db_session.add(AIChatCRUDApproval(
+            organization_id=org.id, operation_type="review", entity_type="x",
+            original_command="", operation_payload="{}", summary="duplicate",
+            expires_at=datetime.utcnow() + timedelta(minutes=15),
+            source_table="review_queue_items", source_id=999,
+        ))
+        with pytest.raises(IntegrityError):
+            db_session.flush()
