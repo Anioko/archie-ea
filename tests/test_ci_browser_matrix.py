@@ -70,3 +70,26 @@ def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
         assert installs and installs[0] < pytest_index, (
             f"{job_id} runs the non-smoke pytest suite without installing Chromium first"
         )
+
+
+def test_every_postgres_service_mounts_pgdata_on_tmpfs():
+    import yaml
+
+    workflow = yaml.safe_load(_workflow())
+    postgres_jobs = {
+        name: job
+        for name, job in workflow["jobs"].items()
+        if job.get("services", {}).get("postgres")
+    }
+
+    assert postgres_jobs
+    missing_tmpfs = []
+    for job_name, job in postgres_jobs.items():
+        options = job["services"]["postgres"].get("options", "")
+        if "--tmpfs /var/lib/postgresql/data" not in options:
+            missing_tmpfs.append(job_name)
+
+    assert not missing_tmpfs, (
+        "postgres services must mount /var/lib/postgresql/data on tmpfs: "
+        + ", ".join(sorted(missing_tmpfs))
+    )
