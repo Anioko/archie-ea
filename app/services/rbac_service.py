@@ -47,9 +47,10 @@ class RBACService:
         """
         if self.get_user_role(org_id, user_id) == "org_admin":
             return True
+        from app import db
         from app.models.user import User
 
-        user = User.query.get(user_id)  # tenant-scoping-ok: primary-key lookup, not a list
+        user = db.session.get(User, user_id)  # tenant-scoping-ok: primary-key lookup, not a list
         if user is not None and user.is_admin() and user.organization_id == org_id:
             return True
         return False
