@@ -63,6 +63,10 @@ POLICY = {
     # shows up as a row change, and a further widening (e.g. an
     # unauthenticated route) would also be visible.
     "/solutions/import/archimate": set(ARCHETYPES),
+    # Restore before a model import: lists the organisation's imports that can
+    # be undone. Gated to organisation administrators and enterprise
+    # architects; platform_admin is added to every row below.
+    "/architecture/import/oef/restore-points": {"enterprise_architect"},
     # Error telemetry (10 Sep 2026): cross-tenant by design -- an error is an
     # operational fact about the platform, not a per-org one -- so gated by
     # platform_admin_required rather than the ordinary admin_required.
@@ -126,10 +130,6 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
-    # Restore before a model import: lists the organisation's imports that can
-    # be undone. Gated to organisation administrators and enterprise
-    # architects; platform_admin is added to every row below.
-    "/architecture/import/oef/restore-points": {"enterprise_architect"},
 }
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
