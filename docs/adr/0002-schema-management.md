@@ -153,8 +153,8 @@ What was done, and where it differs from the plan above:
   against — a divergent model would pass the live schema but rebuild the wrong
   one wherever tests or a from-scratch deploy use `create_all()`. The behaviour
   each relaxed/widened column enables (an ownership record with no application;
-  an element name over 100 characters) still waits on the briefs that use it
-  (R1-B03, R1-B14); this change only makes the column and its model agree.
+  an element name over 100 characters) still waits on the changes that use it;
+  this change only makes the column and its model agree.
 
 ### Deploy and rollback
 
