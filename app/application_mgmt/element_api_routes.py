@@ -8,7 +8,7 @@ These routes provide API endpoints for:
 
 import json
 from flask import current_app, jsonify, request
-from flask_login import login_required  # dead-code-ok
+from flask_login import current_user, login_required  # dead-code-ok
 from sqlalchemy.exc import IntegrityError
 
 from app import db
@@ -479,6 +479,7 @@ def update_application_element(app_id, element_id):
         JSON with updated element details.
     """
     from app.models.archimate_core import ArchiMateElement
+    from app.modules.architecture_assistant.property_service import PropertyValidationError
 
     app_obj = ApplicationComponent.query.get_or_404(app_id)
 
@@ -493,7 +494,9 @@ def update_application_element(app_id, element_id):
         return jsonify({"error": "Application has no architecture model"}), 404
 
     element = ArchiMateElement.query.filter_by(
-        id=element_id, architecture_id=arch_model_id
+        id=element_id,
+        architecture_id=arch_model_id,
+        organization_id=current_user.organization_id,
     ).first_or_404()
 
     data = request.get_json()
@@ -577,6 +580,10 @@ def update_application_element(app_id, element_id):
                 },
             }
         )
+
+    except PropertyValidationError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
 
     except IntegrityError:
         db.session.rollback()

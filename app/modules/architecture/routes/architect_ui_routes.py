@@ -19,7 +19,7 @@ Pages:
 import logging
 
 from flask import Blueprint, Response, current_app, flash, jsonify, redirect, render_template, request, url_for  # noqa: F401
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app import db
 from app.utils.pagination import safe_int_arg
@@ -471,13 +471,20 @@ def technology_lifecycle():
 def update_lifecycle(element_id):
     """Update the lifecycle phase of a Technology element."""
     from app.models.archimate_core import ArchiMateElement
-    from app.modules.architecture_assistant.property_service import PropertyService
+    from app.modules.architecture_assistant.property_service import PropertyService, PropertyValidationError
 
-    element = ArchiMateElement.query.get_or_404(element_id)
+    element = ArchiMateElement.query.filter_by(
+        id=element_id,
+        organization_id=current_user.organization_id,
+    ).first_or_404()
     phase = request.json.get("lifecycle")
-    PropertyService().set_element_property(element, "lifecycle", phase)
-    db.session.commit()
-    return jsonify({"success": True})
+    try:
+        PropertyService().set_element_property(element, "lifecycle", phase)
+        db.session.commit()
+        return jsonify({"success": True})
+    except PropertyValidationError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
 
 
 # =============================================================================
