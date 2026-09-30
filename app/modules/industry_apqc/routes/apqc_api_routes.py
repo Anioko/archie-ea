@@ -489,16 +489,36 @@ def delete_process_mapping(mapping_id):
     """
     try:
         from app import db
+        from app.middleware.tenant_context import current_org_id
         from app.models.apqc_process import (
             CapabilityProcessMapping,
             ProcessApplicationMapping,
         )
+        from app.models.application_portfolio import ApplicationComponent
+        from app.models.business_capabilities import BusinessCapability
 
         mapping_type = request.args.get("type")
+        org_id = current_org_id()
 
         if mapping_type == "application":
             mapping = ProcessApplicationMapping.query.get(mapping_id)
             if not mapping:
+                return jsonify({"error": "Application mapping not found"}), 404
+            # ProcessApplicationMapping carries no organization_id of its own
+            # -- ownership is only reachable via application_id -- so fence
+            # it through a tenant-fenced ApplicationComponent select rather
+            # than trusting the FK value directly.
+            owned_app = (
+                db.session.execute(
+                    db.select(ApplicationComponent).where(
+                        ApplicationComponent.id == mapping.application_id,
+                        ApplicationComponent.organization_id == org_id,
+                    )
+                ).scalar_one_or_none()
+                if org_id is not None
+                else None
+            )
+            if owned_app is None:
                 return jsonify({"error": "Application mapping not found"}), 404
             db.session.delete(mapping)
             db.session.commit()
@@ -509,6 +529,20 @@ def delete_process_mapping(mapping_id):
         elif mapping_type == "capability":
             mapping = CapabilityProcessMapping.query.get(mapping_id)
             if not mapping:
+                return jsonify({"error": "Capability mapping not found"}), 404
+            # Same shape: CapabilityProcessMapping has no organization_id of
+            # its own -- ownership is only reachable via capability_id.
+            owned_cap = (
+                db.session.execute(
+                    db.select(BusinessCapability).where(
+                        BusinessCapability.id == mapping.capability_id,
+                        BusinessCapability.organization_id == org_id,
+                    )
+                ).scalar_one_or_none()
+                if org_id is not None
+                else None
+            )
+            if owned_cap is None:
                 return jsonify({"error": "Capability mapping not found"}), 404
             db.session.delete(mapping)
             db.session.commit()
