@@ -5499,9 +5499,6 @@ _ORG_USER_SORT_COLUMNS = {
     "name": (User.first_name, User.last_name),
     "email": (User.email,),
     "persona": (User.enterprise_role,),
-    # is_org_admin is a derived property; sort by the denormalised
-    # column for display purposes.  Auth decisions use is_admin().
-    "org_admin": (User._is_org_admin,),
 }
 
 
@@ -5521,14 +5518,21 @@ def organization_detail(org_id):
     # Python method, not a column SQL can order by.
     sort_key = request.args.get("sort", "name")
     direction = request.args.get("dir", "asc")
-    columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
-    order = [c.desc() if direction == "desc" else c.asc() for c in columns]
-    users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
+    # org_admin sort uses the canonical is_admin() authority (Permission.ADMINISTER),
+    # not the denormalised _is_org_admin column, so it is handled in Python.
+    if sort_key == "org_admin":
+        users = User.query.filter_by(organization_id=org.id).order_by(User.id).all()
+        users.sort(key=lambda u: u.is_admin(), reverse=(direction == "desc"))
+    else:
+        columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
+        order = [c.desc() if direction == "desc" else c.asc() for c in columns]
+        users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
+    valid_sort_keys = set(_ORG_USER_SORT_COLUMNS.keys()) | {"org_admin"}
     return render_template(
         "admin/organizations/detail.html", org=org, users=users,
         limits=user_limit_status(org.id),
         get_role_display_name=get_role_display_name,
-        current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
+        current_sort=sort_key if sort_key in valid_sort_keys else "name",
         current_dir=direction if direction in ("asc", "desc") else "asc",
     )
 
