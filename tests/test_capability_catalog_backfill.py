@@ -302,8 +302,8 @@ def test_archimate_capability_without_a_projected_business_capability_is_quarant
     assert second["unreconciled"] == 0
     assert _retired_into(connection, "archimate_capabilities", 7) == 501
 
-    from app import db as _db
-    _db.session.expire_all()
+    # A fresh query autoflushes the pending resolution first; expiring here
+    # instead would discard that unflushed change before it is ever written.
     event = ErrorEvent.query.filter_by(
         fingerprint="backfill-capability-catalogs:archimate_capabilities:7"
     ).one()
