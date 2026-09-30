@@ -55,6 +55,9 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+# Model Health / Drift: carries @login_required and no role gate, so every
+    # archetype is expected to reach it.
+    "/genome/model-health/":   set(ARCHETYPES),
     # Traceability check and element properties: @login_required and no role
     # gate on the page, so every archetype reads them; the answer is fenced
     # per tenant by the service behind each page. Saving a property definition

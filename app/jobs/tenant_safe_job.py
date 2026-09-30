@@ -103,6 +103,7 @@ TENANT_JOBS: frozenset[str] = frozenset({
     "typed_arb_waiver_expiry",      # config-driven organisation ids
     "derived_facts_recompute",      # visited via run_for_each_tenant
     "ea_workflow_scheduler",        # visited via run_for_each_tenant
+    "model_health_scan",            # per-org drift detection + store
 })
 
 
@@ -389,14 +390,14 @@ def run_for_each_tenant(
       * one tenant's failure never aborts the others, and never disappears —
         it is logged with a traceback and returned in the ``JobRun``.
     """
-    run = JobRun(job_name=job_name, started_at=_dt.datetime.utcnow())
+    run = JobRun(job_name=job_name, started_at=_dt.datetime.now(_dt.UTC))
 
     with app.app_context():
         lock_cm = job_lock(job_name, required=False) if use_lock else _always_acquired()
         with lock_cm as acquired:
             if not acquired:
                 run.skipped_locked = True
-                run.finished_at = _dt.datetime.utcnow()
+                run.finished_at = _dt.datetime.now(_dt.UTC)
                 return run
 
             # Enumerate BEFORE entering any tenant scope, and materialise to a
@@ -458,7 +459,7 @@ def run_for_each_tenant(
                             organization_id,
                         )
 
-            run.finished_at = _dt.datetime.utcnow()
+            run.finished_at = _dt.datetime.now(_dt.UTC)
             logger.info(
                 "tenant_safe_job: %s finished — %d ok, %d failed, %d ms",
                 job_name,

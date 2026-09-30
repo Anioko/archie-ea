@@ -449,6 +449,9 @@ else:
     from .pending_invitation import PendingInvitation  # noqa: F401
     from .account_token import AccountToken  # noqa: F401
 
+    # Stored model-health / drift report per organisation.
+    from .drift_report import DriftReport  # noqa: F401
+
     # The one audit store. Imported at boot so its integrity-chain and
     # copy-from-other-audit-stores hooks are registered before any insert.
     from .audit_log import AuditLog  # noqa: F401
