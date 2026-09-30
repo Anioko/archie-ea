@@ -100,7 +100,14 @@ def _flask(url, *commands, check=True):
     env.setdefault("FLASK_CONFIG", "testing")
     proc = subprocess.run(
         [sys.executable, "-c", _DRIVER, json.dumps([list(c) for c in commands])],
-        cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1800,
+        cwd=REPO_ROOT, env=env, capture_output=True, timeout=1800,
+        # Explicit encoding, not text=True's locale default: the CLI commands
+        # print unicode checkmarks/arrows, and Windows' default locale codec
+        # (cp1252) cannot decode them -- the pipe reader thread then crashes
+        # mid-read and leaves proc.stdout/stderr as None, which the += below
+        # cannot concatenate. errors="replace" keeps a decode surprise from
+        # crashing the reader thread on any other unexpected byte too.
+        encoding="utf-8", errors="replace",
     )
     raw = proc.stdout + proc.stderr
     assert "@@RESULTS@@" in proc.stdout, f"command driver did not finish:\n{raw[-4000:]}"

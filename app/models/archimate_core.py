@@ -55,7 +55,11 @@ if _FAST_INIT:
         __table_args__ = {"extend_existing": True}
 
         id = db.Column(db.Integer, primary_key=True)
-        name = db.Column(db.String(100), nullable=False)
+        # String(500): migrations/versions/20260926_widen_element_name.py
+        # (the R1-B15 expand step) widened this column at the database
+        # level to store names up to 500 characters. The model must match
+        # what the database actually accepts.
+        name = db.Column(db.String(500), nullable=False)
         type = db.Column(db.String(50), index=True)
         layer = db.Column(db.String(30), index=True)
         description = db.Column(db.Text, nullable=True)

@@ -562,6 +562,7 @@ gated** — it can regress silently, so do not read a green CI as coverage holdi
 pip install -r requirements.txt
 cp .env.example .env                          # SECRET_KEY, DATABASE_URL, ADMIN_EMAIL, ADMIN_PASSWORD
 flask --app manage init-db                    # create missing TABLES (create_all) — non-destructive
+flask --app manage schema-upgrade             # apply pending Alembic revisions — see Schema below
 flask --app manage reconcile-schema           # add missing COLUMNS to existing tables — see Schema below
 python create_admin.py
 
@@ -569,7 +570,7 @@ python create_admin.py
 flask --app manage run                        # dev, :5000
 python manage.py                              # dev, but kills any process already on :5000 first
 gunicorn -c gunicorn.conf.py "manage:app"     # production
-docker compose up                             # app + Postgres + Redis; boots init-db → reconcile-schema → gunicorn
+docker compose up                             # app + Postgres + Redis; boots init-db → schema-upgrade → reconcile-schema → gunicorn
 
 # Tests — pytest reads TEST_DATABASE_URL (NOT DATABASE_URL); PostgreSQL is enforced, SQLite raises
 export TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/archie_test
@@ -581,6 +582,7 @@ ruff check .                                  # advisory, non-blocking in CI
 
 # CLI (dozens of commands; `flask --app manage --help` to list)
 flask --app manage reconcile-schema --dry-run # report column drift without applying
+flask --app manage schema-upgrade --to <rev>  # apply Alembic revisions up to a specific one, not head
 flask --app manage bridge-motivation          # promote journey Solution* motivation → enterprise layer
 flask --app manage data-profile --table application_components --fields lifecycle_status
 flask --app manage db-query "SELECT ..."      # read-only SQL
@@ -589,7 +591,7 @@ flask --app manage acm stats
 ```
 
 `flask --app manage recreate-db` is destructive and requires `--force`. Don't run it without explicit
-human approval — `init-db` + `reconcile-schema` covers every non-destructive case.
+human approval — `init-db` + `schema-upgrade` + `reconcile-schema` covers every non-destructive case.
 
 ## Deploying to production
 
@@ -642,30 +644,52 @@ decisions for the repository owner. Setup, rollback and revoking access are in
 
 ## Schema management — read this before touching a model
 
-There are **three** overlapping mechanisms, and Alembic is *not* the source of truth:
+There are **three** mechanisms, run in this order on every boot and deploy
+(`scripts/database/deploy-schema.sh`, and `docker compose up`'s startup sequence):
+`flask init-db` → `flask schema-upgrade` → `flask reconcile-schema`.
 
 1. **`create_all()`** via `flask init-db` — creates missing tables only. It **cannot** add a column to
-   a table that already exists.
-2. **`flask reconcile-schema`** (`app/commands/reconcile_schema.py`) — the actual answer to drift.
-   Diffs every mapped model against the live table and emits `ALTER TABLE ... ADD COLUMN IF NOT
-   EXISTS`. ADD-only, all nullable, never drops or retypes; idempotent. Runs on container boot.
-3. **`migrations/`** — Flask-Migrate/Alembic exists with 130+ revisions and multiple merge heads, but
-   deploys do **not** run `flask db upgrade`. Treat it as historical.
+   a table that already exists, and never changes an existing column.
+2. **`flask schema-upgrade`** (`app/commands/schema_migrations.py`, Flask-Migrate/Alembic under
+   `migrations/`) — the authority for anything `reconcile-schema` cannot do: relaxing or
+   tightening `NOT NULL`, retyping or widening a column, adding a constraint after a backfill,
+   or any other DDL beyond a plain `ADD COLUMN`. `migrations/` was collapsed to one baseline
+   revision (`20260926_baseline`, matching the live schema — applying it to an up-to-date
+   database is a no-op) plus every revision since; the 130+ pre-baseline revisions are archived
+   under `migrations/versions/_archive_pre_baseline/` for reference only, off the chain. A
+   database recorded at a pre-baseline revision is re-stamped at the baseline automatically
+   (record only, no DDL) the first time `schema-upgrade` runs against it. Runs serialised behind
+   a Postgres advisory lock with a bounded `lock_timeout` (30s) — a stuck holder makes the run
+   fail loudly rather than hang a deploy forever. Write a new schema change too big for
+   `reconcile-schema` as an Alembic revision here: nullable expand, backfill, then relax/tighten
+   in a later revision (**expand-and-contract** — see `app/commands/schema_migrations.py`'s
+   `relax_not_null`/`tighten_not_null`/`widen_varchar`/`narrow_varchar` helpers and
+   `migrations/versions/20260926_relax_owner_app.py` / `20260926_widen_element_name.py` for
+   worked examples). Every revision's `downgrade()` must actually reverse it. **The ORM model
+   must be updated in the same PR as any revision that changes nullability or a column type** —
+   a revision changing what the database accepts without updating the model it disagrees with is
+   permanent, silent drift.
+3. **`flask reconcile-schema`** (`app/commands/reconcile_schema.py`) — the drift detector, not
+   the authority. Diffs every mapped model against the live table and emits `ALTER TABLE ... ADD
+   COLUMN IF NOT EXISTS`. ADD-only, all nullable, never drops or retypes; idempotent. Still runs
+   on every boot, now strictly after `schema-upgrade`, so it only ever needs to add the nullable
+   columns models gained since the last deploy.
 
-Consequence: **adding a non-nullable column, or one with a backfill requirement, will break existing
-databases** — `reconcile-schema` only adds nullable columns. New columns should be nullable (or carry
-a server default) and be tolerated by code when NULL. See
+Consequence for a new column that `reconcile-schema` alone can carry: it should be nullable (or
+carry a server default) and be tolerated by code when NULL. See
 `docs/known-issues/schema-drift-on-existing-databases.md` for the full failure mode: one missing
 column raises `UndefinedColumn`, which aborts the transaction and cascades into
-`InFailedSqlTransaction` for every later query, 500-ing the whole page.
+`InFailedSqlTransaction` for every later query, 500-ing the whole page. For anything beyond that
+(non-nullable, retyped, constrained after backfill), write an Alembic revision instead — see 2 above.
 
 `manage.py init_db` also contains a long tail of hand-written idempotent `ALTER TABLE` statements for
 pre-Alembic columns. **Do not add to it** — it is legacy.
 
-The agreed target state (Alembic baseline + `db upgrade` on deploy, `reconcile-schema`
-demoted to a drift detector) and the maintenance-window migration plan are in
-[ADR 0002](docs/adr/0002-schema-management.md). The detector half is already wired as
-the `schema-drift` gate.
+This is the target state [ADR 0002](docs/adr/0002-schema-management.md) described; both halves
+are wired now, `schema-upgrade` on deploy and `reconcile-schema` as the `schema-drift` gate's
+detector. `.dockerignore` does **not** exclude `migrations/versions/` — the deployed image must
+ship every revision file, or the container finds none to apply on `schema-upgrade` and either
+stops (a legacy stamp) or silently no-ops, leaving the database on the baseline forever.
 
 ## Architecture
 
@@ -840,10 +864,12 @@ Trust in this order: **`DESIGN.md` → `README.md` / `CONTRIBUTING.md` → `docs
   it describes cannot be run. `DESIGN.md`'s own "canonical source of truth" pointers to
   `pattern_registry.json` / `token_map.json` are dangling for the same reason — `DESIGN.md` itself is
   the source of truth, alongside `app/static/css/shadcn_tokens.css` and `tailwind.config.js`.
-- **`ARCHITECT_QUICK_START.md`** — legacy internal doc. It describes `flask db upgrade`,
-  `python manage.py recreate_db|setup_dev|runserver`, and port 5439; the current setup is
-  `init-db` + `reconcile-schema` on 5432/whatever `DATABASE_URL` says. It also refers to
-  `SECURITY_REMEDIATION.md` and `KNOWN_ISSUES.md`, which don't exist.
+- **`ARCHITECT_QUICK_START.md`** — legacy internal doc. It describes `flask db upgrade` (now
+  accurate again — see Schema management — but by the wrong name; the command is `flask
+  schema-upgrade`), `python manage.py recreate_db|setup_dev|runserver`, and port 5439; the
+  current setup is `init-db` + `schema-upgrade` + `reconcile-schema` on 5432/whatever
+  `DATABASE_URL` says. It also refers to `SECURITY_REMEDIATION.md` and `KNOWN_ISSUES.md`, which
+  don't exist.
 - **CSS is committed pre-built** (`app/static/css/tailwind-output.css`) so a fresh clone and
   `docker compose up` render without a Node toolchain — the Docker image is Python-only.
   `scripts/build_css.py` (restored; `package.json`'s `build:css*` scripts point at it) drives

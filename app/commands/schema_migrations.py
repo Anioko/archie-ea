@@ -44,6 +44,7 @@ from flask.cli import with_appcontext
 from sqlalchemy import column as sa_column
 from sqlalchemy import func, select, text
 from sqlalchemy import table as sa_table
+from sqlalchemy.exc import OperationalError
 
 from app import db
 
@@ -54,6 +55,15 @@ BASELINE_REVISION = "20260926_baseline"
 
 #: Arbitrary, stable key for the advisory lock that serialises schema upgrades.
 _UPGRADE_LOCK_KEY = 7_302_026_926
+
+#: How long a schema-upgrade run waits for the advisory lock before giving up.
+#: Without this, a crashed or hung prior deploy holding the lock stops every
+#: later deploy from ever starting -- pg_advisory_lock blocks indefinitely on
+#: its own. `lock_timeout` makes Postgres itself raise (57014, "canceling
+#: statement due to lock timeout") instead of waiting forever; the lock this
+#: acquires is for schema-upgrade's own brief window, not a long transaction,
+#: so a real deploy never needs anywhere near this long.
+_LOCK_TIMEOUT_SECONDS = 30
 
 
 class ContractBlocked(RuntimeError):
@@ -307,7 +317,18 @@ def schema_upgrade(target):
     known = known_revisions(config)
 
     with db.engine.connect() as lock_conn:
-        lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+        lock_conn.execute(text(f"SET lock_timeout = '{_LOCK_TIMEOUT_SECONDS}s'"))
+        try:
+            lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+        except OperationalError as exc:
+            lock_conn.rollback()
+            raise click.ClickException(
+                f"schema-upgrade: could not acquire the migration lock within "
+                f"{_LOCK_TIMEOUT_SECONDS}s -- another deploy or schema-upgrade "
+                "run may be stuck holding it. Refusing to proceed without "
+                "exclusive access to the schema; investigate the other holder "
+                "before retrying."
+            ) from exc
         try:
             with db.engine.connect() as conn:
                 before = recorded_revisions(conn)

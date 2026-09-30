@@ -134,8 +134,42 @@ What was done, and where it differs from the plan above:
   `20260926_relax_owner_app` (`application_owners.application_id` allows NULL,
   so one ownership record can point at an element that is not an application)
   and `20260926_widen_element_name` (`archimate_elements.name` from 100 to 500
-  characters). Neither model is changed here; the changes that need them update
-  the models. Both are metadata-only on PostgreSQL.
+  characters). Both are metadata-only on PostgreSQL. The models that read
+  these two columns (`app/models/application_owner.py`;
+  `app/models/archimate_core.py` and `app/models/models.py`, both mapped
+  definitions of `ArchiMateElement`) are updated in this same change to match
+  what the revisions make the database accept -- see "Fix round" below.
+
+### Fix round (review, 2026-09-27 to 2026-09-30)
+
+The original PR shipped with five gaps a review caught, addressed here rather
+than in a second PR since none had merged yet:
+
+- **`.dockerignore` excluded `migrations/versions/`.** The deployed image
+  shipped none of the revision files `schema-upgrade` needs, so a real deploy
+  would either stop (a legacy stamp with nothing to apply against) or
+  silently no-op, leaving the database on the baseline forever. Removed the
+  exclusion.
+- **The two worked-example revisions and their models disagreed.** Both
+  revisions above shipped without the model update the earlier bullet now
+  describes -- `application_owners.application_id` was still `nullable=False`
+  in the ORM while the database allowed NULL; `archimate_elements.name` was
+  still `String(100)` in both mapped definitions while the database allowed
+  500. Fixed by updating all three model declarations.
+- **The advisory lock in `schema-upgrade` had no timeout.** `pg_advisory_lock`
+  blocks indefinitely; a crashed or hung prior deploy holding the lock would
+  stop every later deploy from ever starting. `SET lock_timeout = '30s'` is
+  now issued on the lock connection before acquiring it; a timeout raises
+  `click.ClickException` with the operator-facing reason instead of hanging.
+- **`migrations/env.py` called `logging.config.fileConfig`.** This env.py
+  runs inside an existing Flask app context (every function reads
+  `current_app`), so the app's own logging is already configured by the time
+  Alembic reaches it; `fileConfig` would reconfigure the root logger from
+  `alembic.ini`'s generic template, discarding it, on every deploy's
+  `schema-upgrade` run. Removed the call.
+- **This document and `CLAUDE.md`'s Schema management section described the
+  pre-change state** ("deploys do not run `flask db upgrade`") rather than
+  what this PR makes true. Both updated.
 
 ### Deploy and rollback
 

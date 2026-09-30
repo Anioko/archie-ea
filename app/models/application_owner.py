@@ -37,10 +37,17 @@ class ApplicationOwner(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Foreign keys
+    # nullable=True: migrations/versions/20260926_relax_owner_app.py (the
+    # R1-B15 expand step, a worked example of the expand-and-contract
+    # pattern) relaxed this column's NOT NULL constraint at the database
+    # level so an ownership record can later point at any element, not
+    # only an application. The model must say the same thing the database
+    # does, or every read/write through the ORM disagrees with what
+    # Postgres will actually accept.
     application_id = db.Column(
         db.Integer,
         db.ForeignKey("application_components.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     user_id = db.Column(

@@ -9,15 +9,20 @@ Only ``migrations/versions/*.py`` is on the chain. The pre-baseline history in
 loaded (Alembic does not recurse into subdirectories by default).
 """
 import logging
-from logging.config import fileConfig
 
 from alembic import context
 from flask import current_app
 
 config = context.config
 
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
+# Not calling logging.config.fileConfig(config.config_file_name) here: this
+# env.py runs inside an existing Flask app context (every function below
+# reads current_app), which means the app's own logging -- level, handlers,
+# any structured/error-reporting handler wired up at boot -- is already
+# configured by the time Alembic reaches this module. fileConfig() reads
+# alembic.ini's generic [loggers]/[handlers]/[formatters] template and would
+# reconfigure the root logger from it, silently discarding whatever the app
+# set up, on every deploy's schema-upgrade run.
 logger = logging.getLogger("alembic.env")
 
 
