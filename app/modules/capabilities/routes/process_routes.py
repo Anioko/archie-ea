@@ -1002,6 +1002,8 @@ def api_process_bulk_mappings():
         from datetime import datetime
 
         from app import db
+        from app.middleware.tenant_context import current_org_id
+        from app.models.application_layer import ApplicationComponent
         from app.models.apqc_process import ProcessApplicationMapping
 
         # Debug: Log incoming data
@@ -1033,9 +1035,25 @@ def api_process_bulk_mappings():
                 continue
 
             if mapping_id:
-                # Update existing mapping
+                # Update existing mapping. ProcessApplicationMapping carries
+                # no organization_id of its own -- ownership is only
+                # reachable via application_id -- so a bare query.get(mapping_id)
+                # would let any caller update another organisation's mapping
+                # by supplying its id in the request body. Fence through a
+                # tenant-scoped ApplicationComponent select before mutating.
                 mapping = ProcessApplicationMapping.query.get(mapping_id)
-                if mapping:
+                org_id = current_org_id()
+                owned_app = (
+                    db.session.execute(
+                        db.select(ApplicationComponent).where(
+                            ApplicationComponent.id == mapping.application_id,
+                            ApplicationComponent.organization_id == org_id,
+                        )
+                    ).scalar_one_or_none()
+                    if mapping is not None and org_id is not None
+                    else None
+                )
+                if mapping and owned_app is not None:
                     mapping.support_level = mapping_data.get("support_level", "partial")
                     mapping.automation_level = mapping_data.get("automation_level", 1)
                     mapping.process_coverage = mapping_data.get("process_coverage", 50)
