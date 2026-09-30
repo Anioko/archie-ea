@@ -1,6 +1,7 @@
 {% extends 'layouts/admin_base.html' %}
 {% from 'components/page_header.html' import page_header %}
 {% from 'components/modal.html' import modal %}
+{% from 'macros/_user_picker.html' import user_picker_script with context %}
 
 {% block title %}Capability Governance Dashboard{% endblock %}
 
@@ -17,30 +18,6 @@
 {% block extra_head_js %}
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="{{ url_for('static', filename='js/governance/governance_dashboard.js') }}"></script>
-<script>
-function userSearchWidget(getVal, setVal) {
-    return {
-        ures: [], ushow: false, uErrorShown: false,
-        async usearch() {
-            const q = getVal();
-            if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
-            try {
-                const d = await Platform.fetch.get('/api/users', {}, { silent: true });
-                // The response body is already parsed; assume it has `success` and `users`.
-                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
-                this.uErrorShown = false;
-            } catch (e) {
-                // Debounced on every keystroke — toast once per outage, not on every retry.
-                if (!this.uErrorShown) {
-                    this.uErrorShown = true;
-                    if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
-                }
-            }
-        },
-        uselect(u) { setVal(u.name); this.ushow = false; this.ures = []; }
-    };
-}
-</script>
 {% endblock %}
 
 {% block content %}
@@ -342,6 +319,7 @@ function userSearchWidget(getVal, setVal) {
     </div>
 
     {# ── Edit Governance Modal (canonical modal.html macro) ── #}
+    {{ user_picker_script() }}
     {% call modal(id='edit-governance-modal', title='Edit Governance', size='lg') %}
         <p class="text-sm text-muted-foreground -mt-1 mb-5" x-text="editForm.name"></p>
 

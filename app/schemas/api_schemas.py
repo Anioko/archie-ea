@@ -98,6 +98,23 @@ class ApplicationCreateSchema(Schema):
         validate=validate.Length(max=255),
         allow_none=True,
     )
+    # The application record's Owners section, not this field, is what
+    # writes business_owner/technical_owner now -- these two carry the
+    # picker's chosen person instead, so a JSON create (the live modal's
+    # own submission shape) can still set them. Declared with
+    # load_default=None so an omitted key loads as None, the same "no
+    # opinion" signal _sync_owner_role already reads from a plain
+    # request.form.get() on the form-encoded path.
+    business_owner_user_id = fields.Int(
+        load_default=None,
+        validate=validate.Range(min=1),
+        allow_none=True,
+    )
+    technical_owner_user_id = fields.Int(
+        load_default=None,
+        validate=validate.Range(min=1),
+        allow_none=True,
+    )
     vendor_id = fields.Int(
         load_default=None,
         validate=validate.Range(min=1),

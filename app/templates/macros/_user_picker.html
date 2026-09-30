@@ -1,0 +1,127 @@
+{# smoke-coverage-ok: a macro file with no route of its own; exercised through the pages that call it (applications/edit.html, applications/list_simple.html, applications/rationalization.html, application_mgmt/partials/_owners_section.html, capability_management/governance_dashboard.html). #}
+{#
+  Organisation-scoped user search picker.
+
+  The search-and-select behaviour already existed once, inline, in
+  applications/rationalization.html (`userSearchWidget`, a free-text-name
+  autocomplete over GET /api/users). This file is that same behaviour
+  lifted into one shared definition so every caller -- the rationalization
+  workbench, the governance dashboard, the application create/edit forms,
+  and the Owners section -- uses it instead of a separate copy each.
+  Existing callers that only ever wanted the typed name (rationalization.html,
+  governance_dashboard.html) keep exactly that behaviour by calling
+  `userSearchWidget` directly with no `onSelect`; `user_picker` below
+  additionally captures the matched person's id in a hidden field, for
+  callers that need to submit one, and guards it against going stale: any
+  edit to the visible text immediately drops a previously captured id, and
+  a form containing typed-but-unmatched text will not submit.
+#}
+
+{% macro user_picker_script() %}
+{#
+  Nonce is required: without it the CSP refuses this block and
+  userSearchWidget is never defined. Every caller imports this file
+  `with context` (enforced by scripts/check_macro_import_context.py), so
+  csp_nonce resolves here, exactly as components/drawer.html documents for
+  the same reason.
+#}
+<script nonce="{{ csp_nonce }}">
+  // User-search autocomplete widget — reusable across owner/reviewer fields.
+  // getVal()/setVal(v) read and write the field shown to the person
+  // searching (a free-text name, by default). Pass onSelect(user) to do
+  // something else with the match instead of the default `setVal(u.name)` —
+  // user_picker() below uses it to also fill a hidden user id field.
+  function userSearchWidget(getVal, setVal, onSelect) {
+    return {
+      ures: [], ushow: false, uErrorShown: false,
+      async usearch() {
+        const q = getVal();
+        if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
+        try {
+          const d = await Platform.fetch('/api/users', { silent: true });
+          if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
+          this.uErrorShown = false;
+        } catch (e) {
+          // Debounced on every keystroke — toast once per outage, not on every retry.
+          if (!this.uErrorShown) {
+            this.uErrorShown = true;
+            if (window.Platform && Platform.toast) Platform.toast.error('User search failed.');
+          }
+        }
+      },
+      uselect(u) {
+        if (onSelect) { onSelect(u); } else { setVal(u.name); }
+        this.ushow = false; this.ures = [];
+      }
+    };
+  }
+
+  // A user_picker() instance marks itself invalid (data-picker-invalid="1",
+  // reactively, on every keystroke -- see the macro below) whenever it
+  // carries typed text with no matched id. This one capture-phase listener,
+  // installed once, blocks a submit event reaching any handler already
+  // registered on its form (including an Alpine `@submit.prevent`) whenever
+  // that form contains such a field, so a half-typed, never-selected name
+  // can never post as though it were a choice. Capture phase specifically:
+  // it must run before the form's own listeners regardless of the order
+  // Alpine registered them in, which a listener added to the form itself
+  // cannot guarantee.
+  if (!window.__userPickerSubmitGuardInstalled) {
+    window.__userPickerSubmitGuardInstalled = true;
+    document.addEventListener('submit', function (evt) {
+      const form = evt.target;
+      if (!form || typeof form.querySelector !== 'function') return;
+      const invalid = form.querySelector('[data-picker-invalid="1"]');
+      if (!invalid) return;
+      evt.preventDefault();
+      evt.stopImmediatePropagation();
+      const scope = invalid.parentElement || form;
+      const warning = scope.querySelector('[data-picker-warning]');
+      if (warning) warning.hidden = false;
+      const input = scope.querySelector('input[type="text"]');
+      if (input) input.focus();
+    }, true);
+  }
+</script>
+{% endmacro %}
+
+{% macro user_picker(field_id, hidden_id_name, initial_id='', initial_label='', placeholder='Search by name or email...') %}
+{#
+  One search-and-select instance that captures a user id.
+
+  `hidden_id_name` is the form field the chosen person's id posts under.
+  The visible input's own `@input` clears the captured id immediately, on
+  every keystroke -- an edit must invalidate a stale match at once, even
+  though the search request it also triggers is throttled a moment behind
+  it. Only `uselect`, fired by clicking one of the returned matches, sets
+  the shown text and the id together. Clearing the input entirely (an
+  explicit "remove this person") posts an empty id and is never blocked;
+  `data-picker-invalid` -- and the submit guard in `user_picker_script()`
+  that reads it -- only fires for non-empty text with no matching id.
+#}
+<div x-data='{ pickerText: {{ initial_label|tojson }}, pickerId: {{ (initial_id|string)|tojson }}, pickerTimer: null }'>
+  <input type="hidden" name="{{ hidden_id_name }}" :value="pickerId"
+         :data-picker-invalid="(pickerText && !pickerId) ? '1' : ''">
+  <div x-data="userSearchWidget(
+          () => pickerText,
+          v => { pickerText = v; pickerId = ''; },
+          u => { pickerText = u.name; pickerId = String(u.id); }
+        )" @click.outside="ushow = false" class="relative">
+    <input type="text" id="{{ field_id }}" autocomplete="off"
+           x-model="pickerText"
+           @input="pickerId = ''; clearTimeout(pickerTimer); pickerTimer = setTimeout(() => usearch(), 300)"
+           @focus="usearch()"
+           placeholder="{{ placeholder }}"
+           class="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+    <div x-show="ushow" x-cloak class="absolute z-20 mt-1 w-full bg-popover border border-border rounded-md shadow-lg max-h-40 overflow-y-auto">
+      <template x-for="u in ures" :key="u.id">
+        <button type="button" @click="uselect(u)" class="w-full px-3 py-1.5 text-left text-sm hover:bg-muted flex items-center justify-between">
+          <span x-text="u.name" class="font-medium"></span>
+          <span x-text="u.email" class="text-xs text-muted-foreground"></span>
+        </button>
+      </template>
+    </div>
+    <p data-picker-warning hidden class="text-xs text-destructive-emphasis mt-1">Pick a person from the list</p>
+  </div>
+</div>
+{% endmacro %}

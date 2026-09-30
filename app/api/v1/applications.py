@@ -19,6 +19,7 @@ from app.models.technical_capability import (
     TechnicalCapability,
     application_technical_capability_mapping,
 )
+from app.modules.applications.routes._helpers import _sync_owner_role
 from app.utils.api_response import (
     error_response,
     not_found_response,
@@ -319,12 +320,14 @@ def create_application():
         # not just in the post-hoc rationalization sweep. Never blocks.
         similar = find_similar_entities(ApplicationComponent, data["name"])
 
-        # Create new application
+        # Create new application. business_owner / technical_owner (free
+        # text) are no longer written here -- the field moved to the
+        # application record's Owners section; business_owner_user_id /
+        # technical_owner_user_id (an organisation user's id) are the
+        # replacement, applied below once the row has an id.
         application = ApplicationComponent(
             name=data["name"],
             description=data.get("description", ""),
-            business_owner=data.get("business_owner"),
-            technical_owner=data.get("technical_owner"),
             # ARCH-031: no fabricated "operational" default -- an application
             # created with only a name has an unassessed lifecycle, not a live one.
             lifecycle_status=data.get("status"),
@@ -332,6 +335,20 @@ def create_application():
 
         db.session.add(application)
         db.session.commit()
+
+        _sync_owner_role(application, "business", data.get("business_owner_user_id"))
+        _sync_owner_role(application, "technical", data.get("technical_owner_user_id"))
+        db.session.commit()
+
+        ignored_fields = {}
+        if data.get("business_owner"):
+            ignored_fields["business_owner"] = (
+                "This field moved to the Owners section; use business_owner_user_id."
+            )
+        if data.get("technical_owner"):
+            ignored_fields["technical_owner"] = (
+                "This field moved to the Owners section; use technical_owner_user_id."
+            )
 
         return success_response(
             {
@@ -342,6 +359,7 @@ def create_application():
                 "created_at": application.created_at.isoformat(),
                 "similar_entities": similar,
                 "similar_entities_count": len(similar),
+                "ignored_fields": ignored_fields,
             },
             status_code=201,
         )
@@ -430,15 +448,27 @@ def update_application(application_id):
         if "description" in data:
             application.description = data["description"]
 
+        # business_owner / technical_owner (free text) are no longer
+        # written here -- the field moved to the application record's
+        # Owners section; business_owner_user_id / technical_owner_user_id
+        # (an organisation user's id) are the replacement.
+        ignored_fields = {}
         if "business_owner" in data:
-            application.business_owner = data["business_owner"]
-
+            ignored_fields["business_owner"] = (
+                "This field moved to the Owners section; use business_owner_user_id."
+            )
         if "technical_owner" in data:
-            application.technical_owner = data["technical_owner"]
+            ignored_fields["technical_owner"] = (
+                "This field moved to the Owners section; use technical_owner_user_id."
+            )
 
         if "status" in data:
             application.lifecycle_status = data["status"]
 
+        db.session.commit()
+
+        _sync_owner_role(application, "business", data.get("business_owner_user_id"))
+        _sync_owner_role(application, "technical", data.get("technical_owner_user_id"))
         db.session.commit()
 
         return success_response(
@@ -448,6 +478,7 @@ def update_application(application_id):
                 "description": application.description,
                 "status": application.lifecycle_status,
                 "updated_at": application.updated_at.isoformat(),
+                "ignored_fields": ignored_fields,
             }
         )
 

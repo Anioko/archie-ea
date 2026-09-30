@@ -591,7 +591,6 @@ function applicationCreateForm() {
       business_criticality: '',
       deployment_status: '',
       lifecycle_status: '',
-      business_owner: '',
       description: '',
     },
 
@@ -624,6 +623,15 @@ function applicationCreateForm() {
       for (const [key, value] of Object.entries(this.form)) {
         if (value === '' || value === null || value === undefined) continue;
         payload[key === 'business_criticality' ? 'criticality' : key] = value;
+      }
+
+      // Business Owner is a user_picker() field now (macros/_user_picker.html):
+      // it keeps its own pickerId, outside this.form, in a hidden field named
+      // business_owner_user_id. Read it from the DOM at submit time, the same
+      // way the picker's own submit guard does.
+      const ownerIdField = document.querySelector('#modal-create [name="business_owner_user_id"]');
+      if (ownerIdField && ownerIdField.value) {
+        payload.business_owner_user_id = Number(ownerIdField.value);
       }
 
       try {

@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 
 from flask import (
+    abort,
     current_app,
     flash,
     jsonify,
@@ -23,6 +24,8 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping  # dead-code-ok
+from app.models.application_owner import ApplicationOwner
+from app.models.user import User
 from app.models.application_layer import (
     ApplicationCollaboration,
     ApplicationEvent,
@@ -70,9 +73,12 @@ from app.utils.duplicate_guard import (
 
 from . import unified_applications_bp
 from ._helpers import (  # dead-code-ok
+    _can_assign_owners,
     _cleanup_application_relationships,
+    _current_picker_value,
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
+    _sync_owner_role,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,25 +192,10 @@ def application_create():
     if not is_valid:
         validation_errors.append(error)
 
-    business_owner = data.get("business_owner")
-    is_valid, validated_owner, error = validate_string(
-        business_owner, max_length=255, field_name="business_owner"
-    )
-    if not is_valid:
-        validation_errors.append(error)
-    else:
-        business_owner = sanitize_html(validated_owner) if validated_owner else None
-
-    technical_owner = data.get("technical_owner")
-    is_valid, validated_tech_owner, error = validate_string(
-        technical_owner, max_length=255, field_name="technical_owner"
-    )
-    if not is_valid:
-        validation_errors.append(error)
-    else:
-        technical_owner = (
-            sanitize_html(validated_tech_owner) if validated_tech_owner else None
-        )
+    # business_owner / technical_owner: no longer read here. The application
+    # is created first, then _sync_owner_role() below assigns a business or
+    # technical ApplicationOwner row from the picker's hidden id fields, once
+    # the application has an id to attach them to.
 
     business_purpose = data.get("business_purpose")
     is_valid, validated_purpose, error = validate_string(
@@ -257,8 +248,6 @@ def application_create():
             business_criticality=validated_crit,
             technology_stack=technology_stack,
             deployment_status=validated_status,
-            business_owner=business_owner,
-            technical_owner=technical_owner,
             business_purpose=business_purpose,
         )
 
@@ -305,6 +294,19 @@ def application_create():
                     pass
 
         db.session.add(app)
+        db.session.commit()
+
+        # Business/technical owner: the create form's picker (and the live
+        # create modal, which posts JSON) send a chosen person's id, not a
+        # name string; `data` already abstracts the JSON/form-encoded
+        # difference for every other field read above, so it does here too.
+        # Only someone who could already assign an owner on an existing
+        # application may do so here too -- the same rule application_edit
+        # applies; a caller who cannot is silently ignored rather than
+        # 403ed, since the application itself was just created successfully.
+        if _can_assign_owners(app):
+            _sync_owner_role(app, "business", data.get("business_owner_user_id"))
+            _sync_owner_role(app, "technical", data.get("technical_owner_user_id"))
         db.session.commit()
 
         if is_json:
@@ -691,33 +693,10 @@ def application_edit(id):
                 else:
                     app.deployment_status = validated_status
 
-            # Validate business_owner
-            business_owner = request.form.get("business_owner")
-            if business_owner is not None:
-                is_valid, validated_owner, error = validate_string(
-                    business_owner, max_length=255, field_name="business_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.business_owner = (
-                        sanitize_html(validated_owner) if validated_owner else None
-                    )
-
-            # Validate technical_owner
-            technical_owner = request.form.get("technical_owner")
-            if technical_owner is not None:
-                is_valid, validated_tech_owner, error = validate_string(
-                    technical_owner, max_length=255, field_name="technical_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.technical_owner = (
-                        sanitize_html(validated_tech_owner)
-                        if validated_tech_owner
-                        else None
-                    )
+            # business_owner / technical_owner: no longer read from form text
+            # here. The edit form's picker posts business_owner_user_id /
+            # technical_owner_user_id instead; _sync_owner_role() applies
+            # them below, once the application itself is saved.
 
             # Validate business_purpose
             business_purpose = request.form.get("business_purpose")
@@ -740,6 +719,7 @@ def application_edit(id):
                     "applications/edit.html", application=app,
                     lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
                     lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+                    **_owner_picker_context(app),
                 ), 400
 
             # Capture additional fields if submitted (API calls, expanded forms)
@@ -815,6 +795,17 @@ def application_edit(id):
 
             db.session.commit()
 
+            # Business/technical owner: the edit form's picker posts a
+            # chosen person's id. Applied after the rest of the application
+            # is saved, so both operations share one page action -- but only
+            # for someone who may assign owners at all; anyone else's picker
+            # fields are ignored entirely, submitted or not (the template
+            # itself never shows the picker to them, ruling below).
+            if _can_assign_owners(app):
+                _sync_owner_role(app, "business", request.form.get("business_owner_user_id"))
+                _sync_owner_role(app, "technical", request.form.get("technical_owner_user_id"))
+            db.session.commit()
+
             flash("Application updated successfully!", "success")
             return redirect(
                 url_for(
@@ -836,6 +827,7 @@ def application_edit(id):
             "applications/edit.html", application=app, architecture_state=architecture_state,
             lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
             lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+            **_owner_picker_context(app),
         )
 
     except Exception:
@@ -1363,3 +1355,124 @@ def accept_capability_suggestion(id):
         "mapping_id": mapping.id,
         "message": f"Mapped to capability #{cap_id}",
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Owners write path (application_owners) — the record's first production
+# writer. Reused throughout: ApplicationOwner + TenantMixin for the store,
+# /api/users + the lifted user-picker macro for search, is_org_admin + a
+# recorded primary-owner row for permission.
+# ─────────────────────────────────────────────────────────────────────────
+
+def _owner_picker_context(app_obj):
+    """Pre-fill kwargs for the create/edit page's business/technical owner
+    pickers. ``_can_assign_owners`` and ``_sync_owner_role`` live in
+    ``._helpers`` now, alongside ``owners_section_context`` (the Owners
+    section's own context assembly, called from
+    app.application_mgmt.routes.render_application_detail) — one Python
+    definition of each rule, imported wherever it is needed, instead of a
+    copy per caller."""
+    business_id, business_label = _current_picker_value(app_obj, "business")
+    technical_id, technical_label = _current_picker_value(app_obj, "technical")
+    return {
+        "business_owner_current_id": business_id,
+        "business_owner_current_label": business_label,
+        "technical_owner_current_id": technical_id,
+        "technical_owner_current_label": technical_label,
+        "can_assign_owners": _can_assign_owners(app_obj),
+    }
+
+
+@unified_applications_bp.route("/<int:id>/owners", methods=["POST"])
+@login_required
+def add_application_owner(id):
+    """Add one ApplicationOwner row -- the one production writer this table
+    has ever had; every prior construction was a test fixture."""
+    # Explicit organization_id predicate, not just .get_or_404(id): a
+    # primary-key lookup like this one does not reliably carry the ORM
+    # tenant listener's WHERE clause the way a filtered query does, so a
+    # guessed id from another tenant would otherwise be found -- the same
+    # two-layer rule the model's own class methods and the remove route
+    # below already apply.
+    app_obj = ApplicationComponent.query.filter_by(
+        id=id, organization_id=current_user.organization_id
+    ).first_or_404()
+
+    if not _can_assign_owners(app_obj):
+        abort(403)
+
+    is_valid, user_id, _error = validate_integer(
+        request.form.get("user_id"), required=True, field_name="user_id"
+    )
+    ownership_type = request.form.get("ownership_type")
+    if not is_valid or ownership_type not in ApplicationOwner.OWNERSHIP_TYPES:
+        flash("Choose a person and a role.", "error")
+        return redirect(url_for("unified_applications.application_detail", id=id))
+
+    # The user must belong to the acting organisation — a 404, not a 403
+    # with a hint, so a guessed id from another tenant looks identical to
+    # one that simply does not exist.
+    user = User.query.filter_by(
+        id=user_id, organization_id=current_user.organization_id
+    ).first()
+    if user is None:
+        abort(404)
+
+    existing = ApplicationOwner.query.filter_by(
+        application_id=id, user_id=user_id, ownership_type=ownership_type
+    ).first()
+    if existing is not None:
+        flash(
+            f"{user.full_name()} is already recorded as {ownership_type} owner.",
+            "info",
+        )
+        return redirect(url_for("unified_applications.application_detail", id=id))
+
+    db.session.add(
+        ApplicationOwner(
+            application_id=id,
+            user_id=user_id,
+            ownership_type=ownership_type,
+            assigned_by=current_user.id,
+            # organization_id intentionally omitted — TenantMixin's
+            # before_flush listener stamps it from the acting request.
+        )
+    )
+    db.session.commit()
+    flash(f"{user.full_name()} added as {ownership_type} owner.", "success")
+    return redirect(url_for("unified_applications.application_detail", id=id))
+
+
+@unified_applications_bp.route("/<int:id>/owners/<int:owner_id>/remove", methods=["POST"])
+@login_required
+def remove_application_owner(id, owner_id):
+    """Remove one ApplicationOwner row."""
+    # Explicit organization_id predicate for the same reason add_application_owner
+    # above states it: a primary-key .get_or_404(id) does not reliably carry
+    # the ORM tenant listener's WHERE clause.
+    app_obj = ApplicationComponent.query.filter_by(
+        id=id, organization_id=current_user.organization_id
+    ).first_or_404()
+
+    if not _can_assign_owners(app_obj):
+        abort(403)
+
+    # TenantMixin's listener already scopes this select to the acting org;
+    # the explicit organization_id/application_id predicates are defence in
+    # depth (the same two-layer rule the model's own class methods document)
+    # and are what keep a same-tenant id belonging to a different
+    # application from being removable through this URL.
+    owner_row = ApplicationOwner.query.filter_by(
+        id=owner_id,
+        application_id=id,
+        organization_id=current_user.organization_id,
+    ).first()
+    if owner_row is None:
+        abort(404)
+
+    label = owner_row.user.full_name() if owner_row.user else "Owner"
+    role = owner_row.ownership_type
+    db.session.delete(owner_row)
+    db.session.commit()
+    flash(f"{label} removed as {role} owner.", "success")
+    return redirect(url_for("unified_applications.application_detail", id=id))

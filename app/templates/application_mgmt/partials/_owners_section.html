@@ -1,0 +1,120 @@
+{#
+  _owners_section.html
+  Owners section -- application_owners' first production write path.
+
+  Renders, per role in ApplicationOwner.OWNERSHIP_TYPES order, the person
+  recorded for that role (with a remove control when the signed-in person
+  may assign owners) or "Not recorded" with an add control. Below the roles,
+  any of the three text owner columns (business_owner, technical_owner,
+  application_owner) that still carries a value with no person recorded for
+  its matching role shows as "Recorded as text", with a one-click confirm
+  when exactly one organisation user's name or email matches it -- computed
+  server-side, in Python, for this one application, every time the page
+  renders; nothing writes it automatically. The text columns are never
+  written from here: the confirm click and the add control both post to the
+  same write route, and only a signed-in person clicking one of them ever
+  does.
+
+  Context required (all computed once, in owners_section_context, and
+  passed down from the route that renders the application record -- not
+  recomputed here, so the permission rule and the suggested-match logic
+  each exist in exactly one place):
+    `app` (ApplicationComponent instance)
+    `owners_by_type` (dict: ownership_type -> list of ApplicationOwner rows)
+    `text_owners` (dict: ownership_type -> {"text": str, "match": User|None})
+    `can_assign_owners` (bool)
+#}
+{% from 'macros/_user_picker.html' import user_picker, user_picker_script with context %}
+
+{% set owner_roles = [
+    ('primary', 'Primary Owner'),
+    ('backup', 'Backup Owner'),
+    ('technical', 'Technical Owner'),
+    ('business', 'Business Owner'),
+] %}
+{% set text_owner_labels = {
+    'business': 'Business Owner',
+    'technical': 'Technical Owner',
+    'primary': 'Primary Owner',
+} %}
+
+{{ user_picker_script() }}
+
+<div class="bg-card rounded-xl border border-border shadow-sm p-6 space-y-4">
+  <div class="flex items-center justify-between gap-4">
+    <h2 class="text-xl font-bold text-foreground">Owners</h2>
+    {% if not can_assign_owners %}
+    <p class="text-xs text-muted-foreground">Only an organisation admin or this application's primary owner can assign owners.</p>
+    {% endif %}
+  </div>
+
+  <div class="space-y-3">
+    {% for role_type, role_label in owner_roles %}
+    {% set role_owners = owners_by_type.get(role_type, []) %}
+    <div class="border border-border rounded-lg p-3">
+      <p class="text-sm font-medium text-foreground mb-2">{{ role_label }}</p>
+
+      {% if role_owners %}
+        {% for owner in role_owners %}
+        <div class="flex items-center justify-between gap-3 text-sm py-1">
+          <span class="text-foreground">
+            {{ owner.user.full_name() if owner.user else 'Unknown user' }}
+            <span class="text-muted-foreground">{{ '(' ~ owner.user.email ~ ')' if owner.user else '' }}</span>
+          </span>
+          {% if can_assign_owners %}
+          <form method="POST" action="{{ url_for('unified_applications.remove_application_owner', id=app.id, owner_id=owner.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="text-xs text-destructive-emphasis hover:underline" aria-label="Remove {{ role_label }}">
+              Remove
+            </button>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+      {% else %}
+        <p class="text-sm text-muted-foreground mb-2">Not recorded</p>
+        {% if can_assign_owners %}
+        <form method="POST" action="{{ url_for('unified_applications.add_application_owner', id=app.id) }}" class="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="flex-1 min-w-[200px]">
+            {{ user_picker('owner_add_' ~ role_type, 'user_id') }}
+          </div>
+          <select name="ownership_type" class="h-10 rounded-md border border-input bg-background px-2 text-sm" aria-label="Role">
+            {% for opt_type, opt_label in owner_roles %}
+            <option value="{{ opt_type }}" {{ 'selected' if opt_type == role_type else '' }}>{{ opt_label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-2 text-sm font-medium hover:bg-accent">
+            Add
+          </button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if text_owners %}
+  <div class="border-t border-border pt-3 space-y-3">
+    {% for role_type, info in text_owners.items() %}
+    <div class="text-sm">
+      <p class="text-muted-foreground">Recorded as text: {{ info.text }}</p>
+      {% if can_assign_owners %}
+        {% if info.match %}
+        <form method="POST" action="{{ url_for('unified_applications.add_application_owner', id=app.id) }}" class="inline-block mt-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="ownership_type" value="{{ role_type }}">
+          <input type="hidden" name="user_id" value="{{ info.match.id }}">
+          <button type="submit" class="text-xs rounded-md border border-input bg-background px-2 py-1 hover:bg-accent">
+            Confirm {{ info.match.full_name() }} as {{ text_owner_labels.get(role_type, role_type) }}
+          </button>
+        </form>
+        {% else %}
+        <p class="text-xs text-muted-foreground mt-1">No matching person; add one above</p>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>

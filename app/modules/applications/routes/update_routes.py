@@ -64,13 +64,11 @@ def update_overview(id):
         if technology_stack and len(technology_stack) > 500:
             technology_stack = technology_stack[:500]
 
-        business_owner = request.form.get("business_owner", app.business_owner)
-        if business_owner and len(business_owner) > 255:
-            business_owner = business_owner[:255]
-
-        technical_owner = request.form.get("technical_owner", app.technical_owner)
-        if technical_owner and len(technical_owner) > 255:
-            technical_owner = technical_owner[:255]
+        # business_owner / technical_owner: no longer written from this
+        # form. A submitted value is ignored (not validated, not saved) --
+        # the field moved to the application record's Owners section.
+        business_owner_submitted = bool((request.form.get("business_owner") or "").strip())
+        technical_owner_submitted = bool((request.form.get("technical_owner") or "").strip())
 
         # Update application fields with validated values
         app.name = name
@@ -78,16 +76,24 @@ def update_overview(id):
         app.component_type = component_type
         app.business_criticality = business_criticality
         app.technology_stack = technology_stack
-        app.business_owner = business_owner
-        app.technical_owner = technical_owner
         app.updated_by = current_user.id
 
         db.session.commit()
 
+        owner_note = (
+            " Business/technical owner is assigned from the Owners section"
+            " now; the value submitted here was not saved."
+            if business_owner_submitted or technical_owner_submitted
+            else ""
+        )
+
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return {"status": "success", "message": "Application updated successfully"}
+            return {
+                "status": "success",
+                "message": "Application updated successfully" + owner_note,
+            }
         else:
-            flash("Application updated successfully!", "success")
+            flash("Application updated successfully!" + owner_note, "success")
             return redirect(
                 url_for(
                     "unified_applications.application_detail",
@@ -300,8 +306,10 @@ def update_resources(id):
         )
 
     try:
-        # Update personnel/key resource fields
-        business_owner = request.form.get("business_owner")
+        # Update personnel/key resource fields. business_owner is read but
+        # never written here -- it moved to the application record's Owners
+        # section.
+        business_owner_submitted = bool((request.form.get("business_owner") or "").strip())
         technical_lead = request.form.get("technical_lead")
         development_team = request.form.get("development_team")
         support_team = request.form.get("support_team")
@@ -310,10 +318,6 @@ def update_resources(id):
 
         # Track changes
         changes = []
-
-        if business_owner is not None and business_owner != app.business_owner:
-            app.business_owner = business_owner.strip() or None
-            changes.append("Business Owner")
 
         if technical_lead is not None and technical_lead != app.technical_lead:
             app.technical_lead = technical_lead.strip() or None
@@ -335,9 +339,18 @@ def update_resources(id):
             app.business_domain = business_domain.strip() or None
             changes.append("Business Domain")
 
+        owner_note = (
+            " Business owner is assigned from the Owners section now; the"
+            " value submitted here was not saved."
+            if business_owner_submitted
+            else ""
+        )
+
         if changes:
             db.session.commit()
-            flash(f"Resource information updated: {', '.join(changes)}", "success")
+            flash(f"Resource information updated: {', '.join(changes)}.{owner_note}", "success")
+        elif owner_note:
+            flash(f"No other changes detected in resource information.{owner_note}", "info")
         else:
             flash("No changes detected in resource information.", "info")
 
