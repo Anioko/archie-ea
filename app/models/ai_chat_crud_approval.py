@@ -33,8 +33,8 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
 
     __tablename__ = "ai_chat_crud_approvals"
     __table_args__ = (
-        # R1-B07: (source_table, source_id) is the consolidation's foreign
-        # key from canonical row back to its source row -- at most one
+        # (source_table, source_id) is the consolidation's foreign key from
+        # the canonical row back to its source row -- at most one
         # canonical approval per source row. PostgreSQL treats NULL as
         # distinct from any other NULL, so this does not block the normal
         # case of many directly-created rows with both columns NULL.
@@ -43,7 +43,7 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # User who initiated the request. Nullable per R1-B07: a row backfilled
+    # User who initiated the request. Nullable per the consolidation: a row backfilled
     # from a source with no live acting user (a background job, e.g. the
     # confidence-review pipeline) or created directly by one has no requester
     # to attribute the request to — same ADD-only-column reasoning as
@@ -84,7 +84,7 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
 
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    # R1-B07/TB-0084: a due-by marker, not an auto-expiry — past this time and
+    # Overdue-not-expired: a due-by marker, not an auto-expiry — past this time and
     # still PENDING, the row is "overdue" (is_overdue()) and stays actionable;
     # nothing filters rows out by this column any more.
     expires_at = db.Column(db.DateTime, nullable=False)
@@ -107,13 +107,13 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
     # new column must tolerate NULL on a pre-existing production row).
     agent_turn_id = db.Column(db.String(64), nullable=True)
 
-    # R1-B07 consolidation: which superseded store (if any) this row was
+    # Consolidation: which superseded store (if any) this row was
     # backfilled from. NULL for a row created directly here (the normal case
     # going forward). Set together, never one without the other.
     source_table = db.Column(db.String(64), nullable=True, index=True)
     source_id = db.Column(db.Integer, nullable=True)
 
-    # R1-B07/TB-0084: when this row was first found overdue (expires_at in the
+    # Overdue-not-expired: when this row was first found overdue (expires_at in the
     # past while still PENDING) and its organisation's administrators were
     # notified. NULL means either not yet overdue or not yet escalated. Being
     # overdue never removes a row from a pending/inbox query or blocks
@@ -162,7 +162,7 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
 
     def is_expired(self):
         """Historical name for is_overdue() — an approval never actually
-        expires (TB-0084); kept so any remaining reader sees the same boolean.
+        expires (overdue-not-expired); kept so any remaining reader sees the same boolean.
         """
         return self.is_overdue()
 
@@ -176,7 +176,7 @@ class AIChatCRUDApproval(TenantMixin, db.Model):
     def get_pending_for_user(cls, user_id, organization_id):
         """Get pending approvals for a user inside one explicit organization.
 
-        Includes overdue rows (R1-B07/TB-0084) — being overdue never removes
+        Includes overdue rows (overdue-not-expired) — being overdue never removes
         an approval from a pending query.
         """
         return cls.query.filter_by(

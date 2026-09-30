@@ -443,7 +443,7 @@ class TestApprovalExecutionParity:
 
 
 class TestApprovalExpiry:
-    """R1-B07/TB-0084 (2026-09-30): an approval past expires_at is overdue,
+    """Overdue-not-expired: an approval past expires_at is overdue,
     not expired — it stays actionable indefinitely, escalating to the
     organisation's administrators instead of refusing. Both
     /ai-chat/tools/approve/<id> and /ai-chat/approvals/<id>/approve dispatch
@@ -451,7 +451,7 @@ class TestApprovalExpiry:
     execute an overdue approval rather than 409.
 
     Superseded the previous version of this class, named for the opposite
-    (pre-TB-0084) behaviour: a real Confirm click on an overdue row is not a
+    (pre-consolidation) behaviour: a real Confirm click on an overdue row is not a
     "stale" click to refuse — the whole point of this brief is that it must
     still work.
     """

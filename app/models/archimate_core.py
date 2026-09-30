@@ -204,7 +204,7 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
         db.DateTime, nullable=False, server_default=db.func.now()
     )
 
-    # R1-B07 consolidation: set by `flask backfill-review-queue-approvals` on
+    # Consolidation: set by `flask backfill-review-queue-approvals` on
     # the row's canonical ai_chat_crud_approvals copy. NULL until backfilled.
     # This table has no live writer today (verified: only ever queried, never
     # constructed, in this codebase) — added for parity with the other two

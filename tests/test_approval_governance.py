@@ -349,12 +349,12 @@ def test_requester_cancellation_mirrors_into_compliance_audit_log(db_session, te
 
 
 def test_overdue_approval_still_executes_when_a_real_approver_approves_it(db_session, tenant_ctx, monkeypatch):
-    """R1-B07/TB-0084: past expires_at is overdue, not expired. It must stay
+    """Overdue-not-expired: past expires_at is overdue, not expired. It must stay
     actionable — a real approver's decision executes normally, it is not
     silently blocked or auto-flipped to a dead EXPIRED state.
 
     Superseded (2026-09-30) the previous "expiry sweep never executes"
-    version of this test, which pinned the pre-TB-0084 behaviour this brief
+    version of this test, which pinned the prior behaviour this brief
     deliberately removes (an overdue PENDING approval refusing to execute).
     """
     from datetime import datetime, timedelta

@@ -170,7 +170,7 @@ class ReviewQueueItem(TenantMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # R1-B07 consolidation: set by `flask backfill-review-queue-approvals` on
+    # Consolidation: set by `flask backfill-review-queue-approvals` on
     # the row's canonical ai_chat_crud_approvals copy. NULL until backfilled;
     # this table stays readable (never dropped), it just stops gaining new
     # rows once the constructor site is repointed.

@@ -83,12 +83,12 @@ def create_approval_record(
     source_id: Optional[int] = None,
     expiry_minutes: int = 15,
 ) -> AIChatCRUDApproval:
-    """The one writer of ai_chat_crud_approvals (R1-B07 consolidation).
+    """The one writer of ai_chat_crud_approvals (consolidation).
 
     Lower-level than AIChatApprovalService.create_pending_approval, which
     wraps this for the live-chat path (auth check, duplicate detection, a
     chat-formatted response). This is what a non-chat writer uses instead:
-    the R1-B07 backfill command, and the repointed constructor sites of
+    the backfill command, and the repointed constructor sites of
     ReviewQueueItem, RelationshipSuggestion and SolutionBlueprintProposal,
     none of which have a live chat_session_id, original_command or
     necessarily a human user_id.
@@ -197,9 +197,9 @@ class AIChatApprovalService:
         The conditional update is the at-most-once boundary.  An executor may
         commit its own work, or the process may crash after the claim; both
         cases leave the approval APPROVED and therefore fail closed on retry
-        rather than allowing a second caller to dispatch the write. R1-B07/
-        TB-0084: a PENDING approval stays claimable past expires_at (overdue,
-        not expired) — no expires_at check here.
+        rather than allowing a second caller to dispatch the write.
+        Overdue-not-expired: a PENDING approval stays claimable past
+        expires_at (overdue, not expired) — no expires_at check here.
         """
         session = session or db.session
         now = datetime.utcnow()
@@ -231,7 +231,7 @@ class AIChatApprovalService:
     ) -> bool:
         """Atomically reject a pending approval without clobbering a claim.
 
-        R1-B07/TB-0084: rejectable past expires_at too (overdue, not expired).
+        Overdue-not-expired: rejectable past expires_at too (overdue, not expired).
         """
         session = session or db.session
         updated = (
@@ -572,7 +572,7 @@ class AIChatApprovalService:
                     "error": f"Approval is already {approval.status.value}",
                 }
 
-            # R1-B07/TB-0084: an item past expires_at is overdue, not expired —
+            # Overdue-not-expired: an item past expires_at is overdue, not expired —
             # it stays actionable indefinitely (escalate_overdue_approvals, run
             # periodically, notifies the organisation's administrators the first
             # time it goes overdue; see AIChatCRUDApproval.is_overdue()). Nothing
@@ -876,7 +876,7 @@ class AIChatApprovalService:
     def get_approver_queue(self) -> Dict[str, Any]:
         """Pending same-org approvals a different user may review.
 
-        R1-B07/TB-0084: includes overdue rows (no expires_at filter — being
+        Overdue-not-expired: includes overdue rows (no expires_at filter — being
         overdue must never make an item disappear from the queue). A row with
         no requester (user_id NULL, backfilled or system-originated) is every
         eligible approver's to review, so the "not the requester" exclusion
@@ -1111,7 +1111,7 @@ class AIChatApprovalService:
 
 
 def escalate_overdue_approvals(app=None) -> Dict[str, int]:
-    """R1-B07/TB-0084: notify each organisation's administrators about its
+    """Overdue-not-expired: notify each organisation's administrators about its
     overdue (past expires_at, still PENDING, not yet escalated) approvals.
 
     One email per organisation, listing every overdue item currently pending

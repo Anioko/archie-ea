@@ -1,4 +1,4 @@
-"""Writer for SolutionBlueprintProposal (R1-B07 consolidation).
+"""Writer for SolutionBlueprintProposal (consolidation).
 
 Lives in the services layer, not app/models/, so this module's dependency on
 app/modules/ai_chat/services/ai_chat_approval_service.py keeps the usual
@@ -10,7 +10,7 @@ from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
 
 
 def create_solution_blueprint_proposal(**kwargs) -> "SolutionBlueprintProposal":
-    """R1-B07: the one place every pending SolutionBlueprintProposal is created.
+    """Consolidation: the one place every pending SolutionBlueprintProposal is created.
 
     Same keyword arguments as the model's constructor. Adds the proposal
     (unchanged — it stays the system of record for its own ACM-specific

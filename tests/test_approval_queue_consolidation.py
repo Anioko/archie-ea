@@ -1,7 +1,7 @@
-"""R1-B07: one approval queue for every proposed change (consolidation, PR 1).
+"""Consolidation: one approval queue for every proposed change (consolidation, PR 1).
 
 Covers: two-organisation isolation for backfilled and newly-created rows,
-backfill idempotency, overdue items staying actionable (TB-0084), and the
+backfill idempotency, overdue items staying actionable (overdue-not-expired), and the
 repointed constructor sites pairing a source row with an approval row.
 
 Uses the shared fixtures (tests/conftest.py) per CLAUDE.md's convention.
@@ -143,7 +143,7 @@ def test_backfill_run_twice_creates_no_duplicate_approvals(db_session, make_org)
 
 
 # --------------------------------------------------------------------- #
-# TB-0084: overdue, not expired
+# Overdue, not expired
 # --------------------------------------------------------------------- #
 
 
@@ -179,7 +179,7 @@ def test_overdue_item_still_approvable_and_marked_overdue(db_session, make_org, 
     with tenant_ctx(org.id):
         result = AIChatApprovalService(user_id=approver.id).approve_and_execute(approval.id)
 
-    # It must not be refused as expired (TB-0084) -- whatever the execution
+    # It must not be refused as expired (overdue-not-expired) -- whatever the execution
     # outcome, the approval was not blocked by is_expired()/status flip.
     refreshed = AIChatCRUDApproval.query.get(approval.id)
     assert refreshed.status != ApprovalStatus.EXPIRED

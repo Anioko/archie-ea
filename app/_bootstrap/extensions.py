@@ -435,8 +435,8 @@ def init_scheduler(app):
             max_instances=1,
         )
 
-        # R1-B07/TB-0084: an approval past its 15-minute review-by time stays
-        # pending and actionable (never auto-expires) but must not go unseen —
+        # An approval past its 15-minute review-by time stays pending and
+        # actionable (never auto-expires) but must not go unseen —
         # this notifies each affected organisation's administrators once per
         # overdue row. Platform-wide job (groups by organization_id itself,
         # same shape as run_error_digest above), 15 minutes to match the
@@ -458,7 +458,7 @@ def init_scheduler(app):
             func=run_approval_escalation,
             trigger=IntervalTrigger(minutes=15),
             id="approval_escalation",
-            name="R1-B07 Overdue Approval Escalation",
+            name="Overdue Approval Escalation",
             replace_existing=True,
             max_instances=1,
         )
@@ -688,7 +688,8 @@ def init_scheduler(app):
         app.extensions["ea_workflow_scheduler"] = scheduler
         scheduled_jobs = (
             "EA workflows (5 min), maturity digest (Mon 8am), "
-            "executive summary (Mon 7am), Teams subscription renewal (12h)"
+            "executive summary (Mon 7am), Teams subscription renewal (12h), "
+            "approval escalation (15 min)"
         )
         if arb_expiry_registered:
             scheduled_jobs += ", typed ARB waiver expiry (configured)"

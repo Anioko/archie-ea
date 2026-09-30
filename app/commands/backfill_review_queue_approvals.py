@@ -1,8 +1,8 @@
 """Copy the pending rows of three other stores into the one approval queue.
 
 ``ai_chat_crud_approvals`` (``AIChatCRUDApproval``) is the system of record
-for a pending change awaiting human approval (R1-B07). Three older stores
-raised their own pending items, each with its own queue screen:
+for a pending change awaiting human approval. Three older stores raised
+their own pending items, each with its own queue screen:
 
 ==========================  =========================================
 source table                 organisation of each row
@@ -136,6 +136,19 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
     """
     from app.extensions import db
     from app.modules.ai_chat.services.ai_chat_approval_service import create_approval_record
+
+    if not dry_run:
+        # ai_chat_crud_approval.py declares this UniqueConstraint on the
+        # model, but reconcile-schema only ever ADDs columns -- it cannot
+        # create a table-level constraint on an existing table, so a real
+        # deployed database never gets it without this. Runs before any
+        # copying below, matching the "at most one canonical approval per
+        # source row" invariant this backfill itself depends on.
+        db.session.execute(db.text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_source "
+            "ON ai_chat_crud_approvals (source_table, source_id)"
+        ))
+        db.session.commit()
 
     before = _counts(db)
     _print_counts("Before", before)

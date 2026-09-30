@@ -761,7 +761,7 @@ class ConfidenceReviewService:
             db.session.add(review_item)
             db.session.flush()
 
-            # R1-B07: repointed to the approval creator so this item also
+            # Consolidation: repointed to the approval creator so this item also
             # surfaces in the one organisation-wide approval inbox, alongside
             # assistant-raised and blueprint proposals. ReviewQueueItem stays
             # the system of record for the review-specific fields (confidence
