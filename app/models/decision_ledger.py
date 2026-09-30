@@ -14,8 +14,8 @@ class DecisionLedger(TenantMixin, db.Model):
     reporting. Use `(capability_id, decision_sequence)` or `decision_date`
     to retrieve latest decision per capability.
 
-    R1-B09: this table had no organisation column at all before this change
-    -- app.services.decision_ledger.DecisionLedger._load_existing_ledger()
+    This table had no organisation column at all before this change --
+    app.services.decision_ledger.DecisionLedger._load_existing_ledger()
     queried every row with no predicate, so any organisation's ARB session
     loaded every other organisation's governance decisions into memory. The
     mixin's organization_id is overridden nullable here (reconcile-schema is

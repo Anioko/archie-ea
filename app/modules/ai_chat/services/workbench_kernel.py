@@ -863,7 +863,7 @@ class WorkbenchKernel:
             )
             db.session.add(adr)
             db.session.flush()
-            adr.pair_with_canonical_register()  # R1-B09: one canonical register
+            adr.pair_with_canonical_register()  # visible in the one canonical register
 
             # Link to workspace session
             try:
@@ -2637,7 +2637,7 @@ class SADGovernanceGenerator:
             )
             db.session.add(adr)
             db.session.flush()
-            adr.pair_with_canonical_register()  # R1-B09: one canonical register
+            adr.pair_with_canonical_register()  # visible in the one canonical register
 
             # Link to workspace session via SolutionADRLink
             try:

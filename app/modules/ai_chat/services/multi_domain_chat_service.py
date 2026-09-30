@@ -6734,7 +6734,7 @@ Instructions:
             )
             db.session.add(adr)
             db.session.flush()
-            adr.pair_with_canonical_register()  # R1-B09: one canonical register
+            adr.pair_with_canonical_register()  # visible in the one canonical register
             db.session.commit()
             logger.info(f"AIC-307: ADR #{adr.adr_number} recorded: {title[:60]}")
         except Exception as e:

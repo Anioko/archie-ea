@@ -1,5 +1,5 @@
 """
-flask backfill-decision-register-consolidation — R1-B09 consolidation.
+flask backfill-decision-register-consolidation — decision register consolidation.
 
 Two independent backfills, run together because they share the brief:
 
@@ -177,7 +177,7 @@ def run_backfill(dry_run=False, org_id=None, echo=None):
 )
 @with_appcontext
 def backfill_decision_register_consolidation(dry_run, org_id):
-    """R1-B09: pair ADR records into architecture_decisions; tenant-fence decision_ledger."""
+    """Pair ADR records into architecture_decisions; tenant-fence decision_ledger."""
     click.echo("backfill-decision-register-consolidation" + (" (dry-run)" if dry_run else "") + ":")
     adr_stats, ledger_stats = run_backfill(dry_run=dry_run, org_id=org_id, echo=click.echo)
 

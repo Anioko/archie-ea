@@ -151,7 +151,7 @@ def view_adr(adr_id: int):
 @adr_bp.route("/records/<int:adr_id>", methods=["GET"])
 @login_required
 def view_record(adr_id: int):
-    """R1-B09: this record's own detail (still the system of record for its
+    """This record's own detail (still the system of record for its
     review-board fields), plus, when paired, the one canonical register's id
     so a caller can also reach it at `arch_decisions.view_decision`.
 

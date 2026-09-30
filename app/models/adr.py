@@ -91,11 +91,12 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
     # Related ADRs
     related_adr_ids = db.Column(db.Text)  # JSON: Array of related ADR IDs
 
-    # R1-B09 consolidation: the canonical architecture_decisions row this ADR
-    # is also visible through (dual-write, not a move -- this record stays the
-    # system of record for its rich review-board fields, which architecture_
-    # decisions has no columns for: capability/process links, governance_
-    # decision_id, implementation_plan, risk_register, cost_analysis,
+    # Decision register consolidation: the canonical architecture_decisions
+    # row this ADR is also visible through (dual-write, not a move -- this
+    # record stays the system of record for its rich review-board fields,
+    # which architecture_decisions has no columns for: capability/process
+    # links, governance_decision_id, implementation_plan, risk_register,
+    # cost_analysis,
     # arb_review, decision_matrix and the rest). Nullable: set on backfilled
     # rows and every new one going forward; NULL only on a row created before
     # this consolidation shipped and not yet backfilled.
@@ -182,7 +183,7 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
         return f"<ADR-{self.adr_number}: {self.title} ({self.status})>"
 
     def pair_with_canonical_register(self):
-        """R1-B09: create (or return the existing) paired ArchitectureDecision row.
+        """Create (or return the existing) paired ArchitectureDecision row.
 
         Dual-write, not a move: this record stays the system of record for
         its own rich review-board fields; the paired row is what makes it

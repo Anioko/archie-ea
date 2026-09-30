@@ -1,4 +1,4 @@
-"""R1-B09: one decision register, PR 1 (consolidation).
+"""One decision register, consolidation PR 1.
 
 - architecture_decision_records pairs into architecture_decisions (dual-write);
   the source stays readable and stays the system of record for its own fields.
@@ -112,7 +112,7 @@ def test_repointed_constructor_site_pairs_immediately(db_session, make_org, tena
         db.session.commit()
 
         assert adr.retired_into_id is not None
-        paired = ArchitectureDecision.query.get(adr.retired_into_id)
+        paired = ArchitectureDecision.query.filter_by(id=adr.retired_into_id).first()
         assert paired.organization_id == org.id
         assert paired.title == "AI-recorded decision"
 
