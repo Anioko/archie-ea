@@ -33,7 +33,17 @@ def _user(db_session, org, prefix):
 
 
 def test_capability_mappings_list_excludes_a_foreign_organisations_rows(app, db_session, make_org, client, login_as):
-    """D1: /api/vendors/apqc/capability-mappings"""
+    """D1: /api/vendors/apqc/capability-mappings.
+
+    Review finding (pr306-review-v2.md DEFECT-2): the endpoint's marshalled
+    output (@api.marshal_list_with(capability_process_model)) reads
+    capability_name via flask_restx's get_value(), which returns None for
+    an attribute that doesn't exist on the model at all (capability_name is
+    only ever set in to_dict(), never a real attribute) -- so asserting the
+    secret name string is absent passed on main too, for the wrong reason.
+    Assert on capability_id, an id the marshalled model does carry, and on
+    the row count, instead.
+    """
     from app.models.business_capabilities import BusinessCapability
     from app.models.apqc_process import CapabilityProcessMapping
     from app.models.user import User
@@ -50,15 +60,18 @@ def test_capability_mappings_list_excludes_a_foreign_organisations_rows(app, db_
     db_session.add_all([cpm_a, cpm_b])
     db_session.flush()
     user_a = _user(db_session, org_a, "d1")
-    uid = user_a.id
+    cap_a_id, cap_b_id, uid = cap_a.id, cap_b.id, user_a.id
     db_session.expunge_all()
 
     login_as(client, db_session.get(User, uid))
     r = client.get("/api/vendors/apqc/capability-mappings")
 
     assert r.status_code == 200
-    text = r.get_data(as_text=True)
-    assert "SECRET-CAP-B-D1" not in text
+    body = r.get_json()
+    capability_ids = {m.get("capability_id") for m in body}
+    assert cap_a_id in capability_ids
+    assert cap_b_id not in capability_ids
+    assert len(body) == 1
 
 
 def test_process_capabilities_excludes_a_foreign_organisations_rows(app, db_session, make_org, client, login_as):
@@ -156,15 +169,23 @@ def test_vendor_capability_process_matrix_excludes_a_foreign_organisations_capab
     db_session.add(cpm_b)
     db_session.flush()
     user_a = _user(db_session, org_a, "d3")
-    product_id, uid = product.id, user_a.id
+    product_id, cap_b_id, uid = product.id, cap_b.id, user_a.id
     db_session.expunge_all()
 
     login_as(client, db_session.get(User, uid))
     r = client.get("/api/vendors/apqc/vendor-capability-process-matrix", query_string={"product_id": product_id})
 
     assert r.status_code == 200
-    text = r.get_data(as_text=True)
-    assert "SECRET-CAP-B-D3" not in text
+    body = r.get_json()
+    # Review finding (pr306-review-v2.md DEFECT-3): on the unfixed route the
+    # capability_name in the matrix entry reads as None anyway, because the
+    # ambient tenant filter on the lazy cap_map.capability relationship
+    # already hides a foreign BusinessCapability row -- asserting the secret
+    # name string is absent passed on main too, for the wrong reason. Assert
+    # on capability_id, which the unfixed route DOES still return (the
+    # mapping row itself, capability_id and all, was the unfenced part).
+    capability_ids = {item.get("capability_id") for item in body.get("matrix", [])}
+    assert cap_b_id not in capability_ids
 
 
 def test_apqc_suggestions_treats_a_foreign_organisations_link_as_still_unmapped(

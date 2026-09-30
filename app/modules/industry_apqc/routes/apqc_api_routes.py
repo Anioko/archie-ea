@@ -227,6 +227,7 @@ def get_industry_variants():
 def get_process_applications(process_id):
     """Get all applications with mapping status for an APQC process."""
     try:
+        from app.middleware.tenant_context import current_org_id
         from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
         from app.models.application_layer import ApplicationComponent
 
@@ -234,10 +235,24 @@ def get_process_applications(process_id):
         if not process:
             return jsonify({"error": f"Process not found: {process_id}"}), 404
 
-        # Get existing mappings for this process
-        existing_mappings = ProcessApplicationMapping.query.filter_by(
-            apqc_process_id=process_id
-        ).all()
+        # Get existing mappings for this process. ProcessApplicationMapping
+        # has no organization_id of its own -- unfenced, mapped_count below
+        # summed every organisation's mappings for this shared process,
+        # leaking an aggregate cross-org signal even though the per-app
+        # is_mapped flags happened to stay correct (application_id is
+        # globally unique, so a foreign mapping never matches this caller's
+        # own, already tenant-fenced, ApplicationComponent rows).
+        org_id = current_org_id()
+        if org_id is None:
+            existing_mappings = []
+        else:
+            existing_mappings = ProcessApplicationMapping.query.join(
+                ApplicationComponent,
+                ProcessApplicationMapping.application_id == ApplicationComponent.id,
+            ).filter(
+                ProcessApplicationMapping.apqc_process_id == process_id,
+                ApplicationComponent.organization_id == org_id,
+            ).all()
         mapped_app_ids = {m.application_id for m in existing_mappings}
         mapping_by_app = {m.application_id: m for m in existing_mappings}
 

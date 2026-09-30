@@ -1910,8 +1910,21 @@ def api_apqc_link():
         if not parent_cap:
             return jsonify({"error": f"Capability {capability_id} not found"}), 404
 
-        # Check for existing mapping
-        existing = CapabilityProcessMapping.query.filter_by(apqc_process_id=apqc_id).first()
+        # Check for existing mapping within the caller's own organisation.
+        # CapabilityProcessMapping has no organization_id of its own --
+        # unfenced, this returned another organisation's capability_id in
+        # the 409 body, since apqc_process_id is a shared reference id the
+        # same across every organisation.
+        _org_id = getattr(g, "current_org_id", None)
+        existing = None
+        if _org_id is not None:
+            existing = CapabilityProcessMapping.query.join(
+                BusinessCapability,
+                CapabilityProcessMapping.capability_id == BusinessCapability.id,
+            ).filter(
+                CapabilityProcessMapping.apqc_process_id == apqc_id,
+                BusinessCapability.organization_id == _org_id,
+            ).first()
         if existing:
             return (
                 jsonify(
