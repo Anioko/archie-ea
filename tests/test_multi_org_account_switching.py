@@ -112,10 +112,11 @@ def test_switching_organisation_scopes_exports_and_audit_rows(
     from app.models.application_portfolio import ApplicationComponent
     from app.models.audit_log import AuditLog
     from app.models.org_role import OrgRole
-    from app.middleware.tenant_context import _slugify_for_filename
+    from app.utils.validators import sanitize_filename
 
     org_a = make_org("audit-a")
     org_b = make_org("audit-b")
+    org_b.name = "Résumé & Finance / West"
     user = _make_user(db_session, org_a, email="switcher@example.test")
     OrgRole.set_role(org_b.id, user.id, "architect", granted_by_id=user.id)
     _make_application(db_session, org_a, "Audit Org A App")
@@ -138,7 +139,7 @@ def test_switching_organisation_scopes_exports_and_audit_rows(
 
     export_b = client.get("/applications/export/csv")
     assert export_b.status_code == 200
-    assert _slugify_for_filename(org_b.name) in export_b.headers["Content-Disposition"]
+    assert sanitize_filename(org_b.name) in export_b.headers["Content-Disposition"]
     csv_b = export_b.get_data(as_text=True)
     assert created_name in csv_b
     assert "Audit Org A App" not in csv_b
@@ -152,7 +153,7 @@ def test_switching_organisation_scopes_exports_and_audit_rows(
 
     export_a = client.get("/applications/export/csv")
     assert export_a.status_code == 200
-    assert _slugify_for_filename(org_a.name) in export_a.headers["Content-Disposition"]
+    assert sanitize_filename(org_a.name) in export_a.headers["Content-Disposition"]
     csv_a = export_a.get_data(as_text=True)
     assert "Audit Org A App" in csv_a
     assert created_name not in csv_a

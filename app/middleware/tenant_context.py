@@ -12,10 +12,11 @@ check, public APIs).
 
 import logging
 import re
-import unicodedata
 
 from flask import g, has_app_context, has_request_context, session
 from flask_login import current_user
+
+from app.utils.validators import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -128,12 +129,6 @@ def clear_tenant_context_cache():
     db.session.remove()
 
 
-def _slugify_for_filename(value):
-    normalized = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode("ascii")
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", normalized).strip("-._")
-    return cleaned or "organization"
-
-
 def current_org_id():
     """The active tenant's organization_id, or None outside a tenant request
     (CLI / system tasks / unauthenticated).
@@ -185,7 +180,9 @@ def install_tenant_context(app):
             return response
 
         filename = match.group(1)
-        prefix = _slugify_for_filename(getattr(org, "name", None) or getattr(org, "slug", None))
+        prefix = sanitize_filename(
+            getattr(org, "name", None) or getattr(org, "slug", None) or "organization"
+        ) or "organization"
         if filename.startswith(f"{prefix}-"):
             return response
 
