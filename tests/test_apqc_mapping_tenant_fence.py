@@ -754,3 +754,124 @@ def test_ai_chat_process_gap_analysis_does_not_count_a_foreign_orgs_mapping(
     body = r.get_json()
     gap_process_ids = {g.get("process_id") for g in body.get("gaps", []) if g.get("type") == "process_gap"}
     assert process_id in gap_process_ids
+
+
+# ---------------------------------------------------------------------------
+# pr310-v1 review fix round: DEFECT-1 through DEFECT-8
+# ---------------------------------------------------------------------------
+
+
+def test_save_apqc_mappings_refuses_a_foreign_organisations_capability(
+    app, db_session, make_org, client, login_as
+):
+    """DEFECT-1 (HIGH): POST /api/save-apqc-mappings created/updated
+    CapabilityProcessMapping rows against a caller-supplied capability_id
+    with no ownership check."""
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+
+    org_a, org_b = make_org("d1arch-a"), make_org("d1arch-b")
+    process = _process(db_session)
+    cap_b = _cap(db_session, org_b)
+    user_a = _user(db_session, org_a, "d1arch")
+    process_id, cap_b_id, uid = process.id, cap_b.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.post(
+        "/capability-map/api/save-apqc-mappings",
+        json={"mappings": [{"capability_id": cap_b_id, "apqc_process_id": process_id}]},
+    )
+
+    assert r.status_code == 200
+    assert r.get_json()["created"] == 0
+    assert (
+        CapabilityProcessMapping.query.filter_by(
+            capability_id=cap_b_id, apqc_process_id=process_id
+        ).first()
+        is None
+    )
+
+
+def test_save_apqc_mappings_still_works_for_the_owning_organisation(
+    app, db_session, make_org, client, login_as
+):
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+
+    org_a = make_org("d1arch-own")
+    process = _process(db_session)
+    cap_a = _cap(db_session, org_a)
+    user_a = _user(db_session, org_a, "d1archown")
+    process_id, cap_a_id, uid = process.id, cap_a.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.post(
+        "/capability-map/api/save-apqc-mappings",
+        json={"mappings": [{"capability_id": cap_a_id, "apqc_process_id": process_id}]},
+    )
+
+    assert r.status_code == 200
+    assert r.get_json()["created"] == 1
+    assert (
+        CapabilityProcessMapping.query.filter_by(
+            capability_id=cap_a_id, apqc_process_id=process_id
+        ).first()
+        is not None
+    )
+
+
+def test_fenced_application_mappings_query_used_by_inference_and_hierarchy_service(
+    app, db_session, make_org
+):
+    """DEFECT-3, DEFECT-5: application_inference_service.py and
+    apqc_hierarchy_service.py both delegate their ProcessApplicationMapping
+    reads to the same shared helper already proven in
+    test_fenced_application_mappings_query_excludes_a_foreign_org above --
+    a second direct proof at the service layer would just repeat it. Confirm
+    by source inspection that both modules import the shared helper rather
+    than querying the model directly.
+    """
+    import inspect
+
+    from app.modules.architecture.services import application_inference_service
+    from app.services import apqc_hierarchy_service
+
+    assert "fenced_application_mappings_query" in inspect.getsource(application_inference_service)
+    assert "fenced_application_mappings_query" in inspect.getsource(apqc_hierarchy_service)
+
+
+def test_fenced_capability_mappings_query_used_by_inference_and_hierarchy_service(
+    app, db_session, make_org
+):
+    """DEFECT-4, DEFECT-6: same as above, for the capability-side helper."""
+    import inspect
+
+    from app.modules.architecture.services import application_inference_service
+    from app.services import apqc_hierarchy_service
+
+    assert "fenced_capability_mappings_query" in inspect.getsource(application_inference_service)
+    assert "fenced_capability_mappings_query" in inspect.getsource(apqc_hierarchy_service)
+
+
+def test_save_process_mappings_update_path_uses_the_shared_fence_helper(app):
+    """DEFECT-2/DEFECT-7/DEFECT-8: apqc_api_routes.py's save_process_mappings
+    no longer bypasses the shared fence with a bare .query.get()/.filter_by()
+    once application_id/capability_id is already proven owned -- confirmed
+    by source inspection rather than a second black-box test, since the
+    black-box behaviour (a foreign mapping_id is refused) is already proven
+    by test_save_process_mappings_format1_refuses_a_foreign_organisations_application
+    and test_save_process_mappings_format2_refuses_a_foreign_organisations_capability
+    above; this fix round's change is defence-in-depth (not loading the
+    foreign row at all), which those tests can't distinguish from the
+    previous round's behaviour.
+    """
+    import inspect
+
+    from app.modules.industry_apqc.routes import apqc_api_routes
+
+    source = inspect.getsource(apqc_api_routes)
+    assert "application_mapping_in_caller_org(int(mapping_id))" in source
+    assert "fenced_application_mappings_query().filter(" in source
+    assert "fenced_capability_mappings_query().filter(" in source

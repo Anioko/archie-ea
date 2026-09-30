@@ -388,7 +388,11 @@ def save_process_mappings():
             CapabilityProcessMapping,
             ProcessApplicationMapping,
         )
-        from app.services.apqc_mapping_tenant_fence import application_owned_by_caller
+        from app.services.apqc_mapping_tenant_fence import (
+            application_mapping_in_caller_org,
+            application_owned_by_caller,
+            fenced_application_mappings_query,
+        )
 
         data = request.get_json()
         if not data:
@@ -425,10 +429,15 @@ def save_process_mappings():
                 mapping_fields = app_data.get("mapping", {})
                 mapping_id = app_data.get("mapping_id")
 
-                # Check for existing mapping
+                # Check for existing mapping. Both lookups go through the
+                # shared fence instead of a bare query -- application_id is
+                # already proven owned above, but the mapping_id path used
+                # to load a foreign row into the session before the
+                # application_id comparison rejected it (pr310-v1 review,
+                # DEFECT-2/DEFECT-7).
                 existing = None
                 if mapping_id:
-                    existing = ProcessApplicationMapping.query.get(int(mapping_id))
+                    existing = application_mapping_in_caller_org(int(mapping_id))
                     if existing is not None and existing.application_id != app_id:
                         # mapping_id names a row outside app_id's (already
                         # proven owned) application -- refuse rather than
@@ -436,8 +445,9 @@ def save_process_mappings():
                         existing = None
 
                 if not existing:
-                    existing = ProcessApplicationMapping.query.filter_by(
-                        application_id=app_id, apqc_process_id=process_id
+                    existing = fenced_application_mappings_query().filter(
+                        ProcessApplicationMapping.application_id == app_id,
+                        ProcessApplicationMapping.apqc_process_id == process_id,
                     ).first()
 
                 if existing:
@@ -480,6 +490,7 @@ def save_process_mappings():
         elif "capability_id" in data and "apqc_process_id" in data:
             from app.services.apqc_mapping_tenant_fence import (
                 capability_owned_by_caller,
+                fenced_capability_mappings_query,
             )
 
             capability_id = int(data["capability_id"])
@@ -493,8 +504,9 @@ def save_process_mappings():
             if not capability_owned_by_caller(capability_id):
                 return jsonify({"error": f"Capability not found: {capability_id}"}), 404
 
-            existing = CapabilityProcessMapping.query.filter_by(
-                capability_id=capability_id, apqc_process_id=apqc_process_id
+            existing = fenced_capability_mappings_query().filter(
+                CapabilityProcessMapping.capability_id == capability_id,
+                CapabilityProcessMapping.apqc_process_id == apqc_process_id,
             ).first()
 
             if existing:
