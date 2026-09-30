@@ -180,7 +180,12 @@ def set_risk_score(risk_id, score_kind, likelihood, impact, recorded_by_id=None)
     """
     if score_kind not in SCORE_KINDS:
         raise ValueError(f"score_kind must be one of {SCORE_KINDS}, got {score_kind!r}")
-    risk = Risk.query.get_or_404(risk_id)
+    # .filter_by(...).first_or_404() rather than .get_or_404(risk_id): Query.get()
+    # can be satisfied from the identity map without re-issuing a SELECT, which
+    # would bypass the tenant filter for a Risk already loaded (by another
+    # organisation's request/session) -- the same reasoning as
+    # _load_linkable_entity above.
+    risk = Risk.query.filter_by(id=risk_id).first_or_404()
     likelihood, impact = int(likelihood), int(impact)
     likelihood_attr, impact_attr = f"{score_kind}_likelihood", f"{score_kind}_impact"
     changed = (
@@ -203,7 +208,9 @@ def set_risk_score(risk_id, score_kind, likelihood, impact, recorded_by_id=None)
 
 def risk_score_history(risk_id, score_kind=None):
     """History rows for one risk, oldest first. Optionally filtered by kind."""
-    Risk.query.get_or_404(risk_id)  # 404s / tenant-scopes the same as every other read here
+    # See set_risk_score above for why this is .filter_by(...).first_or_404()
+    # rather than .get_or_404(risk_id).
+    Risk.query.filter_by(id=risk_id).first_or_404()
     query = RiskScoreHistory.query.filter_by(risk_id=risk_id)
     if score_kind is not None:
         query = query.filter_by(score_kind=score_kind)

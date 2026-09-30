@@ -62,16 +62,21 @@ def test_backfill_merges_a_solution_risk_into_the_canonical_risk_with_a_link(
     solution = _solution(db_session, org)
     source = _solution_risk(db_session, org, solution)
     db_session.commit()
-    source_id = source.id
+    # Captured as plain values before the command runs: the backfill's own
+    # db.session.remove() calls (one per organisation, matching
+    # backfill_audit_trail.py's own convention) share this test's session, so
+    # any ORM object held across that call is expired with nothing left to
+    # refresh it from -- a fresh get()/query after the call is required.
+    source_id, org_id, solution_id = source.id, org.id, solution.id
 
-    result = _run(app, organization_id=org.id)
+    result = _run(app, organization_id=org_id)
     assert result.exit_code == 0, result.output
 
     merged_source = db_session.get(SolutionRisk, source_id)
     assert merged_source.retired_into_risk_id is not None
     risk = db_session.get(Risk, merged_source.retired_into_risk_id)
-    assert risk.organization_id == org.id
-    assert risk.solution_id == solution.id
+    assert risk.organization_id == org_id
+    assert risk.solution_id == solution_id
     assert risk.title == "Vendor lock-in"
     assert risk.description == "The chosen vendor has no viable exit path."
     assert risk.mitigation_plan == "Negotiate a source-code escrow clause."
@@ -83,7 +88,7 @@ def test_backfill_merges_a_solution_risk_into_the_canonical_risk_with_a_link(
     assert risk.residual_likelihood is None  # nothing in the source implies a residual score
 
     link = RiskEntityLink.query.filter_by(risk_id=risk.id).one()
-    assert (link.entity_type, link.entity_id) == ("solution", solution.id)
+    assert (link.entity_type, link.entity_id) == ("solution", solution_id)
 
     history = RiskScoreHistory.query.filter_by(risk_id=risk.id).all()
     assert len(history) == 1
@@ -98,16 +103,16 @@ def test_backfill_is_idempotent(app, db_session, make_org):
     solution = _solution(db_session, org)
     source = _solution_risk(db_session, org, solution)
     db_session.commit()
-    source_id = source.id
+    source_id, org_id = source.id, org.id
 
-    result_first = _run(app, organization_id=org.id)
+    result_first = _run(app, organization_id=org_id)
     assert result_first.exit_code == 0, result_first.output
-    risk_count_after_first = Risk.query.filter_by(organization_id=org.id).count()
+    risk_count_after_first = Risk.query.filter_by(organization_id=org_id).count()
     pointer_after_first = db_session.get(SolutionRisk, source_id).retired_into_risk_id
 
-    result_second = _run(app, organization_id=org.id)
+    result_second = _run(app, organization_id=org_id)
     assert result_second.exit_code == 0, result_second.output
-    risk_count_after_second = Risk.query.filter_by(organization_id=org.id).count()
+    risk_count_after_second = Risk.query.filter_by(organization_id=org_id).count()
     pointer_after_second = db_session.get(SolutionRisk, source_id).retired_into_risk_id
 
     assert risk_count_after_first == 1
@@ -172,11 +177,12 @@ def test_two_organisations_backfill_never_mixes_rows(app, db_session, make_org):
     _solution_risk(db_session, org_a, solution_a, risk_name="Org A risk")
     _solution_risk(db_session, org_b, solution_b, risk_name="Org B risk")
     db_session.commit()
+    org_a_id, org_b_id = org_a.id, org_b.id
 
     result = _run(app)  # unscoped: every organisation in one pass
     assert result.exit_code == 0, result.output
 
-    risks_a = Risk.query.filter_by(organization_id=org_a.id).all()
-    risks_b = Risk.query.filter_by(organization_id=org_b.id).all()
+    risks_a = Risk.query.filter_by(organization_id=org_a_id).all()
+    risks_b = Risk.query.filter_by(organization_id=org_b_id).all()
     assert [r.title for r in risks_a] == ["Org A risk"]
     assert [r.title for r in risks_b] == ["Org B risk"]
