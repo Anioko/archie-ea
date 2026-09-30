@@ -17,6 +17,8 @@ import uuid
 from html.parser import HTMLParser
 from pathlib import Path
 
+from app.datetime_helpers import utcnow
+
 import pytest
 
 # Fixtures (app, db_session, make_org, client, login_as) come from this
@@ -591,8 +593,6 @@ def test_the_impact_answer_carries_the_names_and_derived_fields_the_pages_read(
     """The pages read four things from the impact answer and invent none of them:
     an element map whose entries hold exactly id, name, type and layer, and on a
     worked-out row its record id, engine version and sentence."""
-    import datetime
-
     from app.modules.intelligence.models.derived_relationship import DerivedRelationship
 
     org = make_org("ui-contract")
@@ -607,7 +607,7 @@ def test_the_impact_answer_carries_the_names_and_derived_fields_the_pages_read(
         derived_type="Serving", rule_id="serving-through-serving",
         chain=[first.id, second.id], chain_element_ids=[a.id, b.id, c.id], depth=2,
         confidence=0.82, provenance="derivation", engine_version="1.0",
-        computed_at=datetime.datetime.utcnow(), stale=False,
+        computed_at=utcnow(), stale=False,
     ))
     db_session.flush()
 
