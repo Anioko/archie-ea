@@ -16,6 +16,7 @@ copy of it.
 from dataclasses import dataclass
 import logging
 from datetime import datetime
+import re
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping
@@ -23,11 +24,24 @@ from app.models.application_layer import DataObject
 from app.models.application_portfolio import ApplicationComponent
 from app.models.business_capabilities import BusinessCapability
 from app.models.process_data import DataDomain, DataEntity
-from app.modules.architecture.services.semantic_similarity_service import SemanticSimilarityService
 
 logger = logging.getLogger(__name__)
 
-SIMILARITY_THRESHOLD = 0.15
+GENERIC_DATA_OBJECT_TOKENS = {
+    "data",
+    "entity",
+    "master",
+    "record",
+    "reference",
+    "registry",
+    "catalog",
+    "catalogue",
+    "profile",
+    "details",
+    "detail",
+    "information",
+    "info",
+}
 
 
 class DataSorError(Exception):
@@ -46,6 +60,16 @@ class _DataObjectCandidate:
 
 def _collapse_spaces(value):
     return " ".join((value or "").split()).strip()
+
+
+def _normalise_search_text(value):
+    collapsed = _collapse_spaces(value).lower()
+    collapsed = re.sub(r"[_\-]+", " ", collapsed)
+    return re.sub(r"[^a-z0-9\s]+", " ", collapsed).strip()
+
+
+def _search_tokens(value):
+    return tuple(token for token in _normalise_search_text(value).split() if token)
 
 
 def _entity_search_name(entity):
@@ -104,28 +128,57 @@ def _holder_candidates(org_id):
     ]
 
 
-def _holder_matches_for_entity(entity, candidates, similarity_service):
+def _allowed_holder_tokens(entity, variant):
+    return set(_search_tokens(entity.name)) | set(_search_tokens(entity.business_name)) | set(
+        _search_tokens(entity.technical_name)
+    ) | set(_search_tokens(entity.description)) | set(_search_tokens(variant["name"])) | set(
+        _search_tokens(variant["description"])
+    ) | GENERIC_DATA_OBJECT_TOKENS
+
+
+def _bounded_token_match(candidate_tokens, required_tokens, allowed_tokens):
+    if not required_tokens:
+        return False
+    candidate_set = set(candidate_tokens)
+    required_set = set(required_tokens)
+    if not required_set.issubset(candidate_set):
+        return False
+    return (candidate_set - required_set).issubset(allowed_tokens)
+
+
+def _candidate_match_score(candidate, variant, allowed_tokens):
+    variant_name = _normalise_search_text(variant["name"])
+    variant_description = _normalise_search_text(variant["description"])
+    candidate_name = _normalise_search_text(candidate.name)
+    candidate_description = _normalise_search_text(candidate.description)
+    required_tokens = _search_tokens(variant["name"])
+
+    if variant_name and candidate_name == variant_name:
+        return 400
+    if variant_name and candidate_description == variant_name:
+        return 350
+    if variant_description and candidate_name == variant_description:
+        return 325
+    if _bounded_token_match(_search_tokens(candidate.name), required_tokens, allowed_tokens):
+        return 200 + len(required_tokens)
+    if _bounded_token_match(_search_tokens(candidate.description), required_tokens, allowed_tokens):
+        return 150 + len(required_tokens)
+    return None
+
+
+def _holder_matches_for_entity(entity, candidates):
     best_by_app = {}
-    candidate_by_id = {candidate.id: candidate for candidate in candidates}
     for variant in _entity_search_variants(entity):
-        matches = similarity_service.find_semantically_similar(
-            {
-                "name": variant["name"],
-                "description": variant["description"],
-                "type": "DataObject",
-            },
-            candidates,
-            threshold=SIMILARITY_THRESHOLD,
-        )
-        for match in matches:
-            candidate = candidate_by_id.get(match["element_id"])
-            if candidate is None:
+        allowed_tokens = _allowed_holder_tokens(entity, variant)
+        for candidate in candidates:
+            score = _candidate_match_score(candidate, variant, allowed_tokens)
+            if score is None:
                 continue
             current = best_by_app.get(candidate.app_id)
-            if current is None or match["similarity_score"] > current["similarity_score"]:
+            if current is None or score > current["score"]:
                 best_by_app[candidate.app_id] = {
                     "object_name": candidate.object_name,
-                    "similarity_score": match["similarity_score"],
+                    "score": score,
                 }
     return best_by_app
 
@@ -135,10 +188,9 @@ def _holders_by_entity(org_id, entities):
     if not entities:
         return {}
     candidates = _holder_candidates(org_id)
-    similarity_service = SemanticSimilarityService()
     result = {}
     for entity in entities:
-        holders = _holder_matches_for_entity(entity, candidates, similarity_service)
+        holders = _holder_matches_for_entity(entity, candidates)
         result[entity.id] = {app_id: row["object_name"] for app_id, row in holders.items()}
     return result
 

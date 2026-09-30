@@ -30,6 +30,8 @@
             <td class="px-4 py-2.5">{{ row.entity.domain.name | dash if row.entity.domain else '—' }}</td>
             <td class="px-4 py-2.5">
               {% if row.system_of_record_name %}{{ row.system_of_record_name }}
+              {% elif row.system_of_record_fallback %}
+              <span class="text-foreground">Legacy label: {{ row.system_of_record_fallback }} — no matching application found yet</span>
               {% else %}<span class="text-muted-foreground">Not declared</span>{% endif %}
             </td>
             <td class="px-4 py-2.5 text-right">
