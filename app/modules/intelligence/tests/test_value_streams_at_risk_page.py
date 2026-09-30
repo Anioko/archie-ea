@@ -57,7 +57,7 @@ def _user(db_session, org_id, role="business_architect"):
     return user
 
 
-def _seed(db_session, org_id):
+def _seed(db_session, org_id, names=None):
     """Two value streams: one depends on a capability below maturity 3 on two
     stages and on one with no maturity recorded; the other only on a mature
     capability. A third has no capability linked at all."""
@@ -69,6 +69,15 @@ def _seed(db_session, org_id):
     )
 
     s = _suffix()
+    names = {
+        "onboard": "Onboard customer",
+        "settle": "Settle claim",
+        "retire": "Retire product",
+        "weak": "Identity checks",
+        "unknown": "Document capture",
+        "strong": "Payments",
+        **(names or {}),
+    }
 
     def vs(name):
         row = ValueStream(name=name, code=f"VSRP-{name[:4].upper()}-{s}", organization_id=org_id)
@@ -112,21 +121,26 @@ def _seed(db_session, org_id):
         )
         db_session.flush()
 
-    onboard = vs("Onboard customer")
-    settle = vs("Settle claim")
-    vs("Retire product")
+    onboard = vs(names["onboard"])
+    settle = vs(names["settle"])
+    vs(names["retire"])
     apply_stage = stage(onboard, "Apply", 1)
     verify_stage = stage(onboard, "Verify", 2)
     pay_stage = stage(settle, "Pay", 1)
-    weak = cap("Identity checks", 1, 4)
-    unknown = cap("Document capture", None, None)
-    strong = cap("Payments", 4, 4)
+    weak = cap(names["weak"], 1, 4)
+    unknown = cap(names["unknown"], None, None)
+    strong = cap(names["strong"], 4, 4)
     link(weak, onboard, apply_stage)
     link(weak, onboard, verify_stage)
     link(unknown, onboard, apply_stage)
     link(strong, settle, pay_stage)
     db_session.commit()
-    return {"onboard": onboard.id, "settle": settle.id, "weak": weak.id}
+    return {
+        "names": names,
+        "onboard": onboard.id,
+        "settle": settle.id,
+        "weak": weak.id,
+    }
 
 
 # --- the route ---------------------------------------------------------------
@@ -371,6 +385,53 @@ def test_the_pages_rows_equal_the_apis_rows_for_the_same_seed(
     onboard = next(r for r in rows if r["id"] == ids["onboard"])
     weak = next(c for c in onboard["capabilities"] if c["id"] == ids["weak"])
     assert weak["stages"] == ["Apply", "Verify"]
+
+
+def test_the_page_only_builds_rows_for_the_signed_in_organisations_value_streams(
+    app, db_session, make_org, client, login_as
+):
+    ours = make_org("vsrp-page-ours")
+    other = make_org("vsrp-page-other")
+    user = _user(db_session, ours.id)
+    our_ids = _seed(
+        db_session,
+        ours.id,
+        names={
+            "onboard": "Order to cash Alpha",
+            "settle": "Claims handling Alpha",
+            "retire": "Retire service Alpha",
+        },
+    )
+    other_ids = _seed(
+        db_session,
+        other.id,
+        names={
+            "onboard": "Order to cash Beta",
+            "settle": "Claims handling Beta",
+            "retire": "Retire service Beta",
+        },
+    )
+
+    login_as(client, user)
+    page = client.get(PAGE)
+    assert page.status_code == 200
+    answer = client.get(f"{API}?threshold=3")
+    assert answer.status_code == 200
+    rows = _page_rows(answer.get_json()["data"])
+    names = [row["name"] for row in rows]
+
+    assert names == [
+        our_ids["names"]["onboard"],
+        our_ids["names"]["settle"],
+        our_ids["names"]["retire"],
+    ]
+    assert other_ids["names"]["onboard"] not in names
+    assert other_ids["names"]["settle"] not in names
+    assert other_ids["names"]["retire"] not in names
+    html = page.get_data(as_text=True)
+    assert other_ids["names"]["onboard"] not in html
+    assert other_ids["names"]["settle"] not in html
+    assert other_ids["names"]["retire"] not in html
 
 
 def test_the_page_asks_the_existing_api_and_nothing_else():
