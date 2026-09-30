@@ -1013,7 +1013,7 @@ function userSearchWidget(getVal, setVal) {
             if (!q || q.length < 2) { this.ures = []; this.ushow = false; return; }
             try {
                 const d = await Platform.fetch.get('/api/users', null, { silent: true });
-                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => u.name.toLowerCase().includes(lq) || u.email.toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
+                if (d.success) { const lq = q.toLowerCase(); this.ures = d.users.filter(u => (u.name || '').toLowerCase().includes(lq) || (u.email || '').toLowerCase().includes(lq)).slice(0, 5); this.ushow = this.ures.length > 0; }
                 this.uErrorShown = false;
             } catch (e) {
                 // Debounced on every keystroke — toast once per outage, not on every retry.

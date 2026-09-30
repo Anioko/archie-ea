@@ -223,7 +223,6 @@ functional_requirement
 gap_analysis_recommendations
 gap_remediation_reports
 gap_solution_options
-gdpr_requests
 generation_event
 generation_pipelines
 goals
