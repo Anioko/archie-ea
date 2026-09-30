@@ -435,6 +435,34 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # R1-B07/TB-0084: an approval past its 15-minute review-by time stays
+        # pending and actionable (never auto-expires) but must not go unseen —
+        # this notifies each affected organisation's administrators once per
+        # overdue row. Platform-wide job (groups by organization_id itself,
+        # same shape as run_error_digest above), 15 minutes to match the
+        # window it is watching.
+        def run_approval_escalation():
+            with app.app_context():
+                try:
+                    from app.modules.ai_chat.services.ai_chat_approval_service import (
+                        escalate_overdue_approvals,
+                    )
+                    escalate_overdue_approvals(app)
+                except Exception as exc:
+                    import logging
+                    logging.getLogger(__name__).error(
+                        "APScheduler approval-escalation error: %s", exc
+                    )
+
+        scheduler.add_job(
+            func=run_approval_escalation,
+            trigger=IntervalTrigger(minutes=15),
+            id="approval_escalation",
+            name="R1-B07 Overdue Approval Escalation",
+            replace_existing=True,
+            max_instances=1,
+        )
+
         # Teams meeting intelligence: Graph callRecords subscriptions expire
         # every 3 days — renew twice daily; renew_if_needed re-creates the
         # subscription if Graph has already dropped it. No-op when the

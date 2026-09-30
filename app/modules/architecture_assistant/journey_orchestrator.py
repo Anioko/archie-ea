@@ -608,7 +608,10 @@ class JourneyOrchestrator:
                                 acm_props["capability_source"] = {
                                     "value": el_data["capability_source"], "source": "derived"
                                 }
-                            proposal = SolutionBlueprintProposal(
+                            from app.models.solution_blueprint_proposal import (
+                                create_solution_blueprint_proposal,
+                            )
+                            proposal = create_solution_blueprint_proposal(
                                 solution_id=self.solution_id,
                                 archimate_type=el_type,
                                 name=el_name,
@@ -621,7 +624,6 @@ class JourneyOrchestrator:
                                 acm_properties=acm_props,
                                 organization_id=_org_id,
                             )
-                            db.session.add(proposal)
 
                         # Flush after each element so partial persistence works
                         db.session.flush()
@@ -707,8 +709,11 @@ class JourneyOrchestrator:
                                     ).first()
                                     if not _existing_proposal2:
                                         from app.modules.architecture_assistant.property_service import PropertyService
+                                        from app.models.solution_blueprint_proposal import (
+                                            create_solution_blueprint_proposal,
+                                        )
                                         _acm_props2 = PropertyService().get_default_properties(_gel_type)
-                                        _proposal2 = SolutionBlueprintProposal(
+                                        _proposal2 = create_solution_blueprint_proposal(
                                             solution_id=self.solution_id,
                                             archimate_type=_gel_type,
                                             name=_gel_name,
@@ -721,7 +726,6 @@ class JourneyOrchestrator:
                                             acm_properties=_acm_props2,
                                             organization_id=_org_id,
                                         )
-                                        db.session.add(_proposal2)
                                         _auto_accepted += 1
                                         persisted_by_layer.setdefault(_gl, []).append({
                                             "id": _el2.id, "type": _gel_type, "name": _gel_name,

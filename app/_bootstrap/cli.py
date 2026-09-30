@@ -254,6 +254,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_review_queue_approvals import init_app as init_review_queue_approvals
+        init_review_queue_approvals(app)
+        app.logger.info("R1-B07 approval-queue consolidation backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register R1-B07 approval-queue consolidation backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
