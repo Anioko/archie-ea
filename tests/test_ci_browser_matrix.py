@@ -4,16 +4,19 @@ from pathlib import Path
 
 import yaml
 
+try:
+    from tests.test_ci_nav_verification_lifecycle import _ci_jobs
+except ImportError:
+    def _ci_jobs():
+        import yaml as _yaml
+        return _yaml.safe_load(_workflow())["jobs"]
+
 
 CI = Path(".github/workflows/ci.yml")
 
 
 def _workflow():
     return CI.read_text(encoding="utf-8")
-
-
-def _parsed():
-    return yaml.safe_load(_workflow())["jobs"]
 
 
 def test_ci_runs_critical_journeys_in_firefox_and_webkit():
@@ -85,7 +88,7 @@ def test_shard_runs_on_falls_back_to_self_hosted_when_variable_unset():
     """The shard job's runs-on references vars.CI_SHARD_RUNNER and falls back
     to self-hosted + ibm-vsi when the variable is unset; a forked PR must
     never leave ubuntu-latest."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     runs_on = jobs["tests-shard"]["runs-on"]
 
     assert "vars.CI_SHARD_RUNNER" in runs_on
@@ -98,7 +101,7 @@ def test_shard_runs_on_falls_back_to_self_hosted_when_variable_unset():
 def test_shard_max_parallel_reads_variable_with_default_6():
     """max-parallel reads vars.CI_SHARD_MAX_PARALLEL and defaults to 6 when
     the variable is unset; forked PRs keep 8."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
 
     assert "vars.CI_SHARD_MAX_PARALLEL" in max_parallel
@@ -111,7 +114,7 @@ def test_ci_fast_runner_takes_precedence_over_shard_runner():
     the shard job uses that runner. The variable and label check must both
     appear in the runs-on expression, and CI_FAST_RUNNER must be evaluated
     before CI_SHARD_RUNNER so it takes precedence."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     runs_on = jobs["tests-shard"]["runs-on"]
 
     assert "vars.CI_FAST_RUNNER" in runs_on
@@ -128,7 +131,7 @@ def test_ci_fast_runner_guarded_by_pull_request_event():
     """vars.CI_FAST_RUNNER and the ci-fast label check must only apply to
     pull_request events, so a push to main never evaluates the label check
     against a missing pull_request context."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     runs_on = jobs["tests-shard"]["runs-on"]
 
     assert "github.event_name == 'pull_request'" in runs_on
@@ -147,7 +150,7 @@ def test_ci_fast_max_parallel_is_8_bypassing_shard_cap():
     must reference CI_FAST_RUNNER and ci-fast, and the literal 8 for the
     ci-fast lane must appear before the CI_SHARD_MAX_PARALLEL fallback so it
     takes precedence."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
 
     assert "vars.CI_FAST_RUNNER" in max_parallel
@@ -167,7 +170,7 @@ def test_jobs_skip_on_non_ci_fast_labeled_events():
     must carry an if: condition that skips the job when the trigger is a
     labeled pull_request event that does not carry the ci-fast label.  This
     prevents a full CI re-run when any unrelated label is added to a PR."""
-    jobs = _parsed()
+    jobs = _ci_jobs()
     gating_jobs = {
         "secret-scan", "static-gates", "boot-health", "tests-shard",
         "tests", "db-gates", "security-sast", "smoke",
@@ -208,3 +211,43 @@ def test_every_postgres_service_mounts_pgdata_on_tmpfs():
         "postgres services must mount /var/lib/postgresql/data on tmpfs: "
         + ", ".join(sorted(missing_tmpfs))
     )
+
+
+# ── D1/D2 contract tests ──────────────────────────────────────────────────
+
+
+def test_labeled_event_never_cancels_in_progress_run():
+    """Adding a label to a PR must never cancel an in-progress CI run.
+    The concurrency group's cancel-in-progress must exclude labeled events
+    so that a non-ci-fast label addition does not kill the running suite."""
+    import yaml
+
+    workflow = yaml.safe_load(_workflow())
+    concurrency = workflow["concurrency"]
+    cancel = concurrency["cancel-in-progress"]
+
+    assert "github.event_name == 'pull_request'" in cancel
+    assert "github.event.action != 'labeled'" in cancel, (
+        "cancel-in-progress must exclude labeled events so that adding "
+        "an unrelated label never cancels an in-progress CI run"
+    )
+
+
+def test_tests_job_respects_ci_fast_and_shard_runner_variables():
+    """The combining tests job must follow the same runner choice as the
+    shards: vars.CI_FAST_RUNNER takes precedence on the ci-fast lane,
+    vars.CI_SHARD_RUNNER routes to a managed pool, falling back to
+    self-hosted ibm-vsi."""
+    jobs = _ci_jobs()
+    runs_on = jobs["tests"]["runs-on"]
+
+    assert "vars.CI_FAST_RUNNER" in runs_on, (
+        "tests job must respect vars.CI_FAST_RUNNER for the ci-fast lane"
+    )
+    assert "vars.CI_SHARD_RUNNER" in runs_on, (
+        "tests job must respect vars.CI_SHARD_RUNNER for managed runner pools"
+    )
+    assert "ci-fast" in runs_on
+    assert "self-hosted" in runs_on
+    assert "ibm-vsi" in runs_on
+    assert "ubuntu-latest" in runs_on
