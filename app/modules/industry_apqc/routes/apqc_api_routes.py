@@ -297,19 +297,37 @@ def get_process_mappings():
     - type: 'capability' (default) or 'application'
     """
     try:
+        from app.middleware.tenant_context import current_org_id
+        from app.models.application_layer import ApplicationComponent
         from app.models.apqc_process import (
             CapabilityProcessMapping,
             ProcessApplicationMapping,
         )
+        from app.models.business_capabilities import BusinessCapability
 
         mapping_type = request.args.get("type", "capability")
         capability_id = request.args.get("capability_id", type=int)
         apqc_process_id = request.args.get("apqc_process_id", type=int)
+        org_id = current_org_id()
+
+        # Neither mapping model carries an organization_id of its own --
+        # ownership is only reachable via application_id / capability_id --
+        # so an unfiltered (or apqc_process_id-only, itself a shared
+        # reference id) query.all() returned every organisation's mappings,
+        # including capability/application names, in to_dict(). Fail
+        # closed with no ambient org rather than fall back to unscoped.
+        if org_id is None:
+            return jsonify({"success": True, "mappings": [], "total": 0})
 
         if mapping_type == "application":
-            query = ProcessApplicationMapping.query
+            query = ProcessApplicationMapping.query.join(
+                ApplicationComponent,
+                ProcessApplicationMapping.application_id == ApplicationComponent.id,
+            ).filter(ApplicationComponent.organization_id == org_id)
             if apqc_process_id:
-                query = query.filter_by(apqc_process_id=apqc_process_id)
+                query = query.filter(
+                    ProcessApplicationMapping.apqc_process_id == apqc_process_id
+                )
             mappings = query.all()
             return jsonify(
                 {
@@ -319,11 +337,18 @@ def get_process_mappings():
                 }
             )
         else:
-            query = CapabilityProcessMapping.query
+            query = CapabilityProcessMapping.query.join(
+                BusinessCapability,
+                CapabilityProcessMapping.capability_id == BusinessCapability.id,
+            ).filter(BusinessCapability.organization_id == org_id)
             if capability_id:
-                query = query.filter_by(capability_id=capability_id)
+                query = query.filter(
+                    CapabilityProcessMapping.capability_id == capability_id
+                )
             if apqc_process_id:
-                query = query.filter_by(apqc_process_id=apqc_process_id)
+                query = query.filter(
+                    CapabilityProcessMapping.apqc_process_id == apqc_process_id
+                )
             mappings = query.all()
             return jsonify(
                 {
