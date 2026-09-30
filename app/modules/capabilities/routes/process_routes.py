@@ -906,6 +906,9 @@ def api_process_applications(process_id):
     try:
         from app.models.application_layer import ApplicationComponent
         from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
+        from app.utils.process_capability_mapping_fence import (
+            owned_process_application_mappings_query,
+        )
 
         # Verify process exists
         process = APQCProcess.query.get(process_id)
@@ -915,9 +918,10 @@ def api_process_applications(process_id):
         # Get all applications
         applications = ApplicationComponent.query.all()
 
-        # Get existing mappings for this process
-        existing_mappings = ProcessApplicationMapping.query.filter_by(
-            apqc_process_id=process_id
+        # Get existing mappings for this process, fenced to the caller's
+        # organisation -- see app/utils/process_capability_mapping_fence.py.
+        existing_mappings = owned_process_application_mappings_query().filter(
+            ProcessApplicationMapping.apqc_process_id == process_id
         ).all()
 
         # Create mapping lookup
@@ -1003,6 +1007,10 @@ def api_process_bulk_mappings():
 
         from app import db
         from app.models.apqc_process import ProcessApplicationMapping
+        from app.utils.process_capability_mapping_fence import (
+            application_owned_by_caller,
+            fenced_process_application_mapping,
+        )
 
         # Debug: Log incoming data
         data = request.get_json()
@@ -1032,10 +1040,22 @@ def api_process_bulk_mappings():
                 )
                 continue
 
+            # ProcessApplicationMapping carries no organization_id of its
+            # own -- ownership is only reachable via application_id. Verify
+            # app_id is the caller's own before either branch below runs;
+            # skip this item (like the missing-id case above) rather than
+            # fail the whole batch.
+            if application_owned_by_caller(app_id) is None:
+                current_app.logger.warning(
+                    f"Skipping mapping: application {app_id} not found in caller's organisation"
+                )
+                continue
+
             if mapping_id:
-                # Update existing mapping
-                mapping = ProcessApplicationMapping.query.get(mapping_id)
-                if mapping:
+                # Update existing mapping, fenced by id AND cross-checked
+                # against the already-proven-owned app_id.
+                mapping = fenced_process_application_mapping(mapping_id)
+                if mapping and mapping.application_id == app_id:
                     mapping.support_level = mapping_data.get("support_level", "partial")
                     mapping.automation_level = mapping_data.get("automation_level", 1)
                     mapping.process_coverage = mapping_data.get("process_coverage", 50)

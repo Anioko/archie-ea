@@ -1702,6 +1702,9 @@ def api_apqc_suggestions():
     try:
         from app.models.apqc_process import APQCProcess, CapabilityProcessMapping
         from app.models.business_capabilities import BusinessCapability
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+        )
 
         apqc_processes = APQCProcess.query.all()
         capabilities = BusinessCapability.query.all()
@@ -1712,10 +1715,16 @@ def api_apqc_suggestions():
             tokens = _tokenize(cap.name) | _tokenize(cap.business_domain) | _tokenize(cap.category)
             cap_tokens.append((cap, tokens))
 
-        # Find APQC processes that are already linked
+        # Find APQC processes that are already linked. Column-only selects
+        # are not covered by the ambient tenant listener, and
+        # CapabilityProcessMapping has no organization_id of its own -- use
+        # the shared fenced query, or another organisation's linked
+        # processes would be excluded from this organisation's suggestions.
         existing_links = {
-            m.apqc_process_id
-            for m in db.session.query(CapabilityProcessMapping.apqc_process_id).all()
+            row.apqc_process_id
+            for row in owned_capability_process_mappings_query()
+            .with_entities(CapabilityProcessMapping.apqc_process_id)
+            .all()
         }
 
         suggestions = []
@@ -1878,6 +1887,9 @@ def api_apqc_link():
     try:
         from app.models.apqc_process import APQCProcess, CapabilityProcessMapping
         from app.models.business_capabilities import BusinessCapability
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+        )
 
         data = request.get_json(silent=True) or {}
         apqc_id = data.get("apqc_id")
@@ -1895,8 +1907,14 @@ def api_apqc_link():
         if not parent_cap:
             return jsonify({"error": f"Capability {capability_id} not found"}), 404
 
-        # Check for existing mapping
-        existing = CapabilityProcessMapping.query.filter_by(apqc_process_id=apqc_id).first()
+        # Check for an existing mapping within the caller's own
+        # organisation. CapabilityProcessMapping has no organization_id of
+        # its own -- unfenced, this returned another organisation's real
+        # capability_id in the 409 body, since apqc_process_id is a shared
+        # reference id the same across every organisation.
+        existing = owned_capability_process_mappings_query().filter(
+            CapabilityProcessMapping.apqc_process_id == apqc_id
+        ).first()
         if existing:
             return (
                 jsonify(

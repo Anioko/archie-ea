@@ -742,7 +742,14 @@ class CapabilityProcessMappingList(Resource):
     @api.marshal_list_with(capability_process_model)
     def get(self):
         """List capability-to-process mappings"""
-        query = CapabilityProcessMapping.query
+        # CapabilityProcessMapping carries no organization_id of its own --
+        # fence through BusinessCapability (TenantMixin), the owning side of
+        # capability_id. See app/utils/process_capability_mapping_fence.py.
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+        )
+
+        query = owned_capability_process_mappings_query()
         capability_id = request.args.get("capability_id", type=int)
         process_id = request.args.get("process_id", type=int)
         relationship_type = request.args.get("relationship_type")
@@ -760,11 +767,19 @@ class CapabilityProcessMappingList(Resource):
     @login_required
     def post(self):
         """Create a new capability-process mapping"""
+        from app.utils.process_capability_mapping_fence import capability_owned_by_caller
+
         data = request.json
-        existing = CapabilityProcessMapping.query.filter_by(capability_id=data.get("capability_id"), apqc_process_id=data.get("apqc_process_id")).first()
+        capability_id = data.get("capability_id")
+        # capability_id must belong to the caller's organisation, or a
+        # caller could link another organisation's capability, and the
+        # duplicate-check below would leak that organisation's mapping id.
+        if capability_owned_by_caller(capability_id) is None:
+            return {"error": f"Capability not found: {capability_id}"}, 404
+        existing = CapabilityProcessMapping.query.filter_by(capability_id=capability_id, apqc_process_id=data.get("apqc_process_id")).first()
         if existing:
             return {"error": "Mapping already exists", "id": existing.id}, 409
-        mapping = CapabilityProcessMapping(capability_id=data.get("capability_id"), apqc_process_id=data.get("apqc_process_id"), relationship_type=data.get("relationship_type", "enables"), relationship_strength=data.get("relationship_strength", 3), impact_level=data.get("impact_level", "medium"), process_contribution=data.get("process_contribution", 50))
+        mapping = CapabilityProcessMapping(capability_id=capability_id, apqc_process_id=data.get("apqc_process_id"), relationship_type=data.get("relationship_type", "enables"), relationship_strength=data.get("relationship_strength", 3), impact_level=data.get("impact_level", "medium"), process_contribution=data.get("process_contribution", 50))
         db.session.add(mapping)
         db.session.commit()
         return {"message": "Mapping created", "id": mapping.id}, 201
@@ -776,8 +791,14 @@ class ProcessCapabilities(Resource):
     @login_required
     def get(self, id):
         """Get all business capabilities linked to an APQC process"""
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+        )
+
         process = APQCProcess.query.get_or_404(id)
-        mappings = CapabilityProcessMapping.query.filter_by(apqc_process_id=id).all()
+        mappings = owned_capability_process_mappings_query().filter(
+            CapabilityProcessMapping.apqc_process_id == id
+        ).all()
         return {"process": process.to_dict(), "capabilities": [m.to_dict() for m in mappings], "capability_count": len(mappings)}
 
 
@@ -787,6 +808,10 @@ class VendorCapabilityProcessMatrix(Resource):
     @login_required
     def get(self):
         """Get the complete Vendor -> APQC Process -> Capability matrix."""
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+        )
+
         vendor_id = request.args.get("vendor_id", type=int)
         product_id = request.args.get("product_id", type=int)
         capability_id = request.args.get("capability_id", type=int)
@@ -804,7 +829,12 @@ class VendorCapabilityProcessMatrix(Resource):
                 process = APQCProcess.query.get(apqc_map.apqc_process_id)
                 if not process:
                     continue
-                cap_mappings = CapabilityProcessMapping.query.filter_by(apqc_process_id=process.id).all()
+                # CapabilityProcessMapping has no organization_id of its
+                # own -- fence through BusinessCapability, the same way as
+                # the two GET endpoints above in this file.
+                cap_mappings = owned_capability_process_mappings_query().filter(
+                    CapabilityProcessMapping.apqc_process_id == process.id
+                ).all()
                 if capability_id:
                     cap_mappings = [c for c in cap_mappings if c.capability_id == capability_id]
                 for cap_map in cap_mappings:

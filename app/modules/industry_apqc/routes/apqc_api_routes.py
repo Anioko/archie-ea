@@ -229,14 +229,18 @@ def get_process_applications(process_id):
     try:
         from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
         from app.models.application_layer import ApplicationComponent
+        from app.utils.process_capability_mapping_fence import (
+            owned_process_application_mappings_query,
+        )
 
         process = APQCProcess.query.get(process_id)
         if not process:
             return jsonify({"error": f"Process not found: {process_id}"}), 404
 
-        # Get existing mappings for this process
-        existing_mappings = ProcessApplicationMapping.query.filter_by(
-            apqc_process_id=process_id
+        # Get existing mappings for this process, fenced to the caller's
+        # organisation -- see app/utils/process_capability_mapping_fence.py.
+        existing_mappings = owned_process_application_mappings_query().filter(
+            ProcessApplicationMapping.apqc_process_id == process_id
         ).all()
         mapped_app_ids = {m.application_id for m in existing_mappings}
         mapping_by_app = {m.application_id: m for m in existing_mappings}
@@ -301,15 +305,19 @@ def get_process_mappings():
             CapabilityProcessMapping,
             ProcessApplicationMapping,
         )
+        from app.utils.process_capability_mapping_fence import (
+            owned_capability_process_mappings_query,
+            owned_process_application_mappings_query,
+        )
 
         mapping_type = request.args.get("type", "capability")
         capability_id = request.args.get("capability_id", type=int)
         apqc_process_id = request.args.get("apqc_process_id", type=int)
 
         if mapping_type == "application":
-            query = ProcessApplicationMapping.query
+            query = owned_process_application_mappings_query()
             if apqc_process_id:
-                query = query.filter_by(apqc_process_id=apqc_process_id)
+                query = query.filter(ProcessApplicationMapping.apqc_process_id == apqc_process_id)
             mappings = query.all()
             return jsonify(
                 {
@@ -319,11 +327,11 @@ def get_process_mappings():
                 }
             )
         else:
-            query = CapabilityProcessMapping.query
+            query = owned_capability_process_mappings_query()
             if capability_id:
-                query = query.filter_by(capability_id=capability_id)
+                query = query.filter(CapabilityProcessMapping.capability_id == capability_id)
             if apqc_process_id:
-                query = query.filter_by(apqc_process_id=apqc_process_id)
+                query = query.filter(CapabilityProcessMapping.apqc_process_id == apqc_process_id)
             mappings = query.all()
             return jsonify(
                 {
@@ -367,6 +375,11 @@ def save_process_mappings():
             CapabilityProcessMapping,
             ProcessApplicationMapping,
         )
+        from app.utils.process_capability_mapping_fence import (
+            application_owned_by_caller,
+            capability_owned_by_caller,
+            fenced_process_application_mapping,
+        )
 
         data = request.get_json()
         if not data:
@@ -387,13 +400,26 @@ def save_process_mappings():
                 if not app_id:
                     continue
 
+                # ProcessApplicationMapping carries no organization_id of
+                # its own -- ownership is only reachable via application_id.
+                # Verify app_id is the caller's own before either branch
+                # below runs; skip this item (like the missing-id case
+                # above) rather than fail the whole batch.
+                if application_owned_by_caller(app_id) is None:
+                    continue
+
                 mapping_fields = app_data.get("mapping", {})
                 mapping_id = app_data.get("mapping_id")
 
                 # Check for existing mapping
                 existing = None
                 if mapping_id:
-                    existing = ProcessApplicationMapping.query.get(int(mapping_id))
+                    existing = fenced_process_application_mapping(int(mapping_id))
+                    if existing is not None and existing.application_id != app_id:
+                        # mapping_id names a row outside app_id's (already
+                        # proven owned) application -- refuse rather than
+                        # mutate a row that belongs elsewhere.
+                        existing = None
 
                 if not existing:
                     existing = ProcessApplicationMapping.query.filter_by(
@@ -440,6 +466,11 @@ def save_process_mappings():
         elif "capability_id" in data and "apqc_process_id" in data:
             capability_id = int(data["capability_id"])
             apqc_process_id = int(data["apqc_process_id"])
+
+            # CapabilityProcessMapping carries no organization_id of its
+            # own -- ownership is only reachable via capability_id.
+            if capability_owned_by_caller(capability_id) is None:
+                return jsonify({"error": f"Capability not found: {capability_id}"}), 404
 
             existing = CapabilityProcessMapping.query.filter_by(
                 capability_id=capability_id, apqc_process_id=apqc_process_id
@@ -489,15 +520,15 @@ def delete_process_mapping(mapping_id):
     """
     try:
         from app import db
-        from app.models.apqc_process import (
-            CapabilityProcessMapping,
-            ProcessApplicationMapping,
+        from app.utils.process_capability_mapping_fence import (
+            fenced_capability_process_mapping,
+            fenced_process_application_mapping,
         )
 
         mapping_type = request.args.get("type")
 
         if mapping_type == "application":
-            mapping = ProcessApplicationMapping.query.get(mapping_id)
+            mapping = fenced_process_application_mapping(mapping_id)
             if not mapping:
                 return jsonify({"error": "Application mapping not found"}), 404
             db.session.delete(mapping)
@@ -507,7 +538,7 @@ def delete_process_mapping(mapping_id):
             )
 
         elif mapping_type == "capability":
-            mapping = CapabilityProcessMapping.query.get(mapping_id)
+            mapping = fenced_capability_process_mapping(mapping_id)
             if not mapping:
                 return jsonify({"error": "Capability mapping not found"}), 404
             db.session.delete(mapping)
