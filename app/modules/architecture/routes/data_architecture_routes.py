@@ -25,6 +25,7 @@ from app.models import (
     LogicalDataModel,
     PhysicalDataModel,
 )
+from app.models.process_data import DataDomain
 from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,36 @@ def _system_of_record_application_id_from_form():
     if application is None:
         raise sor.DataSorError("Pick an application from your portfolio.")
     return application.id
+
+
+def _domain_id_from_form(submitted_id, *, allow_default=False):
+    org_id = _current_org_id()
+    if submitted_id:
+        domain = sor.get_domain(org_id, submitted_id)
+        if domain is None:
+            raise sor.DataSorError("Pick a data domain from your organisation.")
+        return domain.id
+
+    if not allow_default:
+        return None
+
+    default_domain = (
+        DataDomain.query.filter(
+            DataDomain.organization_id == org_id,
+            DataDomain.name == "General",
+        )
+        .order_by(DataDomain.id)
+        .first()
+    )
+    if default_domain is None:
+        default_domain = DataDomain(
+            name="General",
+            description="Default data domain",
+            organization_id=org_id,
+        )
+        db.session.add(default_domain)
+        db.session.flush()
+    return default_domain.id
 
 
 # ============================================================================
@@ -574,17 +605,10 @@ def create_data_entity():
             flash("Name is required.", "error")
             return redirect(request.url)
 
-        domain_id = request.form.get("domain_id", type=int)
-        if not domain_id:
-            # Auto-create a default domain if none exists
-            default_domain = DataDomain.query.filter_by(name="General").first()
-            if not default_domain:
-                default_domain = DataDomain(name="General", description="Default data domain")
-                db.session.add(default_domain)
-                db.session.flush()
-            domain_id = default_domain.id
-
         try:
+            domain_id = _domain_id_from_form(
+                request.form.get("domain_id", type=int), allow_default=True
+            )
             system_of_record_application_id = _system_of_record_application_id_from_form()
         except sor.DataSorError as exc:
             flash(str(exc), "error")
@@ -623,21 +647,25 @@ def edit_data_entity(entity_id):
     from flask import flash, redirect, url_for
     from app.models.process_data import DataDomain, DataEntity
 
-    entity = DataEntity.query.get_or_404(entity_id)
+    entity = sor.get_entity(_current_org_id(), entity_id)
+    if entity is None:
+        return render_template("errors/404.html"), 404
     sor.backfill_system_of_record_application_links(_current_org_id(), [entity.id])
     db.session.refresh(entity)
 
     if request.method == "POST":
         try:
-            entity.system_of_record_application_id = _system_of_record_application_id_from_form()
+            domain_id = _domain_id_from_form(request.form.get("domain_id", type=int))
+            system_of_record_application_id = _system_of_record_application_id_from_form()
         except sor.DataSorError as exc:
             flash(str(exc), "error")
             return redirect(request.url)
 
+        entity.domain_id = domain_id or entity.domain_id
+        entity.system_of_record_application_id = system_of_record_application_id
         entity.name = request.form.get("name", "").strip() or entity.name
         entity.business_name = request.form.get("business_name", "").strip() or None
         entity.description = request.form.get("description", "").strip() or None
-        entity.domain_id = request.form.get("domain_id", type=int) or entity.domain_id
         entity.entity_type = request.form.get("entity_type") or None
         entity.data_classification = request.form.get("data_classification") or None
         entity.contains_pii = "contains_pii" in request.form

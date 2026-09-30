@@ -203,6 +203,7 @@ def test_similarity_matching_flags_near_match_copies_per_organisation(db_session
     with tenant_ctx(org_a.id):
         crm = _app(db_session, org_a.id, "CRM")
         erp = _app(db_session, org_a.id, "ERP")
+        support = _app(db_session, org_a.id, "Support")
         _entity(
             db_session,
             org_a.id,
@@ -211,6 +212,7 @@ def test_similarity_matching_flags_near_match_copies_per_organisation(db_session
         )
         _holds(db_session, org_a.id, crm, "Customer Master")
         _holds(db_session, org_a.id, erp, "Customer Master")
+        _holds(db_session, org_a.id, support, "Customer Support Ticket")
     with tenant_ctx(org_b.id):
         other_a = _app(db_session, org_b.id, "Other A")
         other_b = _app(db_session, org_b.id, "Other B")
@@ -332,6 +334,109 @@ def test_backfill_links_legacy_system_of_record_text_without_second_authority(
     reloaded = db_session.get(DataEntity, legacy.id)
     assert reloaded.system_of_record_application_id == local_app.id
     assert reloaded.system_of_record_application_id != foreign_app.id
+
+
+def test_create_data_entity_rejects_foreign_domain_and_application(
+    app, client, db_session, make_org, login_as
+):
+    from app.models.process_data import DataEntity
+
+    org_a, org_b = make_org("create-a"), make_org("create-b")
+    architect = _user(db_session, org_a.id, "data_architect")
+    local_domain = _domain(db_session, org_a.id)
+    foreign_domain = _domain(db_session, org_b.id)
+    local_app = _app(db_session, org_a.id, "Local Register")
+    foreign_app = _app(db_session, org_b.id, "Foreign Register")
+
+    login_as(client, architect)
+
+    foreign_domain_response = client.post(
+        "/architecture/data-entities/create",
+        data={
+            "name": "Cross Tenant Create",
+            "domain_id": foreign_domain.id,
+            "application_id": local_app.id,
+        },
+        follow_redirects=True,
+    )
+    assert foreign_domain_response.status_code == 200
+    assert b"Pick a data domain from your organisation." in foreign_domain_response.data
+    assert (
+        DataEntity.query.filter(
+            DataEntity.organization_id == org_a.id,
+            DataEntity.name == "Cross Tenant Create",
+        ).count()
+        == 0
+    )
+
+    foreign_application_response = client.post(
+        "/architecture/data-entities/create",
+        data={
+            "name": "Cross Tenant Application",
+            "domain_id": local_domain.id,
+            "application_id": foreign_app.id,
+        },
+        follow_redirects=True,
+    )
+    assert foreign_application_response.status_code == 200
+    assert b"Pick an application from your portfolio." in foreign_application_response.data
+    assert (
+        DataEntity.query.filter(
+            DataEntity.organization_id == org_a.id,
+            DataEntity.name == "Cross Tenant Application",
+        ).count()
+        == 0
+    )
+
+
+def test_edit_data_entity_rejects_foreign_ids_and_foreign_entity_route(
+    app, client, db_session, make_org, login_as
+):
+    org_a, org_b = make_org("edit-a"), make_org("edit-b")
+    architect = _user(db_session, org_a.id, "data_architect")
+    local_domain = _domain(db_session, org_a.id)
+    replacement_domain = _domain(db_session, org_a.id)
+    foreign_domain = _domain(db_session, org_b.id)
+    local_app = _app(db_session, org_a.id, "Local Authoritative App")
+    foreign_app = _app(db_session, org_b.id, "Foreign Authoritative App")
+    entity = _entity(db_session, org_a.id, "Customer Ledger", domain=local_domain)
+    foreign_entity = _entity(db_session, org_b.id, "Foreign Ledger", domain=foreign_domain)
+
+    login_as(client, architect)
+
+    assert client.get(f"/architecture/data-entities/{foreign_entity.id}/edit").status_code == 404
+
+    foreign_domain_response = client.post(
+        f"/architecture/data-entities/{entity.id}/edit",
+        data={
+            "name": entity.name,
+            "domain_id": foreign_domain.id,
+            "application_id": local_app.id,
+        },
+        follow_redirects=True,
+    )
+    assert foreign_domain_response.status_code == 200
+    assert b"Pick a data domain from your organisation." in foreign_domain_response.data
+    db_session.expire_all()
+    entity = db_session.get(type(entity), entity.id)
+    assert entity.domain_id == local_domain.id
+    assert entity.system_of_record_application_id is None
+
+    foreign_application_response = client.post(
+        f"/architecture/data-entities/{entity.id}/edit",
+        data={
+            "name": entity.name,
+            "domain_id": replacement_domain.id,
+            "application_id": foreign_app.id,
+        },
+        follow_redirects=True,
+    )
+    assert foreign_application_response.status_code == 200
+    assert b"Pick an application from your portfolio." in foreign_application_response.data
+    db_session.expire_all()
+    entity = db_session.get(type(entity), entity.id)
+    assert entity.domain_id == local_domain.id
+    assert entity.system_of_record_application_id is None
 
 
 # --------------------------------------------------------- master domains
@@ -464,6 +569,53 @@ def test_declare_route_writes_and_refuses_unauthorised_and_foreign(
     assert entity.system_of_record_application_id == application.id
     page = client.get(f"/data-governance/entities/{entity.id}")
     assert page.status_code == 200 and b"Ledger" in page.data
+
+
+def test_system_of_record_pages_share_the_application_picker_helper(
+    app, client, db_session, make_org, login_as
+):
+    from flask import render_template
+
+    org = make_org("picker")
+    architect = _user(db_session, org.id, "data_architect")
+    entity = _entity(db_session, org.id, "Customer")
+
+    login_as(client, architect)
+    detail_page = client.get(f"/data-governance/entities/{entity.id}")
+    assert detail_page.status_code == 200
+    assert b"applicationPickerSearch" in detail_page.data
+    assert b"dataGovAppPicker" not in detail_page.data
+
+    with app.test_request_context():
+        partial = render_template(
+            "solutions/partials/_linked_applications_picker.html",
+            solution={"id": 1},
+            linked_apps=[],
+        )
+    partial_bytes = partial.encode("utf-8")
+    assert b"applicationPickerSearch" in partial_bytes
+    assert b"/applications/api/list" in partial_bytes
+    assert b"/api/enterprise/applications" not in partial_bytes
+
+
+def test_entities_page_shows_legacy_system_of_record_label_with_reason(
+    app, client, db_session, make_org, login_as
+):
+    org = make_org("legacy")
+    architect = _user(db_session, org.id, "data_architect")
+    _entity(
+        db_session,
+        org.id,
+        "Invoice",
+        system_of_record="Legacy ERP label with no matching app",
+    )
+
+    login_as(client, architect)
+    page = client.get("/data-governance/entities")
+    assert page.status_code == 200
+    assert b"Legacy label: Legacy ERP label with no matching app" in page.data
+    assert b"no matching application found yet" in page.data
+    assert b"Not declared" not in page.data
 
 
 def test_entity_detail_is_not_visible_to_another_organisation(
