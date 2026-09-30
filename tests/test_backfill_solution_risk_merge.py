@@ -182,12 +182,7 @@ def test_two_organisations_backfill_never_mixes_rows(app, db_session, make_org):
     result = _run(app)  # unscoped: every organisation in one pass
     assert result.exit_code == 0, result.output
 
-    all_risks_debug = Risk.query.all()
     risks_a = Risk.query.filter_by(organization_id=org_a_id).all()
     risks_b = Risk.query.filter_by(organization_id=org_b_id).all()
-    debug = (
-        f"output={result.output!r} org_a_id={org_a_id} org_b_id={org_b_id} "
-        f"all_risks={[(r.id, r.organization_id, r.title) for r in all_risks_debug]}"
-    )
-    assert [r.title for r in risks_a] == ["Org A risk"], debug
-    assert [r.title for r in risks_b] == ["Org B risk"], debug
+    assert [r.title for r in risks_a] == ["Org A risk"], result.output
+    assert [r.title for r in risks_b] == ["Org B risk"], result.output

@@ -95,6 +95,16 @@ def test_score_history_is_scoped_per_organisation(app, db_session, make_org, ten
         with pytest.raises(Exception):
             risk_service.set_risk_score(risk_a.id, "residual", likelihood=4, impact=4)
 
+    # Read as an unscoped observer, not as either tenant: tenant_ctx pushes a
+    # request context that shares the already-active app context (and its
+    # g) db_session opened for this test, so g.current_org_id from the last
+    # `with tenant_ctx(...)` block above is still set here unless cleared --
+    # the same trap scripts/check_store_agreement.py's _fresh_identity exists
+    # to avoid.
+    from flask import g
+    if hasattr(g, "current_org_id"):
+        delattr(g, "current_org_id")
+
     # Every history row is correctly attributed; B's write never touched A's.
     a_rows = RiskScoreHistory.query.filter_by(risk_id=risk_a.id).all()
     b_rows = RiskScoreHistory.query.filter_by(risk_id=risk_b.id).all()
@@ -109,4 +119,6 @@ def test_score_history_is_scoped_per_organisation(app, db_session, make_org, ten
             # Organisation A cannot read organisation B's risk's history either.
             risk_service.risk_score_history(risk_b.id)
 
-    assert Risk.query.get(risk_a.id).residual_likelihood == 1  # untouched by org B's attempt
+    if hasattr(g, "current_org_id"):
+        delattr(g, "current_org_id")
+    assert Risk.query.filter_by(id=risk_a.id).first().residual_likelihood == 1  # untouched by org B's attempt
