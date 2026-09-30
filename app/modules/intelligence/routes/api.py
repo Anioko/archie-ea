@@ -9,6 +9,7 @@
   GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/strategy/<element_id>
   GET  /api/v1/intelligence/accountability/<element_id>
+  GET  /api/v1/intelligence/traceability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -505,6 +506,37 @@ def cross_layer_impact(element_id: int):
             "next_cursor": result.get("next_cursor"),
         }
     )
+
+
+@intelligence_api.route("/traceability/<int:element_id>", methods=["GET"])
+@login_required
+def traceability_check(element_id: int):
+    """Does this element trace up to a capability and down to technology?
+
+    Serialises ``TraceabilityCheckService.check``, which reads the same walk
+    as the impact route above. An element outside the caller's organisation
+    answers exactly as one that does not exist.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.modules.intelligence.services.traceability_check_service import TraceabilityCheckService
+
+    result = TraceabilityCheckService.check(element_id, organization_id)
+    if result.get("state") != "checked":
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+    return success_response(result)
 
 
 @intelligence_api.route("/risk/<int:element_id>", methods=["GET"])

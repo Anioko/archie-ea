@@ -82,6 +82,7 @@ from typing import Callable, Iterator, Sequence
 from flask import g
 
 from app.extensions import db
+from app.utils.tracing import trace_scope
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +337,28 @@ def active_organization_ids() -> list[int]:
     return [int(row[0]) for row in rows]
 
 
+def organization_id_of(model, record_id) -> int | None:
+    """The organisation that owns one record, for work handed off to run later.
+
+    A background worker (a spawned process, a Celery task) is given a record id
+    by the request that started it, and runs with no request and therefore no
+    tenant. It resolves the owner here, then does its real work inside
+    ``tenant_scope(owner)``, so every read is filtered and every new row is
+    stamped exactly as the originating request would have done.
+
+    Like ``active_organization_ids`` this is a deliberate, single-column global
+    read by primary key, taken before any tenant is entered. It returns a plain
+    int, never an ORM object, so nothing enters an identity map that a later
+    ``get()`` under the tenant could be served from. ``None`` means there is no
+    such record (or it has no owner); callers refuse rather than run unscoped.
+    """
+    table = model.__table__
+    value = db.session.execute(
+        db.select(table.c.organization_id).where(table.c.id == record_id)
+    ).scalar()
+    return int(value) if value is not None else None
+
+
 # --------------------------------------------------------------------------- #
 # The harness
 # --------------------------------------------------------------------------- #
@@ -395,7 +418,7 @@ def run_for_each_tenant(
             for organization_id in ids:
                 started = time.monotonic()
                 try:
-                    with tenant_scope(organization_id):
+                    with tenant_scope(organization_id), trace_scope("job", job_name):
                         value = func(organization_id)
                         # Commit inside the tenant scope so the flush still
                         # carries this tenant's stamp from before_flush.
