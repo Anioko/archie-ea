@@ -26,6 +26,7 @@ on:
   # first real signal arrived at the merge to main - the most expensive possible
   # moment to learn a ratchet has regressed.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   # Run the full suite against a work-in-progress branch without opening a PR.
   workflow_dispatch:
 
@@ -176,20 +177,23 @@ jobs:
   # database sessions; it does not protect against state shared ACROSS files.
   tests-shard:
     name: Tests (pytest + coverage) — shard ${{ matrix.shard }}
-    # Self-hosted ibm-vsi runners only serve push/dispatch on this repository and PRs
-    # whose head repository is this one — a PR from a fork never runs job code on
-    # our runners. Everything else (forked PRs) falls back to GitHub-hosted
-    # ubuntu-latest. Several jobs run at once on the same ibm-vsi machine, so the
-    # postgres service below must not bind a fixed host port either way.
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
+    # Same-repository runs (push/dispatch and same-repo PRs) select a runner
+    # via repository variables: vars.CI_FAST_RUNNER takes precedence when the
+    # PR carries the ci-fast label, vars.CI_SHARD_RUNNER routes to a managed
+    # pool when set, otherwise the job falls back to the self-hosted ibm-vsi
+    # runners. A PR from a fork never runs job code on our own or a managed
+    # runner — it always uses ubuntu-latest. Several jobs run at once on the
+    # same ibm-vsi machine, so the postgres service below must not bind a
+    # fixed host port either way.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (vars.CI_FAST_RUNNER && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-fast') && vars.CI_FAST_RUNNER || vars.CI_SHARD_RUNNER || fromJSON('["self-hosted","ibm-vsi"]')) || 'ubuntu-latest' }}
     strategy:
       # A failing shard should not hide failures in the others.
       fail-fast: false
-      # Only three ibm-vsi runners exist. On them, run at most three shards at
-      # once so one CI run's eight shards cannot take every dedicated runner
-      # for its whole duration; GitHub-hosted runners (forked PRs) have no
-      # such limit, so all eight shards start together there.
-      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 3 || 8 }}
+      # vars.CI_SHARD_MAX_PARALLEL controls how many shards run at once on
+      # same-repository runs (default 6 when the variable is unset).
+      # GitHub-hosted runners (forked PRs) have no such limit, so all eight
+      # shards start together there.
+      max-parallel: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (vars.CI_SHARD_MAX_PARALLEL || 6) || 8 }}
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     services:
