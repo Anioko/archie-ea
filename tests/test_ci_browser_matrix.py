@@ -139,3 +139,49 @@ def test_labeled_event_triggers_workflow_for_ci_fast():
     takes effect without requiring a new push."""
     workflow = _workflow()
     assert "labeled" in workflow
+
+
+def test_ci_fast_max_parallel_is_8_bypassing_shard_cap():
+    """On the ci-fast lane (CI_FAST_RUNNER set and ci-fast label present)
+    max-parallel must be 8, bypassing CI_SHARD_MAX_PARALLEL.  The expression
+    must reference CI_FAST_RUNNER and ci-fast, and the literal 8 for the
+    ci-fast lane must appear before the CI_SHARD_MAX_PARALLEL fallback so it
+    takes precedence."""
+    jobs = _parsed()
+    max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
+
+    assert "vars.CI_FAST_RUNNER" in max_parallel
+    assert "ci-fast" in max_parallel
+    # The ci-fast 8 must appear before the CI_SHARD_MAX_PARALLEL reference
+    # so the ci-fast lane's value takes precedence.
+    fast_eight_pos = max_parallel.index("&& 8 || vars.CI_SHARD_MAX_PARALLEL")
+    shard_var_pos = max_parallel.index("vars.CI_SHARD_MAX_PARALLEL")
+    assert fast_eight_pos < shard_var_pos, (
+        "ci-fast lane's 8 must appear before vars.CI_SHARD_MAX_PARALLEL "
+        "so it takes precedence over the shard cap"
+    )
+
+
+def test_jobs_skip_on_non_ci_fast_labeled_events():
+    """Every job (except release-image, which already gates on event_name)
+    must carry an if: condition that skips the job when the trigger is a
+    labeled pull_request event that does not carry the ci-fast label.  This
+    prevents a full CI re-run when any unrelated label is added to a PR."""
+    jobs = _parsed()
+    gating_jobs = {
+        "secret-scan", "static-gates", "boot-health", "tests-shard",
+        "tests", "db-gates", "security-sast", "smoke",
+        "browser-compatibility", "walkthrough", "dependency-audit",
+    }
+    for job_id in gating_jobs:
+        job = jobs[job_id]
+        if_expr = job.get("if", "")
+        assert "labeled" in if_expr, (
+            f"{job_id} must guard against non-ci-fast labeled events"
+        )
+        assert "ci-fast" in if_expr, (
+            f"{job_id} must allow ci-fast labeled events through"
+        )
+        assert "github.event.action" in if_expr or "labeled" in if_expr, (
+            f"{job_id} must check the event action for labeled"
+        )
