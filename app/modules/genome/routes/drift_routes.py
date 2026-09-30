@@ -142,10 +142,6 @@ def _remove_enabled_provider_leaks(previous_ids):
     APISettings.query.filter(APISettings.id.in_(sorted(leaked_ids))).delete(
         synchronize_session=False
     )
-    logger.error(
-        "Model-health rescan created enabled APISettings rows %s; removing them",
-        sorted(leaked_ids),
-    )
     return sorted(leaked_ids)
 
 
