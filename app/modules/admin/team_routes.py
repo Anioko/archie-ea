@@ -271,5 +271,16 @@ def team_remove_member(user_id):
     ).first()
     if record:
         db.session.delete(record)
+        # Revoke the Administrator role for non-platform admins being
+        # removed from this organisation, so rbac_service.is_org_admin()
+        # (which falls back to user.is_admin() for the user's own org)
+        # no longer answers True after membership is deleted.
+        user = db.session.get(User, user_id)
+        if user is not None and user.is_admin() and not user.is_platform_admin:
+            from app.models.user import Role as UserRole
+
+            default_role = UserRole.query.filter_by(default=True).first()
+            if default_role is not None:
+                user.role = default_role
         db.session.commit()
     return jsonify({"status": "removed"})
