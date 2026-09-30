@@ -86,7 +86,10 @@ def test_pairing_never_visible_to_another_organisation(db_session, make_org, ten
         canonical_id = canonical.id
 
     with tenant_ctx(org_b.id):
-        assert ArchitectureDecision.query.get(canonical_id) is None
+        # filter_by (not .get(), which checks the identity map first and can
+        # return an already-loaded row from another org without re-querying,
+        # bypassing the tenant filter -- see app/models/adr.py's own note).
+        assert ArchitectureDecision.query.filter_by(id=canonical_id).first() is None
         assert ArchitectureDecision.query.filter_by(title="Org A's decision").first() is None
 
 
@@ -148,26 +151,12 @@ def test_backfill_run_twice_creates_no_duplicate_pairs(db_session, make_org, ten
     ).count() == 1
 
 
-def test_backfill_skips_a_record_with_no_organisation(db_session, make_org):
-    """Never guess a tenant: a record with no org is left unpaired."""
-    record = ArchitectureDecisionRecord(
-        adr_number=1,
-        title="Orphan",
-        status="proposed",
-        context="ctx",
-        decision="dec",
-        rationale="rat",
-        consequences="cons",
-        organization_id=None,
-    )
-    db.session.add(record)
-    db.session.commit()
-
-    adr_stats, _ = run_backfill(dry_run=False)
-    assert adr_stats["skipped_no_org"] >= 1
-
-    db.session.refresh(record)
-    assert record.retired_into_id is None
+# No test for an ArchitectureDecisionRecord with organization_id=None: the
+# column is NOT NULL at the database level (it has carried TenantMixin since
+# before this brief) and that constraint is enforced regardless of insert
+# path, so the state cannot actually occur. The backfill command's
+# `skipped_no_org` branch is defensive (belt-and-suspenders, matching the
+# same-named guard in other backfill_*.py commands) rather than reachable.
 
 
 # --------------------------------------------- decision_ledger tenant fence
@@ -214,18 +203,17 @@ def test_decision_ledger_backfill_derives_org_from_capability(db_session, make_o
         cap_id = cap.id
         db.session.commit()
 
-    # Inserted with no organisation, as every pre-existing row would be
-    # right after the schema expand (bypassing the ORM tenant stamp on
-    # purpose, to simulate a genuinely un-migrated row).
-    row = DecisionLedger(
-        capability_id=str(cap_id),
-        capability_name_snapshot="Backfill target",
-        decision_id="DEC-BF-1",
-        decision_summary="Needs an org",
-    )
-    db.session.add(row)
+    # Raw SQL, explicit NULL organisation_id: every pre-existing row is in
+    # exactly this state right after the schema expand. Deliberately not the
+    # ORM constructor -- its default fills organization_id from context in
+    # ways that would make this fixture's own state depend on ambient test
+    # ordering rather than asserting the thing this test is actually about.
+    row_id = db.session.execute(db.text(
+        "INSERT INTO decision_ledger "
+        "(capability_id, capability_name_snapshot, decision_id, decision_summary, decision_sequence, decision_date, created_at, organization_id) "
+        "VALUES (:cap_id, 'Backfill target', 'DEC-BF-1', 'Needs an org', 1, now(), now(), NULL) RETURNING id"
+    ), {"cap_id": str(cap_id)}).scalar()
     db.session.commit()
-    row_id = row.id
 
     assert db.session.execute(
         db.text("SELECT organization_id FROM decision_ledger WHERE id = :i"), {"i": row_id}
@@ -241,15 +229,13 @@ def test_decision_ledger_backfill_derives_org_from_capability(db_session, make_o
 
 
 def test_decision_ledger_backfill_leaves_unresolvable_rows_as_orphans(db_session, make_org):
-    row = DecisionLedger(
-        capability_id="not-a-number",
-        capability_name_snapshot="Unresolvable",
-        decision_id="DEC-ORPHAN-1",
-        decision_summary="No matching capability",
-    )
-    db.session.add(row)
+    row_id = db.session.execute(db.text(
+        "INSERT INTO decision_ledger "
+        "(capability_id, capability_name_snapshot, decision_id, decision_summary, decision_sequence, decision_date, created_at, organization_id) "
+        "VALUES ('not-a-number', 'Unresolvable', 'DEC-ORPHAN-1', 'No matching capability', 1, now(), now(), NULL) "
+        "RETURNING id"
+    )).scalar()
     db.session.commit()
-    row_id = row.id
 
     _, ledger_stats = run_backfill(dry_run=False)
     assert ledger_stats["orphan"] >= 1

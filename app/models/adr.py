@@ -197,7 +197,13 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
         from app.models.architecture_decision import ArchitectureDecision
 
         if self.retired_into_id is not None:
-            return ArchitectureDecision.query.get(self.retired_into_id)
+            # .query.get() checks the identity map first and can return an
+            # already-loaded row from a different organisation's session
+            # activity without re-issuing a SELECT, bypassing the tenant
+            # filter (do_orm_execute only fires on an actual query) -- the
+            # same pitfall documented in app/middleware/tenant_isolation.py.
+            # filter_by().first() always queries, so the filter always applies.
+            return ArchitectureDecision.query.filter_by(id=self.retired_into_id).first()
         if self.organization_id is None:
             return None
 
