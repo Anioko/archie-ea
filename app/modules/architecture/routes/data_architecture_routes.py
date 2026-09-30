@@ -645,7 +645,7 @@ def create_data_entity():
 def edit_data_entity(entity_id):
     """Edit an existing data entity."""
     from flask import flash, redirect, url_for
-    from app.models.process_data import DataDomain, DataEntity
+    from app.models.process_data import DataDomain
 
     entity = sor.get_entity(_current_org_id(), entity_id)
     if entity is None:
