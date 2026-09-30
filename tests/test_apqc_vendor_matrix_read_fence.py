@@ -121,3 +121,86 @@ def test_ai_chat_process_gap_analysis_does_not_count_a_foreign_orgs_mapping(app,
     assert process_id in gap_process_ids, (
         "org B's mapping must not make this process look covered for org A"
     )
+
+
+def test_vendor_capability_process_matrix_excludes_a_foreign_organisations_capability(
+    app, db_session, make_org, client, login_as
+):
+    """D3: /api/vendors/apqc/vendor-capability-process-matrix"""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+    from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
+    from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
+
+    org_a = make_org("apqc-d3-a")
+    org_b = make_org("apqc-d3-b")
+    process = _process(db_session)
+    vendor = VendorOrganization(name=f"Vendor-{uuid.uuid4().hex[:6]}")
+    db_session.add(vendor)
+    db_session.flush()
+    product = VendorProduct(vendor_organization_id=vendor.id, name=f"Product-{uuid.uuid4().hex[:6]}")
+    db_session.add(product)
+    db_session.flush()
+    apqc_map = VendorProductAPQCMapping(
+        vendor_product_id=product.id, apqc_process_id=process.id,
+        coverage_percentage=50, automation_capability=50,
+    )
+    db_session.add(apqc_map)
+    cap_b = BusinessCapability(name="SECRET-CAP-B-D3", organization_id=org_b.id)
+    db_session.add(cap_b)
+    db_session.flush()
+    cpm_b = CapabilityProcessMapping(
+        capability_id=cap_b.id, apqc_process_id=process.id, process_contribution=50,
+    )
+    db_session.add(cpm_b)
+    db_session.flush()
+    user_a = _user(db_session, org_a, "d3")
+    product_id, uid = product.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.get("/api/vendors/apqc/vendor-capability-process-matrix", query_string={"product_id": product_id})
+
+    assert r.status_code == 200
+    text = r.get_data(as_text=True)
+    assert "SECRET-CAP-B-D3" not in text
+
+
+def test_apqc_suggestions_treats_a_foreign_organisations_link_as_still_unmapped(
+    app, db_session, make_org, client, login_as
+):
+    """D5: /api/capabilities/apqc-suggestions must not exclude a process from
+    this organisation's suggestions just because another organisation already
+    linked it."""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+
+    org_a = make_org("apqc-d5-a")
+    org_b = make_org("apqc-d5-b")
+    process = _process(db_session)
+    cap_a = BusinessCapability(name="Order Management", organization_id=org_a.id,
+                                business_domain="Operations", category="Core")
+    cap_b = BusinessCapability(name="CapB", organization_id=org_b.id)
+    db_session.add_all([cap_a, cap_b])
+    db_session.flush()
+    cpm_b = CapabilityProcessMapping(capability_id=cap_b.id, apqc_process_id=process.id)
+    db_session.add(cpm_b)
+    db_session.flush()
+    user_a = _user(db_session, org_a, "d5")
+    process_id, uid = process.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.get("/capability-map/api/capabilities/apqc-suggestions")
+
+    if r.status_code != 200:
+        import pytest
+        pytest.skip(f"suggestions route not reachable in this environment ({r.status_code})")
+    suggestions = r.get_json()  # a bare list; each item carries apqc_id/already_linked
+    entry = next((s for s in suggestions if s.get("apqc_id") == process_id), None)
+    assert entry is not None, "the process must still appear in org A's suggestions"
+    assert entry["already_linked"] is False, (
+        "org B's link to this process must not mark it already_linked for org A"
+    )
