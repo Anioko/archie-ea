@@ -179,6 +179,22 @@ class TestSeedIdempotence:
         seed_viewpoints(org_id=org.id)
         assert ArchiMateViewpoint.query.filter_by(viewpoint_type="canvas").count() == 3
 
+    def test_seed_property_templates_is_idempotent(self, app, db_session):
+        from app.commands.seed_viewpoints import seed_property_templates
+        from app.models.acm_property_template import AcmPropertyTemplate
+
+        first = seed_property_templates()
+        assert first == (4, 0)
+
+        second = seed_property_templates()
+        assert second == (0, 4)
+
+        rate_limit = AcmPropertyTemplate.query.filter_by(
+            archimate_type="ApplicationInterface",
+            property_key="rate_limit",
+        ).one()
+        assert rate_limit.property_type == "number"
+
 
 # -- Composer render shape ----------------------------------------------------
 

@@ -6,6 +6,7 @@ These routes provide API endpoints for:
 - Managing element relationships within an application
 """
 
+import json
 from flask import current_app, jsonify, request
 from flask_login import login_required  # dead-code-ok
 from sqlalchemy.exc import IntegrityError
@@ -506,7 +507,15 @@ def update_application_element(app_id, element_id):
         if "description" in data:
             element.description = data["description"]
         if "properties" in data:
-            element.properties = data["properties"]
+            from app.modules.architecture_assistant.property_service import PropertyService
+            props = data["properties"]
+            if isinstance(props, str):
+                try:
+                    props = json.loads(props)
+                except (TypeError, ValueError):
+                    props = {}
+            if isinstance(props, dict):
+                PropertyService().merge_element_properties(element, props)
         if "documentation" in data:
             element.documentation = data["documentation"]
         if "layer" in data:

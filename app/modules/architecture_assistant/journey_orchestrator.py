@@ -1338,6 +1338,8 @@ class JourneyOrchestrator:
         Supports: name, description, type, layer, acm_properties (merged patch).
         """
         from app.models.archimate_core import ArchiMateElement
+        from app.modules.architecture_assistant.property_service import PropertyService, PropertyValidationError
+
         element = ArchiMateElement.query.get(element_id)
         if not element:
             return {"error": f"Element {element_id} not found"}
@@ -1367,11 +1369,10 @@ class JourneyOrchestrator:
         if "layer" in updates and updates["layer"]:
             element.layer = updates["layer"]
         if governed_values is not None:
-            # Merge patch — only update the provided keys
-            existing = dict(element.acm_properties or {})
-            for key, val in governed_values.items():
-                existing[key] = {"value": val, "source": "user"}
-            element.acm_properties = existing
+            try:
+                PropertyService().merge_element_properties(element, governed_values, source="user")
+            except PropertyValidationError as exc:
+                return {"error": str(exc), "status_code": 400}
 
         db.session.commit()
 
@@ -2535,7 +2536,7 @@ class JourneyOrchestrator:
     def update_proposal_properties(self, proposal_id, properties):
         """Update properties on a proposal. Sets source to 'user'."""
         from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
-        from app.modules.architecture_assistant.property_service import PropertyService
+        from app.modules.architecture_assistant.property_service import PropertyService, PropertyValidationError
         proposal = SolutionBlueprintProposal.query.get(proposal_id)
         if not proposal:
             return {"error": "Proposal not found"}
@@ -2547,7 +2548,15 @@ class JourneyOrchestrator:
         if property_errors:
             return {"error": " ".join(property_errors), "property_errors": property_errors}
         svc = PropertyService()
-        proposal.acm_properties = svc.merge_properties(proposal.acm_properties or {}, properties)
+        try:
+            proposal.acm_properties = svc.merge_properties(
+                proposal.acm_properties or {},
+                properties,
+                archimate_type=proposal.archimate_type,
+                source="user",
+            )
+        except PropertyValidationError as exc:
+            return {"error": str(exc), "status_code": 400}
         db.session.commit()
         return {"id": proposal.id, "acm_properties": proposal.acm_properties}
 

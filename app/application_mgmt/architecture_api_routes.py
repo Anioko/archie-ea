@@ -390,9 +390,8 @@ def api_update_architecture_element(id, element_id):
         if "description" in data:
             element.description = data["description"]
         if "properties" in data:
-            element.properties = (
-                json.dumps(data["properties"]) if data["properties"] else None
-            )
+            from app.modules.architecture_assistant.property_service import PropertyService
+            PropertyService().merge_element_properties(element, data["properties"] or {})
 
         db.session.commit()
 
