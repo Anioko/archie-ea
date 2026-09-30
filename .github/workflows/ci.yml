@@ -202,6 +202,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
     env:
       # create_app() selects config from FLASK_CONFIG. FLASK_ENV (set here before)
       # has no effect on config selection.
@@ -452,6 +453,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/archie_test
@@ -551,6 +553,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
     env:
       TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_smoke
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_smoke
@@ -638,6 +641,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
     env:
       TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_browser_compat
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_browser_compat
@@ -735,6 +739,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 10s
           --health-timeout 5s --health-retries 5
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
     env:
       TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_walkthrough
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/archie_walkthrough
