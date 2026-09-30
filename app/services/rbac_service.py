@@ -86,11 +86,15 @@ class RBACService:
                 org_id = getattr(current_user, "organization_id", None)
                 if org_id is None:
                     abort(403)
-                actual_role = self.get_user_role(org_id, current_user.id)
-                min_level = ROLE_HIERARCHY.get(min_role, 0)
-                actual_level = ROLE_HIERARCHY.get(actual_role, 0)
-                if actual_level < min_level:
-                    abort(403)
+                if min_role == "org_admin":
+                    if not self.is_org_admin(org_id, current_user.id):
+                        abort(403)
+                else:
+                    actual_role = self.get_user_role(org_id, current_user.id)
+                    min_level = ROLE_HIERARCHY.get(min_role, 0)
+                    actual_level = ROLE_HIERARCHY.get(actual_role, 0)
+                    if actual_level < min_level:
+                        abort(403)
                 return f(*args, **kwargs)
 
             return wrapper
