@@ -303,6 +303,21 @@ def test_backfill_org_id_scopes_the_update(db_session, make_org):
     )
 
 
+def test_backfill_sql_uses_literal_archimate_elements_statements():
+    """Literal SQL keeps the constant table name out of string interpolation."""
+    import inspect
+
+    import app.commands.backfill_archimate_layer_casing as command
+
+    source = inspect.getsource(command)
+
+    assert '"SELECT count(*) FROM archimate_elements WHERE TRUE"' in source
+    assert '"SELECT id, layer FROM archimate_elements "' in source
+    assert '"UPDATE archimate_elements SET layer = :layer WHERE id = :id"' in source
+    assert 'f"SELECT id, layer FROM {TABLE} "' not in source
+    assert 'f"UPDATE {TABLE} SET layer = :layer "' not in source
+
+
 def test_backfill_command_is_registered(app):
     """An unregistered CLI command cannot be run during a deployment."""
     assert "backfill-archimate-layer-casing" in app.cli.commands

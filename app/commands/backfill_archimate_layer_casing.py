@@ -83,14 +83,17 @@ def canonicalise_layer_rows(dry_run=False, org_id=None):
 
     conn = db.session.connection()
 
-    scanned = conn.execute(
-        text(f"SELECT count(*) FROM {TABLE} WHERE TRUE{scope or ''}"), params
-    ).scalar() or 0
+    scanned_sql = "SELECT count(*) FROM archimate_elements WHERE TRUE"
+    rows_sql = (
+        "SELECT id, layer FROM archimate_elements "
+        "WHERE layer IS NOT NULL"
+    )
+
+    scanned = conn.execute(text(scanned_sql + scope), params).scalar() or 0
 
     rows = conn.execute(
         text(
-            f"SELECT id, layer FROM {TABLE} "  # tenancy-ok: --org-id scopes this; a repair is deliberately cross-tenant by default
-            f"WHERE layer IS NOT NULL{scope} ORDER BY id"
+            rows_sql + scope + " ORDER BY id"  # tenancy-ok: --org-id scopes this; a repair is deliberately cross-tenant by default
         ),
         params,
     ).fetchall()
@@ -116,8 +119,7 @@ def canonicalise_layer_rows(dry_run=False, org_id=None):
         return report
 
     update_stmt = text(
-        f"UPDATE {TABLE} SET layer = :layer "  # tenancy-ok: --org-id scopes this; a repair is deliberately cross-tenant by default
-        f"WHERE id = :id"
+        "UPDATE archimate_elements SET layer = :layer WHERE id = :id"  # tenancy-ok: --org-id scopes this; a repair is deliberately cross-tenant by default
     )
     updated = 0
     for row_id in pending_ids:
