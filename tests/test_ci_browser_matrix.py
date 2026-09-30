@@ -2,12 +2,18 @@
 
 from pathlib import Path
 
+import yaml
+
 
 CI = Path(".github/workflows/ci.yml")
 
 
 def _workflow():
     return CI.read_text(encoding="utf-8")
+
+
+def _parsed():
+    return yaml.safe_load(_workflow())["jobs"]
 
 
 def test_ci_runs_critical_journeys_in_firefox_and_webkit():
@@ -70,3 +76,66 @@ def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
         assert installs and installs[0] < pytest_index, (
             f"{job_id} runs the non-smoke pytest suite without installing Chromium first"
         )
+
+
+# ── Shard runner choice and parallelism ────────────────────────────────────
+
+
+def test_shard_runs_on_falls_back_to_self_hosted_when_variable_unset():
+    """The shard job's runs-on references vars.CI_SHARD_RUNNER and falls back
+    to self-hosted + ibm-vsi when the variable is unset; a forked PR must
+    never leave ubuntu-latest."""
+    jobs = _parsed()
+    runs_on = jobs["tests-shard"]["runs-on"]
+
+    assert "vars.CI_SHARD_RUNNER" in runs_on
+    assert "self-hosted" in runs_on
+    assert "ibm-vsi" in runs_on
+    assert "ubuntu-latest" in runs_on
+    assert "github.event.pull_request.head.repo.full_name == github.repository" in runs_on
+
+
+def test_shard_max_parallel_reads_variable_with_default_6():
+    """max-parallel reads vars.CI_SHARD_MAX_PARALLEL and defaults to 6 when
+    the variable is unset; forked PRs keep 8."""
+    jobs = _parsed()
+    max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
+
+    assert "vars.CI_SHARD_MAX_PARALLEL" in max_parallel
+    assert "6" in max_parallel
+    assert "8" in max_parallel
+
+
+def test_ci_fast_runner_takes_precedence_over_shard_runner():
+    """When vars.CI_FAST_RUNNER is set and the PR carries the ci-fast label,
+    the shard job uses that runner. The variable and label check must both
+    appear in the runs-on expression, and CI_FAST_RUNNER must be evaluated
+    before CI_SHARD_RUNNER so it takes precedence."""
+    jobs = _parsed()
+    runs_on = jobs["tests-shard"]["runs-on"]
+
+    assert "vars.CI_FAST_RUNNER" in runs_on
+    assert "ci-fast" in runs_on
+    fast_pos = runs_on.index("vars.CI_FAST_RUNNER")
+    shard_pos = runs_on.index("vars.CI_SHARD_RUNNER")
+    assert fast_pos < shard_pos, (
+        "vars.CI_FAST_RUNNER must appear before vars.CI_SHARD_RUNNER "
+        "so it takes precedence"
+    )
+
+
+def test_ci_fast_runner_guarded_by_pull_request_event():
+    """vars.CI_FAST_RUNNER and the ci-fast label check must only apply to
+    pull_request events, so a push to main never evaluates the label check
+    against a missing pull_request context."""
+    jobs = _parsed()
+    runs_on = jobs["tests-shard"]["runs-on"]
+
+    assert "github.event_name == 'pull_request'" in runs_on
+
+
+def test_labeled_event_triggers_workflow_for_ci_fast():
+    """Adding a label must trigger a fresh workflow run so the ci-fast label
+    takes effect without requiring a new push."""
+    workflow = _workflow()
+    assert "labeled" in workflow

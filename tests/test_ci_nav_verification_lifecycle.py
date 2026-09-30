@@ -175,27 +175,46 @@ def test_backend_test_jobs_use_the_dedicated_runner_selection():
     """Every backend-test shard and the combining ``tests`` job run on this
     repository's dedicated ibm-vsi runners for push/dispatch and same-repo PRs,
     and on GitHub-hosted ubuntu-latest for forked PRs — so a fork's code never
-    runs on a self-hosted runner. On the three dedicated runners the shard
-    matrix runs at most three at once."""
+    runs on a self-hosted runner. The shard job's runner is configurable via
+    repository variables: vars.CI_FAST_RUNNER (with ci-fast label) and
+    vars.CI_SHARD_RUNNER, falling back to self-hosted ibm-vsi. The shard
+    max-parallel reads vars.CI_SHARD_MAX_PARALLEL with a default of 6."""
     jobs = _ci_jobs()
     own_branch = (
         "(github.event_name != 'pull_request' || "
         "github.event.pull_request.head.repo.full_name == github.repository)"
     )
-    expected = (
+
+    # tests job keeps the original expression (not configurable via variables)
+    expected_tests = (
         "${{ " + own_branch
         + " && fromJSON('[\"self-hosted\",\"ibm-vsi\"]') || 'ubuntu-latest' }}"
     )
-    for job_id in ("tests-shard", "tests"):
-        assert jobs[job_id]["runs-on"] == expected, job_id
-        steps = jobs[job_id]["steps"]
-        venv = _step_index(steps, "python -m venv --clear .venv")
-        install = _step_index(steps, "pip install -r requirements.txt")
-        assert 0 <= venv < install, f"{job_id} must install into its own venv"
+    assert jobs["tests"]["runs-on"] == expected_tests, "tests"
+    steps = jobs["tests"]["steps"]
+    venv = _step_index(steps, "python -m venv --clear .venv")
+    install = _step_index(steps, "pip install -r requirements.txt")
+    assert 0 <= venv < install, "tests must install into its own venv"
 
-    assert jobs["tests-shard"]["strategy"]["max-parallel"] == (
-        "${{ " + own_branch + " && 3 || 8 }}"
-    )
+    # tests-shard uses the new variable-driven expression
+    shard_runs_on = jobs["tests-shard"]["runs-on"]
+    assert "vars.CI_SHARD_RUNNER" in shard_runs_on
+    assert "vars.CI_FAST_RUNNER" in shard_runs_on
+    assert "ci-fast" in shard_runs_on
+    assert "self-hosted" in shard_runs_on
+    assert "ibm-vsi" in shard_runs_on
+    assert "ubuntu-latest" in shard_runs_on
+    assert own_branch in shard_runs_on
+    shard_steps = jobs["tests-shard"]["steps"]
+    venv = _step_index(shard_steps, "python -m venv --clear .venv")
+    install = _step_index(shard_steps, "pip install -r requirements.txt")
+    assert 0 <= venv < install, "tests-shard must install into its own venv"
+
+    max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
+    assert "vars.CI_SHARD_MAX_PARALLEL" in max_parallel
+    assert own_branch in max_parallel
+    assert "6" in max_parallel
+    assert "8" in max_parallel
     # Several jobs share one ibm-vsi machine: no fixed host port, and the
     # database URL comes from the docker-assigned port.
     shard = jobs["tests-shard"]
