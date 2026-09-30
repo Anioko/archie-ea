@@ -420,6 +420,13 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
 
+    try:
+        from app.commands.service_incident_commands import init_app as init_service_incident
+        init_service_incident(app)
+        app.logger.info("Service incident CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register service incident CLI: {e}")
+
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:
         from app.commands import seed_strategic_demo

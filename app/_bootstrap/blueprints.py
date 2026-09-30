@@ -172,6 +172,7 @@ def _init_blueprints(app):
     _ff_industry_apqc = _register_industry_apqc(app)
     _register_solution_product(app)
     _register_intelligence(app)
+    _register_metamodel_properties(app)
 
     # --- North Star Persona MVP modules (NS-008, NS-009, NS-010, NS-011, NS-012, NS-013) ---
     _register_persona_modules(app)
@@ -543,6 +544,12 @@ def _register_always_on_apis(app, csrf):
 
     app.register_blueprint(error_events_bp)
     app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
+
+    # Service status: current health, incident history, subscribe (any signed-in user).
+    from app.modules.monitoring.routes.status_routes import status_bp
+
+    app.register_blueprint(status_bp)
+    app.logger.info("[BLUEPRINT] Service status registered at /status")
 
     # Security API
     from app.routes.security_api import security_bp
@@ -1329,6 +1336,19 @@ def _register_industry_apqc(app):
     except Exception as _e:
         app.logger.error(f"[MODULE] Industry APQC import failed: {_e}")
         return False
+
+
+def _register_metamodel_properties(app):
+    """Register the element properties pages (an organisation's governed
+    property definitions), non-fatally like every other module here."""
+    try:
+        from app.modules.architecture_assistant.routes.metamodel_property_routes import (
+            metamodel_properties_bp,
+        )
+
+        app.register_blueprint(metamodel_properties_bp)
+    except Exception as e:
+        app.logger.warning("Failed to register element properties pages: %s", e)
 
 
 def _register_intelligence(app):

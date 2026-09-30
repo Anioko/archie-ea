@@ -190,12 +190,17 @@ class Config:
 
     # Email
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.sendgrid.net")
-    MAIL_PORT = os.environ.get("MAIL_PORT", 587)
-    MAIL_USE_TLS = os.environ.get("MAIL_USE_TLS", True)
-    MAIL_USE_SSL = os.environ.get("MAIL_USE_SSL", False)
+    # Parsed, not passed through: any non-empty string is truthy, so
+    # MAIL_USE_TLS=false used to switch STARTTLS on.
+    MAIL_PORT = _env_optional_positive_int("MAIL_PORT") or 587
+    MAIL_USE_TLS = _env_bool("MAIL_USE_TLS", True)
+    MAIL_USE_SSL = _env_bool("MAIL_USE_SSL", False)
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER")
+    # Seconds to wait on the SMTP server before an account message counts as
+    # not delivered; a hung relay must not hold a request open.
+    MAIL_TIMEOUT = _env_optional_positive_int("MAIL_TIMEOUT") or 15
 
     # Analytics
     GOOGLE_ANALYTICS_ID = os.environ.get("GOOGLE_ANALYTICS_ID", "")
@@ -468,6 +473,9 @@ class DevelopmentConfig(Config):
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = False
+    # Flask-Mail records instead of sending under TESTING. A browser journey
+    # that reads the real message from a local SMTP sink turns this off.
+    MAIL_SUPPRESS_SEND = _env_bool("MAIL_SUPPRESS_SEND", True)
     TRANSFORMATION_COMMAND_CAPABILITY_SECRET = "74" * 32
     TRANSFORMATION_COMMAND_CAPABILITY_PREVIOUS_SECRETS = ""
 

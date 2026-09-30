@@ -1522,9 +1522,8 @@ def register_cli_commands(app):
             # documented command reported "60 capabilities seeded" on a fresh
             # install and left the flagship screen showing zero. That is the
             # five-capability-stores problem costing an evaluator their first hour.
-            from flask import g as _g
-
             from app.commands.seed_capabilities import seed_business_caps
+            from app.jobs.tenant_safe_job import tenant_scope
             from app.models.organization import Organization
 
             # An explicit tenant, because TenantMixin fills organization_id
@@ -1540,13 +1539,10 @@ def register_cli_commands(app):
                 )
                 _business = {"created": 0}
             else:
-                _previous = getattr(_g, "current_org_id", None)
-                _g.current_org_id = _org.id
-                try:
+                _org_id, _org_name = _org.id, _org.name
+                with tenant_scope(_org_id):
                     _business = seed_business_caps()
-                finally:
-                    _g.current_org_id = _previous
-                print(f"    seeded into organisation {_org.id} ({_org.name})")
+                print(f"    seeded into organisation {_org_id} ({_org_name})")
 
             print(
                 "\n[OK] Seeding complete! Unified capabilities: "
