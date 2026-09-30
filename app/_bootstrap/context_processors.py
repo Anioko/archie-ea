@@ -352,6 +352,13 @@ def init_context_processors(app):
             return {"nav_counts": dict(_EMPTY_NAV_COUNTS)}
 
     @app.context_processor
+    def inject_legal_links():
+        """The legal pages live right now, for the public footer and checkout."""
+        from app.services.legal_pages import legal_links
+
+        return {"legal_links": legal_links()}
+
+    @app.context_processor
     def inject_feature_flags():
         """Make feature flag helpers available to all templates"""
         from app.models import FeatureFlag

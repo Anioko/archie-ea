@@ -38,6 +38,10 @@ pytestmark = pytest.mark.usefixtures("db_session")
 # emits; for the two redirect endpoints it is the Location they must send the
 # user to, asserted instead of the body.
 NAV_PAGES = {
+    "admin.audit_log_viewer": (
+        "/admin/audit-log",
+        "Each entry is sealed to the one before it",
+    ),
     "admin.governance_gates": ("/admin/governance-gates", "Governance Gates"),
     "admin.power_platform_integration": (
         "/admin/integrations/power-platform",
@@ -47,7 +51,9 @@ NAV_PAGES = {
         "/admin/integrations/salesforce",
         "Salesforce Org Discovery",
     ),
-    "admin.seed_management": ("/admin/seed-management", "Seed Management"),
+    # admin.seed_management was folded from platform_admin's Admin zone to
+    # make room for "Audit Log" within the link budget; it is a tile on the
+    # admin dashboard page (Command Center) instead.
     "error_events.errors_dashboard": (
         "/admin/errors",
         "Deduplicated server + client errors, aggregated by fingerprint across every organization.",
