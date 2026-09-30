@@ -9,6 +9,12 @@ name: CI
 # which fails when a measurement gets worse than the recorded baseline. See
 # docs/adr/0001-verification-strategy.md for why ratchets rather than a big-bang
 # clean-up.
+#
+# Labeled trigger: the `labeled` pull_request event type fires for every label
+# added to a PR. Each such event creates a workflow run in the GitHub Actions
+# UI, even though all jobs are skipped for non-`ci-fast` labels by the job-level
+# `if:` guards. The concurrency group's `cancel-in-progress` excludes labeled
+# events so that adding an unrelated label never cancels an in-progress CI run.
 on:
   push:
     # main/master AND the branch production actually deploys from. That branch
@@ -40,7 +46,7 @@ on:
 # rather than losing to whichever push landed after it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'labeled' }}
 
 permissions:
   contents: read
@@ -336,11 +342,12 @@ jobs:
     name: Tests (pytest + coverage)
     needs: tests-shard
     if: ${{ always() && (github.event_name != 'pull_request' || github.event.action != 'labeled' || contains(github.event.pull_request.labels.*.name, 'ci-fast')) }}
-    # Same runner selection as tests-shard above: the dedicated ibm-vsi runners
-    # for push/dispatch and this repository's own PR branches, GitHub-hosted
-    # ubuntu-latest for forked PRs. It runs after every shard has finished, so
+    # Same runner selection as tests-shard above: vars.CI_FAST_RUNNER takes
+    # precedence when the PR carries the ci-fast label, vars.CI_SHARD_RUNNER
+    # routes to a managed pool when set, otherwise the job falls back to the
+    # self-hosted ibm-vsi runners. It runs after every shard has finished, so
     # it never competes with them for a runner.
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","ibm-vsi"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (vars.CI_FAST_RUNNER && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ci-fast') && vars.CI_FAST_RUNNER || vars.CI_SHARD_RUNNER || fromJSON('["self-hosted","ibm-vsi"]')) || 'ubuntu-latest' }}
     # No PostgreSQL service here: this job only imports the app to build its
     # route/nav sets (for nav-verified) and combines files (coverage, junit).
     # Confirmed by running route_verification_audit.py against an unreachable
