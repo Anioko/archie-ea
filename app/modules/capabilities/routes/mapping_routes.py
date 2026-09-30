@@ -1712,11 +1712,26 @@ def api_apqc_suggestions():
             tokens = _tokenize(cap.name) | _tokenize(cap.business_domain) | _tokenize(cap.category)
             cap_tokens.append((cap, tokens))
 
-        # Find APQC processes that are already linked
-        existing_links = {
-            m.apqc_process_id
-            for m in db.session.query(CapabilityProcessMapping.apqc_process_id).all()
-        }
+        # Find APQC processes that are already linked. Column-only selects
+        # are not covered by the ambient tenant listener (unlike the
+        # `BusinessCapability.query.all()` above, which is), and
+        # CapabilityProcessMapping has no organization_id of its own -- join
+        # BusinessCapability explicitly, or another organisation's linked
+        # processes would be excluded from this organisation's suggestions.
+        _org_id = getattr(g, "current_org_id", None)
+        if _org_id is None:
+            existing_links = set()
+        else:
+            existing_links = {
+                row.apqc_process_id
+                for row in db.session.query(CapabilityProcessMapping.apqc_process_id)
+                .join(
+                    BusinessCapability,
+                    CapabilityProcessMapping.capability_id == BusinessCapability.id,
+                )
+                .filter(BusinessCapability.organization_id == _org_id)
+                .all()
+            }
 
         suggestions = []
         for proc in apqc_processes:

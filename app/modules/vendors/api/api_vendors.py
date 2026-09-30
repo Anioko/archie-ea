@@ -11,7 +11,9 @@ from flask_restx import Api, Resource, fields
 from sqlalchemy import desc, func
 
 from app.extensions import db
+from app.middleware.tenant_context import current_org_id
 from app.models.apqc_process import APQCProcess, CapabilityProcessMapping
+from app.models.business_capabilities import BusinessCapability
 from app.models.vendor.vendor_organization import VendorOrganization, VendorProduct
 from app.models.vendor_product_apqc_mapping import VendorProductAPQCMapping
 
@@ -742,7 +744,17 @@ class CapabilityProcessMappingList(Resource):
     @api.marshal_list_with(capability_process_model)
     def get(self):
         """List capability-to-process mappings"""
-        query = CapabilityProcessMapping.query
+        # CapabilityProcessMapping carries no organization_id of its own --
+        # ownership is only reachable via capability_id -- so joining
+        # BusinessCapability (TenantMixin) and filtering on its
+        # organization_id is the fence. Fail closed with no ambient org.
+        org_id = current_org_id()
+        if org_id is None:
+            return []
+        query = CapabilityProcessMapping.query.join(
+            BusinessCapability,
+            CapabilityProcessMapping.capability_id == BusinessCapability.id,
+        ).filter(BusinessCapability.organization_id == org_id)
         capability_id = request.args.get("capability_id", type=int)
         process_id = request.args.get("process_id", type=int)
         relationship_type = request.args.get("relationship_type")
@@ -777,7 +789,17 @@ class ProcessCapabilities(Resource):
     def get(self, id):
         """Get all business capabilities linked to an APQC process"""
         process = APQCProcess.query.get_or_404(id)
-        mappings = CapabilityProcessMapping.query.filter_by(apqc_process_id=id).all()
+        org_id = current_org_id()
+        if org_id is None:
+            mappings = []
+        else:
+            mappings = CapabilityProcessMapping.query.join(
+                BusinessCapability,
+                CapabilityProcessMapping.capability_id == BusinessCapability.id,
+            ).filter(
+                CapabilityProcessMapping.apqc_process_id == id,
+                BusinessCapability.organization_id == org_id,
+            ).all()
         return {"process": process.to_dict(), "capabilities": [m.to_dict() for m in mappings], "capability_count": len(mappings)}
 
 
@@ -792,6 +814,7 @@ class VendorCapabilityProcessMatrix(Resource):
         capability_id = request.args.get("capability_id", type=int)
         if not vendor_id and not product_id:
             return {"error": "Provide vendor_id or product_id"}, 400
+        org_id = current_org_id()
         if product_id:
             products = [VendorProduct.query.get_or_404(product_id)]
         else:
@@ -804,7 +827,19 @@ class VendorCapabilityProcessMatrix(Resource):
                 process = APQCProcess.query.get(apqc_map.apqc_process_id)
                 if not process:
                     continue
-                cap_mappings = CapabilityProcessMapping.query.filter_by(apqc_process_id=process.id).all()
+                # CapabilityProcessMapping has no organization_id of its own
+                # -- fence through BusinessCapability, the same way as the
+                # two GET endpoints above in this file.
+                if org_id is None:
+                    cap_mappings = []
+                else:
+                    cap_mappings = CapabilityProcessMapping.query.join(
+                        BusinessCapability,
+                        CapabilityProcessMapping.capability_id == BusinessCapability.id,
+                    ).filter(
+                        CapabilityProcessMapping.apqc_process_id == process.id,
+                        BusinessCapability.organization_id == org_id,
+                    ).all()
                 if capability_id:
                     cap_mappings = [c for c in cap_mappings if c.capability_id == capability_id]
                 for cap_map in cap_mappings:

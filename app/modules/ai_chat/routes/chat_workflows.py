@@ -14,6 +14,7 @@ from flask_login import current_user, login_required
 
 from app import db
 from app.decorators import audit_log
+from app.middleware.tenant_context import current_org_id
 from app.services.rate_limiter import rate_limit
 from app.models.application_portfolio import ApplicationComponent
 from . import unified_ai_chat_bp
@@ -554,9 +555,21 @@ def actionable_gap_analysis():
                 .limit(100)
                 .all()
             )
-            mapped_process_ids = set(
-                m.apqc_process_id for m in ProcessApplicationMapping.query.all()
-            )
+            # ProcessApplicationMapping has no organization_id of its own --
+            # fence through ApplicationComponent (its owning application),
+            # or every organisation's mapped processes count as "mapped"
+            # here, hiding real gaps for the caller's own organisation.
+            org_id = current_org_id()
+            if org_id is None:
+                mapped_process_ids = set()
+            else:
+                mapped_process_ids = set(
+                    m.apqc_process_id
+                    for m in ProcessApplicationMapping.query.join(
+                        ApplicationComponent,
+                        ProcessApplicationMapping.application_id == ApplicationComponent.id,
+                    ).filter(ApplicationComponent.organization_id == org_id)
+                )
 
             for proc in all_processes:
                 if proc.id not in mapped_process_ids:

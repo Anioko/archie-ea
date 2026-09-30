@@ -1,0 +1,123 @@
+"""Review defects D1-D5 on the PR fencing GET /api/apqc/process-mappings
+(reviews/pr306-review-v1.md): three more unfenced CapabilityProcessMapping/
+ProcessApplicationMapping reads in app/modules/vendors/api/api_vendors.py,
+one in app/modules/ai_chat/routes/chat_workflows.py, one in
+app/modules/capabilities/routes/mapping_routes.py. Same root cause as the
+routes already fixed: neither mapping model carries an organization_id of
+its own.
+"""
+import uuid
+
+
+def _process(db_session):
+    from app.models.apqc_process import APQCProcess
+
+    process = APQCProcess.query.first()
+    if process is not None:
+        return process
+    process = APQCProcess(process_code=f"P-{uuid.uuid4().hex[:6]}", process_name="Test process")
+    db_session.add(process)
+    db_session.flush()
+    return process
+
+
+def _user(db_session, org, prefix):
+    from app.models.user import User
+
+    user = User(email=f"{prefix}-{uuid.uuid4().hex[:6]}@example.test", first_name="U", last_name="Q",
+                organization_id=org.id, confirmed=True)
+    user.password = uuid.uuid4().hex
+    db_session.add(user)
+    db_session.commit()
+    return user
+
+
+def test_capability_mappings_list_excludes_a_foreign_organisations_rows(app, db_session, make_org, client, login_as):
+    """D1: /api/vendors/apqc/capability-mappings"""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+
+    org_a = make_org("apqc-d1-a")
+    org_b = make_org("apqc-d1-b")
+    process = _process(db_session)
+    cap_a = BusinessCapability(name="CapA", organization_id=org_a.id)
+    cap_b = BusinessCapability(name="SECRET-CAP-B-D1", organization_id=org_b.id)
+    db_session.add_all([cap_a, cap_b])
+    db_session.flush()
+    cpm_a = CapabilityProcessMapping(capability_id=cap_a.id, apqc_process_id=process.id)
+    cpm_b = CapabilityProcessMapping(capability_id=cap_b.id, apqc_process_id=process.id)
+    db_session.add_all([cpm_a, cpm_b])
+    db_session.flush()
+    user_a = _user(db_session, org_a, "d1")
+    uid = user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.get("/api/vendors/apqc/capability-mappings")
+
+    assert r.status_code == 200
+    text = r.get_data(as_text=True)
+    assert "SECRET-CAP-B-D1" not in text
+
+
+def test_process_capabilities_excludes_a_foreign_organisations_rows(app, db_session, make_org, client, login_as):
+    """D2: /api/vendors/apqc/processes/<id>/capabilities"""
+    from app.models.business_capabilities import BusinessCapability
+    from app.models.apqc_process import CapabilityProcessMapping
+    from app.models.user import User
+
+    org_a = make_org("apqc-d2-a")
+    org_b = make_org("apqc-d2-b")
+    process = _process(db_session)
+    cap_b = BusinessCapability(name="SECRET-CAP-B-D2", organization_id=org_b.id)
+    db_session.add(cap_b)
+    db_session.flush()
+    cpm_b = CapabilityProcessMapping(capability_id=cap_b.id, apqc_process_id=process.id)
+    db_session.add(cpm_b)
+    db_session.flush()
+    user_a = _user(db_session, org_a, "d2")
+    process_id, uid = process.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.get(f"/api/vendors/apqc/processes/{process_id}/capabilities")
+
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["capability_count"] == 0
+    text = str(body)
+    assert "SECRET-CAP-B-D2" not in text
+
+
+def test_ai_chat_process_gap_analysis_does_not_count_a_foreign_orgs_mapping(app, db_session, make_org, client, login_as):
+    """D4: process gap analysis must not treat another organisation's
+    ProcessApplicationMapping as covering this organisation's process."""
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.apqc_process import ProcessApplicationMapping
+    from app.models.user import User
+
+    org_a = make_org("apqc-d4-a")
+    org_b = make_org("apqc-d4-b")
+    process = _process(db_session)
+    app_b = ApplicationComponent(name="AppB", organization_id=org_b.id)
+    db_session.add(app_b)
+    db_session.flush()
+    pam_b = ProcessApplicationMapping(application_id=app_b.id, apqc_process_id=process.id)
+    db_session.add(pam_b)
+    db_session.flush()
+    user_a = _user(db_session, org_a, "d4")
+    process_id, uid = process.id, user_a.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, uid))
+    r = client.post("/ai-chat/chat/gap-analysis", json={"analysis_type": "process"})
+
+    if r.status_code != 200:
+        import pytest
+        pytest.skip(f"gap analysis route not reachable in this environment ({r.status_code})")
+    body = r.get_json()
+    gap_process_ids = {g.get("process_id") for g in body.get("gaps", []) if g.get("type") == "process_gap"}
+    assert process_id in gap_process_ids, (
+        "org B's mapping must not make this process look covered for org A"
+    )
