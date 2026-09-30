@@ -287,6 +287,7 @@ jobs:
         run: |
           python -c "import psycopg2" 2>/dev/null || pip install psycopg2-binary
           flask --app manage init-db
+          flask --app manage schema-upgrade
           flask --app manage reconcile-schema
       # The schema deploy applies this migration after reconcile-schema in every
       # environment. Without the unique provenance index the write-time projection
@@ -472,6 +473,7 @@ jobs:
       - name: Create schema
         run: |
           flask --app manage init-db
+          flask --app manage schema-upgrade
           flask --app manage reconcile-schema
       - name: Generate SBOM (CycloneDX)
         # From the INSTALLED environment, not requirements.txt: the latter pins
@@ -581,6 +583,7 @@ jobs:
         id: smoke-schema
         run: |
           python -m flask --app manage init-db
+          python -m flask --app manage schema-upgrade
           python -m flask --app manage reconcile-schema
       - name: Run archetype journeys
         run: pytest tests/smoke -q -p no:randomly --timeout=900 -W ignore::DeprecationWarning -m "not adversarial and not census and not ai_protocol and not guide_history" --junitxml=tests/smoke/_artifacts/chromium-main.xml
@@ -669,6 +672,7 @@ jobs:
         id: compatibility-schema
         run: |
           python -m flask --app manage init-db
+          python -m flask --app manage schema-upgrade
           python -m flask --app manage reconcile-schema
       - name: Run cross-browser critical journeys
         run: >-
@@ -762,6 +766,7 @@ jobs:
       - name: Create schema and seed the tenant
         run: |
           python -m flask --app manage init-db
+          python -m flask --app manage schema-upgrade
           python -m flask --app manage reconcile-schema
           python scripts/seed_walkthrough_users.py
       - name: Start the app
