@@ -153,6 +153,7 @@ def test_the_read_only_pages_are_the_only_routes_this_blueprint_serves(app):
     required = {
         "/intelligence/ask": ["GET"],
         "/intelligence/twin-map": ["GET"],
+        "/intelligence/traceability": ["GET"],
     }
     optional = {"/intelligence/traceability": ["GET"]}
     assert all(rules.get(path) == methods for path, methods in required.items())
