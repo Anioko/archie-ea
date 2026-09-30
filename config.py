@@ -472,6 +472,16 @@ class DevelopmentConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
+    # Pinned explicitly rather than left to inherit Flask's own default, which
+    # falls back to the ambient FLASK_DEBUG/FLASK_ENV environment variables
+    # (get_debug_flag()) whenever a config class leaves DEBUG unset. A
+    # contributor's shell commonly exports FLASK_DEBUG=1 for convenient `flask
+    # run` use; without this, that ambient value silently flips
+    # app.debug/CSP to the permissive development policy under "testing" too,
+    # so tests/test_capability_map_cache_nonce_regression.py (which asserts a
+    # nonce'd CSP -- the production/testing policy) fails or passes depending
+    # on the operator's shell, not on the code.
+    DEBUG = False
     WTF_CSRF_ENABLED = False
     # Flask-Mail records instead of sending under TESTING. A browser journey
     # that reads the real message from a local SMTP sink turns this off.
