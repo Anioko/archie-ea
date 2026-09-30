@@ -7,7 +7,7 @@ later change applied again, and a 4,000-relationship import undone.
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -103,7 +103,7 @@ def test_import_takes_a_snapshot_on_the_import_session_log(client, db_session, l
     result = post_import(client, login_as, user, oef("Snap"))
     assert result["created"] == 3 and result["relationships_created"] == 2
 
-    log = ImportSessionLog.query.get(restore_point_id(org.id))
+    log = db_session.get(ImportSessionLog, restore_point_id(org.id))
     assert log.organization_id == org.id and log.user_id == user.id
     assert log.status == "completed" and log.is_rolled_back is False
     snap = log.snapshot_data
@@ -163,8 +163,8 @@ def test_restore_in_one_organisation_never_touches_another(client, db_session, l
     assert resp.get_json()["elements_removed"] == 3
     assert counts(org_a.id) == (0, 0)
     assert counts(org_b.id) == (3, 2), "B's rows survive A's restore untouched"
-    assert ImportSessionLog.query.get(log_b).is_rolled_back is False
-    assert ImportSessionLog.query.get(log_a).is_rolled_back is True
+    assert db_session.get(ImportSessionLog, log_b).is_rolled_back is False
+    assert db_session.get(ImportSessionLog, log_a).is_rolled_back is True
 
     # The restore is in A's audit trail, and only there.
     a_entries = AuditLog.query.filter(AuditLog.org_predicate(org_a.id), AuditLog.action == "restore").all()
@@ -231,8 +231,8 @@ def test_a_chosen_later_change_is_applied_again_and_an_unchosen_one_is_not(clien
     assert resp.get_json()["changes_reapplied"] == 1
 
     db_session.expire_all()
-    assert ArchiMateElement.query.get(node_a.id).description == "edited A"      # chosen: re-applied
-    assert ArchiMateElement.query.get(node_b.id).description == "original B"    # not chosen: pre-import state
+    assert db_session.get(ArchiMateElement, node_a.id).description == "edited A"      # chosen: re-applied
+    assert db_session.get(ArchiMateElement, node_b.id).description == "original B"    # not chosen: pre-import state
     assert ArchiMateElement.query.filter_by(organization_id=org.id, name="Re Service C").count() == 0
     assert AuditLog.query.filter(AuditLog.org_predicate(org.id), AuditLog.action == "restore").count() == 1
 
@@ -342,7 +342,7 @@ def test_preview_lists_one_blocker_entry_per_referencing_table(client, db_sessio
     assert len(preview["blockers"]) == 2
     assert blockers["requirements"]["count"] == 2
     assert blockers["system_dependencies"]["count"] == 3
-    assert ArchiMateElement.query.get(imported_id).organization_id == org.id
+    assert db_session.get(ArchiMateElement, imported_id).organization_id == org.id
 
 
 def test_a_faulty_import_of_4000_relationships_is_fully_undone(db_session, make_org, tenant_ctx):
@@ -373,7 +373,7 @@ def test_a_faulty_import_of_4000_relationships_is_fully_undone(db_session, make_
              for i in range(n_rel)]).all()]
         log = ImportSessionLog(session_id=str(uuid.uuid4()), operation_type="import", user_id=user.id,
                                organization_id=org.id, import_source=snaps.IMPORT_SOURCE,
-                               started_at=datetime.utcnow(), status="in_progress")
+                               started_at=datetime.now(UTC), status="in_progress")
         db_session.add(log)
         db_session.flush()
         snapshot = snaps.ImportSnapshot(log, "create_all", label)
@@ -396,9 +396,9 @@ def test_a_faulty_import_of_4000_relationships_is_fully_undone(db_session, make_
 
     assert result["relationships_removed"] == 4000 and result["elements_removed"] == 200
     assert counts(org_a.id) == (1, 0)            # only the element that was there before
-    assert ArchiMateElement.query.get(keep_a) is not None
+    assert db_session.get(ArchiMateElement, keep_a) is not None
     assert counts(org_b.id) == (21, 60)          # the other organisation is untouched
-    assert ImportSessionLog.query.get(log_b.id).is_rolled_back is False
+    assert db_session.get(ImportSessionLog, log_b.id).is_rolled_back is False
     entry = AuditLog.query.filter(AuditLog.org_predicate(org_a.id), AuditLog.action == "restore").one()
     assert entry.new_value["relationships_removed"] == 4000
 
@@ -476,6 +476,6 @@ def test_a_chosen_later_custom_property_change_is_applied_again(client, db_sessi
     assert restore.status_code == 200, restore.get_data(as_text=True)
 
     db_session.expire_all()
-    restored = ArchiMateElement.query.get(node.id)
+    restored = db_session.get(ArchiMateElement, node.id)
     assert restored.custom_properties == {"classification": "restricted", "owner": "EA"}
     assert restored.description == "before"
