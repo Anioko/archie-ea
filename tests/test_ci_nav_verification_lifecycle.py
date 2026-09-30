@@ -185,12 +185,15 @@ def test_backend_test_jobs_use_the_dedicated_runner_selection():
         "github.event.pull_request.head.repo.full_name == github.repository)"
     )
 
-    # tests job keeps the original expression (not configurable via variables)
-    expected_tests = (
-        "${{ " + own_branch
-        + " && fromJSON('[\"self-hosted\",\"ibm-vsi\"]') || 'ubuntu-latest' }}"
-    )
-    assert jobs["tests"]["runs-on"] == expected_tests, "tests"
+    # tests job uses the same variable-driven expression as tests-shard
+    tests_runs_on = jobs["tests"]["runs-on"]
+    assert "vars.CI_SHARD_RUNNER" in tests_runs_on
+    assert "vars.CI_FAST_RUNNER" in tests_runs_on
+    assert "ci-fast" in tests_runs_on
+    assert "self-hosted" in tests_runs_on
+    assert "ibm-vsi" in tests_runs_on
+    assert "ubuntu-latest" in tests_runs_on
+    assert own_branch in tests_runs_on
     steps = jobs["tests"]["steps"]
     venv = _step_index(steps, "python -m venv --clear .venv")
     install = _step_index(steps, "pip install -r requirements.txt")
