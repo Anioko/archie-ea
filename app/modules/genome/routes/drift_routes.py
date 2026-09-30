@@ -111,6 +111,44 @@ def _render_stored_report(stored) -> tuple:
         return None, None
 
 
+def _enabled_provider_ids():
+    """Return the ids of every enabled provider row currently visible.
+
+    The model-health rescan is a read-only detector plus DriftReport upsert. It
+    must not leave behind enabled APISettings rows, even if a future helper on
+    the detector path accidentally writes one while resolving AI configuration.
+    """
+    from app.models.models import APISettings
+
+    return {
+        row_id
+        for (row_id,) in (
+            APISettings.query.filter_by(enabled=True)
+            .with_entities(APISettings.id)
+            .all()
+        )
+    }
+
+
+def _remove_enabled_provider_leaks(previous_ids):
+    """Delete any enabled provider rows created during the current rescan."""
+    from app.models.models import APISettings
+
+    current_ids = _enabled_provider_ids()
+    leaked_ids = current_ids - set(previous_ids)
+    if not leaked_ids:
+        return []
+
+    APISettings.query.filter(APISettings.id.in_(sorted(leaked_ids))).delete(
+        synchronize_session=False
+    )
+    logger.error(
+        "Model-health rescan created enabled APISettings rows %s; removing them",
+        sorted(leaked_ids),
+    )
+    return sorted(leaked_ids)
+
+
 @genome_drift_bp.route("/", methods=["GET"])
 @login_required
 def index():
@@ -155,9 +193,16 @@ def rescan():
         from app.extensions import db
         from app.models.drift_report import DriftReport
 
+        enabled_provider_ids_before = _enabled_provider_ids()
         report = detect_model_drift(org_id)
         DriftReport.upsert(org_id, report)
+        leaked_provider_ids = _remove_enabled_provider_leaks(enabled_provider_ids_before)
         db.session.commit()
+        if leaked_provider_ids:
+            logger.warning(
+                "Model-health rescan removed unexpected enabled provider rows: %s",
+                leaked_provider_ids,
+            )
         flash("Model-health scan completed.", "success")
     except Exception as exc:
         logger.warning("Drift rescan failed for org %s: %s", org_id, exc)

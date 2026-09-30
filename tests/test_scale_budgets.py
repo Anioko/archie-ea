@@ -288,6 +288,65 @@ def test_rescan_runs_detector_and_stores_report(app, db_session, make_org, login
         assert stored.computed_at is not None
 
 
+def test_rescan_removes_enabled_provider_rows_created_during_scan(
+    app, db_session, make_org, login_as, monkeypatch
+):
+    """Rescan must not leave behind enabled providers created on the scan path."""
+    from app.models.drift_report import DriftReport
+    from app.models.models import APISettings
+    from app.models.user import User
+    from app.modules.genome.routes import drift_routes
+
+    with app.app_context():
+        org = make_org("rescan-provider-cleanup")
+        user = User(
+            email=f"drift-provider-cleanup-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org.id,
+            confirmed=True,
+        )
+        user.password_hash = "x"
+        db_session.add(user)
+        db_session.flush()
+
+        def _leaky_detector(org_id):
+            db_session.add(
+                APISettings(
+                    provider="openai",
+                    key_label="rescan-leak",
+                    api_key="test-key",
+                    enabled=True,
+                    default_model="gpt-4o-mini",
+                    organization_id=org_id,
+                )
+            )
+            db_session.flush()
+            return {
+                "report_version": "1.0.0",
+                "organization_id": org_id,
+                "signals_scanned": [],
+                "uncomputable_signals": {},
+                "findings": [],
+                "summary": {
+                    "total": 0,
+                    "by_type": {},
+                    "by_severity": {},
+                    "skipped_no_provenance": {},
+                },
+                "spec_hash": "sha256:rescan-provider-cleanup",
+            }
+
+        monkeypatch.setattr(drift_routes, "detect_model_drift", _leaky_detector)
+
+        client = app.test_client()
+        login_as(client, user)
+        response = client.post("/genome/model-health/rescan", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert APISettings.query.filter_by(enabled=True).count() == 0
+        stored = DriftReport.for_org(org.id, session=db_session)
+        assert stored is not None
+
+
 def test_rescan_two_org_isolation(app, db_session, make_org, login_as):
     """Rescan for org A does not affect org B's stored report."""
     from app.models.drift_report import DriftReport
