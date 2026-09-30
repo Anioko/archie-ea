@@ -12,6 +12,7 @@ import logging
 
 from alembic import context
 from flask import current_app
+from sqlalchemy import text
 
 # No fileConfig() here: schema-upgrade runs inside the already-booted Flask
 # app (this module executes under @with_appcontext), whose own logging is
@@ -44,9 +45,33 @@ def run_migrations_offline():
         context.run_migrations()
 
 
+#: Bounds how long a DDL statement inside a revision (ALTER TABLE, etc.) waits
+#: on a conflicting lock held by some unrelated session (a long-running query,
+#: another connection) -- the acquire_upgrade_lock advisory lock only
+#: serialises schema-upgrade invocations against each other, it says nothing
+#: about a lock an unrelated session holds on the table being altered.
+_DDL_LOCK_TIMEOUT = "30s"
+
+
 def run_migrations_online():
     connectable = _db().engine
     with connectable.connect() as connection:
+        # Plain (non-LOCAL) SET is itself transactional in PostgreSQL, so it
+        # must be committed to survive as a session-level GUC into the
+        # transactions Alembic opens afterwards on this same connection.
+        # Two things that look like fixes are not:
+        #   - No explicit commit here: SQLAlchemy 2.0 opens an implicit
+        #     transaction on the SET, Alembic's own begin_transaction()
+        #     (transaction_per_migration=True) then finds one already open
+        #     and applies nothing -- alembic_version stays empty, no error.
+        #   - execution_options(isolation_level="AUTOCOMMIT") instead of a
+        #     commit: mutates the underlying DBAPI connection's autocommit
+        #     flag for the rest of its life (the same physical connection),
+        #     so Alembic's later SAVEPOINT for transaction_per_migration then
+        #     fails with "SAVEPOINT can only be used in transaction blocks".
+        connection.execute(text(f"SET lock_timeout = '{_DDL_LOCK_TIMEOUT}'"))
+        connection.commit()
+
         context.configure(
             connection=connection,
             target_metadata=_metadata(),

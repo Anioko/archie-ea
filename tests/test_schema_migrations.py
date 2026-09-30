@@ -559,3 +559,18 @@ def test_acquire_upgrade_lock_times_out_instead_of_hanging(scratch_databases):
         holder.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _UPGRADE_LOCK_KEY})
         holder.close()
         contender.close()
+
+
+# No automated test for the lock_timeout fix below (migrations/env.py's
+# run_migrations_online): a real repro needs a second session holding a
+# conflicting lock on the exact table a revision's ALTER targets, while that
+# revision runs inside an Alembic-managed connection Flask-Migrate itself
+# checks out from a pool, inside a subprocess this suite's own driver
+# spawns -- three nested boundaries deep, none of which is where the fix
+# actually lives. Verified directly instead, matching the same standard this
+# suite already applies to browser/CI-environment evidence elsewhere: with a
+# second `psql` session holding `LOCK TABLE ... IN ACCESS EXCLUSIVE MODE`, a
+# plain SQLAlchemy connection mirroring run_migrations_online's exact
+# sequence (SET lock_timeout, commit, then the conflicting ALTER on the same
+# connection) fails with `psycopg2.errors.LockNotAvailable: canceling
+# statement due to lock timeout` at the configured bound, not indefinitely.
