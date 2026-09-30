@@ -111,11 +111,23 @@ What was done, and where it differs from the plan above:
   unversioned database it runs the baseline (a no-op) and records it. On a
   database recorded at an archived revision it re-stamps the baseline (record
   only, no DDL) and prints the old id so it can be put back. It holds a
-  PostgreSQL advisory lock so two deploys cannot upgrade at once.
+  PostgreSQL advisory lock so two deploys cannot upgrade at once, acquired
+  with a bounded poll (`acquire_upgrade_lock`, 60s default) rather than the
+  blocking `pg_advisory_lock`: a stuck or crashed holder stops the deploy with
+  `SchemaUpgradeLocked` instead of hanging it forever.
 - **Deploy order** (`scripts/database/deploy-schema.sh`, and every CI job that
   builds a schema): `init-db`, then `schema-upgrade`, then `reconcile-schema`.
   A failed revision stops the deploy before new code starts; PostgreSQL DDL is
   transactional, so the failed revision leaves nothing half-applied.
+- **The image ships the revisions.** `.dockerignore` no longer excludes
+  `migrations/versions/`: `schema-upgrade` runs inside the deployed image, so
+  a revision the image does not carry can never be applied — the build stops
+  there rather than the deploy silently no-op'ing or stamping a stale head.
+- **`migrations/env.py` reuses the app's own logging.** It does not call
+  Alembic's default `fileConfig()`; `schema-upgrade` runs inside the already-
+  booted Flask app (`@with_appcontext`), whose logging is already configured
+  (`app/services/core/logging_config.py`), and reconfiguring the root logger a
+  second time from `alembic.ini` would fight that.
 - **`reconcile-schema` stays applying, as the drift detector.** It still adds
   nullable columns models gain (every consolidation's expand step relies on it)
   and lists each one; the `schema-drift` gate still runs its dry run. What it
@@ -134,8 +146,15 @@ What was done, and where it differs from the plan above:
   `20260926_relax_owner_app` (`application_owners.application_id` allows NULL,
   so one ownership record can point at an element that is not an application)
   and `20260926_widen_element_name` (`archimate_elements.name` from 100 to 500
-  characters). Neither model is changed here; the changes that need them update
-  the models. Both are metadata-only on PostgreSQL.
+  characters). Both are metadata-only on PostgreSQL. `ApplicationOwner.application_id`
+  and `ArchiMateElement.name` (both definitions, `app/models/models.py` and the
+  `APP_FAST_INIT` one in `app/models/archimate_core.py`) are updated in the same
+  change, so the models never disagree with a database these revisions have run
+  against — a divergent model would pass the live schema but rebuild the wrong
+  one wherever tests or a from-scratch deploy use `create_all()`. The behaviour
+  each relaxed/widened column enables (an ownership record with no application;
+  an element name over 100 characters) still waits on the briefs that use it
+  (R1-B03, R1-B14); this change only makes the column and its model agree.
 
 ### Deploy and rollback
 

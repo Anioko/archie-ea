@@ -9,15 +9,17 @@ Only ``migrations/versions/*.py`` is on the chain. The pre-baseline history in
 loaded (Alembic does not recurse into subdirectories by default).
 """
 import logging
-from logging.config import fileConfig
 
 from alembic import context
 from flask import current_app
 
+# No fileConfig() here: schema-upgrade runs inside the already-booted Flask
+# app (this module executes under @with_appcontext), whose own logging is
+# already configured by app/services/core/logging_config.py (dictConfig).
+# Alembic's default fileConfig() boilerplate would reconfigure the root
+# logger from alembic.ini on top of that, fighting the one logging setup
+# this app already has.
 config = context.config
-
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
 logger = logging.getLogger("alembic.env")
 
 

@@ -70,18 +70,40 @@ def scratch_databases():
 # steps pays for one application boot instead of one per command. Stops at
 # the first command that fails. An exception a command raises (a refused down
 # step, for instance) is part of that command's output.
+#
+# Flask-Migrate's own `catch_errors` CLI wrapper catches a raised RuntimeError
+# (ContractBlocked is one) and reports it with `logging.getLogger(...).error()`
+# before calling sys.exit(1) -- it never reaches Click, so CliRunner's
+# stdout/stderr capture misses it whenever the app's logging handlers were
+# already bound to the real stderr before the redirect (they are, since the
+# app boots once at import time, before the first `runner.invoke()`). A
+# dedicated in-memory logging handler on the root logger picks it up anyway.
 _DRIVER = r"""
-import json, sys
+import json, logging, sys
 from flask.cli import FlaskGroup
 from manage import app
 cli = FlaskGroup(create_app=lambda: app)  # what `flask --app manage` builds
 runner = app.test_cli_runner()
+
+_log_records = []
+
+class _Capture(logging.Handler):
+    def emit(self, record):
+        _log_records.append(self.format(record))
+
+_handler = _Capture()
+_handler.setFormatter(logging.Formatter("%(name)s %(levelname)s: %(message)s"))
+logging.getLogger().addHandler(_handler)
+
 results = []
 for args in json.loads(sys.argv[1]):
+    _log_records.clear()
     r = runner.invoke(cli=cli, args=args)
     text = r.output
     if r.exception is not None and not isinstance(r.exception, SystemExit):
         text += "\n" + type(r.exception).__name__ + ": " + str(r.exception)
+    if _log_records:
+        text += "\n" + "\n".join(_log_records)
     results.append([r.exit_code, text])
     if r.exit_code:
         break
@@ -98,9 +120,11 @@ def _flask(url, *commands, check=True):
     env = dict(os.environ)
     env.update(DATABASE_URL=url, TEST_DATABASE_URL=url, DEV_DATABASE_URL=url)
     env.setdefault("FLASK_CONFIG", "testing")
+    env.setdefault("PYTHONIOENCODING", "utf-8")
     proc = subprocess.run(
         [sys.executable, "-c", _DRIVER, json.dumps([list(c) for c in commands])],
-        cwd=REPO_ROOT, env=env, capture_output=True, text=True, timeout=1800,
+        cwd=REPO_ROOT, env=env, capture_output=True, timeout=1800,
+        encoding="utf-8", errors="replace",
     )
     raw = proc.stdout + proc.stderr
     assert "@@RESULTS@@" in proc.stdout, f"command driver did not finish:\n{raw[-4000:]}"
@@ -298,6 +322,27 @@ def _rows(url):
 def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deployed_db):
     url = deployed_db
     org_a, org_b = 101, 202
+
+    # deployed_db is built by init-db (create_all from the *current* models),
+    # which already declares application_id nullable and name VARCHAR(500) --
+    # models.py and archimate_core.py were updated in the same change as these
+    # revisions, so the models never disagree with a database the revisions
+    # have run against (see docs/adr/0002-schema-management.md). A real
+    # long-lived production database predating this change is still in the
+    # old shape until schema-upgrade actually runs on it, so this test
+    # regresses those two columns to that old shape first, the same way
+    # init-db + reconcile-schema alone (years of it, on older code) would
+    # have left them.
+    engine = create_engine(url)
+    with engine.begin() as conn:
+        conn.execute(text(
+            "ALTER TABLE application_owners ALTER COLUMN application_id SET NOT NULL"
+        ))
+        conn.execute(text(
+            "ALTER TABLE archimate_elements ALTER COLUMN name TYPE VARCHAR(100)"
+        ))
+    engine.dispose()
+
     _seed(url, [
         ("archimate_elements", {"organization_id": org_a, "name": "A" * 100}),
         ("archimate_elements", {"organization_id": org_b, "name": "B element"}),
@@ -421,3 +466,96 @@ def test_expand_and_contract_helpers_are_idempotent_on_their_own(deployed_db):
             trans.rollback()
     finally:
         engine.dispose()
+
+
+# ----------------------------------------------- deploy image / drift fixes
+
+
+def test_dockerignore_ships_migration_revisions():
+    """schema-upgrade runs inside the deployed image; it must carry the revisions.
+
+    Regression: the image previously excluded migrations/versions/, so a real
+    deploy stopped or silently no-op'd (no revisions to apply).
+    """
+    lines = (REPO_ROOT / ".dockerignore").read_text().splitlines()
+    excluded = [
+        line for line in lines
+        if line.strip().rstrip("/") == "migrations/versions"
+    ]
+    assert excluded == [], (
+        f"migrations/versions/ must not be excluded from the Docker build "
+        f"context: {excluded}"
+    )
+
+
+def test_models_match_the_relax_and_widen_revisions():
+    """The two worked-example revisions must not leave the ORM models behind.
+
+    Regression: the revisions widened/relaxed the live column but the models
+    still declared the old, narrower shape -- a from-scratch create_all()
+    (every test database, an empty deploy) then builds the *old* schema,
+    permanently diverging from a database these revisions have run against.
+    """
+    owner_src = (REPO_ROOT / "app/models/application_owner.py").read_text()
+    owner_block = owner_src[owner_src.index("application_id = db.Column"):]
+    owner_block = owner_block[:owner_block.index(")\n") + 2]
+    assert "nullable=True" in owner_block, (
+        "ApplicationOwner.application_id must be nullable=True, matching "
+        "migrations/versions/20260926_relax_owner_app.py"
+    )
+    assert "nullable=False" not in owner_block
+
+    for path in ("app/models/models.py", "app/models/archimate_core.py"):
+        src = (REPO_ROOT / path).read_text()
+        idx = src.index('__tablename__ = "archimate_elements"')
+        block = src[idx:idx + 600]
+        assert "name = db.Column(db.String(500)" in block, (
+            f"{path}: ArchiMateElement.name must be String(500), matching "
+            "migrations/versions/20260926_widen_element_name.py"
+        )
+
+
+def test_env_py_does_not_reconfigure_logging():
+    """schema-upgrade runs inside the already-booted app; env.py must not
+    call Alembic's default fileConfig(), which would reconfigure the app's
+    own already-active logging setup (app/services/core/logging_config.py).
+    """
+    code_lines = [
+        line for line in (REPO_ROOT / "migrations/env.py").read_text().splitlines()
+        if not line.strip().startswith("#")
+    ]
+    assert not any("fileConfig" in line for line in code_lines), (
+        "migrations/env.py must not import or call fileConfig() outside a comment"
+    )
+
+
+def test_acquire_upgrade_lock_times_out_instead_of_hanging(scratch_databases):
+    """A held lock must fail loudly and quickly, not hang the deploy forever.
+
+    Regression: schema-upgrade called the blocking pg_advisory_lock with no
+    timeout, so a stuck or crashed holder wedged every future deploy.
+    """
+    import time
+
+    from app.commands.schema_migrations import (
+        _UPGRADE_LOCK_KEY,
+        SchemaUpgradeLocked,
+        acquire_upgrade_lock,
+    )
+
+    url = scratch_databases("lock")
+    holder = create_engine(url).connect()
+    contender = create_engine(url).connect()
+    try:
+        holder.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+
+        started = time.monotonic()
+        with pytest.raises(SchemaUpgradeLocked):
+            acquire_upgrade_lock(contender, timeout_s=1, poll_s=0.1)
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 5, f"acquire_upgrade_lock blocked for {elapsed}s past its 1s timeout"
+    finally:
+        holder.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+        holder.close()
+        contender.close()

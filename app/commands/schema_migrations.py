@@ -37,6 +37,7 @@ The pattern every revision after the baseline follows:
 from __future__ import annotations
 
 import os
+import time
 
 import click
 from flask import current_app
@@ -54,6 +55,16 @@ BASELINE_REVISION = "20260926_baseline"
 
 #: Arbitrary, stable key for the advisory lock that serialises schema upgrades.
 _UPGRADE_LOCK_KEY = 7_302_026_926
+
+#: Bound on how long schema-upgrade waits for another deploy's lock before
+#: giving up. Unbounded would hang a deploy forever behind a stuck or crashed
+#: holder; this fails loudly instead, so the deploy stops and can be retried.
+_UPGRADE_LOCK_TIMEOUT_S = 60
+_UPGRADE_LOCK_POLL_S = 0.5
+
+
+class SchemaUpgradeLocked(RuntimeError):
+    """Another process held the schema-upgrade advisory lock past the timeout."""
 
 
 class ContractBlocked(RuntimeError):
@@ -258,6 +269,27 @@ def narrow_varchar(bind, table: str, column: str, length: int) -> bool:
 # ------------------------------------------------------- deploy command
 
 
+def acquire_upgrade_lock(
+    lock_conn, timeout_s: float = _UPGRADE_LOCK_TIMEOUT_S, poll_s: float = _UPGRADE_LOCK_POLL_S
+) -> None:
+    """Block until the schema-upgrade advisory lock is held, or ``timeout_s`` elapses.
+
+    Polls ``pg_try_advisory_lock`` (non-blocking) instead of the blocking
+    ``pg_advisory_lock``, so a stuck or crashed holder cannot hang a deploy
+    forever: raises ``SchemaUpgradeLocked`` instead, changing nothing.
+    """
+    deadline = time.monotonic() + timeout_s
+    while not lock_conn.execute(
+        text("SELECT pg_try_advisory_lock(:k)"), {"k": _UPGRADE_LOCK_KEY}
+    ).scalar():
+        if time.monotonic() >= deadline:
+            raise SchemaUpgradeLocked(
+                f"schema-upgrade: another process still held the upgrade lock after "
+                f"{timeout_s}s; nothing was changed. Retry once it finishes or crashes."
+            )
+        time.sleep(poll_s)
+
+
 def _migrations_directory() -> str:
     migrate = current_app.extensions.get("migrate")
     directory = getattr(migrate, "directory", None) or "migrations"
@@ -307,7 +339,7 @@ def schema_upgrade(target):
     known = known_revisions(config)
 
     with db.engine.connect() as lock_conn:
-        lock_conn.execute(text("SELECT pg_advisory_lock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+        acquire_upgrade_lock(lock_conn)
         try:
             with db.engine.connect() as conn:
                 before = recorded_revisions(conn)
