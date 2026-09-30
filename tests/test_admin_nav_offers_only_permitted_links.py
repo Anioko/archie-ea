@@ -59,12 +59,12 @@ def _make_admin(db_session, make_org, *, org_admin: bool, platform_admin: bool):
     user.password = "Sup3rSecret!23"
     user.is_org_admin = org_admin
     user.is_platform_admin = platform_admin
+    db_session.add(user)
     admin_role = Role.query.filter(
         Role.permissions.op("&")(Permission.ADMINISTER) == Permission.ADMINISTER
     ).first()
     if admin_role is not None:
         user.role = admin_role
-    db_session.add(user)
     db_session.flush()
     if not user.is_admin():
         pytest.skip("no ADMINISTER role seeded in this database; /admin/ is unreachable")
