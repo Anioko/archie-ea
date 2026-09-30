@@ -66,3 +66,15 @@ if [ -f /tmp/project-capabilities-report.json ]; then
     cat /tmp/project-capabilities-report.json
     echo '--- end report ---'
 fi
+
+# ADR 0008 -- retire the remaining four superseded capability stores
+# (capabilities, enterprise_capabilities, archimate_capabilities,
+# technical_capabilities) into unified_capabilities. Must run after
+# project-capabilities: an enterprise_capabilities/archimate_capabilities row
+# linked to a business_capability is retired straight into that capability's
+# own projection, so a business_capability that has not been projected yet
+# leaves its linked rows quarantined (visible at /admin/errors) rather than
+# guessed at. Same WARN-on-failure convention as the backfill-* lines above:
+# one organisation's unresolved row must not 503 the whole platform.
+flask --app manage backfill-capability-catalogs --apply \
+    || echo 'WARN capability catalog backfill incomplete - capabilities/enterprise_capabilities/archimate_capabilities/technical_capabilities may still hold rows neither merged nor quarantined into unified_capabilities; see /admin/errors and re-run flask backfill-capability-catalogs --apply' >&2
