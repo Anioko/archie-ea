@@ -81,6 +81,19 @@ def test_pairing_is_idempotent(db_session, make_org, tenant_ctx):
         ).count() == 1
 
 
+def test_pairing_preserves_rejected_status_verbatim(db_session, make_org, tenant_ctx):
+    """Regression: pairing remapped status='rejected' to 'deprecated',
+    losing the real distinction (a rejected decision is not the same as one
+    superseded/deprecated by a later one)."""
+    org = make_org("adr-rejected")
+    with tenant_ctx(org.id):
+        record = _make_adr_record(org.id, status="rejected")
+        canonical = record.pair_with_canonical_register()
+        db.session.commit()
+
+        assert canonical.status == "rejected"
+
+
 def test_pairing_never_visible_to_another_organisation(db_session, make_org, tenant_ctx):
     org_a = make_org("adr-a")
     org_b = make_org("adr-b")

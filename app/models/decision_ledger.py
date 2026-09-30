@@ -14,11 +14,12 @@ class DecisionLedger(TenantMixin, db.Model):
     reporting. Use `(capability_id, decision_sequence)` or `decision_date`
     to retrieve latest decision per capability.
 
-    This table had no organisation column at all before this change --
-    app.services.decision_ledger.DecisionLedger._load_existing_ledger()
-    queried every row with no predicate, so any organisation's ARB session
-    loaded every other organisation's governance decisions into memory. The
-    mixin's organization_id is overridden nullable here (reconcile-schema is
+    This table had no organisation column at all before this change -- a now-
+    removed, unreachable service class queried every row with no predicate,
+    so any organisation's ARB session would have loaded every other
+    organisation's governance decisions into memory (ADR 0012 -- that
+    service was retired rather than fixed, since nothing constructed it).
+    The mixin's organization_id is overridden nullable here (reconcile-schema is
     ADD-only; see application_owner.py/ai_chat_crud_approval.py for the same
     pattern) so it can be added to this existing table and backfilled by
     resolving each row's capability_id against UnifiedCapability; a row whose

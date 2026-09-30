@@ -223,7 +223,14 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
         canonical = ArchitectureDecision(
             organization_id=self.organization_id,
             title=self.title,
-            status="deprecated" if self.status == "rejected" else (self.status or "proposed"),
+            # Verbatim, not remapped: ArchitectureDecisionRecord.status's
+            # full vocabulary (SolutionOptionsAdvisor.set_status's own
+            # allowlist) is proposed/accepted/rejected/deprecated/superseded.
+            # "rejected" previously became "deprecated" here, losing the
+            # real distinction a reader needs (arb_decision_routes.py checks
+            # for 'superseded' and filters proposed/under_review/accepted --
+            # nothing there depends on "rejected" never appearing).
+            status=self.status or "proposed",
             context=context,
             decision=self.decision,
             consequences=self.consequences,

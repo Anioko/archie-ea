@@ -5129,12 +5129,21 @@ def _engine_archimate_cleanup(solution_ids):
         _sp_exe(f"DELETE FROM archimate_representations WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM archimate_resources       WHERE model_id          IN ({mids_str})")
         # This is a full solution teardown, so the paired canonical row goes
-        # with its source ADR record rather than being left dangling -- must
-        # run before the delete below, which would lose the retired_into_id
-        # link needed to find it.
-        _sp_exe(f"DELETE FROM architecture_decisions WHERE id IN "
-                f"(SELECT retired_into_id FROM architecture_decision_records "
-                f"WHERE architecture_model_id IN ({mids_str}) AND retired_into_id IS NOT NULL)")
+        # with its source ADR record rather than being left dangling. Three
+        # steps, in order: architecture_decision_records.retired_into_id is a
+        # plain (NO ACTION) FK into architecture_decisions, so deleting the
+        # parent row first raises ForeignKeyViolation while a child still
+        # points at it -- break the link first (capturing the ids into a
+        # temp table, since the UPDATE below would otherwise lose them
+        # before the next statement can read them back), then delete the
+        # now-unreferenced canonical rows, then the source rows.
+        _sp_exe("CREATE TEMP TABLE IF NOT EXISTS _teardown_canonical_ids (id integer) ON COMMIT DROP")
+        _sp_exe(f"INSERT INTO _teardown_canonical_ids "
+                f"SELECT retired_into_id FROM architecture_decision_records "
+                f"WHERE architecture_model_id IN ({mids_str}) AND retired_into_id IS NOT NULL")
+        _sp_exe(f"UPDATE architecture_decision_records SET retired_into_id = NULL "
+                f"WHERE architecture_model_id IN ({mids_str})")
+        _sp_exe("DELETE FROM architecture_decisions WHERE id IN (SELECT id FROM _teardown_canonical_ids)")
         _sp_exe(f"DELETE FROM architecture_decision_records WHERE architecture_model_id IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_collaborations   WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_interactions     WHERE model_id          IN ({mids_str})")
