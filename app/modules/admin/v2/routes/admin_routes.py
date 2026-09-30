@@ -5610,10 +5610,10 @@ def toggle_org_admin(org_id, user_id):
     # Toggle the Administrator role assignment instead of the denormalised column.
     # Also sync the OrgRole table so team-management routes (which read
     # OrgRole via rbac_service.is_org_admin) see the same answer.
-    admin_role = Role.query.filter_by(name="Administrator").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()  # tenant-scoping-ok: global system role lookup
     if user.is_admin():
         # Downgrade to default Architect role
-        user.role = Role.query.filter_by(default=True).first()
+        user.role = Role.query.filter_by(default=True).first()  # tenant-scoping-ok: global default role lookup
         OrgRole.query.filter_by(
             organization_id=org_id, user_id=user_id
         ).delete(synchronize_session=False)
