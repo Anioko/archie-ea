@@ -1062,7 +1062,26 @@ def api_process_bulk_mappings():
                     updated_count += 1
                     current_app.logger.debug(f"Updated mapping {mapping_id}")
             else:
-                # Create new mapping
+                # Create new mapping. Verify app_id belongs to the caller's
+                # organisation first -- otherwise a caller could point a new
+                # mapping at another organisation's application.
+                org_id = current_org_id()
+                owned_app = (
+                    db.session.execute(
+                        db.select(ApplicationComponent).where(
+                            ApplicationComponent.id == app_id,
+                            ApplicationComponent.organization_id == org_id,
+                        )
+                    ).scalar_one_or_none()
+                    if org_id is not None
+                    else None
+                )
+                if owned_app is None:
+                    current_app.logger.warning(
+                        f"Skipping mapping: application {app_id} not found in caller's organisation"
+                    )
+                    continue
+
                 current_app.logger.debug(
                     f"Creating new mapping for app_id={app_id}, process_id={process_id}"
                 )

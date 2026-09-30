@@ -362,6 +362,8 @@ def save_process_mappings():
     """
     try:
         from app import db
+        from app.middleware.tenant_context import current_org_id
+        from app.models.application_layer import ApplicationComponent
         from app.models.apqc_process import (
             APQCProcess,
             CapabilityProcessMapping,
@@ -382,9 +384,34 @@ def save_process_mappings():
             if not process:
                 return jsonify({"error": f"APQC process not found: {process_id}"}), 404
 
+            org_id = current_org_id()
+
             for app_data in data["applications"]:
                 app_id = int(app_data.get("application_id", 0))
                 if not app_id:
+                    continue
+
+                # ProcessApplicationMapping carries no organization_id of its
+                # own -- ownership is only reachable via application_id.
+                # Neither the existing-mapping lookup nor a new mapping's
+                # target application_id was fenced: an update (by
+                # caller-supplied mapping_id) could mutate another
+                # organisation's row, and a create could point a new
+                # mapping at another organisation's application. Verify
+                # app_id belongs to the caller's organisation before either;
+                # skip this item (like the missing-id case above) rather
+                # than fail the whole batch.
+                owned_app = (
+                    db.session.execute(
+                        db.select(ApplicationComponent).where(
+                            ApplicationComponent.id == app_id,
+                            ApplicationComponent.organization_id == org_id,
+                        )
+                    ).scalar_one_or_none()
+                    if org_id is not None
+                    else None
+                )
+                if owned_app is None:
                     continue
 
                 mapping_fields = app_data.get("mapping", {})
@@ -394,6 +421,11 @@ def save_process_mappings():
                 existing = None
                 if mapping_id:
                     existing = ProcessApplicationMapping.query.get(int(mapping_id))
+                    if existing is not None and existing.application_id != app_id:
+                        # mapping_id names a row outside app_id's (already
+                        # proven owned) application -- refuse rather than
+                        # mutate a row that turned out to belong elsewhere.
+                        existing = None
 
                 if not existing:
                     existing = ProcessApplicationMapping.query.filter_by(
