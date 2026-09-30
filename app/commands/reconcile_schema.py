@@ -22,7 +22,18 @@ metadata-only operation, so this stays cheap on a large table.
 
 It also creates the four canonical Transformation Programme tables when they are
 absent. Other missing tables remain the responsibility of `flask init-db`
-(`create_all`). Run them together:  flask init-db && flask reconcile-schema
+(`create_all`).
+
+Deploy order (scripts/database/deploy-schema.sh):
+    flask init-db && flask schema-upgrade && flask reconcile-schema
+
+This command is the drift detector in that sequence, not the authority. Any
+change it cannot make — relaxing or tightening NOT NULL, retyping or widening a
+column, a constraint added after a backfill — is an Alembic revision applied by
+`flask schema-upgrade` (app/commands/schema_migrations.py). On a database the
+first two steps brought up to date it adds only the nullable columns models
+gained since the last deploy, each listed in its output, which is the deploy
+log's record of them.
 
 Usage:
     flask --app manage reconcile-schema            # apply
@@ -1917,5 +1928,8 @@ def reconcile_schema(dry_run):
 
 
 def init_app(app):
-    """Register the reconcile-schema CLI command."""
+    """Register the reconcile-schema and schema-upgrade CLI commands."""
+    from app.commands.schema_migrations import init_app as init_schema_migrations
+
     app.cli.add_command(reconcile_schema)
+    init_schema_migrations(app)

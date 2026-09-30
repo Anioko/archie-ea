@@ -258,7 +258,9 @@ else:
         __table_args__ = {"extend_existing": True}
 
         id = db.Column(db.Integer, primary_key=True)
-        name = db.Column(db.String(100), nullable=False)
+        # Width 500 per migrations/versions/20260926_widen_element_name.py
+        # (ADR 0002 expand step).
+        name = db.Column(db.String(500), nullable=False)
         type = db.Column(db.String(50), index=True)
         # VARCHAR(30) on the database side, exactly as before — see
         # _ArchiMateLayerType above for why the casing is mediated here.
@@ -1125,6 +1127,20 @@ class LLMInteraction(db.Model):
     cost = db.Column(db.Numeric(10, 4))
     latency_ms = db.Column(db.Integer)
     created_at = db.Column(db.DateTime, default=db.func.now())
+
+    # Gateway fields on llm_interactions for provider register
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
+    prompt_version = db.Column(
+        db.String(32), nullable=True,
+        comment="Semver-style version string, e.g. v1.3; references LLMPromptVersion.version",
+    )
+    retention_setting = db.Column(
+        db.String(50), nullable=True,
+        comment="Data retention policy: forever, 30d, 90d, 1y",
+    )
 
     def __repr__(self):
         input_tokens = self.token_count_input or 0
