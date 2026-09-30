@@ -5128,6 +5128,13 @@ def _engine_archimate_cleanup(solution_ids):
         _sp_exe(f"DELETE FROM archimate_contracts      WHERE model_id           IN ({mids_str})")
         _sp_exe(f"DELETE FROM archimate_representations WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM archimate_resources       WHERE model_id          IN ({mids_str})")
+        # This is a full solution teardown, so the paired canonical row goes
+        # with its source ADR record rather than being left dangling -- must
+        # run before the delete below, which would lose the retired_into_id
+        # link needed to find it.
+        _sp_exe(f"DELETE FROM architecture_decisions WHERE id IN "
+                f"(SELECT retired_into_id FROM architecture_decision_records "
+                f"WHERE architecture_model_id IN ({mids_str}) AND retired_into_id IS NOT NULL)")
         _sp_exe(f"DELETE FROM architecture_decision_records WHERE architecture_model_id IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_collaborations   WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_interactions     WHERE model_id          IN ({mids_str})")

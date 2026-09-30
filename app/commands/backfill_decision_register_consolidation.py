@@ -40,6 +40,21 @@ Usage:
         # also assigns decision_ledger rows whose capability_id could not be
         # resolved to organisation 3 (manual cleanup only, matches
         # backfill_arb_ea_tenancy.py's --org-id convention)
+
+Not folded into backfill_arb_ea_tenancy.py's framework: that command's core
+loop is table-first (`for table, subquery_sql in MODEL_SPECS`), UPDATE-only,
+deriving a missing organization_id per table from an already-scoped FK
+parent -- fourteen tables, one shared shape. This command's two backfills
+are neither: the ADR migration INSERTs a new paired row per source row (not
+an UPDATE of an existing organization_id), and derives nothing -- the source
+row already carries its own organisation, copied across, never guessed. The
+decision_ledger derivation is a single one-off UPDATE...FROM join against
+unified_capabilities, not a per-table MODEL_SPECS entry, and doesn't fit
+that framework's "backfill organization_id from an FK parent" contract
+either. The CLI shape (--dry-run/--org-id, an echo callback, a non-zero
+exit when something needs manual attention) intentionally matches
+backfill_arb_ea_tenancy.py's conventions -- that similarity is convention
+reuse, not the same mechanism duplicated.
 """
 import click
 from flask.cli import with_appcontext

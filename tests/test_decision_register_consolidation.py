@@ -8,9 +8,14 @@
 """
 from __future__ import annotations
 
+import uuid
+from pathlib import Path
+
 import pytest
 
 from app import db
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 from app.commands.backfill_decision_register_consolidation import run_backfill
 from app.models.adr import ArchitectureDecisionRecord
 from app.models.architecture_decision import ArchitectureDecision
@@ -244,3 +249,160 @@ def test_decision_ledger_backfill_leaves_unresolvable_rows_as_orphans(db_session
         db.text("SELECT organization_id FROM decision_ledger WHERE id = :i"), {"i": row_id}
     ).scalar()
     assert resolved_org is None
+
+
+# ----------------------------------------------- final-check fix round
+
+
+def test_solution_teardown_deletes_the_paired_canonical_row_too(app):
+    """Regression (final check DEFECT-1): a solution's full architecture
+    teardown hard-deletes architecture_decision_records by
+    architecture_model_id with no awareness of retired_into_id, leaving the
+    paired architecture_decisions row dangling.
+
+    Does not use the db_session fixture: _engine_archimate_cleanup
+    deliberately opens its own db.engine.begin() connection (see its own
+    docstring -- avoiding lock contention with the ORM session), which is
+    outside db_session's SAVEPOINT-based rollback contract and would not see
+    data set up through it. Commits for real instead, with manual cleanup.
+    """
+    from app.models.architecture_decision import ArchitectureDecision
+    from app.models.adr import ArchitectureDecisionRecord
+    from app.models.models import ArchitectureModel
+    from app.models.organization import Organization
+    from app.models.solution_models import Solution
+    from app.modules.solutions_strategic.v2.routes.solution_design_routes import (
+        _engine_archimate_cleanup,
+    )
+
+    with app.app_context():
+        org = Organization(name="Teardown test org", slug=f"teardown-{uuid.uuid4().hex[:10]}")
+        db.session.add(org)
+        db.session.flush()
+
+        solution = Solution(name="Teardown target", organization_id=org.id)
+        db.session.add(solution)
+        db.session.flush()
+
+        model = ArchitectureModel(
+            organization_id=org.id, name="Teardown model", version="1.0",
+            solution_id=solution.id, model_data="{}", is_default=False,
+        )
+        db.session.add(model)
+        db.session.flush()
+
+        record = _make_adr_record(org.id, architecture_model_id=model.id)
+        canonical = record.pair_with_canonical_register()
+        db.session.commit()
+        record_id, canonical_id, solution_id, model_id, org_id = (
+            record.id, canonical.id, solution.id, model.id, org.id,
+        )
+
+        try:
+            _engine_archimate_cleanup([solution_id])
+            db.session.expire_all()
+
+            remaining_record = db.session.get(ArchitectureDecisionRecord, record_id)
+            remaining_canonical = db.session.get(ArchitectureDecision, canonical_id)
+            assert remaining_record is None
+            assert remaining_canonical is None, (
+                "canonical row left dangling after its source was deleted"
+            )
+        finally:
+            db.session.rollback()
+            db.session.execute(
+                db.text("DELETE FROM architecture_decisions WHERE id = :i"), {"i": canonical_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM architecture_decision_records WHERE id = :i"), {"i": record_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM architecture_models WHERE id = :i"), {"i": model_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM solutions WHERE id = :i"), {"i": solution_id}
+            )
+            db.session.execute(
+                db.text("DELETE FROM organizations WHERE id = :i"), {"i": org_id}
+            )
+            db.session.commit()
+
+
+def test_set_status_updates_the_paired_canonical_row_too(db_session, make_org, tenant_ctx):
+    """Regression (final check DEFECT-2): SolutionOptionsAdvisor.set_status()
+    updated only ArchitectureDecisionRecord, leaving the paired
+    ArchitectureDecision stale.
+    """
+    from app.modules.solutions_strategic.v2.services.solution_options_advisor import (
+        SolutionOptionsAdvisor,
+    )
+
+    org = make_org("setstatus")
+    with tenant_ctx(org.id):
+        record = _make_adr_record(org.id, status="proposed")
+        canonical = record.pair_with_canonical_register()
+        db.session.commit()
+
+        result = SolutionOptionsAdvisor.set_status(record.id, "accepted", user_id=1)
+
+        assert result["success"] is True
+        db.session.refresh(record)
+        db.session.refresh(canonical)
+        assert record.status == "accepted"
+        assert canonical.status == "accepted", "paired canonical row left stale after set_status"
+
+
+def test_architecture_decision_record_is_no_longer_a_store_agreement_peer():
+    """Regression (final check DEFECT-3): a canonical-only ArchitectureDecision
+    (no paired ArchitectureDecisionRecord) used to make the "architecture
+    decisions" store-agreement concept disagree, since
+    ArchitectureDecisionRecord was listed as an independent peer surface --
+    e.g. one canonical-only row gave architecture_decisions=1,
+    architecture_decision_records=0 for the same organisation. It is now a
+    satellite of the canonical store (paired via retired_into_id), not a
+    peer answering the same question, so it must no longer be one of the
+    concept's compared surfaces.
+    """
+    source = (REPO_ROOT / "scripts" / "check_store_agreement.py").read_text()
+    start = source.index('"architecture decisions": [')
+    end = source.index("],", start)
+    concept_block = source[start:end]
+    assert 'Surface("orm:ArchitectureDecisionRecord"' not in concept_block, (
+        "ArchitectureDecisionRecord must not be a peer surface of the "
+        "architecture decisions concept any more"
+    )
+    assert 'Surface("orm:ArchitectureDecision"' in concept_block  # the concept itself still exists
+
+
+def test_adr_record_json_api_surfaces_its_canonical_pairing(db_session, make_org, tenant_ctx, client, login_as):
+    """Regression (final check DEFECT-5, MEDIUM): the only ADR route that
+    still reads architecture_decision_records directly (the rest already
+    redirected to the canonical register before this PR) now also surfaces
+    the pairing, so a caller can reach the canonical register from here too.
+    This field does not exist on anioko/main.
+    """
+    from app.models.user import User
+
+    org = make_org("adr-json-pairing")
+    with tenant_ctx(org.id):
+        user = User(
+            email=f"adr-view-{uuid.uuid4().hex[:10]}@example.test",
+            first_name="ADR", last_name="Viewer",
+            organization_id=org.id, confirmed=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        record = _make_adr_record(org.id)
+        canonical = record.pair_with_canonical_register()
+        db_session.commit()
+        record_id, canonical_id = record.id, canonical.id
+
+    login_as(client, user)
+    resp = client.get(f"/architecture/adrs/records/{record_id}")
+
+    assert resp.status_code == 200
+    payload = resp.get_json()["adr"]
+    assert payload["canonical_decision_id"] == canonical_id
+    assert payload["canonical_decision_url"] is not None
+    assert str(canonical_id) in payload["canonical_decision_url"]

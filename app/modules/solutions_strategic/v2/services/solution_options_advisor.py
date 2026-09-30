@@ -17,7 +17,7 @@ disposes). Never raises to the caller; returns an error dict on failure.
 import json
 import logging
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 from app import db
@@ -140,6 +140,16 @@ class SolutionOptionsAdvisor:
         adr.status = status
         if status == "accepted":
             adr.decision_date = date.today()
+        # Consolidation: a paired row (retired_into_id set) must not go
+        # stale in the canonical register just because this status update
+        # came in through the old write path.
+        if adr.retired_into_id is not None:
+            from app.models.architecture_decision import ArchitectureDecision
+            paired = db.session.get(ArchitectureDecision, adr.retired_into_id)
+            if paired is not None:
+                paired.status = status
+                if status == "accepted":
+                    paired.decided_at = datetime.utcnow()
         db.session.commit()
         return {"success": True, "adr": cls.to_dict(adr)}
 
