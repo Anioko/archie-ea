@@ -724,3 +724,70 @@ def test_transformation_api_rejects_anonymous_browser_session(page, live_server)
     body = response.json()
     assert body["data"] is None
     assert body["errors"][0]["code"] == "not_authenticated"
+
+
+# The application technology panel (nodes and system software an application
+# runs on). Reading the links carries @login_required only, so every archetype
+# reaches it. Writing carries require_roles("admin", "architect"): every seeded
+# archetype holds the Architect (or Administrator) role, so every one may write,
+# and a read-only Viewer account in the same organisation is refused.
+TECHNOLOGY_LINKS_PATH = "/architecture/api/applications/%d/technology-links"
+
+
+@pytest.fixture(scope="module")
+def technology_links_viewer(seeded):
+    """A read-only (Viewer role) account in the seeded organisation."""
+    import uuid
+
+    from app import create_app, db
+    from app.models.user import Role, User
+
+    app = create_app("testing")
+    with app.app_context():
+        Role.insert_roles()
+        user = User(
+            email="smoke.viewer.%s@example.com" % uuid.uuid4().hex[:8],
+            first_name="Smoke", last_name="Viewer",
+            organization_id=seeded["ids"]["org"], enterprise_role="enterprise_architect",
+            confirmed=True,
+        )
+        user.role = Role.query.filter_by(name="Viewer").one()
+        user.password = PASSWORD
+        db.session.add(user)
+        db.session.commit()
+        return user.email
+
+
+def _post_technology_link(page, live_server, application_id):
+    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    # element_id 0 names no element: a permitted caller gets the 400 that says
+    # so, a refused one gets the role gate's 403 before the body is read.
+    return page.request.post(
+        live_server + TECHNOLOGY_LINKS_PATH % application_id,
+        data={"element_id": 0},
+        headers={"X-CSRFToken": csrf_token},
+        max_redirects=0,
+    )
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_application_technology_links_authorisation(archetype, page, live_server, seeded):
+    _login(page, live_server, seeded["emails"][archetype])
+    path = TECHNOLOGY_LINKS_PATH % seeded["ids"]["application"]
+    assert _observe(page, live_server, path) == ALLOWED, "%s could not read %s" % (archetype, path)
+    response = _post_technology_link(page, live_server, seeded["ids"]["application"])
+    assert response.status == 400, (
+        "%s writing a technology link: expected the 400 for an unknown element "
+        "(the role gate passed), got %s" % (archetype, response.status)
+    )
+
+
+def test_application_technology_links_refuse_a_read_only_account(
+    page, live_server, seeded, technology_links_viewer
+):
+    _login(page, live_server, technology_links_viewer)
+    path = TECHNOLOGY_LINKS_PATH % seeded["ids"]["application"]
+    assert _observe(page, live_server, path) == ALLOWED
+    response = _post_technology_link(page, live_server, seeded["ids"]["application"])
+    assert response.status == 403, "a Viewer wrote a technology link: %s" % response.status
