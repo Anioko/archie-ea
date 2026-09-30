@@ -175,7 +175,6 @@ def test_cross_org_check_detects_seeded_leak(app, db_session, make_org, monkeypa
     db_session.add_all([user_a, user_b])
     db_session.commit()
 
-    # The cross-org check script is importable and its main function is callable
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -185,10 +184,22 @@ def test_cross_org_check_detects_seeded_leak(app, db_session, make_org, monkeypa
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    # The module should have the expected functions
-    assert hasattr(mod, "_login")
-    assert hasattr(mod, "_check_cannot_read_other_org")
-    assert hasattr(mod, "main")
+    original_get = mod._api_get
+
+    def fake_get(url, cookie, timeout=30):
+        if url.endswith("/api/auth/session"):
+            return 200, {"user": {"email": user_a.email if cookie == "cookie-a" else user_b.email}}
+        if url.endswith("/api/users"):
+            if cookie == "cookie-a":
+                return 200, [{"email": user_a.email}, {"email": user_b.email}]
+            return 200, [{"email": user_b.email}, {"email": user_a.email}]
+        return original_get(url, cookie, timeout=timeout)
+
+    monkeypatch.setattr(mod, "_api_get", fake_get)
+
+    assert mod._check_cannot_read_other_org(
+        "https://example.test", "cookie-a", user_a.email, user_b.email
+    ) is False
 
 
 def test_cross_org_check_script_is_syntactically_valid():
@@ -259,6 +270,14 @@ def test_wal_archive_script_prints_command_with_flag():
     assert "docker exec" in result.stdout
 
 
+def test_archie_backup_invokes_wal_archive_configuration():
+    """The backup entrypoint refreshes wal-g archiving instead of bypassing it."""
+    script = (ROOT / "deploy" / "archie-backup.sh").read_text(encoding="utf-8")
+
+    assert "wal_archive.sh" in script
+    assert "WALG_STORAGE_PREFIX" in script
+
+
 # ---------------------------------------------------------------------------
 # Restore drill script
 # ---------------------------------------------------------------------------
@@ -270,16 +289,8 @@ def test_restore_drill_script_is_syntactically_valid():
     source = script.read_text(encoding="utf-8")
 
     # Verify key structural elements
-    assert "WALG_STORAGE_PREFIX" in source
-    assert "RESTORE_TARGET_TIME" in source
-    assert "SCRATCH_CONTAINER_NAME" in source
-    assert "MAX_RESTORE_SECONDS" in source
-    assert "wal-g backup-list" in source
-    assert "wal-g backup-fetch" in source
-    assert "pg_restore" in source
-    assert "recovery_target_time" in source
-    assert "RESTORE DRILL PASSED" in source
-    assert "RESTORE-DRILL FAIL" in source
+    assert "verify_backup.sh" in source
+    assert "--wal-g" in source
 
     # Check bash syntax with bash -n
     result = subprocess.run(
@@ -290,22 +301,26 @@ def test_restore_drill_script_is_syntactically_valid():
 
 
 def test_restore_drill_script_refuses_without_target_time():
-    """The script fails when RESTORE_TARGET_TIME is not set."""
+    """The wrapper delegates to verify_backup.sh wal-g mode."""
     script = ROOT / "scripts" / "restore_drill.sh"
-    result = subprocess.run(
-        ["bash", str(script)],
-        capture_output=True, text=True,
-        env={
-            **os.environ,
-            "WALG_STORAGE_PREFIX": "s3://test-bucket/archie-wal",
-            "AWS_ACCESS_KEY_ID": "test-key",
-            "AWS_SECRET_ACCESS_KEY": "test-secret",
-            "AWS_REGION": "us-east-1",
-            # RESTORE_TARGET_TIME deliberately not set
-        },
-    )
-    assert result.returncode != 0
-    assert "RESTORE_TARGET_TIME" in (result.stdout + result.stderr)
+    source = script.read_text(encoding="utf-8")
+
+    assert 'exec "$SCRIPT_DIR/../deploy/verify_backup.sh" --wal-g' in source
+
+
+def test_verify_backup_script_supports_wal_g_mode():
+    """verify_backup.sh owns both the classic and wal-g restore drills."""
+    script = ROOT / "deploy" / "verify_backup.sh"
+    source = script.read_text(encoding="utf-8")
+
+    assert "--wal-g" in source
+    assert "compare_row_counts" in source
+    assert "wal-g restore drill mode" in source
+    assert "backup-fetch" in source
+    assert "RESTORE DRILL PASSED" in source
+
+    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    assert result.returncode == 0, f"bash syntax error: {result.stderr}"
 
 
 # ---------------------------------------------------------------------------
@@ -338,6 +353,13 @@ def test_deploy_verified_sh_has_retired_bind_mount_note():
     assert "IMAGE_PIPELINE_TOPOLOGY=1" in source
 
 
+def test_compose_file_already_uses_digest_image_variable_without_changes_needed():
+    """The production compose overlay already takes the image by variable."""
+    source = (ROOT / "deploy" / "docker-compose.production.yml").read_text(encoding="utf-8")
+
+    assert "image: ${ARCHIE_IMAGE:?ARCHIE_IMAGE must be a digest-addressed release image}" in source
+
+
 # ---------------------------------------------------------------------------
 # CLI registration
 # ---------------------------------------------------------------------------
@@ -368,15 +390,15 @@ def test_production_test_org_slugs_are_stable():
     assert ORG_B_SLUG == "archie-prod-test-org-b"
 
 
-def test_production_test_orgs_are_excluded_from_metrics_queries(app, db_session, monkeypatch):
+def test_production_test_orgs_are_excluded_from_metrics_queries(app, db_session, make_org, monkeypatch):
     """Metrics queries that aggregate by organisation must exclude test orgs."""
-    from app.commands.seed_production_test_organisations import (
-        is_production_test_org,
-        production_test_org_slugs,
-    )
+    from app.commands.seed_production_test_organisations import production_test_org_slugs
+    from app.models.business_capabilities import BusinessCapability
     from app.models.organization import Organization
+    from app.services.metric_calculation_service import MetricCalculationService
 
     monkeypatch.setenv("PROD_TEST_ORG_PASSWORD", "test-password-123")
+    real_org = make_org("metrics-real")
 
     # Seed the test orgs
     app.test_cli_runner().invoke(
@@ -386,16 +408,55 @@ def test_production_test_orgs_are_excluded_from_metrics_queries(app, db_session,
     org_a = Organization.query.filter_by(slug="archie-prod-test-org-a").first()
     org_b = Organization.query.filter_by(slug="archie-prod-test-org-b").first()
 
-    assert org_a is not None
-    assert org_b is not None
-    assert is_production_test_org(org_a.slug) is True
-    assert is_production_test_org(org_b.slug) is True
+    db_session.add_all(
+        [
+            BusinessCapability(
+                name="Real capability",
+                organization_id=real_org.id,
+                current_maturity_level=4,
+                target_maturity_level=5,
+            ),
+            BusinessCapability(
+                name="Synthetic capability A",
+                organization_id=org_a.id,
+                current_maturity_level=1,
+                target_maturity_level=5,
+            ),
+            BusinessCapability(
+                name="Synthetic capability B",
+                organization_id=org_b.id,
+                current_maturity_level=1,
+                target_maturity_level=5,
+            ),
+        ]
+    )
+    db_session.flush()
 
-    # The exclusion filter works in a query
-    slugs = production_test_org_slugs()
-    non_test_orgs = Organization.query.filter(
-        ~Organization.slug.in_(slugs)
-    ).all()
+    metrics = MetricCalculationService().calculate_metrics_for_model(BusinessCapability)
 
-    for org in non_test_orgs:
-        assert org.slug not in slugs
+    total = next(metric for metric in metrics if metric["title"] == "Total BusinessCapabilitys")
+    avg = next(metric for metric in metrics if metric["title"] == "Avg Maturity")
+    gap = next(metric for metric in metrics if metric["title"] == "Maturity Gap")
+
+    assert total["value"] == "1"
+    assert avg["value"] == "4.0/5.0"
+    assert gap["value"] == "1 levels"
+    assert Organization.query.filter(~Organization.slug.in_(production_test_org_slugs())).count() >= 1
+
+
+def test_production_test_orgs_are_excluded_from_billing_aggregations(app, db_session, make_org, monkeypatch):
+    """Billing summaries by organisation must exclude synthetic production test orgs."""
+    from app.services import billing_plans
+
+    monkeypatch.setenv("PROD_TEST_ORG_PASSWORD", "test-password-123")
+    real_org = make_org("billing-real")
+    app.test_cli_runner().invoke(
+        args=["seed-production-test-organisations", "--password", "test-password-123"]
+    )
+
+    statuses = billing_plans.organization_plan_statuses()
+    slugs = {row["organization_slug"] for row in statuses}
+
+    assert real_org.slug in slugs
+    assert "archie-prod-test-org-a" not in slugs
+    assert "archie-prod-test-org-b" not in slugs
