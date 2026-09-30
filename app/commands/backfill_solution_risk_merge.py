@@ -244,6 +244,16 @@ def backfill_solution_risk_merge(dry_run, organization_id):
                     db.session.rollback()
                     raise
                 merged += 1
+        # g.current_org_id lives on the app context, which test_request_context
+        # only implicitly pushes when none is already active -- inside
+        # with_appcontext (and, in a test, inside the caller's own app
+        # context) it is the SAME app context throughout, so the value set
+        # above survives this block's exit. Clear it explicitly so it cannot
+        # leak into the next organisation's iteration, the "After" counts
+        # below (which must see every organisation, not just the last one
+        # processed), or the caller once this command returns.
+        if hasattr(g, "current_org_id"):
+            delattr(g, "current_org_id")
 
     # Quarantine cannot run scoped to one organisation -- an unattributed row
     # has none -- so it always covers every unattributed row, independent of
