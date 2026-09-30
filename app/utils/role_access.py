@@ -820,11 +820,19 @@ def _build_zones(role: str) -> List[Dict]:
     # platform_admin has no headroom left for a 5th library link once its two
     # admin-zone additions are counted (23 zone links -> 25 rendered, exactly
     # at SIDEBAR_LINK_BUDGET) — see _LIBRARY_LINKS_WITH_DIRECTORY's comment.
+    # Value Streams at Risk is a business_architect-only My-work link. To keep
+    # the rendered sidebar within the existing ratchet (28) rather than raising
+    # verification_baseline.json, that persona's Home zone keeps Dashboard
+    # Overview and drops Health Scorecard, which remains reachable from the
+    # dashboard itself and from the personas that actively work from it.
+    home_links = (
+        _HOME_LINKS[:1] if role == ROLE_BUSINESS_ARCHITECT else _HOME_LINKS
+    )
     library_links = (
         _LIBRARY_LINKS if role == ROLE_PLATFORM_ADMIN else _LIBRARY_LINKS_WITH_DIRECTORY
     )
     zones = [
-        _zone("home", _HOME_LINKS),
+        _zone("home", home_links),
         _zone("my_work", [_ASK_LINK] + _MY_WORK_LINKS[role]),
         _zone("library", library_links),
     ]
