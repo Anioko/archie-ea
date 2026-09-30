@@ -247,6 +247,20 @@ class AIImpactAnalysisService:
         rows = result.get("rows") or []
         elements = result.get("elements") or {}
 
+        # Batch-resolve BusinessCapability level and category for enrichment.
+        capability_element_ids = [
+            row["element_id"] for row in rows
+            if elements.get(str(row["element_id"]), {}).get("type") == "Capability"
+        ]
+        capability_lookup: Dict[int, Dict[str, Any]] = {}
+        if capability_element_ids:
+            from app.models.business_capabilities import BusinessCapability
+
+            caps = BusinessCapability.query.filter(
+                BusinessCapability.archimate_element_id.in_(capability_element_ids)
+            ).all()
+            capability_lookup = {c.archimate_element_id: {"level": c.level, "category": c.category} for c in caps}
+
         direct_impacts = []
         indirect_by_depth: Dict[int, list] = {}
         affected_capabilities = []
@@ -272,11 +286,12 @@ class AIImpactAnalysisService:
 
             el_type = el.get("type", "")
             if el_type == "Capability":
+                cap_info = capability_lookup.get(row["element_id"], {})
                 affected_capabilities.append({
                     "id": row["element_id"],
                     "name": el.get("name"),
-                    "level": None,
-                    "criticality": "unknown",
+                    "level": cap_info.get("level"),
+                    "criticality": cap_info.get("category") or "unknown",
                 })
             elif el_type == "Goal":
                 affected_goals.append(item)
