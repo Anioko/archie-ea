@@ -203,7 +203,6 @@ def backfill_solution_risk_merge(dry_run, organization_id):
             quarantine.append(row.id)
         elif organization_id is None or row.organization_id == organization_id:
             plan[row.organization_id].append(row.id)
-    db.session.remove()
 
     if dry_run:
         for org_id in sorted(plan):
@@ -226,7 +225,12 @@ def backfill_solution_risk_merge(dry_run, organization_id):
         # cannot safely guess an organisation once more than one exists and
         # the insert would violate NOT NULL. The same technique
         # scripts/check_store_agreement.py's observe_tenant uses to run
-        # tenant-scoped code outside a real request.
+        # tenant-scoped code outside a real request. No db.session.remove()
+        # between organisations: this command's own scoping comes from
+        # g.current_org_id and each row's explicit organization_id, not from
+        # a clean session, and removing the session here has been observed to
+        # discard an already-committed row when this command's session is
+        # shared with a caller's own transaction (as in a test harness).
         with current_app.test_request_context("/"):
             g.current_org_id = org_id
             for row_id in ids:
@@ -240,7 +244,6 @@ def backfill_solution_risk_merge(dry_run, organization_id):
                     db.session.rollback()
                     raise
                 merged += 1
-        db.session.remove()
 
     # Quarantine cannot run scoped to one organisation -- an unattributed row
     # has none -- so it always covers every unattributed row, independent of
