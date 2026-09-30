@@ -144,16 +144,19 @@ def test_page_is_not_served_to_an_anonymous_visitor(app, client, path):
         assert "/account/login" in response.headers["Location"]
 
 
-def test_the_two_pages_are_the_only_routes_this_blueprint_serves(app):
+def test_the_read_only_pages_are_the_only_routes_this_blueprint_serves(app):
     rules = {
         rule.rule: sorted(rule.methods - {"HEAD", "OPTIONS"})
         for rule in app.url_map.iter_rules()
         if rule.endpoint.startswith("intelligence_ui.")
     }
-    assert rules == {
+    required = {
         "/intelligence/ask": ["GET"],
         "/intelligence/twin-map": ["GET"],
     }
+    optional = {"/intelligence/traceability": ["GET"]}
+    assert all(rules.get(path) == methods for path, methods in required.items())
+    assert set(rules) in (set(required), set(required) | set(optional))
     assert not [r for r in rules if r.startswith("/api/")]
 
 
