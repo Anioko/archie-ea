@@ -130,6 +130,15 @@ class SolutionOptionsAdvisor:
 
     @classmethod
     def set_status(cls, adr_id: int, status: str, user_id: int) -> Dict[str, Any]:
+        """Change status on the one canonical writer.
+
+        architecture_decisions is the only writer (lead ruling, R1-B09):
+        the legacy ArchitectureDecisionRecord is read history and takes no
+        new writes, including this one. Status lands on the paired
+        ArchitectureDecision row; the legacy row's own `status` /
+        `decision_date` stay exactly as they were when it was created or
+        last paired.
+        """
         from app.models.adr import ArchitectureDecisionRecord
         valid = {"proposed", "accepted", "rejected", "deprecated", "superseded"}
         if status not in valid:
@@ -137,21 +146,20 @@ class SolutionOptionsAdvisor:
         adr = db.session.get(ArchitectureDecisionRecord, adr_id)
         if adr is None:
             return {"success": False, "error": "Decision not found."}
-        adr.status = status
+        paired = adr.pair_with_canonical_register()
+        if paired is None:
+            return {"success": False, "error": "Decision has no organisation to pair with the canonical register."}
+        paired.status = status
+        applied_decision_date = None
         if status == "accepted":
-            adr.decision_date = date.today()
-        # Consolidation: a paired row (retired_into_id set) must not go
-        # stale in the canonical register just because this status update
-        # came in through the old write path.
-        if adr.retired_into_id is not None:
-            from app.models.architecture_decision import ArchitectureDecision
-            paired = db.session.get(ArchitectureDecision, adr.retired_into_id)
-            if paired is not None:
-                paired.status = status
-                if status == "accepted":
-                    paired.decided_at = datetime.utcnow()
+            paired.decided_at = datetime.utcnow()
+            applied_decision_date = date.today()
         db.session.commit()
-        return {"success": True, "adr": cls.to_dict(adr)}
+        result = cls.to_dict(adr)
+        result["status"] = status
+        if applied_decision_date is not None:
+            result["decision_date"] = applied_decision_date.isoformat()
+        return {"success": True, "adr": result}
 
     # ------------------------------------------------------------------ #
     # Internals                                                           #

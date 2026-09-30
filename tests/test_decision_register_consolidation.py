@@ -341,10 +341,12 @@ def test_solution_teardown_deletes_the_paired_canonical_row_too(app):
             db.session.commit()
 
 
-def test_set_status_updates_the_paired_canonical_row_too(db_session, make_org, tenant_ctx):
-    """Regression (final check DEFECT-2): SolutionOptionsAdvisor.set_status()
-    updated only ArchitectureDecisionRecord, leaving the paired
-    ArchitectureDecision stale.
+def test_set_status_updates_the_canonical_row_and_leaves_the_legacy_row_frozen(db_session, make_org, tenant_ctx):
+    """architecture_decisions is the only writer (lead ruling, R1-B09):
+    SolutionOptionsAdvisor.set_status() now writes status only to the paired
+    ArchitectureDecision; the legacy ArchitectureDecisionRecord is read
+    history and takes no new writes, so its own `status` stays exactly what
+    it was when the record was created/paired.
     """
     from app.modules.solutions_strategic.v2.services.solution_options_advisor import (
         SolutionOptionsAdvisor,
@@ -359,10 +361,52 @@ def test_set_status_updates_the_paired_canonical_row_too(db_session, make_org, t
         result = SolutionOptionsAdvisor.set_status(record.id, "accepted", user_id=1)
 
         assert result["success"] is True
+        assert result["adr"]["status"] == "accepted", "response must reflect the status actually applied"
         db.session.refresh(record)
         db.session.refresh(canonical)
-        assert record.status == "accepted"
-        assert canonical.status == "accepted", "paired canonical row left stale after set_status"
+        assert canonical.status == "accepted"
+        assert record.status == "proposed", (
+            "legacy ArchitectureDecisionRecord.status changed -- it must stay frozen "
+            "history once architecture_decisions is the only writer"
+        )
+
+
+def test_set_status_on_one_organisations_decision_never_touches_another(db_session, make_org, tenant_ctx):
+    """Two organisations each have a paired, proposed decision; accepting
+    org A's must change only org A's canonical row.
+    """
+    from app.modules.solutions_strategic.v2.services.solution_options_advisor import (
+        SolutionOptionsAdvisor,
+    )
+
+    org_a = make_org("setstatus-a")
+    org_b = make_org("setstatus-b")
+    with tenant_ctx(org_b.id):
+        record_b = _make_adr_record(org_b.id, status="proposed")
+        canonical_b = record_b.pair_with_canonical_register()
+        db.session.commit()
+        canonical_b_id = canonical_b.id
+
+    with tenant_ctx(org_a.id):
+        record_a = _make_adr_record(org_a.id, status="proposed")
+        canonical_a = record_a.pair_with_canonical_register()
+        db.session.commit()
+        record_a_id = record_a.id
+
+        result = SolutionOptionsAdvisor.set_status(record_a_id, "accepted", user_id=1)
+        assert result["success"] is True
+
+        db.session.refresh(canonical_a)
+        assert canonical_a.status == "accepted"
+        # filter_by (not .get(), which checks the identity map first and can
+        # return an already-loaded row from another org without re-querying) --
+        # same pitfall documented in app/models/adr.py and this file's other tests.
+        org_b_row = ArchitectureDecision.query.filter_by(id=canonical_b_id).first()
+        assert org_b_row is None, "org A's tenant context must not see org B's canonical row at all"
+
+    with tenant_ctx(org_b.id):
+        untouched = ArchitectureDecision.query.filter_by(id=canonical_b_id).first()
+        assert untouched.status == "proposed", "org B's decision must be untouched by org A's set_status call"
 
 
 def test_architecture_decision_record_is_no_longer_a_store_agreement_peer():
@@ -419,3 +463,220 @@ def test_adr_record_json_api_surfaces_its_canonical_pairing(db_session, make_org
     assert payload["canonical_decision_id"] == canonical_id
     assert payload["canonical_decision_url"] is not None
     assert str(canonical_id) in payload["canonical_decision_url"]
+    assert payload["historical_snapshot"] is True
+
+
+def test_view_record_keeps_showing_the_frozen_title_after_the_canonical_row_is_edited(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """architecture_decisions is the only writer (lead ruling, R1-B09): once
+    paired, this legacy JSON read surface is a frozen snapshot, not a second
+    live view of the same data. Editing the canonical row through
+    `arch_decisions.edit_decision` must NOT be mirrored back here -- this
+    test pins that divergence as the intended behaviour (final check
+    DEFECT-1's repro, now asserted as correct rather than as a bug).
+    """
+    from app.models.user import User
+
+    org = make_org("adr-frozen-snapshot")
+    with tenant_ctx(org.id):
+        user = User(
+            email=f"adr-frozen-{uuid.uuid4().hex[:10]}@example.test",
+            first_name="ADR", last_name="Frozen",
+            organization_id=org.id, confirmed=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        record = _make_adr_record(org.id, title="Original paired title")
+        canonical = record.pair_with_canonical_register()
+        db_session.commit()
+        record_id, canonical_id = record.id, canonical.id
+
+    login_as(client, user)
+    edit_resp = client.post(
+        f"/architecture/decisions/{canonical_id}/edit",
+        data={
+            "title": "Edited only in canonical register",
+            "status": "accepted",
+            "adm_phase": "",
+            "context": "",
+            "decision": "",
+            "consequences": "",
+            "alternatives": "",
+        },
+    )
+    assert edit_resp.status_code in (302, 303)
+
+    resp = client.get(f"/architecture/adrs/records/{record_id}")
+    payload = resp.get_json()["adr"]
+    assert payload["title"] == "Original paired title", (
+        "legacy record's shared fields must stay frozen after a canonical-only edit"
+    )
+    assert payload["historical_snapshot"] is True
+    assert payload["canonical_decision_id"] == canonical_id
+
+
+def test_update_adr_route_is_retired_and_redirects_to_canonical_edit(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """Fix 4 (final check DEFECT-3): the legacy POST /architecture/adrs/<id>
+    no longer processes form data as a second writer -- it redirects to the
+    one canonical edit route, like the GET routes beside it already do.
+    """
+    from app.models.user import User
+
+    org = make_org("adr-update-retired")
+    with tenant_ctx(org.id):
+        user = User(
+            email=f"adr-update-{uuid.uuid4().hex[:10]}@example.test",
+            first_name="ADR", last_name="Updater",
+            organization_id=org.id, confirmed=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        record = _make_adr_record(org.id, title="Untouched by the retired route")
+        canonical = record.pair_with_canonical_register()
+        db_session.commit()
+        canonical_id = canonical.id
+
+    login_as(client, user)
+    resp = client.post(
+        f"/architecture/adrs/{canonical_id}",
+        data={"title": "Attempted write via the retired route"},
+    )
+
+    assert resp.status_code in (302, 303)
+    assert f"/architecture/decisions/{canonical_id}/edit" in resp.headers["Location"]
+
+    with tenant_ctx(org.id):
+        unchanged = ArchitectureDecision.query.filter_by(id=canonical_id).first()
+        assert unchanged.title == "Untouched by the retired route"
+
+
+def _make_admin(db_session, org, label):
+    from app.models import Permission, Role, User
+
+    role = Role.query.filter_by(name="Administrator").first()
+    if role is None:
+        role = Role(name="Administrator", permissions=Permission.ADMINISTER)
+        db_session.add(role)
+        db_session.flush()
+    user = User(
+        email=f"{label}-{uuid.uuid4().hex[:8]}@example.test",
+        first_name="Admin", last_name=label,
+        organization_id=org.id, role=role, confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
+def test_approve_and_reject_routes_touch_only_the_canonical_row_two_organisations(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """Fix 4 (final check DEFECT-3): ADRService.approve_adr/reject_adr
+    already wrote only the canonical ArchitectureDecision, never the paired
+    ArchitectureDecisionRecord -- this pins that as verified, compliant
+    behaviour (not a gap) and checks it holds for a second organisation.
+    """
+    org_a = make_org("adr-approve-a")
+    org_b = make_org("adr-approve-b")
+    with tenant_ctx(org_a.id):
+        admin_a = _make_admin(db_session, org_a, "ApproveA")
+        record_a1 = _make_adr_record(org_a.id, status="proposed")
+        canonical_a1 = record_a1.pair_with_canonical_register()
+        record_a2 = _make_adr_record(org_a.id, status="proposed", title="Org A second decision")
+        canonical_a2 = record_a2.pair_with_canonical_register()
+        db_session.commit()
+        record_a1_id, canonical_a1_id = record_a1.id, canonical_a1.id
+        record_a2_id, canonical_a2_id = record_a2.id, canonical_a2.id
+
+    with tenant_ctx(org_b.id):
+        record_b = _make_adr_record(org_b.id, status="proposed")
+        canonical_b = record_b.pair_with_canonical_register()
+        db_session.commit()
+        record_b_id, canonical_b_id = record_b.id, canonical_b.id
+
+    login_as(client, admin_a)
+    approve_resp = client.post(f"/architecture/adrs/{canonical_a1_id}/approve")
+    assert approve_resp.status_code in (302, 303)
+    reject_resp = client.post(
+        f"/architecture/adrs/{canonical_a2_id}/reject", data={"rejection_reason": "Not viable"}
+    )
+    assert reject_resp.status_code in (302, 303)
+
+    with tenant_ctx(org_a.id):
+        approved = ArchitectureDecision.query.filter_by(id=canonical_a1_id).first()
+        assert approved.status == "approved"
+        rejected = ArchitectureDecision.query.filter_by(id=canonical_a2_id).first()
+        assert rejected.status == "rejected"
+
+        record_a1_after = ArchitectureDecisionRecord.query.filter_by(id=record_a1_id).first()
+        record_a2_after = ArchitectureDecisionRecord.query.filter_by(id=record_a2_id).first()
+        assert record_a1_after.status == "proposed", (
+            "legacy record must stay untouched by the canonical-only approve route"
+        )
+        assert record_a2_after.status == "proposed", (
+            "legacy record must stay untouched by the canonical-only reject route"
+        )
+
+    with tenant_ctx(org_b.id):
+        untouched_canonical = ArchitectureDecision.query.filter_by(id=canonical_b_id).first()
+        assert untouched_canonical.status == "proposed"
+        untouched_record = ArchitectureDecisionRecord.query.filter_by(id=record_b_id).first()
+        assert untouched_record.status == "proposed"
+
+
+def test_deleting_a_paired_canonical_decision_orphans_but_keeps_the_legacy_record(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """Fix 2 (final check DEFECT-2): deleting a paired canonical decision
+    used to raise ForeignKeyViolation on
+    architecture_decision_records_retired_into_id_fkey. The legacy register
+    stays as read history (lead ruling, R1-B09), so the fix orphans the
+    paired record (retired_into_id -> NULL) rather than deleting it, and the
+    canonical delete succeeds. Checked across two organisations so org A's
+    delete cannot reach org B's pairing.
+    """
+    from app.models.user import User
+
+    org_a = make_org("adr-delete-a")
+    org_b = make_org("adr-delete-b")
+    with tenant_ctx(org_a.id):
+        user = User(
+            email=f"adr-delete-{uuid.uuid4().hex[:10]}@example.test",
+            first_name="ADR", last_name="Deleter",
+            organization_id=org_a.id, confirmed=True,
+        )
+        db_session.add(user)
+        db_session.flush()
+
+        record_a = _make_adr_record(org_a.id, title="Org A paired decision")
+        canonical_a = record_a.pair_with_canonical_register()
+        db_session.commit()
+        record_a_id, canonical_a_id = record_a.id, canonical_a.id
+
+    with tenant_ctx(org_b.id):
+        record_b = _make_adr_record(org_b.id, title="Org B paired decision")
+        canonical_b = record_b.pair_with_canonical_register()
+        db_session.commit()
+        record_b_id, canonical_b_id = record_b.id, canonical_b.id
+
+    login_as(client, user)
+    resp = client.post(f"/architecture/decisions/{canonical_a_id}/delete")
+    assert resp.status_code in (302, 303)
+
+    with tenant_ctx(org_a.id):
+        assert ArchitectureDecision.query.filter_by(id=canonical_a_id).first() is None
+        surviving_record = ArchitectureDecisionRecord.query.filter_by(id=record_a_id).first()
+        assert surviving_record is not None, "legacy record must survive the canonical delete"
+        assert surviving_record.retired_into_id is None, "orphaned, not left pointing at a deleted row"
+        assert surviving_record.title == "Org A paired decision"
+
+    with tenant_ctx(org_b.id):
+        untouched_canonical = ArchitectureDecision.query.filter_by(id=canonical_b_id).first()
+        assert untouched_canonical is not None
+        untouched_record = ArchitectureDecisionRecord.query.filter_by(id=record_b_id).first()
+        assert untouched_record.retired_into_id == canonical_b_id, "org B's pairing must be untouched"

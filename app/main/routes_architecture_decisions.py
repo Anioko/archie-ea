@@ -189,9 +189,21 @@ def edit_decision(decision_id):
 @arch_decisions_bp.route("/<int:decision_id>/delete", methods=["POST"])
 @login_required
 def delete_decision(decision_id):
+    from app.models.adr import ArchitectureDecisionRecord
+
     decision = ArchitectureDecision.query.get_or_404(decision_id)
     decision_ref = decision.decision_id
     decision_title = decision.title
+    # The legacy register stays as read history (lead ruling, R1-B09): a
+    # paired ArchitectureDecisionRecord is orphaned, not deleted, so this
+    # canonical delete never fails on architecture_decision_records_retired_into_id_fkey.
+    paired_records = db.session.execute(
+        db.select(ArchitectureDecisionRecord).where(
+            ArchitectureDecisionRecord.retired_into_id == decision.id
+        )
+    ).scalars().all()
+    for record in paired_records:
+        record.retired_into_id = None
     db.session.delete(decision)
     db.session.commit()
     try:
