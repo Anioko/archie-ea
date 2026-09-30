@@ -390,3 +390,35 @@ def test_agent_runner_queued_approval_carries_the_actors_organisation(db_session
     assert approval.user_id == user.id
     assert approval.operation_type == "tool_use"
     assert approval.chat_session_id == "sess-1"
+
+
+def test_archimate_mapping_agents_relationship_suggestion_is_not_the_orm_model():
+    """Two unrelated classes share this name -- confirms the docstring in
+    app/models/archimate_core.py isn't claiming something false. The ORM
+    model (app.models.archimate_core.RelationshipSuggestion) has no live
+    constructor site anywhere in this codebase; the plain @dataclass in
+    archimate_mapping_agent.py (same name, never imported from the ORM
+    module, never added to a session) is what suggest_relationships()
+    actually constructs, and it never reaches this table.
+    """
+    from dataclasses import is_dataclass
+
+    from app.models.archimate_core import RelationshipSuggestion as ORMModel
+    from app.modules.architecture.services.archimate_mapping_agent import (
+        RelationshipSuggestion as LocalSuggestion,
+    )
+
+    assert LocalSuggestion is not ORMModel
+    assert is_dataclass(LocalSuggestion)
+    assert not hasattr(LocalSuggestion, "__tablename__")
+    assert hasattr(ORMModel, "__tablename__")
+
+    # The constructor at archimate_mapping_agent.py:185 uses exactly the
+    # local dataclass's fields -- this would TypeError against the ORM
+    # model's actual columns (source_element_id, target_element_id,
+    # confidence, reason), which don't match.
+    suggestion = LocalSuggestion(
+        source_id=1, target_id=2, relationship_type="serving",
+        confidence_score=0.9, reasoning="test",
+    )
+    assert suggestion.source_id == 1
