@@ -133,6 +133,13 @@ POLICY = {
     # governance_gate_reader_required: administrators, plus security
     # architects as readers. Every other persona is denied.
     "/admin/audit-log":        {"security_architect"},
+# Security finding tracker: the same reader predicate as the audit trail
+    # (administrators plus security architects). Every other persona is denied.
+    "/trust-centre/security-findings/": {"security_architect"},
+    # Published summary of findings closed after a passing re-test: signed-in
+    # only, no role gate, because it is the same for every organisation and
+    # lists only findings a security architect chose to publish.
+    "/trust-centre/closed-findings": set(ARCHETYPES),
     # Service status: current platform health, incident history and a
     # subscribe action. @login_required and no role gate -- every signed-in
     # persona reaches it from the sidebar footer. The state it shows is
