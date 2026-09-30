@@ -4,12 +4,7 @@ from pathlib import Path
 
 import yaml
 
-try:
-    from tests.test_ci_nav_verification_lifecycle import _ci_jobs
-except ImportError:
-    def _ci_jobs():
-        import yaml as _yaml
-        return _yaml.safe_load(_workflow())["jobs"]
+from tests.test_ci_nav_verification_lifecycle import _ci_jobs
 
 
 CI = Path(".github/workflows/ci.yml")
