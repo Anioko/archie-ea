@@ -266,3 +266,27 @@ def test_post_routes_record_and_change_state(client, login_as, db_session, archi
     assert f.status == "closed" and f.published_at is not None
     login_as(client, architect_a)
     assert client.post(f"{TRACKER}999999/fix", data={"fix_pr_url": "https://x.example/p"}).status_code == 404
+
+
+def test_directory_offers_the_tracker_only_to_those_who_can_open_it(
+    client, login_as, db_session, make_org, architect_a
+):
+    """The All-modules directory must not advertise a destination that answers 403."""
+    admin = _user(db_session, make_org("dir"), "platform_admin")
+    seen = {}
+    for label, user in (
+        ("security_architect", architect_a),
+        ("platform_admin", admin),
+        ("enterprise_architect", _user(db_session, make_org("dir"), "enterprise_architect")),
+        ("solution_architect", _user(db_session, make_org("dir"), "solution_architect")),
+        ("business_architect", _user(db_session, make_org("dir"), "business_architect")),
+    ):
+        login_as(client, user)
+        seen[label] = TRACKER in client.get("/modules/").get_data(as_text=True)
+    assert seen == {
+        "security_architect": True,
+        "platform_admin": True,
+        "enterprise_architect": False,
+        "solution_architect": False,
+        "business_architect": False,
+    }

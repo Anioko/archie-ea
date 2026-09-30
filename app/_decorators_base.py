@@ -28,16 +28,21 @@ def admin_required(f):
     return permission_required(Permission.ADMINISTER)(f)
 
 
+def may_read_governance_gates(user):
+    """True for administrators and security architects: the readers of gate policy
+    and of the security finding tracker, without configuration authority."""
+    return bool(
+        user.can(Permission.ADMINISTER)
+        or getattr(user, "enterprise_role", None) == "security_architect"
+    )
+
+
 def governance_gate_reader_required(f):
     """Allow gate-policy readers without granting configuration authority."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        may_administer = current_user.can(Permission.ADMINISTER)
-        is_security_architect = (
-            getattr(current_user, "enterprise_role", None) == "security_architect"
-        )
-        if not (may_administer or is_security_architect):
+        if not may_read_governance_gates(current_user):
             abort(403)
         return f(*args, **kwargs)
 
