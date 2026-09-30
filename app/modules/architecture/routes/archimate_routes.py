@@ -23,6 +23,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 
 from app import db
+from app.models.constants import ArchiMateRelationshipType
 from app.modules.architecture.routes.lucidchart_import_routes import (
     register_lucidchart_import_routes,
 )
@@ -1301,21 +1302,6 @@ ARCHIMATE_RELATIONSHIP_TYPES = [
     "specialization", "association",
 ]
 
-# Canonical aliases: non-standard names that appear in legacy/seeded data
-_REL_TYPE_ALIASES = {
-    "realizes": "realization",
-    "serves": "serving",
-    "uses": "serving",
-    "triggers": "triggering",
-    "flows": "flow",
-    "composes": "composition",
-    "aggregates": "aggregation",
-    "assigns": "assignment",
-    "specializes": "specialization",
-    "associates": "association",
-}
-
-
 def _normalize_rel_type(raw: str) -> str:
     """Normalise any legacy or non-canonical relationship type string to the
     lowercase canonical form accepted by ARCHIMATE_RELATIONSHIP_TYPES.
@@ -1328,11 +1314,7 @@ def _normalize_rel_type(raw: str) -> str:
     """
     if not raw:
         return ""
-    # Strip trailing "Relationship" suffix (case-insensitive)
-    normalised = _re.sub(r"(?i)relationship$", "", raw).strip()
-    normalised = normalised.lower()
-    # Map known aliases
-    return _REL_TYPE_ALIASES.get(normalised, normalised)
+    return ArchiMateRelationshipType.normalize(raw) or ""
 
 
 @archimate_bp.route("/api/relationships", methods=["GET"])
