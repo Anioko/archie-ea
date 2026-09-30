@@ -488,12 +488,27 @@ def test_skip_marks_onboarding_complete_and_goes_to_the_dashboard(
     login_as(client, user)
     assert user.onboarding_completed_at is None
 
-    resp = client.get("/onboarding/skip", follow_redirects=False)
+    resp = client.post("/onboarding/skip", follow_redirects=False)
 
     assert resp.status_code in (302, 308)
     assert resp.headers["Location"].endswith("/dashboard/overview")
     db_session.refresh(user)
     assert user.onboarding_completed_at is not None
+
+
+def test_skip_refuses_a_plain_get(app, db_session, make_org, client, login_as):
+    """A GET here previously let a prefetching browser or extension, or a
+    cross-site request, complete a user's onboarding without them
+    choosing to -- it must now be a state-changing POST only."""
+    org = make_org("skip-get-refused")
+    user = _make_user(db_session, org)
+    login_as(client, user)
+
+    resp = client.get("/onboarding/skip", follow_redirects=False)
+
+    assert resp.status_code == 405
+    db_session.refresh(user)
+    assert user.onboarding_completed_at is None
 
 
 def test_skip_breaks_the_redirect_loop_for_a_platform_admin_with_an_empty_workspace(
@@ -510,7 +525,7 @@ def test_skip_breaks_the_redirect_loop_for_a_platform_admin_with_an_empty_worksp
     db_session.flush()
     login_as(client, user)
 
-    skip_resp = client.get("/onboarding/skip", follow_redirects=False)
+    skip_resp = client.post("/onboarding/skip", follow_redirects=False)
     assert skip_resp.status_code in (302, 308)
     assert skip_resp.headers["Location"].endswith("/dashboard/overview")
 

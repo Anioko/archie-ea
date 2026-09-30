@@ -361,15 +361,19 @@ def finish():
     return success_response({"next": url_for("dashboard.overview")})
 
 
-@onboarding_bp.route("/skip", methods=["GET"])
+@onboarding_bp.route("/skip", methods=["POST"])
 @login_required
 def skip():
-    """Reachable from every one of the five screens (_wizard_shell.html).
-    Marks onboarding complete -- without it, a user who has not yet added
-    any data would be sent straight back into onboarding by
-    dashboard.overview's own gating condition on the very next request,
-    which is the redirect loop this route exists to break. Workspace setup
-    itself stays reachable afterwards from the dashboard and the user menu
+    """Reachable from every one of the five screens (_wizard_shell.html),
+    as a POST form with the CSRF token -- this changes state (marks
+    onboarding complete), and a GET route here previously let a
+    prefetching browser or extension, or a cross-site request, complete a
+    user's onboarding without them choosing to. Marks onboarding complete
+    -- without it, a user who has not yet added any data would be sent
+    straight back into onboarding by dashboard.overview's own gating
+    condition on the very next request, which is the redirect loop this
+    route exists to break. Workspace setup itself stays reachable
+    afterwards from the dashboard and the user menu
     (onboarding.workspace_setup), so skipping costs nothing permanent."""
     completion.mark_complete(current_user)
     db.session.commit()
