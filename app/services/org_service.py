@@ -32,6 +32,9 @@ class OrgService:
             confirmed=True
         )
         db.session.add(user)
+        db.session.flush()  # get user.id
+        from app.models.org_role import OrgRole
+        OrgRole.set_role(org.id, user.id, 'org_admin', granted_by_id=user.id)
         try:
             db.session.commit()
         except IntegrityError:
