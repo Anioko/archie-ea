@@ -118,6 +118,35 @@ def _link(page, base, cap_id, vs_id, stage_id):
     ), "link capability %s" % cap_id)
 
 
+def _fresh_business_architect(label):
+    from app import create_app, db
+    from app.models.organization import Organization
+    from app.models.user import Role, User
+
+    app = create_app("testing")
+    suffix = uuid.uuid4().hex[:8]
+    safe = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-")
+    email = "%s.%s@example.com" % (safe, suffix)
+    with app.app_context():
+        Role.insert_roles()
+        org = Organization(name="%s Org %s" % (label, suffix), slug="%s-%s" % (safe, suffix))
+        db.session.add(org)
+        db.session.commit()
+        user = User(
+            email=email,
+            first_name="Fresh",
+            last_name="Architect",
+            organization_id=org.id,
+            enterprise_role="business_architect",
+            confirmed=True,
+        )
+        db.session.add(user)
+        user.role = Role.query.filter_by(name="Architect").one()
+        user.password = PASSWORD
+        db.session.commit()
+        return {"email": email, "org_name": org.name}
+
+
 @pytest.fixture(scope="module")
 def vsr_seed(browser, live_server, seeded):
     """Two value streams made through the product's own routes: Onboarding
@@ -340,6 +369,22 @@ def test_an_organisation_with_nothing_linked_is_sent_to_where_links_are_made(
         expect(state).to_contain_text("No capabilities are linked to a value stream yet")
         cta = state.get_by_role("link", name="Link capabilities to value streams")
         expect(cta).to_have_attribute("href", "/value-streams/")
+        assert page.locator("[data-vsr-row]").count() == 0
+    finally:
+        ctx.close()
+
+
+def test_a_fresh_real_organisation_with_no_data_shows_the_real_empty_state(browser, live_server):
+    fresh = _fresh_business_architect("Value Streams At Risk Empty")
+    ctx = browser.new_context(viewport={"width": 1280, "height": 900})
+    page = ctx.new_page()
+    try:
+        _login(page, live_server, fresh["email"])
+        page.goto(live_server + PAGE_PATH, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+        _wait_for_rows(page)
+        state = page.locator("[data-vsr-unmapped]")
+        expect(state).to_contain_text("No capabilities are linked to a value stream yet")
+        expect(page.locator("[data-vsr-error]")).to_have_count(0)
         assert page.locator("[data-vsr-row]").count() == 0
     finally:
         ctx.close()
