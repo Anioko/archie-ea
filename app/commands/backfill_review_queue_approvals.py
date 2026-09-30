@@ -148,6 +148,14 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_approval_source "
             "ON ai_chat_crud_approvals (source_table, source_id)"
         ))
+        # Same reasoning: the model declares user_id nullable (a backfilled
+        # or system-originated row has no requester to attribute to), but
+        # reconcile-schema never alters an existing column's constraints, so
+        # an existing deployed database keeps NOT NULL without this. Idempotent
+        # -- DROP NOT NULL on an already-nullable column is a no-op, no error.
+        db.session.execute(db.text(
+            "ALTER TABLE ai_chat_crud_approvals ALTER COLUMN user_id DROP NOT NULL"
+        ))
         db.session.commit()
 
     before = _counts(db)

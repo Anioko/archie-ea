@@ -357,3 +357,32 @@ def test_approval_source_pair_is_unique(db_session, make_org, tenant_ctx):
         ))
         with pytest.raises(IntegrityError):
             db_session.flush()
+
+
+def test_agent_runner_queued_approval_carries_the_actors_organisation(db_session, make_org, tenant_ctx):
+    """Regression: AgentRunner._queue_approval constructed AIChatCRUDApproval
+    directly, leaving organization_id NULL -- invisible to every
+    organisation-scoped query and skipped by escalate_overdue_approvals.
+    """
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval
+    from app.modules.ai_chat.services.agent_runner import AgentRunner
+    from app.modules.ai_chat.tools.executor import ToolCall
+
+    org = make_org("agentqueue")
+
+    with tenant_ctx(org.id):
+        user = _make_user(db_session, org.id, "agent-caller@example.com")
+        db_session.commit()
+
+        runner = AgentRunner(user_id=user.id, chat_session_id="sess-1")
+        runner._turn_id = "turn-1"
+        approval_id = runner._queue_approval(
+            ToolCall(id="tc-1", name="create_capability", arguments={"name": "Test Capability"})
+        )
+
+    approval = AIChatCRUDApproval.query.filter_by(id=approval_id).first()
+    assert approval is not None
+    assert approval.organization_id == org.id
+    assert approval.user_id == user.id
+    assert approval.operation_type == "tool_use"
+    assert approval.chat_session_id == "sess-1"
