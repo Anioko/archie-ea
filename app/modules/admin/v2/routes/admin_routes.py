@@ -492,7 +492,7 @@ def registered_users():
     # /admin/organizations read as a platform undercounting itself rather
     # than the same figure viewed at two different scopes. Name the scope
     # and surface the platform-wide total so the two views reconcile.
-    current_org = Organization.query.get(g.current_org_id)
+    current_org = db.session.get(Organization, g.current_org_id)
     platform_total_users = User.query.count()
     return render_template(
         "admin/registered_users.html",
