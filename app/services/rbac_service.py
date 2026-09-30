@@ -40,13 +40,17 @@ class RBACService:
         user.is_admin() (Permission.ADMINISTER, the system of record).
         The two must agree; this accessor returns True if either says yes
         so that every consumer shares one authority.
+
+        The user.is_admin() fallback is scoped to the user's own
+        organisation: a user who holds the Administrator role in org A
+        is NOT treated as org-admin of org B.
         """
         if self.get_user_role(org_id, user_id) == "org_admin":
             return True
         from app.models.user import User
 
         user = User.query.get(user_id)  # tenant-scoping-ok: primary-key lookup, not a list
-        if user is not None and user.is_admin():
+        if user is not None and user.is_admin() and user.organization_id == org_id:
             return True
         return False
 
