@@ -59,10 +59,13 @@ def application_requirement_add(id):
         return redirect(url_for("unified_applications.application_detail", id=id))
 
     requirement = Requirement.query.get(requirement_id)
-    if not requirement:
+    if not requirement or not linkable_in_caller_org(requirement):
         flash("Requirement not found", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
 
+    # Ownership of `requirement` is proven above -- its title (and any
+    # application it is already linked to) is now safe to show in a flash
+    # message.
     if (
         requirement.application_component_id
         and requirement.application_component_id != app.id
@@ -77,8 +80,6 @@ def application_requirement_add(id):
             f'Requirement "{requirement.title}" is already linked to this application',
             "warning",
         )
-    elif not linkable_in_caller_org(requirement):
-        flash("Requirement not found", "error")
     else:
         try:
             requirement.application_component_id = app.id
@@ -603,11 +604,12 @@ def goal_add(id):
         return redirect(url_for("unified_applications.application_detail", id=id))
 
     goal = Goal.query.get(goal_id)
-    if not goal:
+    if not goal or not linkable_in_caller_org(goal):
         flash("Goal not found", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
 
-    # Check if already linked to another application
+    # Ownership of `goal` is proven above -- its name (and any application it
+    # is already linked to) is now safe to show in a flash message.
     if goal.application_component_id and goal.application_component_id != app.id:
         other_app = ApplicationComponent.query.get(goal.application_component_id)
         flash(
@@ -616,8 +618,6 @@ def goal_add(id):
         )
     elif goal.application_component_id == app.id:
         flash(f'Goal "{goal.name}" is already linked to this application', "warning")
-    elif not linkable_in_caller_org(goal):
-        flash("Goal not found", "error")
     else:
         try:
             # Update direct FK
@@ -647,11 +647,12 @@ def driver_add(id):
         return redirect(url_for("unified_applications.application_detail", id=id))
 
     driver = Driver.query.get(driver_id)
-    if not driver:
+    if not driver or not linkable_in_caller_org(driver):
         flash("Driver not found", "error")
         return redirect(url_for("unified_applications.application_detail", id=id))
 
-    # Check if already linked to another application
+    # Ownership of `driver` is proven above -- its name (and any application
+    # it is already linked to) is now safe to show in a flash message.
     if driver.application_component_id and driver.application_component_id != app.id:
         other_app = ApplicationComponent.query.get(driver.application_component_id)
         flash(
@@ -662,8 +663,6 @@ def driver_add(id):
         flash(
             f'Driver "{driver.name}" is already linked to this application', "warning"
         )
-    elif not linkable_in_caller_org(driver):
-        flash("Driver not found", "error")
     else:
         try:
             # Update direct FK

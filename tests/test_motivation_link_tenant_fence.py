@@ -257,3 +257,176 @@ def test_unified_routes_foreign_organisations_unlinked_goal_and_driver_are_refus
         text("select application_component_id from drivers where id = :i"), {"i": driver_b_id}
     ).scalar()
     assert goal_linked is None and driver_linked is None
+
+
+# ---------------------------------------------------------------------------
+# The previous tests above only covered an UNLINKED foreign entity. None
+# exercised the case the final-check review's HIGH finding actually named:
+# a foreign entity ALREADY linked to another organisation's application.
+# The routes checked "already linked to a DIFFERENT application" (which
+# reveals the entity's name and the other application's name in a flash
+# message) BEFORE ever calling the ownership fence -- so an org A caller
+# who names org B's already-linked requirement/goal/driver by id used to
+# see org B's names in the response, regardless of org A owning nothing
+# related to it. (A literal ``organization_id=None`` caller, the review's
+# exact framing, cannot be constructed here: the column is NOT NULL and
+# ``User``'s ``before_insert`` listener always assigns a real organisation
+# on creation -- this is the equivalent, reachable exploitation shape: any
+# two distinct real organisations.)
+# ---------------------------------------------------------------------------
+
+
+def test_a_caller_cannot_see_a_foreign_already_linked_requirements_names(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("mo-alr-req-a"), make_org("mo-alr-req-b")
+    app_a = _app_component(db_session, org_a)
+    app_b = _app_component(db_session, org_b)
+    element_b = _archimate_element(db_session, org_b)
+    req_b = _requirement(db_session, archimate_element_id=element_b.id, title="SECRET-ALR-REQUIREMENT-B")
+    req_b.application_component_id = app_b.id
+    db_session.add(req_b)
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, req_b_id, app_b_name, app_b_id, user_a_id = (
+        app_a.id, req_b.id, app_b.name, app_b.id, user_a.id
+    )
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    response = client.post(f"/dashboard/applications/{app_a_id}/requirements/add",
+                           data={"element_id": str(req_b_id)}, follow_redirects=True)
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "SECRET-ALR-REQUIREMENT-B" not in body
+    assert app_b_name not in body
+    stored = db_session.execute(
+        text("select application_component_id from requirements where id = :i"), {"i": req_b_id}
+    ).scalar()
+    assert stored == app_b_id, "the foreign link must be untouched, not reassigned to app_a"
+
+
+def test_a_caller_cannot_see_a_foreign_already_linked_goal_or_drivers_names(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("mo-alr-gd-a"), make_org("mo-alr-gd-b")
+    app_a = _app_component(db_session, org_a)
+    app_b = _app_component(db_session, org_b)
+    element_b_goal = _archimate_element(db_session, org_b)
+    element_b_driver = _archimate_element(db_session, org_b)
+    goal_b = _goal(db_session, archimate_element_id=element_b_goal.id, name="SECRET-ALR-GOAL-B")
+    driver_b = _driver(db_session, archimate_element_id=element_b_driver.id, name="SECRET-ALR-DRIVER-B")
+    goal_b.application_component_id = app_b.id
+    driver_b.application_component_id = app_b.id
+    db_session.add_all([goal_b, driver_b])
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, goal_b_id, driver_b_id, app_b_name, app_b_id, user_a_id = (
+        app_a.id, goal_b.id, driver_b.id, app_b.name, app_b.id, user_a.id
+    )
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    goal_resp = client.post(f"/dashboard/applications/{app_a_id}/goals/add",
+                            data={"element_id": str(goal_b_id)}, follow_redirects=True)
+    driver_resp = client.post(f"/dashboard/applications/{app_a_id}/drivers/add",
+                              data={"element_id": str(driver_b_id)}, follow_redirects=True)
+
+    for resp in (goal_resp, driver_resp):
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "SECRET-ALR-GOAL-B" not in body
+        assert "SECRET-ALR-DRIVER-B" not in body
+        assert app_b_name not in body
+
+    goal_linked = db_session.execute(
+        text("select application_component_id from goals where id = :i"), {"i": goal_b_id}
+    ).scalar()
+    driver_linked = db_session.execute(
+        text("select application_component_id from drivers where id = :i"), {"i": driver_b_id}
+    ).scalar()
+    assert goal_linked == app_b_id and driver_linked == app_b_id
+
+
+def test_unified_routes_a_caller_cannot_see_a_foreign_already_linked_requirements_name(
+    app, db_session, make_org, client, login_as
+):
+    """Same fence, exercised through the canonical /applications/... routes
+    (element_routes.py), which carries its own copy of this route."""
+    org_a, org_b = make_org("mo-u-alr-req-a"), make_org("mo-u-alr-req-b")
+    app_a = _app_component(db_session, org_a)
+    app_b = _app_component(db_session, org_b)
+    element_b = _archimate_element(db_session, org_b)
+    req_b = _requirement(db_session, archimate_element_id=element_b.id, title="SECRET-U-ALR-REQUIREMENT-B")
+    req_b.application_component_id = app_b.id
+    db_session.add(req_b)
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, req_b_id, app_b_name, app_b_id, user_a_id = (
+        app_a.id, req_b.id, app_b.name, app_b.id, user_a.id
+    )
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    response = client.post(f"/applications/{app_a_id}/requirements/add",
+                           data={"element_id": str(req_b_id)}, follow_redirects=True)
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "SECRET-U-ALR-REQUIREMENT-B" not in body
+    assert app_b_name not in body
+    stored = db_session.execute(
+        text("select application_component_id from requirements where id = :i"), {"i": req_b_id}
+    ).scalar()
+    assert stored == app_b_id
+
+
+def test_unified_routes_a_caller_cannot_see_a_foreign_already_linked_goal_or_drivers_name(
+    app, db_session, make_org, client, login_as
+):
+    org_a, org_b = make_org("mo-u-alr-gd-a"), make_org("mo-u-alr-gd-b")
+    app_a = _app_component(db_session, org_a)
+    app_b = _app_component(db_session, org_b)
+    element_b_goal = _archimate_element(db_session, org_b)
+    element_b_driver = _archimate_element(db_session, org_b)
+    goal_b = _goal(db_session, archimate_element_id=element_b_goal.id, name="SECRET-U-ALR-GOAL-B")
+    driver_b = _driver(db_session, archimate_element_id=element_b_driver.id, name="SECRET-U-ALR-DRIVER-B")
+    goal_b.application_component_id = app_b.id
+    driver_b.application_component_id = app_b.id
+    db_session.add_all([goal_b, driver_b])
+    user_a = _user(db_session, org_a)
+    db_session.commit()
+    app_a_id, goal_b_id, driver_b_id, app_b_name, app_b_id, user_a_id = (
+        app_a.id, goal_b.id, driver_b.id, app_b.name, app_b.id, user_a.id
+    )
+    db_session.expunge_all()
+
+    from app.models.user import User
+
+    login_as(client, db_session.get(User, user_a_id))
+    goal_resp = client.post(f"/applications/{app_a_id}/goals/add",
+                            data={"element_id": str(goal_b_id)}, follow_redirects=True)
+    driver_resp = client.post(f"/applications/{app_a_id}/drivers/add",
+                              data={"element_id": str(driver_b_id)}, follow_redirects=True)
+
+    for resp in (goal_resp, driver_resp):
+        body = resp.get_data(as_text=True)
+        assert resp.status_code == 200
+        assert "SECRET-U-ALR-GOAL-B" not in body
+        assert "SECRET-U-ALR-DRIVER-B" not in body
+        assert app_b_name not in body
+
+    goal_linked = db_session.execute(
+        text("select application_component_id from goals where id = :i"), {"i": goal_b_id}
+    ).scalar()
+    driver_linked = db_session.execute(
+        text("select application_component_id from drivers where id = :i"), {"i": driver_b_id}
+    ).scalar()
+    assert goal_linked == app_b_id and driver_linked == app_b_id

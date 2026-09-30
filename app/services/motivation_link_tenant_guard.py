@@ -4,9 +4,7 @@ ApplicationComponent by direct FK.
 Extracted so both blueprints that expose this action --
 ``app.application_mgmt.motivation_layer_routes`` and
 ``app.modules.applications.routes.element_routes`` -- enforce the identical
-check rather than each carrying its own copy (see DEFECT-4,
-docs/buckets/entelim-enterprise-intelligence-management-platform-design-the-f/
-reviews/pr290-v1.md).
+check rather than each carrying its own copy.
 """
 from app import db
 from app.middleware.tenant_context import current_org_id
