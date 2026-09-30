@@ -1,6 +1,6 @@
 """Production test organisations: seed command, cross-org check, and restore drill.
 
-Tests for R1-B94:
+Coverage:
 - The seed-production-test-organisations CLI command is idempotent
 - The cross-organisation check detects a seeded leak
 - The restore drill script is structurally valid
@@ -332,7 +332,7 @@ def test_deploy_verified_sh_has_retired_bind_mount_note():
     script = ROOT / "scripts" / "deploy_verified.sh"
     source = script.read_text(encoding="utf-8")
 
-    assert "R1-B94" in source
+    assert "29 Sep 2026" in source
     assert "image-pipeline topology" in source
     assert "RETIRED" in source
     assert "IMAGE_PIPELINE_TOPOLOGY=1" in source

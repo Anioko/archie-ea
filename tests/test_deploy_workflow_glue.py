@@ -59,7 +59,7 @@ class Job:
         (self.ws / "scripts").mkdir(parents=True)
         shutil.copy(support.HELPERS, self.ws / "scripts" / "deploy_workflow.py")
         (self.ws / "scripts" / "deploy_verified.sh").write_bytes(support.SCRIPT.read_bytes().replace(b"\r\n", b"\n"))
-        # R1-B94: cross-organisation check script called by deploy_verified.sh step 6
+        # Cross-organisation check script called by deploy_verified.sh step 6
         cross_org = ROOT / "scripts" / "deploy_verify_cross_org.py"
         if cross_org.is_file():
             shutil.copy(cross_org, self.ws / "scripts" / "deploy_verify_cross_org.py")

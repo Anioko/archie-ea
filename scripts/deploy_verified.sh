@@ -60,7 +60,7 @@
 #   script's verification half (steps 2-5) should be folded into that one and
 #   this file retired — do not let both remain the "current" answer at once.
 #
-#   R1-B94 (29 Sep 2026): The image-pipeline topology (deploy/deploy.sh) is
+#   29 Sep 2026: The image-pipeline topology (deploy/deploy.sh) is
 #   now the live path. The bind-mount checks (verify_mount, step 3) are
 #   RETIRED for the image-pipeline topology — they only apply to the
 #   bind-mount checkout topology this script was written for. When running
