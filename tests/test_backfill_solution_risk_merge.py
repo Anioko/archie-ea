@@ -182,7 +182,16 @@ def test_two_organisations_backfill_never_mixes_rows(app, db_session, make_org):
     result = _run(app)  # unscoped: every organisation in one pass
     assert result.exit_code == 0, result.output
 
+    from flask import g
+    leaked = getattr(g, "current_org_id", "NOT-SET") if _has_app_ctx() else "NO-APP-CTX"
+
     risks_a = Risk.query.filter_by(organization_id=org_a_id).all()
     risks_b = Risk.query.filter_by(organization_id=org_b_id).all()
-    assert [r.title for r in risks_a] == ["Org A risk"], result.output
-    assert [r.title for r in risks_b] == ["Org B risk"], result.output
+    debug = f"leaked_g_current_org_id={leaked!r} output={result.output!r}"
+    assert [r.title for r in risks_a] == ["Org A risk"], debug
+    assert [r.title for r in risks_b] == ["Org B risk"], debug
+
+
+def _has_app_ctx():
+    from flask import has_app_context
+    return has_app_context()
