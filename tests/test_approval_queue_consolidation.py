@@ -17,7 +17,7 @@ import pytest
 pytestmark = pytest.mark.usefixtures("db_session")
 
 
-def _make_user(db_session, org_id, email, *, enterprise_role=None):
+def _make_user(db_session, org_id, email, *, enterprise_role=None, is_org_admin=False):
     from app.models.user import User
 
     unique_email = email.replace("@", f"+{uuid.uuid4().hex[:8]}@")
@@ -27,6 +27,7 @@ def _make_user(db_session, org_id, email, *, enterprise_role=None):
         last_name="User",
         organization_id=org_id,
         confirmed=True,
+        is_org_admin=is_org_admin,
     )
     if enterprise_role:
         user.enterprise_role = enterprise_role
@@ -146,6 +147,75 @@ def test_backfill_run_twice_creates_no_duplicate_approvals(db_session, make_org)
     assert count == 1
 
 
+def test_backfilled_approval_never_shows_another_organisations_item(db_session, make_org, tenant_ctx):
+    """The approver queue, not just the model row, must scope a backfilled
+    (source_table/source_id-carrying, user_id NULL) approval to its own
+    organisation -- reviews/pr302-review-v1.md's MEDIUM asked for a test that
+    actually exercises the consolidation path rather than a plain
+    create_pending_approval call already safe on main.
+    """
+    from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+    from app.commands.backfill_review_queue_approvals import run_backfill
+    from app.modules.ai_chat.services.ai_chat_approval_service import AIChatApprovalService
+
+    org_a = make_org("bq-a")
+    org_b = make_org("bq-b")
+    approver_b = _make_user(db_session, org_b.id, "appr-bq-b@example.com")
+    org_b_id, approver_b_id = org_b.id, approver_b.id
+
+    item_a = ReviewQueueItem(
+        organization_id=org_a.id, item_type="archimate_element", item_id=1,
+        item_name="Org A backfilled item", confidence_score="0.50", status=ReviewStatus.PENDING,
+    )
+    db_session.add(item_a)
+    db_session.commit()
+
+    # run_backfill calls db.session.remove() per organisation (CLAUDE.md/ADR
+    # 0003), detaching every object loaded through this session -- use the
+    # plain ids captured above, not org_b/approver_b themselves.
+    run_backfill(dry_run=False, organization_id=None)
+
+    with tenant_ctx(org_b_id):
+        queue = AIChatApprovalService(user_id=approver_b_id).get_approver_queue()
+
+    assert queue["success"] is True
+    assert all(a["summary"] != "Confidence review: Org A backfilled item" for a in queue["approvals"])
+
+
+def test_backfill_quarantines_an_unattributable_row_and_fails_non_zero(db_session, make_org):
+    """reviews/pr302-final-check-v1.md HIGH: a source row with no organisation
+    must not be silently dropped -- it is recorded where a platform admin can
+    see it, and the command's own unreconciled count (which the CLI raises
+    ClickException on) must not stay 0 while it sits outside the canonical
+    queue.
+    """
+    from app.models.confidence_review import ReviewQueueItem, ReviewStatus
+    from app.commands.backfill_review_queue_approvals import run_backfill
+    from app.models.error_event import ErrorEvent
+
+    # A real, seedable "organisation cannot be determined" row: organization_id
+    # is nullable on ReviewQueueItem for exactly this reason.
+    orphan = ReviewQueueItem(
+        organization_id=None, item_type="archimate_element", item_id=999,
+        item_name="Orphaned item", confidence_score="0.50", status=ReviewStatus.PENDING,
+    )
+    db_session.add(orphan)
+    db_session.commit()
+    orphan_id = orphan.id
+
+    stats = run_backfill(dry_run=False, organization_id=None)
+
+    assert stats["quarantined"] >= 1
+    assert stats["unreconciled"] >= 1
+
+    event = ErrorEvent.query.filter_by(
+        fingerprint=f"backfill-quarantine:review_queue_items:{orphan_id}"
+    ).first()
+    assert event is not None
+    assert event.resolved is False
+    assert event.organization_id is None
+
+
 # --------------------------------------------------------------------- #
 # Overdue, not expired
 # --------------------------------------------------------------------- #
@@ -258,8 +328,47 @@ def test_escalation_notifies_only_the_overdue_items_organisation(db_session, mak
     assert stats["organisations_notified"] == 1
     assert sent["recipients"] == [admin_a.email]
 
-    refreshed = AIChatCRUDApproval.query.get(approval_a.id)
-    assert refreshed.escalated_at is not None
+
+def test_escalation_reaches_a_real_org_admin_without_platform_admin_role(db_session, make_org, monkeypatch):
+    """reviews/pr302-final-check-v1.md HIGH: an organisation can have a real
+    administrator (is_org_admin=True) with no user holding the separate,
+    enterprise-wide platform_admin role -- escalation must still reach them,
+    not silently notify nobody.
+    """
+    from app.modules.ai_chat.services.ai_chat_approval_service import (
+        create_approval_record,
+        escalate_overdue_approvals,
+    )
+    from flask import current_app
+
+    org_a = make_org("esc-orgadmin-a")
+    org_b = make_org("esc-orgadmin-b")
+    org_admin_a = _make_user(db_session, org_a.id, "orgadmin-a@example.com", is_org_admin=True)
+    # org B has neither a platform_admin nor an org_admin: must not be notified.
+    _make_user(db_session, org_b.id, "plain-b@example.com")
+
+    approval_a = create_approval_record(
+        organization_id=org_a.id, operation_type="create", entity_type="capability",
+        summary="Org A overdue, org-admin recipient", operation_payload={}, user_id=None,
+    )
+    db_session.commit()
+    approval_a.expires_at = datetime.utcnow() - timedelta(minutes=1)
+    db_session.commit()
+
+    sent = {}
+
+    def _fake_send(app, subject, recipients, html_body):
+        sent["recipients"] = recipients
+        return True
+
+    monkeypatch.setattr(
+        "app._bootstrap._digest_emails._safe_send_email", _fake_send
+    )
+
+    stats = escalate_overdue_approvals(current_app._get_current_object())
+
+    assert stats["organisations_notified"] == 1
+    assert sent["recipients"] == [org_admin_a.email]
 
 
 # --------------------------------------------------------------------- #

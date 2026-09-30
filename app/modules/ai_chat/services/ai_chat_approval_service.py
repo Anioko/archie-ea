@@ -1142,7 +1142,19 @@ def escalate_overdue_approvals(app=None) -> Dict[str, int]:
     rows_escalated = 0
     now = datetime.utcnow()
     for organization_id, rows in by_org.items():
-        recipients = _get_recipients_by_roles(["platform_admin"], organization_id)
+        # The brief asks for the organisation's own administrators, not only
+        # the enterprise-wide platform_admin role: an organisation can have
+        # a real is_org_admin without anyone holding platform_admin, and a
+        # platform_admin-only lookup silently escalates to nobody for it
+        # (reviews/pr302-final-check-v1.md). Union both -- an org admin for
+        # this tenant, plus any platform_admin who also wants every escalation.
+        org_admins = User.query.filter(
+            User.organization_id == organization_id,
+            User.is_org_admin.is_(True),
+            User.confirmed.is_(True),
+        ).all()
+        recipients = sorted({u.email for u in org_admins if u.email} |
+                             set(_get_recipients_by_roles(["platform_admin"], organization_id)))
         # summary/entity_type/operation_type all trace back to user- or
         # AI-generated content (a capability name, a blueprint proposal
         # name); escape before interpolating into hand-built HTML.

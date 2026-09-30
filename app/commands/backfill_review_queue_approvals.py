@@ -27,7 +27,10 @@ that, one organisation at a time:
   / ``status='pending'`` / ``status='proposed'``) — an already accepted,
   rejected or promoted row has nothing left to approve;
 * a row whose organisation cannot be determined is never copied into shared
-  scope; it is listed (quarantine) for the platform administrator;
+  scope; it is recorded in ``ErrorEvent`` (the platform-wide, nullable-org
+  surface every platform admin already sees at ``/admin/errors`` and in the
+  error digest email) and counts toward this command's own non-zero exit
+  until it is attributed an organisation and the backfill runs again;
 * nothing is deleted or dropped, and source rows are otherwise untouched;
 * ``relationship_suggestions`` has no live constructor call site in this
   codebase today (verified), so this command's own count for it will
@@ -45,6 +48,7 @@ not reconcile.
 """
 
 from collections import defaultdict
+from datetime import datetime
 
 import click
 from flask.cli import with_appcontext
@@ -103,6 +107,47 @@ _RETIRE_SQL = {
 }
 
 _BATCH = 200
+
+
+def _record_quarantine(db, source, source_id):
+    """Persist one unattributable row where a platform administrator can see it.
+
+    Reuses ``ErrorEvent`` (app/models/error_event.py) rather than a new
+    store: it is already the platform-wide, nullable-organisation,
+    dedup-by-fingerprint surface with its own admin page
+    (app/modules/monitoring/routes/error_events_routes.py) and digest email
+    (``_get_platform_admin_recipients`` in app/_bootstrap/_digest_emails.py)
+    -- exactly "a real platform-admin-visible quarantine store or report"
+    (reviews/pr302-final-check-v1.md) without a second, parallel mechanism
+    for the same job. ``resolved=False`` until someone gives the row an
+    organisation and re-runs the backfill; idempotent across runs via the
+    fingerprint, matching the client-error ingestion route's own dedup.
+    """
+    from app.models.error_event import ErrorEvent
+
+    fingerprint = f"backfill-quarantine:{source}:{source_id}"[:64]
+    now = datetime.utcnow()
+    existing = ErrorEvent.query.filter_by(fingerprint=fingerprint, resolved=False).first()
+    if existing:
+        existing.occurrence_count = (existing.occurrence_count or 0) + 1
+        existing.last_seen_at = now
+        return
+    db.session.add(ErrorEvent(
+        fingerprint=fingerprint,
+        source="server",
+        level="WARNING",
+        message=(
+            f"backfill-review-queue-approvals: {source} #{source_id} has no "
+            "organisation and cannot be copied into the one approval queue. "
+            "Attribute it an organisation, then re-run the backfill."
+        ),
+        location=f"app.commands.backfill_review_queue_approvals:{source}",
+        organization_id=None,
+        occurrence_count=1,
+        first_seen_at=now,
+        last_seen_at=now,
+        resolved=False,
+    ))
 
 
 def _counts(db):
@@ -242,6 +287,11 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
     if dry_run:
         return {"copied": 0, "quarantined": len(quarantine), "unreconciled": None}
 
+    for source, source_id in quarantine:
+        _record_quarantine(db, source, source_id)
+    if quarantine:
+        db.session.commit()
+
     after = _counts(db)
     _print_counts("After", after)
     unreconciled = 0
@@ -250,6 +300,11 @@ def run_backfill(*, dry_run: bool = False, organization_id=None) -> dict:
             if org is None or (organization_id is not None and org != organization_id):
                 continue
             unreconciled += total - done
+    # A quarantined row is neither copied nor reconciled by definition (it has
+    # no organisation to copy into) -- it must keep the command from reporting
+    # success while it stays outside the canonical queue, whether or not it
+    # was ever going to show up in _counts's per-organisation reconciliation.
+    unreconciled += len(quarantine)
     return {"copied": copied, "quarantined": len(quarantine), "unreconciled": unreconciled}
 
 
