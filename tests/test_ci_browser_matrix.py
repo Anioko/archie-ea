@@ -185,3 +185,26 @@ def test_jobs_skip_on_non_ci_fast_labeled_events():
         assert "github.event.action" in if_expr or "labeled" in if_expr, (
             f"{job_id} must check the event action for labeled"
         )
+
+
+def test_every_postgres_service_mounts_pgdata_on_tmpfs():
+    import yaml
+
+    workflow = yaml.safe_load(_workflow())
+    postgres_jobs = {
+        name: job
+        for name, job in workflow["jobs"].items()
+        if job.get("services", {}).get("postgres")
+    }
+
+    assert postgres_jobs
+    missing_tmpfs = []
+    for job_name, job in postgres_jobs.items():
+        options = job["services"]["postgres"].get("options", "")
+        if "--tmpfs /var/lib/postgresql/data" not in options:
+            missing_tmpfs.append(job_name)
+
+    assert not missing_tmpfs, (
+        "postgres services must mount /var/lib/postgresql/data on tmpfs: "
+        + ", ".join(sorted(missing_tmpfs))
+    )
