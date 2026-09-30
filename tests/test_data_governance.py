@@ -46,7 +46,10 @@ def _holds(db_session, org_id, application, object_name):
     from app.models.application_layer import DataObject
 
     row = DataObject(
-        name=object_name, application_component_id=application.id, organization_id=org_id
+        name=object_name,
+        description=object_name,
+        application_component_id=application.id,
+        organization_id=org_id,
     )
     db_session.add(row)
     db_session.flush()
@@ -224,8 +227,6 @@ def test_similarity_matching_flags_near_match_copies_per_organisation(db_session
         rows = sor.undeclared_copies(org_a.id)
         assert [row["entity"].name for row in rows] == ["Customer"]
         assert rows[0]["applications"] == ["CRM", "ERP"]
-
-
 def test_master_domains_show_consumer_applications_not_process_names(db_session, make_org, tenant_ctx):
     from app.models.business_capabilities import BusinessCapability
     from app.models.application_capability import ApplicationCapabilityMapping

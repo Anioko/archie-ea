@@ -44,6 +44,11 @@ GENERIC_DATA_OBJECT_TOKENS = {
 }
 
 
+def _informative_tokens(value):
+    tokens = [token for token in _search_tokens(value) if token not in GENERIC_DATA_OBJECT_TOKENS]
+    return tuple(tokens) or _search_tokens(value)
+
+
 class DataSorError(Exception):
     """A declaration that cannot be made; the message is shown to the user."""
 
@@ -151,7 +156,11 @@ def _candidate_match_score(candidate, variant, allowed_tokens):
     variant_description = _normalise_search_text(variant["description"])
     candidate_name = _normalise_search_text(candidate.name)
     candidate_description = _normalise_search_text(candidate.description)
-    required_tokens = _search_tokens(variant["name"])
+    token_sets = []
+    for source in (variant["name"], variant["description"]):
+        informative = _informative_tokens(source)
+        if informative and informative not in token_sets:
+            token_sets.append(informative)
 
     if variant_name and candidate_name == variant_name:
         return 400
@@ -159,10 +168,12 @@ def _candidate_match_score(candidate, variant, allowed_tokens):
         return 350
     if variant_description and candidate_name == variant_description:
         return 325
-    if _bounded_token_match(_search_tokens(candidate.name), required_tokens, allowed_tokens):
-        return 200 + len(required_tokens)
-    if _bounded_token_match(_search_tokens(candidate.description), required_tokens, allowed_tokens):
-        return 150 + len(required_tokens)
+
+    for required_tokens in token_sets:
+        if _bounded_token_match(_search_tokens(candidate.name), required_tokens, allowed_tokens):
+            return 200 + len(required_tokens)
+        if _bounded_token_match(_search_tokens(candidate.description), required_tokens, allowed_tokens):
+            return 150 + len(required_tokens)
     return None
 
 

@@ -2,7 +2,7 @@
    debounce -> /applications/api/list -> click to select -> hidden input holds
    the id. Usage: {{ app_picker(form_id, current_name) }} inside a <form>. #}
 {% macro app_picker(field_id, current_name=None, current_id=None, show_submit=True, endpoint='/applications/api/list') %}
-<div x-data="applicationPickerSelect({ initialName: {{ current_name|tojson }}, initialId: {{ current_id|tojson }}, endpoint: {{ endpoint|tojson }} })" data-testid="{{ field_id }}-picker" class="relative max-w-md">
+<div x-data='applicationPickerSelect({ initialName: {{ current_name|tojson }}, initialId: {{ current_id|tojson }}, endpoint: {{ endpoint|tojson }} })' data-testid="{{ field_id }}-picker" class="relative max-w-md">
   <input type="hidden" name="application_id" x-model="selectedId" value="{{ current_id or '' }}">
   <label for="{{ field_id }}" class="block text-sm font-medium text-foreground mb-1">Application</label>
   <input id="{{ field_id }}" type="text" autocomplete="off" x-model="query" @input.debounce.300ms="search()"
@@ -74,16 +74,29 @@ function applicationPickerSearch(config) {
 function applicationPickerSelect(config) {
     const initialName = (config && config.initialName) || '';
     const initialId = (config && config.initialId) || '';
+    const searchState = applicationPickerSearch(config);
     return {
         selectedId: initialId ? String(initialId) : '',
         selectedName: initialName,
-        ...applicationPickerSearch(config),
         query: initialName,
+        results: searchState.results,
+        searched: searchState.searched,
+        searching: searchState.searching,
+        searchError: searchState.searchError,
+        async search() {
+            searchState.query = this.query;
+            await searchState.search();
+            this.results = searchState.results;
+            this.searched = searchState.searched;
+            this.searching = searchState.searching;
+            this.searchError = searchState.searchError;
+        },
         choose(r) {
             this.selectedId = String(r.id);
             this.selectedName = r.name;
             this.query = r.name;
             this.results = [];
+            this.searchError = '';
         }
     };
 }
