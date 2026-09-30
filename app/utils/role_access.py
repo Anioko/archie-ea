@@ -393,6 +393,8 @@ def _link(label, endpoint, icon, requires=None, query_params=None):
       "admin"          — route is @admin_required (Permission.ADMINISTER)
       "platform_admin" — route is @platform_admin_required (the cross-tenant
                          is_platform_admin super-admin flag)
+      "data_subject_requests" — routes are @requires_role(DATA_SUBJECT_REQUEST_ROLES)
+                         (security_architect, and platform_admin as always)
       "general"        — route requires Permission.GENERAL (require_roles()
                          only grants access when current_user.can(GENERAL)
                          holds), which a read-only Viewer role (permissions=0)
@@ -786,6 +788,10 @@ _MY_WORK_LINKS = {
         # this degrades safely if application_mgmt fails to import.
         _link("Compliance", "application_mgmt.compliance_frameworks_dashboard",
               "clipboard-check"),
+        # The Data Protection Officer's work: scope data-subject requests,
+        # assign the searches, and run access and erasure with evidence.
+        _link("Data Subject Requests", "gdpr_bp.dsr_index", "user-x",
+              requires="data_subject_requests"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
@@ -904,6 +910,13 @@ def link_requires_satisfied(user, requires):
         return bool(getattr(user, "is_org_admin", False))
     if requires == "platform_admin":
         return bool(getattr(user, "is_platform_admin", False))
+    if requires == "data_subject_requests":
+        try:
+            from app.decorators.requires_role import may_handle_data_subject_requests
+
+            return may_handle_data_subject_requests(user)
+        except Exception:  # anonymous / unexpected user object
+            return False
     if requires == "general":
         try:
             from app.models.user import Permission
