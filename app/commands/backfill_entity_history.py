@@ -80,18 +80,24 @@ def _backfill_table(conn, table, org_id, dry_run):
         """), {"table_name": table, "record_id": record_id}).scalar()
         # -infinity, not NOW(): an unknown start must stay visible to every
         # as-of date, not just dates after this backfill happened to run.
-        valid_from = recorded_at if recorded_at is not None else "-infinity"
+        # Written as a SQL literal rather than bound as a parameter: psycopg
+        # has no Python value for this (it isn't a real datetime), and a
+        # bound string "-infinity" fails to cast ("timestamp too small
+        # (before year 1)") rather than resolving to Postgres's own special
+        # timestamp value the way the same text does written inline.
+        valid_from_sql = "'-infinity'::timestamp" if recorded_at is None else ":valid_from"
 
         conn.execute(text(f"""
             INSERT INTO entity_history
                 (organization_id, table_name, record_id, snapshot,
                  valid_from, valid_to, recorded_at, source)
             SELECT :org_id, :table_name, :record_id, row_to_json(t.*),
-                   :valid_from, NULL, :recorded_at, 'backfill'
+                   {valid_from_sql}, NULL, :recorded_at, 'backfill'
             FROM "{table}" t WHERE t.id = :record_id
         """), {
             "org_id": org_id, "table_name": table, "record_id": record_id,
-            "valid_from": valid_from, "recorded_at": recorded_at,
+            **({} if recorded_at is None else {"valid_from": recorded_at}),
+            "recorded_at": recorded_at,
         })
 
         # Stamp the base row's own owned columns to match -- the same
@@ -102,9 +108,12 @@ def _backfill_table(conn, table, org_id, dry_run):
         # statement_timestamp() and opening a second, trigger-sourced row
         # -- two rows where the brief calls for one.
         conn.execute(text(f"""
-            UPDATE "{table}" SET valid_from = :valid_from, recorded_at = :recorded_at
+            UPDATE "{table}" SET valid_from = {valid_from_sql}, recorded_at = :recorded_at
             WHERE id = :record_id
-        """), {"valid_from": valid_from, "recorded_at": recorded_at, "record_id": record_id})
+        """), {
+            "record_id": record_id, "recorded_at": recorded_at,
+            **({} if recorded_at is None else {"valid_from": recorded_at}),
+        })
 
     return len(pending)
 
