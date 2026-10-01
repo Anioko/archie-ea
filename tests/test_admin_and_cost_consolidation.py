@@ -523,3 +523,479 @@ def test_deploy_schema_includes_reconcile_admin_flags():
     assert "reconcile-admin-flags" in text, (
         "deploy-schema.sh must include reconcile-admin-flags"
     )
+
+
+# ---------------------------------------------------------------------------
+# Invitation acceptance: one authority across both accept paths
+# (pr291-review-v8.md HIGH defects 1 and 2)
+# ---------------------------------------------------------------------------
+
+
+def test_answer_existing_cross_org_admin_invite_does_not_grant_admin_in_home_org(
+    app, db_session, make_org
+):
+    """An existing user in organisation B who accepts an org-admin invitation
+    into organisation A becomes an administrator of A only -- never of their
+    own organisation B.
+
+    The Administrator role is global to the user, not scoped to one
+    organisation, so answer_existing() must only sync it when the invited
+    organisation IS the user's own; granting it for a foreign organisation
+    previously made rbac_service.is_org_admin() answer True for the user's own
+    organisation too, through its is_admin()-plus-organization_id fallback.
+    """
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+    from app.modules.account.services import invitation_service
+    from app.services.rbac_service import rbac_service
+
+    org_a = make_org("cross-admin-a")
+    org_b = make_org("cross-admin-b")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    inviter = User(
+        first_name="Inv", last_name="Iter",
+        email=f"inviter-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=admin_role,
+    )
+    existing_user = User(
+        first_name="Cross", last_name="Org",
+        email=f"cross-org-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_b.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([inviter, existing_user])
+    db_session.commit()
+
+    invitation, _ = PendingInvitation.create_for(
+        org_a.id, existing_user.id, "org_admin", invited_by_id=inviter.id
+    )
+    raw = invitation.issue_link()
+    db_session.commit()
+
+    org_id = invitation_service.answer_existing(raw, existing_user, True)
+
+    assert org_id == org_a.id
+    assert OrgRole.get_role(org_a.id, existing_user.id) == "org_admin"
+    # The user's own organisation is untouched by a foreign-organisation grant.
+    assert existing_user.organization_id == org_b.id
+    assert existing_user.is_admin() is False, (
+        "accepting an org-admin invite into organisation A must not grant "
+        "admin in the user's own organisation B"
+    )
+    assert rbac_service.is_org_admin(org_b.id, existing_user.id) is False, (
+        "rbac_service.is_org_admin(org_b) must be False: the admin grant was "
+        "for organisation A, not the user's own organisation"
+    )
+    assert rbac_service.is_org_admin(org_a.id, existing_user.id) is True, (
+        "the OrgRole grant for organisation A must still answer True there"
+    )
+
+
+def test_answer_existing_home_org_admin_invite_still_syncs_canonical_authority(
+    app, db_session, make_org
+):
+    """Control case for the fix above: when the invited organisation IS the
+    user's own, answer_existing() must still sync the canonical Administrator
+    role, exactly as it did before -- the fix only narrows the grant to the
+    user's own organisation, it does not remove it there."""
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+    from app.modules.account.services import invitation_service
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("home-admin")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    inviter = User(
+        first_name="Inv", last_name="Iter",
+        email=f"home-inviter-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+    )
+    existing_user = User(
+        first_name="Home", last_name="Org",
+        email=f"home-org-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([inviter, existing_user])
+    db_session.commit()
+
+    invitation, _ = PendingInvitation.create_for(
+        org.id, existing_user.id, "org_admin", invited_by_id=inviter.id
+    )
+    raw = invitation.issue_link()
+    db_session.commit()
+
+    invitation_service.answer_existing(raw, existing_user, True)
+
+    assert OrgRole.get_role(org.id, existing_user.id) == "org_admin"
+    assert existing_user.is_admin() is True
+    assert existing_user.is_org_admin is True
+    assert rbac_service.is_org_admin(org.id, existing_user.id) is True
+
+
+def test_account_service_accept_invitation_home_org_admin_syncs_canonical_authority(
+    app, db_session, make_org
+):
+    """The /account/invitation/<id>/accept route (AccountService.accept_invitation)
+    must agree with the toggle/team/join-link paths: accepting an org-admin
+    invitation for the user's own organisation grants the canonical
+    Administrator role, not only the OrgRole row."""
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+    from app.modules.account.services.account_service import AccountService
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("accept-home-admin")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    inviter = User(
+        first_name="Inv", last_name="Iter",
+        email=f"accept-inviter-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+    )
+    user = User(
+        first_name="Accept", last_name="Home",
+        email=f"accept-home-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([inviter, user])
+    db_session.commit()
+
+    invitation, _ = PendingInvitation.create_for(
+        org.id, user.id, "org_admin", invited_by_id=inviter.id
+    )
+    db_session.commit()
+
+    success, message = AccountService.accept_invitation(user, invitation.id)
+
+    assert success is True, message
+    assert OrgRole.get_role(org.id, user.id) == "org_admin"
+    assert user.is_admin() is True, (
+        "accept_invitation() must grant the canonical Administrator role, "
+        "not only the OrgRole row, for an org-admin invitation into the "
+        "user's own organisation"
+    )
+    assert user.is_org_admin is True
+    assert rbac_service.is_org_admin(org.id, user.id) is True
+
+
+def test_account_service_accept_invitation_into_foreign_org_does_not_grant_home_org_admin(
+    app, db_session, make_org
+):
+    """The same /account/invitation/<id>/accept path, for an invitation into a
+    DIFFERENT organisation from the user's own: granting admin in A must not
+    make the user an administrator of their own organisation B, the same
+    cross-organisation rule answer_existing() must follow."""
+    from app.models.org_role import OrgRole
+    from app.models.pending_invitation import PendingInvitation
+    from app.modules.account.services.account_service import AccountService
+    from app.services.rbac_service import rbac_service
+
+    org_a = make_org("accept-foreign-a")
+    org_b = make_org("accept-foreign-b")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    inviter = User(
+        first_name="Inv", last_name="Iter",
+        email=f"accept-foreign-inviter-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=admin_role,
+    )
+    user = User(
+        first_name="Accept", last_name="Foreign",
+        email=f"accept-foreign-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_b.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([inviter, user])
+    db_session.commit()
+
+    invitation, _ = PendingInvitation.create_for(
+        org_a.id, user.id, "org_admin", invited_by_id=inviter.id
+    )
+    db_session.commit()
+
+    success, message = AccountService.accept_invitation(user, invitation.id)
+
+    assert success is True, message
+    assert OrgRole.get_role(org_a.id, user.id) == "org_admin"
+    assert user.organization_id == org_b.id
+    assert user.is_admin() is False
+    assert rbac_service.is_org_admin(org_b.id, user.id) is False
+    assert rbac_service.is_org_admin(org_a.id, user.id) is True
+
+
+# ---------------------------------------------------------------------------
+# A platform admin's Administrator role survives an org-scoped revoke,
+# wherever that revoke happens (toggle, delete, remove)
+# ---------------------------------------------------------------------------
+
+
+def test_toggle_org_admin_does_not_strip_platform_admin_status(
+    app, db_session, make_org, client, login_as
+):
+    """Toggling org-admin off for a user who is also a platform admin must not
+    strip their Administrator role: is_platform_admin requires
+    Permission.ADMINISTER as well as the flag, so this would otherwise end
+    their platform-admin access as a side effect of an org-scoped action."""
+    from app.middleware.tenant_decorators import is_platform_admin as _platform_admin_predicate
+    from app.models.org_role import OrgRole
+
+    org_a = make_org("toggle-platform-a")
+    org_b = make_org("toggle-platform-b")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    acting_admin = User(
+        first_name="Acting", last_name="Admin",
+        email=f"toggle-acting-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_b.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    target = User(
+        first_name="Target", last_name="PlatformAdmin",
+        email=f"toggle-target-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([acting_admin, target])
+    db_session.commit()
+    OrgRole.set_role(org_a.id, target.id, "org_admin")
+    db_session.commit()
+
+    login_as(client, acting_admin)
+    resp = client.post(
+        f"/admin/organizations/{org_a.id}/users/{target.id}/toggle-admin",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, target.id)
+    assert reloaded.is_admin() is True, (
+        "a platform admin's Administrator role must survive an org-scoped "
+        "org-admin revoke"
+    )
+    assert reloaded.is_platform_admin is True
+    assert _platform_admin_predicate(reloaded) is True
+    # The per-organisation grant itself is still revoked.
+    assert OrgRole.get_role(org_a.id, target.id) is None
+
+
+def test_organization_delete_does_not_strip_platform_admin_status(
+    app, db_session, make_org, client, login_as
+):
+    """Deleting an organisation moves its members to Default and downgrades
+    an Administrator -- except a platform admin, whose Administrator role
+    must survive the move for the same reason as the toggle above."""
+    from app.middleware.tenant_decorators import is_platform_admin as _platform_admin_predicate
+    from app.models.organization import Organization
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = Organization(name="Default", slug="default")
+        db_session.add(default_org)
+        db_session.flush()
+
+    doomed = make_org("doomed-platform-admin")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    member_platform_admin = User(
+        first_name="Member", last_name="PlatformAdmin",
+        email=f"delete-member-plat-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=doomed.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    acting_platform_admin = User(
+        first_name="Acting", last_name="PlatformAdmin",
+        email=f"delete-acting-plat-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([member_platform_admin, acting_platform_admin])
+    db_session.commit()
+
+    login_as(client, acting_platform_admin)
+    resp = client.post(f"/admin/organizations/{doomed.id}/delete", follow_redirects=True)
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, member_platform_admin.id)
+    assert reloaded.organization_id == default_org.id
+    assert reloaded.is_admin() is True, (
+        "organisation deletion must not strip a platform admin's "
+        "Administrator role"
+    )
+    assert reloaded.is_platform_admin is True
+    assert _platform_admin_predicate(reloaded) is True
+
+
+def test_remove_user_from_org_does_not_strip_platform_admin_status(
+    app, db_session, make_org, client, login_as
+):
+    """Removing a user from an organisation (moving them to Default) must not
+    strip a platform admin's Administrator role, for the same reason as
+    organisation deletion and the org-admin toggle above."""
+    from app.middleware.tenant_decorators import is_platform_admin as _platform_admin_predicate
+    from app.models.organization import Organization
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = Organization(name="Default", slug="default")
+        db_session.add(default_org)
+        db_session.flush()
+
+    source = make_org("remove-platform-admin-source")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    member_platform_admin = User(
+        first_name="Member", last_name="PlatformAdmin",
+        email=f"remove-member-plat-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=source.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    acting_platform_admin = User(
+        first_name="Acting", last_name="PlatformAdmin",
+        email=f"remove-acting-plat-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([member_platform_admin, acting_platform_admin])
+    db_session.commit()
+
+    login_as(client, acting_platform_admin)
+    resp = client.post(
+        f"/admin/organizations/{source.id}/users/{member_platform_admin.id}/remove",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, member_platform_admin.id)
+    assert reloaded.organization_id == default_org.id
+    assert reloaded.is_admin() is True, (
+        "removing a user from an organisation must not strip a platform "
+        "admin's Administrator role"
+    )
+    assert reloaded.is_platform_admin is True
+    assert _platform_admin_predicate(reloaded) is True
+
+
+# ---------------------------------------------------------------------------
+# Two more grant surfaces that wrote only the global Role: the platform
+# admin's "change account type" page and direct user creation
+# ---------------------------------------------------------------------------
+
+
+def test_change_user_role_to_administrator_syncs_org_role_and_denormalised_column(
+    app, db_session, make_org
+):
+    """AdminUserService.change_user_role (the /admin/user/<id>/change-account-type
+    page) must sync the OrgRole row and the denormalised is_org_admin column
+    when it promotes a user to Administrator, so the team page and
+    database-level guards agree with this page -- and must not touch a
+    different organisation's users."""
+    from app.models.org_role import OrgRole
+    from app.modules.admin.v2.services.admin_user_service_v2 import AdminUserService
+
+    org_a = make_org("change-role-a")
+    org_b = make_org("change-role-b")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    user_a = User(
+        first_name="Change", last_name="RoleA",
+        email=f"change-role-a-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=architect_role,
+    )
+    other_org_user = User(
+        first_name="Other", last_name="OrgUser",
+        email=f"change-role-b-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_b.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([user_a, other_org_user])
+    db_session.commit()
+
+    AdminUserService.change_user_role(user_a, admin_role)
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, user_a.id)
+    assert reloaded.is_admin() is True
+    assert OrgRole.get_role(org_a.id, user_a.id) == "org_admin", (
+        "promoting a user to Administrator through change_user_role must "
+        "also write the OrgRole row the team page reads"
+    )
+    assert reloaded._is_org_admin is True, (
+        "promoting a user to Administrator through change_user_role must "
+        "keep the denormalised column live for database-level guards"
+    )
+    # The other organisation's user is untouched.
+    assert OrgRole.get_role(org_b.id, other_org_user.id) is None
+
+
+def test_change_user_role_away_from_administrator_revokes_org_role_and_column(
+    app, db_session, make_org
+):
+    """The reverse of the above: demoting an Administrator through
+    change_user_role must remove the OrgRole grant and clear the
+    denormalised column, not just change the global Role."""
+    from app.models.org_role import OrgRole
+    from app.modules.admin.v2.services.admin_user_service_v2 import AdminUserService
+
+    org = make_org("change-role-revoke")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    user = User(
+        first_name="Change", last_name="Revoke",
+        email=f"change-role-revoke-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+    )
+    db_session.add(user)
+    db_session.commit()
+    OrgRole.set_role(org.id, user.id, "org_admin")
+    user._is_org_admin = True
+    db_session.commit()
+
+    AdminUserService.change_user_role(user, architect_role)
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, user.id)
+    assert reloaded.is_admin() is False
+    assert OrgRole.get_role(org.id, user.id) is None, (
+        "demoting an Administrator through change_user_role must remove "
+        "the OrgRole grant the team page reads"
+    )
+    assert reloaded._is_org_admin is False
+
+
+def test_create_user_as_administrator_writes_org_role_and_column(
+    app, db_session, make_org
+):
+    """AdminUserService.create_user (the /admin/new-user page) must write the
+    OrgRole row and the denormalised column when creating a new user
+    directly as Administrator, and must not touch a different
+    organisation's rows."""
+    from app.models.org_role import OrgRole
+    from app.modules.admin.v2.services.admin_user_service_v2 import AdminUserService
+
+    org_a = make_org("create-user-a")
+    org_b = make_org("create-user-b")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    new_user = AdminUserService.create_user(
+        first_name="New", last_name="Admin",
+        email=f"create-user-admin-{uuid.uuid4().hex[:8]}@example.com",
+        password="fixture-only-password",
+        role=admin_role,
+        organization_id=org_a.id,
+    )
+
+    assert new_user.is_admin() is True
+    assert OrgRole.get_role(org_a.id, new_user.id) == "org_admin", (
+        "creating a new Administrator directly must write the OrgRole row "
+        "the team page reads"
+    )
+    assert new_user._is_org_admin is True
+    assert OrgRole.get_role(org_b.id, new_user.id) is None

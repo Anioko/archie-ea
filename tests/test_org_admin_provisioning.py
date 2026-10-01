@@ -53,7 +53,18 @@ def provisioning(monkeypatch):
         @is_org_admin.setter
         def is_org_admin(self, value):
             if value:
-                self.role = SimpleNamespace(name='Administrator')
+                self.grant_org_admin()
+
+        def grant_org_admin(self):
+            # Mirrors the real User.grant_org_admin (app/models/user.py):
+            # register_user() calls this to grant org-admin in the owner's
+            # own (just-created) organisation.
+            self.role = SimpleNamespace(name='Administrator')
+
+        def revoke_org_admin(self):
+            if not self.is_admin() or getattr(self, 'is_platform_admin', False):
+                return
+            self.role = SimpleNamespace(name='Architect')
 
     class Organization(SimpleNamespace):
         kind = 'organization'
