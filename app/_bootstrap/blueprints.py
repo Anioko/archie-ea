@@ -545,6 +545,19 @@ def _register_always_on_apis(app, csrf):
     app.register_blueprint(error_events_bp)
     app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
 
+    # Capability merge report (ADR 0008 consolidation): platform-admin view of
+    # which duplicate capability records were merged. Registered here rather
+    # than under app.modules.governance's own register() because that module
+    # is reached only when USE_NEW_GOVERNANCE (or USE_GOVERNANCE_GUARDRAILS,
+    # which registers app.modules.governance.v2 instead) is enabled -- this
+    # report must exist regardless of that flag.
+    from app.modules.governance.routes.capability_merge_report_routes import (
+        init_app as init_capability_merge_report,
+    )
+
+    init_capability_merge_report(app)
+    app.logger.info("[BLUEPRINT] Capability merge report registered at /admin/capability-merges")
+
     # Service status: current health, incident history, subscribe (any signed-in user).
     from app.modules.monitoring.routes.status_routes import status_bp
 
