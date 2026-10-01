@@ -154,3 +154,32 @@ def test_a_tenant_administrator_is_refused_on_v2_only_abacus_routes(
         if response.status_code == 404:
             pytest.skip(f"{path} not reachable in this environment (v1 tree mounted)")
         assert response.status_code == 403
+
+
+def test_save_relationship_mappings_handler_refuses_a_tenant_administrator(
+    app, db_session, make_org, client, login_as
+):
+    """Direct-handler proof for save_relationship_mappings (final-check finding
+    on PR 312, pr312-review-v1.md): the URL-routed test above skips in any
+    environment where the v2 tree isn't mounted, so it has no fails-on-main
+    proof by itself. This imports the v2 module's own view function and calls
+    it in a request context, independent of which tree app._bootstrap wires
+    up -- it runs, and fails on unfixed code, on both main and this head."""
+    from flask_login import login_user
+
+    from app.models.user import User
+    from app.modules.admin.v2.routes.admin_routes import save_relationship_mappings
+
+    tenant_admin_a_id, _tenant_b_id, _platform_id, _job_id = _world(db_session, make_org)
+
+    with app.test_request_context(
+        "/admin/abacus-settings/save-relationship-mappings",
+        method="POST",
+        content_type="application/json",
+        json={},
+    ):
+        login_user(db_session.get(User, tenant_admin_a_id))
+        response = save_relationship_mappings()
+
+    status = response[1] if isinstance(response, tuple) else response.status_code
+    assert status == 403
