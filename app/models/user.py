@@ -216,8 +216,7 @@ class User(UserMixin, db.Model):
         the denormalised flag.  This setter exists as a migration path for the
         common ``user.is_org_admin = True`` pattern found across the codebase."""
         if value:
-            with db.session.no_autoflush:
-                admin_role = Role.query.filter_by(name="Administrator").first()
+            admin_role = Role.query.filter_by(name="Administrator").first()
             if admin_role is not None:
                 self.role = admin_role
 
@@ -273,8 +272,7 @@ class User(UserMixin, db.Model):
                     permissions=Permission.ADMINISTER
                 ).first()
             if self.role is None:
-                with db.session.no_autoflush:
-                    self.role = Role.query.filter_by(default=True).first()
+                self.role = Role.query.filter_by(default=True).first()
 
     def full_name(self):
         parts = [part for part in (self.first_name, self.last_name) if part]
@@ -284,12 +282,8 @@ class User(UserMixin, db.Model):
 
     def can(self, permissions):
         # Primary check: bitfield on Role model
-        if (
-            self.role is not None
-            and self.role.permissions is not None
-            and (self.role.permissions & permissions) == permissions
-        ):
-            return True
+        if self.role is not None and self.role.permissions is not None:
+            return (self.role.permissions & permissions) == permissions
         # Fallback: check UserRole junction table for granular RBAC
         try:
             from app.models.permission import UserRole
