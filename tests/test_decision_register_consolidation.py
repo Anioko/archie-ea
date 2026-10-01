@@ -66,6 +66,47 @@ def test_pairing_creates_a_visible_canonical_decision(db_session, make_org, tena
         assert canonical.title == record.title
 
 
+def test_pairing_a_record_with_json_alternatives_does_not_crash(db_session, make_org, tenant_ctx):
+    """ArchitectureDecision.alternatives is Text ("text or JSON"), not a
+    structured column -- json.loads()'ing the legacy value before storing it
+    used to hand SQLAlchemy a dict/list for a Text column, raising on every
+    legacy row whose alternatives_considered actually held JSON (the common
+    case, per that column's own comment), aborting the whole backfill."""
+    import json
+
+    org = make_org("adr-pair-json-alternatives")
+    with tenant_ctx(org.id):
+        record = _make_adr_record(
+            org.id,
+            alternatives_considered=json.dumps(["Option A", "Option B"]),
+        )
+        canonical = record.pair_with_canonical_register()
+        db.session.commit()
+
+        assert canonical is not None
+        assert canonical.alternatives == record.alternatives_considered
+        assert json.loads(canonical.alternatives) == ["Option A", "Option B"]
+
+
+def test_pairing_a_record_with_plain_text_alternatives_does_not_crash(
+    db_session, make_org, tenant_ctx
+):
+    """The same field also holds plain, non-JSON text on older rows (per its
+    own "text or JSON" comment) -- that must carry over untouched too, not
+    get wrapped in a {"legacy_text": ...} dict that also cannot be stored in
+    a Text column."""
+    org = make_org("adr-pair-text-alternatives")
+    with tenant_ctx(org.id):
+        record = _make_adr_record(
+            org.id, alternatives_considered="Considered a vendor product; rejected on cost."
+        )
+        canonical = record.pair_with_canonical_register()
+        db.session.commit()
+
+        assert canonical is not None
+        assert canonical.alternatives == "Considered a vendor product; rejected on cost."
+
+
 def test_pairing_is_idempotent(db_session, make_org, tenant_ctx):
     org = make_org("adr-idem")
     with tenant_ctx(org.id):
@@ -290,6 +331,39 @@ def test_solution_options_advisor_persist_writes_only_the_canonical_row(db_sessi
     assert decision_a.decided_by_label == "AI Solution Architect (proposed)"
     assert decision_b.organization_id == org_b.id
     assert _legacy_record_count() == before, "no row should ever land in the superseded store"
+
+
+def test_options_advisor_page_renders_once_a_decision_exists(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """options_advisor.html used to reference adr.adr_number, a legacy
+    ArchitectureDecisionRecord field the canonical ArchitectureDecision (what
+    SolutionOptionsAdvisor.to_dict's "adr" dict is actually built from) never
+    had, 500ing the page every time a solution had a recorded decision."""
+    from app.models.solution_models import Solution
+    from app.modules.solutions_strategic.v2.services.solution_options_advisor import SolutionOptionsAdvisor
+
+    org = make_org("options-advisor-render")
+    with tenant_ctx(org.id):
+        user = _user_for(db_session, org)
+        solution = Solution(name=f"sol-{uuid.uuid4().hex[:8]}", organization_id=org.id)
+        db_session.add(solution)
+        db_session.flush()
+        parsed = {
+            "options": [{"name": "A"}, {"name": "B"}],
+            "decision": {
+                "title": "Rendered decision", "context": "ctx", "decision": "dec",
+                "rationale": "rat", "consequences": "cons",
+                "estimated_effort": "2 weeks", "business_value": "high",
+            },
+        }
+        SolutionOptionsAdvisor._persist(solution, parsed, user_id=None)
+        db_session.commit()
+        solution_id = solution.id
+
+    login_as(client, user)
+    resp = client.get(f"/solutions/{solution_id}/options-advisor")
+    assert resp.status_code == 200
 
 
 # ------------------------------------------------------- backfill command
