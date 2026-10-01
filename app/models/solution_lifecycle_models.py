@@ -25,12 +25,12 @@ class SolutionRisk(TenantMixin, db.Model):
     unmerged into a canonical Risk (linked back to this solution via a
     RiskEntityLink of entity_type="solution") and sets
     ``retired_into_risk_id`` here so re-running the backfill is a no-op. This
-    table's own create/update/delete routes
-    (app/modules/solutions_strategic/v2/routes/solution_phase_routes.py)
-    still write here directly until the solution risk tab is repointed to
-    risk_service.py in a later change -- the backfill is idempotent and runs
-    on every deploy, so a row created after this PR is swept in on the next
-    deploy rather than left stranded.
+    table's own create/update/delete/CSV-import routes
+    (app/modules/solutions_strategic/v2/routes/solution_phase_routes.py) now
+    write through risk_service.py too -- no code path adds a new row here.
+    The GET list on that same blueprint still reads this table directly;
+    repointing that reader to the canonical store, like the risk register and
+    programme screens, is PR 2 scope.
     """
     __tablename__ = "solution_risks"
     __table_args__ = {"extend_existing": True}
