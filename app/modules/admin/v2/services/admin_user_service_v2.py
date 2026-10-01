@@ -117,8 +117,12 @@ class AdminUserService:
         the denormalised ``is_org_admin`` column for the user's organisation
         (the same organisation ``organization_id`` places them in), so the
         team page and database-level guards agree with this page about who is
-        an organisation administrator from the moment the account exists.
+        an organisation administrator from the moment the account exists --
+        through the one shared helper (app/models/org_role.py), not a second
+        implementation of the grant.
         """
+        from app.models.org_role import apply_admin_role_grant_for_new_user
+
         user = User(
             first_name=first_name,
             last_name=last_name,
@@ -131,11 +135,7 @@ class AdminUserService:
         )
         db.session.add(user)
         db.session.flush()
-        if role is not None and role.name == "Administrator":
-            from app.models.org_role import OrgRole
-
-            user._is_org_admin = True
-            OrgRole.set_role(user.organization_id, user.id, "org_admin")
+        apply_admin_role_grant_for_new_user(user, role)
         db.session.commit()
         return user
 
@@ -186,25 +186,17 @@ class AdminUserService:
 
         Crossing the Administrator boundary (either direction) also syncs the
         per-organisation OrgRole row and the denormalised ``is_org_admin``
-        column, so the team page (which reads OrgRole) and database-level
-        guards (which read the column) agree with this page about who is an
-        organisation administrator -- this was the one grant/revoke surface
-        that wrote only the global Role and nothing else.
+        column, and -- on revoke -- leaves a platform admin's
+        Permission.ADMINISTER untouched, through the one shared helper
+        (app/models/org_role.py) that both the v1 and v2 admin services call,
+        instead of this service re-implementing the state transition (which
+        previously reassigned ``user.role`` unconditionally, stripping a
+        platform admin's Administrator role as a side effect).
         """
-        from app.models.org_role import OrgRole
+        from app.models.org_role import apply_admin_role_change
 
-        was_admin = user.is_admin()
-        user.role = new_role
+        apply_admin_role_change(user, new_role)
         db.session.add(user)
-        now_admin = bool(new_role is not None and new_role.name == "Administrator")
-        if now_admin and not was_admin:
-            user._is_org_admin = True
-            OrgRole.set_role(user.organization_id, user.id, "org_admin")
-        elif was_admin and not now_admin:
-            user._is_org_admin = False
-            OrgRole.query.filter_by(
-                organization_id=user.organization_id, user_id=user.id
-            ).delete(synchronize_session=False)
         db.session.commit()
 
     @staticmethod

@@ -58,7 +58,7 @@ def _require_org_or_platform_admin(org_id):
     """Abort 403 unless the current user is this org's admin or a platform admin."""
     if is_platform_admin(current_user):
         return
-    if rbac_service.is_org_admin(org_id, current_user.id):
+    if rbac_service.is_org_admin(current_user, org_id):
         return
     abort(403)
 

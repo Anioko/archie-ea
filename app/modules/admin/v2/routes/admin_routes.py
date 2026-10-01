@@ -5518,11 +5518,13 @@ def organization_detail(org_id):
     # Python method, not a column SQL can order by.
     sort_key = request.args.get("sort", "name")
     direction = request.args.get("dir", "asc")
-    # org_admin sort uses the canonical is_admin() authority (Permission.ADMINISTER),
+    # org_admin sort uses the one canonical check (rbac_service.is_org_admin),
     # not the denormalised _is_org_admin column, so it is handled in Python.
     if sort_key == "org_admin":
+        from app.services.rbac_service import rbac_service
+
         users = User.query.filter_by(organization_id=org.id).order_by(User.id).all()
-        users.sort(key=lambda u: u.is_admin(), reverse=(direction == "desc"))
+        users.sort(key=lambda u: rbac_service.is_org_admin(u, org.id), reverse=(direction == "desc"))
     else:
         columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
         order = [c.desc() if direction == "desc" else c.asc() for c in columns]

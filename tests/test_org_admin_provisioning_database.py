@@ -63,8 +63,8 @@ def test_new_owner_persists_org_role_and_cannot_administer_foreign_org(
         assignment = OrgRole.query.filter_by(organization_id=org_id, user_id=user_id).one()
         assert assignment.role == 'org_admin'
         assert assignment.granted_by == user_id
-        assert rbac_service.is_org_admin(org_id, user_id)
-        assert not rbac_service.is_org_admin(foreign_id, user_id)
+        assert rbac_service.is_org_admin(saved, org_id)
+        assert not rbac_service.is_org_admin(saved, foreign_id)
         assert OrgRole.get_role(foreign_id, colleague_id) == 'viewer'
 
 

@@ -202,11 +202,22 @@ class User(UserMixin, db.Model):
 
     @property
     def is_org_admin(self):
-        """True when this user holds Permission.ADMINISTER (the system of record
-        for organisation-level administration).  The ``is_org_admin`` database
-        column is a denormalised copy kept current by ``flask reconcile-admin-flags``;
-        this property is the authority for auth decisions."""
-        return self.is_admin()
+        """True when this user is an organisation administrator of their own
+        (home) organisation.
+
+        Delegates to ``rbac_service.is_org_admin(self, self.organization_id)``
+        — the one check every caller uses for this question — rather than
+        computing its own answer, so this property and that function can
+        never disagree for the user's own organisation.  A grant made only in
+        a foreign organisation (OrgRole, for a user who belongs to several)
+        is correctly excluded: see ``rbac_service.is_org_admin``.  The
+        ``is_org_admin`` database column is a denormalised copy kept current
+        by ``flask reconcile-admin-flags`` and by every grant/revoke site
+        (see ``grant_org_admin`` / ``revoke_org_admin`` below); it is never
+        read for an auth decision."""
+        from app.services.rbac_service import rbac_service
+
+        return rbac_service.is_org_admin(self, self.organization_id)
 
     @is_org_admin.setter
     def is_org_admin(self, value):
@@ -243,20 +254,25 @@ class User(UserMixin, db.Model):
             self.role = admin_role
             self._is_org_admin = True
 
-    def revoke_org_admin(self):
+    def revoke_org_admin(self, fallback_role=None):
         """Revoke organisation-admin authority, unless the user is a platform admin.
 
         A no-op when the user does not currently hold admin authority, and
         also when the user is a platform admin: ``is_platform_admin`` (see
         above) requires Permission.ADMINISTER as well as the flag, so an
         org-scoped revoke must never strip it as a side effect of leaving, or
-        being removed from, one organisation.
+        being removed from, one organisation — not even when the caller
+        asked for a specific ``fallback_role``.
+
+        Demotes to ``fallback_role`` when given (the role an admin explicitly
+        picked, for callers that let one be chosen directly, e.g. the change
+        account-type page), otherwise to the default Role, same as before.
         """
         if not self.is_admin() or self.is_platform_admin:
             return
-        default_role = Role.query.filter_by(default=True).first()
-        if default_role is not None:
-            self.role = default_role
+        target_role = fallback_role or Role.query.filter_by(default=True).first()
+        if target_role is not None:
+            self.role = target_role
         self._is_org_admin = False
 
     # PLT-018: Business unit scoping — links user to a BusinessActor (actor_type='Department' or similar)

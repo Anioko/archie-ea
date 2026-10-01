@@ -437,7 +437,7 @@ def test_org_role_grant_syncs_user_role(app, db_session, make_org):
     assert refreshed.is_org_admin is True, (
         "user.is_org_admin must be True after org_admin grant"
     )
-    assert rbac_service.is_org_admin(org.id, user.id) is True, (
+    assert rbac_service.is_org_admin(user, org.id) is True, (
         "rbac_service.is_org_admin must be True after org_admin grant"
     )
 
@@ -480,7 +480,7 @@ def test_org_role_revoke_syncs_user_role(app, db_session, make_org):
     assert refreshed.is_org_admin is False, (
         "user.is_org_admin must be False after org_admin revoke"
     )
-    assert rbac_service.is_org_admin(org.id, user.id) is False, (
+    assert rbac_service.is_org_admin(user, org.id) is False, (
         "rbac_service.is_org_admin must be False after org_admin revoke"
     )
 
@@ -502,7 +502,7 @@ def test_rbac_service_is_org_admin_falls_back_to_is_admin(app, db_session, make_
 
     # No OrgRole row exists, but user.is_admin() is True.
     assert user.is_admin() is True
-    assert rbac_service.is_org_admin(org.id, user.id) is True, (
+    assert rbac_service.is_org_admin(user, org.id) is True, (
         "rbac_service.is_org_admin must return True when user.is_admin() is True, "
         "even without an OrgRole row"
     )
@@ -583,11 +583,15 @@ def test_answer_existing_cross_org_admin_invite_does_not_grant_admin_in_home_org
         "accepting an org-admin invite into organisation A must not grant "
         "admin in the user's own organisation B"
     )
-    assert rbac_service.is_org_admin(org_b.id, existing_user.id) is False, (
+    assert existing_user.is_org_admin is False, (
+        "user.is_org_admin (home organisation) must agree with is_admin() "
+        "here: False"
+    )
+    assert rbac_service.is_org_admin(existing_user, org_b.id) is False, (
         "rbac_service.is_org_admin(org_b) must be False: the admin grant was "
         "for organisation A, not the user's own organisation"
     )
-    assert rbac_service.is_org_admin(org_a.id, existing_user.id) is True, (
+    assert rbac_service.is_org_admin(existing_user, org_a.id) is True, (
         "the OrgRole grant for organisation A must still answer True there"
     )
 
@@ -632,7 +636,7 @@ def test_answer_existing_home_org_admin_invite_still_syncs_canonical_authority(
     assert OrgRole.get_role(org.id, existing_user.id) == "org_admin"
     assert existing_user.is_admin() is True
     assert existing_user.is_org_admin is True
-    assert rbac_service.is_org_admin(org.id, existing_user.id) is True
+    assert rbac_service.is_org_admin(existing_user, org.id) is True
 
 
 def test_account_service_accept_invitation_home_org_admin_syncs_canonical_authority(
@@ -679,7 +683,7 @@ def test_account_service_accept_invitation_home_org_admin_syncs_canonical_author
         "user's own organisation"
     )
     assert user.is_org_admin is True
-    assert rbac_service.is_org_admin(org.id, user.id) is True
+    assert rbac_service.is_org_admin(user, org.id) is True
 
 
 def test_account_service_accept_invitation_into_foreign_org_does_not_grant_home_org_admin(
@@ -723,8 +727,12 @@ def test_account_service_accept_invitation_into_foreign_org_does_not_grant_home_
     assert OrgRole.get_role(org_a.id, user.id) == "org_admin"
     assert user.organization_id == org_b.id
     assert user.is_admin() is False
-    assert rbac_service.is_org_admin(org_b.id, user.id) is False
-    assert rbac_service.is_org_admin(org_a.id, user.id) is True
+    assert user.is_org_admin is False, (
+        "user.is_org_admin (home organisation B) must stay False after a "
+        "foreign-organisation (A) grant"
+    )
+    assert rbac_service.is_org_admin(user, org_b.id) is False
+    assert rbac_service.is_org_admin(user, org_a.id) is True
 
 
 # ---------------------------------------------------------------------------
@@ -779,6 +787,10 @@ def test_toggle_org_admin_does_not_strip_platform_admin_status(
     )
     assert reloaded.is_platform_admin is True
     assert _platform_admin_predicate(reloaded) is True
+    from app.services.rbac_service import rbac_service
+
+    assert reloaded.is_org_admin is True
+    assert rbac_service.is_org_admin(reloaded, org_a.id) is True
     # The per-organisation grant itself is still revoked.
     assert OrgRole.get_role(org_a.id, target.id) is None
 
@@ -829,6 +841,10 @@ def test_organization_delete_does_not_strip_platform_admin_status(
     )
     assert reloaded.is_platform_admin is True
     assert _platform_admin_predicate(reloaded) is True
+    from app.services.rbac_service import rbac_service
+
+    assert reloaded.is_org_admin is True
+    assert rbac_service.is_org_admin(reloaded, default_org.id) is True
 
 
 def test_remove_user_from_org_does_not_strip_platform_admin_status(
@@ -880,6 +896,10 @@ def test_remove_user_from_org_does_not_strip_platform_admin_status(
     )
     assert reloaded.is_platform_admin is True
     assert _platform_admin_predicate(reloaded) is True
+    from app.services.rbac_service import rbac_service
+
+    assert reloaded.is_org_admin is True
+    assert rbac_service.is_org_admin(reloaded, default_org.id) is True
 
 
 # ---------------------------------------------------------------------------
@@ -999,3 +1019,263 @@ def test_create_user_as_administrator_writes_org_role_and_column(
     )
     assert new_user._is_org_admin is True
     assert OrgRole.get_role(org_b.id, new_user.id) is None
+
+
+# ---------------------------------------------------------------------------
+# pr291-ruling-v9.md item 1: change_user_role must route through
+# User.revoke_org_admin so a platform admin's Permission.ADMINISTER survives
+# an org-scoped "change account type" action, the same as every other revoke
+# site, instead of unconditionally reassigning user.role.
+# ---------------------------------------------------------------------------
+
+
+def test_change_user_role_does_not_strip_platform_admin_status(app, db_session, make_org):
+    """Reproduces the reviewer's exact failing scenario: a platform admin,
+    with an org_admin OrgRole row, demoted through change_user_role.
+
+    Before the fix this unconditionally reassigned user.role, so the output
+    was role=Architect, is_admin()=False, platform_predicate=False even
+    though is_platform_admin stayed True -- a platform admin's effective
+    access silently ended. After the fix this must be a no-op for the
+    global Role (revoke_org_admin), with the OrgRole row consequently left
+    alone too, since the revoke never actually took effect."""
+    from app.middleware.tenant_decorators import is_platform_admin as _platform_admin_predicate
+    from app.models.org_role import OrgRole
+    from app.modules.admin.v2.services.admin_user_service_v2 import AdminUserService
+    from app.services.rbac_service import rbac_service
+
+    org = make_org("change-role-platform-admin")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    user = User(
+        first_name="Plat", last_name="Admin",
+        email=f"change-role-platform-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add(user)
+    db_session.commit()
+    OrgRole.set_role(org.id, user.id, "org_admin")
+    db_session.commit()
+
+    AdminUserService.change_user_role(user, architect_role)
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, user.id)
+    assert reloaded.role.name == "Administrator", (
+        "an org-scoped role change must not demote a platform admin away "
+        "from Administrator"
+    )
+    assert reloaded.is_admin() is True
+    assert reloaded.is_platform_admin is True
+    assert _platform_admin_predicate(reloaded) is True, (
+        "the platform-admin predicate (flag plus Permission.ADMINISTER) "
+        "must still hold after the no-op revoke"
+    )
+    assert reloaded.is_org_admin is True
+    assert rbac_service.is_org_admin(reloaded, org.id) is True
+    # The revoke never actually took effect, so the per-organisation grant
+    # a team page would show is left exactly as it was.
+    assert OrgRole.get_role(org.id, user.id) == "org_admin"
+
+
+# ---------------------------------------------------------------------------
+# pr291-ruling-v9.md items 1 and 2, overruled as false positives but pinned
+# with a direct, fresh test per handler: moving a Viewer through the real
+# route leaves them a Viewer.
+# ---------------------------------------------------------------------------
+
+
+def test_organization_delete_route_leaves_a_viewer_a_viewer(
+    app, db_session, make_org, client, login_as
+):
+    """POST /admin/organizations/<id>/delete, exercised end to end: a plain
+    Viewer moved out of the deleted organisation stays a Viewer."""
+    from app.models.organization import Organization
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = Organization(name="Default", slug="default")
+        db_session.add(default_org)
+        db_session.flush()
+
+    doomed = make_org("doomed-viewer-v9")
+    viewer_role = Role.query.filter_by(name="Viewer").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    viewer = User(
+        first_name="V", last_name="Only",
+        email=f"viewer-v9-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=doomed.id, confirmed=True, role=viewer_role,
+    )
+    platform_admin = User(
+        first_name="P", last_name="Admin",
+        email=f"plat-admin-v9-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([viewer, platform_admin])
+    db_session.commit()
+
+    login_as(client, platform_admin)
+    resp = client.post(f"/admin/organizations/{doomed.id}/delete", follow_redirects=True)
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, viewer.id)
+    assert reloaded.organization_id == default_org.id
+    assert reloaded.role.name == "Viewer", (
+        f"a Viewer moved by organisation deletion must stay a Viewer, "
+        f"got {reloaded.role.name}"
+    )
+
+
+def test_remove_user_from_org_route_leaves_a_viewer_a_viewer(
+    app, db_session, make_org, client, login_as
+):
+    """POST /admin/organizations/<id>/users/<uid>/remove, exercised end to
+    end: a plain Viewer removed from the organisation stays a Viewer."""
+    from app.models.organization import Organization
+
+    default_org = Organization.query.filter_by(slug="default").first()
+    if default_org is None:
+        default_org = Organization(name="Default", slug="default")
+        db_session.add(default_org)
+        db_session.flush()
+
+    source = make_org("remove-viewer-source-v9")
+    viewer_role = Role.query.filter_by(name="Viewer").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    viewer = User(
+        first_name="V", last_name="Only",
+        email=f"viewer-rm-v9-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=source.id, confirmed=True, role=viewer_role,
+    )
+    platform_admin = User(
+        first_name="P", last_name="Admin",
+        email=f"plat-admin-rm-v9-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=default_org.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    db_session.add_all([viewer, platform_admin])
+    db_session.commit()
+
+    login_as(client, platform_admin)
+    resp = client.post(
+        f"/admin/organizations/{source.id}/users/{viewer.id}/remove",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+
+    db_session.expire_all()
+    reloaded = db_session.get(User, viewer.id)
+    assert reloaded.organization_id == default_org.id
+    assert reloaded.role.name == "Viewer", (
+        f"a Viewer moved by remove-from-org must stay a Viewer, "
+        f"got {reloaded.role.name}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# pr291-ruling-v9.md item 3: rbac_service.is_org_admin(user, org_id) is the
+# one check every caller uses; User.is_org_admin for the home organisation
+# returns the same answer through it, after every grant and revoke path,
+# and a foreign-organisation grant never makes the home answer True.
+# ---------------------------------------------------------------------------
+
+
+def test_is_org_admin_property_agrees_with_rbac_service_for_every_grant_and_revoke(
+    app, db_session, make_org, client, login_as
+):
+    """User.is_org_admin and rbac_service.is_org_admin(user, org_id) must
+    agree for the user's own organisation after each grant and revoke path,
+    and a foreign-organisation OrgRole grant must never make the
+    home-organisation answer True through either one."""
+    from app.models.org_role import OrgRole
+    from app.services.rbac_service import rbac_service
+
+    org_a = make_org("agree-a")
+    org_b = make_org("agree-b")
+    architect_role = Role.query.filter_by(name="Architect").first()
+    admin_role = Role.query.filter_by(name="Administrator").first()
+
+    def assert_agree(user, expected):
+        home_org_id = user.organization_id
+        assert user.is_org_admin is expected, (
+            f"user.is_org_admin expected {expected} for its own organisation"
+        )
+        assert rbac_service.is_org_admin(user, home_org_id) is expected, (
+            f"rbac_service.is_org_admin expected {expected} for the user's "
+            "own organisation"
+        )
+        assert user.is_org_admin == rbac_service.is_org_admin(user, home_org_id), (
+            "User.is_org_admin must always agree with rbac_service.is_org_admin "
+            "for the user's own organisation"
+        )
+
+    platform_admin = User(
+        first_name="Plat", last_name="Admin",
+        email=f"agree-platform-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=admin_role,
+        is_platform_admin=True,
+    )
+    member = User(
+        first_name="Mem", last_name="Ber",
+        email=f"agree-member-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=architect_role,
+    )
+    db_session.add_all([platform_admin, member])
+    db_session.commit()
+
+    # Grant: the team/invitation path (OrgRole + User.grant_org_admin).
+    OrgRole.set_role(org_a.id, member.id, "org_admin", granted_by_id=platform_admin.id)
+    member.grant_org_admin()
+    db_session.commit()
+    db_session.expire_all()
+    member = db_session.get(User, member.id)
+    assert_agree(member, True)
+
+    # Revoke: the team/remove-member path (OrgRole gone, Role demoted).
+    OrgRole.query.filter_by(organization_id=org_a.id, user_id=member.id).delete(
+        synchronize_session=False
+    )
+    member.revoke_org_admin()
+    db_session.commit()
+    db_session.expire_all()
+    member = db_session.get(User, member.id)
+    assert_agree(member, False)
+
+    # Grant: the real organisation-admin toggle route.
+    login_as(client, platform_admin)
+    resp = client.post(
+        f"/admin/organizations/{org_a.id}/users/{member.id}/toggle-admin",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db_session.expire_all()
+    member = db_session.get(User, member.id)
+    assert_agree(member, True)
+
+    # Revoke: the same route, toggled back off.
+    resp = client.post(
+        f"/admin/organizations/{org_a.id}/users/{member.id}/toggle-admin",
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    db_session.expire_all()
+    member = db_session.get(User, member.id)
+    assert_agree(member, False)
+
+    # A foreign-organisation grant (OrgRole only, org_b) must never make the
+    # home-organisation (org_a) answer True through either check.
+    OrgRole.set_role(org_b.id, member.id, "org_admin", granted_by_id=platform_admin.id)
+    db_session.commit()
+    db_session.expire_all()
+    member = db_session.get(User, member.id)
+    assert member.organization_id == org_a.id
+    assert rbac_service.is_org_admin(member, org_b.id) is True, (
+        "the foreign-organisation OrgRole grant must still answer True there"
+    )
+    assert_agree(member, False)
