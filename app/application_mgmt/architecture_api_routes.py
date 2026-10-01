@@ -361,7 +361,7 @@ def api_create_architecture_element(id):
 
 
 @application_mgmt.route(
-    "/api/applications/<string:id>/architecture/elements/<string:element_id>",
+    "/api/applications/<int:id>/architecture/elements/<int:element_id>",
     methods=["PUT"],
 )
 @login_required

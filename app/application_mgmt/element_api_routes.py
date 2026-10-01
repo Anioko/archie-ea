@@ -460,7 +460,7 @@ def get_application_element(app_id, element_id):
 
 
 @application_mgmt.route(
-    "/api/applications/<string:app_id>/elements/<string:element_id>", methods=["PUT"]
+    "/api/applications/<int:app_id>/elements/<int:element_id>", methods=["PUT"]
 )
 @login_required
 def update_application_element(app_id, element_id):

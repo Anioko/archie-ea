@@ -148,7 +148,7 @@ class PropertyService:
     def _coerce_value(self, *, archimate_type, key, raw_value, organization_id=None):
         template = self._template_for(archimate_type, key, organization_id=organization_id)
         if template is None:
-            return {"value": raw_value, "source": "user"}
+            return {"value": raw_value}
 
         unit = self._template_unit(archimate_type, key)
 
