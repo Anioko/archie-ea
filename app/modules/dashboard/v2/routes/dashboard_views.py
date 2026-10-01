@@ -727,9 +727,11 @@ def api_onboarding_complete():
         # A saved role must never raise the caller's own privilege: only the
         # one platform-admin predicate (flag AND ADMINISTER), or keeping the
         # role the user already holds, may select platform_admin.
+        # arb_member carries board voting authority, so it is likewise only
+        # for someone who already holds it; an administrator assigns it.
         if (
-            new_role == "platform_admin"
-            and current_user.enterprise_role != "platform_admin"
+            new_role in ("platform_admin", "arb_member")
+            and current_user.enterprise_role != new_role
             and not is_platform_admin(current_user)
         ):
             return jsonify({"success": False, "error": "Role not permitted"}), 403

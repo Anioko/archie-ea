@@ -138,3 +138,27 @@ def test_legacy_access_check_ignores_the_role_string(db_session, make_org):
     solution = _solution(db_session, org, owner)
 
     assert ARBSubmissionService._actor_can_access(claimant, solution) is False
+
+
+def test_onboarding_cannot_self_assign_arb_member(db_session, make_org, client, login_as):
+    org = make_org("rsa-arb")
+    user = _user(db_session, org, "solution_architect")
+    db_session.commit()
+
+    resp = _post_role(client, login_as, user, "arb_member")
+
+    db_session.refresh(user)
+    assert resp.status_code == 403
+    assert user.enterprise_role == "solution_architect"
+
+
+def test_existing_arb_member_can_confirm_their_role(db_session, make_org, client, login_as):
+    org = make_org("rsa-arb-keep")
+    user = _user(db_session, org, "arb_member")
+    db_session.commit()
+
+    resp = _post_role(client, login_as, user, "arb_member")
+
+    db_session.refresh(user)
+    assert resp.status_code == 200
+    assert user.enterprise_role == "arb_member"
