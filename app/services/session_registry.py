@@ -98,7 +98,10 @@ def touch(sid):
         if row is None or row.revoked_at is not None:
             return
         now = datetime.now(timezone.utc)
-        if row.last_seen_at is not None and (now - row.last_seen_at) < timedelta(seconds=_TOUCH_THROTTLE_SECONDS):
+        last_seen = row.last_seen_at
+        if last_seen is not None and last_seen.tzinfo is None:
+            last_seen = last_seen.replace(tzinfo=timezone.utc)
+        if last_seen is not None and (now - last_seen) < timedelta(seconds=_TOUCH_THROTTLE_SECONDS):
             return
         row.last_seen_at = now
         db.session.commit()
