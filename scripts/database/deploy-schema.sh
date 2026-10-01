@@ -52,33 +52,34 @@ flask --app manage apply-unified-capability-provenance-migration
 #
 # `--apply` refuses outright without a recorded backup manifest
 # (CutoverBlocked) -- it is not a mechanism this script invents, it already
-# existed in cutover_capability_tenancy.py before this change. Bridges to the
-# real backup `deploy/archie-backup.sh` already takes: that script's own
-# success marker (`$DIR/LAST_SUCCESS`, `file=<path>` on its last line) names
-# the latest verified dump, which is turned into the JSON manifest the
-# cutover command requires. A box that has not completed its first scheduled
-# backup yet has no marker, so this step correctly WARNs and skips rather
-# than cutting over unprotected -- same non-fatal convention as every
-# backfill-* line above, so one missing or stale backup does not 503 the
-# whole platform.
+# existed in cutover_capability_tenancy.py before this change. Bridges to
+# whichever verified backup this box actually takes: a marker in
+# deploy/archie-backup.sh's own format (`$DIR/LAST_SUCCESS`, `file=<path>` on
+# its last line), written either by that script (archie-backup.timer) or, in
+# production, by deploy/write-backup-marker.sh called from the production
+# backup step after its own verified dump -- same format, same reader, no
+# second marker mechanism. scripts/database/backup_marker_to_manifest.sh
+# turns that marker into the JSON manifest the cutover command requires.
+# A box that has not completed a verified backup yet has no marker, so this
+# step correctly WARNs and skips rather than cutting over unprotected -- same
+# non-fatal convention as every backfill-* line above, so one missing or
+# stale backup does not 503 the whole platform.
 #
 # ARCHIE_BACKUP_MARKER overrides the marker path (default: where
-# archie-backup.sh actually writes it) so a test can point this at a
-# throwaway marker instead of the real host path under /var/backups.
+# deploy/archie-backup.sh writes it) so a test, or a deploy whose backup
+# folder is mounted somewhere else, can point this at a different marker
+# instead of the default host path under /var/backups.
 BACKUP_MARKER=${ARCHIE_BACKUP_MARKER:-/var/backups/archie/LAST_SUCCESS}
 CUTOVER_MANIFEST=/tmp/cutover-capability-tenancy-manifest.json
-if [ -f "$BACKUP_MARKER" ]; then
-    BACKUP_FILE=$(sed -n 's/.*file=//p' "$BACKUP_MARKER" | tail -1)
-fi
-if [ -n "${BACKUP_FILE:-}" ]; then
-    printf '{"backup_path": "%s"}\n' "$BACKUP_FILE" > "$CUTOVER_MANIFEST"
+sh "$(dirname "$0")/backup_marker_to_manifest.sh" "$BACKUP_MARKER" "$CUTOVER_MANIFEST"
+if [ -f "$CUTOVER_MANIFEST" ]; then
     flask --app manage cutover-capability-tenancy --apply \
         --backup-manifest "$CUTOVER_MANIFEST" \
         --report /tmp/cutover-capability-tenancy-report.json \
         && echo 'cutover-capability-tenancy --apply succeeded' \
         || echo 'WARN capability tenancy cutover blocked or failed (see logs / /tmp/cutover-capability-tenancy-report.json) - unified_capabilities rows left organization_id IS NULL AND scope IS NULL until an ambiguous classification is resolved and cutover-capability-tenancy --apply is re-run' >&2
 else
-    echo "WARN capability tenancy cutover skipped - no backup marker at $BACKUP_MARKER yet (archie-backup.timer has not completed a run); unified_capabilities rows left organization_id IS NULL AND scope IS NULL until it runs with a real backup available" >&2
+    echo "WARN capability tenancy cutover skipped - no backup marker at $BACKUP_MARKER yet (no verified backup has written one); unified_capabilities rows left organization_id IS NULL AND scope IS NULL until one runs with a real backup available" >&2
 fi
 
 # Corrected 17 Sep 2026 -- this comment previously said project-capabilities

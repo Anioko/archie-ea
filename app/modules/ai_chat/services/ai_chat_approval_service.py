@@ -107,6 +107,33 @@ class AIChatApprovalService:
                 }
         return actor, None
 
+    def _record_refused_tool_approval(self, approval_id: int) -> None:
+        """When someone without write access tries to run a queued AI tool
+        call, record the refusal where the administrator's audit screen reads
+        it -- the same record the tool executor writes when it refuses a call.
+
+        Only a queued tool call in the person's own organisation is recorded:
+        another organisation's approval id stays invisible, as it does in the
+        response.
+        """
+        actor = _load_acting_user(self.user_id) if self.user_id else None
+        if actor is None or actor.organization_id is None:
+            return
+        from app.models.user import Permission
+
+        if actor.can(Permission.GENERAL):
+            return
+        approval = self._load_scoped_approval(approval_id, actor)
+        if approval is None or approval.operation_type != "tool_use":
+            return
+        try:
+            arguments = json.loads(approval.operation_payload or "{}")
+        except (TypeError, ValueError):
+            arguments = {}
+        from app.modules.ai_chat.tools.executor import record_refused_tool_call
+
+        record_refused_tool_call(actor, approval.entity_type, arguments, via="approval")
+
     @staticmethod
     def _load_scoped_approval(approval_id: int, actor: User) -> Optional[AIChatCRUDApproval]:
         """Load a decision target by id *and* actor organization.
@@ -488,6 +515,7 @@ class AIChatApprovalService:
 
             actor, actor_error = self._acting_user(require_general=True)
             if actor_error:
+                self._record_refused_tool_approval(approval_id)
                 return actor_error
             effective_approver_id = actor.id
             approval = self._load_scoped_approval(approval_id, actor)
