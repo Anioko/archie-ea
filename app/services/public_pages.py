@@ -12,6 +12,9 @@ Directory layout maps to URL families:
   content/pages/site/            → /<slug> (about, security, privacy, terms,
                                     contact, features, pricing, docs — one
                                     fixed top-level page per file)
+  content/pages/legal/           → /<slug> (legal pages held back until
+                                    LEGAL_PAGES_ENABLED is on — see
+                                    app/services/legal_pages.py)
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ FAMILY_DIR_MAP = {
     "comparison": "vs",
     "dogfood": "dogfood",
     "site": "site",
+    "legal": "legal",
 }
 
 FAMILY_URL_PREFIX = {
@@ -45,6 +49,8 @@ FAMILY_URL_PREFIX = {
     # No prefix: each file under content/pages/site/ is its own fixed
     # top-level page (content/pages/site/about.md -> /about).
     "site": "",
+    # Same shape as "site", but only published while LEGAL_PAGES_ENABLED is on.
+    "legal": "",
 }
 
 _md = markdown.Markdown(extensions=["extra"])
@@ -162,7 +168,11 @@ def load_all_pages() -> list[PublicPage]:
     if not CONTENT_ROOT.is_dir():
         return pages
 
+    from app.services.legal_pages import legal_pages_enabled
+
     for family, dir_name in FAMILY_DIR_MAP.items():
+        if family == "legal" and not legal_pages_enabled():
+            continue
         family_dir = CONTENT_ROOT / dir_name
         if not family_dir.is_dir():
             continue

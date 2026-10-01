@@ -8,7 +8,7 @@ Addresses Gap #3: No Cost Control or Budget Management
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Optional, Tuple
 
@@ -16,8 +16,8 @@ from flask import current_app
 from sqlalchemy import func
 
 from app import db
-from app.middleware.tenant_context import current_org_id
 from app.models import LLMInteraction
+from app.utils.tenant_sql import current_org_id
 
 # from app.services.decorators import transactional  # Temporarily disabled
 
@@ -125,7 +125,7 @@ class LLMCostTracker:
             Tuple of (allowed: bool, message: Optional[str])
         """
         # Get current month's spending
-        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # Calculate spending by user
         if user_id:
@@ -230,9 +230,6 @@ class LLMCostTracker:
         cost_gbp = cost_usd * USD_TO_GBP
         return cost_gbp
 
-    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
-    # dedicated budget-enforcement branch; this slice only records the
-    # organisation column on llm_interactions
     def _get_user_spending(self, user_id: int, since: datetime) -> Decimal:
         """Get total spending for a user since a given date."""
         result = (
@@ -243,9 +240,6 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
-    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
-    # dedicated budget-enforcement branch; this slice only records the
-    # organisation column on llm_interactions
     def _get_project_spending(self, project_id: int, since: datetime) -> Decimal:
         """Get total spending for a project since a given date."""
         # Join with pipeline_stages to get architecture_id
@@ -260,14 +254,18 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
-    # tenant-scoping-ok: budget-check reads are scoped per organisation on the
-    # dedicated budget-enforcement branch; this slice only records the
-    # organisation column on llm_interactions
     def _get_organization_spending(self, since: datetime) -> Decimal:
         """Get total organization spending since a given date."""
+        org_id = current_org_id()
+        if org_id is None:
+            return Decimal("0")
+
         result = (
             db.session.query(func.sum(LLMInteraction.cost))
-            .filter(LLMInteraction.created_at >= since)
+            .filter(
+                LLMInteraction.created_at >= since,
+                LLMInteraction.organization_id == org_id,
+            )
             .scalar()
         )
 
@@ -295,6 +293,7 @@ class LLMCostTracker:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         group_by: str = "provider",
+        organization_id: Optional[int] = None,  # TRNT-072: tenant scoping
     ) -> Dict:
         """
         Generate cost report for specified time period.
@@ -313,11 +312,12 @@ class LLMCostTracker:
             end_date = datetime.utcnow()
 
         # Get all interactions in period
-        # tenant-scoping-ok: platform-wide cost report, read only from the
-        # platform-admin cost views, never scoped to one organisation
-        interactions = LLMInteraction.query.filter(
+        interactions_q = LLMInteraction.query.filter(
             LLMInteraction.created_at >= start_date, LLMInteraction.created_at <= end_date
-        ).all()
+        )
+        if organization_id is not None:
+            interactions_q = interactions_q.filter(LLMInteraction.organization_id == organization_id)
+        interactions = interactions_q.all()
 
         # Calculate totals
         total_cost = sum(i.cost for i in interactions if i.cost)

@@ -608,7 +608,10 @@ class JourneyOrchestrator:
                                 acm_props["capability_source"] = {
                                     "value": el_data["capability_source"], "source": "derived"
                                 }
-                            proposal = SolutionBlueprintProposal(
+                            from app.services.solution_blueprint_service import (
+                                create_solution_blueprint_proposal,
+                            )
+                            proposal = create_solution_blueprint_proposal(
                                 solution_id=self.solution_id,
                                 archimate_type=el_type,
                                 name=el_name,
@@ -621,7 +624,6 @@ class JourneyOrchestrator:
                                 acm_properties=acm_props,
                                 organization_id=_org_id,
                             )
-                            db.session.add(proposal)
 
                         # Flush after each element so partial persistence works
                         db.session.flush()
@@ -707,8 +709,11 @@ class JourneyOrchestrator:
                                     ).first()
                                     if not _existing_proposal2:
                                         from app.modules.architecture_assistant.property_service import PropertyService
+                                        from app.services.solution_blueprint_service import (
+                                            create_solution_blueprint_proposal,
+                                        )
                                         _acm_props2 = PropertyService().get_default_properties(_gel_type)
-                                        _proposal2 = SolutionBlueprintProposal(
+                                        _proposal2 = create_solution_blueprint_proposal(
                                             solution_id=self.solution_id,
                                             archimate_type=_gel_type,
                                             name=_gel_name,
@@ -721,7 +726,6 @@ class JourneyOrchestrator:
                                             acm_properties=_acm_props2,
                                             organization_id=_org_id,
                                         )
-                                        db.session.add(_proposal2)
                                         _auto_accepted += 1
                                         persisted_by_layer.setdefault(_gl, []).append({
                                             "id": _el2.id, "type": _gel_type, "name": _gel_name,
@@ -1342,6 +1346,20 @@ class JourneyOrchestrator:
         if not element:
             return {"error": f"Element {element_id} not found"}
 
+        governed_values = None
+        if "acm_properties" in updates and isinstance(updates["acm_properties"], dict):
+            # The organisation's governed property definitions are checked
+            # before anything on the element changes: a refused value stores
+            # nothing, not even the other fields in the same patch.
+            from app.modules.architecture_assistant.property_service import GovernedPropertyService
+
+            governed_values, property_errors = GovernedPropertyService().validate_updates(
+                updates.get("type") or element.type, updates["acm_properties"],
+                organization_id=element.organization_id,
+            )
+            if property_errors:
+                return {"error": " ".join(property_errors), "property_errors": property_errors}
+
         old_name = element.name
         old_type = element.type
         if "name" in updates and updates["name"]:
@@ -1352,10 +1370,10 @@ class JourneyOrchestrator:
             element.type = updates["type"]
         if "layer" in updates and updates["layer"]:
             element.layer = updates["layer"]
-        if "acm_properties" in updates and isinstance(updates["acm_properties"], dict):
+        if governed_values is not None:
             # Merge patch — only update the provided keys
             existing = dict(element.acm_properties or {})
-            for key, val in updates["acm_properties"].items():
+            for key, val in governed_values.items():
                 existing[key] = {"value": val, "source": "user"}
             element.acm_properties = existing
 
@@ -2525,6 +2543,13 @@ class JourneyOrchestrator:
         proposal = SolutionBlueprintProposal.query.get(proposal_id)
         if not proposal:
             return {"error": "Proposal not found"}
+        from app.modules.architecture_assistant.property_service import GovernedPropertyService
+
+        properties, property_errors = GovernedPropertyService().validate_updates(
+            proposal.archimate_type, properties,
+        )
+        if property_errors:
+            return {"error": " ".join(property_errors), "property_errors": property_errors}
         svc = PropertyService()
         proposal.acm_properties = svc.merge_properties(proposal.acm_properties or {}, properties)
         db.session.commit()
@@ -2555,7 +2580,9 @@ class JourneyOrchestrator:
         # Group templates by archimate_type (one DB query)
         types_needed = list({p.archimate_type for p in proposals})
         templates_by_type = {}
-        all_templates = AcmPropertyTemplate.query.filter(
+        from app.modules.architecture_assistant.property_service import template_query
+
+        all_templates = template_query().filter(
             AcmPropertyTemplate.archimate_type.in_(types_needed)
         ).all()
         for t in all_templates:

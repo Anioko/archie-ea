@@ -103,8 +103,7 @@ class RateLimiter:
             from app.models.models import LLMInteraction
 
             cutoff = datetime.utcnow() - timedelta(seconds=window_seconds)
-            # tenant-scoping-ok: rate limit is scoped to one user's own
-            # interaction count, never aggregated across users or organisations
+            # tenant-scoping-ok: user_id scopes to one org
             interaction_count = (
                 db.session.query(db.func.count(LLMInteraction.id))
                 .filter(

@@ -23,7 +23,7 @@ Features:
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import g
@@ -565,7 +565,7 @@ class MultiDomainChatService:
             "domain_usage": {domain: 0 for domain in self.domains},
             "average_response_time": 0,
             "error_count": 0,
-            "last_reset": datetime.utcnow(),
+            "last_reset": datetime.now(timezone.utc),
         }
 
         # Initialize AI Chat Extension Services
@@ -6435,6 +6435,12 @@ Instructions:
         Each provider has a slightly different multi-content message format.
         Returns the assistant's text response.
         """
+        provider, model, _ = LLMService._guard_provider_call(
+            provider,
+            model,
+            prompt=system_prompt + "\n\n" + user_message,
+        )
+
         if provider == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
@@ -7479,9 +7485,7 @@ End with: "Type **'next'** to complete the design workflow."
             from app.models import LLMInteraction
             from sqlalchemy import func, distinct, cast, Date
 
-            # tenant-scoping-ok: scoped to one user's own history (user_id is
-            # always current_user.id from the route), never aggregated across
-            # users or organisations
+            # tenant-scoping-ok: user_id is already per-user; user belongs to one org
             base = LLMInteraction.query.filter(LLMInteraction.user_id == user_id)
             total_messages = base.count()
             active_days = db.session.query(
@@ -7503,24 +7507,25 @@ End with: "Type **'next'** to complete the design workflow."
         try:
             from app.models import LLMInteraction
             from sqlalchemy import func
-            from app.middleware.tenant_context import current_org_id
+            from flask import g, has_app_context, has_request_context  # TRNT-072
 
-            # Reached from a @login_required route with no admin check
-            # (analytics_routes.py /analytics/domains); scope to the caller's
-            # own organisation rather than let it sum every tenant's messages.
-            org_id = current_org_id()
+            # TRNT-072: tenant scoping
+            org_id = None
+            if has_request_context() or has_app_context():
+                org_id = getattr(g, "current_org_id", None)
 
             if org_id is None:
-                return {
-                    "domains": [],
-                    "total_domains": 0,
-                    "total_messages": 0,
-                }
+                # Fail closed: without a known organisation this route would
+                # otherwise sum every tenant's interactions.
+                return {"domains": [], "total_domains": 0, "total_messages": 0}
 
             # Count interactions per provider as a proxy (domain not stored directly)
-            domain_query = db.session.query(LLMInteraction.provider, func.count(LLMInteraction.id))
-            domain_query = domain_query.filter(LLMInteraction.organization_id == org_id)
-            rows = domain_query.group_by(LLMInteraction.provider).all()
+            rows = (
+                db.session.query(LLMInteraction.provider, func.count(LLMInteraction.id))
+                .filter(LLMInteraction.organization_id == org_id)
+                .group_by(LLMInteraction.provider)
+                .all()
+            )
             domains = [{"domain": provider or "unknown", "message_count": count} for provider, count in rows]
             total = sum(d["message_count"] for d in domains)
 

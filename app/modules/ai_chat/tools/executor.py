@@ -143,6 +143,89 @@ def _permission_denied_result(tool_name: str, user) -> dict:
     }
 
 
+# The rule both refusal points apply: the user's role must grant
+# Permission.GENERAL (write access). Stored with each refusal so an
+# administrator reads which rule refused the call, not only that it was refused.
+WRITE_PERMISSION_RULE = "write_permission"
+REFUSED_TOOL_CALL_ACTION = "tool_refused"
+REFUSED_TOOL_CALL_TABLE = "ai_tool_call"
+_SECRET_ARGUMENT = re.compile(r"pass(word)?|secret|token|api[_-]?key|credential|auth", re.I)
+
+
+def _summarise_arguments(arguments) -> dict:
+    """A short, secret-free account of what the tool call asked for.
+
+    Keys are kept (one nested level is written as ``outer.inner``); a value
+    whose key names a secret is replaced by "[withheld]"; long text is cut;
+    anything nested deeper is counted, not copied. At most 20 entries.
+    """
+    summary = {}
+    if not isinstance(arguments, dict):
+        return summary
+
+    def _add(key, value, depth):
+        if len(summary) >= 20:
+            return
+        if _SECRET_ARGUMENT.search(key.rsplit(".", 1)[-1]):
+            summary[key] = "[withheld]"
+        elif isinstance(value, dict) and depth == 0:
+            for inner in sorted(value, key=str):
+                _add("%s.%s" % (key, inner), value[inner], 1)
+        elif isinstance(value, (dict, list, tuple)):
+            summary[key] = "%d item%s" % (len(value), "" if len(value) == 1 else "s")
+        elif value is None or isinstance(value, (bool, int, float)):
+            summary[key] = value
+        else:
+            text_value = str(value)
+            summary[key] = text_value if len(text_value) <= 120 else text_value[:117] + "..."
+
+    for key in sorted(arguments, key=str):
+        if str(key).startswith("_"):
+            continue  # server-injected context, not something the caller asked for
+        _add(str(key), arguments[key], 0)
+    return summary
+
+
+def record_refused_tool_call(user, tool_name: str, arguments, *, via: str) -> None:
+    """Record that an AI tool call was refused for lacking write permission.
+
+    Written through ``AuditLog.log`` to the append-only audit log (the store
+    the admin audit screen reads) under the refusing user's organisation. It
+    is called before any tool handler runs, so the commit it makes carries
+    nothing but the record. Never raises -- a refusal must still be returned
+    when the record cannot be written.
+    """
+    try:
+        from flask import has_request_context, request
+
+        from app.models.audit_log import AuditLog
+
+        role_name = getattr(user, "role_name", None) or "no role"
+        values = {
+            "organization_id": getattr(user, "organization_id", None),
+            "user_id": getattr(user, "id", None),
+            "action": REFUSED_TOOL_CALL_ACTION,
+            "table_name": REFUSED_TOOL_CALL_TABLE,
+            "new_value": {
+                "tool": tool_name,
+                "rule": WRITE_PERMISSION_RULE,
+                "rule_description": (
+                    "The %s role does not include write access, which every "
+                    "AI tool that changes records requires." % role_name
+                ),
+                "role": role_name,
+                "via": via,
+                "arguments": _summarise_arguments(arguments),
+            },
+        }
+        if has_request_context():
+            values["ip_address"] = (request.remote_addr or "")[:45] or None
+            values["user_agent"] = (request.headers.get("User-Agent") or "")[:500] or None
+        AuditLog.log(**values)
+    except Exception:
+        logger.warning("Could not record the refused tool call '%s'", tool_name, exc_info=True)
+
+
 def _duplicate_tool_result(noun: str, existing) -> dict:
     """The tool-call analogue of a 409 (ARCH-030).
 
@@ -295,6 +378,8 @@ class ToolExecutor:
                     "ToolExecutor: refusing mutating tool '%s' for user_id=%s — no write permission",
                     tool_call.name, self.user_id,
                 )
+                if user is not None:
+                    record_refused_tool_call(user, tool_call.name, tool_call.arguments, via="agent")
                 return _permission_denied_result(tool_call.name, user)
 
         try:
@@ -926,19 +1011,23 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_create_risk(self, args: dict) -> dict:
-        from app.models.solution_lifecycle_models import SolutionRisk
-        risk = SolutionRisk(
+        """Writes through the canonical risk register (app/services/risk_service.py)
+        -- the one writer -- instead of creating a SolutionRisk row directly,
+        so the superseded store gets no new row."""
+        from app.modules.solutions_strategic.v2.routes.solution_routes import _level_to_int
+        from app.services import risk_service
+
+        description = args["risk_description"]
+        risk = risk_service.create_risk(
             solution_id=args["solution_id"],
-            risk_description=args["risk_description"],
-            impact=args["impact"],
-            probability=args["probability"],
-            mitigation=args.get("mitigation", ""),
-            status="open",
-            created_by_id=self.user_id,
+            title=description[:255],
+            description=description,
+            likelihood=_level_to_int(args["probability"]),
+            impact=_level_to_int(args["impact"]),
+            owner=None,
+            mitigation_plan=args.get("mitigation") or None,
         )
-        db.session.add(risk)
-        sync_archimate_element(risk)
-        db.session.commit()
+        risk_service.add_risk_link(risk.id, "solution", args["solution_id"])
         return {
             "success": True,
             "result": {"id": risk.id, "entity_type": "risk", "solution_id": args["solution_id"]},
@@ -3022,7 +3111,7 @@ class ToolExecutor:
             else args.get("quantity_used"),
             "unit_cost": args.get("unit_cost"),
         }
-        # Normalise Nones to "" so _apply_license_form's int(...) sees empties as 0.
+        # Normalise Nones to "" so _apply_license_form treats them as blanks (entitled 0; deployed/used not recorded).
         form = {k: ("" if v is None else v) for k, v in form.items()}
 
         if license_id is not None:
