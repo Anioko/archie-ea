@@ -509,7 +509,7 @@ to reconfirm the count before trusting it:**
 | `tenant-scoping` | ORM queries on a tenant-owned-but-unmixed model with no org predicate | ratchet @ 0 |
 | `untenanted-reads` | a read (`db.select`, `.query`, `session.get`) of ANY model with no `TenantMixin`, with no org predicate in the statement | ratchet @ 2633; a bare `tenant-scoping-ok` (no reason) or an org word inside another name does not clear a read |
 | `unfenced-tables` | a database table with no `TenantMixin` that is not listed in `scripts/unfenced_tables.txt` (a new one is a decision) | ratchet @ 0 |
-| `platform-admin-coverage` | a write route (POST/PUT/PATCH/DELETE) on a model with no tenant column at all, gated by `admin_required` instead of `platform_admin_required` | ratchet @ 463; `platform-admin-ok: <reason>` clears it |
+| `platform-admin-coverage` | a write route (POST/PUT/PATCH/DELETE) that mutates a model with no tenant column at all, gated by `admin_required` instead of `platform_admin_required` | ratchet @ 347; `platform-admin-ok: <reason>` clears it; most of the 347 are FK-scoped-to-a-fenced-parent models needing a different, ownership-fence check, not this gate's fix |
 | `llm-boundary` | a codegen emitter calling an LLM directly | ratchet @ 0 |
 | `evidence-contract` | behavioural changes/checkers missing evidence or provenance | ratchet @ 29 |
 | `role-gate-coverage` | a declared delivery role resolving to no verifier gate | ratchet @ 7 |

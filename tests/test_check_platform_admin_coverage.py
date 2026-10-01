@@ -166,15 +166,33 @@ def test_every_write_shape_is_seen(tmp_path):
         @bp.route("/c", methods=["DELETE"])
         @admin_required
         def c(i):
-            return db.session.get(PlatformWide, i)
+            row = db.session.get(PlatformWide, i)
+            db.session.delete(row)
 
         @bp.route("/d", methods=["PATCH"])
         @admin_required
         def d(i):
-            return db.session.query(PlatformWide).filter_by(id=i).first()
+            row = db.session.query(PlatformWide).filter_by(id=i).first()
+            row.name = "z"
     """)
 
     assert sorted(h["function"] for h in hits) == ["a", "b", "c", "d"]
+
+
+def test_a_bare_read_returned_directly_is_not_a_write(tmp_path):
+    """The ADMPhase false positive, in miniature: a lookup used only to
+    validate something, never assigned-to or deleted, is not a write."""
+    hits = _scan(tmp_path, """
+        @bp.route("/validate", methods=["POST"])
+        @admin_required
+        def validate_transition(i):
+            phase = PlatformWide.query.get(i)
+            if not phase:
+                return {"valid": False}
+            return {"valid": True, "order": phase.order}
+    """)
+
+    assert hits == []
 
 
 def test_an_exemption_marker_clears_the_route(tmp_path):

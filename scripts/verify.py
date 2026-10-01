@@ -1704,7 +1704,7 @@ def build_gates(baseline: dict) -> list[Gate]:
              "ratchet",
              lambda: gate_count_checker(
                  "platform-admin-coverage", "scripts/check_platform_admin_coverage.py",
-                 baseline.get("platform_admin_coverage", 463),
+                 baseline.get("platform_admin_coverage", 347),
              ),
              remediation="run scripts/check_platform_admin_coverage.py; add "
                          "@platform_admin_required, or 'platform-admin-ok: <reason>'",

@@ -46,11 +46,17 @@ every real instance in this codebase happened to. That is a known blind spot,
 the same shape of limitation ``check_untenanted_reads.py``'s own docstring
 accepts for its single-statement scope.
 
-A model reference is any of: ``Model.query`` (covers ``.filter_by(...).update()``
-and ``.delete()`` too, since both chain off ``.query``), ``db.select(Model)``,
-``session.query(Model)``, ``session.get(Model, id)``, or a direct constructor
-call ``Model(...)`` (the shape a route takes to build a new row before
-``db.session.add``, which the read-only gate has no reason to track).
+A model is counted as WRITTEN, not merely referenced, when: it is directly
+constructed (``Model(...)``); a variable fetched via ``Model.query``,
+``db.select(Model)``, ``session.query(Model)`` or ``session.get(Model, id)``
+is later attribute-assigned (``row = Model.query.get(id); row.field = x``,
+the fetch-then-mutate shape every real instance in this codebase used) or
+passed to ``db.session.delete(row)``; or it is the target of a chained
+``.query...update(...)``/``.query...delete(...)``. A bare read used only to
+validate a foreign key before writing an unrelated, correctly-scoped model
+(``ADMPhase.query.get(id)`` before creating a ``KanbanCard``) is not a write
+of that model and is not flagged -- an earlier version of this gate did not
+make this distinction and drowned its real findings in exactly this noise.
 
 A ratchet: the count may fall, never rise.
 
@@ -153,39 +159,102 @@ def _has_gate_decorator(decorators):
 
 
 class _ModelRefScan(ast.NodeVisitor):
-    """Every model reference inside one function's own body."""
+    """Every model this function's own body actually WRITES -- not merely reads.
+
+    A bare read (``ADMPhase.query.get(id)`` used only to validate a foreign key
+    before writing an unrelated KanbanCard) is not a write of ADMPhase and must
+    not be flagged, or the gate drowns real findings in this kind of noise.
+    A model counts as written when: it is directly constructed (``Model(...)``);
+    a variable bound to a query/select/get of it is later attribute-assigned
+    (``row = Model.query.get(id); row.field = x``, the fetch-then-mutate shape
+    every real instance in this codebase used) or passed to
+    ``db.session.delete(row)``; or it is the target of a chained
+    ``.query...update(...)``/``.query...delete(...)``.
+    """
 
     def __init__(self, models):
         self.models = models
         self.found: set[str] = set()
+        self.tracked: dict[str, str] = {}  # local variable name -> model it was fetched/built from
 
     def _short(self, expr):
         text = ast.unparse(expr) if expr is not None else ""
         return text.split(".")[-1]
 
-    def visit_Call(self, node):
-        func = ast.unparse(node.func)
-        name = None
-        if func.endswith("select") and node.args:
-            name = self._short(node.args[0])
-        elif func.endswith("session.query") and node.args:
-            name = self._short(node.args[0])
-        elif func.endswith("session.get") and node.args:
-            name = self._short(node.args[0])
-        else:
-            # A bare constructor call: Model(...).
-            callee = self._short(node.func)
+    def _chain_model(self, node):
+        """Walk a .query.filter_by(...).first() -style chain back to its base name.
+
+        The chain alternates Call and Attribute nodes (.filter_by(...) is a
+        Call whose .func is an Attribute whose .value is the next link), so
+        peeling off only one layer of each stops partway through -- it must
+        alternate until it reaches something that isn't either. A link may
+        itself be ``db.session.query(Model)``/``db.select(Model)``/
+        ``session.get(Model, id)``, which names the model as a Call ARGUMENT
+        rather than in the chain's base name -- checked at every Call layer,
+        not only at the point ``_value_model`` is first called.
+        """
+        cur = node
+        while isinstance(cur, (ast.Call, ast.Attribute)):
+            if isinstance(cur, ast.Call) and cur.args:
+                func_text = ast.unparse(cur.func)
+                if func_text.endswith(("select", "session.query", "session.get")):
+                    arg_name = self._short(cur.args[0])
+                    if arg_name in self.models:
+                        return arg_name
+            cur = cur.func if isinstance(cur, ast.Call) else cur.value
+        name = cur.id if isinstance(cur, ast.Name) else None
+        return name if name in self.models else None
+
+    def _value_model(self, value):
+        """The model a value was fetched from or constructed as, if any."""
+        if isinstance(value, ast.Call):
+            callee = self._short(value.func)
             if callee in self.models:
-                name = callee
-        if name in self.models:
-            self.found.add(name)
+                return callee
+            func_text = ast.unparse(value.func)
+            if func_text.endswith(("select", "session.query", "session.get")) and value.args:
+                arg_name = self._short(value.args[0])
+                if arg_name in self.models:
+                    return arg_name
+            return self._chain_model(value.func)
+        if isinstance(value, ast.Attribute):
+            return self._chain_model(value)
+        return None
+
+    def visit_Assign(self, node):
+        if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            model = self._value_model(node.value)
+            if model:
+                self.tracked[node.targets[0].id] = model
+                # A constructor assigned to a variable is a write the moment it
+                # is built -- db.session.add(row) always follows in real code,
+                # and waiting to see that add() is an unnecessary second hop.
+                if isinstance(node.value, ast.Call) and self._short(node.value.func) == model:
+                    self.found.add(model)
+        else:
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
+                    model = self.tracked.get(target.value.id)
+                    if model:
+                        self.found.add(model)
         self.generic_visit(node)
 
-    def visit_Attribute(self, node):
-        if node.attr == "query":
-            name = self._short(node.value)
-            if name in self.models:
-                self.found.add(name)
+    def visit_Call(self, node):
+        func = ast.unparse(node.func)
+        # A bare, unassigned constructor: db.session.add(Model(...)).
+        callee = self._short(node.func)
+        if callee in self.models and not func.endswith(("select", "session.query", "session.get")):
+            self.found.add(callee)
+        # Chained bulk update/delete: Model.query.filter_by(...).update({...}).
+        if func.endswith((".update", ".delete")):
+            model = self._chain_model(node.func)
+            if model:
+                self.found.add(model)
+        # db.session.delete(row) where row was fetched from a tracked model.
+        if func.endswith("session.delete") and node.args and isinstance(node.args[0], ast.Name):
+            model = self.tracked.get(node.args[0].id)
+            if model:
+                self.found.add(model)
         self.generic_visit(node)
 
 
