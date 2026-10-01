@@ -68,8 +68,8 @@ def _validate_entity(data, required_fields):
 # Solution Lifecycle CRUD — Risks, Metrics, TCO, Plateaus
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# PR 316 (R1-B06 consolidation, fix round): solution_risks is the superseded
-# store -- the canonical register is `risks` (app/models/risk.py) plus its
+# PR 316 fix round, one-risk-register consolidation: solution_risks is the
+# superseded store -- the canonical register is `risks` (app/models/risk.py) plus its
 # link table `risk_entity_links`, written only through
 # app/services/risk_service.py (see that model's own docstring). The create,
 # update, delete and CSV-import handlers below call risk_service instead of
@@ -162,8 +162,8 @@ def create_solution_risk(solution_id):
     """Add a risk to a solution.
 
     Writes through the canonical risk register (app/services/risk_service.py)
-    -- the one writer per the R1-B06 consolidation -- rather than creating a
-    SolutionRisk row directly. _solution_risk_dict keeps the response the same
+    -- the one writer per the one-risk-register consolidation -- rather than
+    creating a SolutionRisk row directly. _solution_risk_dict keeps the response the same
     shape SolutionRisk.to_dict() already produced, so the existing screen
     (app/templates/solutions/partials/_edit_risks.html) is unaffected.
 

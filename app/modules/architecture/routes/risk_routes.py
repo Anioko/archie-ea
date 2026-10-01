@@ -150,11 +150,11 @@ def remove_risk_link(risk_id, link_id):
 @login_required
 def set_risk_score(risk_id):
     """POST /api/risks/<id>/scores — record an inherent or residual
-    likelihood/impact score, with history. PB-0113: the score is stored, not
-    only displayed. The HTTP surface for risk_service.set_risk_score (the one
+    likelihood/impact score, with history: the score is stored, not only
+    displayed. The HTTP surface for risk_service.set_risk_score (the one
     writer), previously reachable only from the backfill command and from
-    tests, never from a request -- added for the PR 316 ruling's HTTP-level
-    acceptance test; the browser journey that wires a screen to it is PR 2.
+    tests, never from a request. The browser journey that wires a screen to
+    it is a later change.
     {"score_kind": "inherent"|"residual", "likelihood": 1-5, "impact": 1-5}
     """
     data = request.get_json(force=True) or {}
@@ -180,7 +180,7 @@ def set_risk_score(risk_id):
 def get_risk_score_history(risk_id):
     """GET /api/risks/<id>/scores?score_kind=inherent|residual — history rows,
     oldest first, for risk_service.risk_score_history -- the HTTP surface
-    proving PB-0113's "a score history row per change", not only the latest
+    proving a score history row exists per change, not only the latest
     value, over the real HTTP surface rather than only at the service layer."""
     Risk.query.get_or_404(risk_id)
     score_kind = request.args.get("score_kind")
@@ -386,7 +386,7 @@ def serialize_risk_row(risk):
         "owner": risk.owner or "—",
         "likelihood": risk.likelihood,
         "impact": risk.impact,
-        # Additive, for PB-0113's "read it back and see both scores" -- no
+        # Additive, so a caller can read a risk back and see both scores: no
         # existing key removed or renamed, so no current reader of this shape
         # (the H2 slide-over) is affected by their presence.
         "inherent_likelihood": risk.inherent_likelihood,
