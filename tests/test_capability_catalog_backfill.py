@@ -281,7 +281,9 @@ def test_archimate_capability_without_a_projected_business_capability_is_quarant
 
     report = run_backfill(connection, apply=True)
     assert report["quarantined"] == 1
-    assert report["unreconciled"] == 1
+    # Quarantined is accounted for -- it does not, by itself, keep this
+    # non-zero forever; a human resolves it at /admin/errors, not by re-running.
+    assert report["unreconciled"] == 0
     assert _retired_into(connection, "archimate_capabilities", 7) is None
 
     from app.models.error_event import ErrorEvent
@@ -310,25 +312,112 @@ def test_archimate_capability_without_a_projected_business_capability_is_quarant
     assert event.resolved is True
 
 
-# ------------------------------------------------------- (c) reference scope
+# ------------------------------------------------------- (c) fail-closed ownership
 
 
-def test_enterprise_and_archimate_rows_with_no_business_link_become_shared_reference(backfill_schema):
+def test_enterprise_and_archimate_rows_with_no_ownership_evidence_are_quarantined(backfill_schema):
+    """Fail closed (lead ruling): no business_capability_id and no marker
+    proving shared catalogue status must never fall back to scope='reference'
+    just because the table has no organisation column.
+
+    `enterprise_capabilities` and `archimate_capabilities` carry no field at
+    all that distinguishes a genuine framework definition from a row
+    describing one tenant's confidential capability, so every such row is
+    quarantined rather than guessed -- verified here with two real
+    organisations present, neither of which can see it.
+    """
+
     connection = backfill_schema
     org_a = _make_org(connection, 8501, "org-a")
     org_b = _make_org(connection, 8502, "org-b")
-    _insert_enterprise(connection, id=1, name="Regulatory Reporting")
+    _insert_enterprise(connection, id=1, name="Secret Merger Capability")
+    _insert_archimate(connection, id=1, name="Confidential Divestiture Plan")
+
+    report = run_backfill(connection, apply=True)
+    assert report["canonical"] == 0
+    assert report["merged"] == 0
+    assert report["quarantined"] == 2
+    # Fail-closed is also a *terminal*, accounted-for outcome: a quarantined
+    # row does not, by itself, keep the command reporting non-zero forever.
+    assert report["unreconciled"] == 0
+
+    assert _retired_into(connection, "enterprise_capabilities", 1) is None
+    assert _retired_into(connection, "archimate_capabilities", 1) is None
+    # Nothing was ever written for either row -- there is no unified_capabilities
+    # row for either organisation, or anyone else, to read.
+    assert connection.execute(
+        text("SELECT count(*) FROM unified_capabilities")
+    ).scalar_one() == 0
+    for org_id in (org_a, org_b):
+        assert connection.execute(
+            text(
+                "SELECT count(*) FROM unified_capabilities "
+                "WHERE organization_id = :org_id "
+                "AND name IN ('Secret Merger Capability', 'Confidential Divestiture Plan')"
+            ),
+            {"org_id": org_id},
+        ).scalar_one() == 0
+
+    from app.models.error_event import ErrorEvent
+
+    messages = {
+        event.fingerprint: event.message
+        for event in ErrorEvent.query.filter(
+            ErrorEvent.fingerprint.in_([
+                "backfill-capability-catalogs:enterprise_capabilities:1",
+                "backfill-capability-catalogs:archimate_capabilities:1",
+            ])
+        ).all()
+    }
+    assert len(messages) == 2
+    for message in messages.values():
+        assert "no marker identifying it as shared catalogue data" in message
+
+
+def test_technical_capability_with_an_unrecognised_acm_domain_is_quarantined(backfill_schema):
+    """The acm_domain marker is a closed allow-list, not a rubber stamp: a
+    value outside ACMDomain.ALL_DOMAINS gets no benefit of the doubt."""
+
+    connection = backfill_schema
+    connection.execute(
+        text(
+            "INSERT INTO technical_capabilities (id, name, acm_domain, level) "
+            "VALUES (1, 'Mystery Capability', 'NOT-A-REAL-ACM-DOMAIN', 'L1')"
+        )
+    )
+
+    report = run_backfill(connection, apply=True)
+    assert report["quarantined"] == 1
+    assert report["canonical"] == 0
+    assert report["unreconciled"] == 0
+    assert _retired_into(connection, "technical_capabilities", 1) is None
+    assert connection.execute(
+        text("SELECT count(*) FROM unified_capabilities")
+    ).scalar_one() == 0
+
+
+def test_technical_capability_with_a_recognised_acm_domain_becomes_shared_reference(backfill_schema):
+    """The one positive marker this backfill trusts: a pre-existing,
+    code-defined allow-list (ACMDomain.ALL_DOMAINS) that already existed for
+    an unrelated purpose, not one invented to justify a reference fallback.
+    Verified readable by two real organisations, owned by neither.
+    """
+
+    connection = backfill_schema
+    org_a = _make_org(connection, 8511, "org-a")
+    org_b = _make_org(connection, 8512, "org-b")
+    _insert_technical(connection, id=1, name="Message Queue Pattern", code="COMM-01")
 
     run_backfill(connection, apply=True)
-    target = _retired_into(connection, "enterprise_capabilities", 1)
+    target = _retired_into(connection, "technical_capabilities", 1)
     row = _unified(connection, target)
     assert row["scope"] == "reference"
     assert row["organization_id"] is None
 
-    # Readable regardless of which organisation is asking (no organization_id
-    # filter excludes it); writable by neither is enforced by the existing
-    # `_protect_reference_capability_writes` listener on UnifiedCapability,
-    # exercised by tests/test_capability_tenancy_cutover.py and unchanged here.
+    # Readable regardless of which organisation is asking; writable by
+    # neither is enforced by the existing `_protect_reference_capability_writes`
+    # listener on UnifiedCapability, exercised by
+    # tests/test_capability_tenancy_cutover.py and unchanged here.
     for org_id in (org_a, org_b):
         visible = connection.execute(
             text(
@@ -380,17 +469,23 @@ def test_technical_capability_merges_into_an_existing_row_with_the_same_code(bac
 
 
 def test_normalised_name_fallback_merges_two_reference_rows(backfill_schema):
+    """The normalised-name fallback only ever runs after a row has already
+    cleared fail-closed ownership classification (here: both rows carry the
+    recognised acm_domain marker), never as a way to smuggle an unowned row
+    into reference scope by matching names."""
+
     connection = backfill_schema
-    _insert_enterprise(connection, id=1, name="Order   Management")
-    _insert_archimate(connection, id=1, name="  order management  ")
+    _insert_technical(connection, id=1, name="Order   Management")
+    _insert_technical(connection, id=2, name="  order management  ")
 
     report = run_backfill(connection, apply=True)
     assert report["canonical"] == 1
     assert report["merged"] == 1
+    assert report["quarantined"] == 0
 
-    target_ent = _retired_into(connection, "enterprise_capabilities", 1)
-    target_arc = _retired_into(connection, "archimate_capabilities", 1)
-    assert target_ent == target_arc
+    target_1 = _retired_into(connection, "technical_capabilities", 1)
+    target_2 = _retired_into(connection, "technical_capabilities", 2)
+    assert target_1 == target_2
 
 
 def test_dry_run_writes_nothing(backfill_schema):

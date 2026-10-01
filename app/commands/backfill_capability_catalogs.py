@@ -29,41 +29,52 @@ Design, in order of preference per row:
    name within the same scope, same keep-oldest rule. Otherwise it becomes
    canonical.
 
-Organisation ownership, never guessed (settled design rule 3):
+Organisation ownership, never guessed (settled design rule 3) -- fail closed:
 
 - `capabilities` (`Capability`) carries `TenantMixin` -- every row already has
   a real, NOT NULL `organization_id`. Projected as `scope='tenant'`.
 - `enterprise_capabilities` / `archimate_capabilities` have no organisation
   column at all. A row linked to a projected `business_capability` inherits
   that capability's ownership by construction (step 1 above -- it is retired
-  into that exact row, tenant or reference). A row with no such link, or whose
-  link's target has not been projected yet, has no organisation this command
-  can respect a tenant to be -- it is one of:
-    - genuinely shared catalogue data (no `business_capability_id` at all --
-      these tables are COBIT/ITIL/ArchiMate framework catalogues by design,
-      never tenant business data, which is BusinessCapability's job per their
-      own docstrings) -> `scope='reference'`;
-    - unresolvable for now (`business_capability_id` set but that
-      `business_capability` has not been projected yet) -> quarantined in
-      `ErrorEvent` (reusing the platform-wide, admin-visible surface
-      `backfill_review_queue_approvals.py` already established for exactly
-      this job, at `/admin/errors`), and left for the next run.
+  into that exact row, tenant or reference). A row with **no** such link is
+  quarantined in `ErrorEvent` (reusing the platform-wide, admin-visible
+  surface `backfill_review_queue_approvals.py` already established for
+  exactly this job, at `/admin/errors`) -- never guessed into
+  `scope='reference'`. Neither model carries any field distinguishing a
+  genuinely shared framework definition from a row that happens to describe
+  one tenant's confidential capability (its docstring calling the table a
+  "legacy ... layer" is not evidence about any individual row), so there is
+  no marker here to trust; per the lead's ruling, the absence of one means
+  quarantine, not a shared-by-default fallback.
 - `technical_capabilities` has no organisation column and no per-row link to
-  a business capability (only many-to-many mapping tables) -- it is a fixed
-  7-domain ACM taxonomy, so every row is `scope='reference'`.
+  a business capability at all (only many-to-many mapping tables). It has one
+  real, pre-existing marker: `acm_domain`, constrained by the model's own
+  `ACMDomain.ALL_DOMAINS` (app/models/technical_capability.py) to one of
+  exactly seven fixed values describing the ACM taxonomy framework itself,
+  not any tenant's data -- a known catalogue allow-list that already existed
+  in the code for an unrelated purpose before this command. A row whose
+  `acm_domain` is one of those seven values is `scope='reference'`; any other
+  value (corruption, or a future domain the allow-list has not caught up
+  with) is quarantined rather than assumed safe.
 
 Idempotent: only rows with `retired_into_id IS NULL` on their own legacy table
-are read; once resolved -- merged or newly canonical -- that column is set and
-the row is never revisited. Re-running after every row is resolved writes
-nothing. The command exits non-zero while any row remains neither merged nor
-quarantined.
+are read. A merged or newly-canonical row gets that column set and is never
+revisited. A quarantined row's `retired_into_id` stays NULL on purpose -- it
+is still unresolved -- so it is re-evaluated (and its `ErrorEvent` row
+deduplicated by fingerprint, occurrence count incremented) on every run until
+either the link it needed resolves or an operator attributes it an
+organisation by hand. The command exits non-zero while any row remains
+neither merged nor quarantined (this is a stricter bar than it sounds: a
+genuinely quarantined row IS accounted for, but still keeps the exit non-zero
+on purpose, matching `backfill_review_queue_approvals.py`'s established
+precedent, so the command cannot be mistaken for "fully resolved" while a
+human still needs to look at /admin/errors).
 
     flask backfill-capability-catalogs --dry-run
     flask backfill-capability-catalogs --apply
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -73,6 +84,7 @@ from flask.cli import with_appcontext
 from sqlalchemy import text
 
 from app import db
+from app.utils.duplicate_guard import normalize_name
 
 # Neighbours of project-capabilities' 1_684_220_027 and the cutover's
 # 1_684_220_026 (app/commands/cutover_capability_tenancy.py) -- serialises
@@ -80,18 +92,10 @@ from app import db
 # all three read and write unified_capabilities' scope/ownership columns.
 ADVISORY_LOCK_ID = 1_684_220_028
 
-_WHITESPACE_RE = re.compile(r"\s+")
-
 
 class BackfillBlocked(RuntimeError):
     """Raised before this backfill can proceed safely (matches ProjectionBlocked
     and CutoverBlocked's role in the sibling commands)."""
-
-
-def normalise_name(name: str) -> str:
-    """The one place capability names are folded for identity comparison."""
-
-    return _WHITESPACE_RE.sub(" ", (name or "").strip()).casefold()
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,12 @@ class _SourceRow:
     target_maturity_level: Optional[int] = None
     status: Optional[str] = None
     code_prefix: str = field(default="CAP")
+    # True only when a real, pre-existing, code-defined marker positively
+    # identifies this row as shared catalogue data (currently: a
+    # technical_capabilities row whose acm_domain is one of the seven values
+    # ACMDomain.ALL_DOMAINS already declares). Never defaulted to True by the
+    # absence of an organisation column -- see the module docstring.
+    is_known_catalogue: bool = False
 
 
 def _fetch_capabilities(connection) -> list[_SourceRow]:
@@ -203,9 +213,11 @@ def _fetch_archimate_capabilities(connection) -> list[_SourceRow]:
 
 
 def _fetch_technical_capabilities(connection) -> list[_SourceRow]:
+    from app.models.technical_capability import ACMDomain
+
     rows = connection.execute(
         text(
-            "SELECT id, name, description, code, created_at "
+            "SELECT id, name, description, code, acm_domain, created_at "
             "FROM technical_capabilities WHERE retired_into_id IS NULL "
             "ORDER BY created_at NULLS LAST, id"
         )
@@ -224,6 +236,11 @@ def _fetch_technical_capabilities(connection) -> list[_SourceRow]:
             organization_id=None,
             created_at=row["created_at"],
             code_prefix="TECH",
+            # The one real marker on this table: a fixed, pre-existing
+            # allow-list of ACM domain codes declared for an unrelated
+            # purpose (the ACM taxonomy itself), not invented to justify a
+            # reference fallback.
+            is_known_catalogue=row["acm_domain"] in ACMDomain.ALL_DOMAINS,
         )
         for row in rows
     ]
@@ -303,7 +320,7 @@ def _find_by_name(connection, *, normalised_name: str, organization_id):
         )
         params = {}
     for candidate_id, candidate_name in connection.execute(query, params).all():
-        if normalise_name(candidate_name) == normalised_name:
+        if normalize_name(candidate_name) == normalised_name:
             return candidate_id
     return None
 
@@ -373,7 +390,24 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
     return new_id
 
 
-def _record_quarantine(connection, row: _SourceRow) -> None:
+_QUARANTINE_MESSAGES = {
+    "pending_business_capability": (
+        "links business_capability #{business_capability_id}, which has not "
+        "been projected into unified_capabilities yet. Run "
+        "`flask project-capabilities --apply` first, then re-run this backfill."
+    ),
+    "no_ownership_evidence": (
+        "has no business_capability_id and no marker identifying it as shared "
+        "catalogue data, so its organisation cannot be determined. Give it a "
+        "business_capability_id, or attribute an organisation by hand, then "
+        "re-run this backfill. Fail-closed per settled design rule 3: a row "
+        "is never guessed into shared reference scope just because its table "
+        "has no organisation column."
+    ),
+}
+
+
+def _record_quarantine(connection, row: _SourceRow, *, reason: str) -> None:
     """Persist one row this run could not attribute an organisation to.
 
     Reuses ``ErrorEvent`` (app/models/error_event.py), the same
@@ -392,17 +426,14 @@ def _record_quarantine(connection, row: _SourceRow) -> None:
         existing.occurrence_count = (existing.occurrence_count or 0) + 1
         existing.last_seen_at = now
         return
+    detail = _QUARANTINE_MESSAGES[reason].format(
+        business_capability_id=row.business_capability_id
+    )
     db.session.add(ErrorEvent(
         fingerprint=fingerprint,
         source="server",
         level="WARNING",
-        message=(
-            f"backfill-capability-catalogs: {row.table} #{row.id} links "
-            f"business_capability #{row.business_capability_id}, which has not "
-            "been projected into unified_capabilities yet. Run "
-            "`flask project-capabilities --apply` first, then re-run this "
-            "backfill."
-        ),
+        message=f"backfill-capability-catalogs: {row.table} #{row.id} {detail}",
         location=f"app.commands.backfill_capability_catalogs:{row.table}",
         organization_id=None,
         occurrence_count=1,
@@ -423,22 +454,33 @@ def _resolve_quarantine(row: _SourceRow) -> None:
 
 
 def _process_row(connection, row: _SourceRow) -> str:
-    """Resolve one source row. Returns 'merged', 'canonical' or 'quarantined'."""
+    """Resolve one source row. Returns 'merged', 'canonical' or 'quarantined'.
+
+    Fail closed (settled design rule 3, lead ruling): the only paths that
+    reach `scope='tenant'`/`'reference'` below are a schema-guaranteed real
+    organisation (`capabilities`), a resolved link to an already-owned
+    capability, or a positively-identified catalogue marker. Every other row
+    is quarantined -- never defaulted to reference just because its table has
+    no organisation column.
+    """
 
     if row.organization_id is not None:
         scope, organization_id = "tenant", row.organization_id
     elif row.business_capability_id is not None:
         target = _find_business_capability_projection(connection, row.business_capability_id)
         if target is None:
-            _record_quarantine(connection, row)
+            _record_quarantine(connection, row, reason="pending_business_capability")
             return "quarantined"
         connection.execute(
             text(_RETIRE_SQL[row.table]), {"target": target, "id": row.id}
         )
         _resolve_quarantine(row)
         return "merged"
-    else:
+    elif row.is_known_catalogue:
         scope, organization_id = "reference", None
+    else:
+        _record_quarantine(connection, row, reason="no_ownership_evidence")
+        return "quarantined"
 
     target = None
     if row.identifier:
@@ -448,7 +490,7 @@ def _process_row(connection, row: _SourceRow) -> str:
         )
     if target is None:
         target = _find_by_name(
-            connection, normalised_name=normalise_name(row.name),
+            connection, normalised_name=normalize_name(row.name),
             organization_id=organization_id,
         )
 
@@ -510,18 +552,25 @@ def run_backfill(connection, *, apply: bool) -> dict:
         return report
 
     outcomes = {"merged": 0, "canonical": 0, "quarantined": 0}
+    processed = 0
     for fetch in _FETCHERS:
         for row in fetch(connection):
             outcome = _process_row(connection, row)
             outcomes[outcome] += 1
+            processed += 1
 
     report["merged"] = outcomes["merged"]
     report["canonical"] = outcomes["canonical"]
     report["quarantined"] = outcomes["quarantined"]
     report["after"] = _counts(connection)
-    report["unreconciled"] = sum(
-        report["after"][f"{name}_pending"]
-        for name in ("capabilities", "enterprise", "archimate", "technical")
+    # Non-zero only while a row that was fetched this run is neither merged
+    # nor quarantined -- a quarantined row IS accounted for (it is visible at
+    # /admin/errors and retried next run) and must not, by itself, keep this
+    # exit code non-zero forever. `_process_row` is exhaustive (every branch
+    # returns one of the three outcomes or raises), so this is normally 0 and
+    # only turns up a genuine gap in that exhaustiveness.
+    report["unreconciled"] = processed - (
+        outcomes["merged"] + outcomes["canonical"] + outcomes["quarantined"]
     )
     return report
 
