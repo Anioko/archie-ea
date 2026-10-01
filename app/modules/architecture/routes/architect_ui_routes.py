@@ -386,16 +386,19 @@ def import_oef_preview():
 # Restore points are the imports the one OEF engine recorded on
 # ``ImportSessionLog``; everything below is scoped to the caller's organisation.
 
-RESTORE_ROLES = ("enterprise_architect", "platform_admin")
+RESTORE_ROLES = ("enterprise_architect",)
 
 
 def _restore_gate():
-    """Who may restore: organisation administrators and enterprise architects."""
+    """Who may restore: administrators (organisation or platform) and enterprise
+    architects. The stored ``platform_admin`` title is the default for every
+    member, so it is never treated as authority here."""
     from flask import abort
 
+    from app.middleware.tenant_decorators import is_platform_admin
     from app.utils.role_access import get_user_role
 
-    if getattr(current_user, "is_org_admin", False):
+    if getattr(current_user, "is_org_admin", False) or is_platform_admin(current_user):
         return
     if get_user_role(current_user) in RESTORE_ROLES:
         return

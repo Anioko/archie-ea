@@ -479,3 +479,18 @@ def test_a_chosen_later_custom_property_change_is_applied_again(client, db_sessi
     restored = db_session.get(ArchiMateElement, node.id)
     assert restored.custom_properties == {"classification": "restricted", "owner": "EA"}
     assert restored.description == "before"
+
+
+def test_a_member_on_the_default_title_cannot_restore(client, db_session, login_as, make_org):
+    """The platform_admin title is the default for every member; it is not authority."""
+    org = make_org("default-title")
+    ea = make_user(db_session, org)
+    post_import(client, login_as, ea, oef("DefaultTitle"))
+    log_id = restore_point_id(org.id)
+    before = counts(org.id)
+
+    member = make_user(db_session, org, role="platform_admin", label="member")
+    login_as(client, member)
+    assert client.get("/architecture/import/oef/restore-points").status_code == 403
+    assert restore_json(client, login_as, member, log_id).status_code == 403
+    assert counts(org.id) == before
