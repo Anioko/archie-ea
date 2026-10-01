@@ -3890,7 +3890,7 @@ def power_platform_import():
 
 @admin_bp.route("/integrations/servicenow", methods=["GET", "POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def servicenow_integration():
     """Manage ServiceNow CMDB integration configuration."""
     from flask_wtf import FlaskForm
@@ -4048,7 +4048,7 @@ def servicenow_integration():
 
 @admin_bp.route("/integrations/servicenow/test-connection", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def servicenow_test_connection():
     """Test ServiceNow CMDB connection."""
     from app.modules.vendors.connectors.servicenow_connector import ServiceNowConnector
@@ -4096,7 +4096,7 @@ def servicenow_test_connection():
 
 @admin_bp.route("/integrations/servicenow/trigger-sync", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log
 def servicenow_trigger_sync():
     """Trigger immediate ServiceNow CMDB sync."""
@@ -4165,7 +4165,7 @@ def servicenow_trigger_sync():
 
 @admin_bp.route("/integrations/servicenow/sync-status", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def servicenow_sync_status():
     """Get ServiceNow sync status and statistics."""
     from app.models.application_portfolio import ApplicationComponent
