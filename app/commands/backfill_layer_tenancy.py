@@ -25,6 +25,18 @@ boot, which is exactly where docker-compose runs it. Orphan assignment follows
 the house refusal-to-guess rule: with one organisation the rows go to it, with
 several the command demands --org-id rather than guessing a tenant.
 
+R1-B20 (TB-0155) reused this mechanism rather than adding a second one: the
+brief's own text names a new `app/commands/backfill_organisation_columns.py`,
+but this command already provides column-discovery, per-row derivation and
+orphan/hardening handling for exactly the same problem shape (TenantMixin
+gained on an existing, populated table). Motivation, requirements, strategic
+and technology-layer tables newly gaining TenantMixin for that brief are
+registered in `_DERIVABLE_ORG`/`_PROVENANCE_ONLY` below instead of behind a
+duplicate command; the brief's shared-catalogue tables (framework.py,
+framework_configuration.py, reference_models.py, industry_apqc.py) use the new
+`HybridTenantMixin` instead, which this command's `_tenant_tables()` does not
+discover (nullable is their correct, permanent state, not an expand step).
+
     flask --app manage backfill-layer-tenancy --dry-run
     flask --app manage backfill-layer-tenancy
     flask --app manage backfill-layer-tenancy --org-id 7
@@ -119,6 +131,183 @@ _DERIVABLE_ORG = {
            AND i.organization_id IS NULL
            AND a.organization_id IS NOT NULL
     """,
+
+    # --- R1-B20 (TB-0155): motivation, requirements, strategic and technology
+    # layer tables. Every entry below derives from a table that is already
+    # tenant-fenced (archimate_elements, business_capability,
+    # strategic_initiatives, solutions, solution_analysis_sessions,
+    # application_components) or from users -- none of them depend on another
+    # entry in THIS dict resolving first, so the alphabetical-ordering
+    # constraint documented above is not in play for this group, except
+    # "drivers" < "goals" for goals' own driver_id fallback below.
+    "archimate_resources": """
+        UPDATE archimate_resources r
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE r.archimate_element_id = e.id
+           AND r.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "assessments": """
+        UPDATE assessments a
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE a.archimate_element_id = e.id
+           AND a.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "capability_health_overrides": """
+        UPDATE capability_health_overrides c
+           SET organization_id = b.organization_id
+          FROM business_capability b
+         WHERE c.capability_id = b.id
+           AND c.organization_id IS NULL
+           AND b.organization_id IS NOT NULL
+    """,
+    "drivers": """
+        UPDATE drivers d
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id)
+               )
+         WHERE d.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id)
+               ) IS NOT NULL
+    """,
+    # A briefing's generated_by_id is a plain integer, not an FK constraint
+    # (see app/models/strategic.py), but it is a user id in every writer of
+    # this table -- resolved the same way, just without a declared FK to lean on.
+    "enterprise_briefings": """
+        UPDATE enterprise_briefings eb
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE eb.generated_by_id = u.id
+           AND eb.organization_id IS NULL
+           AND u.organization_id IS NOT NULL
+    """,
+    # "drivers" < "goals": the driver_id fallback below reads drivers'
+    # organization_id after this dict has already derived it, not before.
+    "goals": """
+        UPDATE goals g
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
+                 (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id)
+               )
+         WHERE g.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
+                 (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id)
+               ) IS NOT NULL
+    """,
+    "meanings": """
+        UPDATE meanings m
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE m.archimate_element_id = e.id
+           AND m.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
+    "motivation_bridge_links": """
+        UPDATE motivation_bridge_links k
+           SET organization_id = s.organization_id
+          FROM solutions s
+         WHERE k.solution_id = s.id
+           AND k.organization_id IS NULL
+           AND s.organization_id IS NOT NULL
+    """,
+    "programme_snapshots": """
+        UPDATE programme_snapshots p
+           SET organization_id = i.organization_id
+          FROM strategic_initiatives i
+         WHERE p.initiative_id = i.id
+           AND p.organization_id IS NULL
+           AND i.organization_id IS NOT NULL
+    """,
+    # Requirement's four ArchiMate-element-pointing columns (Basecoat pattern)
+    # all resolve through the same table; the first one set on a given row is
+    # tried, since a row rarely has more than one populated. Falling further
+    # back to application_component_id covers rows with none of the four.
+    "requirements": """
+        UPDATE requirements r
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e
+                   WHERE e.id = COALESCE(r.archimate_element_id, r.stakeholder_id, r.driver_id, r.goal_id)),
+                 (SELECT c.organization_id FROM application_components c WHERE c.id = r.application_component_id)
+               )
+         WHERE r.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e
+                   WHERE e.id = COALESCE(r.archimate_element_id, r.stakeholder_id, r.driver_id, r.goal_id)),
+                 (SELECT c.organization_id FROM application_components c WHERE c.id = r.application_component_id)
+               ) IS NOT NULL
+    """,
+    "solution_adr_links": """
+        UPDATE solution_adr_links l
+           SET organization_id = s.organization_id
+          FROM solution_analysis_sessions s
+         WHERE l.session_id = s.id
+           AND l.organization_id IS NULL
+           AND s.organization_id IS NOT NULL
+    """,
+    "solution_migration_roadmaps": """
+        UPDATE solution_migration_roadmaps m
+           SET organization_id = COALESCE(
+                 (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id)
+               )
+         WHERE m.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id)
+               ) IS NOT NULL
+    """,
+    "stakeholders": """
+        UPDATE stakeholders h
+           SET organization_id = COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id)
+               )
+         WHERE h.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id)
+               ) IS NOT NULL
+    """,
+    "strategic_milestones": """
+        UPDATE strategic_milestones m
+           SET organization_id = i.organization_id
+          FROM strategic_initiatives i
+         WHERE m.initiative_id = i.id
+           AND m.organization_id IS NULL
+           AND i.organization_id IS NOT NULL
+    """,
+    "strategic_recommendations": """
+        UPDATE strategic_recommendations s
+           SET organization_id = COALESCE(
+                 (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id)
+               )
+         WHERE s.organization_id IS NULL
+           AND COALESCE(
+                 (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id)
+               ) IS NOT NULL
+    """,
+    # "values" is a reserved SQL keyword -- the table name must stay quoted.
+    "values": """
+        UPDATE "values" v
+           SET organization_id = e.organization_id
+          FROM archimate_elements e
+         WHERE v.archimate_element_id = e.id
+           AND v.organization_id IS NULL
+           AND e.organization_id IS NOT NULL
+    """,
 }
 
 # Tables whose remaining NULL rows carry per-row provenance rather than a
@@ -130,7 +319,22 @@ _DERIVABLE_ORG = {
 # reported, never a candidate for the single-organisation or --org-id orphan
 # assignment below. With exactly one organisation there is no other one it
 # could belong to, so the ordinary single-organisation rule still applies.
-_PROVENANCE_ONLY = {"application_ownership", "options_analysis", "organization_units", "stakeholder_inputs"}
+_PROVENANCE_ONLY = {
+    "application_ownership", "options_analysis", "organization_units", "stakeholder_inputs",
+    # R1-B20 (TB-0155): every table above whose _DERIVABLE_ORG entry can leave
+    # a genuine remainder (a row whose own attribution columns are all NULL,
+    # or all point at rows that are themselves unattributed) -- the fenced,
+    # 100%-resolvable-by-a-NOT-NULL-FK tables (motivation_bridge_links,
+    # strategic_milestones, capability_health_overrides, programme_snapshots,
+    # solution_migration_roadmaps, solution_adr_links) are deliberately left
+    # out: an orphan there cannot occur under normal FK integrity, so there is
+    # nothing for this set to protect.
+    "drivers", "goals", "meanings", "values", "assessments", "stakeholders", "requirements",
+    "strategic_recommendations", "enterprise_briefings",
+    # No _DERIVABLE_ORG entry at all -- every row is an orphan candidate.
+    "monitoring_alerts", "monitoring_baselines",
+    "framework_instances", "reference_model_import", "industry_process_recommendation",
+}
 
 
 def _resolve_org_id(conn, explicit):
