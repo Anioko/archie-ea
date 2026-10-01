@@ -1217,7 +1217,7 @@ def feature_flags_create_from_sidebar():
 
 @admin_bp.route("/abacus-settings", methods=["GET", "POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_settings_save")
 def abacus_settings():
     """Manage Abacus connector configuration."""
@@ -1409,7 +1409,7 @@ def abacus_settings():
 
 @admin_bp.route("/abacus-settings/test-connection", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("test_abacus_connection")
 def test_abacus_connection():
     """Test Abacus connection."""
@@ -1497,7 +1497,7 @@ def test_abacus_connection():
 
 @admin_bp.route("/abacus-settings/trigger-sync", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_sync_trigger")
 def trigger_abacus_sync():
     """Trigger manual Abacus synchronization."""
@@ -1546,7 +1546,7 @@ def trigger_abacus_sync():
 
 @admin_bp.route("/abacus-settings/sync-status", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_sync_status():
     """API endpoint to check current sync job status."""
     from app.models import Job
@@ -1580,7 +1580,7 @@ def abacus_sync_status():
 
 @admin_bp.route("/abacus-settings/cancel-job/<int:job_id>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("admin_abacus_job_cancel")
 def cancel_abacus_job(job_id):
     """Cancel a running or pending Abacus sync job."""
@@ -1614,7 +1614,7 @@ def cancel_abacus_job(job_id):
 
 @admin_bp.route("/abacus-settings/stats", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_stats():
     """Get Abacus import statistics."""
     try:
@@ -1785,7 +1785,7 @@ def governance_gates_delete(gate_id):
 
 @admin_bp.route("/abacus-settings/discover-filters", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def discover_abacus_filters():
     """Discover available filter dimensions from the Abacus API."""
     import asyncio
@@ -1839,7 +1839,7 @@ def discover_abacus_filters():
 
 @admin_bp.route("/abacus-dashboard", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_dashboard():
     """Display Abacus sync dashboard with health metrics and statistics."""
     from app.models.application_portfolio import ApplicationComponent
