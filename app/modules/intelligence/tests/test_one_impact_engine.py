@@ -474,3 +474,63 @@ def test_two_organisations_never_see_one_anothers_elements_in_stored_analysis(
     assert stored_ids_b.isdisjoint({a1.id, a2.id}), (
         f"Org B stored record leaked org A elements: {stored_ids_b & {a1.id, a2.id}}"
     )
+
+
+def test_large_impact_walk_first_page_within_latency_budget(app, db_session, make_org):
+    """A 2,400-row impact walk returns the first page within the latency budget.
+
+    The platform SLO for `/api/v1/intelligence/*` (answers) defines
+    p95 <= 2s (2000ms). This test seeds 2,400 downstream elements in a
+    wide fan-out graph and asserts the first page (page_size=50) completes
+    within that budget.
+    """
+    org = make_org("one-engine-large-walk")
+    root = _element(db_session, org.id, "Root-Large")
+
+    # Create 2,400 direct children (wide fan-out, depth=1).
+    # This exercises the full BFS walk and pagination slice.
+    children = []
+    batch_size = 500
+    for batch_start in range(0, 2400, batch_size):
+        batch = []
+        for i in range(batch_start, min(batch_start + batch_size, 2400)):
+            child = _element(db_session, org.id, f"Child-{i}")
+            _relationship(db_session, org.id, root, child)
+            batch.append(child)
+        children.extend(batch)
+        db_session.flush()
+    db_session.commit()
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+
+        # First page: 50 rows.
+        result = IntelligenceQueryService.cross_layer_impact(
+            root.id,
+            include_derived=False,
+            max_depth=3,
+            direction="downstream",
+            with_owner=False,
+            page_size=50,
+        )
+
+    # The summary.latency_ms is measured inside the latency scope and
+    # includes the full walk + batch resolution + pagination slice.
+    latency_ms = result["summary"]["latency_ms"]
+    assert latency_ms is not None, "latency_ms must be recorded"
+
+    # Budget: platform SLO for answers (/api/v1/intelligence/*) is p95 <= 2s.
+    budget_ms = 2000.0
+    assert latency_ms <= budget_ms, (
+        f"First page latency {latency_ms:.1f}ms exceeds budget {budget_ms}ms "
+        f"(2,400 rows, page_size=50)"
+    )
+
+    # Sanity: total rows reported must be 2,400.
+    assert result["total"] == 2400, f"Expected 2400 total rows, got {result['total']}"
+    assert len(result["rows"]) == 50, f"First page should have 50 rows, got {len(result['rows'])}"
+    assert result["next_cursor"] == 50, f"next_cursor should be 50, got {result['next_cursor']}"
