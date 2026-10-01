@@ -143,10 +143,17 @@ class TestConnectorConfigModelIsTenantScoped:
             assert cfg.organization_id == org_a.id
 
     def test_row_with_no_organization_is_visible_to_nobody(
-        self, db_session, org_a, tenant_ctx
+        self, db_session, org_a, org_b, tenant_ctx
     ):
         """A row backfilled to NULL (origin undeterminable) is hidden from
-        every organisation, not shared with all of them."""
+        every organisation, not shared with all of them.
+
+        Needs a second organisation (org_b) in the database: with only one
+        organisation present, _default_org_id()'s single-tenant fallback
+        (app/models/mixins/core.py) backfills even an explicit
+        organization_id=None to that sole org, which is correct for a real
+        single-tenant deploy but would mask the behaviour this test checks.
+        """
         from app.models.connector_config import ConnectorConfig
 
         orphan = ConnectorConfig(
