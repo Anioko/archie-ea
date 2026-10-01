@@ -465,3 +465,11 @@ def init_cli(app):
         app.logger.info("✅ Clear foreign assignees CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
+
+    # One risk register: copy solution_risks rows into the canonical risks table
+    try:
+        from app.commands.backfill_solution_risk_merge import init_app as init_solution_risk_merge
+        init_solution_risk_merge(app)
+        app.logger.info("✅ Solution risk merge backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register solution risk merge backfill CLI: {e}")
