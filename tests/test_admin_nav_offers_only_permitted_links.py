@@ -75,6 +75,10 @@ GUARDED = [
     # (link href fragment, org_admin needed, platform_admin needed)
     ("/admin/api-settings", True, False),
     ("/admin/feature-flags", False, True),
+    # Abacus/Jira config is platform-wide (ExternalSystem/Job carry no
+    # tenant column); pr314-review-v1.md MEDIUM.
+    ("/admin/abacus-settings", False, True),
+    ("/admin/jira-settings", False, True),
 ]
 
 
