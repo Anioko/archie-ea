@@ -190,6 +190,7 @@ def edit_decision(decision_id):
 @login_required
 def delete_decision(decision_id):
     from app.models.adr import ArchitectureDecisionRecord
+    from app.models.solution_architect_models import SolutionADRLink
 
     decision = ArchitectureDecision.query.get_or_404(decision_id)
     decision_ref = decision.decision_id
@@ -208,6 +209,17 @@ def delete_decision(decision_id):
     # unit-of-work has no dependency rule between this update and the delete
     # below; without an explicit flush, it can order the DELETE first and hit
     # architecture_decision_records_retired_into_id_fkey.
+    db.session.flush()
+    # SolutionADRLink.adr_id is NOT NULL with no relationship()/cascade, so a
+    # decision with a traceability link to a solution analysis session's
+    # workbench or chat history fails the same way on
+    # solution_adr_links_adr_id_fkey. The link is metadata about this
+    # decision, not an independent record, so it is deleted outright rather
+    # than orphaned.
+    for link in db.session.execute(
+        db.select(SolutionADRLink).where(SolutionADRLink.adr_id == decision.id)
+    ).scalars().all():
+        db.session.delete(link)
     db.session.flush()
     db.session.delete(decision)
     db.session.commit()

@@ -871,3 +871,47 @@ def test_deleting_a_paired_canonical_decision_orphans_but_keeps_the_legacy_recor
         assert untouched_canonical is not None
         untouched_record = ArchitectureDecisionRecord.query.filter_by(id=record_b_id).first()
         assert untouched_record.retired_into_id == canonical_b_id, "org B's pairing must be untouched"
+
+
+def test_deleting_a_workbench_recorded_decision_removes_its_traceability_link(
+    db_session, make_org, tenant_ctx, client, login_as
+):
+    """A decision the workbench kernel recorded carries a SolutionADRLink
+    back to its session (adr_id NOT NULL, no relationship()/cascade), so
+    deleting the decision used to raise ForeignKeyViolation on
+    solution_adr_links_adr_id_fkey. The link is metadata about the decision,
+    not an independent record, so the delete removes it rather than
+    refusing."""
+    from app.models.solution_architect_models import (
+        SolutionADRLink, SolutionAnalysisSession, SolutionSessionStatus,
+    )
+    from app.modules.ai_chat.services.workbench_kernel import WorkbenchKernel
+
+    org = make_org("adr-delete-workbench")
+    with tenant_ctx(org.id):
+        user = _user_for(db_session, org)
+        session = SolutionAnalysisSession(
+            name=f"ws-{uuid.uuid4().hex[:8]}", status=SolutionSessionStatus.IN_PROGRESS,
+            organization_id=org.id, created_by_id=user.id,
+        )
+        db_session.add(session)
+        db_session.flush()
+        kernel = WorkbenchKernel(user_id=user.id)
+        result = kernel.record_architecture_decision(
+            workspace_id=session.id, title="Workbench decision to delete",
+            chosen_option="Option A", rationale="Because A is simpler",
+        )
+    assert result["success"] is True
+    decision_id = result["decision_id"]
+    session_id = session.id
+    db_session.commit()
+
+    assert SolutionADRLink.query.filter_by(session_id=session_id).first() is not None
+
+    login_as(client, user)
+    resp = client.post(f"/architecture/decisions/{decision_id}/delete")
+    assert resp.status_code in (302, 303)
+
+    with tenant_ctx(org.id):
+        assert ArchitectureDecision.query.filter_by(id=decision_id).first() is None
+        assert SolutionADRLink.query.filter_by(session_id=session_id).first() is None
