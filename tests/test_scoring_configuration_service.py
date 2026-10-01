@@ -112,10 +112,11 @@ def test_create_as_default_unsets_the_prior_default(app, db_session, make_org):
         second = scoring_configuration_service.create_scoring_configuration(
             {**_VALID_DATA, "is_default": True}
         )
+        first_id, second_id = first.id, second.id
 
         db_session.expunge_all()
-        assert db_session.get(ScoringConfiguration, first.id).is_default is False
-        assert db_session.get(ScoringConfiguration, second.id).is_default is True
+        assert db_session.get(ScoringConfiguration, first_id).is_default is False
+        assert db_session.get(ScoringConfiguration, second_id).is_default is True
 
 
 def test_update_refuses_a_non_platform_admin_caller(app, db_session, make_org):
