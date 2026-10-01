@@ -20,10 +20,7 @@ from flask_login import login_required
 
 from app import db
 from app.modules.enterprise_genome.emit.ai_systems_register import emit_ai_systems_register
-from app.modules.enterprise_genome.services.ai_systems_seed import (
-    register_ai_system,
-    seed_archie_copilot,
-)
+from app.modules.enterprise_genome.services.ai_systems_seed import seed_archie_copilot
 from app.modules.enterprise_genome.services.ai_systems_slice import build_ai_systems_slice
 
 logger = logging.getLogger(__name__)
