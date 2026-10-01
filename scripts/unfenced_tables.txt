@@ -223,7 +223,6 @@ functional_requirement
 gap_analysis_recommendations
 gap_remediation_reports
 gap_solution_options
-gdpr_requests
 generation_event
 generation_pipelines
 goals
@@ -275,6 +274,7 @@ mapping_metrics
 meanings
 migration_plan_documents
 milestones
+model_providers
 monitoring_alerts
 monitoring_baselines
 motivation_assessments
