@@ -78,12 +78,13 @@ from app import db
 # fails the check is excluded from COALESCE and the row falls through to the
 # next fallback (or stays an unresolved orphan) instead of being skipped
 # outright.
-def _sole_org_user_guard(alias):
-    return (
-        f"AND NOT EXISTS (SELECT 1 FROM org_roles r "
-        f"WHERE r.user_id = {alias}.id AND r.organization_id != {alias}.organization_id)"
-    )
-
+# The "AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = <alias>.id
+# AND r.organization_id != <alias>.organization_id)" clause below, inlined
+# per entry rather than built from one shared helper: bandit's B608 flags any
+# f-string-constructed SQL-shaped text regardless of whether the
+# interpolated value is attacker-reachable (here it never is -- u/u2 are
+# this file's own fixed aliases), and the project's own convention is to
+# avoid the pattern entirely rather than carry a baseline exception for it.
 _DERIVABLE_ORG = {
     "vendor_product_capabilities": """
         UPDATE vendor_product_capabilities v
@@ -183,44 +184,48 @@ _DERIVABLE_ORG = {
            AND c.organization_id IS NULL
            AND b.organization_id IS NOT NULL
     """,
-    "drivers": f"""
+    "drivers": """
         UPDATE drivers d
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE d.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     # A briefing's generated_by_id is a plain integer, not an FK constraint
     # (see app/models/strategic.py), but it is a user id in every writer of
     # this table -- resolved the same way, just without a declared FK to lean on.
-    "enterprise_briefings": f"""
+    "enterprise_briefings": """
         UPDATE enterprise_briefings eb
            SET organization_id = u.organization_id
           FROM users u
          WHERE eb.generated_by_id = u.id
            AND eb.organization_id IS NULL
            AND u.organization_id IS NOT NULL
-           {_sole_org_user_guard("u")}
+           AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)
     """,
     # "drivers" < "goals": the driver_id fallback below reads drivers'
     # organization_id after this dict has already derived it, not before.
-    "goals": f"""
+    "goals": """
         UPDATE goals g
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
                  (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE g.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
                  (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     "meanings": """
@@ -285,16 +290,18 @@ _DERIVABLE_ORG = {
                  (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id)
                ) IS NOT NULL
     """,
-    "stakeholders": f"""
+    "stakeholders": """
         UPDATE stakeholders h
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE h.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id {_sole_org_user_guard("u")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     "strategic_milestones": """
@@ -305,18 +312,22 @@ _DERIVABLE_ORG = {
            AND m.organization_id IS NULL
            AND i.organization_id IS NOT NULL
     """,
-    "strategic_recommendations": f"""
+    "strategic_recommendations": """
         UPDATE strategic_recommendations s
            SET organization_id = COALESCE(
                  (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id {_sole_org_user_guard("u")}),
-                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id {_sole_org_user_guard("u2")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
                )
          WHERE s.organization_id IS NULL
            AND COALESCE(
                  (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id {_sole_org_user_guard("u")}),
-                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id {_sole_org_user_guard("u2")})
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
                ) IS NOT NULL
     """,
     # "values" is a reserved SQL keyword -- the table name must stay quoted.
