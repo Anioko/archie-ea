@@ -340,6 +340,15 @@ def init_cli(app):
         app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
 
     try:
+        from app.commands.backfill_capability_catalogs import (
+            init_app as init_capability_catalog_backfill,
+        )
+        init_capability_catalog_backfill(app)
+        app.logger.info("Capability catalog backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability catalog backfill CLI: {e}")
+
+    try:
         from app.commands.backfill_audit_trail import init_app as init_audit_trail_backfill
         init_audit_trail_backfill(app)
         app.logger.info("Audit trail backfill CLI command registered")

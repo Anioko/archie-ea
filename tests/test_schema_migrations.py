@@ -32,7 +32,7 @@ BASELINE = "20260926_baseline"
 RELAX = "20260926_relax_owner_app"
 # The worked baseline/relax/widen example's own tip -- NOT necessarily the
 # whole chain's head. Revisions land above this one over time (this
-# repository already has one), and the refusal/round-trip semantics this
+# repository already has two), and the refusal/round-trip semantics this
 # file proves belong to these three specifically, so they are pinned to
 # WIDEN rather than to "whatever the head currently is".
 WIDEN = "20260926_widen_element_name"
@@ -277,6 +277,131 @@ def test_upgrade_on_an_empty_database_builds_the_full_schema(scratch_databases, 
     assert built["columns"] == deployed["columns"]
     assert built["indexes"] == deployed["indexes"]
     assert built["constraints"] == deployed["constraints"]
+
+
+# ------------------------------------------------- deploy-schema.sh ordering
+
+
+def _assert_deploy_schema_runs_cutover_before_projection_and_backfill():
+    """Static ordering guard against the real file, not a hand-copied one.
+
+    Spawning scripts/database/deploy-schema.sh's ~18 `flask --app manage`
+    steps as separate subprocesses (each a full, independent app boot) was
+    measured at over 20 minutes for one run -- too slow for a test, and not
+    what is actually under test here, which is *ordering*. This reads the
+    literal file and asserts the three invocations appear in the required
+    order; the behavioural proof that running them in that order reaches
+    zero NULL-scope rows follows in the test below, using the fast
+    single-process ``_flask`` driver the rest of this module already uses.
+    """
+    text_ = (REPO_ROOT / "scripts" / "database" / "deploy-schema.sh").read_text()
+    cutover_at = text_.index("flask --app manage cutover-capability-tenancy")
+    projection_at = text_.index("flask --app manage project-capabilities")
+    backfill_at = text_.index("flask --app manage backfill-capability-catalogs")
+    assert cutover_at < projection_at, (
+        "cutover-capability-tenancy must run before project-capabilities"
+    )
+    assert cutover_at < backfill_at, (
+        "cutover-capability-tenancy must run before backfill-capability-catalogs"
+    )
+
+
+def _seed_unclassified_legacy_capability(url, *, capability_id, org_id, source_org_id):
+    """One row shaped like output from an uninstrumented UnifiedCapability
+    writer (one of the "seven direct writers" project_capabilities.py's own
+    docstring names) that never set scope/organization_id -- exactly what
+    the maintenance cutover exists to classify. ``source_table`` is
+    deliberately NOT ``'business_capability'``: that value is reserved for
+    rows `project-capabilities` itself produced, and this row has no
+    corresponding `business_capability` row behind it.
+    """
+    engine = create_engine(url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO organizations (id, name, slug) VALUES (:id, :name, :slug) "
+                "ON CONFLICT (id) DO NOTHING"
+            ), {"id": org_id, "name": f"Org {org_id}", "slug": f"org-{org_id}"})
+            conn.execute(text(
+                "INSERT INTO unified_capabilities "
+                "(id, name, level, source_table, source_id, source_org_id, source_checksum) "
+                "VALUES (:id, 'Legacy Unclassified Capability', 1, "
+                "'legacy_direct_write', :source_id, :source_org_id, 'seed-checksum')"
+            ), {"id": capability_id, "source_id": str(capability_id), "source_org_id": source_org_id})
+    finally:
+        engine.dispose()
+
+
+def test_deploy_runs_the_capability_tenancy_cutover_before_projection_and_backfill(
+    scratch_databases, tmp_path
+):
+    """The deploy sequence this script encodes must leave zero
+    unified_capabilities rows with organization_id IS NULL AND scope IS NULL.
+
+    Regression: deploy-schema.sh never called `cutover-capability-tenancy
+    --apply`, so a pre-existing unclassified row (the maintenance cutover's
+    whole reason to exist) survived every deploy indefinitely -- present,
+    hidden from the hybrid reference/tenant visibility predicate, and off the
+    store-agreement contract.
+    """
+    _assert_deploy_schema_runs_cutover_before_projection_and_backfill()
+
+    url = scratch_databases("cutover_ordering")
+    _flask(url, ["init-db"], ["schema-upgrade"], ["reconcile-schema"],
+           ["apply-unified-capability-provenance-migration"])
+
+    org_id = 9701
+    _seed_unclassified_legacy_capability(
+        url, capability_id=501, org_id=org_id, source_org_id=org_id
+    )
+    assert _conn_scalar(
+        url, "SELECT count(*) FROM unified_capabilities "
+        "WHERE organization_id IS NULL AND scope IS NULL"
+    ) == 1
+
+    manifest = tmp_path / "cutover-manifest.json"
+    manifest.write_text(json.dumps({"backup_path": str(tmp_path / "fake.dump")}))
+    report = tmp_path / "cutover-report.json"
+
+    # The same three commands, in the order the real script now runs them.
+    _flask(
+        url,
+        ["cutover-capability-tenancy", "--apply",
+         "--backup-manifest", str(manifest), "--report", str(report)],
+        ["project-capabilities", "--apply"],
+        ["backfill-capability-catalogs", "--apply"],
+    )
+
+    remaining = _conn_scalar(
+        url, "SELECT count(*) FROM unified_capabilities "
+        "WHERE organization_id IS NULL AND scope IS NULL"
+    )
+    assert remaining == 0, f"remaining_null_scope_rows={remaining}"
+    # Classified correctly, not merely touched: provenance with no
+    # relationship link names a tenant owner (classify_capability), never a
+    # guess, and never silently dropped into shared reference scope.
+    scope, owner = _conn_row(
+        url, "SELECT scope, organization_id FROM unified_capabilities WHERE id = 501"
+    )
+    assert (scope, owner) == ("tenant", org_id)
+
+
+def _conn_scalar(url, sql):
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            return conn.execute(text(sql)).scalar_one()
+    finally:
+        engine.dispose()
+
+
+def _conn_row(url, sql):
+    engine = create_engine(url)
+    try:
+        with engine.connect() as conn:
+            return conn.execute(text(sql)).one()
+    finally:
+        engine.dispose()
 
 
 # ------------------------------------------------ expand / contract examples

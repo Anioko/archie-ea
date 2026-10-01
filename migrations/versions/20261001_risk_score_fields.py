@@ -21,7 +21,7 @@ any row holds a value, since dropping would discard a recorded score or an
 already-completed merge pointer.
 
 Revision ID: 20261001_risk_score_fields
-Revises: 20260926_widen_element_name
+Revises: 20260930_capability_backlinks
 Create Date: 2026-10-01
 """
 from alembic import op
@@ -34,7 +34,7 @@ from app.commands.schema_migrations import ContractBlocked
 # under that length, the same constraint every revision after the baseline
 # already satisfies.
 revision = "20261001_risk_score_fields"
-down_revision = "20260926_widen_element_name"
+down_revision = "20260930_capability_backlinks"
 branch_labels = None
 depends_on = None
 

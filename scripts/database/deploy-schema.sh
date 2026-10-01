@@ -40,6 +40,47 @@ flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipp
 # ran, and project-capabilities cannot run without it -- silencing a failure
 # here would silently leave the projection permanently blocked with no signal.
 flask --app manage apply-unified-capability-provenance-migration
+
+# ADR 0008 -- classify every pre-existing unified_capabilities row (the seven
+# direct writers named in app/commands/project_capabilities.py's own docstring
+# can leave organization_id/scope NULL) before project-capabilities or the
+# catalog backfill below add any more rows to classify. Must run first: both
+# of those commands read scope/organization_id on rows that may already be
+# sitting there unclassified, and `apply`'s own ordering guard
+# (app/commands/cutover_capability_tenancy.py) otherwise blocks a projection
+# run from leaving every freshly-projected row permanently 'ambiguous'.
+#
+# `--apply` refuses outright without a recorded backup manifest
+# (CutoverBlocked) -- it is not a mechanism this script invents, it already
+# existed in cutover_capability_tenancy.py before this change. Bridges to the
+# real backup `deploy/archie-backup.sh` already takes: that script's own
+# success marker (`$DIR/LAST_SUCCESS`, `file=<path>` on its last line) names
+# the latest verified dump, which is turned into the JSON manifest the
+# cutover command requires. A box that has not completed its first scheduled
+# backup yet has no marker, so this step correctly WARNs and skips rather
+# than cutting over unprotected -- same non-fatal convention as every
+# backfill-* line above, so one missing or stale backup does not 503 the
+# whole platform.
+#
+# ARCHIE_BACKUP_MARKER overrides the marker path (default: where
+# archie-backup.sh actually writes it) so a test can point this at a
+# throwaway marker instead of the real host path under /var/backups.
+BACKUP_MARKER=${ARCHIE_BACKUP_MARKER:-/var/backups/archie/LAST_SUCCESS}
+CUTOVER_MANIFEST=/tmp/cutover-capability-tenancy-manifest.json
+if [ -f "$BACKUP_MARKER" ]; then
+    BACKUP_FILE=$(sed -n 's/.*file=//p' "$BACKUP_MARKER" | tail -1)
+fi
+if [ -n "${BACKUP_FILE:-}" ]; then
+    printf '{"backup_path": "%s"}\n' "$BACKUP_FILE" > "$CUTOVER_MANIFEST"
+    flask --app manage cutover-capability-tenancy --apply \
+        --backup-manifest "$CUTOVER_MANIFEST" \
+        --report /tmp/cutover-capability-tenancy-report.json \
+        && echo 'cutover-capability-tenancy --apply succeeded' \
+        || echo 'WARN capability tenancy cutover blocked or failed (see logs / /tmp/cutover-capability-tenancy-report.json) - unified_capabilities rows left organization_id IS NULL AND scope IS NULL until an ambiguous classification is resolved and cutover-capability-tenancy --apply is re-run' >&2
+else
+    echo "WARN capability tenancy cutover skipped - no backup marker at $BACKUP_MARKER yet (archie-backup.timer has not completed a run); unified_capabilities rows left organization_id IS NULL AND scope IS NULL until it runs with a real backup available" >&2
+fi
+
 # Corrected 17 Sep 2026 -- this comment previously said project-capabilities
 # was deliberately NOT suppressed. That was wrong: run_projection() can raise
 # ProjectionBlocked for any one of five reasons (app/commands/project_capabilities.py),
@@ -67,3 +108,15 @@ if [ -f /tmp/project-capabilities-report.json ]; then
     cat /tmp/project-capabilities-report.json
     echo '--- end report ---'
 fi
+
+# ADR 0008 -- retire the remaining four superseded capability stores
+# (capabilities, enterprise_capabilities, archimate_capabilities,
+# technical_capabilities) into unified_capabilities. Must run after
+# project-capabilities: an enterprise_capabilities/archimate_capabilities row
+# linked to a business_capability is retired straight into that capability's
+# own projection, so a business_capability that has not been projected yet
+# leaves its linked rows quarantined (visible at /admin/errors) rather than
+# guessed at. Same WARN-on-failure convention as the backfill-* lines above:
+# one organisation's unresolved row must not 503 the whole platform.
+flask --app manage backfill-capability-catalogs --apply \
+    || echo 'WARN capability catalog backfill incomplete - capabilities/enterprise_capabilities/archimate_capabilities/technical_capabilities may still hold rows neither merged nor quarantined into unified_capabilities; see /admin/errors and re-run flask backfill-capability-catalogs --apply' >&2

@@ -1480,7 +1480,7 @@ def feature_flags_create_from_sidebar():
 @admin_bp_v2.route("/abacus-settings", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_abacus_settings")
 def abacus_settings():
     """Manage Abacus connector configuration."""
@@ -1702,7 +1702,7 @@ def abacus_settings():
 @admin_bp_v2.route("/abacus-settings/test-connection", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("test_abacus_connection")
 def test_abacus_connection():
     """Test Abacus connection."""
@@ -1791,7 +1791,7 @@ def test_abacus_connection():
 @admin_bp_v2.route("/abacus-settings/trigger-sync", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("trigger_abacus_sync")
 def trigger_abacus_sync():
     """Trigger manual Abacus synchronization."""
@@ -1843,7 +1843,7 @@ def trigger_abacus_sync():
 @admin_bp_v2.route("/abacus-settings/sync-status", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_sync_status():
     """API endpoint to check current sync job status."""
     from app.models import Job
@@ -1878,7 +1878,7 @@ def abacus_sync_status():
 @admin_bp_v2.route("/abacus-settings/cancel-job/<int:job_id>", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("cancel_abacus_job")
 def cancel_abacus_job(job_id):
     """Cancel a running or pending Abacus sync job."""
@@ -1914,7 +1914,7 @@ def cancel_abacus_job(job_id):
 
 @admin_bp_v2.route("/abacus-settings/clear-stale-jobs", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def clear_stale_abacus_jobs():
     """Force-clear sync jobs stuck in_progress for more than 1 hour."""
     from app.models import Job  # local import to match pattern
@@ -1941,7 +1941,7 @@ def clear_stale_abacus_jobs():
 
 @admin_bp_v2.route("/abacus-settings/discover-types", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def discover_abacus_types():
     """Discover available ComponentType names from the Abacus API."""
     import asyncio
@@ -1984,7 +1984,7 @@ def discover_abacus_types():
 @admin_bp_v2.route("/abacus-settings/stats", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_stats():
     """Get Abacus import statistics."""
     try:
@@ -2026,7 +2026,7 @@ def abacus_stats():
 @admin_bp_v2.route("/abacus-settings/discover-filters", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def discover_abacus_filters():
     """Discover available filter dimensions from the Abacus API.
 
@@ -2084,7 +2084,7 @@ def discover_abacus_filters():
 @admin_bp_v2.route("/abacus-dashboard", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_dashboard():
     """Display Abacus sync dashboard with health metrics and statistics."""
     from app.models.application_portfolio import ApplicationComponent
@@ -2166,7 +2166,7 @@ def abacus_dashboard():
 
 @admin_bp_v2.route("/abacus-settings/save-relationship-mappings", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def save_relationship_mappings():
     """Save custom OutConnection → ArchiMate relationship mappings."""
     from app.config.abacus_field_mapping import save_outconnection_mappings
@@ -2193,7 +2193,7 @@ def save_relationship_mappings():
 
 @admin_bp_v2.route("/abacus-settings/relationship-mappings", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def get_relationship_mappings():
     """Get current OutConnection → ArchiMate relationship mappings."""
     from app.config.abacus_field_mapping import (
