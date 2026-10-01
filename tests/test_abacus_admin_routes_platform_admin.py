@@ -52,6 +52,25 @@ def _job(db_session):
     return job
 
 
+def _abacus_system(db_session):
+    """save-relationship-mappings' own handler body answers 404 ("Abacus
+    integration not configured") before @admin_required's result would
+    otherwise matter, when no ExternalSystem(system_name="abacus") row
+    exists -- indistinguishable from the route itself being unmounted, the
+    case the v2-only test below means to skip past. Seeding a row here
+    means a 404 can only mean "route not mounted", so a 200/403 split is
+    what proves or disproves the actual authorisation check."""
+    from app.models.models import ExternalSystem
+
+    existing = ExternalSystem.query.filter_by(system_name="abacus").first()
+    if existing:
+        return existing
+    system = ExternalSystem(system_name="abacus", system_type="abacus", enabled=True)
+    db_session.add(system)
+    db_session.flush()
+    return system
+
+
 def _world(db_session, make_org):
     # Two organisations (DEFECT-7, pr312-v1 review): Abacus is platform-wide,
     # so a tenant admin from EITHER organisation must be refused -- proving
@@ -63,6 +82,7 @@ def _world(db_session, make_org):
     tenant_admin_b = _user(db_session, org_b)
     platform_admin = _user(db_session, org_a, platform=True)
     job = _job(db_session)
+    _abacus_system(db_session)
     db_session.commit()
     return tenant_admin_a.id, tenant_admin_b.id, platform_admin.id, job.id
 
@@ -145,7 +165,13 @@ def test_a_tenant_administrator_is_refused_on_v2_only_abacus_routes(
     """These three routes (DEFECT-2/3/6, pr312-v1 review) exist only in the
     v2 module tree. Skip rather than fail if this environment has the v1
     tree mounted instead -- a 404 here says nothing about the fix, which
-    covers both trees defensively regardless of which is live."""
+    covers both trees defensively regardless of which is live.
+
+    save-relationship-mappings' own handler returns 404 ("Abacus
+    integration not configured") when no ExternalSystem row exists, which
+    this skip could not tell apart from "route not mounted" (pr312-final-
+    check-v1 review) -- _world() now seeds that row via _abacus_system(),
+    so a 404 here can only mean the v1 tree is live."""
     tenant_admin_a_id, tenant_admin_b_id, _platform_id, _job_id = _world(db_session, make_org)
 
     for admin_id in (tenant_admin_a_id, tenant_admin_b_id):
