@@ -31,6 +31,9 @@ ROLE_DEFAULT_PERSONAS = {
     # which is the whole argument for promoting them.
     "security_architect": "security_architect",
     "data_architect": "data_architect",
+    # Promoted 1 Oct 2026; both already had charters written ahead of the role.
+    "technology_architect": "technology_architect",
+    "application_architect": "application_architect",
 }
 
 
