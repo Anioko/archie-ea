@@ -315,3 +315,162 @@ def test_pagination_stable_cursor_and_total(app, db_session, make_org):
             for row in page["rows"]:
                 all_ids.add(row["element_id"])
         assert all_ids == {c.id for c in children}
+
+
+def test_risk_score_uses_all_elements_when_paginated(app, db_session, make_org):
+    """When paginated, risk scoring (total_affected, weighted_score, risk_level)
+    and the stored ImpactAnalysisResult use all affected elements, not just the
+    current page."""
+    org = make_org("one-engine-risk-page")
+    root = _element(db_session, org.id, "Root")
+    children = []
+    for i in range(5):
+        child = _element(db_session, org.id, f"Child-{i}")
+        _relationship(db_session, org.id, root, child)
+        children.append(child)
+    db_session.commit()
+
+    from app.modules.solutions_strategic.v2.services.impact_analysis_service import (
+        ImpactAnalysisService,
+    )
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+
+        # Paginated call: page 1 of 2.
+        result = ImpactAnalysisService.analyze_change_impact(
+            root.id, change_type="MODIFY", page_size=2
+        )
+
+    # total_affected must reflect all 5 children, not just the 2 on page 1.
+    assert result["total_affected"] == 5, (
+        f"total_affected should be 5 (all children), got {result['total_affected']}"
+    )
+    # weighted_score must reflect all 5 children (each medium = weight 2, so 10).
+    assert result["weighted_score"] == 10, (
+        f"weighted_score should be 10 (5 × medium=2), got {result['weighted_score']}"
+    )
+    # risk_level must be MEDIUM (score 10, between 5 and 20).
+    assert result["risk_level"] == "MEDIUM", (
+        f"risk_level should be MEDIUM, got {result['risk_level']}"
+    )
+    # The stored analysis record must contain all 5 element IDs.
+    analysis_id = result["analysis_id"]
+    assert analysis_id is not None, "analysis_id should not be None"
+    from app.models.traceability import ImpactAnalysisResult
+    record = db_session.get(ImpactAnalysisResult, analysis_id)
+    import json as _json
+    stored_ids = _json.loads(record.impacted_elements)
+    assert len(stored_ids) == 5, (
+        f"stored impacted_elements should have 5 IDs, got {len(stored_ids)}"
+    )
+    assert set(stored_ids) == {c.id for c in children}, (
+        f"stored impacted_elements should match all children"
+    )
+
+
+def test_affected_applications_count_is_correct(app, db_session, make_org):
+    """affected_applications_count in the stored record matches the number of
+    impacted elements that have an ApplicationComponent."""
+    org = make_org("one-engine-app-count")
+    a = _element(db_session, org.id, "App-A")
+    b = _element(db_session, org.id, "Svc-B")
+    c = _element(db_session, org.id, "Svc-C")
+    _relationship(db_session, org.id, a, b)
+    _relationship(db_session, org.id, b, c)
+    # Element B has an application component; C does not.
+    _application_component(db_session, org.id, b.id, name="Service App")
+    db_session.commit()
+
+    from app.modules.solutions_strategic.v2.services.impact_analysis_service import (
+        ImpactAnalysisService,
+    )
+
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org.id
+
+        result = ImpactAnalysisService.analyze_change_impact(
+            a.id, change_type="MODIFY"
+        )
+
+    analysis_id = result["analysis_id"]
+    assert analysis_id is not None
+    from app.models.traceability import ImpactAnalysisResult
+    record = db_session.get(ImpactAnalysisResult, analysis_id)
+    assert record.affected_applications_count == 1, (
+        f"affected_applications_count should be 1, got {record.affected_applications_count}"
+    )
+
+
+def test_two_organisations_never_see_one_anothers_elements_in_stored_analysis(
+    app, db_session, make_org
+):
+    """Two organisations never see one another's elements in stored
+    ImpactAnalysisResult records."""
+    org_a = make_org("one-engine-stored-org-a")
+    org_b = make_org("one-engine-stored-org-b")
+
+    a1 = _element(db_session, org_a.id, "A1")
+    a2 = _element(db_session, org_a.id, "A2")
+    _relationship(db_session, org_a.id, a1, a2)
+
+    b1 = _element(db_session, org_b.id, "B1")
+    b2 = _element(db_session, org_b.id, "B2")
+    _relationship(db_session, org_b.id, b1, b2)
+
+    db_session.commit()
+
+    from app.modules.solutions_strategic.v2.services.impact_analysis_service import (
+        ImpactAnalysisService,
+    )
+
+    # Run analysis for org A.
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_a.id
+        result_a = ImpactAnalysisService.analyze_change_impact(
+            a1.id, change_type="MODIFY"
+        )
+
+    # Run analysis for org B.
+    with app.test_request_context("/"):
+        from flask import g
+
+        g.current_org_id = org_b.id
+        result_b = ImpactAnalysisService.analyze_change_impact(
+            b1.id, change_type="MODIFY"
+        )
+
+    from app.models.traceability import ImpactAnalysisResult
+    import json as _json
+
+    record_a = db_session.get(ImpactAnalysisResult, result_a["analysis_id"])
+    record_b = db_session.get(ImpactAnalysisResult, result_b["analysis_id"])
+
+    stored_ids_a = set(_json.loads(record_a.impacted_elements))
+    stored_ids_b = set(_json.loads(record_b.impacted_elements))
+
+    # The stored impacted_elements are the dependencies, not the seed.
+    org_a_dep_ids = {a2.id}
+    org_b_dep_ids = {b2.id}
+
+    # Org A's stored record must only contain org A's dependency elements.
+    assert stored_ids_a == org_a_dep_ids, (
+        f"Org A stored record contains {stored_ids_a}, expected {org_a_dep_ids}"
+    )
+    assert stored_ids_a.isdisjoint({b1.id, b2.id}), (
+        f"Org A stored record leaked org B elements: {stored_ids_a & {b1.id, b2.id}}"
+    )
+
+    # Org B's stored record must only contain org B's dependency elements.
+    assert stored_ids_b == org_b_dep_ids, (
+        f"Org B stored record contains {stored_ids_b}, expected {org_b_dep_ids}"
+    )
+    assert stored_ids_b.isdisjoint({a1.id, a2.id}), (
+        f"Org B stored record leaked org A elements: {stored_ids_b & {a1.id, a2.id}}"
+    )
