@@ -234,7 +234,14 @@ class ArchitectureDecisionRecord(TenantMixin, db.Model):
             context=context,
             decision=self.decision,
             consequences=self.consequences,
-            alternatives=_safe_json(self.alternatives_considered),
+            # ArchitectureDecision.alternatives is Text ("text or JSON", per
+            # its own column comment) -- SolutionOptionsAdvisor and this
+            # record's own detail template both treat it as a string
+            # (json.loads'd by the one caller that needs structure,
+            # rendered verbatim by the other), so it is carried over as-is,
+            # never through _safe_json, which returns a parsed dict/list
+            # that cannot be stored in a Text column at all.
+            alternatives=self.alternatives_considered,
             rationale=self.rationale,
             constraints=_safe_json(self.constraints),
             decision_type=self.category,

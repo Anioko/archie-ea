@@ -29,10 +29,13 @@ def _workspace_counts_available() -> bool:
     Both pages show a "nothing is modelled yet" state only when those counts say
     the workspace is empty. The shell's own context processor answers a failed
     read with counts of zero, which is indistinguishable from an empty
-    workspace, so this asks the same cached function directly and reports
+    workspace, so this asks the same function directly and reports
     whether it worked. An unreadable count is never treated as an empty
     workspace.
     """
+    if getattr(g, "current_org_id", None) is None:
+        return False
+
     try:
         from app._bootstrap.context_processors import compute_nav_counts
 
@@ -43,6 +46,22 @@ def _workspace_counts_available() -> bool:
         return False
 
 
+def _derivation_status():
+    """The tenant's worked-out connection state for the Ask page, or ``None``
+    when it could not be read (the page then says so rather than showing
+    counts of zero)."""
+    org_id = getattr(g, "current_org_id", None)
+    if org_id is None:
+        return None
+    try:
+        from app.modules.intelligence.services.derived_facts import derivation_status
+
+        return derivation_status(int(org_id))
+    except Exception:
+        current_app.logger.warning("[MODULE] intelligence: derivation status unavailable")
+        return None
+
+
 @intelligence_ui.route("/ask", methods=["GET"])
 @login_required
 def ask():
@@ -50,6 +69,7 @@ def ask():
     return render_template(
         "intelligence/ask.html",
         workspace_counts_available=_workspace_counts_available(),
+        derivation_status=_derivation_status(),
     )
 
 
