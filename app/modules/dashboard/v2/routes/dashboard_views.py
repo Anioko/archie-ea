@@ -714,6 +714,8 @@ def api_onboarding_complete():
     """PLT-040: Mark user onboarding as complete, optionally update enterprise_role."""
     import datetime
 
+    from app.middleware.tenant_decorators import is_platform_admin
+
     data = request.get_json(silent=True) or {}
     new_role = data.get("enterprise_role")
     valid_roles = {
@@ -722,6 +724,15 @@ def api_onboarding_complete():
         "cto", "application_manager", "procurement",
     }
     if new_role and new_role in valid_roles:
+        # A saved role must never raise the caller's own privilege: only the
+        # one platform-admin predicate (flag AND ADMINISTER), or keeping the
+        # role the user already holds, may select platform_admin.
+        if (
+            new_role == "platform_admin"
+            and current_user.enterprise_role != "platform_admin"
+            and not is_platform_admin(current_user)
+        ):
+            return jsonify({"success": False, "error": "Role not permitted"}), 403
         current_user.enterprise_role = new_role
     current_user.onboarding_completed_at = datetime.datetime.utcnow()
     try:
