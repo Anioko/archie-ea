@@ -50,6 +50,21 @@ class ImpactAnalysisService:
         # Repointed to the canonical cross_layer_impact walk (max_depth=3, 3 hops from seed).
         from app.modules.intelligence.services.query_service import IntelligenceQueryService
 
+        is_paginated = cursor is not None or page_size is not None
+
+        # When paginated, fetch the full (unpaginated) result for risk scoring
+        # and persistence, then paginate only the rows returned to the caller.
+        if is_paginated:
+            full_result = IntelligenceQueryService.cross_layer_impact(
+                element_id,
+                include_derived=False,
+                max_depth=3,
+                direction="downstream",
+                with_owner=True,
+            )
+        else:
+            full_result = None
+
         result = IntelligenceQueryService.cross_layer_impact(
             element_id,
             include_derived=False,
@@ -62,22 +77,49 @@ class ImpactAnalysisService:
         rows = result.get("rows") or []
         elements = result.get("elements") or {}
 
+        # Use the full (unpaginated) rows for scoring and storage.
+        scoring_rows = (full_result or result).get("rows") or []
+        scoring_elements = (full_result or result).get("elements") or {}
+
+        # Batch-resolve dependency_level from archimate_elements.
+        all_element_ids = list({r["element_id"] for r in scoring_rows})
+        dep_levels = {}
+        if all_element_ids:
+            from app.models.archimate_core import ArchiMateElement as _AE
+            _ae_rows = _AE.query.filter(_AE.id.in_(all_element_ids)).with_entities(
+                _AE.id, _AE.dependency_level
+            ).all()
+            dep_levels = {row.id: (row.dependency_level or "medium") for row in _ae_rows}
+
+        # Batch-resolve application component names.
+        app_names = {}
+        if all_element_ids:
+            from app.models.application_portfolio import ApplicationComponent as _AC
+            _ac_rows = _AC.query.filter(
+                _AC.archimate_element_id.in_(all_element_ids)
+            ).with_entities(
+                _AC.archimate_element_id, _AC.name
+            ).all()
+            app_names = {row.archimate_element_id: row.name for row in _ac_rows}
+
         def _row_to_dep(row):
-            el = elements.get(str(row["element_id"]), {})
+            el = scoring_elements.get(str(row["element_id"]), {})
+            eid = row["element_id"]
             return {
-                "id": row["element_id"],
+                "id": eid,
                 "name": el.get("name"),
                 "type": el.get("type"),
                 "level": row["relation"]["depth"],
-                "dependency_level": "medium",
-                "app_name": None,
+                "dependency_level": dep_levels.get(eid, "medium"),
+                "app_name": app_names.get(eid),
                 "criticality": None,
                 "tco": 0.0,
                 "owner": row.get("owner"),
                 "health": row.get("health"),
             }
 
-        all_deps = [_row_to_dep(r) for r in rows]
+        # Build deps from the full (unpaginated) rows for scoring.
+        all_deps = [_row_to_dep(r) for r in scoring_rows]
         direct_deps = [d for d in all_deps if d["level"] == 1]
         indirect_deps = [d for d in all_deps if d["level"] > 1]
 
@@ -125,11 +167,20 @@ class ImpactAnalysisService:
         except Exception:
             db.session.rollback()
 
+        # Build paginated deps for the response when pagination is active.
+        if is_paginated:
+            page_deps = [_row_to_dep(r) for r in rows]
+            page_direct = [d for d in page_deps if d["level"] == 1]
+            page_indirect = [d for d in page_deps if d["level"] > 1]
+        else:
+            page_direct = direct_deps
+            page_indirect = indirect_deps
+
         return {
             "element_id": element_id,
             "change_type": change_type,
-            "direct_dependencies": direct_deps,
-            "indirect_dependencies": indirect_deps,
+            "direct_dependencies": page_direct,
+            "indirect_dependencies": page_indirect,
             "total_affected": total_affected,
             "weighted_score": weighted_score,
             "risk_level": risk_level,
