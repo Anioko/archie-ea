@@ -12,6 +12,7 @@ background tasks, unauthenticated requests).
 """
 
 import logging
+from contextlib import contextmanager
 
 from flask import g
 from sqlalchemy import text
@@ -21,6 +22,34 @@ from app.extensions import db
 from app.models.mixins.core import HybridTenantMixin, TenantMixin
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def platform_write_context():
+    """Suspend tenant scoping for the duration of the block.
+
+    A platform admin is still an ordinary tenant as far as g.current_org_id
+    is concerned (platform_admin_required only checks a flag on the current
+    user, it does not clear tenant context), so a write to a reference-scoped
+    HybridTenantMixin row from inside a platform-admin route hits the same
+    before_flush guard an ordinary tenant's write would, and is refused.
+
+    Both guards already treat "no tenant context" as the trusted/platform
+    path (CLI, migrations, background tasks -- see this module's own
+    docstring), so this reuses that existing path rather than adding a
+    second one: call-sites that are already gated by platform_admin_required
+    wrap their write in this block to use it deliberately.
+    """
+    had_org_id = hasattr(g, "current_org_id")
+    previous = g.current_org_id if had_org_id else None
+    g.current_org_id = None
+    try:
+        yield
+    finally:
+        if had_org_id:
+            g.current_org_id = previous
+        else:
+            del g.current_org_id
 
 
 def set_database_tenant_context(connection, organization_id):
@@ -164,11 +193,31 @@ def install_tenant_filter(app):
                     cls.tenancy_scope == "reference",
                 ),
             )
-        else:
-            predicate = lambda cls: cls.organization_id == organization_id  # noqa: E731
-        orm_execute_state.statement = orm_execute_state.statement.options(
-            with_loader_criteria(HybridTenantMixin, predicate, include_aliases=True)
-        )
+            orm_execute_state.statement = orm_execute_state.statement.options(
+                with_loader_criteria(HybridTenantMixin, predicate, include_aliases=True)
+            )
+            return
+        # A bulk UPDATE/DELETE (Model.query.filter(...).update(...), or
+        # update(Table)/delete(Table) passed to session.execute()) never
+        # touches session.new/dirty/deleted, so before_flush's ownership and
+        # scope checks below cannot see it -- scoping the WHERE clause the
+        # way the SELECT branch above does would still let a tenant set
+        # organization_id/tenancy_scope on their own row to whatever they
+        # want (e.g. reparent it out of their tenant into the shared
+        # catalogue), since a WHERE-only scope restricts which rows match,
+        # not what values get written. No call site does this today, so
+        # refusing it outright costs nothing and closes that gap; a caller
+        # that needs it goes through the ORM per-instance path instead,
+        # where before_flush actually enforces the rules.
+        try:
+            entity_cls = orm_execute_state.bind_mapper.class_
+        except Exception:
+            entity_cls = None
+        if entity_cls is not None and issubclass(entity_cls, HybridTenantMixin):
+            raise PermissionError(
+                "bulk update/delete on a shared-catalogue table is refused inside "
+                "a tenant request; use the ORM per-instance path instead"
+            )
 
     @db.event.listens_for(db.session, "before_flush")
     def _protect_hybrid_tenant_writes(session, flush_context, instances):

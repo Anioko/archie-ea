@@ -94,6 +94,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register layer tenancy backfill CLI: {e}")
 
+    # Shared-catalogue tenancy: classify pre-existing rows as reference/tenant
+    try:
+        from app.commands.backfill_hybrid_tenancy_scope import init_app as init_hybrid_scope
+        init_hybrid_scope(app)
+        app.logger.info("✅ Hybrid tenancy scope backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register hybrid tenancy scope backfill CLI: {e}")
+
     # BIZBOK Strategy & Motivation backfill CLI command
     try:
         from scripts.backfill_strategy_motivation_elements import init_app as init_strat_backfill

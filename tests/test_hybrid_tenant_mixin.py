@@ -110,6 +110,68 @@ def test_reference_row_is_read_only_inside_a_tenant_request(db_session, tenant_c
             db_session.flush()
 
 
+def test_platform_write_context_lets_a_platform_write_edit_a_reference_row(
+    db_session, tenant_ctx, make_org
+):
+    """platform_write_context is the escape hatch a platform-admin route
+    (e.g. activate_extension in app/main/framework_management_routes.py)
+    uses to edit the shared catalogue despite still carrying its own
+    organisation's tenant context -- the same write the test above confirms
+    an ordinary tenant request cannot make."""
+    from app.middleware.tenant_isolation import platform_write_context
+    from app.models.framework import EnterpriseArchitectureFramework
+
+    org = make_org("hybrid-platform-writer")
+    reference = _framework(
+        "Platform-editable reference framework", f"PLAT-{uuid.uuid4().hex[:10]}",
+        tenancy_scope="reference", organization_id=None,
+    )
+    db_session.add(reference)
+    db_session.flush()
+    reference_id = reference.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org.id):
+        loaded = EnterpriseArchitectureFramework.query.filter_by(id=reference_id).first()
+        assert loaded is not None
+        with platform_write_context():
+            loaded.name = "Platform edit"
+            db_session.flush()
+
+        # Restored once the block exits: an ordinary write right after is
+        # still refused, proving this did not leave tenant scoping disabled.
+        loaded.name = "Tenant attempted edit after the block"
+        with pytest.raises(PermissionError, match="reference rows are read-only"):
+            db_session.flush()
+
+
+def test_bulk_update_inside_a_tenant_request_is_refused(db_session, tenant_ctx, make_org):
+    """Model.query.filter(...).update(...) never touches session.new/dirty,
+    so before_flush's ownership/scope checks cannot see it; a WHERE-scoped
+    bulk update would still let a tenant set organization_id/tenancy_scope
+    on their own row to anything, e.g. reparenting it into the shared
+    catalogue. Refused outright instead -- the ORM per-instance path (which
+    before_flush does protect) is the only way to write these tables inside
+    a tenant request."""
+    from app.models.framework import EnterpriseArchitectureFramework
+
+    org = make_org("hybrid-bulk-write")
+    own_row = _framework(
+        f"Own row {uuid.uuid4().hex[:10]}", f"BULK-{uuid.uuid4().hex[:10]}",
+        tenancy_scope="tenant", organization_id=org.id,
+    )
+    db_session.add(own_row)
+    db_session.flush()
+    own_row_id = own_row.id
+    db_session.expunge_all()
+
+    with tenant_ctx(org.id):
+        with pytest.raises(PermissionError, match="bulk update/delete"):
+            EnterpriseArchitectureFramework.query.filter_by(id=own_row_id).update(
+                {"organization_id": None, "tenancy_scope": "reference"}
+            )
+
+
 def test_a_new_tenant_row_is_stamped_with_organisation_and_scope(db_session, tenant_ctx, make_org):
     """A row created with no organization_id/tenancy_scope inside a tenant
     request is stamped with the caller's own organisation and "tenant",

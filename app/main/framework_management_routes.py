@@ -18,6 +18,7 @@ from app.models.framework_configuration import (
     FrameworkInstance,
 )
 from app.middleware.tenant_decorators import platform_admin_required
+from app.middleware.tenant_isolation import platform_write_context
 
 framework_management_bp = Blueprint(
     "framework_management", __name__, url_prefix="/framework-management"
@@ -217,10 +218,12 @@ def deploy_configuration():
         db.session.add(instance)
         db.session.commit()
 
-        # Update configuration status
-        configuration = CapabilityFrameworkConfiguration.query.get(data["configuration_id"])
-        if configuration:
-            configuration.status = "active"
+        # Update configuration status. configuration may be a reference row
+        # (see platform_write_context's own docstring for why that matters).
+        with platform_write_context():
+            configuration = CapabilityFrameworkConfiguration.query.get(data["configuration_id"])
+            if configuration:
+                configuration.status = "active"
 
         return jsonify(
             {
@@ -251,8 +254,13 @@ def activate_extension(extension_id=None):
             if not extension:
                 return jsonify({"success": False, "message": f"Extension '{name}' not found"}), 404
 
-        # Update download count
-        extension.download_count = extension.download_count + 1
+        # Update download count. extension is almost always a reference row
+        # (the platform-provided catalogue) -- platform_write_context lets a
+        # platform admin's write through the same way a CLI/migration write
+        # already does, rather than hitting "reference rows are read-only".
+        with platform_write_context():
+            extension.download_count = extension.download_count + 1
+            db.session.flush()
 
         # In a real implementation, this would:
         # 1. Download extension files
@@ -284,41 +292,47 @@ def apply_template():
     data = request.get_json()
 
     try:
-        template = FrameworkConfigurationTemplate.query.get_or_404(data["template_id"])
+        with platform_write_context():
+            template = FrameworkConfigurationTemplate.query.get_or_404(data["template_id"])
 
-        # Create new configuration from template
-        configuration = CapabilityFrameworkConfiguration(
-            configuration_name=data["configuration_name"],
-            configuration_description=data.get("description", template.template_description),
-            configuration_code=f"AUTO_{template.template_code}_{datetime.now().strftime('%Y%m%d')}",
-            base_framework=template.template_configuration.get(
-                "base_framework", "Unified_Manufacturing_Excellence"
-            ),
-            organization_name=data.get("organization_name"),
-            organization_type=data.get("organization_type"),
-            industry_focus=template.template_category,
-            enabled_domains=template.default_domains,
-            enabled_extensions=template.default_extensions,
-            status="draft",
-            configuration_owner=data.get("configuration_owner", "System"),
-        )
+            # Create new configuration from template. Platform-level like the
+            # template it comes from (this route takes no tenant organisation
+            # input, just free-text organization_name/organization_type), so
+            # it is a reference row, not auto-stamped to the calling admin's
+            # own organisation.
+            configuration = CapabilityFrameworkConfiguration(
+                configuration_name=data["configuration_name"],
+                configuration_description=data.get("description", template.template_description),
+                configuration_code=f"AUTO_{template.template_code}_{datetime.now().strftime('%Y%m%d')}",
+                base_framework=template.template_configuration.get(
+                    "base_framework", "Unified_Manufacturing_Excellence"
+                ),
+                organization_name=data.get("organization_name"),
+                organization_type=data.get("organization_type"),
+                industry_focus=template.template_category,
+                enabled_domains=template.default_domains,
+                enabled_extensions=template.default_extensions,
+                status="draft",
+                configuration_owner=data.get("configuration_owner", "System"),
+                tenancy_scope="reference",
+            )
 
-        # Apply template configuration
-        if template.template_configuration:
-            # Parse and apply template settings
-            import json
+            # Apply template configuration
+            if template.template_configuration:
+                # Parse and apply template settings
+                import json
 
-            template_config = json.loads(template.template_configuration)
-            for key, value in template_config.items():
-                if hasattr(configuration, key):
-                    setattr(configuration, key, value)
+                template_config = json.loads(template.template_configuration)
+                for key, value in template_config.items():
+                    if hasattr(configuration, key):
+                        setattr(configuration, key, value)
 
-        db.session.add(configuration)
+            db.session.add(configuration)
 
-        # Update template usage count
-        template.usage_count = template.usage_count + 1
+            # Update template usage count
+            template.usage_count = template.usage_count + 1
 
-        db.session.commit()
+            db.session.commit()
 
         return jsonify(
             {
