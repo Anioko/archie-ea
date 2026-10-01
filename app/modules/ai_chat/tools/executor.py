@@ -1011,19 +1011,23 @@ class ToolExecutor:
     # ------------------------------------------------------------------ #
 
     def _tool_create_risk(self, args: dict) -> dict:
-        from app.models.solution_lifecycle_models import SolutionRisk
-        risk = SolutionRisk(
+        """Writes through the canonical risk register (app/services/risk_service.py)
+        -- the one writer -- instead of creating a SolutionRisk row directly,
+        so the superseded store gets no new row."""
+        from app.modules.solutions_strategic.v2.routes.solution_routes import _level_to_int
+        from app.services import risk_service
+
+        description = args["risk_description"]
+        risk = risk_service.create_risk(
             solution_id=args["solution_id"],
-            risk_description=args["risk_description"],
-            impact=args["impact"],
-            probability=args["probability"],
-            mitigation=args.get("mitigation", ""),
-            status="open",
-            created_by_id=self.user_id,
+            title=description[:255],
+            description=description,
+            likelihood=_level_to_int(args["probability"]),
+            impact=_level_to_int(args["impact"]),
+            owner=None,
+            mitigation_plan=args.get("mitigation") or None,
         )
-        db.session.add(risk)
-        sync_archimate_element(risk)
-        db.session.commit()
+        risk_service.add_risk_link(risk.id, "solution", args["solution_id"])
         return {
             "success": True,
             "result": {"id": risk.id, "entity_type": "risk", "solution_id": args["solution_id"]},
