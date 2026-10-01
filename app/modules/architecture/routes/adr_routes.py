@@ -22,7 +22,7 @@ links and bookmarks keep working.
 - POST /architecture/adrs/<id>/approve - Approve ADR
 - POST /architecture/adrs/<id>/reject - Reject ADR
 
-architecture_decisions is the only writer (lead ruling, R1-B09): approve and
+architecture_decisions is the only writer (lead ruling): approve and
 reject already wrote only the canonical `ArchitectureDecision` row through
 `ADRService`, never `ArchitectureDecisionRecord`, so they needed no change.
 `update_adr` did duplicate `arch_decisions.edit_decision` over that same
@@ -162,7 +162,7 @@ def view_record(adr_id: int):
     register's id so a caller can also reach it at
     `arch_decisions.view_decision`.
 
-    architecture_decisions is the only writer (lead ruling, R1-B09): once
+    architecture_decisions is the only writer (lead ruling): once
     this record is paired (`retired_into_id` set), its shared fields
     (title/status/context/decision/rationale/consequences) are a frozen
     snapshot from pairing time, not live state -- the canonical register at
@@ -218,8 +218,8 @@ def update_adr(adr_id: int):
     write core fields through `ADRService.update_adr` straight onto the
     canonical `ArchitectureDecision` row, a second writable implementation
     of the same job `arch_decisions.edit_decision` already does over the
-    same row. architecture_decisions is the only writer (lead ruling,
-    R1-B09) -- not just the only table, the one code path -- so this route
+    same row. architecture_decisions is the only writer (lead ruling) --
+    not just the only table, the one code path -- so this route
     no longer processes form data itself.
     """
     return redirect(url_for("arch_decisions.edit_decision", decision_id=adr_id))

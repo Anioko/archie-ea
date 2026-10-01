@@ -194,7 +194,7 @@ def delete_decision(decision_id):
     decision = ArchitectureDecision.query.get_or_404(decision_id)
     decision_ref = decision.decision_id
     decision_title = decision.title
-    # The legacy register stays as read history (lead ruling, R1-B09): a
+    # The legacy register stays as read history (lead ruling): a
     # paired ArchitectureDecisionRecord is orphaned, not deleted, so this
     # canonical delete never fails on architecture_decision_records_retired_into_id_fkey.
     paired_records = db.session.execute(

@@ -143,8 +143,50 @@ def _backfill_decision_ledger_org(conn, dry_run, org_id, echo):
         )
         stats["assigned_orphans"] = result.rowcount or 0
         stats["orphan"] = 0
+    elif remaining_orphan:
+        # Safe (invisible to every organisation, per TenantMixin's own
+        # filter) but otherwise unreachable: surface it where a platform
+        # administrator already looks for exactly this shape of problem,
+        # rather than a second quarantine list only this command knows about
+        # (same reuse as the review-queue backfill's quarantine surfacing).
+        _surface_unresolved_decision_ledger_rows(conn)
 
     return stats
+
+
+def _surface_unresolved_decision_ledger_rows(conn):
+    from datetime import datetime
+
+    from app.models.error_event import ErrorEvent
+
+    rows = conn.execute(text(
+        'SELECT id, capability_id FROM "decision_ledger" WHERE organization_id IS NULL'
+    )).fetchall()
+    now = datetime.utcnow()
+    for row_id, capability_id in rows:
+        fingerprint = f"decision-ledger-quarantine:{row_id}"[:64]
+        existing = ErrorEvent.query.filter_by(fingerprint=fingerprint, resolved=False).first()
+        if existing:
+            existing.occurrence_count = (existing.occurrence_count or 0) + 1
+            existing.last_seen_at = now
+            continue
+        db.session.add(ErrorEvent(
+            fingerprint=fingerprint,
+            source="server",
+            level="WARNING",
+            message=(
+                f"decision_ledger #{row_id} (capability_id={capability_id!r}) has no "
+                "organisation and cannot be resolved by the consolidation backfill. "
+                "Attribute it an organisation, then re-run the backfill."
+            ),
+            location="app.commands.backfill_decision_register_consolidation:decision_ledger",
+            organization_id=None,
+            occurrence_count=1,
+            first_seen_at=now,
+            last_seen_at=now,
+            resolved=False,
+        ))
+    db.session.commit()
 
 
 def run_backfill(dry_run=False, org_id=None, echo=None):

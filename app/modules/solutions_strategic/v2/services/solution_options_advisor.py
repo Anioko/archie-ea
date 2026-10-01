@@ -17,7 +17,7 @@ disposes). Never raises to the caller; returns an error dict on failure.
 import json
 import logging
 import re
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from app import db
@@ -120,11 +120,11 @@ class SolutionOptionsAdvisor:
 
     @staticmethod
     def latest(solution_id: int):
-        from app.models.adr import ArchitectureDecisionRecord
+        from app.models.architecture_decision import ArchitectureDecision
         return (
-            ArchitectureDecisionRecord.query
+            ArchitectureDecision.query
             .filter_by(solution_id=solution_id)
-            .order_by(ArchitectureDecisionRecord.id.desc())
+            .order_by(ArchitectureDecision.id.desc())
             .first()
         )
 
@@ -132,33 +132,26 @@ class SolutionOptionsAdvisor:
     def set_status(cls, adr_id: int, status: str, user_id: int) -> Dict[str, Any]:
         """Change status on the one canonical writer.
 
-        architecture_decisions is the only writer (lead ruling, R1-B09):
-        the legacy ArchitectureDecisionRecord is read history and takes no
-        new writes, including this one. Status lands on the paired
-        ArchitectureDecision row; the legacy row's own `status` /
-        `decision_date` stay exactly as they were when it was created or
-        last paired.
+        architecture_decisions is the only writer (lead ruling):
+        _persist() above creates every new decision there directly, with no
+        paired legacy row at all, so adr_id here is always a canonical
+        ArchitectureDecision id -- not .query.get(), which can return a
+        cached cross-tenant row from the identity map on a hit.
         """
-        from app.models.adr import ArchitectureDecisionRecord
+        from app.models.architecture_decision import ArchitectureDecision
+
         valid = {"proposed", "accepted", "rejected", "deprecated", "superseded"}
         if status not in valid:
             return {"success": False, "error": f"Invalid status. Allowed: {sorted(valid)}"}
-        adr = db.session.get(ArchitectureDecisionRecord, adr_id)
+        adr = ArchitectureDecision.query.filter_by(id=adr_id).first()
         if adr is None:
             return {"success": False, "error": "Decision not found."}
-        paired = adr.pair_with_canonical_register()
-        if paired is None:
-            return {"success": False, "error": "Decision has no organisation to pair with the canonical register."}
-        paired.status = status
-        applied_decision_date = None
+        adr.status = status
         if status == "accepted":
-            paired.decided_at = datetime.utcnow()
-            applied_decision_date = date.today()
+            adr.decided_at = datetime.utcnow()
         db.session.commit()
         result = cls.to_dict(adr)
         result["status"] = status
-        if applied_decision_date is not None:
-            result["decision_date"] = applied_decision_date.isoformat()
         return {"success": True, "adr": result}
 
     # ------------------------------------------------------------------ #
@@ -214,22 +207,13 @@ class SolutionOptionsAdvisor:
 
     @staticmethod
     def _persist(solution, parsed: Dict[str, Any], user_id: int):
-        from app.models.adr import ArchitectureDecisionRecord
+        from app.models.architecture_decision import ArchitectureDecision
 
         options = parsed["options"]
         decision = parsed["decision"]
 
-        # next ADR number for this solution
-        existing = (
-            ArchitectureDecisionRecord.query
-            .filter_by(solution_id=solution.id)
-            .order_by(ArchitectureDecisionRecord.adr_number.desc())
-            .first()
-        )
-        next_num = (existing.adr_number + 1) if existing else 1
-
-        adr = ArchitectureDecisionRecord(
-            adr_number=next_num,
+        adr = ArchitectureDecision(
+            decision_id=ArchitectureDecision.next_decision_id(),
             title=(decision.get("title") or f"Architecture decision for {solution.name}")[:200],
             solution_id=solution.id,
             status="proposed",
@@ -237,15 +221,14 @@ class SolutionOptionsAdvisor:
             decision=decision.get("decision") or "—",
             rationale=decision.get("rationale") or "—",
             consequences=decision.get("consequences") or "—",
-            alternatives_considered=json.dumps(options),
+            alternatives=json.dumps(options),
             estimated_effort=(decision.get("estimated_effort") or "")[:50] or None,
             business_value=(decision.get("business_value") or "")[:50] or None,
-            decided_by="AI Solution Architect (proposed)",
+            decided_by_label="AI Solution Architect (proposed)",
+            organization_id=solution.organization_id,
         )
         db.session.add(adr)
         db.session.flush()
-        # Also visible in the one canonical decision register.
-        adr.pair_with_canonical_register()
         db.session.commit()
         logger.info("AI-3 ADR %s generated for solution %s (%d options)",
                     adr.id, solution.id, len(options))
@@ -254,12 +237,12 @@ class SolutionOptionsAdvisor:
     @staticmethod
     def to_dict(adr) -> Dict[str, Any]:
         try:
-            options = json.loads(adr.alternatives_considered) if adr.alternatives_considered else []
+            options = json.loads(adr.alternatives) if adr.alternatives else []
         except (ValueError, TypeError):
             options = []
         return {
             "id": adr.id,
-            "adr_number": adr.adr_number,
+            "decision_id": adr.decision_id,
             "title": adr.title,
             "status": adr.status,
             "context": adr.context,
@@ -269,6 +252,5 @@ class SolutionOptionsAdvisor:
             "estimated_effort": adr.estimated_effort,
             "business_value": adr.business_value,
             "options": options,
-            "decision_date": adr.decision_date.isoformat() if adr.decision_date else None,
             "generated_at": adr.created_at.isoformat() if getattr(adr, "created_at", None) else None,
         }

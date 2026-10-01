@@ -5,7 +5,7 @@
 
 ## Context
 
-The decision register consolidation (R1-B09) found that `app/services/decision_ledger.py`'s
+The decision register consolidation found that `app/services/decision_ledger.py`'s
 `DecisionLedger` class — an in-memory ledger with cryptographic provenance, distinct from the
 `DecisionLedger` **model** in `app/models/decision_ledger.py` — has two real defects: its
 constructor loads every organisation's rows with no tenant predicate when run outside a request
@@ -35,7 +35,7 @@ $ git grep -n "from app.services.arb_workflow import\|import arb_workflow\b" ori
 command or test constructs it. (It is not the same class as `app/services/arb_workflow_service.py`'s
 `ARBWorkflowService`, a same-named class in a sibling file that *is* live, used by
 `app/routes/enterprise_api.py`, and does not reference `decision_ledger.py` at all — this was flagged
-as a possible source of confusion in an earlier R1-B09 review round.) Both `decision_ledger.py`'s
+as a possible source of confusion in an earlier review round.) Both `decision_ledger.py`'s
 service classes and all of `arb_workflow.py` are unreachable from the running product.
 
 ## Decision
@@ -45,7 +45,7 @@ Remove both modules and their one cross-reference:
 - delete `app/services/decision_ledger.py` (`DecisionType`, `DecisionStatus`, `DecisionEntry`,
   `DecisionLedger` — the service classes; the DB model of the same name in
   `app/models/decision_ledger.py` is untouched and stays live, fenced by TenantMixin per an earlier
-  R1-B09 fix)
+  fix in this same consolidation)
 - delete `app/services/arb_workflow.py` (`WorkflowStage`, `WorkflowAction`, `WorkflowStep`,
   `WorkflowInstance`, `ARBWorkflowService` — its only caller)
 - update the docstring cross-reference in `app/models/decision_ledger.py` to stop naming the now-
@@ -62,7 +62,7 @@ built as a genuinely tenant-scoped, paired writer from the start rather than res
 ## Consequences
 
 - No behaviour change: neither module was reachable, so no route, job or live test exercised them.
-- Closes the R1-B09 final-check finding (decision_ledger service leaves a second writable,
+- Closes a final-check finding (decision_ledger service leaves a second writable,
   unfenced, unpaired register) by removing the register rather than fixing a path nothing used.
 - `tests/test_decision_ledger_service_retired.py` pins the removal — asserts both modules can no
   longer be imported and nothing else in the codebase still references them.

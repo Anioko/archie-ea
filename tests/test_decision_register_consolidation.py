@@ -111,28 +111,154 @@ def test_pairing_never_visible_to_another_organisation(db_session, make_org, ten
         assert ArchitectureDecision.query.filter_by(title="Org A's decision").first() is None
 
 
-def test_repointed_constructor_site_pairs_immediately(db_session, make_org, tenant_ctx):
-    """The pattern every repointed call site now follows: add, flush, pair, commit."""
-    org = make_org("adr-site")
-    with tenant_ctx(org.id):
-        adr = ArchitectureDecisionRecord(
-            adr_number=1,
-            title="AI-recorded decision",
-            status="proposed",
-            context="ctx",
-            decision="dec",
-            rationale="rat",
-            consequences="cons",
-        )
-        db.session.add(adr)
-        db.session.flush()
-        adr.pair_with_canonical_register()
-        db.session.commit()
+def _legacy_record_count():
+    return ArchitectureDecisionRecord.query.count()
 
-        assert adr.retired_into_id is not None
-        paired = ArchitectureDecision.query.filter_by(id=adr.retired_into_id).first()
-        assert paired.organization_id == org.id
-        assert paired.title == "AI-recorded decision"
+
+def test_multi_domain_chat_decision_writes_only_the_canonical_row(db_session, make_org, tenant_ctx):
+    """architecture_decisions is the only writer: the AI chat
+    decision-recording path must create a canonical row directly and
+    never touch architecture_decision_records, in either organisation."""
+    from app.modules.ai_chat.services.multi_domain_chat_service import MultiDomainChatService
+
+    org_a = make_org("chat-decision-a")
+    org_b = make_org("chat-decision-b")
+    before = _legacy_record_count()
+
+    with tenant_ctx(org_a.id):
+        svc = MultiDomainChatService(user_id=None)
+        svc._detect_and_handle_decision(
+            "record this decision: use one message bus for all services",
+            "Acknowledged.",
+            {},
+        )
+
+    decision = (
+        ArchitectureDecision.query
+        .filter_by(title="use one message bus for all services"[:200])
+        .first()
+    )
+    assert decision is not None
+    assert decision.organization_id == org_a.id
+    assert _legacy_record_count() == before, "no row should ever land in the superseded store"
+
+    with tenant_ctx(org_b.id):
+        svc_b = MultiDomainChatService(user_id=None)
+        svc_b._detect_and_handle_decision(
+            "record this decision: use one message bus for all services", "Acknowledged.", {},
+        )
+    decision_b = (
+        ArchitectureDecision.query
+        .filter_by(title="use one message bus for all services"[:200], organization_id=org_b.id)
+        .first()
+    )
+    assert decision_b is not None
+    assert decision_b.id != decision.id
+
+
+def test_workbench_kernel_decision_writes_only_the_canonical_row(db_session, make_org, tenant_ctx):
+    from app.models.solution_architect_models import SolutionADRLink, SolutionAnalysisSession, SolutionSessionStatus
+    from app.modules.ai_chat.services.workbench_kernel import WorkbenchKernel
+
+    before = _legacy_record_count()
+
+    def _record_for(org, title):
+        session = SolutionAnalysisSession(
+            name=f"ws-{uuid.uuid4().hex[:8]}", status=SolutionSessionStatus.IN_PROGRESS,
+            organization_id=org.id,
+        )
+        db_session.add(session)
+        db_session.flush()
+        with tenant_ctx(org.id):
+            kernel = WorkbenchKernel(user_id=None)
+            result = kernel.record_architecture_decision(
+                workspace_id=session.id, title=title,
+                chosen_option="Option A", rationale="Because A is simpler",
+            )
+        assert result["success"] is True
+        return session, result["decision_id"]
+
+    org_a = make_org("workbench-decision-a")
+    org_b = make_org("workbench-decision-b")
+    session_a, decision_id_a = _record_for(org_a, "Workbench decision A")
+    session_b, decision_id_b = _record_for(org_b, "Workbench decision B")
+
+    decision_a = ArchitectureDecision.query.filter_by(id=decision_id_a).first()
+    decision_b = ArchitectureDecision.query.filter_by(id=decision_id_b).first()
+    assert decision_a.organization_id == org_a.id
+    assert decision_b.organization_id == org_b.id
+    assert _legacy_record_count() == before, "no row should ever land in the superseded store"
+
+    link_a = SolutionADRLink.query.filter_by(session_id=session_a.id).first()
+    assert link_a.adr_id == decision_a.id
+
+
+def test_sad_governance_generator_decision_writes_only_the_canonical_row(db_session, make_org, tenant_ctx):
+    from app.models.solution_architect_models import SolutionAnalysisSession, SolutionSessionStatus
+    from app.modules.ai_chat.services.workbench_kernel import SADGovernanceGenerator, WorkbenchKernel
+
+    before = _legacy_record_count()
+
+    def _record_for(org, title):
+        session = SolutionAnalysisSession(
+            name=f"ws-{uuid.uuid4().hex[:8]}", status=SolutionSessionStatus.IN_PROGRESS,
+            organization_id=org.id,
+        )
+        db_session.add(session)
+        db_session.flush()
+        with tenant_ctx(org.id):
+            kernel = WorkbenchKernel(user_id=None)
+            gov = SADGovernanceGenerator(kernel=kernel, user_id=None)
+            result = gov.generate_decision_record(
+                workspace_id=session.id, title=title,
+                chosen_option="Option B", rationale="Because B scales better",
+            )
+        assert result["success"] is True
+        return result["adr_id"]
+
+    org_a = make_org("sad-gov-a")
+    org_b = make_org("sad-gov-b")
+    decision_id_a = _record_for(org_a, "SAD governance decision A")
+    decision_id_b = _record_for(org_b, "SAD governance decision B")
+
+    decision_a = ArchitectureDecision.query.filter_by(id=decision_id_a).first()
+    decision_b = ArchitectureDecision.query.filter_by(id=decision_id_b).first()
+    assert decision_a.organization_id == org_a.id
+    assert decision_b.organization_id == org_b.id
+    assert _legacy_record_count() == before, "no row should ever land in the superseded store"
+
+
+def test_solution_options_advisor_persist_writes_only_the_canonical_row(db_session, make_org):
+    from app.models.solution_models import Solution
+    from app.modules.solutions_strategic.v2.services.solution_options_advisor import SolutionOptionsAdvisor
+
+    before = _legacy_record_count()
+
+    def _persist_for(org, title):
+        solution = Solution(name=f"sol-{uuid.uuid4().hex[:8]}", organization_id=org.id)
+        db_session.add(solution)
+        db_session.flush()
+        parsed = {
+            "options": [{"name": "A"}, {"name": "B"}],
+            "decision": {
+                "title": title, "context": "ctx", "decision": "dec", "rationale": "rat",
+                "consequences": "cons", "estimated_effort": "2 weeks", "business_value": "high",
+            },
+        }
+        SolutionOptionsAdvisor._persist(solution, parsed, user_id=None)
+        return solution
+
+    org_a = make_org("options-advisor-a")
+    org_b = make_org("options-advisor-b")
+    solution_a = _persist_for(org_a, "Options advisor decision A")
+    solution_b = _persist_for(org_b, "Options advisor decision B")
+
+    decision_a = ArchitectureDecision.query.filter_by(solution_id=solution_a.id).first()
+    decision_b = ArchitectureDecision.query.filter_by(solution_id=solution_b.id).first()
+    assert decision_a.organization_id == org_a.id
+    assert decision_a.decided_by_label == "AI Solution Architect (proposed)"
+    assert decision_b.organization_id == org_b.id
+    assert _legacy_record_count() == before, "no row should ever land in the superseded store"
 
 
 # ------------------------------------------------------- backfill command
@@ -342,7 +468,7 @@ def test_solution_teardown_deletes_the_paired_canonical_row_too(app):
 
 
 def test_set_status_updates_the_canonical_row_and_leaves_the_legacy_row_frozen(db_session, make_org, tenant_ctx):
-    """architecture_decisions is the only writer (lead ruling, R1-B09):
+    """architecture_decisions is the only writer (lead ruling):
     SolutionOptionsAdvisor.set_status() now writes status only to the paired
     ArchitectureDecision; the legacy ArchitectureDecisionRecord is read
     history and takes no new writes, so its own `status` stays exactly what
@@ -469,7 +595,7 @@ def test_adr_record_json_api_surfaces_its_canonical_pairing(db_session, make_org
 def test_view_record_keeps_showing_the_frozen_title_after_the_canonical_row_is_edited(
     db_session, make_org, tenant_ctx, client, login_as
 ):
-    """architecture_decisions is the only writer (lead ruling, R1-B09): once
+    """architecture_decisions is the only writer (lead ruling): once
     paired, this legacy JSON read surface is a frozen snapshot, not a second
     live view of the same data. Editing the canonical row through
     `arch_decisions.edit_decision` must NOT be mirrored back here -- this
@@ -635,7 +761,7 @@ def test_deleting_a_paired_canonical_decision_orphans_but_keeps_the_legacy_recor
     """Fix 2 (final check DEFECT-2): deleting a paired canonical decision
     used to raise ForeignKeyViolation on
     architecture_decision_records_retired_into_id_fkey. The legacy register
-    stays as read history (lead ruling, R1-B09), so the fix orphans the
+    stays as read history (lead ruling), so the fix orphans the
     paired record (retired_into_id -> NULL) rather than deleting it, and the
     canonical delete succeeds. Checked across two organisations so org A's
     delete cannot reach org B's pairing.
