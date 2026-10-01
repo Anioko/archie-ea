@@ -184,6 +184,18 @@ def boot_live_server(request, ai_protocol_stub, app, extra_env=None):
     `extra_env` overrides configuration for this server only, so a module can
     exercise a feature flag without switching it on for every other journey.
     """
+    # The smoke server starts against the shared candidate database before the
+    # ORM seeding below runs. When a branch adds nullable columns to existing
+    # tables, requests can 500 on the first SELECT unless the add-only repair
+    # path runs first. Production already does init-db -> reconcile-schema on
+    # boot; mirror that here so browser journeys observe the real branch code,
+    # not drift left behind by an older local schema.
+    from app.commands.reconcile_schema import _reconcile
+
+    with app.app_context():
+        _added, failed, _missing, _blocking = _reconcile(dry_run=False)
+        assert not failed, "smoke live_server could not reconcile schema: %s" % failed
+
     port = _free_port()
     env = dict(os.environ)
     env.update(extra_env or {})
