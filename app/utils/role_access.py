@@ -818,6 +818,11 @@ _MY_WORK_LINKS = {
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # The AI Systems Register (/genome/ai-systems) shipped routed and
+        # rendered but linked from no sidebar, so the persona answerable for
+        # "which AI systems do we run, on what model and data" could only
+        # reach it by typing the URL. "bot" is unused elsewhere in these zones.
+        _link("AI Systems", "ai_systems_genome.ai_systems", "bot"),
         # Read access to the organisation's audit trail: export and verify.
         _link("Audit Log", "admin.audit_log_viewer", "scroll-text"),
     ],
@@ -833,6 +838,11 @@ _MY_WORK_LINKS = {
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # The AI Systems Register (/genome/ai-systems) shipped routed and
+        # rendered but linked from no sidebar, so the persona answerable for
+        # "which AI systems do we run, on what model and data" could only
+        # reach it by typing the URL. "bot" is unused elsewhere in these zones.
+        _link("AI Systems", "ai_systems_genome.ai_systems", "bot"),
     ],
 }
 

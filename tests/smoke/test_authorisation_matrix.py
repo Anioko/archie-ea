@@ -55,6 +55,10 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # AI Systems Register: @login_required and no role gate, so every
+    # archetype reaches it; the rows are fenced per organisation by the slice
+    # builder. It is linked from the security and data architects' sidebars.
+    "/genome/ai-systems":      set(ARCHETYPES),
     # Traceability check and element properties: @login_required and no role
     # gate on the page, so every archetype reads them; the answer is fenced
     # per tenant by the service behind each page. Saving a property definition

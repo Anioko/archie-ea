@@ -909,6 +909,34 @@ def test_non_solution_architect_reaches_interface_register_from_own_sidebar(
     assert "Traceback" not in body
 
 
+@pytest.mark.parametrize("archetype", ["security_architect", "data_architect"])
+def test_architect_registers_the_copilot_from_ai_systems_sidebar_link(
+    page, live_server, seeded, archetype
+):
+    """The AI Systems Register was routed but linked from no sidebar. Click the
+    real sidebar link, press the real register button, reload, and confirm the
+    copilot row persisted and no invented estate system appeared beside it."""
+    _login(page, live_server, seeded["emails"][archetype])
+
+    _visit(page, live_server, "/")
+    link = page.get_by_test_id("sidebar").get_by_role("link", name="AI Systems", exact=True)
+    assert link.count() == 1, "%s's sidebar has no 'AI Systems' link" % archetype
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        link.click()
+    assert "/genome/ai-systems" in page.url
+
+    with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT):
+        page.get_by_role("button", name="Generate / refresh register").click()
+    page.reload(wait_until="domcontentloaded")
+
+    body = page.inner_text("body")
+    assert "Entelim AI Copilot" in body, "the registered copilot did not persist"
+    assert "Fraud Scoring Engine" not in body
+    assert "Legacy Ticket Classifier" not in body
+    assert "Internal Server Error" not in body
+    assert "Traceback" not in body
+
+
 def test_an_archetype_cannot_reach_another_personas_section(page, live_server, seeded):
     """Authorisation is part of the journey, not a separate concern."""
     _login(page, live_server, seeded["emails"]["procurement"])
