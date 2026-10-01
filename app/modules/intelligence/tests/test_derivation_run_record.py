@@ -103,40 +103,43 @@ def test_measured_zero_is_distinguishable_from_never_ran(app, db_session, make_o
     assert never_ran_record is None
 
 
-def test_run_record_uses_timezone_aware_utc_timestamps(app):
-    from app.modules.intelligence.services.derivation_runner import (
-        DerivationResult,
-        DerivationRunner,
-        ENGINE_VERSION,
-    )
+def test_run_record_round_trips_as_utc_after_reload(app, db_session, make_org):
+    """PR 304 fix round (ruling on the second review): the DerivationRun
+    columns stay plain UTC -- this codebase stores timestamps as plain UTC
+    columns throughout (about 1,400 plain against about 70 zone-aware), so
+    the column types are not changed here. This replaces the earlier test,
+    which intercepted the row before it reached the database and checked
+    for a timezone-aware value in memory. Instead: run a real derivation,
+    reload the saved row from the database with a fresh query, and check
+    the stored started_at/finished_at equal the UTC time of the run, not
+    local time, within a few seconds.
+    """
+    from app.modules.intelligence.models.derivation_run import DerivationRun
+    from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
-    captured = {}
+    org = make_org("dr-run-utc-roundtrip")
+    a = _make_element(db_session, org.id, "a")
+    b = _make_element(db_session, org.id, "b")
+    _make_relationship(db_session, org.id, a, b, "Serving")
+    db_session.commit()
+    org_id = org.id
 
-    def _capture(row):
-        captured["row"] = row
-
-    result = DerivationResult(
-        explicit_count=1,
-        derived_count=0,
-        ratio=0.0,
-        duration_ms=25,
-        engine_version=ENGINE_VERSION,
-        derived=[],
-    )
+    before_utc = _dt.datetime.utcnow()
+    with app.app_context():
+        DerivationRunner().run_and_persist(org_id, trigger="on_demand")
+    after_utc = _dt.datetime.utcnow()
 
     with app.app_context():
-        original_add = db.session.add
-        try:
-            db.session.add = _capture
-            DerivationRunner()._record_run(organization_id=7, result=result, trigger="on_demand")
-        finally:
-            db.session.add = original_add
+        db.session.expire_all()
+        row = db.session.execute(
+            db.select(DerivationRun).where(DerivationRun.organization_id == org_id)
+        ).scalar_one()
+        reloaded_started_at = row.started_at
+        reloaded_finished_at = row.finished_at
 
-    row = captured["row"]
-    assert row.finished_at.tzinfo is not None
-    assert row.finished_at.utcoffset() == _dt.timedelta(0)
-    assert row.started_at.tzinfo is not None
-    assert row.started_at.utcoffset() == _dt.timedelta(0)
+    tolerance = _dt.timedelta(seconds=5)
+    assert before_utc - tolerance <= reloaded_finished_at <= after_utc + tolerance
+    assert before_utc - tolerance <= reloaded_started_at <= after_utc + tolerance
 
 
 # --- Acceptance criterion 3: failed / lock-skipped runs write no row -------
