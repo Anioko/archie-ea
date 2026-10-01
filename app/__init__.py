@@ -108,12 +108,19 @@ def create_app(config=None):
     # 7. All blueprints and feature-flagged modules
     init_blueprints(app)
 
-    # 7a. Solution AI Prompt admin (separate from admin_routes.py to survive deploys)
-    try:
-        from app.modules.admin.routes.solution_prompt_admin import solution_prompt_admin_bp
-        app.register_blueprint(solution_prompt_admin_bp)
-    except Exception as e:
-        app.logger.warning("Solution Prompt Admin blueprint failed: %s", e)
+    # 7a. Solution AI Prompt admin -- NOT registered (pr307-review-v2.md,
+    # finding 2; same empirical fact app/utils/role_access.py's NAV-1 comment,
+    # 27 Aug 2026, already recorded): app.modules.admin.v2.routes.admin_routes
+    # (admin_bp_v2, registered in init_blueprints above) defines the same
+    # /admin/solution-prompts* routes and always wins the URL map in the
+    # guardrail-enabled deployment this app actually runs. Registering this
+    # blueprint too made app.modules.admin.routes.solution_prompt_admin's
+    # identical handlers dead code that still looked live -- a route
+    # decorator, its own tests, never served (ADR 0008 rule 3, one accessor
+    # per concept; scripts/check_canonical_route.py's "admin.* vs
+    # solution_prompt_admin.*" cluster). The module is left in place
+    # unregistered rather than deleted outright, in case a future change to
+    # admin_bp_v2's registration needs it back as a fallback.
 
     # 7b. Code Workbench — registered in _bootstrap/blueprints.py (removed duplicate)
 
