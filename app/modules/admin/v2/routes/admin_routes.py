@@ -4781,7 +4781,7 @@ def solution_prompts_data():
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/update", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_solution_prompt")
 def solution_prompt_update(prompt_key):
     """Save a custom override for a solution prompt."""
@@ -4857,7 +4857,7 @@ def solution_prompt_update(prompt_key):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/reset", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("reset_solution_prompt")
 def solution_prompt_reset(prompt_key):
     """Remove custom override, reverting to hardcoded default."""
@@ -5000,7 +5000,7 @@ def solution_prompt_diff(prompt_key):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("rollback_solution_prompt")
 def solution_prompt_rollback(prompt_key, version):
     """A-05: restore a prior version's content as the live override."""
