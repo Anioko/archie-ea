@@ -1698,6 +1698,17 @@ def build_gates(baseline: dict) -> list[Gate]:
              remediation="give the model TenantMixin, or list the table in "
                          "scripts/unfenced_tables.txt with a reason in review",
              tags=["static", "security"]),
+        Gate("platform-admin-coverage",
+             "a write route on a model with no tenant column at all requires "
+             "platform_admin_required, not admin_required",
+             "ratchet",
+             lambda: gate_count_checker(
+                 "platform-admin-coverage", "scripts/check_platform_admin_coverage.py",
+                 baseline.get("platform_admin_coverage", 463),
+             ),
+             remediation="run scripts/check_platform_admin_coverage.py; add "
+                         "@platform_admin_required, or 'platform-admin-ok: <reason>'",
+             tags=["static", "security"]),
         Gate("llm-boundary", "codegen emitters make no direct LLM calls (deterministic boundary)",
              "ratchet", lambda: gate_llm_boundary(baseline.get("llm_boundary", 0)),
              remediation="move the LLM call out of the emitter; the LLM may only propose "
