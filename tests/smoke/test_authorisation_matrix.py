@@ -169,6 +169,10 @@ TRANSFORMATION_API_PERMITTED = {
     "arb_member",
     "portfolio_manager",
     "cto",
+    # application_architect is in the transformation room's READ_ROLES
+    # (programme_service.py): the room named the role before it could be
+    # assigned, and promoting it makes that read access reachable.
+    "application_architect",
     "platform_admin",
 }
 
