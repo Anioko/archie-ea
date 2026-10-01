@@ -18,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import with_loader_criteria
 
 from app.extensions import db
-from app.models.mixins.core import TenantMixin
+from app.models.mixins.core import HybridTenantMixin, TenantMixin
 
 logger = logging.getLogger(__name__)
 
@@ -131,4 +131,89 @@ def install_tenant_filter(app):
             if isinstance(obj, TenantMixin) and getattr(obj, "organization_id", None) is None:
                 obj.organization_id = g.current_org_id
 
-    app.logger.info("Tenant isolation filters installed (do_orm_execute + before_flush)")
+    # R1-B20 PR 2 (TB-0160): shared-catalogue reads and writes. Generalises
+    # UnifiedCapability's own do_orm_execute/before_flush pair (bottom of
+    # app/models/unified_capability.py) across every HybridTenantMixin class
+    # at once via with_loader_criteria's base-class form -- the same
+    # mechanism _add_tenant_filter above already uses for TenantMixin.
+    @db.event.listens_for(db.session, "do_orm_execute")
+    def _add_hybrid_tenant_filter(orm_execute_state):
+        if not (
+            orm_execute_state.is_select
+            or orm_execute_state.is_update
+            or orm_execute_state.is_delete
+        ):
+            return
+        organization_id = getattr(g, "current_org_id", None)
+        if organization_id is None:
+            # No tenant context (CLI, migrations, system tasks): every row
+            # is visible, matching TenantMixin's own no-op outside a request
+            # -- a platform-only surface, not an ordinary organisation read.
+            return
+        if orm_execute_state.is_select:
+            # Own rows (reference or tenant, whichever this organisation's
+            # own id happens to be on) plus every explicitly-classified
+            # reference row. An unclassified NULL-organisation row
+            # (tenancy_scope not yet "reference") is excluded either way --
+            # the same "not automatically shared" rule
+            # UnifiedCapability.visibility_predicate documents.
+            predicate = lambda cls: db.or_(  # noqa: E731
+                cls.organization_id == organization_id,
+                db.and_(
+                    cls.organization_id.is_(None),
+                    cls.tenancy_scope == "reference",
+                ),
+            )
+        else:
+            predicate = lambda cls: cls.organization_id == organization_id  # noqa: E731
+        orm_execute_state.statement = orm_execute_state.statement.options(
+            with_loader_criteria(HybridTenantMixin, predicate, include_aliases=True)
+        )
+
+    @db.event.listens_for(db.session, "before_flush")
+    def _protect_hybrid_tenant_writes(session, flush_context, instances):
+        organization_id = getattr(g, "current_org_id", None)
+        if organization_id is None:
+            return
+
+        for row in (item for item in session.new if isinstance(item, HybridTenantMixin)):
+            if row.tenancy_scope == "reference":
+                raise PermissionError(
+                    "reference rows are read-only inside a tenant request"
+                )
+            if row.organization_id is None:
+                row.organization_id = organization_id
+            if row.organization_id != organization_id:
+                raise PermissionError(
+                    "rows owned by another organisation are read-only"
+                )
+            if row.tenancy_scope is None:
+                row.tenancy_scope = "tenant"
+
+        for row in (
+            item
+            for item in session.dirty.union(session.deleted)
+            if isinstance(item, HybridTenantMixin)
+        ):
+            from sqlalchemy import inspect as sa_inspect
+
+            history = sa_inspect(row).attrs.organization_id.history
+            original_organization_id = (
+                history.deleted[0] if history.deleted else row.organization_id
+            )
+            if original_organization_id is None:
+                raise PermissionError(
+                    "reference rows are read-only inside a tenant request"
+                )
+            if (
+                original_organization_id != organization_id
+                or row.organization_id != organization_id
+            ):
+                raise PermissionError(
+                    "rows owned by another organisation are read-only"
+                )
+
+    app.logger.info(
+        "Tenant isolation filters installed "
+        "(do_orm_execute + before_flush, TenantMixin + HybridTenantMixin)"
+    )

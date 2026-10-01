@@ -110,6 +110,7 @@ class ReferenceModelCapability(HybridTenantMixin, db.Model):
     reference_model = db.relationship("ReferenceModel", back_populates="capabilities")
     children = db.relationship(
         "ReferenceModelCapability",
+        foreign_keys=[parent_capability_id],
         backref=db.backref("parent", remote_side="ReferenceModelCapability.id"),
         cascade="all, delete-orphan",
     )
