@@ -44,8 +44,13 @@ def _login(db_session, client, login_as, user_id):
 
 
 def _world(db_session, make_org):
-    org = make_org("scoring-config")
-    tenant, platform = _user(db_session, org), _user(db_session, org, platform=True)
+    # Two organisations: the platform admin sits in org A (the configuration's
+    # creator), the refused tenant admin sits in org B -- so a pass here cannot
+    # be explained by same-org membership, only by the is_platform_admin gate.
+    org_a = make_org("scoring-config-a")
+    org_b = make_org("scoring-config-b")
+    tenant = _user(db_session, org_b)
+    platform = _user(db_session, org_a, platform=True)
     db_session.commit()
     return tenant.id, platform.id
 

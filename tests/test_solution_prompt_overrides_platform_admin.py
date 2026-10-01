@@ -56,8 +56,13 @@ def _world(db_session, make_org):
     AIPromptTemplateVersion.query.filter_by(template_name=override_name).delete()
     AIPromptTemplate.query.filter_by(name=override_name).delete()
 
-    org = make_org("solution-prompt")
-    tenant, platform = _user(db_session, org), _user(db_session, org, platform=True)
+    # Two organisations: the platform admin sits in org A (the override's
+    # creator), the refused tenant admin sits in org B -- so a pass here cannot
+    # be explained by same-org membership, only by the is_platform_admin gate.
+    org_a = make_org("solution-prompt-a")
+    org_b = make_org("solution-prompt-b")
+    tenant = _user(db_session, org_b)
+    platform = _user(db_session, org_a, platform=True)
     db_session.commit()
     return tenant.id, platform.id
 
