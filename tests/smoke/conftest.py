@@ -731,4 +731,5 @@ ARCHETYPES = [
     "arb_member", "portfolio_manager", "cto", "procurement",
     "application_manager", "platform_admin", "security_architect",
     "data_architect", "technology_architect", "application_architect",
+    "business_owner",
 ]

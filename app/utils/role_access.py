@@ -17,6 +17,7 @@ from app.models.user import (
     ROLE_CTO,
     ROLE_ENTERPRISE_ARCHITECT,
     ROLE_APPLICATION_ARCHITECT,
+    ROLE_BUSINESS_OWNER,
     ROLE_DATA_ARCHITECT,
     ROLE_PLATFORM_ADMIN,
     ROLE_SECURITY_ARCHITECT,
@@ -174,11 +175,15 @@ ROLE_SECTION_ACCESS: Dict[str, Set[str]] = {
     },
 }
 
+# business_owner is a view of the same authority as platform_admin: identical
+# section access, so the smaller sidebar never hides a page behind a 403.
+ROLE_SECTION_ACCESS[ROLE_BUSINESS_OWNER] = set(ROLE_SECTION_ACCESS[ROLE_PLATFORM_ADMIN])
+
 # Sections that require specific roles (exclusive access)
 EXCLUSIVE_SECTIONS: Dict[str, List[str]] = {
-    "administration": [ROLE_PLATFORM_ADMIN],
-    "procurement": [ROLE_PROCUREMENT, ROLE_PORTFOLIO_MANAGER, ROLE_PLATFORM_ADMIN],
-    "my_applications": [ROLE_APPLICATION_MANAGER, ROLE_PLATFORM_ADMIN],
+    "administration": [ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER],
+    "procurement": [ROLE_PROCUREMENT, ROLE_PORTFOLIO_MANAGER, ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER],
+    "my_applications": [ROLE_APPLICATION_MANAGER, ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER],
 }
 
 # Default role if user has no enterprise_role set
@@ -194,6 +199,7 @@ COST_VISIBILITY_ROLES: frozenset = frozenset({
     ROLE_CTO,
     ROLE_PORTFOLIO_MANAGER,
     ROLE_PLATFORM_ADMIN,
+    ROLE_BUSINESS_OWNER,
 })
 
 
@@ -274,6 +280,7 @@ def is_admin(user) -> bool:
 # read-only page and had no way to create a capability anywhere in the product.
 CAPABILITY_EDITOR_ROLES: Set[str] = {
     ROLE_PLATFORM_ADMIN,
+    ROLE_BUSINESS_OWNER,
     ROLE_ENTERPRISE_ARCHITECT,
     ROLE_BUSINESS_ARCHITECT,
     ROLE_SOLUTION_ARCHITECT,
@@ -867,6 +874,18 @@ _MY_WORK_LINKS = {
     # Promoted 1 Oct 2026. Every endpoint below already ships and is linked for
     # another persona; icons are distinct within the zone so the collapsed rail
     # shows six different glyphs.
+    # Self-serve sign-ups. A short, plain list for someone doing several jobs:
+    # ask a question, see the picture, and the cost, risk and change views. Every
+    # endpoint ships and is linked for another persona; icons are distinct.
+    ROLE_BUSINESS_OWNER: [
+        _link("Twin Map", "intelligence_ui.twin_map", "network"),
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
+        _link("Portfolio KPIs", "dashboard_pages.rationalization_scorecard", "gauge"),
+        _link("Risk Register", "risk.risk_register", "alert-triangle"),
+        _link("Roadmaps", "main.capability_roadmap", "milestone"),
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
+    ],
     ROLE_TECHNOLOGY_ARCHITECT: [
         _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Applications", "unified_applications.application_list", "list"),
@@ -898,7 +917,9 @@ def _build_zones(role: str) -> List[Dict]:
     # admin-zone additions are counted (23 zone links -> 25 rendered, exactly
     # at SIDEBAR_LINK_BUDGET) — see _LIBRARY_LINKS_WITH_DIRECTORY's comment.
     library_links = (
-        _LIBRARY_LINKS if role == ROLE_PLATFORM_ADMIN else _LIBRARY_LINKS_WITH_DIRECTORY
+        _LIBRARY_LINKS
+        if role in (ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER)
+        else _LIBRARY_LINKS_WITH_DIRECTORY
     )
     zones = [
         _zone("home", _HOME_LINKS),
@@ -907,7 +928,7 @@ def _build_zones(role: str) -> List[Dict]:
     ]
     if role in _BOARD_ROLES:
         zones.append(_zone("governance", _GOVERNANCE_LINKS))
-    if role == ROLE_PLATFORM_ADMIN:
+    if role in (ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER):
         zones.append(_zone("admin", _ADMIN_LINKS))
     return zones
 

@@ -70,6 +70,7 @@ ARCHITECT_PERSONAS = (
     "business_analyst",
     "product_analyst",
     "platform_admin",
+    "business_owner",
 )
 
 # Some callers (e.g. the enterprise_role stored on User) use a spelling that
@@ -113,6 +114,9 @@ ROLE_DEFAULT_PERSONAS: Dict[str, str] = {
     # Promoted 1 Oct 2026: both already had charters written ahead of the role.
     "technology_architect": "technology_architect",
     "application_architect": "application_architect",
+    # Added 1 Oct 2026 for self-serve sign-ups: a plain-language view, not a
+    # separate authority (see ADMINISTRATOR_ROLES in app/models/user.py).
+    "business_owner": "business_owner",
 }
 
 DEFAULT_CHAT_PERSONA = "enterprise_architect"
@@ -589,6 +593,24 @@ OPERATIONAL HARD RULES (in addition to the shared rules below):
   If a figure is not in Live Platform Data, say you do not have it loaded
   and name the admin page where it can be read.
 {_EVIDENCE_RULES}""",
+
+    "business_owner": f"""You are Entelim's AI Business Owner Guide — plain answers about what the business runs on, what it costs and what is changing.
+
+MISSION: help an owner-operator, founder or small-team technology lead who does
+several jobs and has no time for architecture vocabulary. You turn what Entelim
+knows into short, plain answers about the applications the business relies on,
+what they cost, where the risk is, and what change is underway.
+
+SCOPE OF DUTY:
+- What the business runs on: the applications and how many there are.
+- What is changing: solutions in flight and where they are stuck.
+- What to look at next: one specific Entelim page, never a list of ten.
+
+HOW YOU ANSWER: plain words, short sentences, the answer first. Say "application"
+not "ApplicationComponent", and "risk" not "threat vector". If the person asks for
+architecture detail, give it, but never lead with it. State the number, what it
+means for the business, and ONE next step with a specific Entelim page.
+{_EVIDENCE_RULES}""",
 }
 
 
@@ -1040,6 +1062,29 @@ def _cto_context() -> str:
     return "\n".join(lines)
 
 
+def _business_owner_context() -> str:
+    lines = []
+
+    def solutions():
+        from app.models.solution_models import Solution
+        rows = dict(
+            db.session.query(Solution.governance_status, func.count())
+            .group_by(Solution.governance_status).all()
+        )
+        total = sum(rows.values())
+        mix = ", ".join(f"{k or 'draft'}: {v}" for k, v in sorted(rows.items(), key=lambda x: -x[1]))
+        return f"- Changes in flight (solutions): {total} ({mix})"
+
+    def portfolio_total():
+        from app.models.application_portfolio import ApplicationComponent
+        n = db.session.query(func.count(ApplicationComponent.id)).scalar() or 0
+        return f"- Applications the business runs on: {n}"
+
+    lines.append(_safe("portfolio_total", portfolio_total))
+    lines.append(_safe("solutions", solutions))
+    return "\n".join(lines)
+
+
 def _procurement_context() -> str:
     lines = []
 
@@ -1463,6 +1508,7 @@ _CONTEXT_BUILDERS: Dict[str, Callable[[], str]] = {
     "business_analyst": _business_analyst_context,
     "product_analyst": _product_analyst_context,
     "platform_admin": _platform_admin_context,
+    "business_owner": _business_owner_context,
 }
 
 
