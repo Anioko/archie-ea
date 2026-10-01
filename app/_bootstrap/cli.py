@@ -317,6 +317,13 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
 
     try:
+        from app.commands.reconcile_admin_flags import init_app as init_reconcile_admin_flags
+        init_reconcile_admin_flags(app)
+        app.logger.info("reconcile-admin-flags CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register reconcile-admin-flags CLI: {e}")
+
+    try:
         from app.commands.cutover_capability_tenancy import init_app as init_capability_cutover
         init_capability_cutover(app)
         app.logger.info("Capability tenancy cutover CLI command registered")
@@ -471,3 +478,11 @@ def init_cli(app):
         app.logger.info("✅ Clear foreign assignees CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register clear foreign assignees CLI: {e}")
+
+    # One risk register: copy solution_risks rows into the canonical risks table
+    try:
+        from app.commands.backfill_solution_risk_merge import init_app as init_solution_risk_merge
+        init_solution_risk_merge(app)
+        app.logger.info("✅ Solution risk merge backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register solution risk merge backfill CLI: {e}")
