@@ -147,6 +147,10 @@ POLICY = {
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
 
+ACCOUNT_POST_POLICY = {
+    "/account/switch-organization": set(ARCHETYPES),
+}
+
 # The versioned Transformation Room collection is portfolio data.  These are
 # the persisted enterprise roles admitted by TransformationProgrammeService;
 # programme assignments grant narrower access once a programme exists.
@@ -604,6 +608,30 @@ def test_interface_register_attach_work_package_authorisation(
             "%s was refused attach_work_package by the data_integration guard "
             "despite being permitted by the GET rows" % archetype
         )
+
+
+@pytest.mark.parametrize("path,allowed", ACCOUNT_POST_POLICY.items())
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_account_switch_organization_authorisation(
+    archetype, path, allowed, page, live_server, seeded
+):
+    """The organisation switcher is available to any signed-in member."""
+    _login(page, live_server, seeded["emails"][archetype])
+    page.goto(live_server + "/account/manage", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    csrf = page.locator('[data-testid="organization-memberships-card"] input[name="csrf_token"]').first.input_value()
+    response = page.request.post(
+        live_server + path,
+        form={
+            "organization_id": str(seeded["ids"]["org"]),
+            "csrf_token": csrf,
+        },
+        max_redirects=0,
+    )
+    expected = ALLOWED if archetype in allowed else DENIED
+    actual = ALLOWED if response.status < 400 else DENIED
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s" % (archetype, path, expected, actual)
+    )
 
 
 @pytest.fixture(scope="module")

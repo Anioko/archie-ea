@@ -3,7 +3,14 @@
 # DATABASE_ADMIN_URL or DATABASE_DEPLOY_PASSWORD.
 set -eu
 
+# Schema order: create missing tables, apply versioned revisions, then detect
+# drift. schema-upgrade is not suppressed: a revision that fails rolls back on
+# its own (PostgreSQL DDL is transactional) and the deploy must stop there
+# rather than start new code on a schema it does not expect. On an existing
+# database the baseline revision changes nothing; a database recorded at a
+# pre-baseline revision is re-stamped (record only) and the old id is printed.
 flask --app manage init-db
+flask --app manage schema-upgrade
 flask --app manage reconcile-schema
 flask --app manage backfill-ai-chat-approval-org || echo 'WARN AI chat approval tenancy backfill skipped - legacy approvals remain unavailable for review until requester organization ownership is restored'
 flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'
