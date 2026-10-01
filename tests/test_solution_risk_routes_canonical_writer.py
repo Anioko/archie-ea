@@ -57,7 +57,11 @@ def test_create_route_writes_the_canonical_risk_and_leaves_the_old_table_unchang
     user = _user(db_session, org, "sol-risk-creator")
     solution_id = solution.id
 
-    before_solution_risks = SolutionRisk.query.count()
+    # Scoped to this test's own solution: SolutionRisk.query.count() alone
+    # would be a bare, tenant-unscoped count (g.current_org_id is not set
+    # until the first authenticated request below), which also counts any
+    # row belonging to a solution this test never touched.
+    before_solution_risks = SolutionRisk.query.filter_by(solution_id=solution_id).count()
 
     login_as(client, user)
     resp = client.post(
@@ -98,7 +102,7 @@ def test_create_route_writes_the_canonical_risk_and_leaves_the_old_table_unchang
     assert (link.entity_type, link.entity_id) == ("solution", solution_id)
 
     # ... and the old table receives no new row.
-    assert SolutionRisk.query.count() == before_solution_risks
+    assert SolutionRisk.query.filter_by(solution_id=solution_id).count() == before_solution_risks
 
 
 def test_create_route_never_lets_another_organisation_see_the_canonical_risk(
@@ -153,7 +157,7 @@ def test_update_route_writes_through_the_canonical_risk(
               "impact": "low", "probability": "low"},
     ).get_json()["data"]
     risk_id = created["id"]
-    before_solution_risks = SolutionRisk.query.count()
+    before_solution_risks = SolutionRisk.query.filter_by(solution_id=solution_id).count()
 
     resp = client.put(
         f"/solutions/{solution_id}/risks/{risk_id}",
@@ -175,7 +179,7 @@ def test_update_route_writes_through_the_canonical_risk(
     assert risk.status.value == "mitigated"
 
     # No row was ever added to the superseded store.
-    assert SolutionRisk.query.count() == before_solution_risks == 0
+    assert SolutionRisk.query.filter_by(solution_id=solution_id).count() == before_solution_risks == 0
 
 
 def test_delete_route_removes_the_canonical_risk_without_ever_creating_a_solution_risk_row(
@@ -195,14 +199,14 @@ def test_delete_route_removes_the_canonical_risk_without_ever_creating_a_solutio
               "impact": "medium", "probability": "medium"},
     ).get_json()["data"]
     risk_id = created["id"]
-    assert SolutionRisk.query.count() == 0
+    assert SolutionRisk.query.filter_by(solution_id=solution_id).count() == 0
 
     resp = client.delete(f"/solutions/{solution_id}/risks/{risk_id}")
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert resp.get_json()["success"] is True
 
     assert Risk.query.filter_by(id=risk_id).first() is None
-    assert SolutionRisk.query.count() == 0
+    assert SolutionRisk.query.filter_by(solution_id=solution_id).count() == 0
 
 
 def test_csv_import_writes_through_the_canonical_risk_and_leaves_the_old_table_unchanged(
@@ -241,4 +245,4 @@ def test_csv_import_writes_through_the_canonical_risk_and_leaves_the_old_table_u
         assert (link.entity_type, link.entity_id) == ("solution", solution_id)
 
     # The old table receives no new rows from the import either.
-    assert SolutionRisk.query.count() == 0
+    assert SolutionRisk.query.filter_by(solution_id=solution_id).count() == 0
