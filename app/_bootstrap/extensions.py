@@ -665,7 +665,7 @@ def init_scheduler(app):
                         )
 
             model_health_interval_minutes = int(
-                app.config.get("MODEL_HEALTH_SCAN_INTERVAL_MINUTES", 60)
+                app.config["MODEL_HEALTH_SCAN_INTERVAL_MINUTES"]
             )
             if model_health_interval_minutes <= 0:
                 raise ValueError("interval must be positive")
