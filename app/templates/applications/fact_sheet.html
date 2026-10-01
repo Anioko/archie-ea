@@ -64,9 +64,9 @@
 
     {{ metrics_card(
         title='Total cost of ownership',
-        value=('{:,.0f}'.format(app.total_cost_of_ownership) if app.total_cost_of_ownership else '—'),
+        value=annual_cost_formatted,
         icon='banknote',
-        footer_text='License/yr: ' ~ ('{:,.0f}'.format(app.license_cost_annual) if app.license_cost_annual else '—')
+        footer_text='License/yr: ' ~ license_cost_formatted
     ) }}
 
     {{ metrics_card(

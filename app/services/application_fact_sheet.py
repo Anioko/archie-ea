@@ -15,15 +15,19 @@ filled with a plausible-looking default.
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from app import db
+from app.services.application_cost_accessor import get_annual_cost, get_annual_cost_float
 
 
 # The fields that a well-governed application record should carry. Weighted so
 # the score reflects decision-relevance, not just field count: ownership, cost,
 # criticality and lifecycle matter more to a portfolio decision than a support
 # URL. This is the rubric the completeness ring is scored against.
+# Cost is checked via the accessor (get_annual_cost) rather than a direct
+# attribute, so the single accessor principle is upheld.
 _COMPLETENESS_FIELDS = [
     ("application_owner", "Owner", 3),
     ("business_domain", "Business domain", 2),
@@ -37,6 +41,11 @@ _COMPLETENESS_FIELDS = [
     ("disaster_recovery_enabled", "Disaster recovery", 1),
     ("description", "Description", 1),
 ]
+
+
+def _has_cost_value(app: Any) -> bool:
+    """Check if the application has a recorded annual cost via the accessor."""
+    return get_annual_cost(app) is not None
 
 # Lifecycle stages we treat as "sunset" for the end-of-life signal.
 _SUNSET_STAGES = {"retiring", "sunset", "decommissioning", "end_of_life",
@@ -58,7 +67,11 @@ def compute_completeness(app: Any) -> Dict[str, Any]:
     missing: List[str] = []
     for attr, label, weight in _COMPLETENESS_FIELDS:
         total += weight
-        if _has_value(getattr(app, attr, None)):
+        if attr == "total_cost_of_ownership":
+            has_value = _has_cost_value(app)
+        else:
+            has_value = _has_value(getattr(app, attr, None))
+        if has_value:
             got += weight
         else:
             missing.append(label)
@@ -189,6 +202,8 @@ def _linked_risks(app_id: int) -> List[Dict[str, Any]]:
 def build_fact_sheet(app: Any) -> Dict[str, Any]:
     """Assemble the full fact sheet for one ApplicationComponent instance."""
     org_id = getattr(app, "organization_id", None)
+    annual_cost = get_annual_cost(app)
+    license_cost = getattr(app, "license_cost_annual", None)
     return {
         "app": app,
         "completeness": compute_completeness(app),
@@ -197,4 +212,6 @@ def build_fact_sheet(app: Any) -> Dict[str, Any]:
         "dependencies": _dependencies(app),
         "diagrams": _diagrams(app),
         "linked_risks": _linked_risks(app.id),
+        "annual_cost_formatted": ('{:,.0f}'.format(annual_cost) if annual_cost is not None else '—'),
+        "license_cost_formatted": ('{:,.0f}'.format(license_cost) if license_cost is not None else '—'),
     }
