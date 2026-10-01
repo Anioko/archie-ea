@@ -71,11 +71,17 @@ def _old_lucidchart_config(db_session, org, *, client_id, client_secret, access_
 
 
 def _run(dry_run=False):
-    """Invoke the migration CLI command and return its result."""
-    from app import create_app
+    """Invoke the migration CLI command and return its result.
 
-    app = create_app("testing")
-    runner = app.test_cli_runner()
+    ``migrate-connector-credentials`` is registered by manage.py's own
+    ``register_cli_commands`` (not by anything under app/commands/, which is
+    what app.create_app() wires up on its own), so the command only exists
+    on the app instance manage.py builds at import time -- same pattern as
+    tests/test_schema_migrations.py's ``from manage import app``.
+    """
+    from manage import app as manage_app
+
+    runner = manage_app.test_cli_runner()
     args = ["migrate-connector-credentials"]
     if dry_run:
         args.append("--dry-run")
