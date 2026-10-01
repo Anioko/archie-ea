@@ -1,10 +1,10 @@
 """One version per change, for the entity tables a generic trigger covers.
 
-R1-B19 (TB-0057, TB-0058, TB-0059): every change to an element or
+Every change to an element or
 relationship leaves a row here with a non-overlapping recorded interval, so
 "the model as of a date" and "what changed between two dates" (PR 2) can be
 answered from this table alone -- the relational history is the system of
-record (TB-0058's own reuse note); the graph projection (R1-B29) is built
+record; the graph projection is built
 from it, not the other way around.
 
 A generic trigger (``flask apply-entity-history-trigger``,
@@ -14,7 +14,7 @@ scope; the brief's "other entity tables listed in the PR" is left to a
 follow-up rather than guessed at here. ``flask backfill-entity-history``
 seeds one open (``valid_to IS NULL``) row per existing element/relationship,
 with ``recorded_at`` taken from the audit log's earliest matching entry
-where one exists and left NULL ("unknown") where it does not (TB-0023).
+where one exists and left NULL ("unknown") where it does not.
 
 Invariant this table must never violate for a given (table_name, record_id):
 at most one row has ``valid_to IS NULL`` (the current version), and every
@@ -33,7 +33,6 @@ class EntityHistory(TenantMixin, db.Model):
     __table_args__ = (
         db.Index("ix_entity_history_table_record", "table_name", "record_id"),
         db.Index("ix_entity_history_org_table_record", "organization_id", "table_name", "record_id"),
-        {"extend_existing": True},
     )
 
     id = db.Column(db.BigInteger, primary_key=True)
@@ -83,13 +82,13 @@ class EntityHistory(TenantMixin, db.Model):
     valid_to = db.Column(db.DateTime, nullable=True, index=True)
     superseded_at = db.Column(db.DateTime, nullable=True)
 
-    # When this version was recorded. NULL means "unknown" (TB-0023: a
+    # When this version was recorded. NULL means "unknown" -- a
     # pre-existing row with no matching audit-log entry to backfill from),
     # rendered as an em dash per CLAUDE.md's null-display convention, never
     # guessed at as equal to valid_from.
     recorded_at = db.Column(db.DateTime, nullable=True, index=True)
 
-    # Who and why, read-only from the audit log (TB-0059's "who changed it
+    # Who and why, read-only from the audit log ("who changed it
     # and why" join) where the trigger or backfill could resolve one.
     changed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     change_reason = db.Column(db.String(200), nullable=True)

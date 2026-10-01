@@ -1,5 +1,5 @@
 """
-Tenancy/history backfill: backfill-entity-history (R1-B19, TB-0023).
+Tenancy/history backfill: backfill-entity-history.
 
 ``apply-entity-history-trigger`` only records versions for a row inserted or
 updated AFTER the trigger exists. Every element and relationship that

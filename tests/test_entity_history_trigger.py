@@ -1,4 +1,4 @@
-"""R1-B19 PR 1: the generic entity_history trigger and its backfill.
+"""The generic entity_history trigger and its backfill.
 
 The trigger/table are schema objects, not something a per-test rolled-back
 transaction should create and discard every time (and a savepoint rollback
@@ -82,6 +82,31 @@ def test_two_updates_leave_three_non_overlapping_versions(app, db_session, make_
     assert open_count == 1
 
 
+def test_two_updates_in_one_transaction_do_not_produce_a_zero_length_version(
+    app, db_session, make_org
+):
+    """statement_timestamp(), not NOW()/transaction_timestamp(): two updates
+    with no intervening commit (the same database transaction) must still
+    get two distinct timestamps, or the version the first update opened
+    closes at the exact instant it opened."""
+    org = make_org("eh-same-transaction")
+    el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
+
+    db_session.execute(text("UPDATE archimate_elements SET name = name || '-a' WHERE id=:id"), {"id": el.id})
+    db_session.execute(text("UPDATE archimate_elements SET name = name || '-b' WHERE id=:id"), {"id": el.id})
+    db_session.commit()
+
+    rows = db_session.execute(text(
+        "SELECT valid_from, valid_to FROM entity_history "
+        "WHERE table_name='archimate_elements' AND record_id=:id ORDER BY valid_from"
+    ), {"id": el.id}).fetchall()
+
+    assert len(rows) == 3
+    for row in rows:
+        if row[1] is not None:
+            assert row[0] != row[1], "zero-length version: valid_from == valid_to"
+
+
 def test_as_of_snapshot_matches_the_state_recorded_at_that_time(app, db_session, make_org):
     """A test that the as-of answer for a date equals a snapshot taken on
     that date -- proven directly against entity_history rather than a PR 2
@@ -122,7 +147,7 @@ def test_entity_history_excludes_a_foreign_organisations_rows(app, db_session, m
 def test_backfill_seeds_one_open_version_per_pre_existing_row_with_no_history(app, db_session, make_org):
     """backfill-entity-history seeds a row that predates the trigger (no
     entity_history row at all yet) with one open version; recorded_at is
-    NULL ("unknown") with no matching audit-log entry, per TB-0023."""
+    NULL ("unknown") with no matching audit-log entry."""
     from click.testing import CliRunner
 
     from app.commands.backfill_entity_history import backfill_entity_history

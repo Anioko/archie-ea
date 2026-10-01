@@ -1,5 +1,5 @@
 """
-Schema fix: apply-entity-history-trigger (R1-B19, TB-0057).
+Schema fix: apply-entity-history-trigger.
 
 ``reconcile-schema`` is ADD-COLUMN-only and can never create a trigger, so
 the generic trigger every change to ``archimate_elements`` and
@@ -42,7 +42,12 @@ FUNCTION_SQL = """
 CREATE OR REPLACE FUNCTION entity_history_record_version()
 RETURNS TRIGGER AS $$
 DECLARE
-    now_ts TIMESTAMP := NOW();
+    -- statement_timestamp(), not NOW()/transaction_timestamp(): NOW() is
+    -- stable for the whole transaction, so two updates on the same row in
+    -- one transaction (no intervening COMMIT) would both capture the same
+    -- value, closing the first version at the exact instant it opened --
+    -- a zero-length interval (pr311-v1 review, DEFECT D1).
+    now_ts TIMESTAMP := statement_timestamp();
     row_org_id INTEGER;
     row_snapshot JSON;
 BEGIN
