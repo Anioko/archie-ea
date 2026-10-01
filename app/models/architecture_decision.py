@@ -92,7 +92,7 @@ class ArchitectureDecision(TenantMixin, db.Model):
     business_value = db.Column(db.String(50), nullable=True)
     decided_by_label = db.Column(db.Text, nullable=True)
 
-    # Review and outcome (TB-0132/PB-0132): a decision can carry a
+    # Review and outcome: a decision can carry a
     # future date it must be looked at again -- a vendor contract renewal, a
     # deviation granted "for now" -- and the outcome once that review happens.
     # Both nullable: most decisions never set a review date, and one that does
@@ -278,7 +278,7 @@ class ArchitectureDecision(TenantMixin, db.Model):
         """The caller's decisions whose title/context/decision/rationale match
         ``query_text`` (case-insensitive substring), optionally narrowed to
         decisions recorded against any of ``element_ids``. An architect
-        searches for precedent before ruling on a new case (PB-0282): what did
+        searches for precedent before ruling on a new case: what did
         we decide last time something like this came up, and against what.
 
         Newest first, matching ``affecting_elements``'s own ordering so the

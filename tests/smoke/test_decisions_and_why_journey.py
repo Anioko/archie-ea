@@ -278,7 +278,7 @@ def _seed_decision_due_for_review(org_id, title):
 def test_review_due_record_outcome_and_precedent_search_journey(
     page, live_server, two_organisations
 ):
-    """TB-0132/PB-0132: a decision due for review is found from the Due For
+    """A decision due for review is found from the Due For
     Review list, its outcome is recorded there, and it is afterwards
     findable by precedent search -- all three new surfaces this release
     adds, and none of another organisation's decisions leak into any of

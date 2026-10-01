@@ -283,10 +283,10 @@ def element_search():
 @arch_decisions_bp.route("/due-for-review")
 @login_required
 def due_for_review():
-    """Decisions whose review date has arrived with no outcome recorded yet
-    (TB-0132, PB-0132): a vendor contract renewal, a deviation granted "for
-    now" -- things an architect promised to look at again, listed so that
-    promise is kept rather than relying on memory.
+    """Decisions whose review date has arrived with no outcome recorded yet:
+    a vendor contract renewal, a deviation granted "for now" -- things an
+    architect promised to look at again, listed so that promise is kept
+    rather than relying on memory.
     """
     decisions = ArchitectureDecision.due_for_review(_org_id())
     return render_template(
@@ -333,8 +333,8 @@ def record_outcome(decision_id):
 @login_required
 def precedent_search():
     """Precedent search over the organisation's decisions by text and, when an
-    element is given, narrowed to decisions recorded against it (PB-0282):
-    what did we decide last time something like this came up.
+    element is given, narrowed to decisions recorded against it: what did we
+    decide last time something like this came up.
     """
     query_text = request.args.get("q", "").strip()
     element_filter = request.args.get("element_id", type=int)

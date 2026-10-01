@@ -1,6 +1,5 @@
-"""R1-B09 PR 2: review date and outcome, the due-for-review list, and
-precedent search over the organisation's own decisions (TB-0132, PB-0132,
-PB-0282).
+"""Review date and outcome, the due-for-review list, and
+precedent search over the organisation's own decisions.
 
 Two organisations throughout: org B's decisions never appear in org A's
 due-for-review list or precedent search results.
