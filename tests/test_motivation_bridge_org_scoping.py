@@ -39,10 +39,10 @@ pre-fix code during development -- twice, for two different accidental
 reasons -- which is exactly the failure mode ("a test that would pass either
 way") this repo's own delivery contract calls out as worse than no test.
 
-R1-B20 (PR 317 first review, HIGH 1) found the identical gap in
-_find_or_create_driver/_find_or_create_goal and the MotivationBridgeLink
-construction in _promote_one once Driver, Goal and MotivationBridgeLink
-also gained TenantMixin: the same file already passed organization_id for
+A later review found the identical gap in _find_or_create_driver/
+_find_or_create_goal and the MotivationBridgeLink construction in
+_promote_one once Driver, Goal and MotivationBridgeLink also gained
+TenantMixin: the same file already passed organization_id for
 Outcome/Principle but not for these three. Tests below extend this file's
 own established pattern to them.
 """

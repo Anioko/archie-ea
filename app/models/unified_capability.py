@@ -54,9 +54,9 @@ class HybridCapabilityTenantMixin:
     This exact pattern has since been generalised into ``HybridTenantMixin``
     (``app/models/mixins/core.py``) for its own shared-catalogue tables. This
     class becomes a plain alias of that one once the capability-store
-    consolidation (R1-B02) merges and this model's own event handlers below
-    are retired in favour of the generic ones; kept distinct for now so this
-    PR does not touch R1-B02's owned file beyond this comment.
+    consolidation merges and this model's own event handlers below are
+    retired in favour of the generic ones; kept distinct for now so this
+    change does not touch that other file beyond this comment.
     """
 
     @declared_attr
