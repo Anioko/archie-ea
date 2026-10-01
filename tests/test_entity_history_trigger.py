@@ -214,7 +214,7 @@ def test_backfill_is_idempotent(app, db_session, make_org):
 
 
 def test_relationship_insert_leaves_one_open_version(app, db_session, make_org):
-    """DEFECT-4: the brief scope includes relationships, not just elements."""
+    """The brief's scope includes relationships, not just elements."""
     org = make_org("eh-rel-insert")
     source = _element(db_session, org)
     target = _element(db_session, org)
@@ -254,7 +254,7 @@ def test_relationship_two_updates_leave_three_non_overlapping_versions_with_the_
 
 
 def test_delete_closes_the_current_open_version(app, db_session, make_org):
-    """DEFECT-1: a delete is a change -- the open version must close, not
+    """A delete is a change -- the open version must close, not
     stay open and silently misrepresent a deleted row as still current."""
     org = make_org("eh-delete")
     el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
@@ -283,7 +283,7 @@ def test_delete_closes_the_current_open_version(app, db_session, make_org):
 
 
 def test_insert_stamps_the_base_rows_own_time_columns(app, db_session, make_org):
-    """DEFECT-2: valid_from/recorded_at on archimate_elements itself (not
+    """valid_from/recorded_at on archimate_elements itself (not
     just the entity_history copy) must be populated, or the brief's owned
     columns are dead."""
     org = make_org("eh-base-stamp")
@@ -323,7 +323,7 @@ def test_update_restamps_the_base_rows_own_time_columns(app, db_session, make_or
 def test_backfill_does_not_hide_a_pre_existing_row_from_an_earlier_as_of_date(
     app, db_session, make_org
 ):
-    """DEFECT-3: backfilling a row with no audit-log entry must not make it
+    """Backfilling a row with no audit-log entry must not make it
     look like it started existing at backfill time -- it must stay visible
     to an as-of date from before the backfill ran."""
     from click.testing import CliRunner

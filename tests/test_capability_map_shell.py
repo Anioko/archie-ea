@@ -447,12 +447,10 @@ def test_capability_map_div_tree_is_balanced(app, db_session, make_org, tenant_c
     html = _get(app, db_session, make_org, tenant_ctx, "div-balance", "/capability-map/")
     opens = len(re.findall(r"<div\b", html))
     closes = len(re.findall(r"</div\s*>", html))
-    # The page carries one pre-existing orphan closing </div> from before
-    # this wave (harmless — HTML5 parsers no-op an unmatched end tag, and it
-    # sits outside the x-data tree already) — recorded here rather than
-    # silently tolerated, so a *second* one introduced by a future edit
+    # The one pre-existing orphan closing </div> this test used to tolerate
+    # is gone (fixed by an unrelated change) -- the page is now perfectly
+    # balanced. Checked exactly, so a new orphan introduced by a future edit
     # still fails this test.
-    assert closes == opens + 1, (
-        f"div balance drifted: {opens} opens, {closes} closes "
-        f"(expected exactly one pre-existing orphan close)"
+    assert closes == opens, (
+        f"div balance drifted: {opens} opens, {closes} closes (expected exactly balanced)"
     )
