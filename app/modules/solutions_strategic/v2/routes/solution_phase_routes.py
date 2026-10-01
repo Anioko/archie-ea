@@ -147,13 +147,45 @@ def _solution_risk_dict(risk, *, risk_name, risk_description, impact, probabilit
 @solution_design_bp.route("/<int:solution_id>/risks", methods=["GET"])
 @login_required
 def get_solution_risks(solution_id):
-    """List all risks for a solution."""
+    """List all risks for a solution.
+
+    Reads both halves of the one-risk-register consolidation, so a risk
+    created through the POST/CSV-import handlers below does not vanish from
+    this same list: the canonical risks linked to this solution
+    (risk_entity_links, entity_type="solution", via risk_service.risks_linked_to
+    -- the same query the parent-side "Linked risks" reader already uses)
+    plus any solution_risks row the backfill
+    (app/commands/backfill_solution_risk_merge.py) has not yet merged
+    (retired_into_risk_id IS NULL). A merged legacy row is excluded here --
+    its replacement already exists on the canonical side, so it is never
+    shown twice.
+    """
     Solution.query.get_or_404(solution_id)
+    from datetime import datetime as _datetime
+
     from app.models.solution_lifecycle_models import SolutionRisk
-    risks = SolutionRisk.query.filter_by(solution_id=solution_id).order_by(
-        SolutionRisk.created_at.desc()
-    ).all()
-    return jsonify({"success": True, "data": [r.to_dict() for r in risks]})
+    from app.services import risk_service
+
+    canonical_rows = [
+        (risk.created_at or _datetime.min, _solution_risk_dict(
+            risk,
+            risk_name=risk.title,
+            risk_description=risk.description,
+            impact=_solution_risk_level_from_int(risk.impact),
+            probability=_solution_risk_level_from_int(risk.likelihood),
+            mitigation=risk.mitigation_plan,
+            owner=risk.owner,
+        ))
+        for risk in risk_service.risks_linked_to("solution", solution_id)
+    ]
+    legacy_rows = [
+        (risk.created_at or _datetime.min, risk.to_dict())
+        for risk in SolutionRisk.query.filter_by(solution_id=solution_id)
+        .filter(SolutionRisk.retired_into_risk_id.is_(None))
+        .all()
+    ]
+    rows = sorted(canonical_rows + legacy_rows, key=lambda pair: pair[0], reverse=True)
+    return jsonify({"success": True, "data": [row[1] for row in rows]})
 
 
 @solution_design_bp.route("/<int:solution_id>/risks", methods=["POST"])

@@ -156,15 +156,22 @@ def remove_risk_link(risk_id, link_id):
     db.session.commit()
 
 
-def links_for_entity(entity_type, entity_id):
-    """Risks linked to one Application/Solution/Programme -- the parent-side
-    read for "Linked risks" sections on those entities' own detail pages."""
+def risks_linked_to(entity_type, entity_id):
+    """The Risk rows linked to one Application/Solution/Programme, as ORM
+    objects -- the shared query behind links_for_entity's dicts and any
+    other reader (e.g. the solution risk tab's GET list) that needs the rows
+    themselves rather than their serialised form."""
     links = RiskEntityLink.query.filter_by(entity_type=entity_type, entity_id=entity_id).all()
     if not links:
         return []
     risk_ids = [link.risk_id for link in links]
-    risks = Risk.query.filter(Risk.id.in_(risk_ids)).order_by(Risk.id).all()
-    return [r.to_dict() for r in risks]
+    return Risk.query.filter(Risk.id.in_(risk_ids)).order_by(Risk.id).all()
+
+
+def links_for_entity(entity_type, entity_id):
+    """Risks linked to one Application/Solution/Programme -- the parent-side
+    read for "Linked risks" sections on those entities' own detail pages."""
+    return [r.to_dict() for r in risks_linked_to(entity_type, entity_id)]
 
 
 # --- Inherent/residual scores, stored with history ------------------------
