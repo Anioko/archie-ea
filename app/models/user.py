@@ -216,9 +216,48 @@ class User(UserMixin, db.Model):
         the denormalised flag.  This setter exists as a migration path for the
         common ``user.is_org_admin = True`` pattern found across the codebase."""
         if value:
-            admin_role = Role.query.filter_by(name="Administrator").first()
-            if admin_role is not None:
-                self.role = admin_role
+            self.grant_org_admin()
+
+    def grant_org_admin(self):
+        """Grant organisation-admin authority in this user's OWN organisation.
+
+        Assigns the Administrator role — the one system of record for "is
+        this user an organisation administrator" (Permission.ADMINISTER via
+        is_admin()) — and keeps the denormalised ``is_org_admin`` column live
+        immediately, rather than only after the next ``flask
+        reconcile-admin-flags`` run, because code that reads the column
+        directly (database-level guards on transformation commands) must see
+        the same answer the instant the grant happens.
+
+        Every grant site (registration, invitation acceptance, the team page,
+        the organisation admin toggle) calls this one method instead of each
+        re-deriving its own copy, so a new site cannot drift from the others.
+        Never call this for a grant into an organisation other than the
+        user's own ``organization_id``: the Administrator role is global to
+        the user, so granting it for a foreign organisation would also make
+        the user an administrator of their own organisation — use
+        ``OrgRole.set_role`` alone for a foreign-organisation grant.
+        """
+        admin_role = Role.query.filter_by(name="Administrator").first()
+        if admin_role is not None:
+            self.role = admin_role
+            self._is_org_admin = True
+
+    def revoke_org_admin(self):
+        """Revoke organisation-admin authority, unless the user is a platform admin.
+
+        A no-op when the user does not currently hold admin authority, and
+        also when the user is a platform admin: ``is_platform_admin`` (see
+        above) requires Permission.ADMINISTER as well as the flag, so an
+        org-scoped revoke must never strip it as a side effect of leaving, or
+        being removed from, one organisation.
+        """
+        if not self.is_admin() or self.is_platform_admin:
+            return
+        default_role = Role.query.filter_by(default=True).first()
+        if default_role is not None:
+            self.role = default_role
+        self._is_org_admin = False
 
     # PLT-018: Business unit scoping — links user to a BusinessActor (actor_type='Department' or similar)
     business_unit_id = db.Column(db.Integer, db.ForeignKey("business_actors.id"), nullable=True)  # migration-exempt
