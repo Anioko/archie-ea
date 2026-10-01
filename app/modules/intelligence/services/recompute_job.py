@@ -25,6 +25,7 @@ from __future__ import annotations
 import functools
 import datetime as _dt
 import logging
+import time
 
 from contextlib import nullcontext
 from flask import current_app, has_app_context
@@ -133,6 +134,7 @@ def recompute_derived_facts_on_demand(app, organization_id: int) -> JobRun:
     )
 
     with app_ctx:
+        started = time.monotonic()
         try:
             from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
@@ -154,7 +156,7 @@ def recompute_derived_facts_on_demand(app, organization_id: int) -> JobRun:
             result = TenantResult(
                 organization_id=organization_id,
                 ok=True,
-                duration_ms=0,
+                duration_ms=int((time.monotonic() - started) * 1000),
                 value=value,
             )
         except Exception as exc:  # noqa: BLE001 - surfaced in JobRun
@@ -167,7 +169,7 @@ def recompute_derived_facts_on_demand(app, organization_id: int) -> JobRun:
             result = TenantResult(
                 organization_id=organization_id,
                 ok=False,
-                duration_ms=0,
+                duration_ms=int((time.monotonic() - started) * 1000),
                 error=repr(exc),
             )
 
