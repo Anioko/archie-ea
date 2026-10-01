@@ -328,10 +328,17 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
             # not a security control, computed the same way
             # project_capabilities.py's _CHECKSUM_SQL already does -- avoids a
             # second checksum convention and the weak-hash finding Python's
-            # hashlib.md5 raises for exactly this non-security use.
-            "md5(concat_ws('|', :source_table, :source_id, :name, "
-            "COALESCE(:description, ''), CAST(:level AS text), COALESCE(:category, ''), "
-            "COALESCE(:identifier, ''))), "
+            # hashlib.md5 raises for exactly this non-security use. Each
+            # argument is its own, separately-named, explicitly text-cast bind
+            # parameter: concat_ws's VARIADIC "any" gives Postgres no type to
+            # infer, and reusing :source_table/:source_id (bound elsewhere as
+            # plain columns) left the driver unable to settle on one type for
+            # the shared parameter.
+            "md5(concat_ws('|', CAST(:chk_source_table AS text), "
+            "CAST(:chk_source_id AS text), CAST(:chk_name AS text), "
+            "COALESCE(CAST(:chk_description AS text), ''), CAST(:chk_level AS text), "
+            "COALESCE(CAST(:chk_category AS text), ''), "
+            "COALESCE(CAST(:chk_identifier AS text), ''))), "
             "'BUSINESS', :category, :current_maturity_level, "
             ":target_maturity_level, :status, :discovery_source, :archimate_id, "
             "COALESCE(:created_at, now()), now()"
@@ -347,7 +354,13 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
             "source_table": row.table,
             "source_id": str(row.id),
             "source_org_id": organization_id,
-            "identifier": row.identifier,
+            "chk_source_table": row.table,
+            "chk_source_id": str(row.id),
+            "chk_name": row.name,
+            "chk_description": row.description,
+            "chk_level": row.level,
+            "chk_category": row.category,
+            "chk_identifier": row.identifier,
             "category": row.category,
             "current_maturity_level": row.current_maturity_level,
             "target_maturity_level": row.target_maturity_level,
