@@ -221,7 +221,7 @@
        @click.away — the overlay silently ate the user's first click anywhere on the
        page. That is what made "Add Application" and "Import" look inert: the modal
        system was healthy and the first click was simply being spent dismissing this.
-       nav_counts is already computed and cached per tenant for the sidebar, so gating
+       nav_counts is already computed per tenant for this request, so gating
        on it costs no extra query. #}
     {% set _ob_counts = nav_counts | default({}) %}
     {% set _workspace_is_empty = not (
