@@ -90,7 +90,7 @@ if _FAST_INIT:
         overlay_code = db.Column(db.String(32), nullable=True)
         acm_properties = db.Column(db.JSON, default=dict)
 
-        # Model history (R1-B19) -- same columns as the normal-runtime twin
+        # Model history -- same columns as the normal-runtime twin
         # in app/models/models.py; see that docstring for the full rationale.
         valid_from = db.Column(db.DateTime, nullable=True)
         valid_to = db.Column(db.DateTime, nullable=True)
@@ -168,7 +168,7 @@ if _FAST_INIT:
         # of being dropped for lacking a value reconcile-schema cannot backfill.
         sequence_order = db.Column(db.Integer, nullable=True)
 
-        # Model history (R1-B19) -- same columns as the normal-runtime twin
+        # Model history -- same columns as the normal-runtime twin
         # in app/models/models.py.
         valid_from = db.Column(db.DateTime, nullable=True)
         valid_to = db.Column(db.DateTime, nullable=True)

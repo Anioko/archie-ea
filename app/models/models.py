@@ -330,7 +330,7 @@ else:
         deleted_at = db.Column(db.DateTime, nullable=True)
         deleted_by = db.Column(db.Integer, nullable=True)
 
-        # Model history (R1-B19, TB-0023/TB-0057): the interval this row's
+        # Model history: the interval this row's
         # current state has held, and when it was recorded. Nullable per
         # ADR-0002 (reconcile-schema is add-only/nullable) -- valid_from and
         # recorded_at are backfilled for existing rows (from the audit log
@@ -536,7 +536,7 @@ else:
         # database, which left the import review queue with nothing to triage.
         derived_from = db.Column(db.String(40), nullable=True, index=True)
 
-        # Model history (R1-B19): same columns and rationale as
+        # Model history: same columns and rationale as
         # ArchiMateElement's above.
         valid_from = db.Column(db.DateTime, nullable=True)
         valid_to = db.Column(db.DateTime, nullable=True)

@@ -362,7 +362,7 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register audit-log viewpoint-FK drop CLI: {e}")
 
-    # R1-B19: the entity_history trigger reconcile-schema cannot create
+    # The entity_history trigger reconcile-schema cannot create
     try:
         from app.commands.apply_entity_history_trigger import init_app as init_entity_history_trigger
         init_entity_history_trigger(app)

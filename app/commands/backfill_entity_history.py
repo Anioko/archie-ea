@@ -15,10 +15,27 @@ per CLAUDE.md's null-display convention — never guessed at as "now" or as
 the row's own ``created_at``, which is not evidence of when history started
 being tracked.
 
+``valid_from`` for a row with no resolvable ``recorded_at`` is ``-infinity``,
+not "now": a pre-existing row with no audit trail genuinely has an unknown
+start, and defaulting to the backfill's own run time would make every as-of
+query for any date before that moment wrongly report the row as not
+existing yet -- the exact "hides pre-existing rows" failure this command
+exists to avoid. ``-infinity`` makes the row visible to every as-of date,
+past or present, which is the correct answer for "we don't know when this
+started, only that it already existed." The seeded row's own base-table
+``valid_from``/``recorded_at`` columns are updated to match, the same shape
+the trigger stamps for a live change.
+
 Idempotent: a row already carrying an open ``entity_history`` version is
 skipped. Runs one organisation at a time with raw SQL carrying an explicit
 ``organization_id`` predicate (the ORM tenant listener does not apply
 outside a request context — see CLAUDE.md's multi-tenancy section).
+
+Disables ``entity_history_trg`` on both tables for the run (re-enabled in a
+``finally``): this command also re-stamps each backfilled row's own
+``valid_from``/``recorded_at`` columns, and with the trigger live that
+UPDATE would itself be treated as a real change, closing the
+just-backfilled version and opening a second, trigger-sourced one.
 
     flask --app manage backfill-entity-history --dry-run
     flask --app manage backfill-entity-history
@@ -61,18 +78,33 @@ def _backfill_table(conn, table, org_id, dry_run):
             SELECT MIN(created_at) FROM soc2_audit_log
             WHERE table_name = :table_name AND record_id = :record_id
         """), {"table_name": table, "record_id": record_id}).scalar()
+        # -infinity, not NOW(): an unknown start must stay visible to every
+        # as-of date, not just dates after this backfill happened to run.
+        valid_from = recorded_at if recorded_at is not None else "-infinity"
 
         conn.execute(text(f"""
             INSERT INTO entity_history
                 (organization_id, table_name, record_id, snapshot,
                  valid_from, valid_to, recorded_at, source)
             SELECT :org_id, :table_name, :record_id, row_to_json(t.*),
-                   COALESCE(:recorded_at, NOW()), NULL, :recorded_at, 'backfill'
+                   :valid_from, NULL, :recorded_at, 'backfill'
             FROM "{table}" t WHERE t.id = :record_id
         """), {
             "org_id": org_id, "table_name": table, "record_id": record_id,
-            "recorded_at": recorded_at,
+            "valid_from": valid_from, "recorded_at": recorded_at,
         })
+
+        # Stamp the base row's own owned columns to match -- the same
+        # shape the trigger gives a live INSERT/UPDATE. This UPDATE runs
+        # with entity_history_trg disabled (see the caller): the trigger's
+        # own UPDATE branch would otherwise treat this as a real change,
+        # closing the entity_history row just inserted above with its own
+        # statement_timestamp() and opening a second, trigger-sourced row
+        # -- two rows where the brief calls for one.
+        conn.execute(text(f"""
+            UPDATE "{table}" SET valid_from = :valid_from, recorded_at = :recorded_at
+            WHERE id = :record_id
+        """), {"valid_from": valid_from, "recorded_at": recorded_at, "record_id": record_id})
 
     return len(pending)
 
@@ -90,23 +122,39 @@ def backfill_entity_history(dry_run):
         click.echo("  - entity_history table absent — nothing to do this run")
         return
 
-    org_ids = _organization_ids(db.session.connection())
-    total = 0
-    for org_id in org_ids:
-        # A fresh connection each iteration: db.session.remove() below
-        # invalidates the previous one, and reusing it here would break.
+    tables_with_trigger = [t for t in TABLES if t in existing_tables] if not dry_run else []
+    if tables_with_trigger:
         conn = db.session.connection()
-        for table in TABLES:
-            if table not in existing_tables:
-                continue
-            count = _backfill_table(conn, table, org_id, dry_run)
-            total += count
-            if count:
-                verb = "would seed" if dry_run else "seeded"
-                click.echo(f"  {'~' if dry_run else '+'} org {org_id}, {table}: {verb} {count} version(s)")
-        if not dry_run:
+        for table in tables_with_trigger:
+            conn.execute(text(f'ALTER TABLE "{table}" DISABLE TRIGGER entity_history_trg'))
+
+    try:
+        org_ids = _organization_ids(db.session.connection())
+        total = 0
+        for org_id in org_ids:
+            # A fresh connection each iteration: db.session.remove() below
+            # invalidates the previous one, and reusing it here would break.
+            conn = db.session.connection()
+            for table in TABLES:
+                if table not in existing_tables:
+                    continue
+                count = _backfill_table(conn, table, org_id, dry_run)
+                total += count
+                if count:
+                    verb = "would seed" if dry_run else "seeded"
+                    click.echo(f"  {'~' if dry_run else '+'} org {org_id}, {table}: {verb} {count} version(s)")
+            if not dry_run:
+                db.session.commit()
+            db.session.remove()
+    finally:
+        # Re-enable even if a row failed partway -- a backfill that leaves
+        # the trigger permanently off would silently stop recording every
+        # later live change.
+        if tables_with_trigger:
+            conn = db.session.connection()
+            for table in tables_with_trigger:
+                conn.execute(text(f'ALTER TABLE "{table}" ENABLE TRIGGER entity_history_trg'))
             db.session.commit()
-        db.session.remove()
 
     click.echo(f"backfill-entity-history: {'would seed' if dry_run else 'seeded'} {total} version(s) total.")
 

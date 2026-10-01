@@ -454,7 +454,7 @@ else:
     # copy-from-other-audit-stores hooks are registered before any insert.
     from .audit_log import AuditLog  # noqa: F401
 
-    # R1-B19: one version per change to an element/relationship, written by
+    # One version per change to an element/relationship, written by
     # the generic trigger (flask apply-entity-history-trigger). Imported at
     # boot so create_all()/reconcile-schema know about the table.
     from .entity_history import EntityHistory  # noqa: F401

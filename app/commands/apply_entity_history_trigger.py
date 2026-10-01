@@ -3,24 +3,26 @@ Schema fix: apply-entity-history-trigger.
 
 ``reconcile-schema`` is ADD-COLUMN-only and can never create a trigger, so
 the generic trigger every change to ``archimate_elements`` and
-``archimate_relationships`` must go through (one ``entity_history`` version
-per INSERT/UPDATE, non-overlapping recorded intervals) needs its own deploy
-step, the same convention
-``apply_unified_capability_provenance_migration.py`` already uses for
-"a DDL object reconcile-schema cannot create".
+``archimate_relationships`` must go through needs its own deploy step, the
+same convention ``apply_unified_capability_provenance_migration.py`` already
+uses for "a DDL object reconcile-schema cannot create".
 
-One PL/pgSQL function, ``entity_history_record_version()``, shared by both
-tables' triggers:
+One PL/pgSQL function, ``entity_history_record_version()``, fired ``BEFORE``
+INSERT/UPDATE/DELETE (not ``AFTER``: the owned time columns on the base row
+itself, not just the history copy, must be stamped before the row is
+written, or they stay NULL forever):
 
-- On INSERT: writes one open (``valid_to IS NULL``) version.
+- On INSERT: stamps ``NEW.valid_from``/``recorded_at`` and writes one open
+  (``valid_to IS NULL``) history version.
 - On UPDATE: closes the row's current open version (``valid_to``,
-  ``superseded_at`` both set to the same timestamp) and opens a new one —
-  never two writes that could observe different "now()" values, since both
-  happen in the same trigger invocation with one captured timestamp.
-- A ``DELETE`` is intentionally not covered here (PR 1 scope is INSERT/UPDATE
-  per the brief); a deleted element's last version simply stays open, which
-  is correct for "the model as of a date" answered from a date before the
-  delete.
+  ``superseded_at`` both set to the same timestamp), re-stamps
+  ``NEW.valid_from``/``recorded_at`` for the new current state, and opens a
+  new history version -- never two writes that could observe different
+  "now()" values, since both happen in one trigger invocation with one
+  captured timestamp.
+- On DELETE: closes the row's current open history version with the delete
+  timestamp. There is no base row left to stamp; the closed history entry
+  is itself the record that the entity stopped existing at that time.
 
 Idempotent: ``CREATE OR REPLACE FUNCTION`` and ``DROP TRIGGER IF
 EXISTS``/``CREATE TRIGGER`` are both safe to re-run; safe to re-run on every
@@ -46,13 +48,17 @@ DECLARE
     -- stable for the whole transaction, so two updates on the same row in
     -- one transaction (no intervening COMMIT) would both capture the same
     -- value, closing the first version at the exact instant it opened --
-    -- a zero-length interval (pr311-v1 review, DEFECT D1).
+    -- a zero-length interval.
     now_ts TIMESTAMP := statement_timestamp();
-    row_org_id INTEGER;
-    row_snapshot JSON;
 BEGIN
-    row_org_id := NEW.organization_id;
-    row_snapshot := row_to_json(NEW);
+    IF TG_OP = 'DELETE' THEN
+        UPDATE entity_history
+        SET valid_to = now_ts, superseded_at = now_ts
+        WHERE table_name = TG_TABLE_NAME
+          AND record_id = OLD.id
+          AND valid_to IS NULL;
+        RETURN OLD;
+    END IF;
 
     IF TG_OP = 'UPDATE' THEN
         UPDATE entity_history
@@ -62,11 +68,20 @@ BEGIN
           AND valid_to IS NULL;
     END IF;
 
+    -- BEFORE trigger: mutating NEW here is what actually reaches the row
+    -- being written. An AFTER trigger's NEW mutation is a no-op -- the
+    -- earlier version of this fix wrote only to entity_history, leaving
+    -- the base row's own valid_from/recorded_at permanently NULL.
+    NEW.valid_from := now_ts;
+    NEW.valid_to := NULL;
+    NEW.recorded_at := now_ts;
+    NEW.superseded_at := NULL;
+
     INSERT INTO entity_history
         (organization_id, table_name, record_id, snapshot,
          valid_from, valid_to, recorded_at, source)
     VALUES
-        (row_org_id, TG_TABLE_NAME, NEW.id, row_snapshot,
+        (NEW.organization_id, TG_TABLE_NAME, NEW.id, row_to_json(NEW),
          now_ts, NULL, now_ts, 'trigger');
 
     RETURN NEW;
@@ -109,7 +124,7 @@ def apply_entity_history_trigger(dry_run):
         conn.execute(text(f'DROP TRIGGER IF EXISTS entity_history_trg ON "{table}"'))
         conn.execute(text(f"""
             CREATE TRIGGER entity_history_trg
-            AFTER INSERT OR UPDATE ON "{table}"
+            BEFORE INSERT OR UPDATE OR DELETE ON "{table}"
             FOR EACH ROW
             EXECUTE FUNCTION entity_history_record_version()
         """))

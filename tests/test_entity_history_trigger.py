@@ -27,7 +27,7 @@ def _entity_history_trigger(app, _schema):
                 conn.execute(text(f'DROP TRIGGER IF EXISTS entity_history_trg ON "{table}"'))
                 conn.execute(text(f"""
                     CREATE TRIGGER entity_history_trg
-                    AFTER INSERT OR UPDATE ON "{table}"
+                    BEFORE INSERT OR UPDATE OR DELETE ON "{table}"
                     FOR EACH ROW
                     EXECUTE FUNCTION entity_history_record_version()
                 """))
@@ -45,6 +45,16 @@ def _element(db_session, org, name="El"):
     db_session.add(el)
     db_session.flush()
     return el
+
+
+def _relationship(db_session, org, source, target):
+    from app.models.archimate_core import ArchiMateRelationship
+
+    rel = ArchiMateRelationship(type="serving", source_id=source.id, target_id=target.id,
+                                 organization_id=org.id)
+    db_session.add(rel)
+    db_session.flush()
+    return rel
 
 
 def test_insert_leaves_one_open_version(app, db_session, make_org):
@@ -196,3 +206,165 @@ def test_backfill_is_idempotent(app, db_session, make_org):
     assert first.exit_code == 0
     assert second.exit_code == 0
     assert "would seed 0 version" in second.output
+
+
+# ---------------------------------------------------------------------------
+# pr311-v1 final-check fix round
+# ---------------------------------------------------------------------------
+
+
+def test_relationship_insert_leaves_one_open_version(app, db_session, make_org):
+    """DEFECT-4: the brief scope includes relationships, not just elements."""
+    org = make_org("eh-rel-insert")
+    source = _element(db_session, org)
+    target = _element(db_session, org)
+    rel = _relationship(db_session, org, source, target)
+
+    rows = db_session.execute(text(
+        "SELECT valid_to FROM entity_history WHERE table_name='archimate_relationships' AND record_id=:id"
+    ), {"id": rel.id}).fetchall()
+
+    assert len(rows) == 1
+    assert rows[0][0] is None
+
+
+def test_relationship_two_updates_leave_three_non_overlapping_versions_with_the_right_org(
+    app, db_session, make_org
+):
+    org = make_org("eh-rel-double-update")
+    source = _element(db_session, org)
+    target = _element(db_session, org)
+    rel = _relationship(db_session, org, source, target)
+
+    db_session.execute(text("UPDATE archimate_relationships SET type = 'flow' WHERE id=:id"), {"id": rel.id})
+    db_session.commit()
+    db_session.execute(text("UPDATE archimate_relationships SET type = 'access' WHERE id=:id"), {"id": rel.id})
+    db_session.commit()
+
+    rows = db_session.execute(text(
+        "SELECT valid_from, valid_to, organization_id FROM entity_history "
+        "WHERE table_name='archimate_relationships' AND record_id=:id ORDER BY valid_from"
+    ), {"id": rel.id}).fetchall()
+
+    assert len(rows) == 3
+    for i in range(len(rows) - 1):
+        assert rows[i][1] == rows[i + 1][0]
+    assert sum(1 for r in rows if r[1] is None) == 1
+    assert all(r[2] == org.id for r in rows)
+
+
+def test_delete_closes_the_current_open_version(app, db_session, make_org):
+    """DEFECT-1: a delete is a change -- the open version must close, not
+    stay open and silently misrepresent a deleted row as still current."""
+    org = make_org("eh-delete")
+    el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
+    el_id = el.id
+    db_session.commit()
+
+    before = db_session.execute(text(
+        "SELECT COUNT(*) FROM entity_history WHERE table_name='archimate_elements' "
+        "AND record_id=:id AND valid_to IS NULL"
+    ), {"id": el_id}).scalar()
+    assert before == 1
+
+    db_session.execute(text("DELETE FROM archimate_elements WHERE id=:id"), {"id": el_id})
+    db_session.commit()
+
+    after_open = db_session.execute(text(
+        "SELECT COUNT(*) FROM entity_history WHERE table_name='archimate_elements' "
+        "AND record_id=:id AND valid_to IS NULL"
+    ), {"id": el_id}).scalar()
+    after_total = db_session.execute(text(
+        "SELECT COUNT(*) FROM entity_history WHERE table_name='archimate_elements' AND record_id=:id"
+    ), {"id": el_id}).scalar()
+
+    assert after_open == 0, "the delete must close the open version, not leave it current"
+    assert after_total == 1, "no new version is opened for a row that no longer exists"
+
+
+def test_insert_stamps_the_base_rows_own_time_columns(app, db_session, make_org):
+    """DEFECT-2: valid_from/recorded_at on archimate_elements itself (not
+    just the entity_history copy) must be populated, or the brief's owned
+    columns are dead."""
+    org = make_org("eh-base-stamp")
+    el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
+
+    row = db_session.execute(text(
+        "SELECT valid_from, valid_to, recorded_at, superseded_at FROM archimate_elements WHERE id=:id"
+    ), {"id": el.id}).fetchone()
+
+    assert row.valid_from is not None
+    assert row.valid_to is None
+    assert row.recorded_at is not None
+    assert row.superseded_at is None
+
+
+def test_update_restamps_the_base_rows_own_time_columns(app, db_session, make_org):
+    org = make_org("eh-base-restamp")
+    el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
+    el_id = el.id
+    db_session.commit()
+
+    first = db_session.execute(text(
+        "SELECT valid_from FROM archimate_elements WHERE id=:id"
+    ), {"id": el_id}).scalar()
+
+    db_session.execute(text("UPDATE archimate_elements SET name = name || '-x' WHERE id=:id"), {"id": el_id})
+    db_session.commit()
+
+    second_valid_from, second_valid_to = db_session.execute(text(
+        "SELECT valid_from, valid_to FROM archimate_elements WHERE id=:id"
+    ), {"id": el_id}).fetchone()
+
+    assert second_valid_from != first
+    assert second_valid_to is None
+
+
+def test_backfill_does_not_hide_a_pre_existing_row_from_an_earlier_as_of_date(
+    app, db_session, make_org
+):
+    """DEFECT-3: backfilling a row with no audit-log entry must not make it
+    look like it started existing at backfill time -- it must stay visible
+    to an as-of date from before the backfill ran."""
+    from click.testing import CliRunner
+
+    from app.commands.backfill_entity_history import backfill_entity_history
+
+    org = make_org("eh-backfill-asof")
+    el = _element(db_session, org, name=f"El-{uuid.uuid4().hex[:6]}")
+    db_session.commit()
+    el_id = el.id
+
+    db_session.execute(text(
+        "DELETE FROM entity_history WHERE table_name='archimate_elements' AND record_id=:id"
+    ), {"id": el_id})
+    # Disable the trigger for this one simulation step: an ordinary UPDATE
+    # to archimate_elements would otherwise be treated as a real change,
+    # overwriting our NULLs right back to statement_timestamp() and
+    # re-seeding entity_history with a trigger-sourced row -- which would
+    # make backfill see the row as already covered and skip it entirely,
+    # defeating the "predates the trigger" state this test means to set up.
+    db_session.execute(text("ALTER TABLE archimate_elements DISABLE TRIGGER entity_history_trg"))
+    db_session.execute(text(
+        "UPDATE archimate_elements SET valid_from = NULL, recorded_at = NULL WHERE id=:id"
+    ), {"id": el_id})
+    db_session.execute(text("ALTER TABLE archimate_elements ENABLE TRIGGER entity_history_trg"))
+    db_session.commit()
+
+    runner = CliRunner()
+    result = runner.invoke(backfill_entity_history, [])
+    assert result.exit_code == 0, result.output
+
+    yesterday = "2000-01-01"  # long before this test ever ran
+    visible_long_ago = db_session.execute(text(
+        "SELECT COUNT(*) FROM entity_history WHERE table_name='archimate_elements' "
+        "AND record_id=:id AND valid_from <= :asof AND (valid_to IS NULL OR valid_to > :asof)"
+    ), {"id": el_id, "asof": yesterday}).scalar()
+
+    assert visible_long_ago == 1, "an unknown-start row must be visible to a date long before it was backfilled"
+
+    base_valid_from, base_recorded_at = db_session.execute(text(
+        "SELECT valid_from, recorded_at FROM archimate_elements WHERE id=:id"
+    ), {"id": el_id}).fetchone()
+    assert base_recorded_at is None
+    assert base_valid_from is not None  # -infinity, not NULL and not "now"
