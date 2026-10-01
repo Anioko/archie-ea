@@ -189,7 +189,7 @@ class DerivationRunner:
         """
         from app.modules.intelligence.models.derivation_run import DerivationRun
 
-        finished = _dt.datetime.utcnow()
+        finished = _dt.datetime.now(_dt.timezone.utc)
         started = finished - _dt.timedelta(milliseconds=result.duration_ms)
         db.session.add(
             DerivationRun(

@@ -103,6 +103,42 @@ def test_measured_zero_is_distinguishable_from_never_ran(app, db_session, make_o
     assert never_ran_record is None
 
 
+def test_run_record_uses_timezone_aware_utc_timestamps(app):
+    from app.modules.intelligence.services.derivation_runner import (
+        DerivationResult,
+        DerivationRunner,
+        ENGINE_VERSION,
+    )
+
+    captured = {}
+
+    def _capture(row):
+        captured["row"] = row
+
+    result = DerivationResult(
+        explicit_count=1,
+        derived_count=0,
+        ratio=0.0,
+        duration_ms=25,
+        engine_version=ENGINE_VERSION,
+        derived=[],
+    )
+
+    with app.app_context():
+        original_add = db.session.add
+        try:
+            db.session.add = _capture
+            DerivationRunner()._record_run(organization_id=7, result=result, trigger="on_demand")
+        finally:
+            db.session.add = original_add
+
+    row = captured["row"]
+    assert row.finished_at.tzinfo is not None
+    assert row.finished_at.utcoffset() == _dt.timedelta(0)
+    assert row.started_at.tzinfo is not None
+    assert row.started_at.utcoffset() == _dt.timedelta(0)
+
+
 # --- Acceptance criterion 3: failed / lock-skipped runs write no row -------
 
 
