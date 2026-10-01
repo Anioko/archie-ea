@@ -61,6 +61,7 @@ from app.utils.validators import (
 )
 
 from app.schemas.api_schemas import ApplicationCreateSchema, _load_and_validate
+from app.services.application_cost_accessor import apply_cost_to_application
 from app.utils.duplicate_guard import (
     allow_duplicate_requested,
     duplicate_conflict_response,
@@ -289,20 +290,24 @@ def application_create():
                 setattr(app, field, sanitize_html(value))
 
         # Capture numeric cost fields if submitted
-        cost_fields = [
+        cost_fields = {}
+        cost_field_names = [
             "license_cost_annual",
             "infrastructure_cost_monthly",
             "maintenance_cost_annual",
             "total_cost_of_ownership",
         ]
-        for field in cost_fields:
+        for field in cost_field_names:
             value = data.get(field)
             if value and hasattr(app, field):
                 try:
-                    setattr(app, field, float(value))
+                    cost_fields[field] = float(value)
                 except (ValueError, TypeError):
-                    logger.exception("Failed to operation")
+                    logger.exception("Failed to parse cost field %s", field)
                     pass
+        
+        if cost_fields:
+            apply_cost_to_application(app, cost_fields)
 
         db.session.add(app)
         db.session.commit()
@@ -779,20 +784,24 @@ def application_edit(id):
                 if value is not None and hasattr(app, field):
                     setattr(app, field, sanitize_html(value))
 
-            cost_fields = [
+            cost_fields = {}
+            cost_field_names = [
                 "license_cost_annual",
                 "infrastructure_cost_monthly",
                 "maintenance_cost_annual",
                 "total_cost_of_ownership",
             ]
-            for field in cost_fields:
+            for field in cost_field_names:
                 value = request.form.get(field)
                 if value is not None and hasattr(app, field):
                     try:
-                        setattr(app, field, float(value) if value else None)
+                        cost_fields[field] = float(value) if value else None
                     except (ValueError, TypeError):
-                        logger.exception("Failed to operation")
+                        logger.exception("Failed to parse cost field %s", field)
                         pass
+            
+            if cost_fields:
+                apply_cost_to_application(app, cost_fields)
 
             # F-08(c), Capgemini dry-run: applications had no plateau/as-is-to-be
             # control anywhere, though ApplicationComponent already reaches one
