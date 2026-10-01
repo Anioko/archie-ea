@@ -317,6 +317,13 @@ def init_cli(app):
         app.logger.warning(f"\u26a0\ufe0f  Failed to register architect-role backfill CLI: {e}")
 
     try:
+        from app.commands.reconcile_admin_flags import init_app as init_reconcile_admin_flags
+        init_reconcile_admin_flags(app)
+        app.logger.info("reconcile-admin-flags CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register reconcile-admin-flags CLI: {e}")
+
+    try:
         from app.commands.cutover_capability_tenancy import init_app as init_capability_cutover
         init_capability_cutover(app)
         app.logger.info("Capability tenancy cutover CLI command registered")
@@ -338,6 +345,22 @@ def init_cli(app):
         app.logger.info("Capability provenance migration CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register capability provenance migration CLI: {e}")
+
+    try:
+        from app.commands.backfill_capability_catalogs import (
+            init_app as init_capability_catalog_backfill,
+        )
+        init_capability_catalog_backfill(app)
+        app.logger.info("Capability catalog backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register capability catalog backfill CLI: {e}")
+
+    try:
+        from app.commands.backfill_audit_trail import init_app as init_audit_trail_backfill
+        init_audit_trail_backfill(app)
+        app.logger.info("Audit trail backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register audit trail backfill CLI: {e}")
 
     # CMP-01: SavedDiagram gained TenantMixin (runs on boot after reconcile-schema)
     try:
@@ -412,6 +435,13 @@ def init_cli(app):
         app.logger.info("Copilot insights purge CLI command registered")
     except Exception as e:
         app.logger.warning(f"Failed to register copilot insights purge CLI: {e}")
+
+    try:
+        from app.commands.service_incident_commands import init_app as init_service_incident
+        init_service_incident(app)
+        app.logger.info("Service incident CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register service incident CLI: {e}")
 
     # T-S1: strategic surface demonstration data set (value streams at risk)
     try:

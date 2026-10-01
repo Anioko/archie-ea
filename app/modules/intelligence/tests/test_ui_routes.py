@@ -144,16 +144,20 @@ def test_page_is_not_served_to_an_anonymous_visitor(app, client, path):
         assert "/account/login" in response.headers["Location"]
 
 
-def test_the_two_pages_are_the_only_routes_this_blueprint_serves(app):
+def test_the_read_only_pages_are_the_only_routes_this_blueprint_serves(app):
     rules = {
         rule.rule: sorted(rule.methods - {"HEAD", "OPTIONS"})
         for rule in app.url_map.iter_rules()
         if rule.endpoint.startswith("intelligence_ui.")
     }
-    assert rules == {
+    required = {
         "/intelligence/ask": ["GET"],
         "/intelligence/twin-map": ["GET"],
+        "/intelligence/traceability": ["GET"],
     }
+    optional = {"/intelligence/traceability": ["GET"]}
+    assert all(rules.get(path) == methods for path, methods in required.items())
+    assert set(rules) in (set(required), set(required) | set(optional))
     assert not [r for r in rules if r.startswith("/api/")]
 
 
@@ -378,6 +382,7 @@ def test_names_come_only_from_the_impact_answers_element_map():
         "/api/v1/intelligence/programme/",
         "/api/v1/intelligence/strategy/",
         "/api/v1/intelligence/accountability/",
+        "/api/v1/intelligence/derived/",
     }
 
 
@@ -469,11 +474,20 @@ def test_no_script_or_template_writes_the_plain_terms_sentence_or_formats_confid
         r"worked\s+this\s+out\s+because", r"hops\s+away", r"(very|fairly)\s+confident",
         r"less\s+confident", r"second\s+look",
     ]
+    # Scoped to confidence: L2/L5's cost and budget variance rows legitimately
+    # format a percentage client-side (``wp.costVariancePct.toFixed(1)``), which
+    # has nothing to do with confidence. Only a percentage computed from
+    # something named "confidence" is the client-side math this test forbids.
+    confidence_math = re.compile(
+        r"confidence[^\n]{0,40}(toFixed|Math\.round|\*\s*100\b)"
+        r"|(toFixed|Math\.round|\*\s*100\b)[^\n]{0,40}confidence",
+        re.I,
+    )
     for name, source in _everything().items():
         for pattern in signatures:
             assert not re.search(pattern, source, re.I), (name, pattern)
         assert not re.search(r"confidence\s*(>=|<=|>|<)", source), name
-        assert not re.search(r"toFixed|Math\.round|\*\s*100\b", source), name
+        assert not confidence_math.search(source), name
 
 
 def test_the_drawer_renders_the_supplied_sentence_in_one_paragraph_and_nothing_else():

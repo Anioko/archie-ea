@@ -33,15 +33,12 @@ from app.security.audit import audit_logger
 _log = logging.getLogger(__name__)
 from app.services.rate_limiter import rate_limit
 
+from . import mail_views
 from ..services.account_service import AccountService
 from ..forms.account_forms import (
     ChangeEmailForm,
     ChangePasswordForm,
-    CreatePasswordForm,
     LoginForm,
-    RegistrationForm,
-    RequestResetPasswordForm,
-    ResetPasswordForm,
 )
 
 account_bp = Blueprint("account", __name__)
@@ -146,17 +143,7 @@ def login():
 @rate_limit(5, "1m", methods=("POST",))  # SECURITY: Anti-abuse on registration submits only
 def register():
     """Register a new user, and send them a confirmation email."""
-    form = RegistrationForm()
-    if form.validate_on_submit():
-        (_svc.register_user(
-            first_name=form.first_name.data,
-            last_name=form.last_name.data,
-            email=form.email.data,
-            password=form.password.data,
-        ))
-        flash(f"Account created successfully. Welcome to {current_app.config['APP_NAME']}!", "success")
-        return redirect(url_for("main.index"))
-    return render_template("account/register.html", form=form)
+    return mail_views.register_view()
 
 
 @account_bp.route("/logout")
@@ -198,6 +185,17 @@ def manage():
         last_login_entry=last_login_entry,
         recent_auth_events=auth_audit.recent_auth_events(current_user.id),
     )
+
+
+@account_bp.route("/switch-organization", methods=["POST"])
+@login_required
+def switch_organization():
+    """Switch the signed-in user's active organisation."""
+    success, message = _svc.switch_active_organization(
+        current_user, request.form.get("organization_id", type=int)
+    )
+    flash(message, "success" if success else "error")
+    return redirect(url_for("account.manage"))
 
 
 @account_bp.route("/session/keepalive", methods=["GET"])
@@ -288,32 +286,17 @@ def save_preferences():
 
 
 @account_bp.route("/reset-password", methods=["GET", "POST"])
+@rate_limit(5, "1m", methods=("POST",))  # SECURITY: each POST can send mail
 def reset_password_request():
     """Respond to existing user's request to reset their password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = RequestResetPasswordForm()
-    if form.validate_on_submit():
-        _svc.request_password_reset(form.email.data)
-        flash("A password reset link has been sent to {}.".format(form.email.data), "warning")
-        return redirect(url_for("account.login"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_request_view()
 
 
 @account_bp.route("/reset-password/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
 def reset_password(token):
     """Reset an existing user's password."""
-    if not current_user.is_anonymous:
-        return redirect(url_for("main.index"))
-    form = ResetPasswordForm()
-    if form.validate_on_submit():
-        success, message = _svc.reset_password(token, form.email.data, form.new_password.data)
-        flash_cat = "form-success" if success else "form-error"
-        flash(message, flash_cat)
-        if success:
-            return redirect(url_for("account.login"))
-        return redirect(url_for("main.index"))
-    return render_template("account/reset_password.html", form=form)
+    return mail_views.reset_view(token)
 
 
 @account_bp.route("/manage/change-password", methods=["GET", "POST"])
@@ -376,58 +359,37 @@ def change_email(token):
     return redirect(url_for("main.index"))
 
 
-@account_bp.route("/confirm-account")
+@account_bp.route("/confirm-account", methods=["GET", "POST"])
 @login_required
+@rate_limit(3, "1m", methods=("POST",))  # SECURITY: each POST sends mail
 def confirm_request():
     """Respond to new user's request to confirm their account."""
-    _svc.send_confirmation_email(current_user)
-    flash("A new confirmation link has been sent to {}.".format(current_user.email), "warning")
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_request_view()
 
 
 @account_bp.route("/confirm-account/<token>")
-@login_required
 def confirm(token):
     """Confirm new user's account with provided token."""
-    if current_user.confirmed:
-        return redirect(url_for("main.index"))
-    success, message = _svc.confirm_account(current_user, token)
-    flash_cat = "success" if success else "error"
-    flash(message, flash_cat)
-    return redirect(url_for("main.index"))
+    return mail_views.confirm_view(token)
+
+
+@account_bp.route("/join/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m", methods=("POST",))
+def join(token):
+    """Accept an e-mailed invitation into an organisation by setting a password."""
+    return mail_views.join_view(token)
 
 
 @account_bp.route("/join-from-invite/<int:user_id>/<token>", methods=["GET", "POST"])
+@rate_limit(10, "1m")
 def join_from_invite(user_id, token):
-    """Confirm new user's account with provided token and prompt them to set a password."""
-    if current_user is not None and current_user.is_authenticated:
-        flash("You are already logged in.", "error")
-        return redirect(url_for("main.index"))
+    """Retired invitation link: it is served by the one invitation flow.
 
-    new_user, token_valid, message = _svc.join_from_invite(user_id, token)
-
-    if new_user is None:
-        return redirect(404)
-
-    if not token_valid and new_user.password_hash is not None:
-        flash(message, "error")
-        return redirect(url_for("main.index"))
-
-    if token_valid:
-        form = CreatePasswordForm()
-        if form.validate_on_submit():
-            _svc.set_password(new_user, form.password.data)
-            flash(
-                "Your password has been set. After you log in, you can "
-                'go to the "Your Account" page to review your account '
-                "information and settings.",
-                "success",
-            )
-            return redirect(url_for("account.login"))
-        return render_template("account/join_invite.html", form=form)
-    else:
-        flash(message, "error")
-    return redirect(url_for("main.index"))
+    Links of this shape carried a reusable signed token that was never
+    stored. They set no password and send no mail any more; the token is
+    handed to ``/join/<token>``, which refuses anything it did not issue.
+    """
+    return redirect(url_for("account.join", token=token))
 
 
 @account_bp.route("/invitation/<int:invitation_id>/accept", methods=["POST"])
@@ -463,9 +425,7 @@ def before_request():
 @account_bp.route("/unconfirmed")
 def unconfirmed():
     """Catch users with unconfirmed emails."""
-    if current_user.is_anonymous or current_user.confirmed:
-        return redirect(url_for("main.index"))
-    return render_template("account/unconfirmed.html")
+    return mail_views.unconfirmed_view()
 
 
 # =========================================================================

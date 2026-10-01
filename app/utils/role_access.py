@@ -165,6 +165,18 @@ EXCLUSIVE_SECTIONS: Dict[str, List[str]] = {
 DEFAULT_ROLE = ROLE_SOLUTION_ARCHITECT
 
 
+# One cost-visibility rule.  Every surface that redacts financial
+# figures (cost, budget, TCO, licence unit cost) checks this single set.
+# Previously each surface maintained its own copy of the same three roles;
+# a fourth surface that forgot to update its copy would leak cost data.
+# Import this constant — do not define a second list.
+COST_VISIBILITY_ROLES: frozenset = frozenset({
+    ROLE_CTO,
+    ROLE_PORTFOLIO_MANAGER,
+    ROLE_PLATFORM_ADMIN,
+})
+
+
 def get_user_role(user) -> str:
     """Get user's enterprise role with fallback to default.
 
@@ -222,8 +234,17 @@ def get_visible_sections(user) -> List[str]:
 
 
 def is_admin(user) -> bool:
-    """Check if user has admin role."""
-    return get_user_role(user) == ROLE_PLATFORM_ADMIN
+    """Check if user has admin role.
+
+    The system of record for "is an administrator" is
+    Permission.ADMINISTER via user.is_admin().  This function delegates to it
+    rather than re-deriving the answer from enterprise_role, so every caller
+    that uses this accessor shares one authority.
+    """
+    try:
+        return bool(user.is_admin())
+    except Exception:  # noqa: BLE001 - a nav gate must not be able to 500 a page
+        return False
 
 
 # Roles whose job is to author the capability model. The capability pages used
@@ -393,6 +414,8 @@ def _link(label, endpoint, icon, requires=None, query_params=None):
       "admin"          — route is @admin_required (Permission.ADMINISTER)
       "platform_admin" — route is @platform_admin_required (the cross-tenant
                          is_platform_admin super-admin flag)
+      "data_subject_requests" — routes are @requires_role(DATA_SUBJECT_REQUEST_ROLES)
+                         (security_architect, and platform_admin as always)
       "general"        — route requires Permission.GENERAL (require_roles()
                          only grants access when current_user.can(GENERAL)
                          holds), which a read-only Viewer role (permissions=0)
@@ -481,7 +504,11 @@ _ADMIN_LINKS = [
     # could. The link now names the handler that actually runs.
     _link("AI Prompts", "admin.solution_prompts_page", "sparkles"),
     _link("Governance Gates", "admin.governance_gates", "badge-check", requires="admin"),
-    _link("Seed Management", "admin.seed_management", "database"),
+    # The organisation's audit trail (query, export in full, verify). It takes
+    # Seed Management's place in this zone to hold the link budget; Seed
+    # Management stays one click away as a tile on Command Center
+    # (app/templates/admin/index.html).
+    _link("Audit Log", "admin.audit_log_viewer", "scroll-text", requires="admin"),
     _link("Settings", "main.settings", "settings"),
     # Added in the Task 3 fix round (review finding: orphaned real routes —
     # both existed, worked, and had no sidebar link of any kind).
@@ -782,11 +809,17 @@ _MY_WORK_LINKS = {
         # this degrades safely if application_mgmt fails to import.
         _link("Compliance", "application_mgmt.compliance_frameworks_dashboard",
               "clipboard-check"),
+        # The Data Protection Officer's work: scope data-subject requests,
+        # assign the searches, and run access and erasure with evidence.
+        _link("Data Subject Requests", "gdpr_bp.dsr_index", "user-x",
+              requires="data_subject_requests"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Tech Radar", "tech_radar.index", "radar"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # Read access to the organisation's audit trail: export and verify.
+        _link("Audit Log", "admin.audit_log_viewer", "scroll-text"),
     ],
     # ARCH-123 folded this into enterprise_architect with the note "no dedicated
     # role for either yet". These three surfaces ship and are the whole of the
@@ -898,6 +931,13 @@ def link_requires_satisfied(user, requires):
         return bool(getattr(user, "is_org_admin", False))
     if requires == "platform_admin":
         return bool(getattr(user, "is_platform_admin", False))
+    if requires == "data_subject_requests":
+        try:
+            from app.decorators.requires_role import may_handle_data_subject_requests
+
+            return may_handle_data_subject_requests(user)
+        except Exception:  # anonymous / unexpected user object
+            return False
     if requires == "general":
         try:
             from app.models.user import Permission
