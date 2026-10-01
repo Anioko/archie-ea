@@ -390,6 +390,40 @@ def test_decision_ledger_backfill_leaves_unresolvable_rows_as_orphans(db_session
     assert resolved_org is None
 
 
+def test_decision_ledger_backfill_reports_quarantine_and_updates_not_duplicates(db_session, make_org):
+    """Final check v5 LOW: an unresolvable decision_ledger row must surface on
+    the existing platform-administrator errors page, with the expected
+    fingerprint and no organisation; a second backfill run must update that
+    one entry's occurrence count rather than creating a second one."""
+    from app.models.error_event import ErrorEvent
+
+    row_id = db.session.execute(db.text(
+        "INSERT INTO decision_ledger "
+        "(capability_id, capability_name_snapshot, decision_id, decision_summary, decision_sequence, decision_date, created_at, organization_id) "
+        "VALUES ('not-a-number', 'Unresolvable', 'DEC-ORPHAN-2', 'No matching capability', 1, now(), now(), NULL) "
+        "RETURNING id"
+    )).scalar()
+    db.session.commit()
+
+    run_backfill(dry_run=False)
+
+    fingerprint = f"decision-ledger-quarantine:{row_id}"
+    events = ErrorEvent.query.filter_by(fingerprint=fingerprint).all()
+    assert len(events) == 1
+    event = events[0]
+    assert event.organization_id is None
+    assert event.resolved is False
+    assert str(row_id) in event.message
+    assert event.occurrence_count == 1
+
+    # A second run over the still-unresolvable row updates the same entry.
+    run_backfill(dry_run=False)
+    db_session.expire_all()
+    events_after = ErrorEvent.query.filter_by(fingerprint=fingerprint).all()
+    assert len(events_after) == 1, "a second backfill run must not create a duplicate quarantine entry"
+    assert events_after[0].occurrence_count == 2
+
+
 # ----------------------------------------------- final-check fix round
 
 
