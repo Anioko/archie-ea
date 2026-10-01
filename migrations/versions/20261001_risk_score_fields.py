@@ -20,7 +20,7 @@ approval-queue/decision-register consolidations. The down step refuses while
 any row holds a value, since dropping would discard a recorded score or an
 already-completed merge pointer.
 
-Revision ID: 20261001_risk_scores_and_solution_risk_pointer
+Revision ID: 20261001_risk_score_fields
 Revises: 20260926_widen_element_name
 Create Date: 2026-10-01
 """
@@ -29,7 +29,11 @@ from sqlalchemy import text
 
 from app.commands.schema_migrations import ContractBlocked
 
-revision = "20261001_risk_scores_and_solution_risk_pointer"
+# alembic_version.version_num is VARCHAR(32) (set by the baseline migration
+# system in migrations/env.py, not by this revision) -- keep this id at or
+# under that length, the same constraint every revision after the baseline
+# already satisfies.
+revision = "20261001_risk_score_fields"
 down_revision = "20260926_widen_element_name"
 branch_labels = None
 depends_on = None
