@@ -155,7 +155,7 @@ class AuditLog(db.Model):
         try:
             from app.models.user import User
 
-            u = User.query.get(self.user_id)
+            u = User.query.filter_by(id=self.user_id).first()
             return u.email if u and getattr(u, "email", None) else str(self.user_id)
         except Exception:
             return str(self.user_id)
@@ -168,11 +168,19 @@ class AuditLog(db.Model):
     def description(self):
         if not self.action:
             return ""
+        if self.action == "tool_refused" and isinstance(self.new_value, dict):
+            # A refused AI tool call: which tool, and the rule that refused it.
+            return "AI tool '%s' refused. %s" % (
+                self.new_value.get("tool") or "unknown",
+                self.new_value.get("rule_description") or "",
+            )
         _rec = f"#{self.record_id}" if self.record_id else ""
         return f"{self.action} {self.table_name or ''}{_rec}".strip()
 
     @property
     def status(self):
+        if self.action == "tool_refused":
+            return "refused"
         return ""  # not tracked
 
     @property
@@ -370,7 +378,10 @@ class AuditLog(db.Model):
                         "This entry does not follow the one before it: an entry "
                         "was removed, inserted or re-sealed.",
                     )
-                if chain_digest(row["prev_hash"], row) != row["row_hash"]:
+                if row["row_hash"] not in (
+                    chain_digest(row["prev_hash"], row),
+                    chain_digest(row["prev_hash"], row, LEGACY_CHAINED_COLUMNS),
+                ):
                     return cls._broken(result, row["id"], "This entry was altered after it was recorded.")
                 prev = row["row_hash"]
                 result["checked"] += 1
@@ -443,13 +454,19 @@ class AuditLog(db.Model):
 # ---------------------------------------------------------------------- #
 
 #: Columns covered by ``row_hash``. ``prev_hash`` is covered by prefixing it.
+#: ``id`` is assigned by the database and is not hashed: the chain's order is
+#: id order (appends per organisation are serialised by the advisory lock),
+#: and ``prev_hash`` links make any removal, insertion or reordering visible.
 CHAINED_COLUMNS = (
-    "id", "organization_id", "user_id", "action", "table_name", "record_id",
+    "organization_id", "user_id", "action", "table_name", "record_id",
     "old_value", "new_value", "ip_address", "user_agent", "created_at",
     "extra_json", "source_table", "source_id",
 )
+#: What entries sealed before the id left the seal covered: the same columns
+#: plus ``id``. Those seals stay valid, so verification accepts either form.
+LEGACY_CHAINED_COLUMNS = ("id", *CHAINED_COLUMNS)
 _JSON_COLUMNS = ("old_value", "new_value", "extra_json")
-_INT_COLUMNS = ("id", "organization_id", "user_id", "record_id", "source_id")
+_INT_COLUMNS = ("organization_id", "user_id", "record_id", "source_id")
 _STR_COLUMNS = ("action", "table_name", "ip_address", "user_agent", "source_table")
 
 # Namespace for pg_advisory_xact_lock(namespace, organisation): serialises
@@ -491,10 +508,10 @@ def _normalise(values):
     return values
 
 
-def chain_digest(prev_hash, values):
+def chain_digest(prev_hash, values, columns=CHAINED_COLUMNS):
     """SHA-256 over ``prev_hash`` and the canonical form of the chained columns."""
     body = {}
-    for key in CHAINED_COLUMNS:
+    for key in columns:
         value = values.get(key)
         if key in _JSON_COLUMNS:
             value = _canonical_json(value)
@@ -525,7 +542,7 @@ def _chain_state(connection):
 
 
 def seal(connection, values):
-    """Assign ``id``, ``prev_hash`` and ``row_hash`` to an audit row about to be inserted."""
+    """Assign ``prev_hash`` and ``row_hash`` to an audit row about to be inserted."""
     _normalise(values)
     state = _chain_state(connection)
     org_id = values.get("organization_id")
@@ -543,9 +560,6 @@ def seal(connection, values):
             .limit(1)
         ).scalar()
         state["tails"][key] = tail
-    values["id"] = connection.execute(
-        db.text("SELECT nextval(pg_get_serial_sequence('soc2_audit_log', 'id'))")
-    ).scalar()
     values["prev_hash"] = state["tails"][key]
     values["row_hash"] = chain_digest(values["prev_hash"], values)
     state["tails"][key] = values["row_hash"]
@@ -559,15 +573,15 @@ def chain_insert(connection, **values):
     session. ORM inserts are sealed by the ``before_insert`` hook below.
     """
     seal(connection, values)
-    connection.execute(AuditLog.__table__.insert().values(**values))
-    return values["id"]
+    table = AuditLog.__table__
+    return connection.execute(table.insert().values(**values).returning(table.c.id)).scalar()
 
 
 @event.listens_for(AuditLog, "before_insert")
 def _seal_orm_insert(mapper, connection, target):
-    values = {key: getattr(target, key, None) for key in CHAINED_COLUMNS if key != "id"}
+    values = {key: getattr(target, key, None) for key in CHAINED_COLUMNS}
     seal(connection, values)
-    for key in ("id", "prev_hash", "row_hash", "created_at", *_INT_COLUMNS, *_STR_COLUMNS):
+    for key in ("prev_hash", "row_hash", "created_at", *_INT_COLUMNS, *_STR_COLUMNS):
         setattr(target, key, values.get(key))
 
 

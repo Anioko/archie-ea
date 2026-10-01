@@ -15,6 +15,7 @@ from flask_login import current_user, login_required
 
 from app.decorators import admin_required, audit_log
 from app.extensions import db
+from app.middleware.tenant_decorators import platform_admin_required
 from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 
 logger = logging.getLogger(__name__)
@@ -218,7 +219,7 @@ def solution_prompts_data():
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/update", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_solution_prompt")
 def solution_prompt_update(prompt_key):
     """Save a custom override for a solution prompt."""
@@ -292,7 +293,7 @@ def solution_prompt_update(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/reset", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("reset_solution_prompt")
 def solution_prompt_reset(prompt_key):
     """Remove custom override, reverting to hardcoded default."""
@@ -444,7 +445,7 @@ def solution_prompt_diff(prompt_key):
 
 @solution_prompt_admin_bp.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("rollback_solution_prompt")
 def solution_prompt_rollback(prompt_key, version):
     """A-05: restore a prior version's content as the live override.

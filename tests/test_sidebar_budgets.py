@@ -279,6 +279,7 @@ def test_business_architect_my_work_membership():
         "Architecture Journey",
         "Capability Maturity",
         "Value Streams",
+        "Value Streams at Risk",
         "Stakeholder Map",
         "Gap Analysis",
         "Roadmaps",
