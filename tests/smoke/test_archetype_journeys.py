@@ -40,6 +40,8 @@ JOURNEY = {
     "security_architect":   ["/risks/", "/admin/governance-gates"],
     "data_architect":       ["/architecture/data-architecture",
                              "/architecture/data-lineage"],
+    "technology_architect":  ["/technology/radar/", "/applications/"],
+    "application_architect": ["/applications/", "/interface-register/"],
 }
 
 PAGE_STATE = """() => {

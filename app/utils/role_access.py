@@ -16,12 +16,14 @@ from app.models.user import (
     ROLE_BUSINESS_ARCHITECT,
     ROLE_CTO,
     ROLE_ENTERPRISE_ARCHITECT,
+    ROLE_APPLICATION_ARCHITECT,
     ROLE_DATA_ARCHITECT,
     ROLE_PLATFORM_ADMIN,
     ROLE_SECURITY_ARCHITECT,
     ROLE_PORTFOLIO_MANAGER,
     ROLE_PROCUREMENT,
     ROLE_SOLUTION_ARCHITECT,
+    ROLE_TECHNOLOGY_ARCHITECT,
 )
 
 
@@ -151,6 +153,24 @@ ROLE_SECTION_ACCESS: Dict[str, Set[str]] = {
         "capabilities",
         "data_integration",
         "governance",
+    },
+    # Promoted 1 Oct 2026. Neither carries "administration", "procurement" or
+    # "my_applications": they model the estate, they do not administer it or
+    # buy for it. Both hold data_integration for the Interface Register, the
+    # surface a technology or application architect works from.
+    ROLE_TECHNOLOGY_ARCHITECT: {
+        "home",
+        "portfolio",
+        "architecture",
+        "capabilities",
+        "data_integration",
+    },
+    ROLE_APPLICATION_ARCHITECT: {
+        "home",
+        "portfolio",
+        "architecture",
+        "capabilities",
+        "data_integration",
     },
 }
 
@@ -843,6 +863,25 @@ _MY_WORK_LINKS = {
         # "which AI systems do we run, on what model and data" could only
         # reach it by typing the URL. "bot" is unused elsewhere in these zones.
         _link("AI Systems", "ai_systems_genome.ai_systems", "bot"),
+    ],
+    # Promoted 1 Oct 2026. Every endpoint below already ships and is linked for
+    # another persona; icons are distinct within the zone so the collapsed rail
+    # shows six different glyphs.
+    ROLE_TECHNOLOGY_ARCHITECT: [
+        _link("Tech Radar", "tech_radar.index", "radar"),
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Interface Register", "interface_register.index", "cable"),
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
+    ],
+    ROLE_APPLICATION_ARCHITECT: [
+        _link("Applications", "unified_applications.application_list", "list"),
+        _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
+        _link("Capability Map", "capability_map.index", "layers"),
+        _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
+        _link("Interface Register", "interface_register.index", "cable"),
+        _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
     ],
 }
 

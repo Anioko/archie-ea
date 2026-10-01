@@ -34,6 +34,8 @@ DEFAULT_GROUP_ROLE_MAP = {
     "Application-Managers": "application_manager",
     "Security-Architects": "security_architect",
     "Data-Architects": "data_architect",
+    "Technology-Architects": "technology_architect",
+    "Application-Architects": "application_architect",
 }
 
 

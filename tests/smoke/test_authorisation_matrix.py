@@ -111,10 +111,12 @@ POLICY = {
     "/interface-register/":    {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     "/interface-register/new": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # Task 03 (D5): /comparison takes an optional initiative_id query param --
     # like /new, the data_integration guard runs before that param is even
@@ -124,6 +126,7 @@ POLICY = {
     "/interface-register/comparison": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # Task 04: /costing takes the same optional initiative_id query param and
     # runs the identical _guard() call before it is read -- same data_integration
@@ -132,6 +135,7 @@ POLICY = {
     "/interface-register/costing": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # The organisation's audit trail (query, export, verify). Gated by
     # governance_gate_reader_required: administrators, plus security
@@ -340,7 +344,8 @@ def test_transformation_api_authorisation_matrix(
 
 INTERFACE_REGISTER_PERMITTED = {
     "solution_architect", "enterprise_architect", "business_architect",
-    "security_architect", "data_architect", "platform_admin",
+    "security_architect", "data_architect", "technology_architect",
+    "application_architect", "platform_admin",
 }
 
 

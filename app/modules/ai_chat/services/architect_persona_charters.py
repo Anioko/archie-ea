@@ -110,6 +110,9 @@ ROLE_DEFAULT_PERSONAS: Dict[str, str] = {
     # generalist charter would concede the point.
     "security_architect": "security_architect",
     "data_architect": "data_architect",
+    # Promoted 1 Oct 2026: both already had charters written ahead of the role.
+    "technology_architect": "technology_architect",
+    "application_architect": "application_architect",
 }
 
 DEFAULT_CHAT_PERSONA = "enterprise_architect"
