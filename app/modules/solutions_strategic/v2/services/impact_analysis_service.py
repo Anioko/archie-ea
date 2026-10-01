@@ -75,7 +75,6 @@ class ImpactAnalysisService:
             page_size=page_size,
         )
         rows = result.get("rows") or []
-        elements = result.get("elements") or {}
 
         # Use the full (unpaginated) rows for scoring and storage.
         scoring_rows = (full_result or result).get("rows") or []

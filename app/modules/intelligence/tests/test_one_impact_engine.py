@@ -367,7 +367,7 @@ def test_risk_score_uses_all_elements_when_paginated(app, db_session, make_org):
         f"stored impacted_elements should have 5 IDs, got {len(stored_ids)}"
     )
     assert set(stored_ids) == {c.id for c in children}, (
-        f"stored impacted_elements should match all children"
+        "stored impacted_elements should match all children"
     )
 
 
