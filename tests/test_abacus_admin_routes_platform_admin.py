@@ -53,12 +53,18 @@ def _job(db_session):
 
 
 def _world(db_session, make_org):
-    org = make_org("abacus")
-    tenant_admin = _user(db_session, org)
-    platform_admin = _user(db_session, org, platform=True)
+    # Two organisations (DEFECT-7, pr312-v1 review): Abacus is platform-wide,
+    # so a tenant admin from EITHER organisation must be refused -- proving
+    # this is a platform-admin check, not an org-specific one that happens
+    # to match org A by coincidence.
+    org_a = make_org("abacus-a")
+    org_b = make_org("abacus-b")
+    tenant_admin_a = _user(db_session, org_a)
+    tenant_admin_b = _user(db_session, org_b)
+    platform_admin = _user(db_session, org_a, platform=True)
     job = _job(db_session)
     db_session.commit()
-    return tenant_admin.id, platform_admin.id, job.id
+    return tenant_admin_a.id, tenant_admin_b.id, platform_admin.id, job.id
 
 
 def _login(db_session, client, login_as, user_id):
@@ -74,35 +80,77 @@ def _login(db_session, client, login_as, user_id):
     ("post", "/admin/abacus-settings/test-connection"),
     ("post", "/admin/abacus-settings/trigger-sync"),
     ("post", "/admin/abacus-settings/clear-stale-jobs"),
+    # pr312-v1 review, DEFECT-1/3/4/5/6: these six were missed by the first
+    # round -- discover-filters/discover-types/save-relationship-mappings
+    # write platform-wide Abacus config; sync-status/stats/relationship-
+    # mappings read it.
+    ("get", "/admin/abacus-settings/sync-status"),
+    ("get", "/admin/abacus-settings/stats"),
+    ("post", "/admin/abacus-settings/discover-filters"),
 ])
 def test_a_tenant_administrator_is_refused_on_every_abacus_settings_route(
     app, db_session, make_org, client, login_as, method, path
 ):
-    tenant_admin_id, _platform_id, _job_id = _world(db_session, make_org)
+    tenant_admin_a_id, tenant_admin_b_id, _platform_id, _job_id = _world(db_session, make_org)
 
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = getattr(client, method)(path)
+    for admin_id in (tenant_admin_a_id, tenant_admin_b_id):
+        _login(db_session, client, login_as, admin_id)
+        response = getattr(client, method)(path)
+        assert response.status_code == 403
 
-    assert response.status_code == 403
+
+def test_a_tenant_administrator_is_refused_on_abacus_dashboard(
+    app, db_session, make_org, client, login_as
+):
+    """Separate from the parametrized set above: /admin/abacus-dashboard is
+    a page route, not under the abacus-settings prefix."""
+    tenant_admin_a_id, tenant_admin_b_id, _platform_id, _job_id = _world(db_session, make_org)
+
+    for admin_id in (tenant_admin_a_id, tenant_admin_b_id):
+        _login(db_session, client, login_as, admin_id)
+        response = client.get("/admin/abacus-dashboard")
+        assert response.status_code == 403
 
 
 def test_a_tenant_administrator_cannot_cancel_a_platform_wide_abacus_job(
     app, db_session, make_org, client, login_as
 ):
-    tenant_admin_id, _platform_id, job_id = _world(db_session, make_org)
+    tenant_admin_a_id, tenant_admin_b_id, _platform_id, job_id = _world(db_session, make_org)
 
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = client.post(f"/admin/abacus-settings/cancel-job/{job_id}")
-
-    assert response.status_code == 403
+    for admin_id in (tenant_admin_a_id, tenant_admin_b_id):
+        _login(db_session, client, login_as, admin_id)
+        response = client.post(f"/admin/abacus-settings/cancel-job/{job_id}")
+        assert response.status_code == 403
 
 
 def test_a_platform_administrator_can_still_reach_abacus_settings(
     app, db_session, make_org, client, login_as
 ):
-    _tenant_id, platform_admin_id, _job_id = _world(db_session, make_org)
+    _tenant_a_id, _tenant_b_id, platform_admin_id, _job_id = _world(db_session, make_org)
 
     _login(db_session, client, login_as, platform_admin_id)
     response = client.get("/admin/abacus-settings")
 
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize("method,path", [
+    ("post", "/admin/abacus-settings/discover-types"),
+    ("post", "/admin/abacus-settings/save-relationship-mappings"),
+    ("get", "/admin/abacus-settings/relationship-mappings"),
+])
+def test_a_tenant_administrator_is_refused_on_v2_only_abacus_routes(
+    app, db_session, make_org, client, login_as, method, path
+):
+    """These three routes (DEFECT-2/3/6, pr312-v1 review) exist only in the
+    v2 module tree. Skip rather than fail if this environment has the v1
+    tree mounted instead -- a 404 here says nothing about the fix, which
+    covers both trees defensively regardless of which is live."""
+    tenant_admin_a_id, tenant_admin_b_id, _platform_id, _job_id = _world(db_session, make_org)
+
+    for admin_id in (tenant_admin_a_id, tenant_admin_b_id):
+        _login(db_session, client, login_as, admin_id)
+        response = getattr(client, method)(path)
+        if response.status_code == 404:
+            pytest.skip(f"{path} not reachable in this environment (v1 tree mounted)")
+        assert response.status_code == 403

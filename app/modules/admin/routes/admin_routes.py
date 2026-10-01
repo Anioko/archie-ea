@@ -1546,7 +1546,7 @@ def trigger_abacus_sync():
 
 @admin_bp.route("/abacus-settings/sync-status", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_sync_status():
     """API endpoint to check current sync job status."""
     from app.models import Job
@@ -1614,7 +1614,7 @@ def cancel_abacus_job(job_id):
 
 @admin_bp.route("/abacus-settings/stats", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_stats():
     """Get Abacus import statistics."""
     try:
@@ -1785,7 +1785,7 @@ def governance_gates_delete(gate_id):
 
 @admin_bp.route("/abacus-settings/discover-filters", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def discover_abacus_filters():
     """Discover available filter dimensions from the Abacus API."""
     import asyncio
@@ -1839,7 +1839,7 @@ def discover_abacus_filters():
 
 @admin_bp.route("/abacus-dashboard", methods=["GET"])
 @login_required
-@admin_required
+@platform_admin_required
 def abacus_dashboard():
     """Display Abacus sync dashboard with health metrics and statistics."""
     from app.models.application_portfolio import ApplicationComponent
