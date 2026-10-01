@@ -52,10 +52,16 @@ services:
   server:
     build:
       context: .
-    # Bring the schema up before starting the web server (all idempotent, non-destructive):
+    # The schema is brought up by the one-shot schema-deploy service
+    # (scripts/database/deploy-schema.sh) before this container starts, via
+    # database-acl's depends_on chain. All steps are idempotent and non-destructive:
     #   init-db          — create any missing tables (create_all). Without it, gunicorn
     #                      boots against an empty DB and every request 500s ("relation does not exist").
-    #   reconcile-schema — add any columns the models gained since this DB was created.
+    #   schema-upgrade   — apply pending Alembic revisions (migrations/versions/): the
+    #                      changes reconcile-schema cannot make, such as relaxing NOT NULL
+    #                      or widening a column. A failed revision stops the deploy here.
+    #   reconcile-schema — drift detector: add any nullable columns the models gained since
+    #                      this DB was created, listing each one it adds.
     #                      create_all never alters existing tables, so a long-lived DB drifts
     #                      and core pages 500 (e.g. arb_review_items.jira_issue_key). See
     #                      docs/known-issues/schema-drift-on-existing-databases.md
