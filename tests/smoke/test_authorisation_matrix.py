@@ -220,6 +220,13 @@ def _observe(page, base, path):
     return ALLOWED if status < 400 else DENIED
 
 
+def _csrf_token(page):
+    """Read the current page's CSRF token without forcing another navigation."""
+    token = page.locator('meta[name="csrf-token"]').get_attribute("content")
+    assert token, "signed-in page did not expose a CSRF token"
+    return token
+
+
 @pytest.fixture
 def page(browser):
     ctx = browser.new_context(viewport={"width": 1280, "height": 900})
@@ -510,8 +517,7 @@ def test_interface_register_raise_gap_authorisation(
     asserts the boundary, not the gap-raising business rule already covered
     in tests/test_interface_register_service.py)."""
     _login(page, live_server, seeded["emails"][archetype])
-    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    csrf_token = _csrf_token(page)
     response = page.request.post(
         live_server + "/interface-register/%d/gaps" % seeded_interface_element,
         form={
@@ -576,8 +582,7 @@ def test_interface_register_attach_work_package_authorisation(
     data_integration boundary, observed on the costed-work-package write
     path (US-6 AC6)."""
     _login(page, live_server, seeded["emails"][archetype])
-    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    csrf_token = _csrf_token(page)
     response = page.request.post(
         live_server + "/interface-register/gaps/%d/work-packages" % seeded_interface_gap,
         form={
