@@ -9,21 +9,21 @@ first superseded store. `flask backfill-capability-catalogs` (the accompanying
 backfill command) sets it once per row and treats a row it has already
 resolved as done, so this is also what makes that command idempotent.
 
-A plain nullable column is ordinarily `reconcile-schema`'s job, but the lead's
-ruling on this consolidation is that a schema change for it goes through this
-versioned revision system instead, never only through reconcile-schema (see
-docs/adr/0008-one-system-of-record.md and the R1 capability-store brief). The
-down step drops all four columns; nothing depends on them existing, and no
-data is lost by removing a pointer.
+A plain nullable column is ordinarily `reconcile-schema`'s job, but this
+consolidation's design explicitly calls for every schema change to go through
+this versioned revision system instead, never only through reconcile-schema
+(see docs/adr/0008-one-system-of-record.md). The down step drops all four
+columns; nothing depends on them existing, and no data is lost by removing a
+pointer.
 
-Revision ID: 20260930_capability_catalog_backlinks
+Revision ID: 20260930_capability_backlinks
 Revises: 20260926_widen_element_name
 Create Date: 2026-09-30
 """
 from alembic import op
 from sqlalchemy import text
 
-revision = "20260930_capability_catalog_backlinks"
+revision = "20260930_capability_backlinks"
 down_revision = "20260926_widen_element_name"
 branch_labels = None
 depends_on = None

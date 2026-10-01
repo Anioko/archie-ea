@@ -63,7 +63,6 @@ quarantined.
 """
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -314,14 +313,6 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
     archimate_id = row.identifier if row.identifier_column == "archimate_id" and row.identifier else None
     if code is None and archimate_id is None:
         code = f"{row.code_prefix}-{row.id}"
-    checksum = hashlib.md5(  # noqa: S324 -- drift fingerprint, not a security control (matches project_capabilities.py's own md5 use)
-        "|".join(
-            str(part) for part in (
-                row.table, row.id, row.name, row.description or "",
-                row.level, row.category or "", row.identifier or "",
-            )
-        ).encode("utf-8")
-    ).hexdigest()
     new_id = connection.execute(
         text(
             "INSERT INTO unified_capabilities ("
@@ -332,7 +323,15 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
             "created_at, updated_at"
             ") VALUES ("
             ":name, :description, :code, :level, :scope, :organization_id, "
-            ":source_table, :source_id, :source_org_id, :source_checksum, "
+            ":source_table, :source_id, :source_org_id, "
+            # PostgreSQL's own md5(), not Python's hashlib: a drift fingerprint,
+            # not a security control, computed the same way
+            # project_capabilities.py's _CHECKSUM_SQL already does -- avoids a
+            # second checksum convention and the weak-hash finding Python's
+            # hashlib.md5 raises for exactly this non-security use.
+            "md5(concat_ws('|', :source_table, :source_id, :name, "
+            "COALESCE(:description, ''), :level::text, COALESCE(:category, ''), "
+            "COALESCE(:identifier, ''))), "
             "'BUSINESS', :category, :current_maturity_level, "
             ":target_maturity_level, :status, :discovery_source, :archimate_id, "
             "COALESCE(:created_at, now()), now()"
@@ -348,7 +347,7 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
             "source_table": row.table,
             "source_id": str(row.id),
             "source_org_id": organization_id,
-            "source_checksum": checksum,
+            "identifier": row.identifier,
             "category": row.category,
             "current_maturity_level": row.current_maturity_level,
             "target_maturity_level": row.target_maturity_level,
