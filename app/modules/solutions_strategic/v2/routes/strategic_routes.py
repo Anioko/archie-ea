@@ -435,11 +435,29 @@ def api_impact_analysis():
         data = request.get_json()
         element_id = data.get("element_id")
         change_type = data.get("change_type", "MODIFY")
-        cursor = data.get("cursor")
-        page_size = data.get("page_size")
 
         if not element_id:
             return jsonify({"error": "element_id is required"}), 400
+
+        cursor = None
+        cursor_raw = data.get("cursor")
+        if cursor_raw is not None:
+            try:
+                cursor = int(cursor_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "cursor must be an integer"}), 400
+            if cursor < 0:
+                return jsonify({"error": "cursor must be non-negative"}), 400
+
+        page_size = None
+        page_size_raw = data.get("page_size")
+        if page_size_raw is not None:
+            try:
+                page_size = int(page_size_raw)
+            except (TypeError, ValueError):
+                return jsonify({"error": "page_size must be an integer"}), 400
+            if not (1 <= page_size <= 200):
+                return jsonify({"error": "page_size must be between 1 and 200"}), 400
 
         service = ImpactAnalysisService()
         analysis = service.analyze_change_impact(
