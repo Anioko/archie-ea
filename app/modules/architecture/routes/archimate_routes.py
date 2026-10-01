@@ -14,7 +14,6 @@ SA-007:
     GET /api/archimate/viewpoints/<id>/data         — filtered elements + layout hints
 """
 
-from app.utils import safe_xml  # untrusted XML: entity-expansion safe
 import concurrent.futures
 import json
 import re as _re
@@ -24,6 +23,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 
 from app import db
+from app.models.constants import ArchiMateRelationshipType
 from app.modules.architecture.routes.lucidchart_import_routes import (
     register_lucidchart_import_routes,
 )
@@ -1302,21 +1302,6 @@ ARCHIMATE_RELATIONSHIP_TYPES = [
     "specialization", "association",
 ]
 
-# Canonical aliases: non-standard names that appear in legacy/seeded data
-_REL_TYPE_ALIASES = {
-    "realizes": "realization",
-    "serves": "serving",
-    "uses": "serving",
-    "triggers": "triggering",
-    "flows": "flow",
-    "composes": "composition",
-    "aggregates": "aggregation",
-    "assigns": "assignment",
-    "specializes": "specialization",
-    "associates": "association",
-}
-
-
 def _normalize_rel_type(raw: str) -> str:
     """Normalise any legacy or non-canonical relationship type string to the
     lowercase canonical form accepted by ARCHIMATE_RELATIONSHIP_TYPES.
@@ -1329,11 +1314,7 @@ def _normalize_rel_type(raw: str) -> str:
     """
     if not raw:
         return ""
-    # Strip trailing "Relationship" suffix (case-insensitive)
-    normalised = _re.sub(r"(?i)relationship$", "", raw).strip()
-    normalised = normalised.lower()
-    # Map known aliases
-    return _REL_TYPE_ALIASES.get(normalised, normalised)
+    return ArchiMateRelationshipType.normalize(raw) or ""
 
 
 @archimate_bp.route("/api/relationships", methods=["GET"])
@@ -1479,12 +1460,20 @@ def api_create_relationship():
     # picker would ever have offered.
     from app.services.archimate_validity_service import ArchimateValidityService
 
-    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
-        return api_error(
-            "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
-            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
-            400,
-        )
+    validity = ArchimateValidityService()
+    if not validity.is_valid(source_el.type or "", target_el.type or "", rel_type):
+        # Name the types the metamodel does allow for this pair, so the person
+        # who attempted the connection is told what to draw instead.
+        valid_types = [
+            r["type"] for r in validity.get_valid_relationships(source_el.type or "", target_el.type or "")
+        ]
+        return jsonify({
+            "success": False,
+            "error": "ArchiMate 3.2 does not allow " + rel_type + " from " + (source_el.name or "")
+            + " (" + (source_el.type or "") + ") to " + (target_el.name or "")
+            + " (" + (target_el.type or "") + ")",
+            "valid_types": valid_types,
+        }), 400
 
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
@@ -2056,6 +2045,13 @@ def api_get_saved_viewpoint(vp_id):
             "routing_style": rp.routing_style if rp else "manhattan",
             "sequence_order": r.sequence_order,
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            # What was recorded on the relationship when it was drawn; the
+            # Composer's loader restores these, so a reopened view shows what a
+            # flow carries and how data is accessed, not just the bare type.
+            "description": r.description,
+            "access_mode": r.access_mode,
+            "flow_label": r.flow_label,
+            "custom_label": r.custom_label,
         })
 
     return jsonify({
@@ -6916,281 +6912,105 @@ def api_composer_element_metrics():
 
 
 # ── GAP-CMP-006: OEF XML Import ─────────────────────────────────────────
-# Imports ArchiMate elements and relationships from Open Exchange Format XML.
-# Frontend calls this from composer_persistence.js → importOef().
-
-# Valid element types (mirrors ArchiMateExchangeService.ALL_ELEMENT_TYPES)
-_OEF_VALID_TYPES = {
-    # Motivation
-    "Stakeholder", "Driver", "Assessment", "Goal", "Outcome",
-    "Principle", "Requirement", "Constraint", "Meaning", "Value",
-    # Strategy
-    "Resource", "Capability", "CourseOfAction", "ValueStream",
-    # Business
-    "BusinessActor", "BusinessRole", "BusinessCollaboration", "BusinessInterface",
-    "BusinessProcess", "BusinessFunction", "BusinessInteraction", "BusinessEvent",
-    "BusinessService", "BusinessObject", "Contract", "Representation", "Product",
-    # Application
-    "ApplicationComponent", "ApplicationCollaboration", "ApplicationInterface",
-    "ApplicationFunction", "ApplicationInteraction", "ApplicationProcess",
-    "ApplicationEvent", "ApplicationService", "DataObject",
-    # Technology
-    "Node", "Device", "SystemSoftware", "TechnologyCollaboration",
-    "TechnologyInterface", "Path", "CommunicationNetwork", "TechnologyFunction",
-    "TechnologyProcess", "TechnologyInteraction", "TechnologyEvent",
-    "TechnologyService", "Artifact",
-    # Physical
-    "Equipment", "Facility", "DistributionNetwork", "Material",
-    # Implementation
-    "WorkPackage", "Deliverable", "ImplementationEvent", "Plateau", "Gap",
-    # Composite
-    "Grouping", "Location",
-}
+# The composer (composer.js / composer_persistence.js → importOef()) and the
+# bulk-import page post here. There is no parser in this route: it is a thin
+# JSON adapter over ArchiMateImportService, the one OEF import engine (ADR
+# 0008) that the model-import screen and programme setup also call, so all
+# three validate relationships, apply the size limit and decode the same way.
 
 
 @archimate_bp.route("/api/import/oef", methods=["POST"])
 @login_required
 def api_import_oef():
-    """Import ArchiMate elements and relationships from Open Exchange Format XML.
+    """Import an OEF XML model and answer in the composer's shape.
 
-    Accepts multipart/form-data with a 'file' field containing the XML.
-    Parses elements and relationships, creates/links to existing catalog entries.
+    Input: multipart ``file`` (or ``oef_file``), a JSON ``xml_content``, or
+    a raw XML body; optional ``strategy`` (``skip_duplicates`` default,
+    ``update_existing``, ``create_all``).
 
     Returns JSON with:
-        elements: list of imported elements with {id, name, type, layer, status}
-        relationships: list of imported relationships
-        stats: {elements, relationships, elements_created, elements_linked}
-        warnings: list of warning messages
+        elements: every element this import touched {id, name, type, layer,
+            status: "created" | "linked", custom_properties}
+        relationships: every stored relationship {id, source_id, target_id,
+            type, status: "created" | "linked"}
+        relationships_failed: relationships refused by the ArchiMate matrix,
+            each with a reason
+        stats: {elements, relationships, elements_created, elements_linked,
+            relationships_created, relationships_failed}
+        warnings: parser and refusal messages
     """
-    import xml.etree.ElementTree as ET  # noqa: PLC0415, N813
+    from app.services.archimate_import_service import (  # noqa: PLC0415
+        ArchiMateImportService,
+        ImportRequestError,
+        read_xml_from_request,
+    )
 
-    from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship  # noqa: PLC0415
-
-    # Namespace constants (match archimate_exchange_service.py)
-    ARCHIMATE_NS = "http://www.opengroup.org/xsd/archimate/3.0/"
-    XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
-
-    file = request.files.get("file")
-    if not file:
+    content = read_xml_from_request(request, file_fields=("file", "oef_file"))
+    if content is None:
         return jsonify({"error": "No file uploaded. POST with form-data field 'file'."}), 400
 
-    if not file.filename or not file.filename.lower().endswith(".xml"):
-        return jsonify({"error": "File must be an XML file (.xml)"}), 400
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        strategy = (payload.get("strategy") if isinstance(payload, dict) else None) or "skip_duplicates"
+    else:
+        strategy = request.form.get("strategy") or "skip_duplicates"
 
-    # Read and parse XML
     try:
-        raw = file.read()
-        if len(raw) > 10 * 1024 * 1024:
-            return jsonify({"error": "File exceeds 10MB limit"}), 400
-        root = safe_xml.fromstring(raw)
-    except ET.ParseError as exc:
-        return jsonify({"error": f"XML parse error: {exc}"}), 400
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Failed to read file: {exc}"}), 400
+        result = ArchiMateImportService().import_xml(content, strategy=strategy)
+    except ImportRequestError as exc:
+        return jsonify({"error": str(exc)}), exc.status_code
 
-    # Register namespaces for lookup
-    ns = {"am": ARCHIMATE_NS}
-
-    # ── Parse elements ──────────────────────────────────────────────
-    xml_elements = root.findall(".//am:element", ns)
-    if not xml_elements:
-        # Try without namespace (some exporters omit it)
-        xml_elements = root.findall(".//element")
-    # Also try direct children under <elements> container
-    if not xml_elements:
-        elements_container = root.find("am:elements", ns) or root.find("elements")
-        if elements_container is not None:
-            xml_elements = list(elements_container)
-
-    elements_out = []
-    warnings = []
-    # Map XML identifier → db ID for relationship resolution
-    xml_id_to_db_id = {}
-    elements_created = 0
-    elements_linked = 0
-
-    for elem in xml_elements:
-        # Extract type from xsi:type attribute
-        elem_type = elem.get(f"{{{XSI_NS}}}type")
-        if not elem_type:
-            tag = elem.tag
-            if "}" in tag:
-                elem_type = tag.split("}")[1]
-            else:
-                elem_type = tag
-
-        # Strip namespace prefix if present (e.g. "archimate:BusinessProcess")
-        if ":" in elem_type:
-            elem_type = elem_type.split(":")[-1]
-
-        # Remove trailing "Type" suffix some exporters add
-        if elem_type.endswith("Type") and elem_type != "DataObject":
-            elem_type = elem_type[:-4]
-
-        # Validate type is known
-        if elem_type not in _OEF_VALID_TYPES:
-            # Try re-joined variant (strip spaces then check)
-            cleaned = _re.sub(r"\s+", "", elem_type)
-            if cleaned in _OEF_VALID_TYPES:
-                elem_type = cleaned
-            else:
-                warnings.append(f"Unknown element type '{elem_type}', defaulting to Grouping")
-                elem_type = "Grouping"
-
-        # Extract name
-        name_el = elem.find(f"{{{ARCHIMATE_NS}}}name")
-        if name_el is None:
-            name_el = elem.find("name")
-        name = (name_el.text if name_el is not None and name_el.text else
-                elem.get("name", "Unnamed Element"))
-
-        # Extract documentation
-        doc_el = elem.find(f"{{{ARCHIMATE_NS}}}documentation")
-        if doc_el is None:
-            doc_el = elem.find("documentation")
-        description = doc_el.text if doc_el is not None and doc_el.text else None
-
-        # Determine layer
-        layer = _resolve_layer(elem_type)
-
-        # XML identifier for relationship mapping
-        xml_id = elem.get("identifier", "")
-
-        # De-duplicate: check for existing element with same name + type
-        existing = ArchiMateElement.query.filter_by(name=name, type=elem_type).first()
-        if existing:
-            xml_id_to_db_id[xml_id] = existing.id
-            elements_linked += 1
-            elements_out.append({
-                "id": existing.id,
-                "name": existing.name,
-                "type": existing.type,
-                "layer": (existing.layer or layer).lower(),
-                "status": "linked",
-            })
-        else:
-            try:
-                new_el = ArchiMateElement(
-                    name=name,
-                    type=elem_type,
-                    layer=layer,
-                    description=description,
-                )
-                db.session.add(new_el)
-                db.session.flush()
-                xml_id_to_db_id[xml_id] = new_el.id
-                elements_created += 1
-                elements_out.append({
-                    "id": new_el.id,
-                    "name": new_el.name,
-                    "type": new_el.type,
-                    "layer": (new_el.layer or layer).lower(),
-                    "status": "created",
-                })
-            except Exception as exc:  # noqa: BLE001
-                db.session.rollback()
-                warnings.append(f"Failed to create element '{name}': {exc}")
-                continue
-
-    # ── Parse relationships ─────────────────────────────────────────
-    xml_rels = root.findall(".//am:relationship", ns)
-    if not xml_rels:
-        xml_rels = root.findall(".//relationship")
-    if not xml_rels:
-        rels_container = root.find("am:relationships", ns) or root.find("relationships")
-        if rels_container is not None:
-            xml_rels = list(rels_container)
-
-    relationships_out = []
-    rels_created = 0
-
-    for rel in xml_rels:
-        # Extract relationship type
-        rel_type_raw = rel.get(f"{{{XSI_NS}}}type")
-        if not rel_type_raw:
-            tag = rel.tag
-            if "}" in tag:
-                rel_type_raw = tag.split("}")[1]
-            else:
-                rel_type_raw = tag
-
-        # Strip namespace prefix
-        if ":" in rel_type_raw:
-            rel_type_raw = rel_type_raw.split(":")[-1]
-
-        # Normalize using the existing function
-        rel_type = _normalize_rel_type(rel_type_raw)
-
-        # Get source and target XML identifiers
-        source_xml_id = rel.get("source", "")
-        target_xml_id = rel.get("target", "")
-
-        source_db_id = xml_id_to_db_id.get(source_xml_id)
-        target_db_id = xml_id_to_db_id.get(target_xml_id)
-
-        if not source_db_id or not target_db_id:
-            warnings.append(
-                f"Relationship {rel_type}: could not resolve "
-                f"source ({source_xml_id}) or target ({target_xml_id})"
-            )
-            continue
-
-        # Check for existing relationship to avoid duplicates
-        existing_rel = ArchiMateRelationship.query.filter_by(
-            source_id=source_db_id,
-            target_id=target_db_id,
-            type=rel_type,
-        ).first()
-
-        if existing_rel:
-            relationships_out.append({
-                "id": existing_rel.id,
-                "source_id": existing_rel.source_id,
-                "target_id": existing_rel.target_id,
-                "type": rel_type,
-                "status": "linked",
-            })
-            continue
-
-        try:
-            new_rel = ArchiMateRelationship(
-                type=rel_type,
-                source_id=source_db_id,
-                target_id=target_db_id,
-                created_by_id=current_user.id if hasattr(current_user, "id") else None,
-            )
-            db.session.add(new_rel)
-            db.session.flush()
-            rels_created += 1
-            relationships_out.append({
-                "id": new_rel.id,
-                "source_id": new_rel.source_id,
-                "target_id": new_rel.target_id,
-                "type": rel_type,
-                "status": "created",
-            })
-        except Exception as exc:  # noqa: BLE001
-            db.session.rollback()
-            warnings.append(f"Failed to create relationship {rel_type}: {exc}")
-            continue
-
-    # ── Commit ──────────────────────────────────────────────────────
-    try:
-        db.session.commit()
-    except Exception as exc:  # noqa: BLE001
-        db.session.rollback()
-        return jsonify({"error": f"Database commit failed: {exc}"}), 500
+    elements_out = [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "type": r["type"],
+            "layer": (r["layer"] or "").lower(),
+            "status": "created" if r["status"] == "created" else "linked",
+            "custom_properties": r["custom_properties"],
+        }
+        for r in result["element_results"]
+    ]
+    relationships_out = [
+        {
+            "id": r["id"],
+            "source_id": r["source_id"],
+            "target_id": r["target_id"],
+            "type": r["type"],
+            "status": "created" if r["status"] == "created" else "linked",
+        }
+        for r in result["relationship_results"]
+    ]
+    elements_linked = len(elements_out) - result["created"]
+    warnings = list(result["errors"]) + [
+        "Relationship %s (%s: %s -> %s) not imported: %s"
+        % (f["identifier"], f["type"], f["source"], f["target"], f["reason"])
+        for f in result["relationships_failed"]
+    ]
 
     return jsonify({
+        "success": True,
+        "model_name": result["model_name"],
+        "model_id": result["model_id"],
+        "strategy": strategy,
         "elements": elements_out,
         "relationships": relationships_out,
+        "relationships_failed": result["relationships_failed"],
         "stats": {
             "elements": len(elements_out),
             "relationships": len(relationships_out),
-            "elements_created": elements_created,
+            "elements_created": result["created"],
+            "elements_updated": result["updated"],
             "elements_linked": elements_linked,
-            "relationships_created": rels_created,
+            "elements_failed": result["failed"],
+            "relationships_created": result["relationships_created"],
+            "relationships_failed": len(result["relationships_failed"]),
         },
+        # The bulk-import page (architecture/import_csv.html) reads these.
+        "created_count": result["created"],
+        "skipped_count": result["skipped"],
+        "error_count": result["failed"] + len(result["relationships_failed"]),
+        "element_ids": [r["id"] for r in elements_out],
         "warnings": warnings,
     })
 
@@ -7319,7 +7139,14 @@ def element_impact_graph_page(element_id):
     element = db.session.get(ArchiMateElement, element_id)
     if element is None:
         abort(404)
-    return render_template("architecture/impact_graph.html", element=element)
+    # The decisions recorded against this element, so a decision is found from
+    # the thing it governs.
+    from app.models.architecture_decision import ArchitectureDecision  # noqa: PLC0415
+
+    decisions = ArchitectureDecision.affecting_elements([element.id], element.organization_id)
+    return render_template(
+        "architecture/impact_graph.html", element=element, decisions=decisions
+    )
 
 
 @archimate_bp.route("/api/element/<int:element_id>/impact-graph", methods=["GET"])

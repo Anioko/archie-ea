@@ -1,7 +1,7 @@
 """The intelligence module's query surfaces.
 
   POST /api/v1/intelligence/derivation/recompute
-  GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/derived/<derived_id>   (with its explanation)
   GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
@@ -9,6 +9,7 @@
   GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/strategy/<element_id>
   GET  /api/v1/intelligence/accountability/<element_id>
+  GET  /api/v1/intelligence/traceability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -40,10 +41,10 @@ _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 _FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
 
-# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
-# already gates rationalization/TCO/procurement views to this same set) --
-# reused, not a new authority list invented for this endpoint.
-_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
+# The single cost-visibility rule lives in role_access.py so every
+# surface that redacts financial figures shares one authority.  Import it;
+# do not define a second list.
+from app.utils.role_access import COST_VISIBILITY_ROLES, get_user_role
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
@@ -65,9 +66,7 @@ def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: 
     can't see this." A caller with budget authority sees the real value and
     this function is a no-op for them.
     """
-    from app.utils.role_access import get_user_role
-
-    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+    if get_user_role(current_user) in COST_VISIBILITY_ROLES:
         return
     for row in rows:
         for field in fields:
@@ -188,8 +187,6 @@ def get_derived_fact_provenance(derived_id: int):
     if fact is None:
         return not_found_response("Derived relationship")
 
-    from app.extensions import db
-
     # No tenant_scope() here (round-1 refuter finding D4): this route already
     # runs inside a request with g.current_org_id set by the normal request
     # lifecycle, and the existing do_orm_execute tenant-isolation listener
@@ -197,43 +194,20 @@ def get_derived_fact_provenance(derived_id: int):
     # harness whose db.session.remove() calls destroy the REQUEST's own
     # session (detaching flask_login's cached current_user, clobbering
     # g.current_org for the rest of the request) when used inside a request.
-    expanded = []
-    if fact["chain"]:
-        from app.models import ArchiMateRelationship
+    #
+    # The chain is read once, by the explanation: each drawn link with its two
+    # elements, who drew it and when, the rule, and the decisions recorded
+    # against those elements -- all of this organisation. ``expanded_chain``
+    # is the same links in the id-and-endpoint shape this route has always
+    # returned, so the two cannot disagree. A chain link that no longer
+    # resolves stays in both as an explicit unresolved marker (D6) rather than
+    # silently shortening the chain.
+    from app.modules.intelligence.services.explanation import expanded_chain, explain_fact
 
-        rows = (
-            db.session.execute(
-                db.select(ArchiMateRelationship).where(
-                    ArchiMateRelationship.id.in_(fact["chain"]),
-                    ArchiMateRelationship.organization_id == organization_id,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        by_id = {r.id: r for r in rows}
-        for rel_id in fact["chain"]:
-            rel = by_id.get(rel_id)
-            if rel is None:
-                # A chain link that no longer resolves (D6): recording an
-                # explicit unresolved marker instead of silently shortening
-                # the array -- a shorter-but-complete-looking chain is
-                # exactly the kind of fabricated-looking gap CLAUDE.md's
-                # "never invent data" rule warns about.
-                expanded.append({"id": rel_id, "unresolved": True, "derived_from": fact["id"]})
-                continue
-            expanded.append(
-                {
-                    "id": rel.id,
-                    "type": rel.type,
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                    "derived_from": fact["id"],
-                }
-            )
-
+    explanation = explain_fact(organization_id, fact)
     fact_out = dict(fact)
-    fact_out["expanded_chain"] = expanded
+    fact_out["expanded_chain"] = expanded_chain(explanation)
+    fact_out["explanation"] = explanation
     return success_response(fact_out)
 
 
@@ -490,6 +464,37 @@ def cross_layer_impact(element_id: int):
             "maturity_flags": result.get("maturity_flags"),
         }
     )
+
+
+@intelligence_api.route("/traceability/<int:element_id>", methods=["GET"])
+@login_required
+def traceability_check(element_id: int):
+    """Does this element trace up to a capability and down to technology?
+
+    Serialises ``TraceabilityCheckService.check``, which reads the same walk
+    as the impact route above. An element outside the caller's organisation
+    answers exactly as one that does not exist.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.modules.intelligence.services.traceability_check_service import TraceabilityCheckService
+
+    result = TraceabilityCheckService.check(element_id, organization_id)
+    if result.get("state") != "checked":
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+    return success_response(result)
 
 
 @intelligence_api.route("/risk/<int:element_id>", methods=["GET"])
