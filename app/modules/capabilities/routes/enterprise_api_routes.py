@@ -3060,8 +3060,11 @@ def add_requirement_dependency(req_id):
 @login_required
 def remove_requirement_dependency(req_id, dep_id):
     """PRQ-001: Remove a dependency."""
-    from app.models.solution_architect_models import RequirementDependency
+    from app.models.solution_architect_models import RequirementDependency, SolutionRequirement
 
+    # A dependency carries no organisation of its own; its requirement does. Resolve
+    # it first, as adding a dependency already does.
+    SolutionRequirement.query.get_or_404(req_id)
     dep = RequirementDependency.query.filter_by(id=dep_id, req_id=req_id).first_or_404()
     db.session.delete(dep)
     db.session.commit()

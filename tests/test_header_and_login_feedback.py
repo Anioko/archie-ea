@@ -56,8 +56,12 @@ def _login(client, user_id):
             delattr(g, cached)
 
 
-def _make_user(db_session, make_org, label, password="Sup3rSecret!23"):
+def _make_user(db_session, make_org, label, password=None):
     from app.models.user import User
+    from tests.smoke.conftest import PASSWORD
+
+    if password is None:
+        password = PASSWORD
 
     org = make_org(f"header-{label}")
     suffix = uuid.uuid4().hex[:8]

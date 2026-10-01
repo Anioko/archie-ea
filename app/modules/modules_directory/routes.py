@@ -86,6 +86,12 @@ _MORE_TOOLS = [
     # budget) -- this is its one findable home. "network" matches the icon
     # already used for the Twin map button inside ask.html.
     ("Twin Map", "intelligence_ui.twin_map", "network"),
+    # Reached from a Twin map element or an Element properties missing-value
+    # row as well; this is its findable home, outside the sidebar budget.
+    ("Traceability Check", "intelligence_ui.traceability", "route"),
+    # An organisation's governed element properties and the elements missing
+    # them; kept out of the sidebar budget like Twin map.
+    ("Element Properties", "metamodel_properties.index", "sliders-horizontal"),
     ("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
     ("Capability Health", "strategic.capability_health", "heart-pulse"),
     ("Impact Analysis", "strategic.impact_analysis", "target"),
@@ -156,9 +162,9 @@ _MORE_TOOLS = [
     ("Product Roadmap", "roadmap_outcome.product_roadmap_page", "map"),
     ("Risk Register", "risk.risk_register", "alert-triangle"),
     ("Usage Analytics", "usage_analytics.analytics_root", "bar-chart-3"),
-    ("Vendor ArchiMate Analysis", "main.vendor_archimate_analysis", "building"),
+    ("Vendor Analysis", "main.vendor_archimate_analysis", "building"),
     ("Integrations", "main.integrations", "cloud"),
-    ("ArchiMate Roadmap", "main.archimate_roadmap", "map"),
+    ("Architecture Roadmap", "main.archimate_roadmap", "map"),
     ("Enterprise Dashboard", "enterprise.enterprise_dashboard", "layout-dashboard"),
 ]
 
