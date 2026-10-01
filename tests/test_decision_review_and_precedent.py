@@ -56,14 +56,19 @@ def world(db_session, make_org):
 
 
 def test_due_for_review_lists_only_arrived_undecided_reviews(db_session, world):
+    from datetime import datetime
+
     from app.models.architecture_decision import ArchitectureDecision
 
     org_a = world["org_a"]
     due = _decision(db_session, org_a, "Due today", review_date=date.today())
     not_yet = _decision(db_session, org_a, "Due next year", review_date=date.today() + timedelta(days=365))
+    # Reviewed *for this cycle*: reviewed_at is on or after review_date, the
+    # shape record_review_outcome() actually produces (both set together).
     already_reviewed = _decision(
         db_session, org_a, "Already reviewed",
         review_date=date.today() - timedelta(days=1), review_outcome="Still holds.",
+        reviewed_at=datetime.utcnow(),
     )
     never_reviewed = _decision(db_session, org_a, "No review date set")
     db_session.commit()
@@ -102,6 +107,48 @@ def test_record_review_outcome_sets_fields_and_can_clear_the_review_date(db_sess
     # record_review_outcome itself never touches review_date -- the caller
     # (the route) decides whether a new one is set; here nothing was set.
     assert decision.is_due_for_review is False  # outcome now recorded
+
+
+def test_a_recurring_review_becomes_due_again_once_its_next_date_arrives(db_session, world):
+    """A reviewed decision with a next review date set must become due
+    again when that date arrives -- not stay permanently excluded just
+    because review_outcome already holds text from the previous cycle
+    (refuter finding D1 on PR 318: due_for_review()/is_due_for_review used
+    to check only `review_outcome IS NULL`, which a recurring review can
+    never satisfy again after its very first outcome).
+
+    Simulates two review cycles without waiting for real time to pass: the
+    first review and its next date are both backdated together (reviewed_at
+    stays before review_date, matching how record_review_outcome and the
+    route's next-review-date field are actually set together), then the
+    second cycle's date is moved to the past -- arrived, as of "today" --
+    while reviewed_at stays at its first-cycle value, before it.
+    """
+    from datetime import datetime
+
+    from app.models.architecture_decision import ArchitectureDecision
+
+    org_a = world["org_a"]
+    decision = _decision(db_session, org_a, "Vendor contract", review_date=date.today() - timedelta(days=95))
+    db_session.commit()
+
+    # First cycle, backdated 95 days: reviewed then, renewed 90 days out --
+    # still in the future relative to today, so not due yet.
+    decision.record_review_outcome("Renewed for another term.", world["ada"].id)
+    decision.reviewed_at = datetime.utcnow() - timedelta(days=95)
+    decision.review_date = date.today() + timedelta(days=90)
+    db_session.commit()
+    assert decision.is_due_for_review is False
+    assert decision.id not in {d.id for d in ArchitectureDecision.due_for_review(org_a.id)}
+
+    # Time passes, simulated: the next cycle's date has now arrived (set to
+    # the past), while reviewed_at stays at its first-cycle value, still
+    # before it. Due again, despite the old outcome text still being the
+    # only value review_outcome has ever held.
+    decision.review_date = date.today() - timedelta(days=5)
+    db_session.commit()
+    assert decision.is_due_for_review is True
+    assert decision.id in {d.id for d in ArchitectureDecision.due_for_review(org_a.id)}
 
 
 def test_precedent_search_matches_text_in_decision_fields(db_session, world):

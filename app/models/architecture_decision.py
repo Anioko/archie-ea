@@ -154,13 +154,24 @@ class ArchitectureDecision(TenantMixin, db.Model):
 
     @property
     def is_due_for_review(self):
-        """A review date has arrived and no outcome has been recorded yet."""
+        """A review date has arrived with no outcome recorded for *this*
+        cycle yet.
+
+        Not simply ``review_outcome is None``: recording an outcome together
+        with a next review date (a recurring review, the normal case) leaves
+        ``review_outcome`` set from the just-finished cycle while
+        ``review_date`` moves into the future — checking for "any outcome at
+        all" would then hide the decision from every later cycle forever,
+        once it has been reviewed even a single time. A review recorded
+        before the *current* ``review_date`` belongs to a past cycle and
+        does not count; one recorded on or after it does.
+        """
         from datetime import date
 
         return (
             self.review_date is not None
             and self.review_date <= date.today()
-            and self.review_outcome is None
+            and (self.reviewed_at is None or self.reviewed_at.date() < self.review_date)
         )
 
     @classmethod
@@ -179,19 +190,19 @@ class ArchitectureDecision(TenantMixin, db.Model):
         return next_reference("architecture_decisions", "decision_id", "AD-")
 
     @classmethod
-    def affecting_elements(cls, element_ids, organization_id):
-        """The decisions of ``organization_id`` recorded against any of ``element_ids``.
-
-        This is how a decision is found from the things it governs: the element
-        page, the decision list filtered by element and the explanation of a
-        worked-out connection all read it, so they cannot disagree. The
-        organisation predicate is explicit so the answer is the same with or
-        without a request's tenant context. Newest first.
+    def _element_match_clause(cls, element_ids):
+        """The shared ``archimate_element_ids``/``related_element_ids``
+        JSONB-contains predicate, or ``None`` when ``element_ids`` yields no
+        usable id. One place, so ``affecting_elements`` and
+        ``precedent_search`` can never silently drift onto two different
+        answers for "is this decision recorded against this element" --
+        found as a defect (duplicated matching logic) in PR 318 review.
 
         Two writers record the link in two columns: the decision form writes
         ``archimate_element_ids`` and the solution-design decision API writes
-        ``related_element_ids``. Both are read here, so a decision is found
-        however it was recorded; one matching both appears once.
+        ``related_element_ids``. Both are matched here. Ids are stored as
+        numbers by the decision form; a string id written by an older path
+        still names the same element, so both variants are matched.
         """
         from sqlalchemy.dialects.postgresql import JSONB
 
@@ -201,19 +212,32 @@ class ArchitectureDecision(TenantMixin, db.Model):
                 ids.add(int(raw))
             except (TypeError, ValueError):
                 continue
-        if not ids or organization_id is None:
-            return []
-        # Ids are stored as numbers by the decision form; a string id written
-        # by an older path still names the same element.
+        if not ids:
+            return None
         matches = []
         for column in (cls.archimate_element_ids, cls.related_element_ids):
             stored = db.cast(column, JSONB)
             matches += [stored.contains([i]) for i in sorted(ids)]
             matches += [stored.contains([str(i)]) for i in sorted(ids)]
+        return db.or_(*matches)
+
+    @classmethod
+    def affecting_elements(cls, element_ids, organization_id):
+        """The decisions of ``organization_id`` recorded against any of ``element_ids``.
+
+        This is how a decision is found from the things it governs: the element
+        page, the decision list filtered by element and the explanation of a
+        worked-out connection all read it, so they cannot disagree. The
+        organisation predicate is explicit so the answer is the same with or
+        without a request's tenant context. Newest first.
+        """
+        clause = cls._element_match_clause(element_ids)
+        if clause is None or organization_id is None:
+            return []
         stmt = (
             db.select(cls)
             .where(cls.organization_id == organization_id)
-            .where(db.or_(*matches))
+            .where(clause)
             .order_by(cls.created_at.desc(), cls.id.desc())
         )
         return db.session.execute(stmt).scalars().all()
@@ -221,7 +245,15 @@ class ArchitectureDecision(TenantMixin, db.Model):
     @classmethod
     def due_for_review(cls, organization_id):
         """The caller's decisions whose review date has arrived with no
-        outcome recorded yet, earliest due date first."""
+        outcome recorded for *this* cycle yet, earliest due date first.
+
+        Matches ``is_due_for_review``'s own predicate, not a bare
+        ``review_outcome IS NULL``: a recurring review (an outcome recorded
+        together with a next review date) must become due again once that
+        next date arrives, even though ``review_outcome`` already holds the
+        previous cycle's text. ``reviewed_at`` before the current
+        ``review_date`` means that outcome is stale, from a past cycle.
+        """
         from datetime import date
 
         if organization_id is None:
@@ -231,7 +263,12 @@ class ArchitectureDecision(TenantMixin, db.Model):
             .where(cls.organization_id == organization_id)
             .where(cls.review_date.isnot(None))
             .where(cls.review_date <= date.today())
-            .where(cls.review_outcome.is_(None))
+            .where(
+                db.or_(
+                    cls.reviewed_at.is_(None),
+                    db.cast(cls.reviewed_at, db.Date) < cls.review_date,
+                )
+            )
             .order_by(cls.review_date.asc(), cls.id.asc())
         )
         return db.session.execute(stmt).scalars().all()
@@ -264,30 +301,22 @@ class ArchitectureDecision(TenantMixin, db.Model):
                 )
             )
         if element_ids:
-            from sqlalchemy.dialects.postgresql import JSONB
-
-            ids = set()
-            for raw in element_ids:
-                try:
-                    ids.add(int(raw))
-                except (TypeError, ValueError):
-                    continue
-            if ids:
-                matches = []
-                for column in (cls.archimate_element_ids, cls.related_element_ids):
-                    stored = db.cast(column, JSONB)
-                    matches += [stored.contains([i]) for i in sorted(ids)]
-                    matches += [stored.contains([str(i)]) for i in sorted(ids)]
-                stmt = stmt.where(db.or_(*matches))
+            clause = cls._element_match_clause(element_ids)
+            if clause is not None:
+                stmt = stmt.where(clause)
         stmt = stmt.order_by(cls.created_at.desc(), cls.id.desc())
         return db.session.execute(stmt).scalars().all()
 
     def record_review_outcome(self, outcome_text, reviewed_by_id):
         """Record the outcome of a due review: what review_date asked for has
-        now happened. Clears review_date to None only if the outcome text
-        says to stop reviewing; by default the decision stays reviewable
-        again at a later date set separately, so this never silently removes
-        a recurring review unless told to.
+        now happened. Does not touch review_date itself -- the caller (the
+        record-outcome route's own "next review date" field) sets that
+        separately, to a future date for a recurring review or leaves it
+        unset to stop reviewing. ``is_due_for_review``/``due_for_review``
+        compare ``reviewed_at`` against the *current* ``review_date`` rather
+        than checking ``review_outcome`` alone, so a recurring review
+        becomes due again once its next date arrives even though this
+        method leaves the previous cycle's outcome text in place.
         """
         from datetime import datetime
 

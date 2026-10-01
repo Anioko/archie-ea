@@ -303,8 +303,8 @@ def record_outcome(decision_id):
                          "user_id": current_user.id},
                 compliance_flags=["SOC2"],
             )
-        except Exception as _exc:
-            _log.warning("audit log failed for record_outcome", _exc)
+        except Exception:
+            _log.warning("audit log failed for record_outcome", exc_info=True)
         flash("Review outcome recorded", "success")
         return redirect(url_for("arch_decisions.view_decision", decision_id=decision.id))
     return render_template(
