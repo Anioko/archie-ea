@@ -262,6 +262,53 @@ def test_reconcile_admin_flags_command_is_registered(app):
     assert result.exit_code == 0, result.output
 
 
+def test_reconcile_admin_flags_reconciles_every_organisation(
+    app, db_session, make_org
+):
+    """The command must reconcile every organisation with disagreements, not
+    just the first. Clearing the session between organisations previously
+    detached the preloaded organisation rows, so the command fixed the first
+    organisation and crashed before reaching the rest."""
+    org_a = make_org("reconcile-run-a")
+    org_b = make_org("reconcile-run-b")
+    admin_role = Role.query.filter_by(name="Administrator").first()
+    architect_role = Role.query.filter_by(name="Architect").first()
+
+    # org A: column says admin, is_admin() disagrees — should be demoted
+    user_a = User(
+        first_name="A", last_name="Stale",
+        email=f"stale-a-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_a.id, confirmed=True, role=architect_role,
+    )
+    user_a._is_org_admin = True
+    # org B: column says not admin, is_admin() disagrees — should be promoted
+    user_b = User(
+        first_name="B", last_name="Stale",
+        email=f"stale-b-{uuid.uuid4().hex[:8]}@example.com",
+        organization_id=org_b.id, confirmed=True, role=admin_role,
+    )
+    user_b._is_org_admin = False
+
+    db_session.add_all([user_a, user_b])
+    db_session.commit()
+    # Read ids as plain values before invoking the command: the command
+    # itself detaches these instances (that is the behaviour under test), so
+    # touching an attribute on user_a/user_b afterwards would hit the same
+    # DetachedInstanceError this test is not about.
+    user_a_id, user_b_id = user_a.id, user_b.id
+
+    runner = app.test_cli_runner()
+    result = runner.invoke(args=["reconcile-admin-flags"])
+
+    assert result.exit_code == 0, result.output
+
+    db_session.expire_all()
+    reloaded_a = db_session.get(User, user_a_id)
+    reloaded_b = db_session.get(User, user_b_id)
+    assert reloaded_a._is_org_admin is False
+    assert reloaded_b._is_org_admin is True
+
+
 # ---------------------------------------------------------------------------
 # Role preservation during organisation moves (Defects 1 & 2)
 # ---------------------------------------------------------------------------

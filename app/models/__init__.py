@@ -334,6 +334,9 @@ else:
     # H1: Risk <-> Application/Solution/Programme links
     from .risk_entity_link import RiskEntityLink  # noqa: F401
 
+    # One inherent/residual score history row per change to a Risk
+    from .risk_score_history import RiskScoreHistory, SCORE_KINDS  # noqa: F401
+
     # RAID: Assumption/Issue/Dependency (Risk above already covers the "R")
     from .raid_item import RaidItem, RaidKind, RaidStatus  # noqa: F401
 

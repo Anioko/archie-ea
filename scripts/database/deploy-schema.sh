@@ -24,6 +24,7 @@ flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy ba
 flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram tenancy backfill skipped - composer diagrams keep nullable organization_id until it runs; rows left NULL are invisible to every org (CMP-01)'
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
 flask --app manage backfill-architect-role
+flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merge backfill skipped - solution risks stay unlinked from the one risk register (no risk_entity_links row, no shared score history) until it runs'
 # RUN-01: copy ARB, ArchiMate composer and rationalisation audit history into
 # soc2_audit_log (the system of record per ADR 0008). Runs here because
 # CREATE INDEX IF NOT EXISTS ix_soc2_audit_org_id requires table ownership
