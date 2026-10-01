@@ -24,7 +24,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "20261001_adr_canonical_cols"
-down_revision = "20260930_capability_backlinks"
+down_revision = "20261001_risk_score_fields"
 branch_labels = None
 depends_on = None
 

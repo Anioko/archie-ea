@@ -204,6 +204,11 @@ def delete_decision(decision_id):
     ).scalars().all()
     for record in paired_records:
         record.retired_into_id = None
+    # retired_into_id is a bare ForeignKey with no relationship(), so the ORM's
+    # unit-of-work has no dependency rule between this update and the delete
+    # below; without an explicit flush, it can order the DELETE first and hit
+    # architecture_decision_records_retired_into_id_fkey.
+    db.session.flush()
     db.session.delete(decision)
     db.session.commit()
     try:
@@ -217,8 +222,8 @@ def delete_decision(decision_id):
                      "user_id": current_user.id},
             compliance_flags=["SOC2"],
         )
-    except Exception as _exc:
-        _log.warning("audit log failed for delete_decision", _exc)
+    except Exception:
+        _log.warning("audit log failed for delete_decision", exc_info=True)
     flash(f"Architecture Decision {decision_ref} deleted", "success")
     return redirect(url_for("arch_decisions.list_decisions"))
 
