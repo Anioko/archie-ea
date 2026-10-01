@@ -1176,11 +1176,16 @@ def escalate_overdue_approvals(app=None) -> Dict[str, int]:
         # platform_admin-only lookup silently escalates to nobody for it
         # (reviews/pr302-final-check-v1.md). Union both -- an org admin for
         # this tenant, plus any platform_admin who also wants every escalation.
-        org_admins = User.query.filter(
-            User.organization_id == organization_id,
-            User.is_org_admin.is_(True),
-            User.confirmed.is_(True),
-        ).all()
+        # is_org_admin is a derived property (app/models/user.py, PR 291), not
+        # a queryable column -- filter organisation + confirmed in SQL, then
+        # the canonical admin rule in Python, same as every other caller of it.
+        org_admins = [
+            u for u in User.query.filter(
+                User.organization_id == organization_id,
+                User.confirmed.is_(True),
+            ).all()
+            if u.is_org_admin
+        ]
         recipients = sorted({u.email for u in org_admins if u.email} |
                              set(_get_recipients_by_roles(["platform_admin"], organization_id)))
         # summary/entity_type/operation_type all trace back to user- or
