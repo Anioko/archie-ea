@@ -36,6 +36,7 @@ DEFAULT_GROUP_ROLE_MAP = {
     "Data-Architects": "data_architect",
     "Technology-Architects": "technology_architect",
     "Application-Architects": "application_architect",
+    "Business-Owners": "business_owner",
 }
 
 

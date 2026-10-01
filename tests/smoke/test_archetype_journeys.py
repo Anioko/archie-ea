@@ -42,6 +42,7 @@ JOURNEY = {
                              "/architecture/data-lineage"],
     "technology_architect":  ["/technology/radar/", "/applications/"],
     "application_architect": ["/applications/", "/interface-register/"],
+    "business_owner":        ["/intelligence/twin-map", "/applications/"],
 }
 
 PAGE_STATE = """() => {

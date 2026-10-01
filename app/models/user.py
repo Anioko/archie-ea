@@ -51,6 +51,15 @@ ROLE_DATA_ARCHITECT = "data_architect"
 ROLE_TECHNOLOGY_ARCHITECT = "technology_architect"
 ROLE_APPLICATION_ARCHITECT = "application_architect"
 
+# Added 1 Oct 2026 for self-serve sign-ups (the Startup Founder, Scale-up CTO and
+# Business Owner personas). It is a VIEW, not an authority: a business_owner holds
+# exactly what platform_admin holds -- the same sections, the same always-allowed
+# status in requires_role() -- and differs only in a small sidebar and a plain-
+# language AI persona. Authority itself comes from the Administrator role and the
+# organisation's admin record, which registration already grants. ADMINISTRATOR_
+# ROLES is the one place that says the two are equivalent; do not re-derive it.
+ROLE_BUSINESS_OWNER = "business_owner"
+
 VALID_ROLES = [
     ROLE_SOLUTION_ARCHITECT,
     ROLE_ENTERPRISE_ARCHITECT,
@@ -65,6 +74,7 @@ VALID_ROLES = [
     ROLE_DATA_ARCHITECT,
     ROLE_TECHNOLOGY_ARCHITECT,
     ROLE_APPLICATION_ARCHITECT,
+    ROLE_BUSINESS_OWNER,
 ]
 
 # Role display names for UI
@@ -77,12 +87,18 @@ ROLE_DISPLAY_NAMES = {
     ROLE_CTO: "CTO / CIO",
     ROLE_PROCUREMENT: "Procurement",
     ROLE_APPLICATION_MANAGER: "Application Manager",
-    ROLE_PLATFORM_ADMIN: "Platform Admin",
+    # The stored value stays platform_admin (renaming it would orphan users); the
+    # label drops "Platform" so it stops reading as the cross-tenant flag.
+    ROLE_PLATFORM_ADMIN: "Administrator",
     ROLE_SECURITY_ARCHITECT: "Security Architect",
     ROLE_DATA_ARCHITECT: "Data Architect",
     ROLE_TECHNOLOGY_ARCHITECT: "Technology Architect",
     ROLE_APPLICATION_ARCHITECT: "Application Architect",
+    ROLE_BUSINESS_OWNER: "Business Owner",
 }
+
+# Roles that carry full administrator capability in role-based checks.
+ADMINISTRATOR_ROLES = frozenset({ROLE_PLATFORM_ADMIN, ROLE_BUSINESS_OWNER})
 
 
 class Permission:
