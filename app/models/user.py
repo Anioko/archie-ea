@@ -39,6 +39,18 @@ ROLE_PLATFORM_ADMIN = "platform_admin"
 ROLE_SECURITY_ARCHITECT = "security_architect"
 ROLE_DATA_ARCHITECT = "data_architect"
 
+# Promoted from charter-only, 1 Oct 2026, on the owner's decision. Both are
+# served at the paid launch by the design document's release plan, and both had
+# an AI charter, a place in the journey-member roles and no way to be assigned.
+#
+# technology_architect: maps applications to the technology they run on and owns
+# the Tech Radar; ARCH-124 folded it into enterprise_architect for want of a role.
+#
+# application_architect: keeps each domain's application components, services
+# and interfaces modelled; served until now only through solution_architect.
+ROLE_TECHNOLOGY_ARCHITECT = "technology_architect"
+ROLE_APPLICATION_ARCHITECT = "application_architect"
+
 VALID_ROLES = [
     ROLE_SOLUTION_ARCHITECT,
     ROLE_ENTERPRISE_ARCHITECT,
@@ -51,6 +63,8 @@ VALID_ROLES = [
     ROLE_PLATFORM_ADMIN,
     ROLE_SECURITY_ARCHITECT,
     ROLE_DATA_ARCHITECT,
+    ROLE_TECHNOLOGY_ARCHITECT,
+    ROLE_APPLICATION_ARCHITECT,
 ]
 
 # Role display names for UI
@@ -66,6 +80,8 @@ ROLE_DISPLAY_NAMES = {
     ROLE_PLATFORM_ADMIN: "Platform Admin",
     ROLE_SECURITY_ARCHITECT: "Security Architect",
     ROLE_DATA_ARCHITECT: "Data Architect",
+    ROLE_TECHNOLOGY_ARCHITECT: "Technology Architect",
+    ROLE_APPLICATION_ARCHITECT: "Application Architect",
 }
 
 

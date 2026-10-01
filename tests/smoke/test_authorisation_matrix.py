@@ -55,6 +55,10 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+    # AI Systems Register: @login_required and no role gate, so every
+    # archetype reaches it; the rows are fenced per organisation by the slice
+    # builder. It is linked from the security and data architects' sidebars.
+    "/genome/ai-systems":      set(ARCHETYPES),
     # Traceability check and element properties: @login_required and no role
     # gate on the page, so every archetype reads them; the answer is fenced
     # per tenant by the service behind each page. Saving a property definition
@@ -107,10 +111,12 @@ POLICY = {
     "/interface-register/":    {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     "/interface-register/new": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # Task 03 (D5): /comparison takes an optional initiative_id query param --
     # like /new, the data_integration guard runs before that param is even
@@ -120,6 +126,7 @@ POLICY = {
     "/interface-register/comparison": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # Task 04: /costing takes the same optional initiative_id query param and
     # runs the identical _guard() call before it is read -- same data_integration
@@ -128,6 +135,7 @@ POLICY = {
     "/interface-register/costing": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
+        "technology_architect", "application_architect",
     },
     # The organisation's audit trail (query, export, verify). Gated by
     # governance_gate_reader_required: administrators, plus security
@@ -161,6 +169,10 @@ TRANSFORMATION_API_PERMITTED = {
     "arb_member",
     "portfolio_manager",
     "cto",
+    # application_architect is in the transformation room's READ_ROLES
+    # (programme_service.py): the room named the role before it could be
+    # assigned, and promoting it makes that read access reachable.
+    "application_architect",
     "platform_admin",
 }
 
@@ -336,7 +348,8 @@ def test_transformation_api_authorisation_matrix(
 
 INTERFACE_REGISTER_PERMITTED = {
     "solution_architect", "enterprise_architect", "business_architect",
-    "security_architect", "data_architect", "platform_admin",
+    "security_architect", "data_architect", "technology_architect",
+    "application_architect", "platform_admin",
 }
 
 
