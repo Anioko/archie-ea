@@ -74,10 +74,10 @@ def test_onboarding_still_saves_an_ordinary_role(db_session, make_org, client, l
     user = _user(db_session, org, "solution_architect")
     db_session.commit()
 
-    _post_role(client, login_as, user, "enterprise_architect")
+    _post_role(client, login_as, user, "application_manager")
 
     db_session.refresh(user)
-    assert user.enterprise_role == "enterprise_architect"
+    assert user.enterprise_role == "application_manager"
 
 
 def test_real_platform_admin_keeps_the_platform_admin_choice(
@@ -162,3 +162,21 @@ def test_existing_arb_member_can_confirm_their_role(db_session, make_org, client
     db_session.refresh(user)
     assert resp.status_code == 200
     assert user.enterprise_role == "arb_member"
+
+
+@pytest.mark.parametrize(
+    "role",
+    ["platform_admin", "arb_member", "enterprise_architect", "cto", "portfolio_manager", "procurement"],
+)
+def test_onboarding_refuses_every_role_that_carries_authority(
+    db_session, make_org, client, login_as, role
+):
+    org = make_org("rsa-authority")
+    user = _user(db_session, org, "application_manager")
+    db_session.commit()
+
+    resp = _post_role(client, login_as, user, role)
+
+    db_session.refresh(user)
+    assert resp.status_code == 403
+    assert user.enterprise_role == "application_manager"

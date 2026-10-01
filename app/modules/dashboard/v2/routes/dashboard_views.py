@@ -707,6 +707,12 @@ def api_overview_chart():
     )
 
 
+_AUTHORITY_ROLES = frozenset({
+    "platform_admin", "arb_member", "enterprise_architect", "cto",
+    "portfolio_manager", "procurement",
+})
+
+
 @dashboard_bp_v2.route("/api/onboarding-complete", methods=["POST"])
 @timed_route
 @login_required
@@ -724,13 +730,14 @@ def api_onboarding_complete():
         "cto", "application_manager", "procurement",
     }
     if new_role and new_role in valid_roles:
-        # A saved role must never raise the caller's own privilege: only the
-        # one platform-admin predicate (flag AND ADMINISTER), or keeping the
-        # role the user already holds, may select platform_admin.
-        # arb_member carries board voting authority, so it is likewise only
-        # for someone who already holds it; an administrator assigns it.
+        # A saved role must never raise the caller's own privilege. These
+        # personas carry authority somewhere (board voting, administration,
+        # portfolio and procurement decisions, architecture sign-off), so a
+        # person can only confirm one they already hold; otherwise an
+        # administrator assigns it (or the one is_platform_admin predicate
+        # holds). The rest are views and can be chosen freely.
         if (
-            new_role in ("platform_admin", "arb_member")
+            new_role in _AUTHORITY_ROLES
             and current_user.enterprise_role != new_role
             and not is_platform_admin(current_user)
         ):
