@@ -66,6 +66,25 @@ from app import db
 # organization_id is always derived (or left NULL) before organization_units'
 # derivation reads it. If that alphabetical relationship ever changes, the
 # organization_units entry below must still run after application_ownership's.
+#
+# A row's creator/rated-by/generated-by user's own organization_id is only a
+# safe fallback when that user belongs to exactly their home organisation --
+# a user who is also a member of a second one (an org_roles row pointing
+# elsewhere) may have created the row while actively working in that other
+# organisation, which this cannot see. Guessing the home org then hands one
+# tenant's data to another, the exact failure the refuse-to-guess rule exists
+# to prevent (refuter finding H4 on PR 317). Embedded in every such subquery
+# below rather than filtered at the UPDATE's WHERE clause, so a user who
+# fails the check is excluded from COALESCE and the row falls through to the
+# next fallback (or stays an unresolved orphan) instead of being skipped
+# outright.
+# The "AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = <alias>.id
+# AND r.organization_id != <alias>.organization_id)" clause below, inlined
+# per entry rather than built from one shared helper: bandit's B608 flags any
+# f-string-constructed SQL-shaped text regardless of whether the
+# interpolated value is attacker-reachable (here it never is -- u/u2 are
+# this file's own fixed aliases), and the project's own convention is to
+# avoid the pattern entirely rather than carry a baseline exception for it.
 _DERIVABLE_ORG = {
     "vendor_product_capabilities": """
         UPDATE vendor_product_capabilities v
@@ -169,12 +188,14 @@ _DERIVABLE_ORG = {
         UPDATE drivers d
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE d.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = d.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = d.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     # A briefing's generated_by_id is a plain integer, not an FK constraint
@@ -187,6 +208,7 @@ _DERIVABLE_ORG = {
          WHERE eb.generated_by_id = u.id
            AND eb.organization_id IS NULL
            AND u.organization_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)
     """,
     # "drivers" < "goals": the driver_id fallback below reads drivers'
     # organization_id after this dict has already derived it, not before.
@@ -195,13 +217,15 @@ _DERIVABLE_ORG = {
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
                  (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE g.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = g.archimate_element_id),
                  (SELECT d.organization_id FROM drivers d WHERE d.id = g.driver_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = g.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     "meanings": """
@@ -270,12 +294,14 @@ _DERIVABLE_ORG = {
         UPDATE stakeholders h
            SET organization_id = COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE h.organization_id IS NULL
            AND COALESCE(
                  (SELECT e.organization_id FROM archimate_elements e WHERE e.id = h.archimate_element_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = h.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     "strategic_milestones": """
@@ -290,14 +316,18 @@ _DERIVABLE_ORG = {
         UPDATE strategic_recommendations s
            SET organization_id = COALESCE(
                  (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id),
-                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
                )
          WHERE s.organization_id IS NULL
            AND COALESCE(
                  (SELECT b.organization_id FROM business_capability b WHERE b.id = s.capability_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id),
-                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = s.created_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id)),
+                 (SELECT u2.organization_id FROM users u2 WHERE u2.id = s.rated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u2.id AND r.organization_id != u2.organization_id))
                ) IS NOT NULL
     """,
     # "values" is a reserved SQL keyword -- the table name must stay quoted.
