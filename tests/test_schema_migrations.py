@@ -30,6 +30,7 @@ from sqlalchemy.engine import make_url
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "20260926_baseline"
 RELAX = "20260926_relax_owner_app"
+WIDEN = "20260926_widen_element_name"
 HEAD = "20260930_capability_backlinks"
 
 _DEFAULT_URL = "postgresql://postgres:postgres@127.0.0.1:5432/archie_test"
@@ -401,8 +402,10 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     code, output = _flask(url, ["db", "downgrade", BASELINE], check=False)
     assert code != 0
     assert "cannot be narrowed without truncating" in output, output[-3000:]
-    # Refused: nothing changed, nothing lost, still recorded at head.
-    assert _recorded(url) == [HEAD]
+    # HEAD's own downgrade (dropping the capability-catalog backlink columns)
+    # has nothing to refuse and always succeeds, so the chain gets one step
+    # further before the genuine refusal: recorded at WIDEN, not HEAD.
+    assert _recorded(url) == [WIDEN]
     assert _column(url, "archimate_elements", "name")[0] == 500
     assert _rows(url) == expanded
     assert (org_b, long_name) in expanded[0]

@@ -330,7 +330,7 @@ def _insert_canonical(connection, row: _SourceRow, *, scope: str, organization_i
             # second checksum convention and the weak-hash finding Python's
             # hashlib.md5 raises for exactly this non-security use.
             "md5(concat_ws('|', :source_table, :source_id, :name, "
-            "COALESCE(:description, ''), :level::text, COALESCE(:category, ''), "
+            "COALESCE(:description, ''), CAST(:level AS text), COALESCE(:category, ''), "
             "COALESCE(:identifier, ''))), "
             "'BUSINESS', :category, :current_maturity_level, "
             ":target_maturity_level, :status, :discovery_source, :archimate_id, "
