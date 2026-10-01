@@ -343,7 +343,7 @@ class TestServiceNowConnectorRouteStoresSecretInVault:
         assert retrieved == secret
 
     def test_secret_is_isolated_between_organisations(
-        self, db_session, org_a, org_b, admin_a, admin_b, client, login_as
+        self, db_session, org_a, org_b, admin_a, admin_b, client, login_as, tenant_ctx
     ):
         from app.modules.codegen.services.credential_vault import OrgCredentialVault
 
@@ -372,9 +372,15 @@ class TestServiceNowConnectorRouteStoresSecretInVault:
             },
         )
 
+        # The test client's last request left g.current_org_id set to org B
+        # (the app context is held open for the whole test, per login_as's
+        # docstring) — read each org's secret back inside its own tenant
+        # context, exactly as a real request for that org would.
         vault = OrgCredentialVault()
-        assert vault.retrieve(org_a.id, "servicenow", "client_secret") == secret_a
-        assert vault.retrieve(org_b.id, "servicenow", "client_secret") == secret_b, (
-            "TENANT LEAK: org B's saved secret was not the one org B submitted — "
-            "org A's save may have overwritten it."
-        )
+        with tenant_ctx(org_a.id):
+            assert vault.retrieve(org_a.id, "servicenow", "client_secret") == secret_a
+        with tenant_ctx(org_b.id):
+            assert vault.retrieve(org_b.id, "servicenow", "client_secret") == secret_b, (
+                "TENANT LEAK: org B's saved secret was not the one org B submitted — "
+                "org A's save may have overwritten it."
+            )
