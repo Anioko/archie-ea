@@ -10,7 +10,7 @@ write path).
 
 from __future__ import annotations
 
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import datetime as _dt
 import time
 from dataclasses import dataclass, field
@@ -58,6 +58,7 @@ class DerivationRunner:
         self._service = service or ArchiMateDerivationService()
 
     @staticmethod
+    @contextmanager
     def _tenant_scope_for(organization_id: int):
         """Reuse an existing harness-managed tenant scope when one is active.
 
@@ -76,8 +77,11 @@ class DerivationRunner:
                 or getattr(g, "current_org_id", None) == organization_id
             )
         ):
-            return nullcontext()
-        return tenant_scope(organization_id)
+            with nullcontext():
+                yield
+            return
+        with tenant_scope(organization_id):
+            yield
 
     def run(self, organization_id: int) -> DerivationResult:
         """Compute derived relationships for one tenant.
