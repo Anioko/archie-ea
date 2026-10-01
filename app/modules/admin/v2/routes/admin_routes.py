@@ -2371,7 +2371,7 @@ def sso_settings():
 @admin_bp_v2.route("/jira-settings", methods=["GET", "POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_settings():
     """Manage Jira push integration configuration."""
     from flask_wtf import FlaskForm
@@ -2525,7 +2525,7 @@ def jira_settings():
 @admin_bp_v2.route("/jira-settings/test-connection", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_test_connection():
     """Test Jira API connectivity."""
     import asyncio
@@ -2647,7 +2647,7 @@ def jira_webhook():
 
 @admin_bp_v2.route("/jira-settings/save-env-config", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 def save_env_jira_config():
     """Save .env Jira credentials to database."""
     import os
@@ -2690,7 +2690,7 @@ def save_env_jira_config():
 @admin_bp_v2.route("/jira-settings/trigger-push", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_trigger_push():
     """Create a Job and start pushing applications to Jira."""
     from app.models.job import Job, JobStatus
@@ -2730,7 +2730,7 @@ def jira_trigger_push():
 @admin_bp_v2.route("/jira-settings/push-status", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_push_status():
     """Return JSON push status for polling."""
     from app.models.job import Job
@@ -2757,7 +2757,7 @@ def jira_push_status():
 @admin_bp_v2.route("/jira-settings/kanban-push-status", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_kanban_push_status():
     """Return JSON kanban push status for polling."""
     try:
@@ -2773,7 +2773,7 @@ def jira_kanban_push_status():
 @admin_bp_v2.route("/jira-settings/trigger-kanban-push", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_trigger_kanban_push():
     """Push all unpushed KanbanCard rows to Jira."""
     try:
@@ -2789,7 +2789,7 @@ def jira_trigger_kanban_push():
 @admin_bp_v2.route("/jira-settings/push-epics", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_push_epics():
     """Create one Jira Epic per ADM phase as an ArchiMate Plateau."""
     try:
@@ -2804,7 +2804,7 @@ def jira_push_epics():
 @admin_bp_v2.route("/jira-settings/push-applications", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_push_applications():
     """Push ApplicationComponents (ArchiMate Application Layer, Phase C/D) to Jira."""
     try:
@@ -2819,7 +2819,7 @@ def jira_push_applications():
 @admin_bp_v2.route("/jira-settings/push-dependencies", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_push_dependencies():
     """Create Jira Subtasks from KanbanCard.depends_on (ArchiMate TriggeringRelationship).
 
@@ -2837,7 +2837,7 @@ def jira_push_dependencies():
 @admin_bp_v2.route("/jira-settings/field-discovery", methods=["GET"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def jira_field_discovery():
     """Trigger discover_fields and return available Jira fields."""
     import asyncio
