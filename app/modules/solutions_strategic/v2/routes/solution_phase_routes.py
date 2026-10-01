@@ -166,8 +166,19 @@ def create_solution_risk(solution_id):
     SolutionRisk row directly. _solution_risk_dict keeps the response the same
     shape SolutionRisk.to_dict() already produced, so the existing screen
     (app/templates/solutions/partials/_edit_risks.html) is unaffected.
+
+    Uses require_entity rather than Solution.query.get_or_404: the latter is
+    Query.get() under the hood, which is tenant-scoped only on an identity-map
+    MISS -- on a HIT (the solution already loaded elsewhere in this request's
+    session, e.g. by an earlier call in the same test or request) it returns
+    the cached row with no SQL and no tenant predicate, letting another
+    organisation's id through to risk_service below instead of a clean 404.
+    require_entity (app/utils/route_guards.py, already used by
+    delete_solution_stakeholder in this file) always issues a real, tenant-
+    filtered SELECT.
     """
-    Solution.query.get_or_404(solution_id)
+    from app.utils.route_guards import require_entity
+    require_entity(Solution, solution_id, description="Solution not found")
     from app.models.risk import RiskStatus
     from app.services import risk_service
     data = request.get_json()
@@ -217,7 +228,8 @@ def create_solution_risk(solution_id):
 @login_required
 def update_solution_risk(solution_id, risk_id):
     """Update a risk. Writes through risk_service -- see create_solution_risk."""
-    Solution.query.get_or_404(solution_id)
+    from app.utils.route_guards import require_entity
+    require_entity(Solution, solution_id, description="Solution not found")
     from app.services import risk_service
     risk = _resolve_canonical_solution_risk(solution_id, risk_id)
     data = request.get_json()
@@ -258,7 +270,8 @@ def update_solution_risk(solution_id, risk_id):
 @login_required
 def delete_solution_risk(solution_id, risk_id):
     """Delete a risk. Writes through risk_service -- see create_solution_risk."""
-    Solution.query.get_or_404(solution_id)
+    from app.utils.route_guards import require_entity
+    require_entity(Solution, solution_id, description="Solution not found")
     from app.services import risk_service
     risk = _resolve_canonical_solution_risk(solution_id, risk_id)
     risk_service.delete_risk(risk.id)
@@ -287,7 +300,8 @@ def import_solution_risks(solution_id):
     Returns: {created, skipped, errors: [{row, reason}]}
     Limits: 2 MB file, 500 rows.
     """
-    Solution.query.get_or_404(solution_id)
+    from app.utils.route_guards import require_entity
+    require_entity(Solution, solution_id, description="Solution not found")
     from app.services import risk_service
 
     file_storage = request.files.get("file")
