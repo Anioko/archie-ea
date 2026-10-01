@@ -115,6 +115,33 @@ def _legacy_record_count():
     return ArchitectureDecisionRecord.query.count()
 
 
+def _clear_leaked_org_context():
+    """flask.g is bound to the app context, not the (possibly nested) request
+    context tenant_ctx pushes -- db_session holds one app context open for
+    the whole test, so g.current_org_id set inside a `with tenant_ctx(...)`
+    block survives past it and leaks into whatever runs next in the same
+    test (see tests/test_motivation_bridge_org_scoping.py's docstring for
+    the same trap). Without this, a second organisation's tenant_ctx call
+    leaves its org_id active for every query made afterwards, including
+    ones meant to check the first organisation's row."""
+    from flask import g, has_app_context
+
+    if has_app_context() and hasattr(g, "current_org_id"):
+        delattr(g, "current_org_id")
+
+
+def _user_for(db_session, org):
+    from app.models.user import User
+
+    user = User(
+        email=f"adr-fix-{uuid.uuid4().hex[:10]}@example.com",
+        first_name="Test", last_name="User", organization_id=org.id, confirmed=True,
+    )
+    db_session.add(user)
+    db_session.flush()
+    return user
+
+
 def test_multi_domain_chat_decision_writes_only_the_canonical_row(db_session, make_org, tenant_ctx):
     """architecture_decisions is the only writer: the AI chat
     decision-recording path must create a canonical row directly and
@@ -163,14 +190,15 @@ def test_workbench_kernel_decision_writes_only_the_canonical_row(db_session, mak
     before = _legacy_record_count()
 
     def _record_for(org, title):
+        user = _user_for(db_session, org)
         session = SolutionAnalysisSession(
             name=f"ws-{uuid.uuid4().hex[:8]}", status=SolutionSessionStatus.IN_PROGRESS,
-            organization_id=org.id,
+            organization_id=org.id, created_by_id=user.id,
         )
         db_session.add(session)
         db_session.flush()
         with tenant_ctx(org.id):
-            kernel = WorkbenchKernel(user_id=None)
+            kernel = WorkbenchKernel(user_id=user.id)
             result = kernel.record_architecture_decision(
                 workspace_id=session.id, title=title,
                 chosen_option="Option A", rationale="Because A is simpler",
@@ -182,6 +210,7 @@ def test_workbench_kernel_decision_writes_only_the_canonical_row(db_session, mak
     org_b = make_org("workbench-decision-b")
     session_a, decision_id_a = _record_for(org_a, "Workbench decision A")
     session_b, decision_id_b = _record_for(org_b, "Workbench decision B")
+    _clear_leaked_org_context()
 
     decision_a = ArchitectureDecision.query.filter_by(id=decision_id_a).first()
     decision_b = ArchitectureDecision.query.filter_by(id=decision_id_b).first()
@@ -200,15 +229,16 @@ def test_sad_governance_generator_decision_writes_only_the_canonical_row(db_sess
     before = _legacy_record_count()
 
     def _record_for(org, title):
+        user = _user_for(db_session, org)
         session = SolutionAnalysisSession(
             name=f"ws-{uuid.uuid4().hex[:8]}", status=SolutionSessionStatus.IN_PROGRESS,
-            organization_id=org.id,
+            organization_id=org.id, created_by_id=user.id,
         )
         db_session.add(session)
         db_session.flush()
         with tenant_ctx(org.id):
-            kernel = WorkbenchKernel(user_id=None)
-            gov = SADGovernanceGenerator(kernel=kernel, user_id=None)
+            kernel = WorkbenchKernel(user_id=user.id)
+            gov = SADGovernanceGenerator(kernel=kernel, user_id=user.id)
             result = gov.generate_decision_record(
                 workspace_id=session.id, title=title,
                 chosen_option="Option B", rationale="Because B scales better",
@@ -220,6 +250,7 @@ def test_sad_governance_generator_decision_writes_only_the_canonical_row(db_sess
     org_b = make_org("sad-gov-b")
     decision_id_a = _record_for(org_a, "SAD governance decision A")
     decision_id_b = _record_for(org_b, "SAD governance decision B")
+    _clear_leaked_org_context()
 
     decision_a = ArchitectureDecision.query.filter_by(id=decision_id_a).first()
     decision_b = ArchitectureDecision.query.filter_by(id=decision_id_b).first()
@@ -518,7 +549,7 @@ def test_set_status_updates_the_canonical_row_and_leaves_the_legacy_row_frozen(d
         canonical = record.pair_with_canonical_register()
         db.session.commit()
 
-        result = SolutionOptionsAdvisor.set_status(record.id, "accepted", user_id=1)
+        result = SolutionOptionsAdvisor.set_status(canonical.id, "accepted", user_id=1)
 
         assert result["success"] is True
         assert result["adr"]["status"] == "accepted", "response must reflect the status actually applied"
@@ -551,9 +582,9 @@ def test_set_status_on_one_organisations_decision_never_touches_another(db_sessi
         record_a = _make_adr_record(org_a.id, status="proposed")
         canonical_a = record_a.pair_with_canonical_register()
         db.session.commit()
-        record_a_id = record_a.id
+        canonical_a_id = canonical_a.id
 
-        result = SolutionOptionsAdvisor.set_status(record_a_id, "accepted", user_id=1)
+        result = SolutionOptionsAdvisor.set_status(canonical_a_id, "accepted", user_id=1)
         assert result["success"] is True
 
         db.session.refresh(canonical_a)
