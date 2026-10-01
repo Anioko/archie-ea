@@ -126,6 +126,14 @@
                           class="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-y font-mono"
                           placeholder="Option A: ...\nOption B: ...">{{ decision.alternatives if decision else '' }}</textarea>
             </div>
+
+            <div>
+                <label class="block text-sm font-medium text-foreground mb-1.5" for="review_date">Review Date</label>
+                <p class="text-xs text-muted-foreground mb-2">Come back to this decision on or after this date -- a vendor renewal, a deviation granted "for now". Leave blank if this decision does not need a future review.</p>
+                <input type="date" id="review_date" name="review_date"
+                       value="{{ decision.review_date.isoformat() if decision and decision.review_date else '' }}"
+                       class="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
+            </div>
         </div>
 
         <!-- ArchiMate Element Picker -->

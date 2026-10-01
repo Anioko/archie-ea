@@ -92,10 +92,21 @@ class ArchitectureDecision(TenantMixin, db.Model):
     business_value = db.Column(db.String(50), nullable=True)
     decided_by_label = db.Column(db.Text, nullable=True)
 
+    # Review and outcome (TB-0132/PB-0132): a decision can carry a
+    # future date it must be looked at again -- a vendor contract renewal, a
+    # deviation granted "for now" -- and the outcome once that review happens.
+    # Both nullable: most decisions never set a review date, and one that does
+    # has no outcome until the review actually happens.
+    review_date = db.Column(db.Date, nullable=True, index=True)
+    review_outcome = db.Column(db.Text, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+
     # Relationships
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     decided_by = db.relationship("User", foreign_keys=[decided_by_id])
     approved_by = db.relationship("User", foreign_keys=[approved_by_id])
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_id])
     superseded_by = db.relationship('ArchitectureDecision', foreign_keys=[superseded_by_id], remote_side='ArchitectureDecision.id', uselist=False)
 
     def to_dict(self):
@@ -135,7 +146,22 @@ class ArchitectureDecision(TenantMixin, db.Model):
             "estimated_effort": self.estimated_effort,
             "business_value": self.business_value,
             "decided_by_label": self.decided_by_label,
+            "review_date": self.review_date.isoformat() if self.review_date else None,
+            "review_outcome": self.review_outcome,
+            "reviewed_at": self.reviewed_at.isoformat() if self.reviewed_at else None,
+            "reviewed_by_id": self.reviewed_by_id,
         }
+
+    @property
+    def is_due_for_review(self):
+        """A review date has arrived and no outcome has been recorded yet."""
+        from datetime import date
+
+        return (
+            self.review_date is not None
+            and self.review_date <= date.today()
+            and self.review_outcome is None
+        )
 
     @classmethod
     def next_decision_id(cls):
@@ -191,6 +217,83 @@ class ArchitectureDecision(TenantMixin, db.Model):
             .order_by(cls.created_at.desc(), cls.id.desc())
         )
         return db.session.execute(stmt).scalars().all()
+
+    @classmethod
+    def due_for_review(cls, organization_id):
+        """The caller's decisions whose review date has arrived with no
+        outcome recorded yet, earliest due date first."""
+        from datetime import date
+
+        if organization_id is None:
+            return []
+        stmt = (
+            db.select(cls)
+            .where(cls.organization_id == organization_id)
+            .where(cls.review_date.isnot(None))
+            .where(cls.review_date <= date.today())
+            .where(cls.review_outcome.is_(None))
+            .order_by(cls.review_date.asc(), cls.id.asc())
+        )
+        return db.session.execute(stmt).scalars().all()
+
+    @classmethod
+    def precedent_search(cls, query_text, organization_id, element_ids=None):
+        """The caller's decisions whose title/context/decision/rationale match
+        ``query_text`` (case-insensitive substring), optionally narrowed to
+        decisions recorded against any of ``element_ids``. An architect
+        searches for precedent before ruling on a new case (PB-0282): what did
+        we decide last time something like this came up, and against what.
+
+        Newest first, matching ``affecting_elements``'s own ordering so the
+        two surfaces never disagree on how precedent is ranked.
+        """
+        if organization_id is None:
+            return []
+        text = (query_text or "").strip()
+        if not text and not element_ids:
+            return []
+        stmt = db.select(cls).where(cls.organization_id == organization_id)
+        if text:
+            like = f"%{text}%"
+            stmt = stmt.where(
+                db.or_(
+                    cls.title.ilike(like),
+                    cls.context.ilike(like),
+                    cls.decision.ilike(like),
+                    cls.rationale.ilike(like),
+                )
+            )
+        if element_ids:
+            from sqlalchemy.dialects.postgresql import JSONB
+
+            ids = set()
+            for raw in element_ids:
+                try:
+                    ids.add(int(raw))
+                except (TypeError, ValueError):
+                    continue
+            if ids:
+                matches = []
+                for column in (cls.archimate_element_ids, cls.related_element_ids):
+                    stored = db.cast(column, JSONB)
+                    matches += [stored.contains([i]) for i in sorted(ids)]
+                    matches += [stored.contains([str(i)]) for i in sorted(ids)]
+                stmt = stmt.where(db.or_(*matches))
+        stmt = stmt.order_by(cls.created_at.desc(), cls.id.desc())
+        return db.session.execute(stmt).scalars().all()
+
+    def record_review_outcome(self, outcome_text, reviewed_by_id):
+        """Record the outcome of a due review: what review_date asked for has
+        now happened. Clears review_date to None only if the outcome text
+        says to stop reviewing; by default the decision stays reviewable
+        again at a later date set separately, so this never silently removes
+        a recurring review unless told to.
+        """
+        from datetime import datetime
+
+        self.review_outcome = outcome_text
+        self.reviewed_at = datetime.utcnow()
+        self.reviewed_by_id = reviewed_by_id
 
 
 VALID_LINK_TYPES = ['governs', 'constrains', 'enables']
