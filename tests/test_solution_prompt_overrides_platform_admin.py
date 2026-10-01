@@ -135,3 +135,117 @@ def test_a_platform_administrator_can_still_update_a_solution_prompt_override(
 
     assert response.status_code == 200
     assert _override_exists(_PROMPT_KEY) is True
+
+
+# --- Direct-handler proof for the solution_prompt_admin blueprint itself ---
+#
+# PR 307 final-check-v3 (lead ruling, note 631): the duplicate-route cleanup
+# (unregistering solution_prompt_admin_bp) is out of scope for this PR --
+# admin_bp_v2 only serves /admin/solution-prompts when its guardrail flag
+# registers it, so removing the other copy could drop the page entirely in a
+# deployment without the guardrail. solution_prompt_admin_bp stays
+# registered, and these tests call its own view functions directly through
+# app.view_functions, independent of which blueprint's rule wins the URL map
+# in this environment -- they fail against an admin_required handler and
+# pass against platform_admin_required, regardless of registration order.
+
+
+def _call_view(app, db_session, login_as, user_id, endpoint, method="POST", path="/",
+                json_body=None, **view_kwargs):
+    from flask_login import login_user
+
+    from app.models.user import User
+
+    view = app.view_functions[endpoint]
+    db_session.expunge_all()
+    user = db_session.get(User, user_id)
+
+    with app.test_request_context(
+        path, method=method, content_type="application/json", json=json_body or {}
+    ):
+        login_user(user)
+        return view(**view_kwargs)
+
+
+def _status(response):
+    return response[1] if isinstance(response, tuple) else response.status_code
+
+
+def test_solution_prompt_admin_update_handler_refuses_a_tenant_administrator(
+    app, db_session, make_org, client, login_as
+):
+    tenant_id, _platform_id = _world(db_session, make_org)
+
+    response = _call_view(
+        app, db_session, login_as, tenant_id,
+        "solution_prompt_admin.solution_prompt_update",
+        prompt_key=_PROMPT_KEY,
+    )
+
+    assert _status(response) == 403
+    assert _override_exists(_PROMPT_KEY) is False
+
+
+def test_solution_prompt_admin_update_handler_allows_a_platform_administrator(
+    app, db_session, make_org, client, login_as
+):
+    _tenant_id, platform_id = _world(db_session, make_org)
+
+    response = _call_view(
+        app, db_session, login_as, platform_id,
+        "solution_prompt_admin.solution_prompt_update",
+        json_body={"prompt_text": "a legitimate platform-admin override"},
+        prompt_key=_PROMPT_KEY,
+    )
+
+    assert _status(response) == 200
+    assert _override_exists(_PROMPT_KEY) is True
+
+
+def test_solution_prompt_admin_reset_handler_refuses_a_tenant_administrator(
+    app, db_session, make_org, client, login_as
+):
+    tenant_id, platform_id = _world(db_session, make_org)
+
+    _call_view(
+        app, db_session, login_as, platform_id,
+        "solution_prompt_admin.solution_prompt_update",
+        json_body={"prompt_text": "v1"},
+        prompt_key=_PROMPT_KEY,
+    )
+
+    response = _call_view(
+        app, db_session, login_as, tenant_id,
+        "solution_prompt_admin.solution_prompt_reset",
+        prompt_key=_PROMPT_KEY,
+    )
+
+    assert _status(response) == 403
+    assert _override_exists(_PROMPT_KEY) is True
+
+
+def test_solution_prompt_admin_rollback_handler_refuses_a_tenant_administrator(
+    app, db_session, make_org, client, login_as
+):
+    tenant_id, platform_id = _world(db_session, make_org)
+
+    _call_view(
+        app, db_session, login_as, platform_id,
+        "solution_prompt_admin.solution_prompt_update",
+        json_body={"prompt_text": "v1"},
+        prompt_key=_PROMPT_KEY,
+    )
+    _call_view(
+        app, db_session, login_as, platform_id,
+        "solution_prompt_admin.solution_prompt_update",
+        json_body={"prompt_text": "v2"},
+        prompt_key=_PROMPT_KEY,
+    )
+
+    response = _call_view(
+        app, db_session, login_as, tenant_id,
+        "solution_prompt_admin.solution_prompt_rollback",
+        prompt_key=_PROMPT_KEY, version=1,
+    )
+
+    assert _status(response) == 403
