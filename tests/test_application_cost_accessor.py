@@ -122,10 +122,10 @@ class TestParseCostCell:
 
     def test_parse_euro_currency(self):
         result = parse_cost_cell("€99.999,50", currency="EUR", period="annual", category="total_cost_of_ownership")
-        # Note: European format with comma as decimal separator not handled - this is a known limitation
-        # The parser strips commas, so this becomes 9999950
-        # For now we accept the behaviour; a full locale parser is a later enhancement
+        # European format with comma as decimal separator is now handled
+        assert result["value"] == Decimal("99999.50")
         assert result["currency"] == "EUR"
+        assert result["error"] is None
 
     def test_parse_monthly_normalises_to_annual(self):
         result = parse_cost_cell("5000", currency="USD", period="monthly", category="total_cost_of_ownership")

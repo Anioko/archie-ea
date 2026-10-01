@@ -24,6 +24,7 @@ COST_CATEGORIES = frozenset({
     "license_cost_annual",
     "maintenance_cost",
     "infrastructure_cost",
+    "infrastructure_cost_monthly",
     "support_cost",
     "implementation_cost",
     "development_cost_annual",
@@ -129,13 +130,46 @@ def parse_cost_cell(
         pass
     else:
         try:
-            # Strip common currency symbols and thousands separators
+            # Strip common currency symbols and whitespace
             cleaned = str(raw_value).strip()
-            for ch in ["$", "€", "£", "¥", ",", " "]:
+            for ch in ["$", "€", "£", "¥", " "]:
                 cleaned = cleaned.replace(ch, "")
             # Handle parentheses as negative (accounting format)
             if cleaned.startswith("(") and cleaned.endswith(")"):
                 cleaned = "-" + cleaned[1:-1]
+            
+            # Handle European vs US/UK number formats
+            # European: 1.234,56 (dot=thousands, comma=decimal)
+            # US/UK: 1,234.56 (comma=thousands, dot=decimal)
+            # Heuristic: if both comma and dot present, the last one is decimal separator
+            # If only one type present, assume dot=decimal (US/UK) unless comma count suggests European
+            has_comma = ',' in cleaned
+            has_dot = '.' in cleaned
+            
+            if has_comma and has_dot:
+                # Both present - last one wins as decimal separator
+                last_comma = cleaned.rfind(',')
+                last_dot = cleaned.rfind('.')
+                if last_comma > last_dot:
+                    # European format: comma is decimal separator
+                    cleaned = cleaned.replace('.', '')  # Remove thousands separators
+                    cleaned = cleaned.replace(',', '.')  # Convert decimal separator
+                else:
+                    # US/UK format: dot is decimal separator
+                    cleaned = cleaned.replace(',', '')  # Remove thousands separators
+            elif has_comma:
+                # Only commas - could be European decimal or US thousands
+                # Heuristic: if comma is followed by exactly 2 digits at end, treat as decimal
+                parts = cleaned.split(',')
+                if len(parts) == 2 and len(parts[1]) == 2 and parts[1].isdigit():
+                    # Likely European decimal format (e.g., "99,50" or "1234,56")
+                    cleaned = cleaned.replace(',', '.')
+                else:
+                    # Likely US thousands separators (e.g., "1,234" or "1,234,567")
+                    cleaned = cleaned.replace(',', '')
+            # If only dots, assume US/UK decimal format (e.g., "1234.56")
+            # No change needed
+            
             value = Decimal(cleaned)
             if value < 0:
                 errors.append(f"Negative cost value not accepted: {raw_value!r}")
@@ -283,6 +317,10 @@ _COST_COLUMN_VARIANTS: Dict[str, List[str]] = {
     "infrastructure_cost": [
         "infrastructure_cost", "annual_infrastructure_cost", "infra_cost",
         "infrastructure cost", "Infrastructure Cost", "Annual Infrastructure Cost",
+    ],
+    "infrastructure_cost_monthly": [
+        "infrastructure_cost_monthly", "monthly_infrastructure_cost", "infra_cost_monthly",
+        "infrastructure cost monthly", "Infrastructure Cost Monthly", "Monthly Infrastructure Cost",
     ],
     "support_cost": [
         "support_cost", "annual_support_cost", "support cost",
