@@ -77,6 +77,58 @@ def test_linking_to_another_organisations_programme_is_refused(
             risk_service.add_risk_link(risk.id, "programme", other_org_programme_id)
 
 
+def test_linking_to_another_organisations_constraint_is_refused(
+        app, db_session, make_org, tenant_ctx):
+    """PR 316 re-review: "constraint" is a linkable entity type too (the
+    canonical Risk model has no constraint_id column, so a risk derived
+    from a constraint keeps that relationship as a RiskEntityLink) -- it
+    must be refused cross-organisation exactly like the other three."""
+    from app.models.solution_architect_models import (
+        ConstraintType,
+        SolutionAnalysisSession,
+        SolutionConstraint,
+        SolutionProblemDefinition,
+    )
+    from app.models.user import User
+
+    org_a, org_b = make_org("link-constraint-a"), make_org("link-constraint-b")
+    with tenant_ctx(org_b.id):
+        other_org_user = User(email="link-constraint-org-b@example.com",
+                              first_name="Org", last_name="B",
+                              organization_id=org_b.id, confirmed=True)
+        other_org_user.password = "not-used-in-tests-123"
+        db_session.add(other_org_user)
+        db_session.flush()
+
+        session_obj = SolutionAnalysisSession(
+            name="Org B Session", created_by_id=other_org_user.id,
+        )
+        db_session.add(session_obj)
+        db_session.flush()
+
+        problem_def = SolutionProblemDefinition(
+            session_id=session_obj.id, problem_description="Org B's problem",
+        )
+        db_session.add(problem_def)
+        db_session.flush()
+
+        other_org_constraint = SolutionConstraint(
+            problem_id=problem_def.id, name="Org B's Constraint",
+            description="Org B only", constraint_type=ConstraintType.BUDGET,
+        )
+        db_session.add(other_org_constraint)
+        db_session.flush()
+        other_org_constraint_id = other_org_constraint.id
+
+    with tenant_ctx(org_a.id):
+        risk = _risk_in(org_a)
+        with pytest.raises(ValueError):
+            risk_service.add_risk_link(risk.id, "constraint", other_org_constraint_id)
+
+        from app.models.risk_entity_link import RiskEntityLink
+        assert RiskEntityLink.query.filter_by(risk_id=risk.id).count() == 0
+
+
 def test_linking_within_the_same_organisation_still_works(app, db_session, make_org, tenant_ctx):
     """The fix must refuse a cross-tenant link without breaking the ordinary,
     same-organisation case the H1 tests already cover."""

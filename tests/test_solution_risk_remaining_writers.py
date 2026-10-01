@@ -125,6 +125,61 @@ def test_solution_ai_orchestrator_create_entities_from_draft_writes_the_canonica
     assert SolutionRisk.query.filter_by(solution_id=solution.id).count() == before_solution_risks == 0
 
 
+def test_solution_ai_orchestrator_keeps_the_risks_link_to_the_constraint_it_answers(
+        app, db_session, make_org, tenant_ctx):
+    """PR 316 re-review open point: a risk derived from a named constraint
+    must keep that relationship as a RiskEntityLink (entity_type="constraint"),
+    since the canonical Risk model has no constraint_id column of its own."""
+    from app.models.risk import Risk
+    from app.models.risk_entity_link import RiskEntityLink
+    from app.modules.solutions_strategic.v2.services.solution_ai_orchestrator import (
+        SolutionAIOrchestrator,
+    )
+
+    org = make_org("remaining-writer-orchestrator-constraint")
+    solution = _solution(db_session, org)
+    user = _user(db_session, org, "ai-orchestrator-constraint-user")
+
+    parsed = {
+        "constraints": [
+            {
+                "name": "Budget cap",
+                "description": "No more than £500K total spend",
+                "constraint_type": "budget",
+                "value": "£500K",
+            },
+        ],
+        "risks": [
+            {
+                "risk_description": "The budget cap may be breached mid-delivery",
+                "impact": "high",
+                "probability": "medium",
+                "constraint_name": "Budget cap",
+            },
+        ],
+    }
+
+    with tenant_ctx(org.id):
+        orchestrator = SolutionAIOrchestrator()
+        created, failed = orchestrator._create_entities_from_draft(solution, parsed, user.id)
+
+    assert created.get("constraints") == 1, (created, failed)
+    assert created.get("risks") == 1, (created, failed)
+    assert not failed.get("risks"), failed
+
+    from app.models.solution_architect_models import SolutionConstraint
+
+    constraint = SolutionConstraint.query.filter_by(name="Budget cap").one()
+    risk = Risk.query.filter_by(solution_id=solution.id).one()
+
+    links = {
+        link.entity_type: link.entity_id
+        for link in RiskEntityLink.query.filter_by(risk_id=risk.id).all()
+    }
+    assert links.get("solution") == solution.id
+    assert links.get("constraint") == constraint.id
+
+
 def test_solution_orchestration_service_accept_recommendation_writes_the_canonical_risk_and_leaves_the_old_table_unchanged(
         app, db_session, make_org, tenant_ctx):
     from app.models.risk import Risk

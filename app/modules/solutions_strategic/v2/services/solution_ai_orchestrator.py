@@ -4869,20 +4869,21 @@ CRITICAL -- TRACEABILITY:
             logger.warning(f"Error storing conflict flags: {e}")
             failed['conflict_flags'] = str(e)
 
-        # --- Risks ---
+        # --- Risks (depends on constraints) ---
         # Writes through the canonical risk register (app/services/risk_service.py)
         # -- the one writer -- instead of creating a SolutionRisk row directly, so
         # no new row reaches the superseded store. risk_service.create_risk
         # commits per call, so (unlike the old db.session.begin_nested() wrapper,
         # no longer needed here) one bad row cannot roll back an earlier one
-        # already created in this same loop. Note: the canonical Risk model has
-        # no constraint_id column, so a risk is no longer linked to the
-        # constraint it was derived from here -- that linkage is specific to the
-        # superseded SolutionRisk row and has no canonical equivalent.
+        # already created in this same loop. The canonical Risk model has no
+        # constraint_id column, so the link to the constraint a risk was derived
+        # from is kept the same way every other risk-to-entity relationship
+        # already is: a RiskEntityLink (entity_type="constraint").
         from app.modules.solutions_strategic.v2.routes.solution_routes import _level_to_int
         from app.services import risk_service
         for risk in parsed.get('risks', []):
             try:
+                resolved_constraint_id = self._resolve_by_name(constraints_by_name, risk.get('constraint_name'))
                 description = risk.get('risk_description', '')
                 r = risk_service.create_risk(
                     solution_id=solution.id,
@@ -4894,6 +4895,8 @@ CRITICAL -- TRACEABILITY:
                     mitigation_plan=risk.get('mitigation') or None,
                 )
                 risk_service.add_risk_link(r.id, "solution", solution.id)
+                if resolved_constraint_id:
+                    risk_service.add_risk_link(r.id, "constraint", resolved_constraint_id)
                 created['risks'] += 1
             except Exception as exc:
                 logger.warning(f"Error creating risk: {exc}")
