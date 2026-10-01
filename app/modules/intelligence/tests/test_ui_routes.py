@@ -264,6 +264,30 @@ def test_an_empty_workspace_shows_the_setup_state_instead_of_the_picker(
 
 
 @pytest.mark.parametrize("path", PAGES)
+def test_the_gate_reads_counts_taken_now_not_a_cached_empty_workspace(
+    app, db_session, make_org, client, login_as, path
+):
+    """A new organisation opens a page while empty, then models its first
+    element: the very next Ask or Twin map page must see it."""
+    org = make_org("ui-fresh-counts")
+    user = _user(db_session, org.id)
+    login_as(client, user)
+    # Open the page first, as the new organisation would, so any count read
+    # before the element exists has had its chance to be kept and reused.
+    assert client.get(path).status_code == 200
+    from app.models.archimate_core import ArchiMateElement
+
+    db_session.add(ArchiMateElement(
+        name="Fresh element %s" % uuid.uuid4().hex[:6], type="ApplicationComponent",
+        layer="application", organization_id=org.id,
+    ))
+    db_session.flush()
+    html = _main_html(client.get(path).get_data(as_text=True))
+    assert 'role="combobox"' in html
+    assert "Nothing is modelled yet" not in html
+
+
+@pytest.mark.parametrize("path", PAGES)
 @pytest.mark.parametrize("counts", [
     {"applications": 1, "elements": 0, "capabilities": 0, "vendors": 0},
     {"applications": 0, "elements": 5, "capabilities": 0, "vendors": 0},
@@ -297,6 +321,16 @@ def test_unreadable_counts_never_read_as_an_empty_workspace(
     html = _main_html(response.get_data(as_text=True))
     assert 'role="combobox"' in html
     assert "Nothing is modelled yet" not in html
+
+
+def test_unknown_organisation_makes_workspace_counts_unavailable(app):
+    from flask import g
+
+    from app.modules.intelligence.routes.ui import _workspace_counts_available
+
+    with app.test_request_context("/intelligence/ask"):
+        g.current_org_id = None
+        assert _workspace_counts_available() is False
 
 
 # --- what a person reads ----------------------------------------------------
@@ -495,6 +529,14 @@ def test_the_drawer_renders_the_supplied_sentence_in_one_paragraph_and_nothing_e
     assert len(re.findall(r"data-plain-terms", source)) == 1
     assert re.search(r'<p [^>]*data-plain-terms x-text="drawer\.plainTerms"></p>', source)
     assert 'x-show="drawer.plainTerms"' in source
+
+
+def test_programme_and_strategy_cards_use_server_formatted_variance_text():
+    source = _templates()["ask.html"]
+    assert "wp.costVarianceText" in source
+    assert "initiative.budgetVarianceText" in source
+    assert "costVariancePct" not in source
+    assert "budgetVariancePct" not in source
 
 
 # --- colour and copy of the map ---------------------------------------------

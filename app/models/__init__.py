@@ -87,6 +87,7 @@ else:
     # revision, and deploys do not run `flask db upgrade` — so a fresh database
     # had no chat history tables at all and /ai-chat/threads 500'd.
     from .conversation import ConversationMessageRecord, ConversationThreadRecord  # noqa
+    from .external_identity_crosswalk import ExternalIdentityCrosswalk  # noqa: F401
     from .consulting_partner import *  # noqa
     from .capability_archimate_mapping import *  # noqa
     from .copilot_insight import *  # noqa
@@ -414,6 +415,9 @@ else:
 
     # AC-8: Versioned LLM prompt registry with A/B testing and metrics
     from .llm_prompt_version import LLMPromptVersion  # noqa: F401
+
+    # Provider register — platform defaults + per-org allow/restrict rows
+    from .model_provider import ModelProvider  # noqa: F401
 
     # Solution Blueprint, Cost, Outcomes, Scoring — tables created via db.create_all()
     from .solution_blueprint_proposal import SolutionBlueprintProposal  # noqa: F401

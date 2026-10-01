@@ -140,17 +140,23 @@ def _dependencies(app: Any) -> Dict[str, List[Dict[str, Any]]]:
         el = db.session.get(ArchiMateElement, eid)
         return (getattr(el, "name", None), getattr(el, "type", None)) if el else (None, None)
 
+    from app.services.impact_graph import dependency_ends  # noqa: PLC0415
+
     downstream, upstream = [], []
-    out_rels = ArchiMateRelationship.query.filter_by(source_id=el_id).all()
-    in_rels = ArchiMateRelationship.query.filter_by(target_id=el_id).all()
-    for r in out_rels:
-        nm, tp = _name(r.target_id)
-        if nm:
-            downstream.append({"name": nm, "type": tp, "rel": r.type})
-    for r in in_rels:
-        nm, tp = _name(r.source_id)
-        if nm:
-            upstream.append({"name": nm, "type": tp, "rel": r.type})
+    rels = ArchiMateRelationship.query.filter(
+        db.or_(ArchiMateRelationship.source_id == el_id, ArchiMateRelationship.target_id == el_id)
+    ).all()
+    for r in rels:
+        other = r.target_id if r.source_id == el_id else r.source_id
+        nm, tp = _name(other)
+        if not nm:
+            continue
+        # The arrow's direction is not the dependency's: "this serves X" means
+        # X depends on this. dependency_ends is the one reading of that; a
+        # relationship carrying no dependency (association) keeps its arrow.
+        ends = dependency_ends(r.type, r.source_id, r.target_id)
+        depends_on_other = ends[0] == el_id if ends else r.source_id == el_id
+        (downstream if depends_on_other else upstream).append({"name": nm, "type": tp, "rel": r.type})
     return {"upstream": upstream, "downstream": downstream, "linked": True}
 
 
