@@ -79,57 +79,468 @@ def test_non_smoke_job_installs_chromium_for_collected_csp_browser_tests():
 # ── Shard runner choice and parallelism ────────────────────────────────────
 
 
-def test_shard_runs_on_falls_back_to_self_hosted_when_variable_unset():
-    """The shard job's runs-on references vars.CI_SHARD_RUNNER and falls back
-    to self-hosted + ibm-vsi when the variable is unset; a forked PR must
-    never leave ubuntu-latest."""
+def _strip_expr(expr: str) -> str:
+    """Strip the ``${{ }}`` wrapper from a GitHub Actions expression."""
+    expr = expr.strip()
+    if expr.startswith("${{") and expr.endswith("}}"):
+        expr = expr[3:-2].strip()
+    return expr
+
+
+def _tokenize(expr: str) -> list:
+    """Tokenize a GitHub Actions expression into (type, value) pairs."""
+    tokens = []
+    i = 0
+    n = len(expr)
+    while i < n:
+        c = expr[i]
+        if c.isspace():
+            i += 1
+            continue
+        if expr.startswith("&&", i):
+            tokens.append(("AND", "&&"))
+            i += 2
+        elif expr.startswith("||", i):
+            tokens.append(("OR", "||"))
+            i += 2
+        elif expr.startswith("==", i):
+            tokens.append(("EQ", "=="))
+            i += 2
+        elif expr.startswith("!=", i):
+            tokens.append(("NEQ", "!="))
+            i += 2
+        elif c == "(":
+            tokens.append(("LPAREN", "("))
+            i += 1
+        elif c == ")":
+            tokens.append(("RPAREN", ")"))
+            i += 1
+        elif c == ",":
+            tokens.append(("COMMA", ","))
+            i += 1
+        elif c == "[":
+            j = i
+            depth = 1
+            i += 1
+            while i < n and depth > 0:
+                if expr[i] == "[":
+                    depth += 1
+                elif expr[i] == "]":
+                    depth -= 1
+                elif expr[i] == '"':
+                    i += 1
+                    while i < n and expr[i] != '"':
+                        if expr[i] == "\\":
+                            i += 1
+                        i += 1
+                i += 1
+            tokens.append(("ARRAY", expr[j:i]))
+        elif c == "'":
+            j = i + 1
+            i += 1
+            while i < n and expr[i] != "'":
+                i += 1
+            tokens.append(("STRING", expr[j:i]))
+            i += 1
+        elif c.isdigit():
+            j = i
+            while i < n and expr[i].isdigit():
+                i += 1
+            tokens.append(("NUMBER", int(expr[j:i])))
+        elif c.isalpha() or c == "_":
+            j = i
+            while i < n and (expr[i].isalnum() or expr[i] in "._*"):
+                i += 1
+            tokens.append(("IDENT", expr[j:i]))
+        else:
+            i += 1
+    return tokens
+
+
+def _is_truthy(value) -> bool:
+    """GitHub Actions truthiness: empty string/list is falsy."""
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value != ""
+    if isinstance(value, list):
+        return len(value) > 0
+    if isinstance(value, (int, float)):
+        return value != 0
+    return True
+
+
+def _resolve_var(name: str, ctx: dict):
+    """Resolve a dotted variable path against the context dict."""
+    if "labels.*.name" in name:
+        return ctx.get("_labels", [])
+    parts = name.split(".")
+    value = ctx
+    for part in parts:
+        if isinstance(value, dict):
+            value = value.get(part, "")
+        else:
+            return ""
+    return value if value is not None else ""
+
+
+def _call_function(name: str, args: list, ctx: dict):
+    """Evaluate a function call in the GitHub Actions expression."""
+    if name == "contains":
+        if len(args) >= 2:
+            haystack, needle = args[0], args[1]
+            if isinstance(haystack, list):
+                return needle in haystack
+            if isinstance(haystack, str):
+                return needle in haystack
+        return False
+    if name == "fromJSON":
+        if len(args) >= 1:
+            import json as _json
+            return _json.loads(args[0])
+        return ""
+    return ""
+
+
+class _ParseError(ValueError):
+    pass
+
+
+def _eval_github_expr(expr: str, ctx: dict):
+    """Evaluate a GitHub Actions expression against a context dict.
+
+    Returns the evaluated value.  Follows GitHub Actions short-circuit
+    semantics: ``&&`` returns the first falsy operand or the last;
+    ``||`` returns the first truthy operand or the last.
+    """
+    tokens = _tokenize(expr)
+    pos = [0]
+
+    def peek():
+        return tokens[pos[0]] if pos[0] < len(tokens) else ("EOF", "")
+
+    def advance():
+        t = peek()
+        pos[0] += 1
+        return t
+
+    def parse_or():
+        left = parse_and()
+        while pos[0] < len(tokens) and tokens[pos[0]][0] == "OR":
+            advance()
+            if _is_truthy(left):
+                # Short-circuit: skip the rest of the || chain.
+                # || has the lowest precedence, so stop only at RPAREN.
+                _skip_until(("RPAREN",))
+                return left
+            left = parse_and()
+        return left
+
+    def parse_and():
+        left = parse_comparison()
+        while pos[0] < len(tokens) and tokens[pos[0]][0] == "AND":
+            advance()
+            if not _is_truthy(left):
+                # Short-circuit: skip the rest of the && chain.
+                # && binds tighter than ||, so stop at || or RPAREN.
+                _skip_until(("OR", "RPAREN"))
+                return left
+            left = parse_comparison()
+        return left
+
+    def _skip_until(stop_on):
+        """Skip tokens until one of *stop_on* token types at depth 0,
+        respecting nested parentheses."""
+        depth = 0
+        while pos[0] < len(tokens):
+            t = tokens[pos[0]]
+            if t[0] == "LPAREN":
+                depth += 1
+                pos[0] += 1
+            elif t[0] == "RPAREN":
+                if depth == 0:
+                    return
+                depth -= 1
+                pos[0] += 1
+            elif t[0] in stop_on and depth == 0:
+                return
+            else:
+                pos[0] += 1
+
+    def parse_comparison():
+        left = parse_primary()
+        if pos[0] < len(tokens) and tokens[pos[0]][0] in ("EQ", "NEQ"):
+            op = advance()[0]
+            right = parse_primary()
+            left_str = str(left) if not isinstance(left, str) else left
+            right_str = str(right) if not isinstance(right, str) else right
+            return (left_str == right_str) if op == "EQ" else (left_str != right_str)
+        return left
+
+    def parse_primary():
+        if pos[0] >= len(tokens):
+            return ""
+        t = peek()
+        if t[0] == "LPAREN":
+            advance()
+            result = parse_or()
+            if pos[0] < len(tokens) and tokens[pos[0]][0] == "RPAREN":
+                advance()
+            return result
+        if t[0] == "STRING":
+            advance()
+            return t[1]
+        if t[0] == "NUMBER":
+            advance()
+            return t[1]
+        if t[0] == "ARRAY":
+            advance()
+            import json as _json
+            return _json.loads(t[1])
+        if t[0] == "IDENT":
+            name = advance()[1]
+            if pos[0] < len(tokens) and tokens[pos[0]][0] == "LPAREN":
+                advance()
+                args = []
+                if pos[0] < len(tokens) and tokens[pos[0]][0] != "RPAREN":
+                    args.append(parse_or())
+                    while pos[0] < len(tokens) and tokens[pos[0]][0] == "COMMA":
+                        advance()
+                        args.append(parse_or())
+                if pos[0] < len(tokens) and tokens[pos[0]][0] == "RPAREN":
+                    advance()
+                return _call_function(name, args, ctx)
+            return _resolve_var(name, ctx)
+        advance()
+        return ""
+
+    return parse_or()
+
+
+def test_runner_choice_and_parallelism_contract():
+    """Table-driven workflow-contract test: parse the shard and combine job
+    expressions and verify the concrete runner and max-parallel outcome for
+    every input state the brief requires.
+
+    Cases covered:
+    - Forked PR (always ubuntu-latest, max-parallel 8)
+    - Same-repo PR without label (falls back to self-hosted ibm-vsi, default 6)
+    - Same-repo PR with ci-fast label and CI_FAST_RUNNER set
+    - Same-repo PR with ci-fast label and CI_FAST_RUNNER unset (fallback)
+    - CI_SHARD_RUNNER set on same-repo PR
+    - A label other than ci-fast
+    - Push to main (not a PR)
+    - CI_SHARD_MAX_PARALLEL set to a custom value
+    """
     jobs = _ci_jobs()
-    runs_on = jobs["tests-shard"]["runs-on"]
 
-    assert "vars.CI_SHARD_RUNNER" in runs_on
-    assert "self-hosted" in runs_on
-    assert "ibm-vsi" in runs_on
-    assert "ubuntu-latest" in runs_on
-    assert "github.event.pull_request.head.repo.full_name == github.repository" in runs_on
+    shard_runs_on = _strip_expr(jobs["tests-shard"]["runs-on"])
+    tests_runs_on = _strip_expr(jobs["tests"]["runs-on"])
+    max_parallel = _strip_expr(jobs["tests-shard"]["strategy"]["max-parallel"])
 
-
-def test_shard_max_parallel_reads_variable_with_default_6():
-    """max-parallel reads vars.CI_SHARD_MAX_PARALLEL and defaults to 6 when
-    the variable is unset; forked PRs keep 8."""
-    jobs = _ci_jobs()
-    max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
-
-    assert "vars.CI_SHARD_MAX_PARALLEL" in max_parallel
-    assert "6" in max_parallel
-    assert "8" in max_parallel
-
-
-def test_ci_fast_runner_takes_precedence_over_shard_runner():
-    """When vars.CI_FAST_RUNNER is set and the PR carries the ci-fast label,
-    the shard job uses that runner. The variable and label check must both
-    appear in the runs-on expression, and CI_FAST_RUNNER must be evaluated
-    before CI_SHARD_RUNNER so it takes precedence."""
-    jobs = _ci_jobs()
-    runs_on = jobs["tests-shard"]["runs-on"]
-
-    assert "vars.CI_FAST_RUNNER" in runs_on
-    assert "ci-fast" in runs_on
-    fast_pos = runs_on.index("vars.CI_FAST_RUNNER")
-    shard_pos = runs_on.index("vars.CI_SHARD_RUNNER")
-    assert fast_pos < shard_pos, (
-        "vars.CI_FAST_RUNNER must appear before vars.CI_SHARD_RUNNER "
-        "so it takes precedence"
+    # Both jobs must share the same runner-selection expression.
+    assert shard_runs_on == tests_runs_on, (
+        "tests-shard and tests must use the same runs-on expression"
     )
 
+    REPO = "anioko/archie-ea"
 
-def test_ci_fast_runner_guarded_by_pull_request_event():
-    """vars.CI_FAST_RUNNER and the ci-fast label check must only apply to
-    pull_request events, so a push to main never evaluates the label check
-    against a missing pull_request context."""
-    jobs = _ci_jobs()
-    runs_on = jobs["tests-shard"]["runs-on"]
+    cases = [
+        # (name, ctx, expected_runs_on, expected_max_parallel)
+        (
+            "forked PR",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": "fork-owner/repo"}},
+                            "labels": [],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": [],
+            },
+            "ubuntu-latest",
+            8,
+        ),
+        (
+            "same-repo PR without label",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": [],
+            },
+            ["self-hosted", "ibm-vsi"],
+            6,
+        ),
+        (
+            "same-repo PR with ci-fast and CI_FAST_RUNNER set",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [{"name": "ci-fast"}],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "custom-fast-runner",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": ["ci-fast"],
+            },
+            "custom-fast-runner",
+            8,
+        ),
+        (
+            "same-repo PR with ci-fast and CI_FAST_RUNNER unset",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [{"name": "ci-fast"}],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": ["ci-fast"],
+            },
+            ["self-hosted", "ibm-vsi"],
+            6,
+        ),
+        (
+            "CI_SHARD_RUNNER set on same-repo PR",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "managed-pool",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": [],
+            },
+            "managed-pool",
+            6,
+        ),
+        (
+            "label other than ci-fast",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [{"name": "bug"}],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": ["bug"],
+            },
+            ["self-hosted", "ibm-vsi"],
+            6,
+        ),
+        (
+            "push to main (not a PR)",
+            {
+                "github": {
+                    "event_name": "push",
+                    "event": {},
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "",
+                },
+                "_labels": [],
+            },
+            ["self-hosted", "ibm-vsi"],
+            6,
+        ),
+        (
+            "CI_SHARD_MAX_PARALLEL set to 4",
+            {
+                "github": {
+                    "event_name": "pull_request",
+                    "event": {
+                        "pull_request": {
+                            "head": {"repo": {"full_name": REPO}},
+                            "labels": [],
+                        }
+                    },
+                    "repository": REPO,
+                },
+                "vars": {
+                    "CI_FAST_RUNNER": "",
+                    "CI_SHARD_RUNNER": "",
+                    "CI_SHARD_MAX_PARALLEL": "4",
+                },
+                "_labels": [],
+            },
+            ["self-hosted", "ibm-vsi"],
+            "4",
+        ),
+    ]
 
-    assert "github.event_name == 'pull_request'" in runs_on
+    for name, ctx, expected_runner, expected_parallel in cases:
+        actual_runner = _eval_github_expr(shard_runs_on, ctx)
+        actual_parallel = _eval_github_expr(max_parallel, ctx)
+
+        assert actual_runner == expected_runner, (
+            f"{name}: expected runs-on {expected_runner!r}, got {actual_runner!r}"
+        )
+        assert actual_parallel == expected_parallel, (
+            f"{name}: expected max-parallel {expected_parallel!r}, "
+            f"got {actual_parallel!r}"
+        )
 
 
 def test_labeled_event_triggers_workflow_for_ci_fast():
@@ -137,27 +548,6 @@ def test_labeled_event_triggers_workflow_for_ci_fast():
     takes effect without requiring a new push."""
     workflow = _workflow()
     assert "labeled" in workflow
-
-
-def test_ci_fast_max_parallel_is_8_bypassing_shard_cap():
-    """On the ci-fast lane (CI_FAST_RUNNER set and ci-fast label present)
-    max-parallel must be 8, bypassing CI_SHARD_MAX_PARALLEL.  The expression
-    must reference CI_FAST_RUNNER and ci-fast, and the literal 8 for the
-    ci-fast lane must appear before the CI_SHARD_MAX_PARALLEL fallback so it
-    takes precedence."""
-    jobs = _ci_jobs()
-    max_parallel = jobs["tests-shard"]["strategy"]["max-parallel"]
-
-    assert "vars.CI_FAST_RUNNER" in max_parallel
-    assert "ci-fast" in max_parallel
-    # The ci-fast 8 must appear before the CI_SHARD_MAX_PARALLEL reference
-    # so the ci-fast lane's value takes precedence.
-    fast_eight_pos = max_parallel.index("&& 8 || vars.CI_SHARD_MAX_PARALLEL")
-    shard_var_pos = max_parallel.index("vars.CI_SHARD_MAX_PARALLEL")
-    assert fast_eight_pos < shard_var_pos, (
-        "ci-fast lane's 8 must appear before vars.CI_SHARD_MAX_PARALLEL "
-        "so it takes precedence over the shard cap"
-    )
 
 
 def test_jobs_skip_on_non_ci_fast_labeled_events():
@@ -228,21 +618,45 @@ def test_labeled_event_never_cancels_in_progress_run():
     )
 
 
-def test_tests_job_respects_ci_fast_and_shard_runner_variables():
-    """The combining tests job must follow the same runner choice as the
-    shards: vars.CI_FAST_RUNNER takes precedence on the ci-fast lane,
-    vars.CI_SHARD_RUNNER routes to a managed pool, falling back to
-    self-hosted ibm-vsi."""
+def test_shard_and_combine_jobs_install_into_isolated_venvs():
+    """The tests-shard and tests jobs each create their own venv before
+    installing dependencies, so a self-hosted runner's leftover ~/.local
+    site-packages never shadows the job's dependencies."""
     jobs = _ci_jobs()
-    runs_on = jobs["tests"]["runs-on"]
 
-    assert "vars.CI_FAST_RUNNER" in runs_on, (
-        "tests job must respect vars.CI_FAST_RUNNER for the ci-fast lane"
+    for job_id in ("tests-shard", "tests"):
+        steps = jobs[job_id]["steps"]
+        venv_idx = next(
+            i for i, s in enumerate(steps)
+            if "python -m venv --clear .venv" in s.get("run", "")
+        )
+        install_idx = next(
+            i for i, s in enumerate(steps)
+            if "pip install -r requirements.txt" in s.get("run", "")
+        )
+        assert 0 <= venv_idx < install_idx, (
+            f"{job_id} must create its venv before installing dependencies"
+        )
+
+
+def test_shard_postgres_service_uses_dynamic_port():
+    """Several jobs share one ibm-vsi machine, so the postgres service must
+    not bind a fixed host port. The database URL must come from the
+    docker-assigned port."""
+    jobs = _ci_jobs()
+    shard = jobs["tests-shard"]
+
+    assert shard["services"]["postgres"]["ports"] == ["5432"], (
+        "postgres service must expose only container port 5432, "
+        "not a fixed host port"
     )
-    assert "vars.CI_SHARD_RUNNER" in runs_on, (
-        "tests job must respect vars.CI_SHARD_RUNNER for managed runner pools"
+    port_step = next(
+        i for i, s in enumerate(shard["steps"])
+        if "job.services.postgres.ports['5432']" in s.get("run", "")
     )
-    assert "ci-fast" in runs_on
-    assert "self-hosted" in runs_on
-    assert "ibm-vsi" in runs_on
-    assert "ubuntu-latest" in runs_on
+    assert port_step >= 0, (
+        "a step must read the docker-assigned host port from the job context"
+    )
+
+
+
