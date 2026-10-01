@@ -56,7 +56,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Listed, not silently tolerated, so the gap stays visible in review.
 ASPIRATIONAL = {
     "technology_architect": "ARCH-123: folded into enterprise_architect, no dedicated role yet",
-    "data_architect": "ARCH-123: folded into enterprise_architect, no dedicated role yet",
     "application_architect": "charter written ahead of the role",
     "integration_architect": "charter written ahead of the role",
     "systems_architect": "charter written ahead of the role",
