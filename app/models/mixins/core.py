@@ -158,6 +158,15 @@ class HybridTenantMixin:  # migration-exempt
 
         ``reference_id`` is always a reference row's own id -- a tenant row's
         id tailors nothing further (no second-level tailoring chain).
+
+        No route calls this yet. Ten of the twelve classes mixing this in
+        also declare their own globally-unique business key (a ``code`` or
+        ``name`` column, unique across the whole table, not per
+        organisation), so creating a tailoring row means the caller must
+        already supply a value for that key distinct from the reference
+        row's own -- this method does not generate or validate one. Until a
+        route exists that handles that, this is read-only, correct plumbing
+        with no caller.
         """
         from app import db
 
