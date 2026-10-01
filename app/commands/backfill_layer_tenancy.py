@@ -25,9 +25,10 @@ boot, which is exactly where docker-compose runs it. Orphan assignment follows
 the house refusal-to-guess rule: with one organisation the rows go to it, with
 several the command demands --org-id rather than guessing a tenant.
 
-R1-B20 (TB-0155) reused this mechanism rather than adding a second one: the
-brief's own text names a new `app/commands/backfill_organisation_columns.py`,
-but this command already provides column-discovery, per-row derivation and
+The organisation-column-everywhere brief reused this mechanism rather than
+adding a second one: its own text names a new
+`app/commands/backfill_organisation_columns.py`, but this command already
+provides column-discovery, per-row derivation and
 orphan/hardening handling for exactly the same problem shape (TenantMixin
 gained on an existing, populated table). Motivation, requirements, strategic
 and technology-layer tables newly gaining TenantMixin for that brief are
@@ -132,7 +133,7 @@ _DERIVABLE_ORG = {
            AND a.organization_id IS NOT NULL
     """,
 
-    # --- R1-B20 (TB-0155): motivation, requirements, strategic and technology
+    # --- Motivation, requirements, strategic and technology
     # layer tables. Every entry below derives from a table that is already
     # tenant-fenced (archimate_elements, business_capability,
     # strategic_initiatives, solutions, solution_analysis_sessions,
@@ -321,7 +322,7 @@ _DERIVABLE_ORG = {
 # could belong to, so the ordinary single-organisation rule still applies.
 _PROVENANCE_ONLY = {
     "application_ownership", "options_analysis", "organization_units", "stakeholder_inputs",
-    # R1-B20 (TB-0155): every table above whose _DERIVABLE_ORG entry can leave
+    # Every table above whose _DERIVABLE_ORG entry can leave
     # a genuine remainder (a row whose own attribution columns are all NULL,
     # or all point at rows that are themselves unattributed) -- the fenced,
     # 100%-resolvable-by-a-NOT-NULL-FK tables (motivation_bridge_links,
@@ -331,8 +332,19 @@ _PROVENANCE_ONLY = {
     # nothing for this set to protect.
     "drivers", "goals", "meanings", "values", "assessments", "stakeholders", "requirements",
     "strategic_recommendations", "enterprise_briefings",
-    # No _DERIVABLE_ORG entry at all -- every row is an orphan candidate.
+    # No _DERIVABLE_ORG entry at all -- every existing row is an orphan
+    # candidate, for two different reasons:
+    # monitoring_alerts/monitoring_baselines have no FK at all to any
+    # tenant-fenced table -- affected_element_id is a bare, unconstrained
+    # integer whose target table varies by affected_element_type
+    # ("architecture", "capability", "vendor", ...), so there is no single
+    # join that can resolve it without risking a wrong-tenant guess.
     "monitoring_alerts", "monitoring_baselines",
+    # framework_instances/reference_model_import/industry_process_recommendation
+    # DO have an FK (configuration_id/reference_model_id/industry_framework_id
+    # and industry_process_id), but every one of those targets is a
+    # HybridTenantMixin shared-catalogue table with organization_id always
+    # NULL by design, so following it resolves to nothing either way.
     "framework_instances", "reference_model_import", "industry_process_recommendation",
 }
 

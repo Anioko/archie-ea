@@ -1,7 +1,7 @@
-"""R1-B20 (TB-0155): backfill-layer-tenancy's new _DERIVABLE_ORG entries for
-the motivation, requirements, strategic and technology-layer tables gaining
-TenantMixin, the _PROVENANCE_ONLY quarantine guard for tables with no
-reliable attribution, and HybridTenantMixin's shared-catalogue tables.
+"""backfill-layer-tenancy's new _DERIVABLE_ORG entries for the motivation,
+requirements, strategic and technology-layer tables gaining TenantMixin, the
+_PROVENANCE_ONLY quarantine guard for tables with no reliable attribution,
+and HybridTenantMixin's shared-catalogue tables.
 
 Every table here was created via db.create_all() with organization_id already
 NOT NULL (the model's own declaration), unlike a real production database

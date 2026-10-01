@@ -102,6 +102,7 @@ def _find_or_create_driver(sd, name, org_id=None):
         driver_type=driver_type,
         source=sd.source,
         status="active",
+        organization_id=org_id,
     )
     db.session.add(driver)
     sync_archimate_element(driver)
@@ -141,6 +142,7 @@ def _find_or_create_goal(sg, name, org_id=None):
         measurable_metrics=json.dumps(sg.kpis) if getattr(sg, "kpis", None) else None,
         notes=sg.measurement_criteria,
         status="active",
+        organization_id=org_id,
     )
     db.session.add(goal)
     sync_archimate_element(goal)
@@ -244,6 +246,7 @@ def _promote_one(element, sol_type, ent_type, solution, summary):
         enterprise_element_type=ent_type,
         enterprise_element_id=enterprise_obj.id,
         archimate_element_id=getattr(enterprise_obj, "archimate_element_id", None),
+        organization_id=solution.organization_id,
     )
     db.session.add(link)
     db.session.flush()
