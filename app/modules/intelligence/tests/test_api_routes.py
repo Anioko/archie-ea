@@ -333,12 +333,13 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_ten_routes(app):
+def test_module_registers_exactly_eleven_routes(app):
     """The impact, risk, portfolio, programme, strategy, accountability,
-    value-streams-at-risk and yield routes all mount on this same existing
-    blueprint rather than a new one each. Still exactly one blueprint, now
-    ten routes on it -- all six lenses of the catalogue plus the Strategic
-    value-streams-at-risk surface plus recompute/derived/yield.
+    traceability, value-streams-at-risk and yield routes all mount on this
+    same existing blueprint rather than a new one each. Still exactly one
+    blueprint, now eleven routes on it -- all six lenses of the catalogue,
+    the traceability check over the impact walk, the Strategic
+    value-streams-at-risk surface and recompute/derived/yield.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -354,6 +355,7 @@ def test_module_registers_exactly_ten_routes(app):
         "intelligence_api.programme_for_element",
         "intelligence_api.strategy_for_element",
         "intelligence_api.accountability_for_element",
+        "intelligence_api.traceability_check",
         "intelligence_api.derivation_yield",
     }
 

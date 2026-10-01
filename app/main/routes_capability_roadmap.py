@@ -153,7 +153,13 @@ def list_users_for_assignment():
     try:
         from app.models.user import User
 
-        users = User.query.filter_by(organization_id=g.current_org_id).order_by(User.first_name.asc()).all()
+        # An erased person (data-subject erasure clears the e-mail address) is not a
+        # candidate for any assignment picker.
+        users = (
+            User.query.filter(User.organization_id == g.current_org_id, User.email.isnot(None))
+            .order_by(User.first_name.asc())
+            .all()
+        )
         return jsonify(
             {
                 "success": True,
