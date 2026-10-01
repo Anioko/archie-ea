@@ -14,6 +14,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from flask_login import login_required
 
 from app.decorators import audit_log
+from app.middleware.tenant_decorators import platform_admin_required
 
 from app.services.application_consolidation_service import (
     ApplicationConsolidationService,
@@ -541,9 +542,13 @@ def get_scoring_configuration(config_id):
 
 @dashboard_bp.route("/api/scoring-configurations", methods=["POST"])
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_create")
 def create_scoring_configuration():
-    """Create a new scoring configuration."""
+    """Create a new scoring configuration. Platform-admin-only: no
+    organization_id fences this table, and is_default=True unsets every
+    other configuration's default flag, changing the fallback weights every
+    organisation's application-rationalization view uses."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app import db
@@ -604,9 +609,11 @@ def create_scoring_configuration():
 
 @dashboard_bp.route("/api/scoring-configurations/<int:config_id>", methods=["PUT"])
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_update")
 def update_scoring_configuration(config_id):
-    """Update an existing scoring configuration."""
+    """Update an existing scoring configuration. Platform-admin-only -- see
+    create_scoring_configuration's docstring."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app import db
@@ -678,9 +685,11 @@ def update_scoring_configuration(config_id):
 
 @dashboard_bp.route("/api/scoring-configurations/<int:config_id>", methods=["DELETE"])
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_delete")
 def delete_scoring_configuration(config_id):
-    """Soft delete a scoring configuration."""
+    """Soft delete a scoring configuration. Platform-admin-only -- see
+    create_scoring_configuration's docstring."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app import db
