@@ -453,11 +453,28 @@ def register_cli_commands(app):
     def migrate_connector_credentials(dry_run):
         """Migrate credentials from retired stores into ``OrgConnectorCredential``.
 
-        Copies every row from ``OrgConnectorConfig``, ``DevOpsConnectorConfig``,
-        and ``LucidchartConnectorConfig`` into the new per-organisation store,
-        recording ``source_table`` and ``source_id``. Reports counts before and
-        after. Idempotent: rows already present (same org/connector_type) are
-        skipped.
+        Copies every row from ``OrgConnectorConfig`` and
+        ``LucidchartConnectorConfig`` into the new per-organisation store,
+        under the same discrete ``credential_type`` keys the live readers
+        use -- not a combined JSON blob, which those readers never look for:
+
+        * ServiceNow (``OrgConnectorConfig``): ``client_secret``, read by
+          ``ServiceNowConnectorService._get_token``.
+        * Lucidchart (``LucidchartConnectorConfig``): ``client_secret``,
+          ``access_token`` and ``refresh_token``, read by
+          ``LucidchartConnectorService.get_access_token`` /
+          ``get_refresh_token`` / ``_require_client_credentials``.
+
+        ``DevOpsConnectorConfig`` has no live writer or vault-based reader
+        yet (see app/services/devops_push_service.py), so its token is still
+        copied as a JSON blob under credential_type="credentials" -- nothing
+        reads it that way today, but this preserves it for whenever a reader
+        is added, rather than dropping it.
+
+        Reports counts before and after; never logs a credential value.
+        Idempotent: a (organisation, connector_type, credential_type) already
+        present in the vault is skipped, so re-running after a partial
+        migration only fills in what is still missing.
 
         Use ``--dry-run`` to preview what would be migrated.
         """
@@ -472,7 +489,7 @@ def register_cli_commands(app):
         migrations = []
         total_before = 0
 
-        # Scan OrgConnectorConfig
+        # Scan OrgConnectorConfig -- one discrete client_secret entry per row.
         for row in OrgConnectorConfig.query.all():
             secret = row.client_secret
             if secret:
@@ -480,12 +497,14 @@ def register_cli_commands(app):
                     "source_table": "org_connector_configs",
                     "source_id": row.id,
                     "org_id": row.organization_id,
-                    "connector_type": "servicenow" if row.connector_type == "servicenow" else row.connector_type,
-                    "value": json.dumps({"client_secret": secret, "instance_url": row.instance_url or ""}),
+                    "connector_type": row.connector_type,
+                    "credential_type": "client_secret",
+                    "value": secret,
                 })
             total_before += 1
 
-        # Scan DevOpsConnectorConfig
+        # Scan DevOpsConnectorConfig -- no live reader yet; kept as a single
+        # blob entry under credential_type="credentials" (unchanged shape).
         for row in DevOpsConnectorConfig.query.all():
             token = row.access_token
             if token:
@@ -494,39 +513,37 @@ def register_cli_commands(app):
                     "source_id": row.id,
                     "org_id": row.organization_id,
                     "connector_type": "devops",
+                    "credential_type": "credentials",
                     "value": json.dumps({"access_token": token, "provider": row.provider}),
                 })
             total_before += 1
 
-        # Scan LucidchartConnectorConfig
+        # Scan LucidchartConnectorConfig -- one discrete entry per secret
+        # field actually stored on the row.
         for row in LucidchartConnectorConfig.query.all():
-            client_secret = row.client_secret
-            access_token = row.access_token
-            refresh_token = row.refresh_token
-            creds = {}
-            if client_secret:
-                creds["client_secret"] = client_secret
-            if access_token:
-                creds["access_token"] = access_token
-            if refresh_token:
-                creds["refresh_token"] = refresh_token
-            if creds:
-                migrations.append({
-                    "source_table": "lucidchart_connector_configs",
-                    "source_id": row.id,
-                    "org_id": row.organization_id,
-                    "connector_type": "lucidchart",
-                    "value": json.dumps(creds),
-                })
+            for credential_type, value in (
+                ("client_secret", row.client_secret),
+                ("access_token", row.access_token),
+                ("refresh_token", row.refresh_token),
+            ):
+                if value:
+                    migrations.append({
+                        "source_table": "lucidchart_connector_configs",
+                        "source_id": row.id,
+                        "org_id": row.organization_id,
+                        "connector_type": "lucidchart",
+                        "credential_type": credential_type,
+                        "value": value,
+                    })
             total_before += 1
 
         print(f"Found {total_before} rows across retired stores, "
-              f"{len(migrations)} with decryptable credentials to migrate.")
+              f"{len(migrations)} credential value(s) to migrate.")
 
         if dry_run:
             for m in migrations:
                 print(f"  would migrate: {m['source_table']}[{m['source_id']}] "
-                      f"org={m['org_id']} type={m['connector_type']}")
+                      f"org={m['org_id']} type={m['connector_type']}/{m['credential_type']}")
             print(f"Dry run: {len(migrations)} credentials would be migrated.")
             return
 
@@ -539,17 +556,17 @@ def register_cli_commands(app):
                 existing = OrgConnectorCredential.query.filter_by(
                     organization_id=m["org_id"],
                     connector_type=m["connector_type"],
-                    credential_type="credentials",
+                    credential_type=m["credential_type"],
                 ).first()
                 if existing:
                     skipped += 1
                     continue
-                vault.store(m["org_id"], m["connector_type"], "credentials", m["value"])
+                vault.store(m["org_id"], m["connector_type"], m["credential_type"], m["value"])
                 migrated += 1
             except Exception as exc:
                 logger = logging.getLogger(__name__)
-                logger.error("Failed to migrate %s[%s]: %s",
-                             m["source_table"], m["source_id"], exc)
+                logger.error("Failed to migrate %s[%s] credential_type=%s: %s",
+                             m["source_table"], m["source_id"], m["credential_type"], exc)
                 errors += 1
 
         from app.extensions import db
