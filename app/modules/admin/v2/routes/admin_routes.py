@@ -5606,19 +5606,21 @@ def toggle_org_admin(org_id, user_id):
     if user.organization_id != org_id:
         flash("User does not belong to this organization.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
-    # is_org_admin derives from is_admin() (Permission.ADMINISTER).
-    # Toggle the Administrator role assignment instead of the denormalised column.
-    # Also sync the OrgRole table so team-management routes (which read
-    # OrgRole via rbac_service.is_org_admin) see the same answer.
-    admin_role = Role.query.filter_by(name="Administrator").first()  # tenant-scoping-ok: global system role lookup
+    # is_org_admin derives from is_admin() (Permission.ADMINISTER). Toggle the
+    # Administrator role assignment through the one grant/revoke authority
+    # (app/models/user.py) instead of each route re-deriving its own copy,
+    # and sync the OrgRole table so team-management routes (which read
+    # OrgRole via rbac_service.is_org_admin) see the same answer.  This route
+    # only ever reaches a user whose own organization_id equals org_id
+    # (checked above), so this is always a grant/revoke in their own
+    # organisation.
     if user.is_admin():
-        # Downgrade to default Architect role
-        user.role = Role.query.filter_by(default=True).first()  # tenant-scoping-ok: global default role lookup
+        user.revoke_org_admin()
         OrgRole.query.filter_by(
             organization_id=org_id, user_id=user_id
         ).delete(synchronize_session=False)
-    elif admin_role is not None:
-        user.role = admin_role
+    else:
+        user.grant_org_admin()
         OrgRole.set_role(org_id, user_id, "org_admin")
     db.session.commit()
     role_label = "granted" if user.is_admin() else "revoked"
@@ -5647,14 +5649,14 @@ def organization_delete(org_id):
     # Move all users to Default org.  Preserve each user's existing role;
     # only downgrade users who currently hold the Administrator role (the
     # system of record for org-admin).  A Viewer stays a Viewer, an Architect
-    # stays an Architect — only an Administrator is reset to the default role.
-    default_role = Role.query.filter_by(default=True).first()
+    # stays an Architect — only an Administrator is reset to the default role
+    # (a no-op for a platform admin — see User.revoke_org_admin).
     users = User.query.filter_by(organization_id=org.id).all()
     moved = 0
     for user in users:
         user.organization_id = default_org.id
-        if user.is_admin() and default_role is not None:
-            user.role = default_role
+        if user.is_admin():
+            user.revoke_org_admin()
         moved += 1
     # Remove OrgRole rows for the deleted organisation so no stale
     # per-organisation role grants survive.
@@ -5691,11 +5693,10 @@ def remove_user_from_org(org_id, user_id):
     user.organization_id = default_org.id
     # Preserve the user's existing role.  Only downgrade users who currently
     # hold the Administrator role (the system of record for org-admin).
-    # A Viewer stays a Viewer, an Architect stays an Architect.
+    # A Viewer stays a Viewer, an Architect stays an Architect (and this is a
+    # no-op for a platform admin — see User.revoke_org_admin).
     if user.is_admin():
-        default_role = Role.query.filter_by(default=True).first()
-        if default_role is not None:
-            user.role = default_role
+        user.revoke_org_admin()
     # Remove OrgRole rows for the old organisation so team-management
     # routes (which read OrgRole via rbac_service) see the same answer.
     OrgRole.query.filter_by(

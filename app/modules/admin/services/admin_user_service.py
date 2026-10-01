@@ -112,6 +112,12 @@ class AdminUserService:
 
         Returns:
             The newly created User.
+
+        When ``role`` is Administrator, this also writes the OrgRole row and
+        the denormalised ``is_org_admin`` column for the user's organisation
+        (the same organisation ``organization_id`` places them in), so the
+        team page and database-level guards agree with this page about who is
+        an organisation administrator from the moment the account exists.
         """
         user = User(
             first_name=first_name,
@@ -124,6 +130,12 @@ class AdminUserService:
             organization_id=organization_id,
         )
         db.session.add(user)
+        db.session.flush()
+        if role is not None and role.name == "Administrator":
+            from app.models.org_role import OrgRole
+
+            user._is_org_admin = True
+            OrgRole.set_role(user.organization_id, user.id, "org_admin")
         db.session.commit()
         return user
 
@@ -171,9 +183,28 @@ class AdminUserService:
         Args:
             user: User to modify.
             new_role: New Role to assign.
+
+        Crossing the Administrator boundary (either direction) also syncs the
+        per-organisation OrgRole row and the denormalised ``is_org_admin``
+        column, so the team page (which reads OrgRole) and database-level
+        guards (which read the column) agree with this page about who is an
+        organisation administrator -- this was the one grant/revoke surface
+        that wrote only the global Role and nothing else.
         """
+        from app.models.org_role import OrgRole
+
+        was_admin = user.is_admin()
         user.role = new_role
         db.session.add(user)
+        now_admin = bool(new_role is not None and new_role.name == "Administrator")
+        if now_admin and not was_admin:
+            user._is_org_admin = True
+            OrgRole.set_role(user.organization_id, user.id, "org_admin")
+        elif was_admin and not now_admin:
+            user._is_org_admin = False
+            OrgRole.query.filter_by(
+                organization_id=user.organization_id, user_id=user.id
+            ).delete(synchronize_session=False)
         db.session.commit()
 
     @staticmethod
