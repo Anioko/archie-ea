@@ -30,7 +30,7 @@ from sqlalchemy.engine import make_url
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "20260926_baseline"
 RELAX = "20260926_relax_owner_app"
-HEAD = "20260926_widen_element_name"
+HEAD = "20261001_risk_score_fields"
 
 _DEFAULT_URL = "postgresql://postgres:postgres@127.0.0.1:5432/archie_test"
 
