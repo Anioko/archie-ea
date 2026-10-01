@@ -2447,9 +2447,14 @@ class EAWorkflowEngine:
         if instance.started_by_id and instance.started_by_id not in recipients:
             recipients.append(instance.started_by_id)
 
-        # Custom recipients from config
+        # Custom recipients from config. These ids live in the workflow
+        # definition's stored JSON, not in a request the caller's own
+        # organisation gates, so a recipient outside the workflow's own
+        # organisation is dropped here rather than notified or named.
+        from app.utils.tenant_users import user_in_org
+
         for r in config.get("recipients", []):
-            if isinstance(r, int):
+            if isinstance(r, int) and user_in_org(r, instance.organization_id):
                 recipients.append(r)
 
         if not recipients:
