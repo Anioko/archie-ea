@@ -10,10 +10,13 @@ write path).
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 import datetime as _dt
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+
+from flask import g, has_app_context
 
 from app.extensions import db
 from app.jobs.tenant_safe_job import tenant_scope
@@ -54,6 +57,28 @@ class DerivationRunner:
     def __init__(self, service: Optional[ArchiMateDerivationService] = None) -> None:
         self._service = service or ArchiMateDerivationService()
 
+    @staticmethod
+    def _tenant_scope_for(organization_id: int):
+        """Reuse an existing harness-managed tenant scope when one is active.
+
+        ``run_for_each_tenant`` already establishes ``tenant_scope`` for the
+        organisation it is visiting. Re-entering ``tenant_scope`` for the same
+        organisation from inside that harness is harmless in production, but in
+        the rollback-backed test session it adds a second scoped-session reset
+        around the write, which rolls back the just-written run record before
+        the yield endpoint can read it. Reuse the active harness scope instead
+        of nesting a second one.
+        """
+        if (
+            has_app_context()
+            and (
+                getattr(g, "_tenant_scope_organization_id", None) == organization_id
+                or getattr(g, "current_org_id", None) == organization_id
+            )
+        ):
+            return nullcontext()
+        return tenant_scope(organization_id)
+
     def run(self, organization_id: int) -> DerivationResult:
         """Compute derived relationships for one tenant.
 
@@ -71,7 +96,7 @@ class DerivationRunner:
 
         started = time.monotonic()
 
-        with tenant_scope(organization_id):
+        with self._tenant_scope_for(organization_id):
             element_rows = db.session.execute(db.select(ArchiMateElement)).scalars().all()
             relationship_rows = (
                 db.session.execute(db.select(ArchiMateRelationship)).scalars().all()
@@ -140,7 +165,7 @@ class DerivationRunner:
         """
         result = self.run(organization_id)
 
-        with tenant_scope(organization_id):
+        with self._tenant_scope_for(organization_id):
             self._persist(organization_id, result.derived)
             self._record_run(organization_id, result, trigger)
             db.session.commit()

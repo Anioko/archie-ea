@@ -242,13 +242,19 @@ def tenant_scope(organization_id: int) -> Iterator[int]:
 
     _reset_session()                      # nothing inherited from the previous tenant
     previous = getattr(g, "current_org_id", None)
+    previous_scope_org = getattr(g, "_tenant_scope_organization_id", None)
     g.current_org_id = organization_id
+    g._tenant_scope_organization_id = organization_id
     g.current_org = None                  # jobs must not rely on the ORM object
     try:
         yield organization_id
     finally:
         _reset_session()                  # nothing leaks forward to the next tenant
         g.current_org_id = previous
+        if previous_scope_org is None:
+            g.pop("_tenant_scope_organization_id", None)
+        else:
+            g._tenant_scope_organization_id = previous_scope_org
 
 
 # --------------------------------------------------------------------------- #
