@@ -105,16 +105,18 @@ def _backfill_decision_ledger_org(conn, dry_run, org_id, echo):
     if null_count == 0:
         return stats
 
-    derive_sql = """
-        SELECT t.id AS id, uc.organization_id AS derived_org
+    # Two literal statements, not one f-string-composed query reused in both:
+    # bandit's B608 flags any SQL built by string interpolation regardless of
+    # whether the interpolated part is attacker-controlled (here it never is,
+    # derive_sql was a fixed constant) -- two plain literals read the same
+    # join twice but satisfy the gate without reassembling SQL from parts.
+    derivable = conn.execute(text("""
+        SELECT count(*)
         FROM decision_ledger t
         JOIN unified_capabilities uc
             ON t.capability_id ~ '^[0-9]+$' AND uc.id = t.capability_id::integer
-        WHERE t.organization_id IS NULL
-    """
-    derivable = conn.execute(
-        text(f"SELECT count(*) FROM ({derive_sql}) sub WHERE sub.derived_org IS NOT NULL")
-    ).scalar()
+        WHERE t.organization_id IS NULL AND uc.organization_id IS NOT NULL
+    """)).scalar()
     stats["derivable"] = derivable
     stats["orphan"] = null_count - derivable
 
@@ -122,11 +124,15 @@ def _backfill_decision_ledger_org(conn, dry_run, org_id, echo):
         return stats
 
     if derivable:
-        result = conn.execute(text(
-            f'UPDATE "decision_ledger" AS t SET organization_id = sub.derived_org '
-            f'FROM ({derive_sql}) AS sub '
-            f'WHERE t.id = sub.id AND t.organization_id IS NULL AND sub.derived_org IS NOT NULL'
-        ))
+        result = conn.execute(text("""
+            UPDATE decision_ledger AS t
+               SET organization_id = uc.organization_id
+              FROM unified_capabilities uc
+             WHERE t.capability_id ~ '^[0-9]+$'
+               AND uc.id = t.capability_id::integer
+               AND t.organization_id IS NULL
+               AND uc.organization_id IS NOT NULL
+        """))
         stats["backfilled"] = result.rowcount or 0
 
     remaining_orphan = null_count - stats["backfilled"]
