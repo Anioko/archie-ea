@@ -70,6 +70,14 @@ HAND_WRITTEN = {
     # the narrative generation service. Its own description says so, and it
     # is already tier='approve' so it always queues for confirmation.
     "generate_blueprint_narrative",
+    # poll_infrastructure checks configured infrastructure endpoints for
+    # reachability; it is classified as external_action and mutates the
+    # infrastructure state (probes may trigger alerts or state changes).
+    "poll_infrastructure",
+    # extract_contract_from_document extracts structured contract terms from
+    # text and persists them; it is classified as external_action and mutates
+    # the contract registry.
+    "extract_contract_from_document",
 }
 
 # The per-ArchiMate-type element tools are GENERATED from ELEMENT_SPECS rather
