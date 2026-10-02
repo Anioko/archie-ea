@@ -31,6 +31,7 @@ flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merg
 # (the schema-deploy service connects as the deploy role that owns the tables).
 # Idempotent: a row whose retired_into_id is set is skipped.
 flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipped - older audit entries from ARB, ArchiMate composer and rationalisation stores remain uncopied until it runs (RUN-01)' >&2
+flask --app manage backfill-review-queue-approvals || echo 'WARN approval-queue consolidation backfill skipped - pending rows from review_queue_items, relationship_suggestions and solution_blueprint_proposals remain uncopied until it runs' >&2
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
 # app/models/unified_capability.py and docs/adr/0008-one-system-of-record.md) a

@@ -212,6 +212,21 @@ class RelationshipSuggestion(db.Model):  # migration-exempt — uses db.create_a
         db.DateTime, nullable=False, server_default=db.func.now()
     )
 
+    # Consolidation: set by `flask backfill-review-queue-approvals` on
+    # the row's canonical ai_chat_crud_approvals copy. NULL until backfilled.
+    # This ORM model has no live writer today: only ever queried (.query /
+    # .query.get(), in archimate_relationship_service.py and
+    # archimate_cap_routes.py), never constructed, in this codebase. Do not
+    # confuse this with the unrelated, same-named plain @dataclass in
+    # app/modules/architecture/services/archimate_mapping_agent.py (its own
+    # local class, never imported here, never added to a session, returned
+    # as an in-memory suggestion list, not this table) — added for parity
+    # with the other two consolidated stores and in case historical rows
+    # exist.
+    retired_into_id = db.Column(
+        db.Integer, db.ForeignKey("ai_chat_crud_approvals.id"), nullable=True
+    )
+
     def __repr__(self):
         return (
             f"<RelationshipSuggestion {self.source_element_id}"
