@@ -8,6 +8,8 @@ Covers:
 - Tenant isolation: cost visible only to owning organisation
 """
 
+import uuid
+
 import pytest
 from decimal import Decimal
 
@@ -98,6 +100,32 @@ class TestCostAccessorBasics:
             db_session.commit()
 
             set_annual_cost(app_comp, None)
+            db_session.commit()
+
+            assert get_annual_cost(app_comp) is None
+
+    def test_set_annual_cost_negative_rejected(self, app, db_session, make_org, tenant_ctx):
+        """Negative values are rejected and not stored."""
+        org = make_org("cost-accessor-neg")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            set_annual_cost(app_comp, Decimal("-5000"))
+            db_session.commit()
+
+            assert get_annual_cost(app_comp) is None
+
+    def test_set_annual_cost_non_numeric_rejected(self, app, db_session, make_org, tenant_ctx):
+        """Non-numeric values are rejected and not stored."""
+        org = make_org("cost-accessor-nan")
+        with tenant_ctx(org.id):
+            app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+            db_session.add(app_comp)
+            db_session.commit()
+
+            set_annual_cost(app_comp, "not a number")
             db_session.commit()
 
             assert get_annual_cost(app_comp) is None
@@ -870,6 +898,99 @@ class TestImportPreviewCostMapping:
             assert len(row0.get("cost_errors", {})) > 0, (
                 "Expected a currency mismatch error for EUR in a GBP-default org"
             )
+
+
+class TestConsolidationRouteCostGuard:
+    """The consolidation-list update route routes through set_annual_cost
+    and does not store negative or non-numeric values."""
+
+    def test_negative_annual_cost_not_stored(
+        self, app, db_session, make_org, client, login_as
+    ):
+        """PUT consolidation-list entry with negative annual_operating_cost
+        does not store the value."""
+        from app.models.consolidation_list import ConsolidationListEntry
+        from app.models.user import User, Role
+        from app.services.application_cost_accessor import get_annual_cost
+
+        org = make_org("cons-cost-neg")
+        admin_role = Role.query.filter_by(name="Administrator").first()
+        user = User(
+            first_name="Cost", last_name="Test",
+            email=f"cost-neg-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org.id, confirmed=True, role=admin_role,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+        db_session.add(app_comp)
+        db_session.flush()
+
+        entry = ConsolidationListEntry(
+            application_id=app_comp.id,
+            status="pending",
+            recommended_action="pending_review",
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.put(
+            f"/consolidation-list/api/entry/{entry.id}",
+            json={"annual_operating_cost": "-5000"},
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+
+        db_session.expire_all()
+        reloaded = db_session.get(ApplicationComponent, app_comp.id)
+        assert get_annual_cost(reloaded) is None, (
+            "Negative annual_operating_cost must not be stored"
+        )
+
+    def test_non_numeric_annual_cost_not_stored(
+        self, app, db_session, make_org, client, login_as
+    ):
+        """PUT consolidation-list entry with non-numeric annual_operating_cost
+        does not store the value."""
+        from app.models.consolidation_list import ConsolidationListEntry
+        from app.models.user import User, Role
+        from app.services.application_cost_accessor import get_annual_cost
+
+        org = make_org("cons-cost-nan")
+        admin_role = Role.query.filter_by(name="Administrator").first()
+        user = User(
+            first_name="Cost", last_name="Test",
+            email=f"cost-nan-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org.id, confirmed=True, role=admin_role,
+        )
+        db_session.add(user)
+        db_session.commit()
+
+        app_comp = ApplicationComponent(name="Test App", organization_id=org.id)
+        db_session.add(app_comp)
+        db_session.flush()
+
+        entry = ConsolidationListEntry(
+            application_id=app_comp.id,
+            status="pending",
+            recommended_action="pending_review",
+        )
+        db_session.add(entry)
+        db_session.commit()
+
+        login_as(client, user)
+        resp = client.put(
+            f"/consolidation-list/api/entry/{entry.id}",
+            json={"annual_operating_cost": "not a number"},
+        )
+        assert resp.status_code == 200, resp.get_data(as_text=True)
+
+        db_session.expire_all()
+        reloaded = db_session.get(ApplicationComponent, app_comp.id)
+        assert get_annual_cost(reloaded) is None, (
+            "Non-numeric annual_operating_cost must not be stored"
+        )
 
 
 if __name__ == "__main__":
