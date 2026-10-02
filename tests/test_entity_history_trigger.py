@@ -368,3 +368,53 @@ def test_backfill_does_not_hide_a_pre_existing_row_from_an_earlier_as_of_date(
     ), {"id": el_id}).fetchone()
     assert base_recorded_at is None
     assert base_valid_from is not None  # -infinity, not NULL and not "now"
+
+
+def test_entity_history_accepts_a_row_with_an_invalid_organization_id(
+    app, db_session, make_org
+):
+    """entity_history.organization_id deliberately omits a ForeignKey
+    constraint (app/models/entity_history.py:40-51) because pre-existing
+    archimate_elements rows may carry an organization_id that does not
+    exist in the organizations table.  This test proves the trigger can
+    still write to entity_history without FK violation when the source
+    row has an invalid org_id."""
+    from sqlalchemy import text as _text
+
+    org = make_org("eh-invalid-org")
+    el = _element(db_session, org, name=f"El-invalid-org-{uuid.uuid4().hex[:6]}")
+    el_id = el.id
+    db_session.commit()
+
+    # Drop the FK constraint temporarily (transactional DDL -- the test
+    # transaction rolls back, restoring the constraint).  This simulates
+    # the drift that existed before the FK was ever enforced: pre-existing
+    # rows with an organization_id that does not match any organization.
+    db_session.execute(_text(
+        "ALTER TABLE archimate_elements DROP CONSTRAINT archimate_elements_organization_id_fkey"
+    ))
+    db_session.execute(_text(
+        "UPDATE archimate_elements SET organization_id = :bad_org WHERE id = :id"
+    ), {"bad_org": 999999, "id": el_id})
+    db_session.commit()
+
+    # Now trigger an UPDATE on the row -- the trigger must write to
+    # entity_history without raising ForeignKeyViolation.
+    db_session.execute(_text(
+        "UPDATE archimate_elements SET name = name || '-updated' WHERE id = :id"
+    ), {"id": el_id})
+    db_session.commit()
+
+    rows = db_session.execute(_text(
+        "SELECT organization_id, valid_to FROM entity_history "
+        "WHERE table_name='archimate_elements' AND record_id=:id ORDER BY valid_from"
+    ), {"id": el_id}).fetchall()
+
+    assert len(rows) >= 2  # insert version + update version
+    # The first version (from the INSERT) has the original valid org_id;
+    # the second version (from the UPDATE after DROP CONSTRAINT) must
+    # carry the invalid org_id without FK error.
+    assert rows[0][0] == org.id
+    assert rows[1][0] == 999999
+    # Exactly one open version.
+    assert sum(1 for r in rows if r[1] is None) == 1
