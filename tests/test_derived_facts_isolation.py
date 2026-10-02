@@ -182,3 +182,28 @@ def test_capability_derivation_service_is_removed():
 
 def test_unified_derivation_reexport_is_removed():
     _assert_module_removed("app.services.archimate.unified_derivation_service")
+
+
+# ── Workflow step handler registration ──
+
+def test_every_v2_workflow_step_handler_is_registered(app):
+    """Every handler referenced by a v2 workflow step must be registered in
+    STEP_HANDLERS so that no step silently produces None output."""
+    from app.modules.solutions_strategic.v2.services.ea_workflow_engine import (
+        EAWorkflowEngine,
+    )
+
+    engine = EAWorkflowEngine()
+    handlers = set(engine.STEP_HANDLERS.keys())
+
+    missing: dict[str, list[str]] = {}
+    for wf_def in EAWorkflowEngine._build_default_workflow_definitions():
+        for step in wf_def.get("steps", []):
+            handler_name = step.get("handler")
+            if handler_name and handler_name not in handlers:
+                missing.setdefault(wf_def["workflow_code"], []).append(handler_name)
+
+    assert not missing, (
+        f"Unregistered handlers found: {missing}. "
+        f"Every handler must be in STEP_HANDLERS."
+    )
