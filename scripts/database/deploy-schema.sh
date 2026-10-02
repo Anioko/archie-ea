@@ -16,6 +16,32 @@ flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram te
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
 flask --app manage backfill-architect-role
 
+# Add vendor_organizations legal entity columns (migration-exempt model)
+# These columns are defined in app/models/vendor/vendor_organization.py but
+# the model is tagged migration-exempt, so reconcile-schema will NOT add them.
+# For new databases init-db creates them; this block covers existing ones.
+python -c "
+from app.extensions import db
+from sqlalchemy import text
+engine = db.engine
+with engine.connect() as conn:
+    for col, ddl in [
+        ('legal_name', 'ALTER TABLE vendor_organizations ADD COLUMN legal_name VARCHAR(300)'),
+        ('legal_registration_number', 'ALTER TABLE vendor_organizations ADD COLUMN legal_registration_number VARCHAR(100)'),
+        ('legal_address', 'ALTER TABLE vendor_organizations ADD COLUMN legal_address TEXT'),
+        ('parent_vendor_id', 'ALTER TABLE vendor_organizations ADD COLUMN parent_vendor_id INTEGER REFERENCES vendor_organizations(id)'),
+    ]:
+        try:
+            conn.execute(text(ddl))
+            conn.commit()
+            print(f'  vendor_organizations.{col} added')
+        except Exception as e:
+            if 'duplicate' in str(e).lower() or 'already exists' in str(e).lower():
+                print(f'  vendor_organizations.{col} already exists')
+            else:
+                print(f'WARN vendor_organizations.{col} — {e}')
+" || echo 'WARN vendor_organizations legal entity columns migration skipped (non-fatal)'
+
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
 # app/models/unified_capability.py and docs/adr/0008-one-system-of-record.md) a
 # producer. Must run after reconcile-schema (provenance columns) and after every
