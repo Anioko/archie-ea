@@ -378,7 +378,7 @@ class DataDomain(TenantMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Identity
-    name = db.Column(db.String(200), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(200), nullable=False, index=True)
     code = db.Column(db.String(50), unique=True)  # CUST, PROD, FIN, OPS
     description = db.Column(db.Text)
 
@@ -437,6 +437,12 @@ class DataDomain(TenantMixin, db.Model):
         "ApplicationComponent", foreign_keys=[golden_source_application_id]
     )
     entities = db.relationship("DataEntity", back_populates="domain", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "organization_id", "name", name="uq_data_domains_org_name"
+        ),
+    )
 
     def __repr__(self):
         return f"<DataDomain {self.name}>"
