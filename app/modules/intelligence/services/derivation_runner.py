@@ -189,7 +189,18 @@ class DerivationRunner:
         """
         from app.modules.intelligence.models.derivation_run import DerivationRun
 
-        finished = _dt.datetime.now(_dt.timezone.utc)
+        # Naive UTC, not datetime.now(timezone.utc) (reviews/pr304-ruling-v2.md,
+        # finding 2): the DerivationRun columns are plain TIMESTAMP WITHOUT TIME
+        # ZONE, matching this codebase's own convention (~1,400 plain-UTC
+        # columns against ~70 zone-aware). psycopg2 does not store a tz-aware
+        # datetime into a naive column as-is -- it converts it to the
+        # connection's session timezone first, then strips tzinfo, so an aware
+        # UTC value silently becomes the session's LOCAL wall-clock time
+        # mislabelled as UTC the moment that session isn't itself UTC (BST
+        # here is UTC+1; confirmed directly -- a round-trip read back a value
+        # exactly one hour ahead of the true UTC instant). datetime.utcnow()
+        # is naive to begin with, so psycopg2 stores it unconverted.
+        finished = _dt.datetime.utcnow()
         started = finished - _dt.timedelta(milliseconds=result.duration_ms)
         db.session.add(
             DerivationRun(
