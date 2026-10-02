@@ -4,7 +4,7 @@ lands (``Plateau``), which gap it closes (``Gap``), its recorded
 recorded plateau classification on every affected row.
 
 Fixtures (app, db_session, make_org, client, login_as) are discovered via
-app/modules/intelligence/tests/conftest.py's own import of tests.conftest.
+app/modules/conftest.py's import of tests.conftest.
 """
 
 from __future__ import annotations

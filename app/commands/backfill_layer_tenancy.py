@@ -96,6 +96,29 @@ _DERIVABLE_ORG = {
          WHERE u.id = s.organization_unit_id
            AND u.organization_id IS NULL
     """,
+    # An options analysis belongs to the organisation that owns the capability it
+    # analyses: capability_id is NOT NULL and points at business_capability, which
+    # is already tenant-fenced. An analysis whose capability itself has no
+    # organisation cannot be resolved here; see _PROVENANCE_ONLY.
+    "options_analysis": """
+        UPDATE options_analysis a
+           SET organization_id = b.organization_id
+          FROM business_capability b
+         WHERE a.capability_id = b.id
+           AND a.organization_id IS NULL
+           AND b.organization_id IS NOT NULL
+    """,
+    # A stakeholder input belongs to its analysis. Ordering is load-bearing in the
+    # same way as above: "options_analysis" < "stakeholder_inputs", so the analysis
+    # is derived (or left NULL) before this reads it.
+    "stakeholder_inputs": """
+        UPDATE stakeholder_inputs i
+           SET organization_id = a.organization_id
+          FROM options_analysis a
+         WHERE i.analysis_id = a.id
+           AND i.organization_id IS NULL
+           AND a.organization_id IS NOT NULL
+    """,
 }
 
 # Tables whose remaining NULL rows carry per-row provenance rather than a
@@ -107,7 +130,7 @@ _DERIVABLE_ORG = {
 # reported, never a candidate for the single-organisation or --org-id orphan
 # assignment below. With exactly one organisation there is no other one it
 # could belong to, so the ordinary single-organisation rule still applies.
-_PROVENANCE_ONLY = {"application_ownership", "organization_units"}
+_PROVENANCE_ONLY = {"application_ownership", "options_analysis", "organization_units", "stakeholder_inputs"}
 
 
 def _resolve_org_id(conn, explicit):

@@ -27,6 +27,8 @@ from flask import (
 from flask_login import current_user
 
 from app.decorators import admin_required
+from app.extensions import db
+from app.services.billing_plans import PlanLimitReached
 from app.services.sso_service import SSONotConfiguredError, SSOService
 
 _log = logging.getLogger(__name__)
@@ -129,6 +131,13 @@ def sso_callback_oidc():
     except SSONotConfiguredError as exc:
         _log.error("OIDC callback failed: %s", exc)
         flash(f"SSO login failed: {exc}", "error")
+        return redirect(url_for("account.login"))
+    except PlanLimitReached as exc:
+        # Just-in-time provisioning of a new person into a full plan: nothing
+        # is saved and the person is told why, rather than "unexpected error".
+        db.session.rollback()
+        _log.info("OIDC provisioning refused by plan limit for org %s", org_id)
+        flash(f"Your account could not be created. {exc}", "error")
         return redirect(url_for("account.login"))
     except Exception:
         _log.exception("Unexpected error during OIDC callback")
