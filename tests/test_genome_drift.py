@@ -278,7 +278,7 @@ def test_index_shows_error_not_empty_state_for_unreadable_stored_report(
     resp_unreadable = client.get("/genome/model-health/")
     assert resp_unreadable.status_code == 200
     body_unreadable = resp_unreadable.get_data(as_text=True)
-    assert "could not be read" in body_unreadable
+    assert "could not be rendered" in body_unreadable
     assert "Not yet computed" not in body_unreadable
 
     login_as(client, user_no_row)
@@ -286,7 +286,7 @@ def test_index_shows_error_not_empty_state_for_unreadable_stored_report(
     assert resp_no_row.status_code == 200
     body_no_row = resp_no_row.get_data(as_text=True)
     assert "Not yet computed" in body_no_row
-    assert "could not be read" not in body_no_row
+    assert "could not be rendered" not in body_no_row
 
 
 def test_remediation_queues_through_governed_gate_and_applies_nothing(
