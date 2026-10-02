@@ -282,12 +282,14 @@ _DERIVABLE_ORG = {
         UPDATE solution_migration_roadmaps m
            SET organization_id = COALESCE(
                  (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                )
          WHERE m.organization_id IS NULL
            AND COALESCE(
                  (SELECT s.organization_id FROM solutions s WHERE s.id = m.solution_id),
-                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id)
+                 (SELECT u.organization_id FROM users u WHERE u.id = m.generated_by_id
+                    AND NOT EXISTS (SELECT 1 FROM org_roles r WHERE r.user_id = u.id AND r.organization_id != u.organization_id))
                ) IS NOT NULL
     """,
     "stakeholders": """
