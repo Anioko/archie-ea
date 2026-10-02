@@ -66,12 +66,18 @@ def set_annual_cost(app: ApplicationComponent, value: Optional[Decimal]) -> None
     Write the application's annual cost through the accessor.
 
     Accepts Decimal, int, float, or numeric string. None clears the field.
+    Negative values are rejected (treated as not recorded).
     """
     if value is None:
         setattr(app, _ANNUAL_COST_COLUMN, None)
         return
     try:
-        setattr(app, _ANNUAL_COST_COLUMN, Decimal(str(value)))
+        parsed = Decimal(str(value))
+        if parsed < 0:
+            # Negative cost values are not accepted — treated as not recorded.
+            setattr(app, _ANNUAL_COST_COLUMN, None)
+            return
+        setattr(app, _ANNUAL_COST_COLUMN, parsed)
     except (InvalidOperation, ValueError, TypeError):
         # Invalid input is treated as "not recorded" — never stored as 0.
         setattr(app, _ANNUAL_COST_COLUMN, None)
