@@ -355,6 +355,8 @@
  "B615|app/modules/ai_chat/services/llm_service_impl.py|tokenizer = AutoTokenizer.from_pretrained(model) model_obj = AutoModelForCausalLM.from_pretrained(model)",
  "B615|app/modules/ai_chat/services/llm_service_impl.py|tokenizer = AutoTokenizer.from_pretrained(model) model_obj = AutoModelForCausalLM.from_pretrained(model) model_max_length = 1024 # GPT - 2 context window",
  "B704|app/models/feature_flags.py|label = escape(self.state.value) return Markup(f'<span class=\"inline-flex items-center rounded-full px-2 py-1 text-xs font-medium {color}\">{label}</span>') # raw-html-ok: color is a fixed dict value above; label is escape()'d one line above",
+ "B704|app/services/public_pages.py|\"\"\" return Markup(bleach.clean( html, tags=_ALLOWED_TAGS, attributes=_ALLOWED_ATTRS, strip=True, ))",
+ "B704|app/services/public_pages.py|return Markup(_escape_for_script_block(json.dumps(ld, indent=2, ensure_ascii=False)))",
  "B704|app/utils/html_sanitizer.py|def get_output(self): return Markup(\"\".join(self._parts))",
  "B704|app/utils/template_utils.py|# No exception patterns \u2014 likely already human-friendly return Markup(escape(msg))",
  "B704|app/utils/template_utils.py|escaped_raw = escape(msg) return Markup( f'<span class=\"block\">{escape(friendly)}' f' You can retry or contact support.</span>' f'<details class=\"mt-2 text-xs\">' f'<summary class=\"cursor-pointer text-destructive/60 ' f'hover:text-destructive/80\">Technical details</summary>' f'<pre class=\"mt-1 p-2 rounded bg-muted text-muted-foreground ' f'overflow-x-auto whitespace-pre-wrap break-words text-[11px]\">' f'{escaped_raw}</pre></details>' )",
