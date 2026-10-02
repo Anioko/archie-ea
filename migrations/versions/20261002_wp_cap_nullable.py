@@ -12,7 +12,7 @@ that model change keeps the original NOT NULL until this runs.
 Idempotent: PostgreSQL's ``DROP NOT NULL`` is a no-op on an already-nullable
 column.
 
-Revision ID: 20261002_work_package_business_capability_nullable
+Revision ID: 20261002_wp_cap_nullable
 Revises: 20261001_approval_nullable
 Create Date: 2026-10-02
 """
@@ -21,11 +21,7 @@ from sqlalchemy import text
 
 from app.commands.schema_migrations import ContractBlocked
 
-# alembic_version.version_num is VARCHAR(32) (set by the baseline migration
-# system in migrations/env.py, not by this revision) -- keep this id at or
-# under that length, the same constraint every revision after the baseline
-# already satisfies.
-revision = "20261002_work_package_business_capability_nullable"
+revision = "20261002_wp_cap_nullable"
 down_revision = "20261001_approval_nullable"
 branch_labels = None
 depends_on = None
