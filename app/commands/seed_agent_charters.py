@@ -9,7 +9,6 @@ Usage:
     flask --app manage seed-charters --organization-id 1
 """
 import click
-import json
 from flask.cli import with_appcontext
 
 from app import db

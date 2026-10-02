@@ -1,5 +1,5 @@
 """
-Tests for agent charters (versioned records) and run records (PR 2 of R1-B22).
+Tests for agent charters (versioned records) and run records.
 
 Coverage:
   - Charter seed creates one versioned record per persona per organisation
