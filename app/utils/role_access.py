@@ -834,7 +834,7 @@ _MY_WORK_LINKS = {
         _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
         _link("System of Record", "data_governance.entities", "database-zap"),
-        _link("Master Data Domains", "data_governance.domains", "layers"),
+        _link("Master Data Domains", "data_governance.domains", "folder-tree"),
         _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),
