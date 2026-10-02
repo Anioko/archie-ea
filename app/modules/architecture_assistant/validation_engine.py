@@ -154,10 +154,11 @@ class ValidationEngineService:
         }
 
     def _get_compliance_summary(self, capabilities):
-        """Aggregate compliance status from capability→compliance links."""
-        from app.modules.architecture_assistant.capability_derivation import CapabilityDerivationService
-        svc = CapabilityDerivationService()
+        """Aggregate compliance status from capability→compliance links.
 
+        Reads from the canonical compliance store directly instead of through
+        the removed CapabilityDerivationService.
+        """
         frameworks = {}
         gaps = []
         total_reqs = 0
@@ -167,14 +168,13 @@ class ValidationEngineService:
             if not cap_id:
                 continue
 
-            reqs = svc.get_compliance_requirements(cap_id)
+            reqs = self._query_compliance_requirements(cap_id)
             for req in reqs:
                 total_reqs += 1
                 fw = req.get("framework", "Unknown")
                 frameworks.setdefault(fw, {"requirements": [], "addressed": 0, "total": 0})
                 frameworks[fw]["requirements"].append(req.get("name", ""))
                 frameworks[fw]["total"] += 1
-                # Mark as addressed (Step 2 acknowledged it)
                 frameworks[fw]["addressed"] += 1
 
         score = 100 if total_reqs == 0 else round(
@@ -188,6 +188,30 @@ class ValidationEngineService:
             "gaps": gaps,
             "score": score,
         }
+
+    @staticmethod
+    def _query_compliance_requirements(capability_id):
+        """Query compliance requirements for a business capability directly.
+
+        Uses the canonical ComplianceRequirement store instead of the removed
+        CapabilityDerivationService.
+        """
+        try:
+            from app.models.relationship_tables import capability_compliance_requirements
+            from app.models.compliance_models import ComplianceRequirement
+            reqs = ComplianceRequirement.query.join(
+                capability_compliance_requirements
+            ).filter(
+                capability_compliance_requirements.c.business_capability_id == capability_id
+            ).all()
+            return [{
+                "id": r.id,
+                "name": r.name,
+                "framework": getattr(r, "framework_name", ""),
+                "description": r.description or "",
+            } for r in reqs]
+        except Exception:
+            return []
 
     def _get_governance_alignment(self, capabilities):
         """Query COBIT processes and ITIL practices for capabilities."""
