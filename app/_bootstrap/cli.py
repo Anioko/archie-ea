@@ -254,6 +254,13 @@ def init_cli(app):
         app.logger.warning(f"Failed to register review queue tenancy backfill CLI: {e}")
 
     try:
+        from app.commands.backfill_review_queue_approvals import init_app as init_review_queue_approvals
+        init_review_queue_approvals(app)
+        app.logger.info("approval-queue consolidation backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"Failed to register approval-queue consolidation backfill CLI: {e}")
+
+    try:
         from app.commands.dedupe_entities import init_app as init_dedupe_entities
         init_dedupe_entities(app)
         app.logger.info("\u2705 Dedupe entities CLI command registered")
@@ -414,6 +421,19 @@ def init_cli(app):
         app.logger.info("\u2705 ARB/EA tenancy backfill CLI command registered")
     except Exception as e:
         app.logger.warning(f"\u26a0\ufe0f  Failed to register ARB/EA tenancy backfill CLI: {e}")
+
+    # Decision register consolidation (ADR records paired into
+    # architecture_decisions; decision_ledger tenant-fenced)
+    try:
+        from app.commands.backfill_decision_register_consolidation import (
+            init_app as init_decision_register_consolidation,
+        )
+        init_decision_register_consolidation(app)
+        app.logger.info("\u2705 Decision register consolidation backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(
+            f"\u26a0\ufe0f  Failed to register decision register consolidation backfill CLI: {e}"
+        )
 
     try:
         from app.commands.process_arb_waiver_expiries import init_app as init_arb_expiry
