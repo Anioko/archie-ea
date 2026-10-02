@@ -1443,11 +1443,9 @@ class IntelligenceQueryService:
                     cost_variance_pct = (
                         (wp.actual_cost or 0.0) - wp.estimated_cost
                     ) / wp.estimated_cost * 100
-                    cost_variance_pct_display = f"{cost_variance_pct:.1f}"
                     cost_reason = None
                 else:
                     cost_variance_pct = None
-                    cost_variance_pct_display = None
                     cost_reason = NOT_COSTED_REASON
 
                 plateau_row = plateaus_by_id.get(wp.plateau_id)
@@ -1515,7 +1513,6 @@ class IntelligenceQueryService:
                         "is_overdue": wp.is_overdue(),
                         "owner": owners_by_id.get(wp.owner_id),
                         "cost_variance_pct": cost_variance_pct,
-                        "cost_variance_pct_display": cost_variance_pct_display,
                         "cost_reason": cost_reason,
                         "plateau": plateau_block,
                         "gap": gap_block,
@@ -2040,11 +2037,9 @@ class IntelligenceQueryService:
                     total_budget = float(initiative.total_budget)
                     spent_to_date = float(initiative.spent_to_date or 0.0)
                     budget_variance_pct = (spent_to_date - total_budget) / total_budget * 100
-                    budget_variance_pct_display = f"{budget_variance_pct:.1f}"
                     budget_reason = None
                 else:
                     budget_variance_pct = None
-                    budget_variance_pct_display = None
                     budget_reason = NO_BUDGET_RECORDED_REASON
 
                 payload = {
@@ -2063,7 +2058,6 @@ class IntelligenceQueryService:
                     "executive_sponsor": initiative.executive_sponsor,
                     "program_manager": initiative.program_manager,
                     "budget_variance_pct": budget_variance_pct,
-                    "budget_variance_pct_display": budget_variance_pct_display,
                     "budget_reason": budget_reason,
                     "success_metrics": [
                         {
