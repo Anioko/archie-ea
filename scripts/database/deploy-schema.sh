@@ -57,19 +57,25 @@ with engine.connect() as conn:
                 print(f'  vendor_organizations.{col} already exists')
             else:
                 print(f'WARN vendor_organizations.{col} — {e}')
-
-    # Create partial unique index on legal_registration_number (non-NULL values only)
-    try:
-        conn.execute(text(
-            'CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_legal_reg '
-            'ON vendor_organizations(legal_registration_number) '
-            'WHERE legal_registration_number IS NOT NULL'
-        ))
-        conn.commit()
-        print('  vendor_organizations.uq_vendor_legal_reg index created')
-    except Exception as e:
-        print(f'WARN vendor_organizations.uq_vendor_legal_reg — {e}')
 " || echo 'WARN vendor_organizations legal entity columns migration skipped (non-fatal)'
+
+# Create partial unique index on legal_registration_number (non-NULL values
+# only). This is NOT suppressed: a unique constraint that silently fails to
+# exist is not a reliable guarantee, and the test asserts the constraint as
+# built by flask db upgrade, which also raises on failure.
+python -c "
+from app.extensions import db
+from sqlalchemy import text
+engine = db.engine
+with engine.connect() as conn:
+    conn.execute(text(
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_legal_reg '
+        'ON vendor_organizations(legal_registration_number) '
+        'WHERE legal_registration_number IS NOT NULL'
+    ))
+    conn.commit()
+    print('  vendor_organizations.uq_vendor_legal_reg index created')
+"
 
 # The generic history trigger reconcile-schema cannot create, then
 # one seeded version per pre-existing element/relationship. Trigger first so
