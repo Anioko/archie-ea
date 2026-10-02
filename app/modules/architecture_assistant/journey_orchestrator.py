@@ -454,6 +454,9 @@ class JourneyOrchestrator:
         }
 
         arch_model_id = None
+        # Read again by the required-chain pass below, which can run even when this
+        # block failed before resolving it; None then leaves the row unattributed.
+        _org_id = None
         try:
             from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship, ArchitectureModel
             from app.models.solution_blueprint_proposal import SolutionBlueprintProposal
@@ -865,6 +868,11 @@ class JourneyOrchestrator:
                             confidence=0.5,
                             inference_pass=2,
                             rule_name="cross_layer_wiring",
+                            # This pass runs from a background thread with a bare
+                            # app_context() (no request), so g.current_org_id is
+                            # never set here -- must set explicitly. _org_id was
+                            # resolved above from the solution this run is for.
+                            organization_id=_org_id,
                         )
                         db.session.add(_air)
                         _wired += 1
@@ -1106,6 +1114,9 @@ class JourneyOrchestrator:
                         confidence=0.6,
                         inference_pass=2,
                         rule_name="required_chain_coverage",
+                        # Same background-thread context as the cross-layer wiring
+                        # pass above -- no g.current_org_id, so set explicitly.
+                        organization_id=_org_id,
                     )
                     db.session.add(_air_rel)
                     _rel_pairs.add((p, c))

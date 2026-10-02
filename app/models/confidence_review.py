@@ -223,13 +223,30 @@ class ReviewQueueItem(TenantMixin, db.Model):
         }
 
 
-class ReviewDecision(db.Model):
-    """Review decision records for audit and learning."""
+class ReviewDecision(TenantMixin, db.Model):
+    """Review decision records for audit and learning.
+
+    Each decision belongs to one organisation and is only visible to that
+    organisation's users; the tenant filter applies through ``TenantMixin``.
+    """
 
     __tablename__ = "review_decisions"
     __table_args__ = {"extend_existing": True}
 
     id = db.Column(db.BigInteger, primary_key=True)
+
+    # Nullable so reconcile-schema can add the column to an existing table (it
+    # only adds nullable columns). The mixin still applies the tenant filter, and a
+    # row with no organisation matches no organisation, so it is listed for
+    # nobody. New rows take the organisation of the review item they decide on;
+    # there is no default owner.
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
     review_item_id = db.Column(
         db.BigInteger, db.ForeignKey("review_queue_items.id"), nullable=False
     )

@@ -908,6 +908,9 @@ class ConfidenceReviewService:
             # Create review decision record
             review_decision = ReviewDecision(
                 review_item_id=decision_data.review_item_id,
+                # Take the queue item's own organisation rather than relying on
+                # request context, which this service does not otherwise touch.
+                organization_id=review_item.organization_id,
                 decision_type=decision_data.decision_type,
                 decision_reason=decision_data.decision_reason,
                 confidence_adjustment=Decimal(str(decision_data.human_confidence_estimate))

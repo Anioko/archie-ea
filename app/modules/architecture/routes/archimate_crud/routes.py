@@ -2003,7 +2003,9 @@ def api_health_scorecard():
         legacy_rels = _scope(
             db.session.query(func.count(ArchiMateRelationship.id)), ArchiMateRelationship
         ).scalar() or 0
-        inference_rels = db.session.query(func.count(InfRel.id)).scalar() or 0
+        inference_rels = _scope(
+            db.session.query(func.count(InfRel.id)), InfRel
+        ).scalar() or 0
         total_rels = legacy_rels + inference_rels
 
         # Elements per layer
@@ -2079,7 +2081,11 @@ def api_health_scorecard():
             .all())
         # Fallback: count relationships crossing layers via raw SQL for reliability
         try:
-            _cross_sql = """
+            # Scope both arms to the signed-in tenant explicitly, same reason as
+            # _scope() above: raw SQL carries no ORM tenant filter at all, so an
+            # unscoped join here would sum every organisation's relationships.
+            _org_predicate = "AND r.organization_id = :org_id" if _org is not None else ""
+            _cross_sql = f"""
                 SELECT src_layer, tgt_layer, SUM(cnt) AS cnt FROM (
                     SELECT LOWER(COALESCE(src.layer,'?')) AS src_layer,
                            LOWER(COALESCE(tgt.layer,'?')) AS tgt_layer,
@@ -2089,6 +2095,7 @@ def api_health_scorecard():
                     JOIN archimate_elements tgt ON r.target_id = tgt.id
                     WHERE LOWER(COALESCE(src.layer,'?')) <> LOWER(COALESCE(tgt.layer,'?'))
                       AND LOWER(COALESCE(r.type,'')) NOT IN ('composition','aggregation')
+                      {_org_predicate}
                     GROUP BY 1, 2
                     UNION ALL
                     SELECT LOWER(COALESCE(src.layer,'?')) AS src_layer,
@@ -2099,12 +2106,14 @@ def api_health_scorecard():
                     JOIN archimate_elements tgt ON r.target_id = tgt.id
                     WHERE LOWER(COALESCE(src.layer,'?')) <> LOWER(COALESCE(tgt.layer,'?'))
                       AND LOWER(COALESCE(r.rel_type,'')) NOT IN ('composition','aggregation')
+                      {_org_predicate}
                     GROUP BY 1, 2
                 ) combined
                 GROUP BY src_layer, tgt_layer
                 ORDER BY cnt DESC
-            """
-            cross_pairs_rows = db.session.execute(text(_cross_sql)).fetchall()
+            """  # nosec B608 -- _org_predicate is one of two fixed literal strings chosen in code, not user input; the org id itself is a bound parameter
+            _cross_params = {"org_id": _org} if _org is not None else {}
+            cross_pairs_rows = db.session.execute(text(_cross_sql), _cross_params).fetchall()
             cross_pairs = [{"from": row[0] or "?", "to": row[1] or "?", "count": row[2]} for row in cross_pairs_rows]
         except Exception:
             db.session.rollback()
