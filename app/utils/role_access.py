@@ -675,6 +675,11 @@ _MY_WORK_LINKS = {
         # finding nothing is precisely why maturity was reported as missing.
         _link("Capability Maturity", "maturity_management.maturity_heatmap", "thermometer"),
         _link("Value Streams", "value_stream.index", "waypoints"),
+        # The value streams that depend on a capability below a maturity
+        # threshold, answered by the intelligence API. Sits under Value
+        # Streams, the page where the capability links it reads are made.
+        # 28 -> 29 rendered links, within SIDEBAR_LINK_BUDGET (31).
+        _link("Value Streams at Risk", "intelligence_ui.value_streams_at_risk", "trending-down"),
         _link("Stakeholder Map", "stakeholder_map.stakeholder_map_page", "users"),
         _link("Gap Analysis", "enterprise.gap_analysis", "search-x"),
         _link("Roadmaps", "main.capability_roadmap", "milestone"),
@@ -848,11 +853,19 @@ def _build_zones(role: str) -> List[Dict]:
     # platform_admin has no headroom left for a 5th library link once its two
     # admin-zone additions are counted (23 zone links -> 25 rendered, exactly
     # at SIDEBAR_LINK_BUDGET) — see _LIBRARY_LINKS_WITH_DIRECTORY's comment.
+    # Value Streams at Risk is a business_architect-only My-work link. To keep
+    # the rendered sidebar within the existing ratchet (28) rather than raising
+    # verification_baseline.json, that persona's Home zone keeps Dashboard
+    # Overview and drops Health Scorecard, which remains reachable from the
+    # dashboard itself and from the personas that actively work from it.
+    home_links = (
+        _HOME_LINKS[:1] if role == ROLE_BUSINESS_ARCHITECT else _HOME_LINKS
+    )
     library_links = (
         _LIBRARY_LINKS if role == ROLE_PLATFORM_ADMIN else _LIBRARY_LINKS_WITH_DIRECTORY
     )
     zones = [
-        _zone("home", _HOME_LINKS),
+        _zone("home", home_links),
         _zone("my_work", [_ASK_LINK] + _MY_WORK_LINKS[role]),
         _zone("library", library_links),
     ]
