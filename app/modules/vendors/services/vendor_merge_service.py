@@ -142,7 +142,7 @@ class VendorMergeService:
             ``products_repointed``
         """
         # tenant-scoping-ok: VendorOrganization is global reference data per ADR-0003
-        keep = VendorOrganization.query.get(keep_id)
+        keep = db.session.get(VendorOrganization, keep_id)
         if not keep:
             raise ValueError(f"Vendor {keep_id} not found")
 
@@ -151,7 +151,7 @@ class VendorMergeService:
 
         for mid in merge_ids:
             # tenant-scoping-ok: VendorOrganization is global reference data per ADR-0003
-            dup = VendorOrganization.query.get(mid)
+            dup = db.session.get(VendorOrganization, mid)
             if not dup:
                 continue
 
