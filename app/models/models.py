@@ -620,7 +620,7 @@ class WorkflowInstanceArchiMateElement(db.Model):
         )
 
 
-class Requirement(db.Model):
+class Requirement(TenantMixin, db.Model):
     __tablename__ = "requirements"
 
     # In fast-init/test contexts we may define a lightweight Requirement in
