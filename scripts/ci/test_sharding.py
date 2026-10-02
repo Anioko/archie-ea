@@ -9,8 +9,8 @@ rather than being biased towards or away from slow shards.
 
 Without a durations file the behaviour is unchanged from the previous version:
 files are sorted by item count descending (ties broken by path), each assigned
-to whichever shard bucket is currently smallest. Measured on this suite: 8-way
-split lands at 836-837 tests per shard, within 0.1% of even.
+to whichever shard bucket is currently smallest. Measured on this suite: 12-way
+split lands at 557-558 tests per shard, within 0.1% of even.
 
 All tests in one file always land in the same shard, so a test that shares
 module- or class-scoped state with another test in its own file is never split
