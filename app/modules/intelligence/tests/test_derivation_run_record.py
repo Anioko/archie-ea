@@ -103,17 +103,9 @@ def test_measured_zero_is_distinguishable_from_never_ran(app, db_session, make_o
     assert never_ran_record is None
 
 
-def test_run_record_round_trips_as_utc_after_reload(app, db_session, make_org):
-    """PR 304 fix round (ruling on the second review): the DerivationRun
-    columns stay plain UTC -- this codebase stores timestamps as plain UTC
-    columns throughout (about 1,400 plain against about 70 zone-aware), so
-    the column types are not changed here. This replaces the earlier test,
-    which intercepted the row before it reached the database and checked
-    for a timezone-aware value in memory. Instead: run a real derivation,
-    reload the saved row from the database with a fresh query, and check
-    the stored started_at/finished_at equal the UTC time of the run, not
-    local time, within a few seconds.
-    """
+def test_run_record_round_trips_utc_timestamps_within_a_few_seconds(
+    app, db_session, make_org
+):
     from app.modules.intelligence.models.derivation_run import DerivationRun
     from app.modules.intelligence.services.derivation_runner import DerivationRunner
 
@@ -124,22 +116,38 @@ def test_run_record_round_trips_as_utc_after_reload(app, db_session, make_org):
     db_session.commit()
     org_id = org.id
 
-    before_utc = _dt.datetime.utcnow()
+    run_started_utc = _dt.datetime.now(_dt.timezone.utc)
     with app.app_context():
-        DerivationRunner().run_and_persist(org_id, trigger="on_demand")
-    after_utc = _dt.datetime.utcnow()
+        result = DerivationRunner().run_and_persist(org_id, trigger="on_demand")
+    run_finished_utc = _dt.datetime.now(_dt.timezone.utc)
 
     with app.app_context():
-        db.session.expire_all()
+        db.session.remove()
         row = db.session.execute(
-            db.select(DerivationRun).where(DerivationRun.organization_id == org_id)
-        ).scalar_one()
-        reloaded_started_at = row.started_at
-        reloaded_finished_at = row.finished_at
+            db.select(DerivationRun)
+            .where(DerivationRun.organization_id == org_id)
+            .order_by(DerivationRun.id.desc())
+        ).scalars().first()
+
+    assert row is not None
+    started_at = row.started_at
+    finished_at = row.finished_at
+    if started_at.tzinfo is None:
+        started_at = started_at.replace(tzinfo=_dt.timezone.utc)
+    else:
+        started_at = started_at.astimezone(_dt.timezone.utc)
+    if finished_at.tzinfo is None:
+        finished_at = finished_at.replace(tzinfo=_dt.timezone.utc)
+    else:
+        finished_at = finished_at.astimezone(_dt.timezone.utc)
 
     tolerance = _dt.timedelta(seconds=5)
-    assert before_utc - tolerance <= reloaded_finished_at <= after_utc + tolerance
-    assert before_utc - tolerance <= reloaded_started_at <= after_utc + tolerance
+    assert run_started_utc - tolerance <= started_at <= run_finished_utc + tolerance
+    assert run_started_utc - tolerance <= finished_at <= run_finished_utc + tolerance
+    assert finished_at >= started_at
+    assert abs(
+        ((finished_at - started_at) - _dt.timedelta(milliseconds=result.duration_ms)).total_seconds()
+    ) <= tolerance.total_seconds()
 
 
 # --- Acceptance criterion 3: failed / lock-skipped runs write no row -------
