@@ -93,6 +93,16 @@ EXCLUDED_CHECKS = {
         "a bind-mounted source checkout (see the header of scripts/deploy_verified.sh). "
         "A registry or buildx outage must not block a deploy that never uses the image."
     ),
+    "Fast lane (static + boot + db + changed tests)": (
+        "runs only on non-labeled PR events without the full-ci label; its name is "
+        "distinct from every required-check name, so it cannot satisfy a required-check "
+        "requirement.  The full suite runs on push to main and on full-ci labeled PRs."
+    ),
+    "Quarantined tests (non-blocking)": (
+        "continue-on-error: true and runs only quarantined tests; it cannot fail the "
+        "workflow.  The blocking shards use CI_QUARANTINE_MODE=exclude, so a "
+        "non-quarantined test failure in any shard still fails the run."
+    ),
 }
 CHECK_APP_SLUG = "github-actions"
 MAX_CHECK_PAGES = 10
