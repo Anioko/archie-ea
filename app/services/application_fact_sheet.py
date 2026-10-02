@@ -15,11 +15,10 @@ filled with a plausible-looking default.
 from __future__ import annotations
 
 from datetime import date
-from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from app import db
-from app.services.application_cost_accessor import get_annual_cost, get_annual_cost_float
+from app.services.application_cost_accessor import get_annual_cost
 
 
 # The fields that a well-governed application record should carry. Weighted so
