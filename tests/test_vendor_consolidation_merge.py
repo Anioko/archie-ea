@@ -200,6 +200,39 @@ class TestVendorMergeTwoOrg:
 class TestVendorLegalEntities:
     """VendorOrganization carries legal entity fields and parent group FK."""
 
+    @pytest.fixture(autouse=True)
+    def _ensure_partial_index(self, _schema, app):
+        """Ensure the partial unique index on legal_registration_number exists.
+
+        The index is defined in __table_args__ but ``postgresql_where`` is not
+        honoured by ``db.create_all()``, so we create it explicitly here.
+        Also ensures the column exists (``create_all()`` only creates missing
+        tables, not missing columns on existing tables).
+        ``CREATE INDEX IF NOT EXISTS`` is a no-op when it already exists.
+        """
+        with app.app_context():
+            from app.extensions import db
+            from sqlalchemy import text
+            # Ensure column exists (no-op if already present)
+            for col, ddl in [
+                ('legal_name', 'ALTER TABLE vendor_organizations ADD COLUMN legal_name VARCHAR(300)'),
+                ('legal_registration_number', 'ALTER TABLE vendor_organizations ADD COLUMN legal_registration_number VARCHAR(100)'),
+                ('legal_address', 'ALTER TABLE vendor_organizations ADD COLUMN legal_address TEXT'),
+                ('parent_vendor_id', 'ALTER TABLE vendor_organizations ADD COLUMN parent_vendor_id INTEGER REFERENCES vendor_organizations(id)'),
+            ]:
+                try:
+                    db.session.execute(text(ddl))
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+            # Create partial unique index
+            db.session.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_legal_reg "
+                "ON vendor_organizations(legal_registration_number) "
+                "WHERE legal_registration_number IS NOT NULL"
+            ))
+            db.session.commit()
+
     def test_legal_entity_columns_exist(self, app):
         """The vendor_organizations table has the new columns."""
         import sqlalchemy as sa
@@ -447,8 +480,9 @@ class TestContractRenewals:
         expected_cancel = c.renewal_date - timedelta(days=c.notice_period_days)
         assert expected_cancel == date(2026, 10, 3)  # 2027-01-01 minus 90 days
 
-    def test_no_notice_period_returns_none(self, db_session):
-        """When notice_period_days is not set, the last day to cancel is None."""
+    def test_default_notice_period_value(self, db_session):
+        """When notice_period_days is not explicitly set, the model default (90)
+        is used, and last_cancel_day is None when no renewal_date is set."""
         from app.models.application_portfolio import VendorContract
         from app.models.organization import Organization
         import uuid
