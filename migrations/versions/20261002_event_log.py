@@ -1,7 +1,7 @@
 """Event log with monthly partitioning and outbox generalization.
 
 ID: 20261002_event_log
-Revises: 20261001_adr_canonical_cols
+Revises: 20261001_approval_nullable
 Create Date: 2026-10-02
 
 Changes:
@@ -14,7 +14,7 @@ from alembic import op
 from datetime import datetime, timezone
 
 revision = "20261002_event_log"
-down_revision = "20261001_adr_canonical_cols"
+down_revision = "20261001_approval_nullable"
 branch_labels = None
 depends_on = None
 
