@@ -341,9 +341,17 @@ def register_template_filters(app):
                 and hasattr(current_user, "is_authenticated")
                 and current_user.is_authenticated
             ):
-                return {}
+                return {
+                    "plain_language_names": {},
+                    "plain_layer_names": {},
+                    "show_archimate_names": False,
+                }
         except Exception:
-            return {}
+            return {
+                "plain_language_names": {},
+                "plain_layer_names": {},
+                "show_archimate_names": False,
+            }
 
         from app.models.archimate_element_types import PLAIN_LANGUAGE_NAMES, PLAIN_LAYER_NAMES
 
