@@ -30,14 +30,37 @@ from sqlalchemy.engine import make_url
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE = "20260926_baseline"
 RELAX = "20260926_relax_owner_app"
+# The worked baseline/relax/widen example's own tip -- NOT necessarily the
+# whole chain's head. Revisions land above this one over time (this
+# repository already has two), and the refusal/round-trip semantics this
+# file proves belong to these three specifically, so they are pinned to
+# WIDEN rather than to "whatever the head currently is".
 WIDEN = "20260926_widen_element_name"
-HEAD = "20260930_capability_backlinks"
+HEAD = "20261001_adr_canonical_cols"
 
 _DEFAULT_URL = "postgresql://postgres:postgres@127.0.0.1:5432/archie_test"
 
 
 def _server_url():
     return make_url(os.environ.get("TEST_DATABASE_URL") or _DEFAULT_URL)
+
+
+def _true_head():
+    """The actual tip of the Alembic chain on disk.
+
+    Derived from the migrations directory itself (the same construction
+    app/commands/schema_migrations.py's _alembic_config() uses, minus the
+    Flask app context it needs and this module does not have), rather than a
+    hard-coded id -- so this file never goes stale when a revision is added
+    above WIDEN, the way a literal id here already has once.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    directory = REPO_ROOT / "migrations"
+    config = Config(str(directory / "alembic.ini"))
+    config.set_main_option("script_location", str(directory))
+    return ScriptDirectory.from_config(config).get_current_head()
 
 
 def _admin_engine():
@@ -448,6 +471,7 @@ def _rows(url):
 def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deployed_db):
     url = deployed_db
     org_a, org_b = 101, 202
+    true_head = _true_head()
 
     # deployed_db is built by init-db (create_all from the *current* models),
     # which already declares application_id nullable and name VARCHAR(500) --
@@ -491,7 +515,7 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
 
     _, output = _flask(url, ["schema-upgrade"])
     assert "fac924608f6e" in output, output
-    assert _recorded(url) == [HEAD]
+    assert _recorded(url) == [true_head]
     assert tuple(_column(url, "application_owners", "application_id")) == (None, "YES")
     assert _column(url, "archimate_elements", "name")[0] == 500
     assert _rows(url) == seeded
@@ -515,8 +539,24 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     assert _column(url, "archimate_elements", "name")[0] == 100
     assert _rows(url) == seeded
 
-    # Use the expanded shape as organisation B, then try to go down again.
+    # Back up to the true head, then park exactly at WIDEN -- the worked
+    # examples' own tip -- regardless of how many further revisions this
+    # repository has grown above it (one, as of this change; any db
+    # downgrade WIDEN when already AT WIDEN is a no-op, so this is the same
+    # on a repository with none). The refusal semantics below belong to
+    # WIDEN/RELAX/BASELINE specifically; proving them must not depend on how
+    # tall the chain above WIDEN happens to be, or every revision added
+    # after it would need to keep this test updated the way a literal
+    # expected-head id here already once needed updating. Coverage for
+    # whatever sits above WIDEN today lives in
+    # test_every_revision_above_the_worked_examples_round_trips alongside
+    # this test.
     _flask(url, ["schema-upgrade"])
+    assert _recorded(url) == [true_head]
+    _flask(url, ["db", "downgrade", WIDEN])
+    assert _recorded(url) == [WIDEN]
+
+    # Use the expanded shape as organisation B, then try to go down again.
     long_name = "L" * 400
     _seed(url, [
         ("archimate_elements", {"organization_id": org_b, "name": long_name}),
@@ -527,9 +567,9 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     code, output = _flask(url, ["db", "downgrade", BASELINE], check=False)
     assert code != 0
     assert "cannot be narrowed without truncating" in output, output[-3000:]
-    # HEAD's own downgrade (dropping the capability-catalog backlink columns)
-    # has nothing to refuse and always succeeds, so the chain gets one step
-    # further before the genuine refusal: recorded at WIDEN, not HEAD.
+    # HEAD and each revision below it down to WIDEN have nothing to refuse
+    # and always succeed, so the chain steps down through all of them before
+    # the genuine refusal: recorded at WIDEN, not HEAD.
     assert _recorded(url) == [WIDEN]
     assert _column(url, "archimate_elements", "name")[0] == 500
     assert _rows(url) == expanded
@@ -551,6 +591,40 @@ def test_example_revisions_are_idempotent_and_reversible_without_data_loss(deplo
     assert _column(url, "archimate_elements", "name")[0] == 100
     assert tuple(_column(url, "application_owners", "application_id")) == (None, "YES")
     assert (org_b, None) in _rows(url)[1]
+
+
+def test_every_revision_above_the_worked_examples_round_trips(deployed_db):
+    """Generic coverage for whatever sits above WIDEN in the chain today.
+
+    Deliberately knows nothing about which revisions those are or how many
+    there are -- it derives the true head from the migrations directory,
+    upgrades to it, downgrades to WIDEN (passing back down through every
+    revision above WIDEN on the way), and upgrades again, asserting the
+    chain lands in the same two places both times. This is what proves
+    20261001_risk_score_fields' own upgrade/downgrade round-trips, and it
+    keeps proving the same thing for the next revision added after it
+    without needing an update here -- unlike a hard-coded expected id, which
+    is exactly what went stale the first time a revision was added above
+    WIDEN.
+    """
+    url = deployed_db
+    true_head = _true_head()
+
+    _flask(url, ["schema-upgrade"])
+    assert _recorded(url) == [true_head]
+
+    _flask(url, ["db", "downgrade", WIDEN])
+    assert _recorded(url) == [WIDEN]
+
+    _flask(url, ["schema-upgrade"])
+    assert _recorded(url) == [true_head]
+
+    # Round again: downgrading and upgrading a second time changes nothing
+    # further -- every revision's steps are idempotent, not just reachable.
+    _flask(url, ["db", "downgrade", WIDEN])
+    assert _recorded(url) == [WIDEN]
+    _flask(url, ["schema-upgrade"])
+    assert _recorded(url) == [true_head]
 
 
 def test_expand_and_contract_helpers_are_idempotent_on_their_own(deployed_db):

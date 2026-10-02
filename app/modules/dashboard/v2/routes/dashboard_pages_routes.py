@@ -23,6 +23,7 @@ from flask_login import login_required
 from app.core.compat import mark_blueprint_guardrailed
 from app.core.decorators import timed_route
 from app.decorators import audit_log
+from app.middleware.tenant_decorators import platform_admin_required
 from app.modules.dashboard.v2.services import (
     ApplicationConsolidationService,
     CapabilityHeatmapService,
@@ -702,9 +703,19 @@ def get_scoring_configuration(config_id):
 @dashboard_pages_bp_v2.route("/api/scoring-configurations", methods=["POST"])
 @timed_route
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_create")
 def create_scoring_configuration():
-    """Create a new scoring configuration."""
+    """Create a new scoring configuration.
+
+    ScoringConfiguration carries no organization_id of its own -- it is a
+    platform-wide table (scope_type/scope_entity_id exist as a business-unit
+    label, not a tenant fence) -- and creating one with is_default=True
+    unsets every other configuration's is_default flag, changing the
+    fallback weights every organisation's application-rationalization view
+    uses. Platform-admin-only, matching the write-gating already applied to
+    the other shared, tenant-less config tables (feature flags, persona
+    prompts, sidebar/editor content, vendor pricing)."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app.extensions import db
@@ -768,9 +779,11 @@ def create_scoring_configuration():
 )
 @timed_route
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_update")
 def update_scoring_configuration(config_id):
-    """Update an existing scoring configuration."""
+    """Update an existing scoring configuration. Platform-admin-only -- see
+    create_scoring_configuration's docstring."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app.extensions import db
@@ -843,9 +856,11 @@ def update_scoring_configuration(config_id):
 )
 @timed_route
 @login_required
+@platform_admin_required
 @audit_log("scoring_configuration_delete")
 def delete_scoring_configuration(config_id):
-    """Soft delete a scoring configuration."""
+    """Soft delete a scoring configuration. Platform-admin-only -- see
+    create_scoring_configuration's docstring."""
     try:
         from app.models.application_rationalization import ScoringConfiguration
         from app.extensions import db

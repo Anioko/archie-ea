@@ -32,12 +32,18 @@ def reconcile_admin_flags(dry_run):
         click.echo("ERROR: Administrator role missing after insert_roles(); aborting.")
         raise SystemExit(1)
 
-    organisations = Organization.query.order_by(Organization.id).all()
+    # Read ids and names as plain values before the loop. db.session.remove()
+    # below detaches any preloaded ORM objects between organisations, so the
+    # loop must not hold onto Organization instances across that call.
+    organisations = [
+        (org.id, org.name)
+        for org in Organization.query.order_by(Organization.id).all()
+    ]
     total_disagreements = 0
     total_reconciled = 0
 
-    for org in organisations:
-        users = User.query.filter_by(organization_id=org.id).all()
+    for org_id, org_name in organisations:
+        users = User.query.filter_by(organization_id=org_id).all()
         disagreements = []
 
         for user in users:
@@ -51,7 +57,7 @@ def reconcile_admin_flags(dry_run):
 
         total_disagreements += len(disagreements)
         click.echo(
-            f"Organisation {org.id} ({org.name}): {len(disagreements)} disagreement(s)"
+            f"Organisation {org_id} ({org_name}): {len(disagreements)} disagreement(s)"
             + (" (dry-run)" if dry_run else "")
         )
 
