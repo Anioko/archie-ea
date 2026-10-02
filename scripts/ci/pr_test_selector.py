@@ -79,12 +79,19 @@ def select_tests(base_ref: str = "origin/main") -> tuple[list[str], set[str], se
     changed_test = {f for f in changed_py if _is_test_file(f)}
 
     changed_modules = {_module_name_from_path(f) for f in changed_non_test}
-    # Also add __init__ parent packages
+    # Only add parent packages when the corresponding __init__.py is itself
+    # changed.  Without this guard, changing any module under scripts/ci/ adds
+    # "scripts" and "scripts.ci" to changed_modules, which then pulls in every
+    # test file that imports anything from scripts/ — even when the changed
+    # module is unrelated.
     extra = set()
     for mod in list(changed_modules):
         parts = mod.split(".")
         for i in range(1, len(parts)):
-            extra.add(".".join(parts[:i]))
+            parent_pkg = ".".join(parts[:i])
+            init_path = parent_pkg.replace(".", "/") + "/__init__.py"
+            if init_path in changed_py:
+                extra.add(parent_pkg)
     changed_modules |= extra
 
     # Find test files that import any changed module
