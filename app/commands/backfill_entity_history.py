@@ -15,16 +15,25 @@ per CLAUDE.md's null-display convention — never guessed at as "now" or as
 the row's own ``created_at``, which is not evidence of when history started
 being tracked.
 
-``valid_from`` for a row with no resolvable ``recorded_at`` is ``-infinity``,
-not "now": a pre-existing row with no audit trail genuinely has an unknown
-start, and defaulting to the backfill's own run time would make every as-of
-query for any date before that moment wrongly report the row as not
-existing yet -- the exact "hides pre-existing rows" failure this command
-exists to avoid. ``-infinity`` makes the row visible to every as-of date,
-past or present, which is the correct answer for "we don't know when this
-started, only that it already existed." The seeded row's own base-table
-``valid_from``/``recorded_at`` columns are updated to match, the same shape
-the trigger stamps for a live change.
+``valid_from`` for a row with no resolvable ``recorded_at`` is year 1 AD
+(``datetime(1, 1, 1)``, the earliest date Python's own datetime type can
+represent), not "now": a pre-existing row with no audit trail genuinely has
+an unknown start, and defaulting to the backfill's own run time would make
+every as-of query for any date before that moment wrongly report the row as
+not existing yet -- the exact "hides pre-existing rows" failure this command
+exists to avoid. Year 1 makes the row visible to every as-of date a caller
+could plausibly pass, past or present, which is the correct answer for "we
+don't know when this started, only that it already existed."
+
+PostgreSQL's own ``-infinity`` timestamp literal would express the same "no
+lower bound" meaning more precisely, but psycopg can write it (as literal SQL
+text; it has no Python value for "infinity") and then cannot read it back --
+every later ORM load of a backfilled row raises
+``DataError: timestamp too small (before year 1): '-infinity'``. Year 1 is an
+ordinary TIMESTAMP value, so it round-trips through the ORM like any other
+date; it is also an obvious, unmistakable sentinel, not a guess at a real
+date. The seeded row's own base-table ``valid_from``/``recorded_at`` columns
+are updated to match, the same shape the trigger stamps for a live change.
 
 Idempotent: a row already carrying an open ``entity_history`` version is
 skipped. Runs one organisation at a time with raw SQL carrying an explicit
@@ -40,6 +49,8 @@ just-backfilled version and opening a second, trigger-sourced one.
     flask --app manage backfill-entity-history --dry-run
     flask --app manage backfill-entity-history
 """
+
+from datetime import datetime
 
 import click
 from flask.cli import with_appcontext
@@ -78,26 +89,23 @@ def _backfill_table(conn, table, org_id, dry_run):
             SELECT MIN(created_at) FROM soc2_audit_log
             WHERE table_name = :table_name AND record_id = :record_id
         """), {"table_name": table, "record_id": record_id}).scalar()
-        # -infinity, not NOW(): an unknown start must stay visible to every
+        # Year 1, not NOW(): an unknown start must stay visible to every
         # as-of date, not just dates after this backfill happened to run.
-        # Written as a SQL literal rather than bound as a parameter: psycopg
-        # has no Python value for this (it isn't a real datetime), and a
-        # bound string "-infinity" fails to cast ("timestamp too small
-        # (before year 1)") rather than resolving to Postgres's own special
-        # timestamp value the way the same text does written inline.
-        valid_from_sql = "'-infinity'::timestamp" if recorded_at is None else ":valid_from"
+        # An ordinary datetime (unlike -infinity, which psycopg can write
+        # as literal SQL text but not read back -- see the module docstring)
+        # so it round-trips through the ORM like any other date.
+        valid_from = recorded_at if recorded_at is not None else datetime(1, 1, 1)
 
         conn.execute(text(f"""
             INSERT INTO entity_history
                 (organization_id, table_name, record_id, snapshot,
                  valid_from, valid_to, recorded_at, source)
             SELECT :org_id, :table_name, :record_id, row_to_json(t.*),
-                   {valid_from_sql}, NULL, :recorded_at, 'backfill'
+                   :valid_from, NULL, :recorded_at, 'backfill'
             FROM "{table}" t WHERE t.id = :record_id
         """), {
             "org_id": org_id, "table_name": table, "record_id": record_id,
-            **({} if recorded_at is None else {"valid_from": recorded_at}),
-            "recorded_at": recorded_at,
+            "valid_from": valid_from, "recorded_at": recorded_at,
         })
 
         # Stamp the base row's own owned columns to match -- the same
@@ -108,11 +116,10 @@ def _backfill_table(conn, table, org_id, dry_run):
         # statement_timestamp() and opening a second, trigger-sourced row
         # -- two rows where the brief calls for one.
         conn.execute(text(f"""
-            UPDATE "{table}" SET valid_from = {valid_from_sql}, recorded_at = :recorded_at
+            UPDATE "{table}" SET valid_from = :valid_from, recorded_at = :recorded_at
             WHERE id = :record_id
         """), {
-            "record_id": record_id, "recorded_at": recorded_at,
-            **({} if recorded_at is None else {"valid_from": recorded_at}),
+            "record_id": record_id, "recorded_at": recorded_at, "valid_from": valid_from,
         })
 
     return len(pending)
