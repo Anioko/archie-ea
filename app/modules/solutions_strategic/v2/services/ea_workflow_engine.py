@@ -68,7 +68,6 @@ class EAWorkflowEngine:
             "vendor_matching": self._handle_vendor_matching,
             "apqc_mapping": self._handle_apqc_mapping,
             "capability_linking": self._handle_capability_linking,
-            "archimate_derivation": self._handle_archimate_derivation,
             "compliance_scan": self._handle_compliance_scan,
             "notification": self._handle_notification,
             "create_suggestion": self._handle_create_suggestion,
@@ -193,14 +192,7 @@ class EAWorkflowEngine:
                         "output_key": "capability_links",
                         "requires_approval": True,
                     },
-                    {
-                        "step_id": "create_archimate",
-                        "step_name": "Create ArchiMate Elements",
-                        "step_type": "automated",
-                        "handler": "archimate_derivation",
-                        "input_mapping": {"application_id": "context.application_id"},
-                        "output_key": "archimate_elements",
-                    },
+                    
                     {
                         "step_id": "gap_analysis",
                         "step_name": "Identify Coverage Gaps",
@@ -431,18 +423,10 @@ class EAWorkflowEngine:
                         "step_id": "suggest_relationships",
                         "step_name": "Suggest Missing Relationships",
                         "step_type": "automated",
-                        "handler": "archimate_derivation",
+                        "handler": "relationship_gap_analysis",
                         "input_mapping": {"elements": "context.element_ids"},
                         "output_key": "relationship_suggestions",
                         "requires_approval": True,
-                    },
-                    {
-                        "step_id": "derive_links",
-                        "step_name": "Derive Cross-Layer Links",
-                        "step_type": "automated",
-                        "handler": "cross_layer_derivation",
-                        "input_mapping": {"elements": "context.element_ids"},
-                        "output_key": "cross_layer_links",
                     },
                     {
                         "step_id": "calculate_quality",
@@ -935,39 +919,6 @@ class EAWorkflowEngine:
             "linked_capabilities": linked_capabilities,
             "coverage_analysis": coverage_analysis,
         }
-
-    def _handle_archimate_derivation(self, instance, step_def, input_data) -> Dict:
-        """Handle ArchiMate relationship derivation step.
-
-        Derives ArchiMate architecture elements and relationships from
-        APQC process mappings using the UnifiedDerivationService.
-        """
-        from app.services.archimate.unified_derivation_service import UnifiedDerivationService
-
-        service = UnifiedDerivationService()
-
-        apqc_process_ids = input_data.get("apqc_process_ids", [])
-        if not apqc_process_ids:
-            return {"derived_relationships": [], "derivation_log": ["No APQC process IDs provided"]}
-
-        model = service.derive_complete_model_from_apqc(apqc_process_ids)
-
-        derived_relationships = []
-        derivation_log = []
-
-        for rel in getattr(model, "relationships", []):
-            derived_relationships.append({
-                "source": getattr(rel, "source_name", str(getattr(rel, "source_id", ""))),
-                "target": getattr(rel, "target_name", str(getattr(rel, "target_id", ""))),
-                "type": getattr(rel, "relationship_type", "association"),
-            })
-
-        for issue in getattr(model, "validation_issues", []):
-            derivation_log.append(getattr(issue, "message", str(issue)))
-
-        derivation_log.insert(0, f"Derived {len(getattr(model, 'elements', []))} elements and {len(derived_relationships)} relationships")
-
-        return {"derived_relationships": derived_relationships, "derivation_log": derivation_log}
 
     def _handle_compliance_scan(self, instance, step_def, input_data) -> Dict:
         """Handle compliance scanning step."""
