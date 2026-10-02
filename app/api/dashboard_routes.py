@@ -10,6 +10,7 @@ Phase 2c: Updated to support BusinessCapability fallback for heatmap profiling (
 
 import logging
 
+from werkzeug.exceptions import HTTPException
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 
@@ -561,6 +562,12 @@ def create_scoring_configuration():
         return jsonify({"success": True, "data": config.to_dict()}), 201
     except scoring_configuration_service.ScoringConfigurationError as e:
         return jsonify({"success": False, "error": e.message}), e.status_code
+    except HTTPException:
+        # The service's defence-in-depth guard raises Forbidden (HTTPException)
+        # when a caller somehow reaches it without the route's own decorator
+        # refusing them first -- let it answer 403, not fall into the bare
+        # except below and become a logged 500 with a rollback (pr324-review-v1 nit 1).
+        raise
     except Exception as e:
         logger.error(f"Error creating scoring configuration: {e}", exc_info=True)
         db.session.rollback()
@@ -585,6 +592,12 @@ def update_scoring_configuration(config_id):
         return jsonify({"success": True, "data": config.to_dict()})
     except scoring_configuration_service.ScoringConfigurationError as e:
         return jsonify({"success": False, "error": e.message}), e.status_code
+    except HTTPException:
+        # The service's defence-in-depth guard raises Forbidden (HTTPException)
+        # when a caller somehow reaches it without the route's own decorator
+        # refusing them first -- let it answer 403, not fall into the bare
+        # except below and become a logged 500 with a rollback (pr324-review-v1 nit 1).
+        raise
     except Exception as e:
         logger.error(f"Error updating scoring configuration: {e}", exc_info=True)
         db.session.rollback()
@@ -605,6 +618,12 @@ def delete_scoring_configuration(config_id):
         return jsonify({"success": True, "message": "Configuration deleted"})
     except scoring_configuration_service.ScoringConfigurationError as e:
         return jsonify({"success": False, "error": e.message}), e.status_code
+    except HTTPException:
+        # The service's defence-in-depth guard raises Forbidden (HTTPException)
+        # when a caller somehow reaches it without the route's own decorator
+        # refusing them first -- let it answer 403, not fall into the bare
+        # except below and become a logged 500 with a rollback (pr324-review-v1 nit 1).
+        raise
     except Exception as e:
         logger.error(f"Error deleting scoring configuration: {e}", exc_info=True)
         db.session.rollback()
