@@ -635,7 +635,7 @@ def create_data_entity():
             flash("Name is required.", "error")
             return redirect(request.url)
 
-try:
+        try:
             domain_id = _domain_id_from_form(
                 request.form.get("domain_id", type=int), allow_default=True
             )
