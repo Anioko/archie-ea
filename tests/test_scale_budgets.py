@@ -254,6 +254,70 @@ def test_page_shows_computed_time_when_report_exists(app, db_session, make_org, 
         assert "No drift detected" in html
 
 
+def test_page_shows_render_error_only_for_the_broken_org(app, db_session, make_org, login_as):
+    """A broken stored report shows an explicit error only to that organisation."""
+    from app.models.drift_report import DriftReport
+    from app.models.user import User
+
+    with app.app_context():
+        org_a = make_org("broken-report-a")
+        org_b = make_org("broken-report-b")
+        user_a = User(
+            email=f"drift-broken-a-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org_a.id,
+            confirmed=True,
+        )
+        user_b = User(
+            email=f"drift-broken-b-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org_b.id,
+            confirmed=True,
+        )
+        user_a.password_hash = "x"
+        user_b.password_hash = "x"
+        db_session.add_all([user_a, user_b])
+        db_session.flush()
+
+        report = {
+            "report_version": "1.0.0",
+            "organization_id": org_a.id,
+            "spec_hash": "sha256:broken-report",
+            "signals_scanned": [],
+            "uncomputable_signals": {},
+            "findings": [],
+            "summary": {
+                "total": 0,
+                "by_type": {},
+                "by_severity": {},
+                "skipped_no_provenance": {},
+            },
+        }
+        DriftReport.upsert(org_a.id, report, session=db_session)
+        broken_row = DriftReport.for_org(org_a.id, session=db_session)
+        broken_row.report_json = "corrupt-json-shape-for-org-a"
+        db_session.flush()
+
+        client_a = app.test_client()
+        login_as(client_a, user_a)
+        response_a = client_a.get("/genome/model-health/")
+
+        assert response_a.status_code == 200
+        html_a = response_a.data.decode("utf-8")
+        assert "Stored model-health report could not be rendered." in html_a
+        assert 'role="alert"' in html_a
+        assert "Not yet computed" not in html_a
+        assert "Last computed" not in html_a
+
+        client_b = app.test_client()
+        login_as(client_b, user_b)
+        response_b = client_b.get("/genome/model-health/")
+
+        assert response_b.status_code == 200
+        html_b = response_b.data.decode("utf-8")
+        assert "Not yet computed" in html_b
+        assert "Stored model-health report could not be rendered." not in html_b
+        assert "corrupt-json-shape-for-org-a" not in html_b
+
+
 def test_rescan_runs_detector_and_stores_report(app, db_session, make_org, login_as):
     """POST /genome/model-health/rescan runs the detector and stores the result."""
     from app.models.drift_report import DriftReport
