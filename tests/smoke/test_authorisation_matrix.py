@@ -254,6 +254,15 @@ def transformation_users(seeded):
     recognises that persisted role as transformation authority, so those users
     cannot measure the enterprise-role matrix.  For these final API probes use
     the ordinary Architect primary role, then restore the shared seed exactly.
+
+    The platform_admin persona is deliberately excluded: it must keep the
+    Administrator role so that ``is_platform_admin()`` (which requires both the
+    ``is_platform_admin`` flag and ``Permission.ADMINISTER``) continues to
+    return True for other tests in the same module (restore gate, admin routes).
+    The transformation API's ``_server_roles`` reads ``user.is_platform_admin``
+    directly (not via ``is_platform_admin()``), so the platform_admin persona
+    still reaches the transformation endpoint with its Administrator role
+    intact.
     """
     from app import create_app, db
     from app.models.user import Role, User
@@ -264,7 +273,9 @@ def transformation_users(seeded):
     with app.app_context():
         role = Role.query.filter_by(name="Architect").first()
         assert role is not None
-        for email in emails.values():
+        for archetype, email in emails.items():
+            if archetype == "platform_admin":
+                continue
             user = User.query.filter_by(email=email).one()
             original_role_ids[email] = user.role_id
             user.role = role
