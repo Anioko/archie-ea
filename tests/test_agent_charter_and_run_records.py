@@ -633,7 +633,6 @@ def test_run_record_replay_org_scoped(db_session, make_org, app):
     org_a = make_org("A")
     org_b = make_org("B")
     _seed_charters([org_a.id, org_b.id])
-    user_a = _make_user(org_a.id, db_session, is_org_admin=True)
     user_b = _make_user(org_b.id, db_session, is_org_admin=True)
 
     # Create a record in org B
