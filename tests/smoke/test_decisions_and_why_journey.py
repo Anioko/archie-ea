@@ -218,3 +218,40 @@ def test_an_architect_records_a_decision_finds_it_from_the_element_and_asks_why(
     links.nth(1).get_by_role("link", name=names["gateway"]).click()
     page.wait_for_url(re.compile(r"/archimate/elements/%s/impact$" % ours["gateway"]))
     expect(page.locator("[data-element-decisions]").get_by_role("link", name=title)).to_be_visible()
+
+
+def test_ai_authored_decision_shows_its_assumptions_and_affected_systems(
+    page, live_server, two_organisations
+):
+    """The AI chat, workbench and solution-options-advisor creation paths set
+    assumptions/affected_systems/decided_by_label directly on the canonical
+    row -- this is a real browser check that a human opening that decision
+    actually sees them, not just that the columns exist."""
+    ours = two_organisations["ours"]
+    title = "AI-recorded: retire the legacy batch scheduler %s" % uuid.uuid4().hex[:6]
+
+    from app import create_app, db
+    from app.models.architecture_decision import ArchitectureDecision
+    from app.models.user import User
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = User.query.filter_by(email=ours["email"]).one().organization_id
+        decision = ArchitectureDecision(
+            title=title, status="proposed", organization_id=org_id,
+            assumptions="The scheduler has no remaining active jobs as of the cutover date.",
+            affected_systems=["Batch Scheduler", "Nightly ETL"],
+            decided_by_label="AI Solution Architect (automated)",
+        )
+        db.session.add(decision)
+        db.session.commit()
+        decision_id = decision.id
+
+    _login(page, live_server, ours["email"])
+    page.goto("%s/architecture/decisions/%s" % (live_server, decision_id), wait_until="domcontentloaded")
+    expect(page.get_by_role("heading", name=title)).to_be_visible()
+    scope = page.get_by_role("heading", name="Assumptions & Scope").locator("..")
+    expect(scope.get_by_text("AI Solution Architect (automated)", exact=True)).to_be_visible()
+    expect(scope.get_by_text("The scheduler has no remaining active jobs as of the cutover date.", exact=True)).to_be_visible()
+    expect(scope.get_by_text("Batch Scheduler", exact=True)).to_be_visible()
+    expect(scope.get_by_text("Nightly ETL", exact=True)).to_be_visible()

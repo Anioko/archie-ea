@@ -592,6 +592,36 @@ def data_entity_catalog():
     )
 
 
+def _default_data_domain():
+    """This organisation's default data domain, created on first use.
+
+    ``data_domains.name`` is unique across every organisation (a legacy
+    constraint on a tenant-scoped table), so once one organisation had a
+    "General" domain, every other organisation's first data entity without a
+    domain failed with a unique-violation 500. The default is "General" where
+    that name is free, and otherwise carries the organisation's name.
+    """
+    from flask_login import current_user
+    from sqlalchemy.exc import IntegrityError
+    from app.models.process_data import DataDomain
+
+    org = getattr(current_user, "organization", None)
+    fallback = "General (%s)" % (getattr(org, "name", None) or getattr(current_user, "organization_id", ""))
+    existing = DataDomain.query.filter(DataDomain.name.in_(["General", fallback])).order_by(DataDomain.id).first()
+    if existing:
+        return existing
+    for name in ("General", fallback):
+        try:
+            with db.session.begin_nested():
+                domain = DataDomain(name=name, description="Default data domain")
+                db.session.add(domain)
+                db.session.flush()
+            return domain
+        except IntegrityError:
+            continue
+    raise RuntimeError("could not create a default data domain")
+
+
 @data_architecture_bp.route("/data-entities/create", methods=["GET", "POST"])
 @login_required
 def create_data_entity():
@@ -605,7 +635,7 @@ def create_data_entity():
             flash("Name is required.", "error")
             return redirect(request.url)
 
-        try:
+try:
             domain_id = _domain_id_from_form(
                 request.form.get("domain_id", type=int), allow_default=True
             )
@@ -638,6 +668,51 @@ def create_data_entity():
         form_action="create",
         current_system_of_record_application=None,
     )
+
+
+@data_architecture_bp.route("/data-entities/<int:entity_id>")
+@login_required
+def data_entity_detail(entity_id):
+    """A data entity and its CRUD matrix: which applications create, read,
+    update or delete it, read from the ArchiMate access relationships."""
+    from app.models.process_data import DataEntity
+    from app.modules.architecture.services.data_architecture_service import entity_access_matrix
+
+    entity = DataEntity.query.filter_by(id=entity_id).first_or_404()
+    return render_template(
+        "data_architecture/entity_detail.html",
+        entity=entity,
+        access_rows=entity_access_matrix(entity),
+    )
+
+
+@data_architecture_bp.route("/data-entities/<int:entity_id>/access", methods=["POST"])
+@login_required
+def record_data_entity_access(entity_id):
+    """Record which of create/read/update/delete an application performs on
+    this data entity (one ArchiMate access relationship per application)."""
+    from flask import flash, redirect, url_for
+    from app.models.application_portfolio import ApplicationComponent
+    from app.models.process_data import DataEntity
+    from app.modules.architecture.services.data_architecture_service import record_entity_access
+
+    entity = DataEntity.query.filter_by(id=entity_id).first_or_404()
+    back = redirect(url_for("data_architecture.data_entity_detail", entity_id=entity.id))
+    application_id = request.form.get("application_id", type=int)
+    application = (
+        ApplicationComponent.query.filter_by(id=application_id).first() if application_id else None
+    )
+    if application is None:
+        flash("Choose an application from the list.", "error")
+        return back
+    try:
+        record_entity_access(entity, application, request.form.getlist("operations"))
+    except ValueError as exc:
+        db.session.rollback()
+        flash(str(exc), "error")
+        return back
+    flash(f"Recorded how {application.name} uses {entity.name}.", "success")
+    return back
 
 
 @data_architecture_bp.route("/data-entities/<int:entity_id>/edit", methods=["GET", "POST"])

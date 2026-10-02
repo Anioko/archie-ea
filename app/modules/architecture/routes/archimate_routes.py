@@ -23,6 +23,7 @@ from flask_login import current_user, login_required
 from sqlalchemy.orm import joinedload
 
 from app import db
+from app.models.constants import ArchiMateRelationshipType
 from app.modules.architecture.routes.lucidchart_import_routes import (
     register_lucidchart_import_routes,
 )
@@ -1301,21 +1302,6 @@ ARCHIMATE_RELATIONSHIP_TYPES = [
     "specialization", "association",
 ]
 
-# Canonical aliases: non-standard names that appear in legacy/seeded data
-_REL_TYPE_ALIASES = {
-    "realizes": "realization",
-    "serves": "serving",
-    "uses": "serving",
-    "triggers": "triggering",
-    "flows": "flow",
-    "composes": "composition",
-    "aggregates": "aggregation",
-    "assigns": "assignment",
-    "specializes": "specialization",
-    "associates": "association",
-}
-
-
 def _normalize_rel_type(raw: str) -> str:
     """Normalise any legacy or non-canonical relationship type string to the
     lowercase canonical form accepted by ARCHIMATE_RELATIONSHIP_TYPES.
@@ -1328,11 +1314,7 @@ def _normalize_rel_type(raw: str) -> str:
     """
     if not raw:
         return ""
-    # Strip trailing "Relationship" suffix (case-insensitive)
-    normalised = _re.sub(r"(?i)relationship$", "", raw).strip()
-    normalised = normalised.lower()
-    # Map known aliases
-    return _REL_TYPE_ALIASES.get(normalised, normalised)
+    return ArchiMateRelationshipType.normalize(raw) or ""
 
 
 @archimate_bp.route("/api/relationships", methods=["GET"])
@@ -1478,12 +1460,20 @@ def api_create_relationship():
     # picker would ever have offered.
     from app.services.archimate_validity_service import ArchimateValidityService
 
-    if not ArchimateValidityService().is_valid(source_el.type or "", target_el.type or "", rel_type):
-        return api_error(
-            "Invalid " + rel_type + " from " + (source_el.name or "") + " (" + (source_el.type or "")
-            + ") to " + (target_el.name or "") + " (" + (target_el.type or "") + ")",
-            400,
-        )
+    validity = ArchimateValidityService()
+    if not validity.is_valid(source_el.type or "", target_el.type or "", rel_type):
+        # Name the types the metamodel does allow for this pair, so the person
+        # who attempted the connection is told what to draw instead.
+        valid_types = [
+            r["type"] for r in validity.get_valid_relationships(source_el.type or "", target_el.type or "")
+        ]
+        return jsonify({
+            "success": False,
+            "error": "ArchiMate 3.2 does not allow " + rel_type + " from " + (source_el.name or "")
+            + " (" + (source_el.type or "") + ") to " + (target_el.name or "")
+            + " (" + (target_el.type or "") + ")",
+            "valid_types": valid_types,
+        }), 400
 
     # solution_id from the client maps to architecture_id on the model
     arch_id = data.get("solution_id")
@@ -2055,6 +2045,13 @@ def api_get_saved_viewpoint(vp_id):
             "routing_style": rp.routing_style if rp else "manhattan",
             "sequence_order": r.sequence_order,
             "created_at": r.created_at.isoformat() if r.created_at else None,
+            # What was recorded on the relationship when it was drawn; the
+            # Composer's loader restores these, so a reopened view shows what a
+            # flow carries and how data is accessed, not just the bare type.
+            "description": r.description,
+            "access_mode": r.access_mode,
+            "flow_label": r.flow_label,
+            "custom_label": r.custom_label,
         })
 
     return jsonify({
