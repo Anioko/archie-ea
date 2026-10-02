@@ -211,7 +211,10 @@ def test_stakeholders_falls_back_from_element_to_creator(db_session, make_org):
 
     org_a = make_org("stk-a")
     org_b = make_org("stk-b")
-    _drop_not_null(db_session, "stakeholders")
+    # archimate_elements too: via_creator has no element yet, so the
+    # before_insert listener (create_stakeholder_archimate) auto-creates one
+    # from the still-NULL (pre-backfill) organization_id being tested here.
+    _drop_not_null(db_session, "stakeholders", "archimate_elements")
 
     el_a = _element(db_session, org_a, type_="Stakeholder")
     user_b = _user(db_session, org_b)
@@ -221,7 +224,14 @@ def test_stakeholders_falls_back_from_element_to_creator(db_session, make_org):
     db_session.add_all([via_element, via_creator])
     db_session.flush()
 
-    repair_layer_tenancy()
+    # via_creator's before_insert listener (create_stakeholder_archimate) auto-
+    # created its own companion ArchiMateElement with the same still-NULL
+    # organization_id being tested here; that element has no creator/element
+    # link of its own for the sweep to derive, so with two organizations
+    # present it is a genuine orphan needing the explicit fallback -- the
+    # per-row derivation under test (via_element from its element, via_creator
+    # from its creator) is unaffected by which org a true orphan falls back to.
+    repair_layer_tenancy(org_id=org_a.id)
 
     db_session.refresh(via_element)
     db_session.refresh(via_creator)
