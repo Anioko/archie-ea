@@ -191,26 +191,25 @@ class ValidationEngineService:
 
     @staticmethod
     def _query_compliance_requirements(capability_id):
-        """Query compliance requirements for a business capability directly.
+        """Query compliance requirements for a business capability.
 
-        Uses the canonical ComplianceRequirement store instead of the removed
-        CapabilityDerivationService.
+        Delegates to the shared compliance_service helper so there is exactly
+        one implementation of this query.  Returns an empty list on failure
+        after logging so the validation summary can continue.
         """
+        import logging
+        logger = logging.getLogger(__name__)
         try:
-            from app.models.relationship_tables import capability_compliance_requirements
-            from app.models.compliance_models import ComplianceRequirement
-            reqs = ComplianceRequirement.query.join(
-                capability_compliance_requirements
-            ).filter(
-                capability_compliance_requirements.c.business_capability_id == capability_id
-            ).all()
-            return [{
-                "id": r.id,
-                "name": r.name,
-                "framework": getattr(r, "framework_name", ""),
-                "description": r.description or "",
-            } for r in reqs]
+            from app.modules.architecture_assistant.services.compliance_service import (
+                query_compliance_requirements,
+            )
+            return query_compliance_requirements(capability_id)
         except Exception:
+            logger.warning(
+                "Failed to query compliance requirements for capability %s",
+                capability_id,
+                exc_info=True,
+            )
             return []
 
     def _get_governance_alignment(self, capabilities):

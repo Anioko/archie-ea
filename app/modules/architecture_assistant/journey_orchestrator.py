@@ -295,19 +295,10 @@ class JourneyOrchestrator:
         # Compliance requirements
         compliance = []
         try:
-            from app.models.relationship_tables import capability_compliance_requirements
-            from app.models.compliance_models import ComplianceRequirement
-            reqs = ComplianceRequirement.query.join(
-                capability_compliance_requirements
-            ).filter(
-                capability_compliance_requirements.c.business_capability_id == capability_id
-            ).all()
-            compliance = [{
-                "id": r.id,
-                "name": r.name,
-                "framework": getattr(r, "framework_name", ""),
-                "description": r.description or "",
-            } for r in reqs]
+            from app.modules.architecture_assistant.services.compliance_service import (
+                query_compliance_requirements,
+            )
+            compliance = query_compliance_requirements(capability_id)
         except Exception:
             pass
 
