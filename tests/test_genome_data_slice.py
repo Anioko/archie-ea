@@ -237,7 +237,7 @@ def test_slice_lists_only_own_org_activities(db_session, make_org):
 def test_slice_includes_suppliers_and_flows(db_session, make_org):
     """A processing activity includes its linked suppliers and flows."""
     org = make_org("ropa-suppliers")
-    seeded = _seed_with_supplier(db_session, org.id, "supplier-test")
+    _seed_with_supplier(db_session, org.id, "supplier-test")
 
     slice_dict = build_data_genome_slice(org.id, session=db_session)
     # Find the data object activity (there may also be auto-created contract elements)
