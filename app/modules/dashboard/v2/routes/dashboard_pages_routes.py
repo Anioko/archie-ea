@@ -29,6 +29,7 @@ from app.modules.dashboard.v2.services import (
     CapabilityHeatmapService,
     RationalizationScoringService,
 )
+from app.services.application_cost_accessor import set_annual_cost
 from app.utils.pagination import safe_int_arg
 
 logger = logging.getLogger(__name__)
@@ -1111,8 +1112,8 @@ def api_rationalization_onboard():
             description=data.get("description"),
             application_type=data.get("type"),
             lifecycle_status=data.get("lifecycle_status", "planning"),
-            total_cost_of_ownership=data.get("annual_cost"),
         )
+        set_annual_cost(app, data.get("annual_cost"))
         db.session.add(app)
         db.session.flush()
 
