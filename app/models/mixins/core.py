@@ -167,6 +167,14 @@ class HybridTenantMixin:  # migration-exempt
         row's own -- this method does not generate or validate one. Until a
         route exists that handles that, this is read-only, correct plumbing
         with no caller.
+
+        Callers must ensure their current tenant context matches the
+        ``organization_id`` argument, or call this outside any tenant
+        context; otherwise the fallback reference-row lookup
+        (``cls.query.filter_by(id=reference_id).first()``) is subject to
+        this same hybrid read filter and may be silently filtered out by a
+        different organisation's own context, returning ``None`` for a
+        reference row that genuinely exists.
         """
         from app import db
 

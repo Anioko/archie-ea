@@ -1,4 +1,4 @@
-"""R1-B20 PR 2 (TB-0160): shared-catalogue rows read-only to organisations,
+"""Shared-catalogue rows read-only to organisations,
 tailored through a per-organisation override row.
 
 Generalises UnifiedCapability's own scope/reference_capability_id pattern
@@ -259,3 +259,63 @@ def test_tailoring_row_is_the_effective_value_for_its_own_organisation_only(
         effective_for_b = EnterpriseArchitectureFramework.effective(reference_id, org_b.id)
         assert effective_for_b.id == reference_id
         assert effective_for_b.maturity_level == "established"
+
+
+def _platform_admin(db_session, org):
+    """A real platform admin: both flags platform_admin_required's
+    predicate checks (app/middleware/tenant_decorators.py's
+    is_platform_admin) -- is_platform_admin alone is not enough without
+    an Administrator role's Permission.ADMINISTER."""
+    from app.models import Role
+    from app.models.user import User
+
+    role = Role.query.filter_by(name="Administrator").first()
+    if role is None:
+        pytest.skip("no Administrator role seeded in this database")
+    user = User(
+        email=f"platform-admin-{uuid.uuid4().hex[:8]}@example.test",
+        first_name="Platform", last_name="Admin",
+        organization_id=org.id, confirmed=True, role=role,
+    )
+    user.password = uuid.uuid4().hex
+    user.is_org_admin = True
+    user.is_platform_admin = True
+    db_session.add(user)
+    db_session.flush()
+    return user.id
+
+
+def test_activate_extension_route_lets_a_platform_admin_write_a_reference_row(
+    app, db_session, make_org, client, login_as
+):
+    """Route-level integration test for platform_write_context, going
+    through an actual HTTP request rather than only the data-layer check
+    above: a real platform admin calling activate_extension (app/main/
+    framework_management_routes.py) can increment a reference-scope
+    FrameworkExtension's download_count despite still carrying their own
+    organisation's tenant context."""
+    from app.models.framework_configuration import FrameworkExtension
+    from app.models.user import User
+
+    org = make_org("hybrid-platform-writer-route")
+    admin_id = _platform_admin(db_session, org)
+
+    extension = FrameworkExtension(
+        extension_name=f"Route Extension {uuid.uuid4().hex[:6]}",
+        extension_code=f"ROUTE-{uuid.uuid4().hex[:10]}",
+        tenancy_scope="reference", organization_id=None,
+        download_count=0,
+    )
+    db_session.add(extension)
+    db_session.flush()
+    extension_id = extension.id
+    db_session.expunge_all()
+
+    login_as(client, db_session.get(User, admin_id))
+    response = client.post(f"/framework-management/api/activate-extension/{extension_id}")
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert response.get_json()["success"] is True
+
+    db_session.expunge_all()
+    reloaded = db_session.get(FrameworkExtension, extension_id)
+    assert reloaded.download_count == 1

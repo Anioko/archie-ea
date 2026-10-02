@@ -160,7 +160,7 @@ def install_tenant_filter(app):
             if isinstance(obj, TenantMixin) and getattr(obj, "organization_id", None) is None:
                 obj.organization_id = g.current_org_id
 
-    # R1-B20 PR 2 (TB-0160): shared-catalogue reads and writes. Generalises
+    # Shared-catalogue reads and writes. Generalises
     # UnifiedCapability's own do_orm_execute/before_flush pair (bottom of
     # app/models/unified_capability.py) across every HybridTenantMixin class
     # at once via with_loader_criteria's base-class form -- the same
