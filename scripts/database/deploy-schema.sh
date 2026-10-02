@@ -24,6 +24,7 @@ flask --app manage backfill-kanban-card-org || echo 'WARN kanban card tenancy ba
 flask --app manage backfill-saved-diagram-tenancy || echo 'WARN saved-diagram tenancy backfill skipped - composer diagrams keep nullable organization_id until it runs; rows left NULL are invisible to every org (CMP-01)'
 flask --app manage drop-audit-log-viewpoint-fk || echo 'WARN audit-log viewpoint-FK drop skipped - composer audit writes keep failing with a FK violation until it runs (CMP-03)'
 flask --app manage backfill-architect-role
+flask --app manage backfill-decision-register-consolidation || echo 'WARN decision register consolidation backfill skipped - decision_ledger rows remain untenanted and architecture_decision_records rows stay unpaired with the canonical register until it runs' >&2
 flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merge backfill skipped - solution risks stay unlinked from the one risk register (no risk_entity_links row, no shared score history) until it runs'
 # RUN-01: copy ARB, ArchiMate composer and rationalisation audit history into
 # soc2_audit_log (the system of record per ADR 0008). Runs here because
@@ -31,6 +32,7 @@ flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merg
 # (the schema-deploy service connects as the deploy role that owns the tables).
 # Idempotent: a row whose retired_into_id is set is skipped.
 flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipped - older audit entries from ARB, ArchiMate composer and rationalisation stores remain uncopied until it runs (RUN-01)' >&2
+flask --app manage backfill-review-queue-approvals || echo 'WARN approval-queue consolidation backfill skipped - pending rows from review_queue_items, relationship_suggestions and solution_blueprint_proposals remain uncopied until it runs' >&2
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
 # app/models/unified_capability.py and docs/adr/0008-one-system-of-record.md) a
