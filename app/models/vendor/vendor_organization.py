@@ -280,7 +280,7 @@ class VendorOrganization(db.Model):
 
     # Legal entity information
     legal_name = db.Column(db.String(300))  # Registered legal name
-    legal_registration_number = db.Column(db.String(100), unique=True, nullable=True)  # Company registration / VAT / tax ID
+    legal_registration_number = db.Column(db.String(100), nullable=True)  # Company registration / VAT / tax ID — uniqueness enforced by partial index uq_vendor_legal_reg
     legal_address = db.Column(db.Text)  # Registered office address
     parent_vendor_id = db.Column(
         db.Integer, db.ForeignKey("vendor_organizations.id"), nullable=True
