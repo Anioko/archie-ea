@@ -391,6 +391,8 @@ class Seeder:
 
         if col.name == "organization_id":
             return self.org_id
+        if col.name == "adm_phase":
+            return "A"
         if col.foreign_keys:
             return self._fk_value(col, context, depth)
         t = col.type

@@ -34,6 +34,11 @@ def admin_client(app, db_session, make_org, login_as):
         role=role,
         confirmed=True,
     )
+    # The update/reset/rollback routes this fixture exercises are
+    # platform-admin-only (pr307-review: AIPromptTemplate has no tenant
+    # column, one override serves every organisation) -- an org admin now
+    # gets 403/404 on them, same defect class as the Abacus and Jira fixes.
+    user.is_platform_admin = True
     db_session.add(user)
     db_session.flush()
 
