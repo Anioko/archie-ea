@@ -57,6 +57,18 @@ with engine.connect() as conn:
                 print(f'  vendor_organizations.{col} already exists')
             else:
                 print(f'WARN vendor_organizations.{col} — {e}')
+
+    # Create partial unique index on legal_registration_number (non-NULL values only)
+    try:
+        conn.execute(text(
+            'CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_legal_reg '
+            'ON vendor_organizations(legal_registration_number) '
+            'WHERE legal_registration_number IS NOT NULL'
+        ))
+        conn.commit()
+        print('  vendor_organizations.uq_vendor_legal_reg index created')
+    except Exception as e:
+        print(f'WARN vendor_organizations.uq_vendor_legal_reg — {e}')
 " || echo 'WARN vendor_organizations legal entity columns migration skipped (non-fatal)'
 
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
