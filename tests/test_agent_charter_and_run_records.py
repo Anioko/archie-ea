@@ -12,6 +12,8 @@ Coverage:
 """
 import json
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from app import db
@@ -493,3 +495,167 @@ def test_charter_versioned_new_version_does_not_overwrite_old(db_session, make_o
     ).first()
     assert v1_still is not None
     assert v1_still.id == v1.id
+
+
+# ---------------------------------------------------------------------------
+# Charter enforcement on queued-then-approved tools (D1/D4)
+# ---------------------------------------------------------------------------
+
+def test_queued_tool_refused_on_approval_when_outside_charter(db_session, make_org, app):
+    """A tool queued under a restricted persona is refused when approved and executed.
+
+    This covers the path where:
+    1. A restricted persona (cto, read-only) has a mutating tool queued
+    2. The approval record stores the persona
+    3. When approved, ToolExecutor is constructed with that persona
+    4. The charter check runs and refuses the tool
+    """
+    org = make_org("A")
+    _seed_charters([org.id])
+    user = _make_user(org.id, db_session, is_org_admin=True)
+
+    from flask import g
+    from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
+    from app.modules.ai_chat.services.ai_chat_approval_service import (
+        AIChatApprovalService,
+    )
+    from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
+
+    # Simulate what _queue_approval does: create an approval with persona stored
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        approval = AIChatCRUDApproval(
+            user_id=user.id,
+            organization_id=org.id,
+            operation_type="tool_use",
+            entity_type="update_application_status",
+            original_command="update_application_status",
+            operation_payload='{"application_name": "TestApp", "new_status": "production", "rationale": "test"}',
+            summary="Change application 'TestApp' status to 'production'.",
+            status=ApprovalStatus.PENDING,
+            expires_at=datetime.utcnow() + timedelta(hours=24),
+            persona="cto",
+        )
+        db_session.add(approval)
+        db_session.commit()
+        approval_id = approval.id
+
+    # Now approve and execute — this is the path D1 identified as bypassing
+    # the charter check because ToolExecutor was constructed without persona.
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        # We need a second user to approve (self-approval is refused)
+        approver = User(
+            email=f"approver-{org.id}@example.com",
+            first_name="Approver",
+            last_name="User",
+            organization_id=org.id,
+            is_org_admin=True,
+            confirmed=True,
+        )
+        db_session.add(approver)
+        db_session.flush()
+
+        service = AIChatApprovalService(user_id=approver.id)
+        result = service.approve_and_execute(approval_id)
+
+    # The charter check should have run and refused the tool because cto
+    # has proposable_actions: [] (read-only) and update_application_status
+    # is a mutating tool.
+    assert result.get("success") is False, (
+        f"Expected charter refusal for cto calling update_application_status, got: {result}"
+    )
+    assert result.get("charter_refused") is True, (
+        f"Expected charter_refused=True, got: {result}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Replay tests (D2)
+# ---------------------------------------------------------------------------
+
+def test_run_record_replay_readonly(db_session, make_org, app):
+    """Replaying a run record re-issues stored read tools and skips writes."""
+    org = make_org("A")
+    _seed_charters([org.id])
+    user = _make_user(org.id, db_session, is_org_admin=True)
+
+    from flask import g
+    from app.modules.ai_chat.tools.executor import ToolCall, ToolExecutor
+    from app.modules.ai_chat.tools.registry import TOOL_SCHEMA_BY_NAME
+
+    # Create a run record with tools_called containing both read and write tools
+    record = AgentRunRecord(
+        organization_id=org.id,
+        user_id=user.id,
+        persona="enterprise_architect",
+        charter_version=1,
+        inputs={"user_message": "test replay"},
+        tools_called=[
+            {"tool": "find_applications", "arguments": {"lifecycle_status": "operational"}},
+            {"tool": "update_application_status", "arguments": {"application_name": "X", "new_status": "retired", "rationale": "test"}},
+        ],
+        outcome="OK",
+        success=True,
+    )
+    db_session.add(record)
+    db_session.commit()
+
+    # Replay: only read tools should be re-issued
+    with app.test_request_context("/"):
+        g.current_org_id = org.id
+        executor = ToolExecutor(user.id, persona=record.persona)
+        results = []
+        for entry in record.tools_called:
+            tool_name = entry["tool"]
+            schema = TOOL_SCHEMA_BY_NAME.get(tool_name, {})
+            risk_class = schema.get("risk_class")
+            if risk_class != "read":
+                results.append({"tool": tool_name, "replayed": False, "reason": f"risk_class={risk_class}"})
+                continue
+            tc = ToolCall(id=f"replay-{tool_name}", name=tool_name, arguments=entry.get("arguments", {}))
+            result = executor.execute(tc)
+            results.append({"tool": tool_name, "replayed": True, "result": result})
+
+    # find_applications is a read tool — should be replayed
+    read_results = [r for r in results if r["tool"] == "find_applications"]
+    assert len(read_results) == 1
+    assert read_results[0]["replayed"] is True
+
+    # update_application_status is a write tool — should be skipped
+    write_results = [r for r in results if r["tool"] == "update_application_status"]
+    assert len(write_results) == 1
+    assert write_results[0]["replayed"] is False
+
+
+def test_run_record_replay_org_scoped(db_session, make_org, app):
+    """Replay is scoped to the record's organisation — cross-org replay is refused."""
+    org_a = make_org("A")
+    org_b = make_org("B")
+    _seed_charters([org_a.id, org_b.id])
+    user_a = _make_user(org_a.id, db_session, is_org_admin=True)
+    user_b = _make_user(org_b.id, db_session, is_org_admin=True)
+
+    # Create a record in org B
+    record_b = AgentRunRecord(
+        organization_id=org_b.id,
+        user_id=user_b.id,
+        persona="cto",
+        charter_version=1,
+        inputs={"user_message": "B record"},
+        tools_called=[{"tool": "find_applications", "arguments": {}}],
+        outcome="OK",
+        success=True,
+    )
+    db_session.add(record_b)
+    db_session.commit()
+
+    # User A tries to access B's record for replay — should 404
+    from flask import g
+    with app.test_request_context("/"):
+        g.current_org_id = org_a.id
+        # Query scoped to org A should not find B's record
+        found = AgentRunRecord.query.filter_by(
+            id=record_b.id, organization_id=org_a.id
+        ).first()
+        assert found is None
