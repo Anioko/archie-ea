@@ -74,9 +74,14 @@ def _enterprise_initiative(db_session, org, label="ei"):
 
 
 def _unified_wp(db_session, **kwargs):
+    """Create a UnifiedWorkPackage.  Callers that omit organization_id are
+    testing the backfill that attributes it -- the NULL is deliberate, not a
+    wiring defect."""
     from app.models.unified_work_package import UnifiedWorkPackage
 
     kwargs.setdefault("name", f"uwp-{uuid.uuid4().hex[:8]}")
+    # wiring-ok: backfill test helper -- callers that omit org_id are testing
+    # the attribution backfill that sets it later
     row = UnifiedWorkPackage(**kwargs)
     db_session.add(row)
     db_session.flush()
@@ -105,8 +110,9 @@ def two_orgs(db_session, make_org):
 # ── backfill-work-package-org: attribution rule ─────────────────────────────
 
 
-def test_attributed_by_linked_programme(db_session, two_orgs):
-    """A row linked to an enterprise initiative gets that initiative's org."""
+def test_attributed_by_linked_programme(db_session, two_orgs, tenant_ctx):
+    """A row linked to an enterprise initiative gets that initiative's org,
+    and after the backfill the tenant filter correctly scopes reads."""
     org_a, org_b = two_orgs
     ei_a = _enterprise_initiative(db_session, org_a)
     ei_b = _enterprise_initiative(db_session, org_b)
@@ -125,6 +131,23 @@ def test_attributed_by_linked_programme(db_session, two_orgs):
     db_session.refresh(wp_b)
     assert wp_a.organization_id == org_a.id
     assert wp_b.organization_id == org_b.id
+
+    # Positive isolation: each org sees its own work package and not the other's.
+    from app.models.unified_work_package import UnifiedWorkPackage
+
+    with tenant_ctx(org_a.id):
+        visible_to_a = UnifiedWorkPackage.query.filter_by(id=wp_a.id).first()
+        assert visible_to_a is not None, "org A must see its own work package"
+    with tenant_ctx(org_b.id):
+        visible_to_a_from_b = UnifiedWorkPackage.query.filter_by(id=wp_a.id).first()
+        assert visible_to_a_from_b is None, "org B must not see org A's work package"
+
+    with tenant_ctx(org_b.id):
+        visible_to_b = UnifiedWorkPackage.query.filter_by(id=wp_b.id).first()
+        assert visible_to_b is not None, "org B must see its own work package"
+    with tenant_ctx(org_a.id):
+        visible_to_b_from_a = UnifiedWorkPackage.query.filter_by(id=wp_b.id).first()
+        assert visible_to_b_from_a is None, "org A must not see org B's work package"
 
 
 def test_attributed_by_linked_element_when_no_programme(db_session, two_orgs):
