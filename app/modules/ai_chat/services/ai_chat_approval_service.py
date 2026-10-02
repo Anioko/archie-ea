@@ -1186,6 +1186,12 @@ def escalate_overdue_approvals(app=None) -> Dict[str, int]:
             ).all()
             if u.is_org_admin
         ]
+        # _get_recipients_by_roles always filters by organization_id (it has
+        # no global mode, by design -- see its own docstring), so this reaches
+        # platform admins who belong to this organisation, not every platform
+        # admin on the instance. That is deliberate: an overdue approval is
+        # this tenant's data, and only this tenant's admins should be told
+        # about it by email.
         recipients = sorted({u.email for u in org_admins if u.email} |
                              set(_get_recipients_by_roles(["platform_admin"], organization_id)))
         # summary/entity_type/operation_type all trace back to user- or
