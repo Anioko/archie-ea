@@ -44,6 +44,7 @@ from app.models.application_layer import (
 )
 from app.models.archimate_business import Contract
 from app.models.archimate_core import ArchiMateElement, ArchiMateRelationship
+from app.modules.intelligence.services.crosswalk_service import CrosswalkService
 from app.models.archimate_missing_elements import (
     MissingBusinessCollaboration,
     MissingBusinessInteraction,
@@ -1158,6 +1159,7 @@ def detail_element(layer, element_type, element_id):
 
     # Auto-discover displayable fields from the model
     display_fields = _get_display_fields(element, model_class)
+    external_links = CrosswalkService.get_links_for_element(ae_id or element.id)
 
     return render_template(
         "archimate_crud/detail.html",
@@ -1167,6 +1169,7 @@ def detail_element(layer, element_type, element_id):
         relationships=relationships,
         source_ae_id=ae_id,
         display_fields=display_fields,
+        external_links=external_links,
         layer_config=LAYER_CONFIG,
     )
 

@@ -78,6 +78,20 @@ class ArchitectureDecision(TenantMixin, db.Model):
     authority_level = db.Column(db.String(30), nullable=True, default='enterprise_arb')
     decision_type = db.Column(db.String(30), nullable=True)
 
+    # Fields the AI chat, workbench and solution-options-advisor creation
+    # paths set that had no home here before they were repointed to write
+    # this table directly instead of the superseded architecture_decision_records
+    # (so the canonical table could become the only writer): affected systems identified for a chat-recorded
+    # decision, free-text assumptions from a workbench-generated one, and an
+    # estimated_effort/business_value pair plus a free-text decider label for
+    # an AI-solution-architect-authored one, where the "decider" is not a
+    # users.id row so decided_by_id cannot carry it.
+    affected_systems = db.Column(db.JSON, nullable=True)
+    assumptions = db.Column(db.Text, nullable=True)
+    estimated_effort = db.Column(db.String(50), nullable=True)
+    business_value = db.Column(db.String(50), nullable=True)
+    decided_by_label = db.Column(db.Text, nullable=True)
+
     # Relationships
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     decided_by = db.relationship("User", foreign_keys=[decided_by_id])
@@ -116,6 +130,11 @@ class ArchitectureDecision(TenantMixin, db.Model):
             "decision_type": self.decision_type,
             "source_table": self.source_table,
             "source_id": self.source_id,
+            "affected_systems": self.affected_systems or [],
+            "assumptions": self.assumptions,
+            "estimated_effort": self.estimated_effort,
+            "business_value": self.business_value,
+            "decided_by_label": self.decided_by_label,
         }
 
     @classmethod
@@ -132,6 +151,46 @@ class ArchitectureDecision(TenantMixin, db.Model):
         from app.utils.reference_numbers import next_reference
 
         return next_reference("architecture_decisions", "decision_id", "AD-")
+
+    @classmethod
+    def affecting_elements(cls, element_ids, organization_id):
+        """The decisions of ``organization_id`` recorded against any of ``element_ids``.
+
+        This is how a decision is found from the things it governs: the element
+        page, the decision list filtered by element and the explanation of a
+        worked-out connection all read it, so they cannot disagree. The
+        organisation predicate is explicit so the answer is the same with or
+        without a request's tenant context. Newest first.
+
+        Two writers record the link in two columns: the decision form writes
+        ``archimate_element_ids`` and the solution-design decision API writes
+        ``related_element_ids``. Both are read here, so a decision is found
+        however it was recorded; one matching both appears once.
+        """
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        ids = set()
+        for raw in element_ids or ():
+            try:
+                ids.add(int(raw))
+            except (TypeError, ValueError):
+                continue
+        if not ids or organization_id is None:
+            return []
+        # Ids are stored as numbers by the decision form; a string id written
+        # by an older path still names the same element.
+        matches = []
+        for column in (cls.archimate_element_ids, cls.related_element_ids):
+            stored = db.cast(column, JSONB)
+            matches += [stored.contains([i]) for i in sorted(ids)]
+            matches += [stored.contains([str(i)]) for i in sorted(ids)]
+        stmt = (
+            db.select(cls)
+            .where(cls.organization_id == organization_id)
+            .where(db.or_(*matches))
+            .order_by(cls.created_at.desc(), cls.id.desc())
+        )
+        return db.session.execute(stmt).scalars().all()
 
 
 VALID_LINK_TYPES = ['governs', 'constrains', 'enables']

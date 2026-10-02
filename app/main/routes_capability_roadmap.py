@@ -154,9 +154,13 @@ def list_users_for_assignment():
     try:
         from app.models.user import User
 
-        q = (request.args.get("q") or request.args.get("search") or "").strip()
+q = (request.args.get("q") or request.args.get("search") or "").strip()
         limit = request.args.get("limit", type=int)
-        query = User.query.filter_by(organization_id=g.current_org_id)
+        # An erased person (data-subject erasure clears the e-mail address) is not a
+        # candidate for any assignment picker.
+        query = User.query.filter(
+            User.organization_id == g.current_org_id, User.email.isnot(None)
+        )
 
         if q:
             escaped = escape_like_literal(q)

@@ -37,10 +37,13 @@ class ApplicationOwner(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Foreign keys
+    # Nullable per migrations/versions/20260926_relax_owner_app.py (ADR 0002
+    # expand step): the database allows NULL so a later ownership record can
+    # point at any element, not only an application.
     application_id = db.Column(
         db.Integer,
         db.ForeignKey("application_components.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     user_id = db.Column(
