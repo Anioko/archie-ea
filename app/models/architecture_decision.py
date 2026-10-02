@@ -78,6 +78,20 @@ class ArchitectureDecision(TenantMixin, db.Model):
     authority_level = db.Column(db.String(30), nullable=True, default='enterprise_arb')
     decision_type = db.Column(db.String(30), nullable=True)
 
+    # Fields the AI chat, workbench and solution-options-advisor creation
+    # paths set that had no home here before they were repointed to write
+    # this table directly instead of the superseded architecture_decision_records
+    # (so the canonical table could become the only writer): affected systems identified for a chat-recorded
+    # decision, free-text assumptions from a workbench-generated one, and an
+    # estimated_effort/business_value pair plus a free-text decider label for
+    # an AI-solution-architect-authored one, where the "decider" is not a
+    # users.id row so decided_by_id cannot carry it.
+    affected_systems = db.Column(db.JSON, nullable=True)
+    assumptions = db.Column(db.Text, nullable=True)
+    estimated_effort = db.Column(db.String(50), nullable=True)
+    business_value = db.Column(db.String(50), nullable=True)
+    decided_by_label = db.Column(db.Text, nullable=True)
+
     # Relationships
     created_by = db.relationship("User", foreign_keys=[created_by_id])
     decided_by = db.relationship("User", foreign_keys=[decided_by_id])
@@ -116,6 +130,11 @@ class ArchitectureDecision(TenantMixin, db.Model):
             "decision_type": self.decision_type,
             "source_table": self.source_table,
             "source_id": self.source_id,
+            "affected_systems": self.affected_systems or [],
+            "assumptions": self.assumptions,
+            "estimated_effort": self.estimated_effort,
+            "business_value": self.business_value,
+            "decided_by_label": self.decided_by_label,
         }
 
     @classmethod

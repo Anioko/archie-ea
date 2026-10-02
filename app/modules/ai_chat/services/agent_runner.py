@@ -991,17 +991,21 @@ class AgentRunner:
     def _should_queue(schema: dict, auto_execute: bool) -> bool:
         """True if a tool call must be queued for confirmation, not executed now.
 
-        Two independent reasons, either one is sufficient:
+        Three independent reasons, any one is sufficient:
           - tier == "approve": always queued. These are destructive/significant
-            regardless of the write-approval gate, and unaffected by
-            auto_execute either way (update_application_status,
-            submit_for_arb_review, generate_blueprint_narrative).
-          - mutates is True and auto_execute is False: the write-approval gate
-            itself. A read tool (mutates False, e.g. find_applications,
-            query_capability_gaps) is never queued by this rule - gating reads
-            would put every search behind a confirmation prompt, which is the
-            failure mode toggle_auto_execute's docstring warned against before
-            'mutates' existed on the registry.
+            regardless of the write-approval gate.
+          - mutates is True: the write-approval gate. A tool that writes must
+            always queue — the auto_execute switch only controls whether reads
+            run unconfirmed, not whether writes do.
+          - risk_class in {"write", "external_action"}: a tool that writes
+            directly or triggers external side effects must always queue,
+            even if auto_execute is on. This is the backup guard for the 17
+            tier="auto" mutating tools.
+
+        Read and propose tools (risk_class "read" or "propose", mutates False)
+        are never queued by this rule — gating reads would put every search
+        behind a confirmation prompt, which is the failure mode
+        toggle_auto_execute's docstring warned against.
 
         Pure and schema-driven so it can be exhaustively unit-tested without a
         DB, an LLM, or a Flask request/session.
@@ -1021,29 +1025,43 @@ class AgentRunner:
         mutates = schema.get("mutates")
         if mutates is None:
             return True
-        return bool(mutates) and not auto_execute
+        # Always queue if the tool writes or triggers side effects,
+        # regardless of auto_execute. The auto_execute flag only affects
+        # whether reads bypass confirmation.
+        if bool(mutates):
+            return True
+        if schema.get("risk_class") in ("write", "external_action"):
+            return True
+        return False
 
     def _queue_approval(self, tc: "ToolCall") -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""
-        from datetime import datetime, timedelta
-        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
-        from app import db
+        from app.modules.ai_chat.services.ai_chat_approval_service import (
+            _load_acting_user,
+            create_approval_record,
+        )
 
-        record = AIChatCRUDApproval(
-            user_id=self.user_id,
+        # Consolidation: routed through the one writer of ai_chat_crud_approvals
+        # instead of constructing the row directly, which left organization_id
+        # NULL here (invisible to every organisation-scoped query and to
+        # escalate_overdue_approvals). _load_acting_user, not User.query.get():
+        # the agent runner loops over tenants inside one session, and get()
+        # returning an identity-map hit from a different organisation's turn
+        # would bypass the tenant filter entirely.
+        actor = _load_acting_user(self.user_id)
+        approval = create_approval_record(
+            organization_id=actor.organization_id if actor else None,
             operation_type="tool_use",
             entity_type=tc.name,
             original_command=tc.name,
-            operation_payload=json.dumps(tc.arguments),
+            operation_payload=tc.arguments,
             summary=self._approval_summary(tc),
-            status=ApprovalStatus.PENDING,
-            expires_at=datetime.utcnow() + timedelta(hours=24),
+            user_id=self.user_id,
             chat_session_id=self.chat_session_id,
             agent_turn_id=self._turn_id,
+            expiry_minutes=24 * 60,  # unchanged: this caller's own 24h window
         )
-        db.session.add(record)
-        db.session.commit()
-        return record.id
+        return approval.id
 
     # Human-readable business-term label for a tool name, used by the generic
     # fallback in _approval_summary below (ARCH-023). Kept separate from the
