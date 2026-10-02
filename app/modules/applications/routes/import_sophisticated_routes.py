@@ -1618,9 +1618,11 @@ def import_history():
 
         # Get total count for pagination
         # tenant-scoping-ok: keyed to the signed-in user, who belongs to one organisation
+        from flask import g
         total_query = ImportSessionLog.query.filter(
             ImportSessionLog.user_id == current_user.id,
-            ImportSessionLog.import_source == import_source
+            ImportSessionLog.import_source == import_source,
+            ImportSessionLog.organization_id == g.current_org_id,
         )
         total = total_query.count()
 
