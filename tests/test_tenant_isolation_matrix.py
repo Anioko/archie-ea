@@ -37,7 +37,6 @@ pytestmark = pytest.mark.journey
 INTENTIONALLY_GLOBAL = {
     # Authentication and platform administration must resolve across tenants.
     "User": "login resolves by email before an org context exists",
-    "PendingInvitation": "an existing user accepts or declines it from their own organisation, so it is read before the target organisation is theirs",
     "AuditLog": "platform-wide audit trail; scoping it would hide cross-tenant events",
     "PendingInvitation": (
         "an invitation belongs to the inviting organisation but is read by an "
