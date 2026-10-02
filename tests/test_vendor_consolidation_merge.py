@@ -10,7 +10,6 @@ Scope:
 from datetime import date, datetime, timedelta
 
 import pytest
-from sqlalchemy import inspect as sa_inspect
 
 
 # ===========================================================================
@@ -196,42 +195,47 @@ class TestVendorMergeTwoOrg:
 # ===========================================================================
 
 
-@pytest.mark.usefixtures("db_session")
+@pytest.fixture(scope="session")
+def _vendor_legal_schema(_schema, app):
+    """Apply schema migrations so the partial unique index on
+    legal_registration_number exists, exactly as ``flask db upgrade``
+    builds it from an empty database.
+
+    ``_schema`` calls ``db.create_all()`` which creates every table but
+    does not honour ``postgresql_where`` on index definitions, so the
+    partial unique index declared in VendorOrganization.__table_args__
+    is missing until the Alembic migration runs.
+    """
+    from alembic import command
+    from sqlalchemy import text
+
+    with app.app_context():
+        from app.commands.schema_migrations import (
+            _alembic_config, recorded_revisions, known_revisions,
+            BASELINE_REVISION, acquire_upgrade_lock, _UPGRADE_LOCK_KEY,
+        )
+        from app.extensions import db
+
+        config = _alembic_config()
+        known = known_revisions(config)
+
+        with db.engine.connect() as lock_conn:
+            acquire_upgrade_lock(lock_conn)
+            try:
+                with db.engine.connect() as conn:
+                    before = recorded_revisions(conn)
+                unknown = [r for r in before if r not in known]
+                if unknown:
+                    command.stamp(config, BASELINE_REVISION, purge=True)
+                command.upgrade(config, "head")
+            finally:
+                lock_conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _UPGRADE_LOCK_KEY})
+                lock_conn.commit()
+
+
+@pytest.mark.usefixtures("db_session", "_vendor_legal_schema")
 class TestVendorLegalEntities:
     """VendorOrganization carries legal entity fields and parent group FK."""
-
-    @pytest.fixture(autouse=True)
-    def _ensure_partial_index(self, _schema, app):
-        """Ensure the partial unique index on legal_registration_number exists.
-
-        The index is defined in __table_args__ but ``postgresql_where`` is not
-        honoured by ``db.create_all()``, so we create it explicitly here.
-        Also ensures the column exists (``create_all()`` only creates missing
-        tables, not missing columns on existing tables).
-        ``CREATE INDEX IF NOT EXISTS`` is a no-op when it already exists.
-        """
-        with app.app_context():
-            from app.extensions import db
-            from sqlalchemy import text
-            # Ensure column exists (no-op if already present)
-            for col, ddl in [
-                ('legal_name', 'ALTER TABLE vendor_organizations ADD COLUMN legal_name VARCHAR(300)'),
-                ('legal_registration_number', 'ALTER TABLE vendor_organizations ADD COLUMN legal_registration_number VARCHAR(100)'),
-                ('legal_address', 'ALTER TABLE vendor_organizations ADD COLUMN legal_address TEXT'),
-                ('parent_vendor_id', 'ALTER TABLE vendor_organizations ADD COLUMN parent_vendor_id INTEGER REFERENCES vendor_organizations(id)'),
-            ]:
-                try:
-                    db.session.execute(text(ddl))
-                    db.session.commit()
-                except Exception:
-                    db.session.rollback()
-            # Create partial unique index
-            db.session.execute(text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS uq_vendor_legal_reg "
-                "ON vendor_organizations(legal_registration_number) "
-                "WHERE legal_registration_number IS NOT NULL"
-            ))
-            db.session.commit()
 
     def test_legal_entity_columns_exist(self, app):
         """The vendor_organizations table has the new columns."""
