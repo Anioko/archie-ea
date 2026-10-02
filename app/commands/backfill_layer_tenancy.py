@@ -438,9 +438,19 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
     """
     from sqlalchemy import inspect, text
 
-    insp = inspect(db.engine)
-    live = set(insp.get_table_names())
+    # Bound to this connection, not db.engine: an engine-level Inspector
+    # checks out a second, separate connection per call. This function's own
+    # DDL (ADD COLUMN, CREATE INDEX, SET NOT NULL below) runs on `conn` inside
+    # one uncommitted transaction across the whole loop, so a second
+    # connection's catalog lookups on an already-altered table block on locks
+    # `conn` will not release until the loop finishes -- a self-inflicted
+    # deadlock, reproduced on 2+ databases and on CI (a 6-hour-plus hang on
+    # PR 317/323). Binding the Inspector to `conn` keeps every introspection
+    # query on the same connection and transaction as the writes, so there is
+    # never a second backend to wait on.
     conn = db.session.connection()
+    insp = inspect(conn)
+    live = set(insp.get_table_names())
 
     repaired, absent = [], []
     healthy = 0
