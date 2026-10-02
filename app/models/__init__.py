@@ -79,6 +79,7 @@ else:
     # Session registry (server-side revocation on logout / password change).
     from .user_session import UserSession  # noqa: F401
     from .error_event import ErrorEvent  # noqa: F401 - server + client error telemetry
+    from .service_incident import ServiceIncident  # noqa: F401 - service-status incident history
     from .gdpr_request import *  # noqa
     from .subscription import *  # noqa
     from .ai_chat_document import *  # noqa
@@ -86,6 +87,7 @@ else:
     # revision, and deploys do not run `flask db upgrade` — so a fresh database
     # had no chat history tables at all and /ai-chat/threads 500'd.
     from .conversation import ConversationMessageRecord, ConversationThreadRecord  # noqa
+    from .external_identity_crosswalk import ExternalIdentityCrosswalk  # noqa: F401
     from .consulting_partner import *  # noqa
     from .capability_archimate_mapping import *  # noqa
     from .copilot_insight import *  # noqa
@@ -96,6 +98,7 @@ else:
     from .optimization import *  # noqa
     from .mapping_metrics import *  # noqa
     from .unified_work_package import *  # noqa - unified_work_packages (capability roadmap)
+    from .work_package_resource_demand import WorkPackageResourceDemand  # noqa: F401 - work_package_resource_demand
     from app.modules.codegen.services.scenario_tracker import ScenarioResult  # noqa - codegen_scenario_results
     from .architecture_decision import (  # noqa: F401
         ArchitectureDecision, DecisionCapabilityLink,
@@ -331,6 +334,9 @@ else:
     # H1: Risk <-> Application/Solution/Programme links
     from .risk_entity_link import RiskEntityLink  # noqa: F401
 
+    # One inherent/residual score history row per change to a Risk
+    from .risk_score_history import RiskScoreHistory, SCORE_KINDS  # noqa: F401
+
     # RAID: Assumption/Issue/Dependency (Risk above already covers the "R")
     from .raid_item import RaidItem, RaidKind, RaidStatus  # noqa: F401
 
@@ -413,6 +419,9 @@ else:
     # AC-8: Versioned LLM prompt registry with A/B testing and metrics
     from .llm_prompt_version import LLMPromptVersion  # noqa: F401
 
+    # Provider register — platform defaults + per-org allow/restrict rows
+    from .model_provider import ModelProvider  # noqa: F401
+
     # Solution Blueprint, Cost, Outcomes, Scoring — tables created via db.create_all()
     from .solution_blueprint_proposal import SolutionBlueprintProposal  # noqa: F401
     from .solution_cost_model import (  # noqa: F401
@@ -446,3 +455,8 @@ else:
     # app/modules/data_lineage/services.py.
     from .waitlist_signup import WaitlistSignup  # noqa: F401
     from .pending_invitation import PendingInvitation  # noqa: F401
+    from .account_token import AccountToken  # noqa: F401
+
+    # The one audit store. Imported at boot so its integrity-chain and
+    # copy-from-other-audit-stores hooks are registered before any insert.
+    from .audit_log import AuditLog  # noqa: F401
