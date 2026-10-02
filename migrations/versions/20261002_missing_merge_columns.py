@@ -1,17 +1,17 @@
 """Add missing columns from main merge: crud_operations, source_table/source_id/escalated_at
 
-crud_operations is also declared on the ArchimateRelationship model, so
-reconcile-schema's ADD COLUMN IF NOT EXISTS sweep can already have added it
-by the time this revision runs -- a bare op.add_column() then fails with
-"column already exists" (seen in CI on this exact migration).  Use raw SQL
-with IF NOT EXISTS, matching 20261001_adr_canonical_cols.py's own idiom.
+All four columns are also declared on their respective models, so
+reconcile-schema's ADD COLUMN IF NOT EXISTS sweep (or init-db's create_all)
+can already have added them by the time this revision runs -- a bare
+op.add_column() then fails with "column already exists" (seen in CI on this
+exact migration).  Use raw SQL with IF NOT EXISTS for every column,
+matching 20261001_adr_canonical_cols.py's own idiom.
 
 Revision ID: 20261002_missing_merge_columns
 Revises: 20261001_adr_canonical_cols
 Create Date: 2026-10-02
 """
 from alembic import op
-import sqlalchemy as sa
 from sqlalchemy import text
 
 revision = "20261002_missing_merge_columns"
@@ -29,23 +29,22 @@ def upgrade():
         "ADD COLUMN IF NOT EXISTS crud_operations VARCHAR(4)"
     ))
     # Consolidation columns on ai_chat_crud_approvals
-    op.add_column(
-        "ai_chat_crud_approvals",
-        sa.Column("source_table", sa.String(64), nullable=True),
-    )
-    op.create_index(
-        "ix_ai_chat_crud_approvals_source_table",
-        "ai_chat_crud_approvals",
-        ["source_table"],
-    )
-    op.add_column(
-        "ai_chat_crud_approvals",
-        sa.Column("source_id", sa.Integer, nullable=True),
-    )
-    op.add_column(
-        "ai_chat_crud_approvals",
-        sa.Column("escalated_at", sa.DateTime, nullable=True),
-    )
+    bind.execute(text(
+        "ALTER TABLE ai_chat_crud_approvals "
+        "ADD COLUMN IF NOT EXISTS source_table VARCHAR(64)"
+    ))
+    bind.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ai_chat_crud_approvals_source_table "
+        "ON ai_chat_crud_approvals (source_table)"
+    ))
+    bind.execute(text(
+        "ALTER TABLE ai_chat_crud_approvals "
+        "ADD COLUMN IF NOT EXISTS source_id INTEGER"
+    ))
+    bind.execute(text(
+        "ALTER TABLE ai_chat_crud_approvals "
+        "ADD COLUMN IF NOT EXISTS escalated_at TIMESTAMP"
+    ))
 
 
 def downgrade():
