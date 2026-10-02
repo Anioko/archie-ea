@@ -163,16 +163,13 @@ def index():
             stored = DriftReport.for_org(org_id)
             if stored is not None:
                 report_html, summary = _render_stored_report(stored)
-                computed_at = stored.computed_at
                 if report_html is None:
-                    # A row exists but could not be turned into HTML -- say so
-                    # explicitly. Falling through silently would show the
-                    # "Not yet computed" empty state, which is false: a report
-                    # WAS computed, it just cannot be read right now.
                     error = (
-                        "The stored model-health report could not be read. "
-                        "Re-scan to rebuild it."
+                        "Stored model-health report could not be rendered. "
+                        "Re-scan for drift to rebuild it."
                     )
+                else:
+                    computed_at = stored.computed_at
         except Exception as exc:
             logger.warning("Drift report read failed for org %s: %s", org_id, exc)
             error = f"Model-health report could not be read: {exc}"
