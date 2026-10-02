@@ -75,7 +75,7 @@ REQUIRED_CHECKS = (
     "Tests (pytest + coverage)",
     # The backend-test matrix shards that job combines, one per matrix.shard
     # value in ci.yml (a count kept in step with it by the test named above).
-    *(f"Tests (pytest + coverage) \u2014 shard {shard}" for shard in range(8)),
+    *(f"Tests (pytest + coverage) \u2014 shard {shard}" for shard in range(12)),
     "Database gates (schema drift)",
     "SAST (bandit)",
     "Browser journeys (one per archetype)",

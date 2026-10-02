@@ -230,9 +230,9 @@ def test_the_only_exclusion_is_the_image_build_and_it_says_why():
     for name in ("Tests (pytest + coverage)", "SAST (bandit)", "Browser journeys (one per archetype)",
                  "Browser compatibility (webkit)", "Browser compatibility (firefox)"):
         assert name in dw.REQUIRED_CHECKS
-    for shard in range(8):
+    for shard in range(12):
         assert f"Tests (pytest + coverage) \u2014 shard {shard}" in dw.REQUIRED_CHECKS
-    assert len(dw.REQUIRED_CHECKS) == 19
+    assert len(dw.REQUIRED_CHECKS) == 23
 
 
 @pytest.mark.parametrize("dry_run", ["true", "false"])
