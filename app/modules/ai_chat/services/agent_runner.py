@@ -475,11 +475,19 @@ class AgentRunner:
                     )
             api_keys = LLMService._get_all_api_keys(provider)
             if not api_keys:
-                return self._fallback("No API keys configured for provider: " + provider)
+                return self._finalize(
+                    self._fallback("No API keys configured for provider: " + provider),
+                    user_message=user_message, domain=domain, context=context,
+                    persona=persona,
+                )
             api_key = api_keys[0]
         except Exception as e:
             logger.warning("AgentRunner: provider selection failed: %s", e)
-            return self._fallback(str(e))
+            return self._finalize(
+                self._fallback(str(e)),
+                user_message=user_message, domain=domain, context=context,
+                persona=persona,
+            )
 
         # Verify provider supports tool use
         # openrouter and deepseek use OpenAI-compatible API with tool calling
@@ -490,7 +498,8 @@ class AgentRunner:
                 provider,
             )
             return self._text_only_fallback(
-                user_message, system_prompt, provider, model, api_key, LLMService
+                user_message, system_prompt, provider, model, api_key, LLMService,
+                user_message=user_message, domain=domain, context=context, persona=persona,
             )
 
         # Resolve base_url for OpenAI-compatible third-party providers
@@ -514,7 +523,7 @@ class AgentRunner:
         messages = self._prepare_history(history)
         messages.append({"role": "user", "content": user_message})
         trusted_workspace_id = (context or {}).get("_trusted_workspace_id")
-        executor = ToolExecutor(self.user_id)
+        executor = ToolExecutor(self.user_id, persona=persona)
         actions_taken = []
         required_actions = []
         pending_approvals = []
@@ -531,17 +540,28 @@ class AgentRunner:
                 )
             except Exception as e:
                 logger.exception("AgentRunner LLM call failed (iteration %d)", iteration)
-                return self._fallback(f"LLM call failed: {e}")
+                return self._finalize(
+                    self._fallback(f"LLM call failed: {e}"),
+                    user_message=user_message, domain=domain, context=context,
+                    persona=persona, model_used=model,
+                )
 
             # Text-only response — we're done
             if not llm_resp.get("tool_calls"):
-                return {
-                    "response": llm_resp.get("text", ""),
-                    "actions_taken": actions_taken,
-                    "required_actions": required_actions,
-                    "pending_approvals": pending_approvals,
-                    "sources": sources,
-                }
+                return self._finalize(
+                    {
+                        "response": llm_resp.get("text", ""),
+                        "actions_taken": actions_taken,
+                        "required_actions": required_actions,
+                        "pending_approvals": pending_approvals,
+                        "sources": sources,
+                    },
+                    user_message=user_message,
+                    domain=domain,
+                    context=context,
+                    persona=persona,
+                    model_used=model,
+                )
 
             # Process each tool call
             tool_results = []
@@ -606,18 +626,25 @@ class AgentRunner:
 
         # Hit iteration cap
         logger.warning("AgentRunner hit MAX_ITERATIONS=%d for user_id=%s", MAX_ITERATIONS, self.user_id)
-        return {
-            "response": (
-                "I've completed the available steps. Here's what was done:\n"
-                + "\n".join(f"- {a['message']}" for a in actions_taken)
-                if actions_taken
-                else "I reached the action limit without completing all steps. Please try again with a simpler request."
-            ),
-            "actions_taken": actions_taken,
-            "required_actions": required_actions,
-            "pending_approvals": pending_approvals,
-            "sources": sources,
-        }
+        return self._finalize(
+            {
+                "response": (
+                    "I've completed the available steps. Here's what was done:\n"
+                    + "\n".join(f"- {a['message']}" for a in actions_taken)
+                    if actions_taken
+                    else "I reached the action limit without completing all steps. Please try again with a simpler request."
+                ),
+                "actions_taken": actions_taken,
+                "required_actions": required_actions,
+                "pending_approvals": pending_approvals,
+                "sources": sources,
+            },
+            user_message=user_message,
+            domain=domain,
+            context=context,
+            persona=persona,
+            model_used=model,
+        )
 
     # ------------------------------------------------------------------ #
     # System prompt construction                                           #
@@ -1151,8 +1178,120 @@ class AgentRunner:
             "error": reason,
         }
 
+    def _record_run(
+        self,
+        persona: Optional[str],
+        domain: str,
+        user_message: str,
+        context: Optional[dict],
+        actions_taken: list,
+        pending_approvals: list,
+        sources: list,
+        outcome: str,
+        success: bool,
+        model_used: Optional[str] = None,
+    ) -> None:
+        """Write one AgentRunRecord for this agent invocation.
+        
+        Never raises — a failed record must not cost the turn.
+        """
+        try:
+            from flask import g, has_request_context
+
+            from app.models.agent_charter import AgentCharter
+            from app.models.agent_run_record import AgentRunRecord
+
+            org_id = None
+            if has_request_context():
+                org_id = getattr(g, "current_org_id", None)
+            if org_id is None:
+                from sqlalchemy import text
+
+                from app import db as _ra_db
+                row = _ra_db.session.execute(
+                    text("SELECT organization_id FROM users WHERE id = :uid"),
+                    {"uid": self.user_id},
+                ).fetchone()
+                org_id = int(row[0]) if row and row[0] else None
+            if org_id is None:
+                return
+
+            charter_version = None
+            if persona:
+                charter = AgentCharter.current_for(persona, org_id)
+                if charter:
+                    charter_version = charter.version
+
+            record = AgentRunRecord(
+                organization_id=org_id,
+                user_id=self.user_id,
+                persona=persona,
+                charter_version=charter_version,
+                inputs={
+                    "user_message": user_message,
+                    "domain": domain,
+                    "context": context,
+                },
+                tools_called=[
+                    {
+                        "tool": a["tool"],
+                        "arguments": a.get("arguments"),
+                        "result": a.get("result"),
+                        "mutates": a.get("mutates"),
+                    }
+                    for a in actions_taken
+                ] if actions_taken else None,
+                records_read=[
+                    {"type": s["type"], "id": s["id"], "name": s["name"]}
+                    for s in (sources or [])
+                ] if sources else None,
+                proposals=[
+                    {
+                        "approval_id": p["approval_id"],
+                        "tool": p["tool"],
+                        "summary": p.get("summary"),
+                    }
+                    for p in pending_approvals
+                ] if pending_approvals else None,
+                outcome=outcome,
+                success=success,
+                domain=domain,
+                model_used=model_used,
+            )
+            from app import db as _rr_db
+            _rr_db.session.add(record)
+            _rr_db.session.commit()
+        except Exception:
+            logger.warning("AgentRunner: failed to write run record", exc_info=True)
+
+    def _finalize(
+        self,
+        result: dict,
+        user_message: str,
+        domain: str,
+        context: Optional[dict],
+        persona: Optional[str],
+        model_used: Optional[str] = None,
+    ) -> dict:
+        """Record the run and return the result dict."""
+        self._record_run(
+            persona=persona,
+            domain=domain,
+            user_message=user_message,
+            context=context,
+            actions_taken=result.get("actions_taken", []),
+            pending_approvals=result.get("pending_approvals", []),
+            sources=result.get("sources", []),
+            outcome=result.get("response", result.get("error", "")),
+            success=not result.get("error"),
+            model_used=model_used,
+        )
+        return result
+
     def _text_only_fallback(
-        self, message: str, system_prompt: str, provider: str, model: str, api_key: str, LLMService
+        self, message: str, system_prompt: str, provider: str, model: str, api_key: str, LLMService,
+        user_message: str = "", domain: str = "general", context: Optional[dict] = None,
+        persona: Optional[str] = None,
     ) -> dict:
         """Run a plain text call (no tools) for unsupported providers."""
         try:
@@ -1160,10 +1299,23 @@ class AgentRunner:
             text, _ = LLMService._call_llm_with_failover(
                 prompt=prompt, model=model, provider=provider
             )
-            return {
-                "response": text,
-                "actions_taken": [],
-                "pending_approvals": [],
-            }
+            return self._finalize(
+                {
+                    "response": text,
+                    "actions_taken": [],
+                    "pending_approvals": [],
+                },
+                user_message=user_message or message,
+                domain=domain,
+                context=context,
+                persona=persona,
+                model_used=model,
+            )
         except Exception as e:
-            return self._fallback(str(e))
+            return self._finalize(
+                self._fallback(str(e)),
+                user_message=user_message or message,
+                domain=domain,
+                context=context,
+                persona=persona,
+            )
