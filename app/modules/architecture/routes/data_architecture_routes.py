@@ -592,36 +592,6 @@ def data_entity_catalog():
     )
 
 
-def _default_data_domain():
-    """This organisation's default data domain, created on first use.
-
-    ``data_domains.name`` is unique across every organisation (a legacy
-    constraint on a tenant-scoped table), so once one organisation had a
-    "General" domain, every other organisation's first data entity without a
-    domain failed with a unique-violation 500. The default is "General" where
-    that name is free, and otherwise carries the organisation's name.
-    """
-    from flask_login import current_user
-    from sqlalchemy.exc import IntegrityError
-    from app.models.process_data import DataDomain
-
-    org = getattr(current_user, "organization", None)
-    fallback = "General (%s)" % (getattr(org, "name", None) or getattr(current_user, "organization_id", ""))
-    existing = DataDomain.query.filter(DataDomain.name.in_(["General", fallback])).order_by(DataDomain.id).first()
-    if existing:
-        return existing
-    for name in ("General", fallback):
-        try:
-            with db.session.begin_nested():
-                domain = DataDomain(name=name, description="Default data domain")
-                db.session.add(domain)
-                db.session.flush()
-            return domain
-        except IntegrityError:
-            continue
-    raise RuntimeError("could not create a default data domain")
-
-
 @data_architecture_bp.route("/data-entities/create", methods=["GET", "POST"])
 @login_required
 def create_data_entity():
