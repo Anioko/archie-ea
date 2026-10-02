@@ -154,7 +154,7 @@ def list_users_for_assignment():
     try:
         from app.models.user import User
 
-q = (request.args.get("q") or request.args.get("search") or "").strip()
+        q = (request.args.get("q") or request.args.get("search") or "").strip()
         limit = request.args.get("limit", type=int)
         # An erased person (data-subject erasure clears the e-mail address) is not a
         # candidate for any assignment picker.
