@@ -1036,25 +1036,32 @@ class AgentRunner:
 
     def _queue_approval(self, tc: "ToolCall") -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""
-        from datetime import datetime, timedelta
-        from app.models.ai_chat_crud_approval import AIChatCRUDApproval, ApprovalStatus
-        from app import db
+        from app.modules.ai_chat.services.ai_chat_approval_service import (
+            _load_acting_user,
+            create_approval_record,
+        )
 
-        record = AIChatCRUDApproval(
-            user_id=self.user_id,
+        # Consolidation: routed through the one writer of ai_chat_crud_approvals
+        # instead of constructing the row directly, which left organization_id
+        # NULL here (invisible to every organisation-scoped query and to
+        # escalate_overdue_approvals). _load_acting_user, not User.query.get():
+        # the agent runner loops over tenants inside one session, and get()
+        # returning an identity-map hit from a different organisation's turn
+        # would bypass the tenant filter entirely.
+        actor = _load_acting_user(self.user_id)
+        approval = create_approval_record(
+            organization_id=actor.organization_id if actor else None,
             operation_type="tool_use",
             entity_type=tc.name,
             original_command=tc.name,
-            operation_payload=json.dumps(tc.arguments),
+            operation_payload=tc.arguments,
             summary=self._approval_summary(tc),
-            status=ApprovalStatus.PENDING,
-            expires_at=datetime.utcnow() + timedelta(hours=24),
+            user_id=self.user_id,
             chat_session_id=self.chat_session_id,
             agent_turn_id=self._turn_id,
+            expiry_minutes=24 * 60,  # unchanged: this caller's own 24h window
         )
-        db.session.add(record)
-        db.session.commit()
-        return record.id
+        return approval.id
 
     # Human-readable business-term label for a tool name, used by the generic
     # fallback in _approval_summary below (ARCH-023). Kept separate from the
