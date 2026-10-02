@@ -92,6 +92,7 @@ def test_registered_extension_renders_real_fields_only(app, db_session, make_org
         active_installations=3,
         user_rating=4.1,
         additional_capabilities=json.dumps(["Batch scheduling export"]),
+        tenancy_scope="reference",
     )
     db_session.add(extension)
     db_session.flush()
@@ -127,6 +128,7 @@ def test_registered_extension_with_no_capabilities_shows_honest_features_state(
         extension_code="DIGITAL_TRANSFORM",
         extension_type="technology",
         status="active",
+        tenancy_scope="reference",
     )
     db_session.add(extension)
     db_session.flush()

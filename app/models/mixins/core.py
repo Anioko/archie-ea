@@ -86,16 +86,27 @@ class HybridTenantMixin:  # migration-exempt
     per-organisation override rows.
 
     Generalises the pattern first written as ``HybridCapabilityTenantMixin``
-    in app/models/unified_capability.py. Deliberately
-    NOT ``TenantMixin``: that mixin's ``do_orm_execute`` equality filter would
-    hide every shared row (``organization_id IS NULL``) from every organisation,
-    which is the opposite of "shared". A hybrid-scoped model reads and writes
-    through its own explicit queries/event handlers instead (the read-only
-    enforcement and per-organisation tailoring are a separate, later change,
-    not this column).
+    in app/models/unified_capability.py (its own ``scope``/
+    ``reference_capability_id`` columns and the ``do_orm_execute``/
+    ``before_flush`` listeners at the bottom of that file -- kept distinct
+    there for now, becomes a plain alias once that file's own event handlers
+    are retired in favour of the generic ones installed by
+    ``app/middleware/tenant_isolation.py``). Deliberately NOT ``TenantMixin``:
+    that mixin's ``do_orm_execute`` equality filter would hide every shared
+    row (``organization_id IS NULL``) from every organisation, which is the
+    opposite of "shared".
 
     Nullable forever, not as an expand-step waiting for a later NOT NULL
     tightening: a shared catalogue row legitimately has no owning organisation.
+
+    ``tenancy_scope``/``tailored_from_id`` are deliberately not named
+    ``scope``/``reference_*_id`` (``UnifiedCapability``'s own names): several
+    of the twelve classes mixing this in already declare their own unrelated
+    ``scope`` or ``*_scope`` column (``EnterpriseArchitectureFramework.scope``
+    is "enterprise, domain, application, technology", nothing to do with
+    tenancy), and ``ReferenceModelCapability.reference_model_id`` already
+    names a real, different foreign key. A name only this mixin uses avoids
+    colliding with either.
     """
 
     @declared_attr
@@ -107,6 +118,79 @@ class HybridTenantMixin:  # migration-exempt
             nullable=True,
             index=True,
         )
+
+    @declared_attr
+    def tenancy_scope(cls):
+        """``"reference"`` (shared, ``organization_id IS NULL``, platform-
+        writable only) or ``"tenant"`` (one organisation's own row, including
+        a tailoring row -- see ``tailored_from_id``). Nullable until a row is
+        classified: ``_protect_hybrid_tenant_writes`` (tenant_isolation.py)
+        stamps ``"tenant"`` on any new row with ``organization_id`` set, the
+        same way ``_protect_reference_capability_writes`` already does for
+        ``UnifiedCapability``; a row the platform inserts directly with
+        ``organization_id IS NULL`` must set ``tenancy_scope="reference"``
+        itself to be treated as shared (an unclassified NULL-organisation row
+        is not automatically shared -- the same rule
+        ``UnifiedCapability.visibility_predicate`` documents).
+        """
+        from app import db
+        return db.Column(db.String(16), nullable=True, index=True)
+
+    @declared_attr
+    def tailored_from_id(cls):
+        """Set on a tenant's own row that overrides a shared reference row
+        for that organisation only: the id of the reference row (on this
+        same table) it tailors. NULL on an ordinary tenant-created row that
+        tailors nothing and on every reference row itself.
+        """
+        from app import db
+        return db.Column(
+            db.Integer,
+            db.ForeignKey(f"{cls.__tablename__}.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        )
+
+    @classmethod
+    def effective(cls, reference_id, organization_id):
+        """The row an organisation actually sees for a given reference row:
+        its own tailoring row if one exists, else the reference row itself.
+
+        ``reference_id`` is always a reference row's own id -- a tenant row's
+        id tailors nothing further (no second-level tailoring chain).
+
+        No route calls this yet. Ten of the twelve classes mixing this in
+        also declare their own globally-unique business key (a ``code`` or
+        ``name`` column, unique across the whole table, not per
+        organisation), so creating a tailoring row means the caller must
+        already supply a value for that key distinct from the reference
+        row's own -- this method does not generate or validate one. Until a
+        route exists that handles that, this is read-only, correct plumbing
+        with no caller.
+
+        Callers must ensure their current tenant context matches the
+        ``organization_id`` argument, or call this outside any tenant
+        context; otherwise the fallback reference-row lookup
+        (``cls.query.filter_by(id=reference_id).first()``) is subject to
+        this same hybrid read filter and may be silently filtered out by a
+        different organisation's own context, returning ``None`` for a
+        reference row that genuinely exists.
+        """
+        from app import db
+
+        if organization_id is not None:
+            tailored = db.session.execute(
+                db.select(cls).where(
+                    cls.tailored_from_id == reference_id,
+                    cls.organization_id == organization_id,
+                )
+            ).scalar_one_or_none()
+            if tailored is not None:
+                return tailored
+        # .filter_by().first(), not .get(): the identity-map-bypass pitfall
+        # this codebase avoids throughout (a cached cross-session object on a
+        # .get() hit skips do_orm_execute); always issues real SQL.
+        return cls.query.filter_by(id=reference_id).first()
 
 
 class OptimisticLockMixin:

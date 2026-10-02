@@ -16,6 +16,7 @@ flask --app manage reconcile-admin-flags || echo 'WARN reconcile-admin-flags ski
 flask --app manage backfill-ai-chat-approval-org || echo 'WARN AI chat approval tenancy backfill skipped - legacy approvals remain unavailable for review until requester organization ownership is restored'
 flask --app manage backfill-archimate-layer-casing || echo 'WARN archimate layer casing backfill skipped - ArchiMate elements stored with a capitalised layer will not match any query until it runs'
 flask --app manage backfill-layer-tenancy || echo 'WARN layer tenancy backfill skipped - newly tenant-scoped tables keep nullable organization_id until it runs; rows left NULL are invisible to every org'
+flask --app manage backfill-hybrid-tenancy-scope || echo 'WARN hybrid tenancy scope backfill skipped - unclassified shared-catalogue rows stay invisible to every organisation until it runs'
 flask --app manage backfill-value-stream-tenancy || echo 'WARN value-stream tenancy backfill skipped - run manually with --org-id'
 flask --app manage backfill-principle-org || echo 'WARN principle tenancy backfill skipped - run manually with --org-id'
 flask --app manage backfill-initiative-org || echo 'WARN initiative tenancy backfill skipped - run manually with --org-id'

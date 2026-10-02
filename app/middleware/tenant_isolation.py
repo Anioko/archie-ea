@@ -12,15 +12,44 @@ background tasks, unauthenticated requests).
 """
 
 import logging
+from contextlib import contextmanager
 
 from flask import g
 from sqlalchemy import text
 from sqlalchemy.orm import with_loader_criteria
 
 from app.extensions import db
-from app.models.mixins.core import TenantMixin
+from app.models.mixins.core import HybridTenantMixin, TenantMixin
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def platform_write_context():
+    """Suspend tenant scoping for the duration of the block.
+
+    A platform admin is still an ordinary tenant as far as g.current_org_id
+    is concerned (platform_admin_required only checks a flag on the current
+    user, it does not clear tenant context), so a write to a reference-scoped
+    HybridTenantMixin row from inside a platform-admin route hits the same
+    before_flush guard an ordinary tenant's write would, and is refused.
+
+    Both guards already treat "no tenant context" as the trusted/platform
+    path (CLI, migrations, background tasks -- see this module's own
+    docstring), so this reuses that existing path rather than adding a
+    second one: call-sites that are already gated by platform_admin_required
+    wrap their write in this block to use it deliberately.
+    """
+    had_org_id = hasattr(g, "current_org_id")
+    previous = g.current_org_id if had_org_id else None
+    g.current_org_id = None
+    try:
+        yield
+    finally:
+        if had_org_id:
+            g.current_org_id = previous
+        else:
+            del g.current_org_id
 
 
 def set_database_tenant_context(connection, organization_id):
@@ -131,4 +160,109 @@ def install_tenant_filter(app):
             if isinstance(obj, TenantMixin) and getattr(obj, "organization_id", None) is None:
                 obj.organization_id = g.current_org_id
 
-    app.logger.info("Tenant isolation filters installed (do_orm_execute + before_flush)")
+    # Shared-catalogue reads and writes. Generalises
+    # UnifiedCapability's own do_orm_execute/before_flush pair (bottom of
+    # app/models/unified_capability.py) across every HybridTenantMixin class
+    # at once via with_loader_criteria's base-class form -- the same
+    # mechanism _add_tenant_filter above already uses for TenantMixin.
+    @db.event.listens_for(db.session, "do_orm_execute")
+    def _add_hybrid_tenant_filter(orm_execute_state):
+        if not (
+            orm_execute_state.is_select
+            or orm_execute_state.is_update
+            or orm_execute_state.is_delete
+        ):
+            return
+        organization_id = getattr(g, "current_org_id", None)
+        if organization_id is None:
+            # No tenant context (CLI, migrations, system tasks): every row
+            # is visible, matching TenantMixin's own no-op outside a request
+            # -- a platform-only surface, not an ordinary organisation read.
+            return
+        if orm_execute_state.is_select:
+            # Own rows (reference or tenant, whichever this organisation's
+            # own id happens to be on) plus every explicitly-classified
+            # reference row. An unclassified NULL-organisation row
+            # (tenancy_scope not yet "reference") is excluded either way --
+            # the same "not automatically shared" rule
+            # UnifiedCapability.visibility_predicate documents.
+            predicate = lambda cls: db.or_(  # noqa: E731
+                cls.organization_id == organization_id,
+                db.and_(
+                    cls.organization_id.is_(None),
+                    cls.tenancy_scope == "reference",
+                ),
+            )
+            orm_execute_state.statement = orm_execute_state.statement.options(
+                with_loader_criteria(HybridTenantMixin, predicate, include_aliases=True)
+            )
+            return
+        # A bulk UPDATE/DELETE (Model.query.filter(...).update(...), or
+        # update(Table)/delete(Table) passed to session.execute()) never
+        # touches session.new/dirty/deleted, so before_flush's ownership and
+        # scope checks below cannot see it -- scoping the WHERE clause the
+        # way the SELECT branch above does would still let a tenant set
+        # organization_id/tenancy_scope on their own row to whatever they
+        # want (e.g. reparent it out of their tenant into the shared
+        # catalogue), since a WHERE-only scope restricts which rows match,
+        # not what values get written. No call site does this today, so
+        # refusing it outright costs nothing and closes that gap; a caller
+        # that needs it goes through the ORM per-instance path instead,
+        # where before_flush actually enforces the rules.
+        try:
+            entity_cls = orm_execute_state.bind_mapper.class_
+        except Exception:
+            entity_cls = None
+        if entity_cls is not None and issubclass(entity_cls, HybridTenantMixin):
+            raise PermissionError(
+                "bulk update/delete on a shared-catalogue table is refused inside "
+                "a tenant request; use the ORM per-instance path instead"
+            )
+
+    @db.event.listens_for(db.session, "before_flush")
+    def _protect_hybrid_tenant_writes(session, flush_context, instances):
+        organization_id = getattr(g, "current_org_id", None)
+        if organization_id is None:
+            return
+
+        for row in (item for item in session.new if isinstance(item, HybridTenantMixin)):
+            if row.tenancy_scope == "reference":
+                raise PermissionError(
+                    "reference rows are read-only inside a tenant request"
+                )
+            if row.organization_id is None:
+                row.organization_id = organization_id
+            if row.organization_id != organization_id:
+                raise PermissionError(
+                    "rows owned by another organisation are read-only"
+                )
+            if row.tenancy_scope is None:
+                row.tenancy_scope = "tenant"
+
+        for row in (
+            item
+            for item in session.dirty.union(session.deleted)
+            if isinstance(item, HybridTenantMixin)
+        ):
+            from sqlalchemy import inspect as sa_inspect
+
+            history = sa_inspect(row).attrs.organization_id.history
+            original_organization_id = (
+                history.deleted[0] if history.deleted else row.organization_id
+            )
+            if original_organization_id is None:
+                raise PermissionError(
+                    "reference rows are read-only inside a tenant request"
+                )
+            if (
+                original_organization_id != organization_id
+                or row.organization_id != organization_id
+            ):
+                raise PermissionError(
+                    "rows owned by another organisation are read-only"
+                )
+
+    app.logger.info(
+        "Tenant isolation filters installed "
+        "(do_orm_execute + before_flush, TenantMixin + HybridTenantMixin)"
+    )
