@@ -1,9 +1,26 @@
 """
 Vendor Merge Service
 
-Detects duplicate vendors by name similarity, keeps the oldest record,
+Detects duplicate vendors by canonical normalised name, keeps the oldest record,
 and produces a reviewable list of merged duplicates. Re-points contract
 and product references from the duplicate to the surviving vendor.
+
+Design rationale — discrete service, not a method on an existing class
+-----------------------------------------------------------------------
+Three existing services carry ``find_duplicates`` / ``merge`` method signatures:
+
+- ``app/unified_vendors/services.py``        — ``VendorDataQualityService`` (stubs returning {} / [])
+- ``app/modules/vendors/services/unified_vendors_services.py`` — ``VendorDataQualityService`` (same stubs)
+- ``app/modules/vendors/services/vendor_mdm.py`` — ``VendorMDMService.find_duplicates`` (fuzzywuzzy ratio, no merge)
+
+None of them implements keep-oldest selection, a reviewable candidate report, or
+cross-table reference repointing (contracts, products, initiative_vendors). The
+existing ``VendorDataQualityService`` stubs are placeholders from a consolidation
+that has not yet landed. Extending them would add business logic to an empty shell
+whose design (``entity_type`` dispatch, ``strategy`` parameter, ``merged_by`` id)
+does not match this service's contract (keep-oldest, repoint FKs, reviewable
+report). When those shells are populated, ``VendorMergeService`` will be the
+canonical implementation and the shells can delegate here rather than the reverse.
 
 Usage::
 
@@ -14,7 +31,7 @@ Usage::
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from app.extensions import db
 from app.models.vendor.vendor_organization import VendorOrganization
@@ -32,32 +49,28 @@ class VendorMergeService:
 
     @staticmethod
     def _normalise(name: str) -> str:
-        """Lower-case and strip common punctuation for fuzzy comparison."""
+        """Lower-case and strip common punctuation for canonical comparison."""
         if not name:
             return ""
         for ch in VendorMergeService.STRIP_CHARS:
             name = name.replace(ch, " ")
         return " ".join(name.lower().split())
 
-    def find_duplicates(
-        self, threshold: float = 0.85, organisation_id: Optional[int] = None
-    ) -> Dict:
+    def find_duplicates(self) -> Dict:
         """Find potential duplicate vendor records.
 
-        Compares vendors by normalised name using token-set overlap.
-        Returns a dict with ``candidates`` - each candidate has:
+        Groups vendors by canonical normalised name (exact match after
+        punctuation stripping and lower-casing). Returns a dict with
+        ``candidates`` — each candidate has:
         - keep_id: id of the oldest vendor
         - keep_name: name of the oldest vendor
         - merge_ids: list of duplicate ids to merge
         - merge_names: list of duplicate names
 
-        Args:
-            threshold: Minimum similarity ratio (0.0-1.0) to consider a match
-            organisation_id: Optional org filter for tenant-scoped discovery
-
         Returns:
             dict with ``candidates`` list and ``total_candidates`` count
         """
+        # tenant-scoping-ok: VendorOrganization is global reference data per ADR-0003
         query = VendorOrganization.query
 
         # Build name->id map
@@ -114,6 +127,12 @@ class VendorMergeService:
         3. Update ``initiative_vendors`` junction table
         4. Delete the duplicate vendor records
 
+        All reference updates are global — they affect every organisation's
+        rows, not just the current tenant. This is intentional: a merge is a
+        cross-cutting operation on shared reference data (VendorOrganization is
+        global per ADR-0003). The service must run without tenant context
+        (CLI-only or a dedicated admin route that clears ``g.current_org_id``).
+
         Args:
             keep_id: ID of the vendor record to keep (oldest)
             merge_ids: IDs of the vendor records to merge and delete
@@ -122,6 +141,7 @@ class VendorMergeService:
             dict with ``kept_id``, ``merged_count``, ``contracts_repointed``,
             ``products_repointed``
         """
+        # tenant-scoping-ok: VendorOrganization is global reference data per ADR-0003
         keep = VendorOrganization.query.get(keep_id)
         if not keep:
             raise ValueError(f"Vendor {keep_id} not found")
@@ -130,36 +150,33 @@ class VendorMergeService:
         products_repointed = 0
 
         for mid in merge_ids:
+            # tenant-scoping-ok: VendorOrganization is global reference data per ADR-0003
             dup = VendorOrganization.query.get(mid)
             if not dup:
                 continue
 
-            # Re-point vendor_contracts
+            # Re-point vendor_contracts — use raw SQL to bypass TenantMixin
+            # auto-filter so contracts in EVERY organisation are repointed.
             from app.models.application_portfolio import VendorContract
-            affected = (
-                VendorContract.query
-                .filter(VendorContract.vendor_id == mid)
-                .update(
-                    {VendorContract.vendor_id: keep_id},
-                    synchronize_session="fetch",
-                )
-            )
+            affected = db.session.execute(
+                db.update(VendorContract.__table__)
+                .where(VendorContract.__table__.c.vendor_id == mid)
+                .values(vendor_id=keep_id)
+            ).rowcount
             contracts_repointed += affected
 
-            # Re-point vendor_products
+            # Re-point vendor_products — VendorProduct has no TenantMixin,
+            # but raw SQL keeps the code self-documenting as global.
             from app.models.vendor.vendor_organization import VendorProduct
-            affected = (
-                VendorProduct.query
-                .filter(VendorProduct.vendor_organization_id == mid)
-                .update(
-                    {VendorProduct.vendor_organization_id: keep_id},
-                    synchronize_session="fetch",
-                )
-            )
+            # tenant-scoping-ok: VendorProduct update is global — merge is a cross-tenant operation
+            affected = db.session.execute(
+                db.update(VendorProduct.__table__)
+                .where(VendorProduct.__table__.c.vendor_organization_id == mid)
+                .values(vendor_organization_id=keep_id)
+            ).rowcount
             products_repointed += affected
 
-            # Re-point initiative_vendors
-            # Can't use SQLAlchemy orm for junction tables; use raw SQL
+            # Re-point initiative_vendors — junction table, no ORM auto-filter
             initiative_vendors_table = db.metadata.tables.get("initiative_vendors")
             if initiative_vendors_table is not None:
                 stmt = (
