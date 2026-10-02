@@ -425,6 +425,19 @@ class VendorOrganization(db.Model):
         remote_side="VendorOrganization.id",
         backref=db.backref("subsidiary_vendors", lazy="dynamic"),
     )
+
+    # Partial unique index on legal_registration_number — the column is nullable
+    # and standard UNIQUE constraints treat NULL as distinct in some databases,
+    # so a partial index ensures uniqueness of non-NULL values only.
+    __table_args__ = (
+        db.Index(
+            "uq_vendor_legal_reg",
+            "legal_registration_number",
+            unique=True,
+            postgresql_where=db.text("legal_registration_number IS NOT NULL"),
+        ),
+    )
+
     # NOTE: Commented out due to SQLAlchemy mapper initialization issues
     # The vendor_capability_risks table exists but causes circular import issues
     # Use direct queries via relationship_tables.vendor_capability_risks instead
