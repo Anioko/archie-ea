@@ -224,6 +224,13 @@ def _observe(page, base, path):
     return ALLOWED if status < 400 else DENIED
 
 
+def _csrf_token(page):
+    """Read the current page's CSRF token without forcing another navigation."""
+    token = page.locator('meta[name="csrf-token"]').get_attribute("content")
+    assert token, "signed-in page did not expose a CSRF token"
+    return token
+
+
 @pytest.fixture
 def page(browser):
     ctx = browser.new_context(viewport={"width": 1280, "height": 900})
@@ -375,6 +382,53 @@ def test_interface_register_edit_route_authorisation(
 
 
 @pytest.fixture(scope="module")
+def seeded_data_entity(seeded):
+    """A real DataEntity in the seeded org, for the entity page's <id> path."""
+    from app import create_app, db
+    from app.models.process_data import DataDomain, DataEntity
+
+    app = create_app("testing")
+    with app.app_context():
+        org_id = seeded["ids"]["org"]
+        entity = DataEntity.query.filter_by(organization_id=org_id).order_by(DataEntity.id.desc()).first()
+        if entity is None:
+            domain_name = "Auth-matrix probe domain %s" % org_id
+            entity_name = "Auth-matrix probe entity %s" % org_id
+            domain = DataDomain.query.filter_by(name=domain_name, organization_id=org_id).first()
+            if domain is None:
+                domain = DataDomain(name=domain_name, organization_id=org_id)
+                db.session.add(domain)
+                db.session.flush()
+            entity = DataEntity.query.filter_by(name=entity_name, organization_id=org_id).first()
+            if entity is None:
+                entity = DataEntity(name=entity_name, domain_id=domain.id, organization_id=org_id)
+                db.session.add(entity)
+                db.session.commit()
+            else:
+                db.session.rollback()
+        return entity.id
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_data_entity_page_authorisation(archetype, page, live_server, seeded, seeded_data_entity):
+    """GET /architecture/data-entities/<id> (the entity and its CRUD matrix)
+    carries @login_required and no role gate, like the entity catalog it is
+    opened from, so every archetype in the entity's organisation reaches it.
+    The data is fenced per tenant by the entity lookup, not by a role."""
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/architecture/data-entities/%d" % seeded_data_entity
+    actual = _observe(page, live_server, path)
+    assert actual == ALLOWED, "%s could not reach %s: expected ALLOWED" % (archetype, path)
+
+
+def test_data_entity_page_rejects_anonymous(page, live_server, seeded_data_entity):
+    path = "/architecture/data-entities/%d" % seeded_data_entity
+    response = page.goto(live_server + path, wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    assert "/account/login" in page.url or (response is not None and response.status >= 400), (
+        "%s was served without signing in" % path)
+
+
+@pytest.fixture(scope="module")
 def seeded_interface_initiative(seeded):
     """A real TechnologyRoadmapInitiative wired to an ArchitectureModel in the
     seeded org, for the comparison POST routes (D5) -- provision_comparison
@@ -467,8 +521,7 @@ def test_interface_register_raise_gap_authorisation(
     asserts the boundary, not the gap-raising business rule already covered
     in tests/test_interface_register_service.py)."""
     _login(page, live_server, seeded["emails"][archetype])
-    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    csrf_token = _csrf_token(page)
     response = page.request.post(
         live_server + "/interface-register/%d/gaps" % seeded_interface_element,
         form={
@@ -533,8 +586,7 @@ def test_interface_register_attach_work_package_authorisation(
     data_integration boundary, observed on the costed-work-package write
     path (US-6 AC6)."""
     _login(page, live_server, seeded["emails"][archetype])
-    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
-    csrf_token = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    csrf_token = _csrf_token(page)
     response = page.request.post(
         live_server + "/interface-register/gaps/%d/work-packages" % seeded_interface_gap,
         form={

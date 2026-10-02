@@ -66,6 +66,7 @@ from app.decorators import admin_required, audit_log, governance_gate_reader_req
 from app.middleware.tenant_decorators import org_admin_required, platform_admin_required
 from app.models import APISettings, EditableHTML, Permission, Role, User
 from app.models.organization import Organization
+from app.models.org_role import OrgRole
 from app.models.ai_service import AIPromptTemplate, AIPromptTemplateVersion
 from app.models.feature_flags import FeatureFlag, FeatureState, FeatureType
 from app.modules.admin.v2.services.llm_service_v2 import test_api_key
@@ -491,7 +492,7 @@ def registered_users():
     # /admin/organizations read as a platform undercounting itself rather
     # than the same figure viewed at two different scopes. Name the scope
     # and surface the platform-wide total so the two views reconcile.
-    current_org = Organization.query.get(g.current_org_id)
+    current_org = db.session.get(Organization, g.current_org_id)
     platform_total_users = User.query.count()
     return render_template(
         "admin/registered_users.html",
@@ -4781,7 +4782,7 @@ def solution_prompts_data():
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/update", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("update_solution_prompt")
 def solution_prompt_update(prompt_key):
     """Save a custom override for a solution prompt."""
@@ -4857,7 +4858,7 @@ def solution_prompt_update(prompt_key):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/reset", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("reset_solution_prompt")
 def solution_prompt_reset(prompt_key):
     """Remove custom override, reverting to hardcoded default."""
@@ -5000,7 +5001,7 @@ def solution_prompt_diff(prompt_key):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/rollback/<int:version>", methods=["POST"])
 @login_required
-@admin_required
+@platform_admin_required
 @audit_log("rollback_solution_prompt")
 def solution_prompt_rollback(prompt_key, version):
     """A-05: restore a prior version's content as the live override."""
@@ -5498,7 +5499,6 @@ _ORG_USER_SORT_COLUMNS = {
     "name": (User.first_name, User.last_name),
     "email": (User.email,),
     "persona": (User.enterprise_role,),
-    "org_admin": (User.is_org_admin,),
 }
 
 
@@ -5518,14 +5518,23 @@ def organization_detail(org_id):
     # Python method, not a column SQL can order by.
     sort_key = request.args.get("sort", "name")
     direction = request.args.get("dir", "asc")
-    columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
-    order = [c.desc() if direction == "desc" else c.asc() for c in columns]
-    users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
+    # org_admin sort uses the one canonical check (rbac_service.is_org_admin),
+    # not the denormalised _is_org_admin column, so it is handled in Python.
+    if sort_key == "org_admin":
+        from app.services.rbac_service import rbac_service
+
+        users = User.query.filter_by(organization_id=org.id).order_by(User.id).all()
+        users.sort(key=lambda u: rbac_service.is_org_admin(u, org.id), reverse=(direction == "desc"))
+    else:
+        columns = _ORG_USER_SORT_COLUMNS.get(sort_key, _ORG_USER_SORT_COLUMNS["name"])
+        order = [c.desc() if direction == "desc" else c.asc() for c in columns]
+        users = User.query.filter_by(organization_id=org.id).order_by(*order, User.id).all()
+    valid_sort_keys = set(_ORG_USER_SORT_COLUMNS.keys()) | {"org_admin"}
     return render_template(
         "admin/organizations/detail.html", org=org, users=users,
         limits=user_limit_status(org.id),
         get_role_display_name=get_role_display_name,
-        current_sort=sort_key if sort_key in _ORG_USER_SORT_COLUMNS else "name",
+        current_sort=sort_key if sort_key in valid_sort_keys else "name",
         current_dir=direction if direction in ("asc", "desc") else "asc",
     )
 
@@ -5599,9 +5608,24 @@ def toggle_org_admin(org_id, user_id):
     if user.organization_id != org_id:
         flash("User does not belong to this organization.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
-    user.is_org_admin = not user.is_org_admin
+    # is_org_admin derives from is_admin() (Permission.ADMINISTER). Toggle the
+    # Administrator role assignment through the one grant/revoke authority
+    # (app/models/user.py) instead of each route re-deriving its own copy,
+    # and sync the OrgRole table so team-management routes (which read
+    # OrgRole via rbac_service.is_org_admin) see the same answer.  This route
+    # only ever reaches a user whose own organization_id equals org_id
+    # (checked above), so this is always a grant/revoke in their own
+    # organisation.
+    if user.is_admin():
+        user.revoke_org_admin()
+        OrgRole.query.filter_by(
+            organization_id=org_id, user_id=user_id
+        ).delete(synchronize_session=False)
+    else:
+        user.grant_org_admin()
+        OrgRole.set_role(org_id, user_id, "org_admin")
     db.session.commit()
-    role_label = "granted" if user.is_org_admin else "revoked"
+    role_label = "granted" if user.is_admin() else "revoked"
     flash(f'Org-admin role {role_label} for {user.full_name() or user.email}.', "success")
     return redirect(url_for("admin.organization_detail", org_id=org_id))
 
@@ -5624,9 +5648,22 @@ def organization_delete(org_id):
         flash("Cannot delete — no Default organization to reassign users.", "error")
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
-    moved = User.query.filter_by(organization_id=org.id).update(
-        {"organization_id": default_org.id, "is_org_admin": False},
-        synchronize_session=False,
+    # Move all users to Default org.  Preserve each user's existing role;
+    # only downgrade users who currently hold the Administrator role (the
+    # system of record for org-admin).  A Viewer stays a Viewer, an Architect
+    # stays an Architect — only an Administrator is reset to the default role
+    # (a no-op for a platform admin — see User.revoke_org_admin).
+    users = User.query.filter_by(organization_id=org.id).all()
+    moved = 0
+    for user in users:
+        user.organization_id = default_org.id
+        if user.is_admin():
+            user.revoke_org_admin()
+        moved += 1
+    # Remove OrgRole rows for the deleted organisation so no stale
+    # per-organisation role grants survive.
+    OrgRole.query.filter_by(organization_id=org.id).delete(
+        synchronize_session=False
     )
 
     org_name = org.name
@@ -5656,7 +5693,17 @@ def remove_user_from_org(org_id, user_id):
         return redirect(url_for("admin.organization_detail", org_id=org_id))
 
     user.organization_id = default_org.id
-    user.is_org_admin = False
+    # Preserve the user's existing role.  Only downgrade users who currently
+    # hold the Administrator role (the system of record for org-admin).
+    # A Viewer stays a Viewer, an Architect stays an Architect (and this is a
+    # no-op for a platform admin — see User.revoke_org_admin).
+    if user.is_admin():
+        user.revoke_org_admin()
+    # Remove OrgRole rows for the old organisation so team-management
+    # routes (which read OrgRole via rbac_service) see the same answer.
+    OrgRole.query.filter_by(
+        organization_id=org_id, user_id=user_id
+    ).delete(synchronize_session=False)
     db.session.commit()
     flash(f'{user.full_name() or user.email} moved to Default organization.', "success")
     return redirect(url_for("admin.organization_detail", org_id=org_id))
