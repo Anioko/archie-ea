@@ -1,7 +1,7 @@
 """Add agent_charters and agent_run_records tables.
 
 Revision ID: 20261002_agent_charters
-Revises: 20261001_risk_score_fields
+Revises: 20261001_approval_nullable
 Create Date: 2026-10-02
 """
 from alembic import op
@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.commands.schema_migrations import ContractBlocked
 
 revision = "20261002_agent_charters"
-down_revision = "20261001_risk_score_fields"
+down_revision = "20261001_approval_nullable"
 branch_labels = None
 depends_on = None
 
