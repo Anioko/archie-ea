@@ -17,12 +17,28 @@ from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from app import db
+from app.middleware.tenant_decorators import is_platform_admin
 from app.models.ai_service import AIPromptTemplate
 from app.modules.ai_chat.services.multi_domain_chat_service import PERSONA_CONFIGS
 
 from . import unified_ai_chat_bp
 
 logger = logging.getLogger(__name__)
+
+
+def _require_platform_admin():
+    """Abort 403 if current user is not a platform admin.
+
+    AIPromptTemplate carries no tenant column -- a persona override saved
+    here replaces that persona's system prompt for every organisation's AI
+    chat, the same platform-wide shape as the solution-prompt overrides
+    fixed in PR #307 (app/modules/admin/routes/solution_prompt_admin.py).
+    _require_admin() (below) checks org-level ADMINISTER, which any
+    organisation's own admin holds -- wrong for a platform-wide write.
+    Found by scripts/check_platform_admin_coverage.py.
+    """
+    if not is_platform_admin(current_user):
+        abort(403)
 
 
 def _require_admin():
@@ -110,9 +126,12 @@ def admin_prompts_data():
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/update", methods=["POST"])
 @login_required
+# platform-admin-ok: guarded by an in-body call to _require_platform_admin()
+# above, not a decorator -- check_platform_admin_coverage.py only recognises
+# the decorator form.
 def admin_prompt_update(persona_key):
     """Update (or create) a DB override for a persona's prompt config."""
-    _require_admin()
+    _require_platform_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404
@@ -165,9 +184,12 @@ def admin_prompt_update(persona_key):
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/reset", methods=["POST"])
 @login_required
+# platform-admin-ok: guarded by an in-body call to _require_platform_admin()
+# below, not a decorator -- check_platform_admin_coverage.py only recognises
+# the decorator form.
 def admin_prompt_reset(persona_key):
     """Remove the DB override for a persona, reverting to hardcoded defaults."""
-    _require_admin()
+    _require_platform_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404

@@ -220,3 +220,31 @@ def test_a_bare_marker_with_no_reason_does_not_clear_the_route(tmp_path):
     """)
 
     assert len(hits) == 1
+
+
+def test_named_platform_models_is_the_confirmed_real_five():
+    """pr321-review-v1 nit 3: the narrow ratchet is scoped to exactly the
+    five models every PR this session actually fixed -- not a stand-in for
+    "every unfenced model", which is the broad scan's (noisier) job."""
+    assert gate.NAMED_PLATFORM_MODELS == {
+        "ExternalSystem", "Job", "AIPromptTemplate", "ScoringConfiguration", "FeatureFlag",
+    }
+
+
+def test_named_count_filters_hits_to_only_named_models(tmp_path):
+    """The --named-count filter (verified at the main()/CLI boundary): a hit
+    on a model outside NAMED_PLATFORM_MODELS (PlatformWide, this fake tree's
+    stand-in for the broad scan's FK-scoped-parent noise) must not count
+    toward the narrow ratchet, even though it correctly counts toward the
+    broad one."""
+    hits = _scan(tmp_path, """
+        @bp.route("/settings", methods=["POST"])
+        @admin_required
+        def save_settings():
+            row = PlatformWide(name=request.json["name"])
+            db.session.add(row)
+    """)
+
+    assert len(hits) == 1
+    named_hits = [h for h in hits if set(h["models"]) & gate.NAMED_PLATFORM_MODELS]
+    assert named_hits == []

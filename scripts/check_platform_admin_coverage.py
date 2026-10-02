@@ -67,6 +67,13 @@ above it says why the write is safe without the gate (for example: the body
 only ever reads the model to look up a value already proven tenant-owned by an
 earlier predicate in the same function, and never constructs or mutates a row).
 
+Proven-against: reverting app/modules/ai_chat/routes/chat_admin_routes.py's
+admin_prompt_update/admin_prompt_reset from the in-body _require_platform_admin()
+call back to the original _require_admin() -- the real AIPromptTemplate instance
+this gate's own --named-count sub-gate exists to catch -- the broad scan (with its
+``platform-admin-ok`` markers temporarily removed) flags both again. Pinned in
+tests/test_check_platform_admin_coverage.py's bare-read and mutation-shape tests.
+
     python scripts/check_platform_admin_coverage.py --models   # list in-scope platform-wide models
 """
 
@@ -89,6 +96,19 @@ GATE_DECORATOR = "platform_admin_required"
 
 # Directories with no HTTP routes, or that run across tenants on purpose.
 SKIP_DIRS = ("app/models/", "app/commands/", "app/_bootstrap/", "app/tasks/")
+
+# Confirmed-real singleton-config models: no tenant column AND no FK to a
+# fenced parent either -- genuinely nothing to scope a write to but
+# "platform admin or not". Most of the broad scan's hits are the OTHER
+# shape (a child row scoped via a foreign key to an already-fenced parent,
+# e.g. CodegenGeneration.solution_id -> Solution), where demanding
+# platform_admin_required would be wrong. This list is the ratchet that
+# should actually reach and hold at 0 -- see --named-count and the
+# "named-platform-admin-coverage" gate in verify.py (nit 3,
+# pr321-review-v1, the independent read review on PR #321).
+NAMED_PLATFORM_MODELS = {
+    "ExternalSystem", "Job", "AIPromptTemplate", "ScoringConfiguration", "FeatureFlag",
+}
 
 
 def _load_untenanted_reads():
@@ -306,6 +326,11 @@ def main() -> int:
     parser.add_argument("--count", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--models", action="store_true", help="list in-scope platform-wide models")
+    parser.add_argument(
+        "--named-count", action="store_true",
+        help="count only hits on NAMED_PLATFORM_MODELS -- the confirmed-real singleton-config "
+             "models, not the broad FK-scoped-child noise. See NAMED_PLATFORM_MODELS.",
+    )
     args = parser.parse_args()
     models = platform_wide_models()
     if args.models:
@@ -314,6 +339,17 @@ def main() -> int:
         print(len(models))
         return 0
     hits = scan(models=models)
+    if args.named_count:
+        named_hits = [h for h in hits if set(h["models"]) & NAMED_PLATFORM_MODELS]
+        if not args.count:
+            for hit in sorted(named_hits, key=lambda h: (h["file"], h["line"])):
+                print(
+                    f"  {hit['file']}:{hit['line']}: {hit['function']}() accepts "
+                    f"{'/'.join(hit['methods'])} and writes {'/'.join(hit['models'])} "
+                    f"with no @platform_admin_required"
+                )
+        print(len(named_hits))
+        return 0
     if args.json:
         print(json.dumps({"models": len(models), "hits": hits}, indent=2))
         return 0
@@ -327,7 +363,12 @@ def main() -> int:
             f"with no @platform_admin_required"
         )
     print(f"\n{len(hits)} unguarded write route(s) on {len(models)} platform-wide model(s)")
-    print(f"Add @platform_admin_required, or `# {MARKER}: <reason>`. See the module docstring.")
+    print(
+        "Confirm the model is really platform-wide, then add @platform_admin_required -- "
+        "if it is instead scoped through a foreign key to a tenant-fenced parent, that "
+        f"decorator is wrong; add `# {MARKER}: <reason>` and verify the parent-ownership "
+        "fence instead. See the module docstring."
+    )
     print(len(hits))
     return 0
 
