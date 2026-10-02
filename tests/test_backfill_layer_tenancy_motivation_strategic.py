@@ -133,7 +133,10 @@ def test_not_null_fk_tables_always_resolve(db_session, make_org):
         "capability_health_overrides", "programme_snapshots", "solution_adr_links",
     )
 
-    from app.models.adr import ArchitectureDecisionRecord
+    # SolutionADRLink.adr_id references architecture_decisions (the
+    # canonical register, app/models/architecture_decision.py) since PR
+    # 305 -- not the legacy architecture_decision_records table.
+    from app.models.architecture_decision import ArchitectureDecision
 
     sol_a = _solution(db_session, org_a)
     init_b = _initiative(db_session, org_b)
@@ -144,8 +147,8 @@ def test_not_null_fk_tables_always_resolve(db_session, make_org):
         created_by_id=user_a.id, organization_id=org_b.id,
     )
     # SolutionADRLink.adr_id is NOT NULL -- a minimal valid record to link to.
-    adr = ArchitectureDecisionRecord(
-        adr_number=1, title="T", context="C", decision="D", rationale="R",
+    adr = ArchitectureDecision(
+        title="T", context="C", decision="D", rationale="R",
         consequences="Q", organization_id=org_b.id,
     )
     db_session.add_all([session_b, adr])
