@@ -391,9 +391,8 @@ RESTORE_ROLES = ("enterprise_architect",)
 
 def _restore_gate():
     """Who may restore: administrators (organisation or platform) and enterprise
-    architects.  The ``platform_admin`` enterprise role is treated as authority
-    only when the ``is_platform_admin`` flag is also set, so the default title
-    alone never grants access."""
+    architects. The stored ``platform_admin`` title is the default for every
+    member, so it is never treated as authority here."""
     from flask import abort
 
     from app.middleware.tenant_decorators import is_platform_admin
@@ -402,8 +401,6 @@ def _restore_gate():
     if getattr(current_user, "is_org_admin", False) or is_platform_admin(current_user):
         return
     if get_user_role(current_user) in RESTORE_ROLES:
-        return
-    if get_user_role(current_user) == "platform_admin" and getattr(current_user, "is_platform_admin", False):
         return
     abort(403)
 
