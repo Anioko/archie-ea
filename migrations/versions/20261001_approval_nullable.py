@@ -12,7 +12,7 @@ Idempotent: PostgreSQL's ``DROP NOT NULL`` is a no-op on an already-nullable
 column.
 
 Revision ID: 20261001_approval_nullable
-Revises: 20261001_risk_score_fields
+Revises: 20261001_adr_canonical_cols
 Create Date: 2026-10-01
 """
 from alembic import op
@@ -25,7 +25,7 @@ from app.commands.schema_migrations import ContractBlocked
 # under that length, the same constraint every revision after the baseline
 # already satisfies.
 revision = "20261001_approval_nullable"
-down_revision = "20261001_risk_score_fields"
+down_revision = "20261001_adr_canonical_cols"
 branch_labels = None
 depends_on = None
 
