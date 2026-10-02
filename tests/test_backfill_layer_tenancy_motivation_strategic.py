@@ -207,34 +207,36 @@ def test_goals_falls_back_from_element_to_driver_to_creator(db_session, make_org
 
 
 def test_stakeholders_falls_back_from_element_to_creator(db_session, make_org):
+    from sqlalchemy import insert
+
     from app.models.motivation import Stakeholder
 
     org_a = make_org("stk-a")
     org_b = make_org("stk-b")
-    # archimate_elements too: via_creator has no element yet, so the
-    # before_insert listener (create_stakeholder_archimate) auto-creates one
-    # from the still-NULL (pre-backfill) organization_id being tested here.
-    _drop_not_null(db_session, "stakeholders", "archimate_elements")
+    _drop_not_null(db_session, "stakeholders")
 
     el_a = _element(db_session, org_a, type_="Stakeholder")
     user_b = _user(db_session, org_b)
 
     via_element = Stakeholder(name="S-element", archimate_element_id=el_a.id, organization_id=None)
-    via_creator = Stakeholder(name="S-creator", created_by_id=user_b.id, organization_id=None)
-    db_session.add_all([via_element, via_creator])
+    db_session.add(via_element)
+
+    # A legacy row written before create_stakeholder_archimate existed: a
+    # raw Core insert bypasses that before_insert listener, so
+    # archimate_element_id stays genuinely NULL -- unlike any row the ORM
+    # constructor can produce today, which always gets one. This is the one
+    # shape the creator-fallback branch below actually exists for.
+    via_creator_id = db_session.execute(
+        insert(Stakeholder.__table__).values(
+            name="S-creator", created_by_id=user_b.id, organization_id=None,
+        )
+    ).inserted_primary_key[0]
     db_session.flush()
 
-    # via_creator's before_insert listener (create_stakeholder_archimate) auto-
-    # created its own companion ArchiMateElement with the same still-NULL
-    # organization_id being tested here; that element has no creator/element
-    # link of its own for the sweep to derive, so with two organizations
-    # present it is a genuine orphan needing the explicit fallback -- the
-    # per-row derivation under test (via_element from its element, via_creator
-    # from its creator) is unaffected by which org a true orphan falls back to.
-    repair_layer_tenancy(org_id=org_a.id)
+    repair_layer_tenancy()
 
     db_session.refresh(via_element)
-    db_session.refresh(via_creator)
+    via_creator = db_session.get(Stakeholder, via_creator_id)
     assert via_element.organization_id == org_a.id
     assert via_creator.organization_id == org_b.id
 
