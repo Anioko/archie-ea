@@ -354,7 +354,7 @@ class TestHandlerDispatch:
             "submit_for_arb_review",
         ]
         for name in sample_tools:
-            schema = TOOL_SCHEMA_BY_NAME.get(name)
+            _ = TOOL_SCHEMA_BY_NAME.get(name)
             # Verify the handler method exists
             handler = getattr(executor, f"_tool_{name}", None)
             assert handler is not None, (
