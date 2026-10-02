@@ -448,9 +448,9 @@ def test_capability_map_div_tree_is_balanced(app, db_session, make_org, tenant_c
     opens = len(re.findall(r"<div\b", html))
     closes = len(re.findall(r"</div\s*>", html))
     # The one pre-existing orphan closing </div> this test used to tolerate
-    # is gone (fixed by an unrelated change) -- the page is now perfectly
-    # balanced. Checked exactly, so a new orphan introduced by a future edit
-    # still fails this test.
+    # was fixed upstream (fe15b627, naming the icon button for screen
+    # readers touched these templates) -- exact balance now, so a new
+    # orphan introduced by a future edit still fails this test.
     assert closes == opens, (
-        f"div balance drifted: {opens} opens, {closes} closes (expected exactly balanced)"
+        f"div balance drifted: {opens} opens, {closes} closes (expected exact balance)"
     )
