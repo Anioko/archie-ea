@@ -79,9 +79,21 @@ def upgrade():
         ON agent_run_records (created_at)
     """))
 
+    # Add persona column to ai_chat_crud_approvals so the charter can be
+    # enforced when a queued tool call is approved and executed.
+    bind.execute(text("""
+        ALTER TABLE ai_chat_crud_approvals
+        ADD COLUMN IF NOT EXISTS persona VARCHAR(80)
+    """))
+
 
 def downgrade():
     bind = op.get_bind()
+    # Drop persona column from ai_chat_crud_approvals (safe: nullable, no FK)
+    bind.execute(text("""
+        ALTER TABLE ai_chat_crud_approvals
+        DROP COLUMN IF EXISTS persona
+    """))
     charter_rows = bind.execute(text("SELECT count(*) FROM agent_charters")).scalar()
     if charter_rows:
         raise ContractBlocked(

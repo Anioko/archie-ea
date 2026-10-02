@@ -580,7 +580,7 @@ class AgentRunner:
                     # (destructive/significant regardless of the gate), or it
                     # mutates and this session has auto-execute off - the
                     # write-approval gate described in toggle_auto_execute.
-                    approval_id = self._queue_approval(tc)
+                    approval_id = self._queue_approval(tc, persona=persona)
                     pending_approvals.append({
                         "approval_id": approval_id,
                         "tool": tc.name,
@@ -1061,7 +1061,7 @@ class AgentRunner:
             return True
         return False
 
-    def _queue_approval(self, tc: "ToolCall") -> int:
+    def _queue_approval(self, tc: "ToolCall", persona: Optional[str] = None) -> int:
         """Write a pending AIChatCRUDApproval record and return its ID."""
         from app.modules.ai_chat.services.ai_chat_approval_service import (
             _load_acting_user,
@@ -1087,6 +1087,7 @@ class AgentRunner:
             chat_session_id=self.chat_session_id,
             agent_turn_id=self._turn_id,
             expiry_minutes=24 * 60,  # unchanged: this caller's own 24h window
+            persona=persona,
         )
         return approval.id
 
@@ -1190,10 +1191,12 @@ class AgentRunner:
         outcome: str,
         success: bool,
         model_used: Optional[str] = None,
-    ) -> None:
+    ) -> Optional[str]:
         """Write one AgentRunRecord for this agent invocation.
         
-        Never raises — a failed record must not cost the turn.
+        Returns None on success, or an error string if the record could not be
+        written. The caller (``_finalize``) surfaces this in the result dict so
+        the caller can act on it instead of silently losing the record.
         """
         try:
             from flask import g, has_request_context
@@ -1261,8 +1264,10 @@ class AgentRunner:
             from app import db as _rr_db
             _rr_db.session.add(record)
             _rr_db.session.commit()
+            return None
         except Exception:
             logger.warning("AgentRunner: failed to write run record", exc_info=True)
+            return "Run record could not be written — the run completed but was not recorded"
 
     def _finalize(
         self,
@@ -1274,7 +1279,7 @@ class AgentRunner:
         model_used: Optional[str] = None,
     ) -> dict:
         """Record the run and return the result dict."""
-        self._record_run(
+        record_error = self._record_run(
             persona=persona,
             domain=domain,
             user_message=user_message,
@@ -1286,6 +1291,8 @@ class AgentRunner:
             success=not result.get("error"),
             model_used=model_used,
         )
+        if record_error:
+            result["run_record_error"] = record_error
         return result
 
     def _text_only_fallback(
