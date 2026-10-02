@@ -347,6 +347,76 @@
         </template>
     </div>
 
+    {# Read-only: when the indirect connections were last worked out, what each
+       recent run found, and how many are now out of date and why. Every figure
+       is read from the run records and the worked-out connection store; a
+       figure that was never measured reads as a dash. #}
+    {% set stale_reason_words = {
+        'relationship_created': 'a relationship was added',
+        'relationship_updated': 'a relationship was changed',
+        'relationship_deleted': 'a relationship was removed',
+        'element_deleted': 'an element was removed',
+        'bulk_operation': 'several records were changed at once',
+    } %}
+    <section class="rounded-xl border border-border bg-card p-6" data-derivation-status aria-labelledby="derivation-status-heading">
+        <h2 id="derivation-status-heading" class="text-lg font-semibold text-foreground">Indirect connections</h2>
+        {% if derivation_status is none %}
+        <p class="mt-2 text-sm text-muted-foreground" data-derivation-status-unavailable>We could not read when these were last worked out.</p>
+        {% else %}
+        {% set last = derivation_status.last_run %}
+        <dl class="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-3">
+            <div>
+                <dt class="text-muted-foreground">Last worked out</dt>
+                <dd class="text-foreground" data-derivation-last-run>{{ last.finished_at | format_datetime if last and last.finished_at else '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">Current</dt>
+                <dd class="text-foreground" data-derivation-current>{{ derivation_status.current_count if last else '—' }}</dd>
+            </div>
+            <div>
+                <dt class="text-muted-foreground">May be out of date</dt>
+                <dd class="text-foreground" data-derivation-stale>{{ derivation_status.stale_count if last else '—' }}</dd>
+            </div>
+        </dl>
+        {% if derivation_status.stale_reasons %}
+        <ul class="mt-3 space-y-1 text-sm text-foreground" data-derivation-stale-reasons>
+            {% for reason, count in derivation_status.stale_reasons %}
+            <li>{{ count }} out of date because {{ stale_reason_words.get(reason, 'the model changed') }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+        {% if derivation_status.runs %}
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-sm" data-derivation-runs>
+                <caption class="sr-only">Recent runs</caption>
+                <thead>
+                    <tr class="border-b border-border text-left text-muted-foreground">
+                        <th scope="col" class="py-2 pr-4 font-medium">Finished</th>
+                        <th scope="col" class="py-2 pr-4 font-medium">Started by</th>
+                        <th scope="col" class="py-2 pr-4 font-medium">Relationships read</th>
+                        <th scope="col" class="py-2 pr-4 font-medium">Connections found</th>
+                        <th scope="col" class="py-2 pr-4 font-medium">Time taken</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in derivation_status.runs %}
+                    <tr class="border-b border-border last:border-0" data-derivation-run>
+                        <td class="py-2 pr-4">{{ run.finished_at | format_datetime if run.finished_at else '—' }}</td>
+                        <td class="py-2 pr-4">{{ {'on_demand': 'A person', 'scheduled': 'The schedule'}.get(run.trigger, '—') }}</td>
+                        <td class="py-2 pr-4">{{ run.explicit_count if run.explicit_count is not none else '—' }}</td>
+                        <td class="py-2 pr-4">{{ run.derived_count if run.derived_count is not none else '—' }}</td>
+                        <td class="py-2 pr-4">{{ (run.duration_ms ~ ' ms') if run.duration_ms is not none else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="mt-3 text-sm text-muted-foreground" data-derivation-never-run>Not worked out yet.</p>
+        {% endif %}
+        {% endif %}
+    </section>
+
     {{ provenance_drawer() }}
     {% endcall %}
 </div>

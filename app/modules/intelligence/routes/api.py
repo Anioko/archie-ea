@@ -42,10 +42,10 @@ _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 _FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
 
-# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
-# already gates rationalization/TCO/procurement views to this same set) --
-# reused, not a new authority list invented for this endpoint.
-_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
+# The single cost-visibility rule lives in role_access.py so every
+# surface that redacts financial figures shares one authority.  Import it;
+# do not define a second list.
+from app.utils.role_access import COST_VISIBILITY_ROLES, get_user_role
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
@@ -67,9 +67,7 @@ def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: 
     can't see this." A caller with budget authority sees the real value and
     this function is a no-op for them.
     """
-    from app.utils.role_access import get_user_role
-
-    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+    if get_user_role(current_user) in COST_VISIBILITY_ROLES:
         return
     for row in rows:
         for field in fields:
