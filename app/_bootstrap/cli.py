@@ -494,6 +494,14 @@ def init_cli(app):
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register demo company seed CLI: {e}")
 
+# Application owners backfill
+    try:
+        from app.commands import backfill_application_owners
+        backfill_application_owners.init_app(app)
+        app.logger.info("✅ Application owners backfill CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register application owners backfill CLI: {e}")
+
     try:
         from app.commands.clear_foreign_assignees import init_app as init_clear_foreign_assignees
         init_clear_foreign_assignees(app)
