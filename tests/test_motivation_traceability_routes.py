@@ -271,7 +271,7 @@ class TestDriverWrite:
         org_a = make_org(f"driver-iso-a-{suffix}")
         org_b = make_org(f"driver-iso-b-{suffix}")
         user_a = _user(db_session, org_a.id, f"a-{suffix}")
-        user_b = _user(db_session, org_b.id, f"b-{suffix}")
+        _user(db_session, org_b.id, f"b-{suffix}")  # decoy user for org B
 
         # Create driver in org A
         login_as(client, user_a)
@@ -367,7 +367,7 @@ class TestAssessmentWrite:
         org_a = make_org(f"assess-iso-a-{suffix}")
         org_b = make_org(f"assess-iso-b-{suffix}")
         user_a = _user(db_session, org_a.id, f"a-{suffix}")
-        user_b = _user(db_session, org_b.id, f"b-{suffix}")
+        _user(db_session, org_b.id, f"b-{suffix}")  # decoy user for org B
 
         driver_a = Driver(
             name=f"Driver A {suffix}",

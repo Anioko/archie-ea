@@ -1308,7 +1308,7 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def create_driver(data: Dict, organization_id: int) -> "Driver":
+    def create_driver(data: Dict, organization_id: int):
         """Create a Driver record with source, date and owner.
 
         Args:
@@ -1319,8 +1319,6 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
         Returns:
             The created Driver instance.
         """
-        from datetime import date
-
         from app.models.motivation import Driver
 
         driver = Driver(
@@ -1336,7 +1334,7 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
         return driver
 
     @staticmethod
-    def create_assessment(driver_id: int, data: Dict, organization_id: int) -> "Assessment":
+    def create_assessment(driver_id: int, data: Dict, organization_id: int):
         """Create an Assessment row against a Driver.
 
         Args:
@@ -1392,7 +1390,6 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
         from app.models.unified_capability import UnifiedCapability
         from app.models.unified_work_package import UnifiedWorkPackage
         from app.models.implementation_migration import WorkPackage
-        from app.models.vendor.vendor_organization import EnterpriseInitiative
 
         goal = Goal.query.filter_by(id=goal_id, organization_id=organization_id).first()
         if goal is None:
