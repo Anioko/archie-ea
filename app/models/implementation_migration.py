@@ -598,10 +598,26 @@ class Gap(TenantMixin, db.Model):
     Which one is recorded in `gap_kind`. See the note above the class: these are
     different concepts that shared a name, and reporting them as one number is
     how two screens came to disagree.
+
+    TenantMixin declares organization_id NOT NULL, but gaps merged from
+    superseded stores (roadmap_gaps, implementation_gaps, compliance_gaps)
+    cannot always be attributed to an organisation. Override the column to
+    nullable so an unattributable merged row is quarantined
+    (organization_id=NULL) -- invisible to every tenant, never a guess, since
+    the tenant filter's equality comparison never matches a NULL. The
+    gap_register_service.create_gap writer always requires an
+    organisation_id, so direct writes are scoped.
     """
 
     __tablename__ = "gaps"
     __table_args__ = {"extend_existing": True}
+
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     gap_kind = db.Column(
@@ -658,6 +674,14 @@ class Gap(TenantMixin, db.Model):
     # Source capability reference (polymorphic link to capability that has the gap)
     source_capability_type = db.Column(db.String(20), index=True)  # business, technical, process
     source_capability_id = db.Column(db.Integer, index=True)
+
+    # Provenance for a row merged in from a superseded gap store (roadmap_gaps,
+    # implementation_gaps, compliance_gaps -- see app/commands/consolidate_gaps.py).
+    # NULL on a row created directly against this table. Together, unique per
+    # source row (enforced by the merge's NOT EXISTS check, not a DB
+    # constraint -- reconcile-schema is ADD-COLUMN-nullable-only, ADR 0002).
+    source_table = db.Column(db.String(64), nullable=True, index=True)
+    source_id = db.Column(db.Integer, nullable=True, index=True)
 
     # Timeline for roadmap display
     estimated_start_date = db.Column(db.Date)  # When gap resolution should begin

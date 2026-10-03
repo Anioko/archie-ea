@@ -516,3 +516,11 @@ def init_cli(app):
         app.logger.info("✅ Solution risk merge backfill CLI command registered")
     except Exception as e:
         app.logger.warning(f"⚠️  Failed to register solution risk merge backfill CLI: {e}")
+
+    # Gap register consolidation: merge roadmap_gaps, implementation_gaps and compliance_gaps into gaps
+    try:
+        from app.commands.consolidate_gaps import init_app as init_consolidate_gaps
+        init_consolidate_gaps(app)
+        app.logger.info("✅ Gap register consolidation CLI command registered")
+    except Exception as e:
+        app.logger.warning(f"⚠️  Failed to register gap register consolidation CLI: {e}")
