@@ -194,8 +194,8 @@ def test_stored_report_org_isolation_with_real_detector(app, db_session, make_or
 # --------------------------------------------------------------------------- #
 # Page reads stored report — "not yet computed" and computed time              #
 # --------------------------------------------------------------------------- #
-def test_page_shows_not_yet_computed_when_no_report(app, db_session, make_org, login_as):
-    """GET /genome/model-health shows 'Not yet computed' when no stored report."""
+def test_page_shows_pending_state_when_no_report(app, db_session, make_org, login_as):
+    """GET /genome/model-health shows pending state when no stored report exists."""
     from app.models.user import User
 
     with app.app_context():
@@ -214,7 +214,7 @@ def test_page_shows_not_yet_computed_when_no_report(app, db_session, make_org, l
         resp = client.get("/genome/model-health/")
         assert resp.status_code == 200
         html = resp.data.decode("utf-8")
-        assert "Not yet computed" in html
+        assert "first health scan is being prepared" in html
 
 
 def test_page_shows_computed_time_when_report_exists(app, db_session, make_org, login_as):
@@ -313,7 +313,7 @@ def test_page_shows_render_error_only_for_the_broken_org(app, db_session, make_o
 
         assert response_b.status_code == 200
         html_b = response_b.data.decode("utf-8")
-        assert "Not yet computed" in html_b
+        assert "first health scan is being prepared" in html_b
         assert "Stored model-health report could not be rendered." not in html_b
         assert "corrupt-json-shape-for-org-a" not in html_b
 
@@ -337,9 +337,9 @@ def test_rescan_runs_detector_and_stores_report(app, db_session, make_org, login
         client = app.test_client()
         login_as(client, user)
 
-        # Before rescan, no report exists
+        # Before rescan, no report exists — pending state
         resp = client.get("/genome/model-health/")
-        assert "Not yet computed" in resp.data.decode("utf-8")
+        assert "first health scan is being prepared" in resp.data.decode("utf-8")
 
         # Trigger rescan
         resp = client.post("/genome/model-health/rescan", follow_redirects=True)
@@ -479,3 +479,123 @@ def test_model_health_scan_job_runs_per_organisation(app, db_session, make_org):
         assert stored_b is not None
         assert stored_a.report_json["organization_id"] == org_a.id
         assert stored_b.report_json["organization_id"] == org_b.id
+
+
+# --------------------------------------------------------------------------- #
+# Pending state — page shows "first health scan is being prepared"            #
+# --------------------------------------------------------------------------- #
+def test_pending_state_enqueues_at_most_once_per_org(app, db_session, make_org, login_as):
+    """Visiting the page twice with no stored report enqueues only one job."""
+    from app.models.job import Job, JobStatus
+    from app.models.user import User
+
+    with app.app_context():
+        org = make_org("pending-once")
+        user = User(
+            email=f"drift-pending-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org.id,
+            confirmed=True,
+        )
+        user.password_hash = "x"
+        db_session.add(user)
+        db_session.flush()
+
+        client = app.test_client()
+        login_as(client, user)
+
+        # First visit — no stored report, should enqueue a job
+        resp1 = client.get("/genome/model-health/")
+        assert resp1.status_code == 200
+        html1 = resp1.data.decode("utf-8")
+        assert "first health scan is being prepared" in html1
+
+        pending_jobs = (
+            db_session.query(Job)
+            .filter(
+                Job.task == "model_health_scan",
+                Job.status.in_([JobStatus.PENDING.value, JobStatus.IN_PROGRESS.value]),
+            )
+            .all()
+        )
+        org_jobs = [
+            j for j in pending_jobs
+            if (j.payload or {}).get("organization_id") == org.id
+        ]
+        assert len(org_jobs) == 1
+
+        # Second visit — job already pending, must not enqueue another
+        resp2 = client.get("/genome/model-health/")
+        assert resp2.status_code == 200
+        html2 = resp2.data.decode("utf-8")
+        assert "first health scan is being prepared" in html2
+
+        pending_jobs_after = (
+            db_session.query(Job)
+            .filter(
+                Job.task == "model_health_scan",
+                Job.status.in_([JobStatus.PENDING.value, JobStatus.IN_PROGRESS.value]),
+            )
+            .all()
+        )
+        org_jobs_after = [
+            j for j in pending_jobs_after
+            if (j.payload or {}).get("organization_id") == org.id
+        ]
+        assert len(org_jobs_after) == 1
+
+
+def test_pending_state_two_orgs_independent(app, db_session, make_org, login_as):
+    """Each organisation gets its own pending job; one does not block the other."""
+    from app.models.job import Job, JobStatus
+    from app.models.user import User
+
+    with app.app_context():
+        org_a = make_org("pending-a")
+        org_b = make_org("pending-b")
+        user_a = User(
+            email=f"drift-pending-a-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org_a.id,
+            confirmed=True,
+        )
+        user_b = User(
+            email=f"drift-pending-b-{uuid.uuid4().hex[:8]}@example.com",
+            organization_id=org_b.id,
+            confirmed=True,
+        )
+        user_a.password_hash = "x"
+        user_b.password_hash = "x"
+        db_session.add_all([user_a, user_b])
+        db_session.flush()
+
+        client_a = app.test_client()
+        login_as(client_a, user_a)
+        resp_a = client_a.get("/genome/model-health/")
+        assert resp_a.status_code == 200
+        assert "first health scan is being prepared" in resp_a.data.decode("utf-8")
+
+        client_b = app.test_client()
+        login_as(client_b, user_b)
+        resp_b = client_b.get("/genome/model-health/")
+        assert resp_b.status_code == 200
+        assert "first health scan is being prepared" in resp_b.data.decode("utf-8")
+
+        pending_jobs = (
+            db_session.query(Job)
+            .filter(
+                Job.task == "model_health_scan",
+                Job.status.in_([JobStatus.PENDING.value, JobStatus.IN_PROGRESS.value]),
+            )
+            .all()
+        )
+        org_a_jobs = [
+            j for j in pending_jobs
+            if (j.payload or {}).get("organization_id") == org_a.id
+        ]
+        org_b_jobs = [
+            j for j in pending_jobs
+            if (j.payload or {}).get("organization_id") == org_b.id
+        ]
+        assert len(org_a_jobs) == 1
+        assert len(org_b_jobs) == 1
+        # Different jobs
+        assert org_a_jobs[0].id != org_b_jobs[0].id

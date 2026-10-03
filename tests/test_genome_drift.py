@@ -285,7 +285,7 @@ def test_index_shows_error_not_empty_state_for_unreadable_stored_report(
     resp_no_row = client.get("/genome/model-health/")
     assert resp_no_row.status_code == 200
     body_no_row = resp_no_row.get_data(as_text=True)
-    assert "Not yet computed" in body_no_row
+    assert "first health scan is being prepared" in body_no_row
     assert "could not be rendered" not in body_no_row
 
 
