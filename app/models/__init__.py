@@ -334,6 +334,9 @@ else:
     # H1: Risk <-> Application/Solution/Programme links
     from .risk_entity_link import RiskEntityLink  # noqa: F401
 
+    # One inherent/residual score history row per change to a Risk
+    from .risk_score_history import RiskScoreHistory, SCORE_KINDS  # noqa: F401
+
     # RAID: Assumption/Issue/Dependency (Risk above already covers the "R")
     from .raid_item import RaidItem, RaidKind, RaidStatus  # noqa: F401
 
@@ -457,3 +460,8 @@ else:
     # The one audit store. Imported at boot so its integrity-chain and
     # copy-from-other-audit-stores hooks are registered before any insert.
     from .audit_log import AuditLog  # noqa: F401
+
+    # One version per change to an element/relationship, written by
+    # the generic trigger (flask apply-entity-history-trigger). Imported at
+    # boot so create_all()/reconcile-schema know about the table.
+    from .entity_history import EntityHistory  # noqa: F401
