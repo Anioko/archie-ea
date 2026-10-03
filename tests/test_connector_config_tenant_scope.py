@@ -146,17 +146,30 @@ class TestConnectorConfigModelIsTenantScoped:
         self, db_session, org_a, tenant_ctx
     ):
         """A row backfilled to NULL (origin undeterminable) is hidden from
-        every organisation, not shared with all of them."""
-        from app.models.connector_config import ConnectorConfig
+        every organisation, not shared with all of them.
 
-        orphan = ConnectorConfig(
-            connector_type="m365", name="Undated M365", config={}, organization_id=None
-        )
-        db_session.add(orphan)
+        Uses raw SQL to bypass the ``_default_org_id`` column default on
+        ``ConnectorConfig.organization_id``, which would otherwise fill the
+        single organisation's id into a row explicitly set to NULL.
+        """
+        from app.extensions import db
+        from sqlalchemy import text
+
+        orphan_id = db.session.execute(
+            text(
+                "INSERT INTO connector_configs "
+                "(id, connector_type, name, config, organization_id) "
+                "VALUES (:id, 'm365', 'Undated M365', '{}', NULL) "
+                "RETURNING id"
+            ),
+            {"id": str(uuid.uuid4())},
+        ).scalar()
         db_session.flush()
 
         with tenant_ctx(org_a.id):
-            found = ConnectorConfig.query.filter_by(id=orphan.id).first()
+            from app.models.connector_config import ConnectorConfig
+
+            found = ConnectorConfig.query.filter_by(id=orphan_id).first()
 
         assert found is None, (
             "A connector config with no recorded organisation must not be visible "

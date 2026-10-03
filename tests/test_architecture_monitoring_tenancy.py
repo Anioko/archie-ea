@@ -490,6 +490,43 @@ def test_mixin_stamps_organization_id_on_insert_without_explicit_value(
 # ------------------------------------------------------------------ (8) backfill
 
 
+def _snapshot_org_nullability(app):
+    """Record which tables have organization_id nullable before repair_layer_tenancy runs."""
+    from app import db
+    from sqlalchemy import text
+
+    with app.app_context():
+        with db.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT table_name, is_nullable FROM information_schema.columns "
+                    "WHERE column_name = 'organization_id' AND table_schema = 'public'"
+                )
+            ).fetchall()
+            return {row.table_name: row.is_nullable for row in rows}
+
+
+def _restore_org_nullability(app, snapshot):
+    """Restore organization_id nullability for any table that was changed."""
+    from app import db
+    from sqlalchemy import text
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            current = conn.execute(
+                text(
+                    "SELECT table_name, is_nullable FROM information_schema.columns "
+                    "WHERE column_name = 'organization_id' AND table_schema = 'public'"
+                )
+            ).fetchall()
+            for table_name, is_nullable in current:
+                before = snapshot.get(table_name)
+                if before == "YES" and is_nullable == "NO":
+                    conn.execute(
+                        text(f'ALTER TABLE "{table_name}" ALTER COLUMN organization_id DROP NOT NULL')
+                    )
+
+
 def _relax_monitoring_not_null(app):
     """Allow NULL organization_id inserts on both monitoring tables, committed
     on a connection of its own.
@@ -665,6 +702,7 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
                 text(f"SELECT organization_id FROM {table} WHERE id = :id"), {"id": row_id}
             ).scalar()
 
+        nullability_before = _snapshot_org_nullability(app)
         try:
             stats_first = repair_layer_tenancy()
 
@@ -717,6 +755,7 @@ def test_backfill_derives_monitoring_provenance_and_leaves_unprovenanced_rows_nu
             )
             db.session.commit()
             _restore_monitoring_not_null(app)
+            _restore_org_nullability(app, nullability_before)
 
 
 # -------------------------------------------------------- (9) no-tenant refusal

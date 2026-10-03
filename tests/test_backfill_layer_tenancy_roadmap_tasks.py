@@ -219,6 +219,43 @@ def test_backfill_derives_roadmap_task_org_from_consolidation_entry(db_session, 
     assert org_a.id != org_b.id
 
 
+def _snapshot_org_nullability(app):
+    """Record which tables have organization_id nullable before repair_layer_tenancy runs."""
+    from app import db
+    from sqlalchemy import text
+
+    with app.app_context():
+        with db.engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    "SELECT table_name, is_nullable FROM information_schema.columns "
+                    "WHERE column_name = 'organization_id' AND table_schema = 'public'"
+                )
+            ).fetchall()
+            return {row.table_name: row.is_nullable for row in rows}
+
+
+def _restore_org_nullability(app, snapshot):
+    """Restore organization_id nullability for any table that was changed."""
+    from app import db
+    from sqlalchemy import text
+
+    with app.app_context():
+        with db.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            current = conn.execute(
+                text(
+                    "SELECT table_name, is_nullable FROM information_schema.columns "
+                    "WHERE column_name = 'organization_id' AND table_schema = 'public'"
+                )
+            ).fetchall()
+            for table_name, is_nullable in current:
+                before = snapshot.get(table_name)
+                if before == "YES" and is_nullable == "NO":
+                    conn.execute(
+                        text(f'ALTER TABLE "{table_name}" ALTER COLUMN organization_id DROP NOT NULL')
+                    )
+
+
 def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
     """Calls repair_layer_tenancy() twice, so this cannot use the db_session
     fixture. db_session's transaction is never really committed, and
@@ -302,6 +339,7 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
         db.session.commit()
         task_ids = [orphan_task_id, provenanced_a_id, provenanced_b_id]
 
+        nullability_before = _snapshot_org_nullability(app)
         try:
             stats_no_org = repair_layer_tenancy()
 
@@ -338,6 +376,7 @@ def test_backfill_leaves_unprovenanced_roadmap_task_null_with_two_orgs(app):
                 {"a": org_a.id, "b": org_b.id},
             )
             db.session.commit()
+            _restore_org_nullability(app, nullability_before)
 
 
 def test_backfill_dry_run_changes_nothing(app):
