@@ -230,19 +230,4 @@ def register(app: Flask) -> None:
     except Exception as e:
         app.logger.warning(f"[BLUEPRINT] Failed to register Risk routes: {e}")
 
-    # --- 19. Motivation Traceability (strategy traceability) ---
-    try:
-        from app.modules.architecture.routes.motivation_traceability_routes import (
-            motivation_api,
-        )
-
-        app.register_blueprint(motivation_api)
-        app.logger.info(
-            "[BLUEPRINT] Motivation traceability API registered at /api/v1/motivation"
-        )
-    except Exception as e:
-        app.logger.warning(
-            f"[BLUEPRINT] Failed to register Motivation traceability API: {e}"
-        )
-
     app.logger.info("[MODULE] architecture registered (~220 routes, 19 blueprints)")

@@ -556,7 +556,7 @@ class TestDriverGoalLinking:
         assert resp.status_code == 409
         data = resp.get_json()
         assert data["success"] is False
-        assert "already linked" in data["error"]
+        assert "already linked" in data["error"]["message"]
 
     def test_link_driver_to_goal_cross_tenant_rejected(self, db_session, make_org, client, login_as):
         """Linking a driver in org A to a goal in org B is rejected."""
