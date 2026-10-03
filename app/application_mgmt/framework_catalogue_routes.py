@@ -77,27 +77,23 @@ def list_adoptions():
 @application_mgmt.route("/api/compliance/adoptions/<int:adoption_id>/controls", methods=["GET"])
 @login_required
 def list_adopted_controls(adoption_id):
-    """List controls for an adopted framework."""
+    """List controls for an adopted framework, including evidence status."""
     org_id = getattr(g, "current_org_id", None)
+
+    try:
+        evidence_data = ApplicabilityService.evidence_status(org_id, adoption_id)
+    except ValueError:
+        return jsonify({"error": "Adoption not found"}), 404
+
     adoption = FrameworkAdoption.query.filter_by(
         id=adoption_id, organization_id=org_id
-    ).first_or_404()
+    ).first()
 
-    controls = adoption.adopted_controls.all()
     return jsonify({
         "adoption_id": adoption.id,
         "framework_code": adoption.framework.code,
         "tailoring_notes": adoption.tailoring_notes,
-        "controls": [
-            {
-                "id": ac.id,
-                "control_id": ac.control_id,
-                "control_code": ac.control.control_code,
-                "title": ac.control.title,
-                "implementation_status": ac.implementation_status,
-            }
-            for ac in controls
-        ],
+        "controls": evidence_data,
     })
 
 

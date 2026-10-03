@@ -217,9 +217,9 @@ def test_harmonization_propose_and_confirm(db_session):
 
 
 def test_harmonization_evidence_shared(db_session, make_org, tenant_ctx):
-    """When two controls are harmonised, evidence status is shared via the product code path."""
+    """A CONFIRMED harmonisation shares evidence from the first framework's
+    control to the second framework's control via evidence_status()."""
     from app.models.application_compliance import ApplicationComplianceControl
-    from app.models.regulatory_framework import FrameworkAdoption
     from app.modules.compliance.services.applicability_service import ApplicabilityService
 
     org = make_org("a")
@@ -230,7 +230,6 @@ def test_harmonization_evidence_shared(db_session, make_org, tenant_ctx):
     user = _seed_user(db_session, org.id, "test@org-a.test")
 
     with tenant_ctx(org.id):
-        # Adopt both frameworks
         adoption1 = ApplicabilityService.adopt_framework(
             organization_id=org.id, framework_id=fw1.id, adopted_by_id=user.id
         )
@@ -238,77 +237,159 @@ def test_harmonization_evidence_shared(db_session, make_org, tenant_ctx):
             organization_id=org.id, framework_id=fw2.id, adopted_by_id=user.id
         )
 
-        # Get the ApplicationComplianceControl rows for each control
+        # Set evidence on ctl1's ApplicationComplianceControl
         ac1 = ApplicationComplianceControl.query.filter_by(
             adoption_id=adoption1.id, control_id=ctl1.id
         ).first()
-        ac2 = ApplicationComplianceControl.query.filter_by(
-            adoption_id=adoption2.id, control_id=ctl2.id
-        ).first()
-
-        assert ac1 is not None
-        assert ac2 is not None
-
-        # Initially both are "planned"
-        assert ac1.implementation_status == "planned"
-        assert ac2.implementation_status == "planned"
-
-        # Set evidence on ac1 (first framework's control)
         ac1.implementation_status = "implemented"
         ac1.evidence_url = "https://example.com/evidence/access-control"
         ac1.notes = "Implemented via IAM policy"
         db_session.flush()
 
-        # Harmonise: ctl1 -> ctl2 (at the shared catalogue level)
+        # Harmonise: ctl1 -> ctl2 (confirmed)
         ctl1.harmonized_control_id = ctl2.id
         ctl1.harmonization_status = "confirmed"
         db_session.flush()
 
-        # Now verify evidence sharing through the product code path:
-        # The list_adopted_controls route returns implementation_status for each control.
-        # When controls are harmonised, the evidence from one should be accessible
-        # from the harmonised control's perspective.
-        # We simulate the route's query pattern.
-        reloaded_ctl1 = ctl1  # already in session
+        # Call evidence_status for the SECOND framework's adoption
+        status2 = ApplicabilityService.evidence_status(org.id, adoption2.id)
 
-        # The harmonised control (ctl2) can be found from ctl1
-        assert reloaded_ctl1.harmonized_control is not None
-        assert reloaded_ctl1.harmonized_control.id == ctl2.id
+        # Find ctl2's entry in adoption2's status
+        ctl2_entry = next(s for s in status2 if s["control_id"] == ctl2.id)
+        assert ctl2_entry is not None
 
-        # And ctl2 knows ctl1 is harmonised to it
-        assert len(ctl2.harmonized_controls) == 1
-        assert ctl2.harmonized_controls[0].id == ctl1.id
+        # ctl2 has no evidence of its own, so it should report ctl1's evidence
+        assert ctl2_entry["evidence_url"] == "https://example.com/evidence/access-control"
+        assert ctl2_entry["notes"] == "Implemented via IAM policy"
+        assert ctl2_entry["evidence_source"] is not None
+        assert ctl2_entry["evidence_source"]["control_code"] == "A.8.2"
+        assert ctl2_entry["evidence_source"]["framework_code"] == "ISO-27001"
 
-        # Evidence sharing: the product code path (list_adopted_controls) would
-        # show ac2's status. Since ctl1 and ctl2 are harmonised, a compliance
-        # officer viewing the second framework's controls should see that the
-        # harmonised control in the first framework has evidence.
-        # We verify this by checking that the harmonised control's
-        # ApplicationComplianceControl (in its own adoption) can be reached
-        # and its evidence inspected.
-        harmonised_ac = ApplicationComplianceControl.query.filter_by(
-            adoption_id=adoption2.id, control_id=reloaded_ctl1.harmonized_control_id
+        # ctl1's own adoption should show its own evidence (no source marker)
+        status1 = ApplicabilityService.evidence_status(org.id, adoption1.id)
+        ctl1_entry = next(s for s in status1 if s["control_id"] == ctl1.id)
+        assert ctl1_entry["evidence_url"] == "https://example.com/evidence/access-control"
+        assert ctl1_entry["evidence_source"] is None  # own evidence, no marker
+
+
+def test_harmonization_unconfirmed_does_not_share(db_session, make_org, tenant_ctx):
+    """A PROPOSED (unconfirmed) harmonisation does NOT share evidence."""
+    from app.models.application_compliance import ApplicationComplianceControl
+    from app.modules.compliance.services.applicability_service import ApplicabilityService
+
+    org = make_org("a")
+    fw1 = _seed_framework(db_session, "ISO-27001", "ISO/IEC 27001")
+    fw2 = _seed_framework(db_session, "SOC-2", "SOC 2")
+    ctl1 = _seed_control(db_session, fw1.id, "A.8.2", "Privileged access rights")
+    ctl2 = _seed_control(db_session, fw2.id, "CC6.1", "Logical and physical access")
+    user = _seed_user(db_session, org.id, "test@org-a.test")
+
+    with tenant_ctx(org.id):
+        adoption1 = ApplicabilityService.adopt_framework(
+            organization_id=org.id, framework_id=fw1.id, adopted_by_id=user.id
+        )
+        adoption2 = ApplicabilityService.adopt_framework(
+            organization_id=org.id, framework_id=fw2.id, adopted_by_id=user.id
+        )
+
+        # Set evidence on ctl1's ApplicationComplianceControl
+        ac1 = ApplicationComplianceControl.query.filter_by(
+            adoption_id=adoption1.id, control_id=ctl1.id
         ).first()
+        ac1.evidence_url = "https://example.com/evidence/access-control"
+        ac1.notes = "Implemented via IAM policy"
+        db_session.flush()
 
-        assert harmonised_ac is not None
-        # The harmonised control's ApplicationComplianceControl (ac2) should
-        # reflect the shared evidence status when queried through the
-        # harmonisation relationship
-        assert harmonised_ac.id == ac2.id
+        # Harmonise: ctl1 -> ctl2 but only PROPOSED (not confirmed)
+        ctl1.harmonized_control_id = ctl2.id
+        ctl1.harmonization_status = "proposed"
+        db_session.flush()
 
-        # Now verify that from the harmonised control (ctl2), we can navigate
-        # back to the original control (ctl1) and see its evidence
-        reverse_harmonised = ctl2.harmonized_controls[0]
-        assert reverse_harmonised.id == ctl1.id
+        # Call evidence_status for the SECOND framework's adoption
+        status = ApplicabilityService.evidence_status(org.id, adoption2.id)
 
-        # And from there, get the ApplicationComplianceControl in adoption1
-        original_ac = ApplicationComplianceControl.query.filter_by(
-            adoption_id=adoption1.id, control_id=reverse_harmonised.id
+        # Find ctl2's entry
+        ctl2_entry = next(s for s in status if s["control_id"] == ctl2.id)
+        assert ctl2_entry is not None
+
+        # ctl2 should NOT see ctl1's evidence because harmonisation is only proposed
+        assert ctl2_entry["evidence_url"] is None
+        assert ctl2_entry["evidence_source"] is None
+
+
+def test_harmonization_evidence_org_isolation(db_session, make_org, tenant_ctx):
+    """Organisation B's evidence must never appear in organisation A's evidence_status."""
+    from app.models.application_compliance import ApplicationComplianceControl
+    from app.modules.compliance.services.applicability_service import ApplicabilityService
+
+    org_a, org_b = make_org("a"), make_org("b")
+    fw1 = _seed_framework(db_session, "ISO-27001", "ISO/IEC 27001")
+    fw2 = _seed_framework(db_session, "SOC-2", "SOC 2")
+    ctl1 = _seed_control(db_session, fw1.id, "A.8.2", "Privileged access rights")
+    ctl2 = _seed_control(db_session, fw2.id, "CC6.1", "Logical and physical access")
+    user_a = _seed_user(db_session, org_a.id, "admin@org-a.test")
+    user_b = _seed_user(db_session, org_b.id, "admin@org-b.test")
+
+    # Org A: adopt both frameworks, set evidence on ctl1, confirm harmonisation
+    with tenant_ctx(org_a.id):
+        adoption1_a = ApplicabilityService.adopt_framework(
+            organization_id=org_a.id, framework_id=fw1.id, adopted_by_id=user_a.id
+        )
+        adoption2_a = ApplicabilityService.adopt_framework(
+            organization_id=org_a.id, framework_id=fw2.id, adopted_by_id=user_a.id
+        )
+
+        ac1_a = ApplicationComplianceControl.query.filter_by(
+            adoption_id=adoption1_a.id, control_id=ctl1.id
         ).first()
-        assert original_ac is not None
-        assert original_ac.implementation_status == "implemented"
-        assert original_ac.evidence_url == "https://example.com/evidence/access-control"
-        assert original_ac.notes == "Implemented via IAM policy"
+        ac1_a.evidence_url = "https://example.com/evidence/org-a"
+        ac1_a.notes = "Org A evidence"
+        db_session.flush()
+
+        ctl1.harmonized_control_id = ctl2.id
+        ctl1.harmonization_status = "confirmed"
+        db_session.flush()
+
+    # Org B: adopt both frameworks, set evidence on ctl1, confirm harmonisation
+    with tenant_ctx(org_b.id):
+        adoption1_b = ApplicabilityService.adopt_framework(
+            organization_id=org_b.id, framework_id=fw1.id, adopted_by_id=user_b.id
+        )
+        adoption2_b = ApplicabilityService.adopt_framework(
+            organization_id=org_b.id, framework_id=fw2.id, adopted_by_id=user_b.id
+        )
+
+        ac1_b = ApplicationComplianceControl.query.filter_by(
+            adoption_id=adoption1_b.id, control_id=ctl1.id
+        ).first()
+        ac1_b.evidence_url = "https://example.com/evidence/org-b"
+        ac1_b.notes = "Org B evidence"
+        db_session.flush()
+
+        # Also confirm harmonisation for org B (ctl1 -> ctl2)
+        # ctl1 is shared catalogue, so its harmonisation is already set from org A's setup
+        # We need to ensure org B's evidence is set
+        db_session.flush()
+
+    # Org A's evidence_status must NOT show org B's evidence
+    with tenant_ctx(org_a.id):
+        status_a = ApplicabilityService.evidence_status(org_a.id, adoption2_a.id)
+        ctl2_entry_a = next(s for s in status_a if s["control_id"] == ctl2.id)
+        assert ctl2_entry_a is not None
+        # Should show org A's evidence, not org B's
+        assert ctl2_entry_a["evidence_url"] == "https://example.com/evidence/org-a"
+        assert "org-b" not in (ctl2_entry_a.get("notes") or "").lower()
+        assert ctl2_entry_a["evidence_source"]["control_code"] == "A.8.2"
+
+    # Org B's evidence_status must NOT show org A's evidence
+    with tenant_ctx(org_b.id):
+        status_b = ApplicabilityService.evidence_status(org_b.id, adoption2_b.id)
+        ctl2_entry_b = next(s for s in status_b if s["control_id"] == ctl2.id)
+        assert ctl2_entry_b is not None
+        # Should show org B's evidence, not org A's
+        assert ctl2_entry_b["evidence_url"] == "https://example.com/evidence/org-b"
+        assert "org-a" not in (ctl2_entry_b.get("notes") or "").lower()
+        assert ctl2_entry_b["evidence_source"]["control_code"] == "A.8.2"
 
 
 # ── applicability ──────────────────────────────────────────────────────

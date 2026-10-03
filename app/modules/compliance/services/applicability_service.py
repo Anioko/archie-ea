@@ -205,6 +205,125 @@ class ApplicabilityService:
         return change
 
     @classmethod
+    def evidence_status(
+        cls, organization_id: int, adoption_id: int
+    ) -> List[Dict[str, Any]]:
+        """Return evidence status for each control in an adoption.
+
+        For each control, returns its status and evidence.  If a control has no
+        evidence of its own but a CONFIRMED harmonised control (either direction)
+        whose ApplicationComplianceControl in the SAME organisation has evidence,
+        reports that evidence with a marker naming the source control and
+        framework.  Never reads another organisation's rows.
+        """
+        from app.models.application_compliance import ApplicationComplianceControl
+        from app.models.compliance_models import ComplianceControl
+
+        adoption = FrameworkAdoption.query.filter_by(
+            id=adoption_id, organization_id=organization_id
+        ).first()
+        if adoption is None:
+            raise ValueError(
+                f"Adoption {adoption_id} not found for organisation {organization_id}"
+            )
+
+        controls = ApplicationComplianceControl.query.filter_by(
+            organization_id=organization_id,
+            adoption_id=adoption_id,
+        ).all()
+
+        results: List[Dict[str, Any]] = []
+        for ac in controls:
+            control = ac.control
+            entry: Dict[str, Any] = {
+                "id": ac.id,
+                "control_id": control.id,
+                "control_code": control.control_code,
+                "title": control.title,
+                "implementation_status": ac.implementation_status,
+                "evidence_url": ac.evidence_url,
+                "notes": ac.notes,
+                "evidence_source": None,
+            }
+
+            has_own_evidence = (
+                ac.evidence_url is not None and ac.evidence_url.strip() != ""
+            )
+
+            if not has_own_evidence:
+                source = None
+
+                # Forward: this control points to a harmonised partner
+                if (
+                    control.harmonization_status == "confirmed"
+                    and control.harmonized_control_id is not None
+                ):
+                    partner = control.harmonized_control
+                    if partner is not None:
+                        partner_ac = ApplicationComplianceControl.query.filter_by(
+                            organization_id=organization_id,
+                            control_id=partner.id,
+                        ).first()
+                        if (
+                            partner_ac is not None
+                            and partner_ac.evidence_url is not None
+                            and partner_ac.evidence_url.strip() != ""
+                        ):
+                            source = {
+                                "control_id": partner.id,
+                                "control_code": partner.control_code,
+                                "framework_code": (
+                                    partner.framework.code
+                                    if partner.framework
+                                    else None
+                                ),
+                                "evidence_url": partner_ac.evidence_url,
+                                "notes": partner_ac.notes,
+                            }
+
+                # Backward: another control points to this one
+                if source is None:
+                    partners = ComplianceControl.query.filter_by(
+                        harmonized_control_id=control.id,
+                        harmonization_status="confirmed",
+                    ).all()
+                    for partner in partners:
+                        partner_ac = ApplicationComplianceControl.query.filter_by(
+                            organization_id=organization_id,
+                            control_id=partner.id,
+                        ).first()
+                        if (
+                            partner_ac is not None
+                            and partner_ac.evidence_url is not None
+                            and partner_ac.evidence_url.strip() != ""
+                        ):
+                            source = {
+                                "control_id": partner.id,
+                                "control_code": partner.control_code,
+                                "framework_code": (
+                                    partner.framework.code
+                                    if partner.framework
+                                    else None
+                                ),
+                                "evidence_url": partner_ac.evidence_url,
+                                "notes": partner_ac.notes,
+                            }
+                            break
+
+                if source is not None:
+                    entry["evidence_url"] = source["evidence_url"]
+                    entry["notes"] = source["notes"]
+                    entry["evidence_source"] = {
+                        "control_id": source["control_id"],
+                        "control_code": source["control_code"],
+                        "framework_code": source["framework_code"],
+                    }
+
+            results.append(entry)
+
+        return results
+
+    @classmethod
     def get_affected_elements(
         cls, change_id: int, organization_id: int
     ) -> List[RegulatoryChangeImpact]:
