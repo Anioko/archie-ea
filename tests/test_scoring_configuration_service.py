@@ -47,9 +47,13 @@ def _config(db_session, **overrides):
 
 
 def _world(db_session, make_org):
-    org = make_org("sc-svc")
-    tenant_admin = _user(db_session, org)
-    platform_admin = _user(db_session, org, platform=True)
+    # Two organisations: the platform admin sits in org A (the configuration's
+    # creator), the refused tenant admin sits in org B -- so a pass here cannot
+    # be explained by same-org membership, only by the is_platform_admin gate.
+    org_a = make_org("sc-svc-a")
+    org_b = make_org("sc-svc-b")
+    tenant_admin = _user(db_session, org_b)
+    platform_admin = _user(db_session, org_a, platform=True)
     config = _config(db_session)
     db_session.commit()
     return tenant_admin.id, platform_admin.id, config.id
