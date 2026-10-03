@@ -11,22 +11,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def _csrf_exempt_blueprint(app, blueprint):
-    """Exempt all routes in a blueprint from CSRF protection."""
-    # Iterate through all routes registered in the app
-    # Find routes that belong to this blueprint and mark their view functions as exempt
-    for rule in app.url_map.iter_rules():
-        if rule.endpoint.startswith(blueprint.name + "."):
-            view_func = app.view_functions.get(rule.endpoint)
-            if view_func is not None:
-                # Set the csrf_exempt attribute directly on the view function
-                view_func.csrf_exempt = True
-                logger.debug(f"[CSRF] Marked view as exempt: {rule.endpoint}")
-    
-    count = len([r for r in app.url_map.iter_rules() if r.endpoint.startswith(blueprint.name + ".")])
-    logger.info(f"[CSRF] Exempted {count} routes in blueprint '{blueprint.name}'")
-
-
 
 class _RegistrationFailureCapture(logging.Handler):
     """Collect WARNING+ records emitted while blueprints register.
@@ -573,26 +557,69 @@ def _register_always_on_apis(app, csrf):
     app.register_blueprint(api_v1_bp)
     app.logger.info("[BLUEPRINT] API v1 registered at /api/v1")
 
-    # OAuth 2.1 authorization server — the provider side of authlib
-    # (the client side is already in app/modules/account/ for SSO).
-    # CSRF-exempt: the /oauth/token endpoint is called by OAuth clients
-    # with a Bearer token or no session cookie at all.
-    from app.modules.oauth_provider import oauth_provider_bp, oauth_metadata_bp
+    # Bearer-token identity resolution for the MCP endpoint (flask-login
+    # request_loader). Registered unconditionally — it checks MCP_ENABLED
+    # itself and is a no-op while the flag is off — so the mechanism exists
+    # in every build regardless of which blueprints below actually register.
+    from app.modules.oauth_provider import identity as _oauth_identity  # noqa: F401
 
-    app.register_blueprint(oauth_provider_bp)
-    app.logger.info("[BLUEPRINT] OAuth provider registered at /oauth")
-    app.register_blueprint(oauth_metadata_bp)
-    app.logger.info("[BLUEPRINT] OAuth metadata registered at /.well-known")
-    _csrf_exempt_blueprint(app, oauth_provider_bp)
-    _csrf_exempt_blueprint(app, oauth_metadata_bp)
+    # OAuth 2.1 authorization server (the provider side; the client side is
+    # already in app/modules/account/ for SSO) and the MCP Streamable HTTP
+    # endpoint. Both are gated behind MCP_ENABLED: with the flag off, neither
+    # blueprint registers at all, so there is no OAuth or MCP route in
+    # url_map and the bearer loader above never has a request to act on.
+    #
+    # CSRF: each blueprint exempts only the specific views that cannot carry
+    # a session-bound token (POST /oauth/token, POST /oauth/revoke, the
+    # POST /mcp endpoint itself — see their own @csrf.exempt decorators and
+    # app/_bootstrap/csrf_coverage.py's VIEW_OPT_OUT entries for why). The
+    # consent screen (POST /oauth/authorize) stays CSRF-protected like any
+    # other session-authenticated form.
+    if app.config.get("MCP_ENABLED"):
+        if not (app.config.get("PUBLIC_BASE_URL") or "").strip():
+            raise RuntimeError(
+                "MCP_ENABLED is true but PUBLIC_BASE_URL is empty. The OAuth "
+                "issuer, every metadata URL and the MCP 'resource' identifier "
+                "are built from PUBLIC_BASE_URL — set it to this server's "
+                "externally-reachable origin (e.g. https://app.example.com) "
+                "before enabling MCP_ENABLED."
+            )
 
-    # MCP Streamable HTTP endpoint — the read-only lens tools
-    from app.modules.mcp import mcp_bp
+        from app.modules.oauth_provider import oauth_provider_bp, oauth_metadata_bp
 
-    app.register_blueprint(mcp_bp)
-    app.logger.info("[BLUEPRINT] MCP endpoint registered at /mcp")
-    _csrf_exempt_blueprint(app, mcp_bp)
-    
+        app.register_blueprint(oauth_provider_bp)
+        app.logger.info("[BLUEPRINT] OAuth provider registered at /oauth")
+        app.register_blueprint(oauth_metadata_bp)
+        app.logger.info("[BLUEPRINT] OAuth metadata registered at /.well-known")
+
+        # Rate-limit dynamic client registration, applied here rather than at
+        # routes.py's module import time: app.modules.oauth_provider is a
+        # package whose __init__ eagerly imports routes.py, and that import
+        # can be triggered (by pytest collecting a conftest.py that lives
+        # under this package, for instance) before init_rate_limiting(app)
+        # above has ever run for any app — binding the limiter at module
+        # scope would silently capture None forever. Rewriting
+        # app.view_functions here happens after this app's own
+        # init_rate_limiting() call, every time, and Flask looks the view up
+        # from this dict fresh on every request.
+        from app._bootstrap.rate_limiting import limiter as _rate_limiter
+        from app.modules.oauth_provider.routes import registration_rate_limit_string
+
+        if _rate_limiter is not None:
+            _register_endpoint = "oauth_provider.register"
+            _register_view = app.view_functions.get(_register_endpoint)
+            if _register_view is not None:
+                app.view_functions[_register_endpoint] = _rate_limiter.limit(
+                    registration_rate_limit_string
+                )(_register_view)
+
+        from app.modules.mcp import mcp_bp
+
+        app.register_blueprint(mcp_bp)
+        app.logger.info("[BLUEPRINT] MCP endpoint registered at /mcp")
+    else:
+        app.logger.info("[BLUEPRINT] MCP_ENABLED is false — OAuth/MCP blueprints not registered")
+
     # api_v1 blueprint is NOT CSRF-exempt. Audited 2026-08-18 (finding A-04/ARCH-051/C-10):
     # every route under app/api/v1/ authenticates with @login_required (the browser
     # session cookie), not a Bearer token — there is no token-based auth path in this
