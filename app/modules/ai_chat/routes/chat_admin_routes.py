@@ -12,25 +12,20 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from flask import abort, g, jsonify, render_template, request
+from flask import g, jsonify, render_template, request
 from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from app import db
+from app.middleware.tenant_decorators import platform_admin_required
+from app.decorators import admin_required
 from app.models.ai_service import AIPromptTemplate
+from app.models.user import User
 from app.modules.ai_chat.services.multi_domain_chat_service import PERSONA_CONFIGS
 
 from . import unified_ai_chat_bp
 
 logger = logging.getLogger(__name__)
-
-
-def _require_admin():
-    """Abort 403 if current user is not an admin."""
-    if not (hasattr(current_user, "is_admin") and current_user.is_admin):
-        # Fallback: check role attribute
-        if not (hasattr(current_user, "role") and current_user.role == "admin"):
-            abort(403)
 
 
 def _override_key(persona_key):
@@ -88,17 +83,17 @@ def _build_persona_data(persona_key, config, override=None):
 
 @unified_ai_chat_bp.route("/admin/prompts")
 @login_required
+@platform_admin_required
 def admin_prompts_page():
     """Render the admin persona prompt management page."""
-    _require_admin()
     return render_template("ai_chat/admin_prompts.html")
 
 
 @unified_ai_chat_bp.route("/admin/prompts/data")
 @login_required
+@platform_admin_required
 def admin_prompts_data():
     """JSON API: return all persona configs merged with DB overrides."""
-    _require_admin()
 
     personas = []
     for key, config in PERSONA_CONFIGS.items():
@@ -110,9 +105,9 @@ def admin_prompts_data():
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/update", methods=["POST"])
 @login_required
+@platform_admin_required
 def admin_prompt_update(persona_key):
     """Update (or create) a DB override for a persona's prompt config."""
-    _require_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404
@@ -165,9 +160,9 @@ def admin_prompt_update(persona_key):
 
 @unified_ai_chat_bp.route("/admin/prompts/<persona_key>/reset", methods=["POST"])
 @login_required
+@platform_admin_required
 def admin_prompt_reset(persona_key):
     """Remove the DB override for a persona, reverting to hardcoded defaults."""
-    _require_admin()
 
     if persona_key not in PERSONA_CONFIGS:
         return jsonify({"error": f"Unknown persona: {persona_key}"}), 404
@@ -222,21 +217,21 @@ def _safe_import_analytics_models():
 
 @unified_ai_chat_bp.route("/admin/analytics")
 @login_required
+@admin_required
 def admin_analytics_dashboard():
     """Render the AI Chat feedback analytics dashboard."""
-    _require_admin()
     return render_template("ai_chat/analytics_dashboard.html")
 
 
 @unified_ai_chat_bp.route("/admin/analytics/data")
 @login_required
+@admin_required
 def admin_analytics_data():
     """Return aggregated AI Chat analytics as JSON.
 
     Query params:
         days (int): Look-back window in days (default 30, max 365).
     """
-    _require_admin()
 
     try:
         days = min(int(request.args.get("days", 30)), 365)
@@ -310,44 +305,44 @@ def admin_analytics_data():
             logger.warning("Feedback query failed: %s", exc)
 
     # --- Audit-log based metrics ---
+    # Neither AIChatAuditLog nor AIInteractionLog carries an organization_id
+    # of its own -- ownership is only reachable via their user_id FK to
+    # User (TenantMixin). Every query below joins User and filters on
+    # User.organization_id == g.current_org_id, the same fix already
+    # applied to the feedback summary above; without it this admin-facing
+    # view showed every organisation's message counts, active-user counts,
+    # usage-by-domain/persona/provider, daily usage, and top templates.
     if AIChatAuditLog is not None:
         try:
+            audit_base = db.session.query(AIChatAuditLog).join(
+                User, AIChatAuditLog.user_id == User.id
+            ).filter(
+                AIChatAuditLog.created_at >= cutoff,
+                User.organization_id == g.current_org_id,
+            )
+
             # Total messages
-            total_msg = (
-                db.session.query(func.count(AIChatAuditLog.id))
-                .filter(AIChatAuditLog.created_at >= cutoff)
-                .scalar()
-            ) or 0
+            total_msg = audit_base.with_entities(func.count(AIChatAuditLog.id)).scalar() or 0
             result["total_messages"] = total_msg
 
             # Active users (distinct user_id)
-            active = (
-                db.session.query(
-                    func.count(func.distinct(AIChatAuditLog.user_id))
-                )
-                .filter(AIChatAuditLog.created_at >= cutoff)
-                .scalar()
-            ) or 0
+            active = audit_base.with_entities(
+                func.count(func.distinct(AIChatAuditLog.user_id))
+            ).scalar() or 0
             result["active_users"] = active
 
             # Average response time
-            avg_rt = (
-                db.session.query(func.avg(AIChatAuditLog.processing_time_ms))
-                .filter(
-                    AIChatAuditLog.created_at >= cutoff,
-                    AIChatAuditLog.processing_time_ms.isnot(None),
-                )
-                .scalar()
-            )
+            avg_rt = audit_base.filter(
+                AIChatAuditLog.processing_time_ms.isnot(None)
+            ).with_entities(func.avg(AIChatAuditLog.processing_time_ms)).scalar()
             result["avg_response_time_ms"] = round(avg_rt, 1) if avg_rt else 0
 
             # Usage by domain
             domain_rows = (
-                db.session.query(
+                audit_base.with_entities(
                     AIChatAuditLog.domain,
                     func.count(AIChatAuditLog.id),
                 )
-                .filter(AIChatAuditLog.created_at >= cutoff)
                 .group_by(AIChatAuditLog.domain)
                 .order_by(func.count(AIChatAuditLog.id).desc())
                 .all()
@@ -358,11 +353,10 @@ def admin_analytics_data():
 
             # Usage by persona
             persona_rows = (
-                db.session.query(
+                audit_base.with_entities(
                     AIChatAuditLog.persona,
                     func.count(AIChatAuditLog.id),
                 )
-                .filter(AIChatAuditLog.created_at >= cutoff)
                 .group_by(AIChatAuditLog.persona)
                 .order_by(func.count(AIChatAuditLog.id).desc())
                 .all()
@@ -374,7 +368,7 @@ def admin_analytics_data():
 
             # Provider stats
             provider_rows = (
-                db.session.query(
+                audit_base.with_entities(
                     AIChatAuditLog.provider_used,
                     func.count(AIChatAuditLog.id),
                     func.sum(
@@ -384,7 +378,6 @@ def admin_analytics_data():
                         )
                     ),
                 )
-                .filter(AIChatAuditLog.created_at >= cutoff)
                 .group_by(AIChatAuditLog.provider_used)
                 .order_by(func.count(AIChatAuditLog.id).desc())
                 .all()
@@ -400,11 +393,10 @@ def admin_analytics_data():
 
             # Daily usage (last N days)
             daily_rows = (
-                db.session.query(
+                audit_base.with_entities(
                     func.date(AIChatAuditLog.created_at).label("day"),
                     func.count(AIChatAuditLog.id),
                 )
-                .filter(AIChatAuditLog.created_at >= cutoff)
                 .group_by(func.date(AIChatAuditLog.created_at))
                 .order_by(func.date(AIChatAuditLog.created_at))
                 .all()
@@ -428,7 +420,11 @@ def admin_analytics_data():
                 AIInteractionLog,
                 AIInteractionLog.prompt_template_id == AIPromptTemplate.id,
             )
-            .filter(AIInteractionLog.timestamp >= cutoff)
+            .join(User, AIInteractionLog.user_id == User.id)
+            .filter(
+                AIInteractionLog.timestamp >= cutoff,
+                User.organization_id == g.current_org_id,
+            )
             .group_by(AIPromptTemplate.name)
             .order_by(func.count(AIInteractionLog.id).desc())
             .limit(10)

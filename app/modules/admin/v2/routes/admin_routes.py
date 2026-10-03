@@ -3329,7 +3329,7 @@ def api_get_role(role_id):
 @admin_bp_v2.route("/api/roles", methods=["POST"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def api_create_role():
     """Create a new custom role."""
     data = request.get_json() or {}
@@ -3349,7 +3349,7 @@ def api_create_role():
 @admin_bp_v2.route("/api/roles/<int:role_id>", methods=["PUT"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def api_update_role(role_id):
     """Update a role name or permissions."""
     role = Role.query.get_or_404(role_id)
@@ -3368,7 +3368,7 @@ def api_update_role(role_id):
 @admin_bp_v2.route("/api/roles/<int:role_id>", methods=["DELETE"])
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def api_delete_role(role_id):
     """Delete a custom role. Reassigns users to the default User role."""
     role = Role.query.get_or_404(role_id)
@@ -4744,7 +4744,7 @@ def _get_capability_suggestion_default():
 @admin_bp_v2.route("/solution-prompts")
 @timed_route
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompts_page():
     """Render the solution AI prompt management page."""
     return render_template("admin/solution_prompts.html")
@@ -4752,7 +4752,7 @@ def solution_prompts_page():
 
 @admin_bp_v2.route("/solution-prompts/data")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompts_data():
     """JSON API: return all solution prompt configs merged with DB overrides."""
     defaults = _get_prompt_defaults()
@@ -4876,7 +4876,7 @@ def _version_content_v2(prompt_key, version, override_name):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/history")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompt_history(prompt_key):
     """A-05: version history for a prompt override, newest first."""
     defaults = _get_prompt_defaults()
@@ -4916,7 +4916,7 @@ def solution_prompt_history(prompt_key):
 
 @admin_bp_v2.route("/solution-prompts/<prompt_key>/diff")
 @login_required
-@admin_required
+@platform_admin_required
 def solution_prompt_diff(prompt_key):
     """A-05: unified diff between two versions (or a version and "current").
 
