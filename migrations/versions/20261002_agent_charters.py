@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.commands.schema_migrations import ContractBlocked
 
 revision = "20261002_agent_charters"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_data_domain_org_unique"
 branch_labels = None
 depends_on = None
 
@@ -112,5 +112,22 @@ def downgrade():
     bind.execute(text("DROP TABLE IF EXISTS agent_run_records"))
     bind.execute(text("DROP INDEX IF EXISTS ix_agent_charters_persona"))
     bind.execute(text("DROP INDEX IF EXISTS ix_agent_charters_organization_id"))
+    # Drop the unique constraint first (created by init-db's create_all from the
+    # model's __table_args__), which cascades to drop its backing index. If only
+    # a standalone unique index exists (from a prior upgrade), drop it directly.
+    bind.execute(text("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_agent_charter_org_persona_version'
+                  AND conrelid = 'agent_charters'::regclass
+            ) THEN
+                ALTER TABLE agent_charters
+                DROP CONSTRAINT uq_agent_charter_org_persona_version;
+            END IF;
+        END
+        $$;
+    """))
     bind.execute(text("DROP INDEX IF EXISTS uq_agent_charter_org_persona_version"))
     bind.execute(text("DROP TABLE IF EXISTS agent_charters"))
