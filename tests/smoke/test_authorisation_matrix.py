@@ -85,8 +85,6 @@ POLICY = {
     # and check classification status — all gated by org_admin, which no
     # seeded archetype except platform_admin holds.
     "/ai-chat/oversight/state":          set(),
-    "/ai-chat/oversight/pause":          set(),
-    "/ai-chat/oversight/resume":         set(),
     "/ai-chat/oversight/refused-calls":  set(),
     "/ai-chat/oversight/classification/status": set(),
     # Tool catalogue export: gated by security_architect or platform_admin.
@@ -160,6 +158,11 @@ for _allowed in POLICY.values():
 
 ACCOUNT_POST_POLICY = {
     "/account/switch-organization": set(ARCHETYPES),
+}
+
+OVERSIGHT_POST_POLICY = {
+    "/ai-chat/oversight/pause":  set(),
+    "/ai-chat/oversight/resume": set(),
 }
 
 # The versioned Transformation Room collection is portfolio data.  These are
@@ -647,7 +650,26 @@ def test_account_switch_organization_authorisation(
     )
 
 
-@pytest.fixture(scope="module")
+@pytest.mark.parametrize("path,allowed", OVERSIGHT_POST_POLICY.items())
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_oversight_post_routes_authorisation(
+    archetype, path, allowed, page, live_server, seeded
+):
+    """Oversight POST routes (pause, resume) are gated by org_admin, which
+    no seeded archetype except platform_admin holds."""
+    _login(page, live_server, seeded["emails"][archetype])
+    page.goto(live_server + "/", wait_until="domcontentloaded", timeout=PAGE_TIMEOUT)
+    csrf = page.locator('meta[name="csrf-token"]').get_attribute("content") or ""
+    response = page.request.post(
+        live_server + path,
+        data={"reason": "Auth-matrix probe", "csrf_token": csrf},
+        max_redirects=0,
+    )
+    expected = ALLOWED if archetype in allowed else DENIED
+    actual = ALLOWED if response.status < 400 else DENIED
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s" % (archetype, path, expected, actual)
+    )
 def other_org_interface_initiative(seeded):
     """SDD §8.2 negative case: a TechnologyRoadmapInitiative rooted at an
     ArchitectureModel belonging to a DIFFERENT organisation than `seeded`'s.
