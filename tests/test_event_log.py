@@ -445,3 +445,40 @@ class TestDirectOutboxEmit:
         outbox_after2 = db_session.get(OperationOutboxEvent, event.id)
         assert isinstance(outbox_after2.delivery_attempts, int)
         assert outbox_after2.delivery_attempts == 1  # unchanged, row already published
+
+
+# ---------------------------------------------------------------------------
+# Session isolation for the after_flush outbox listener
+# ---------------------------------------------------------------------------
+
+
+class TestOutboxSessionIsolation:
+    """The after_flush listener stores pending/seen/depth on session.info,
+    not module-level globals, so two sessions never interfere."""
+
+    def test_consecutive_flushes_produce_distinct_events(self, db_session, two_orgs):
+        """Two consecutive element creates in the same session must each
+        produce their own outbox event — the listener state must reset
+        between flushes."""
+        org_a = two_orgs["A"]
+
+        # First element.
+        _fresh_element(db_session, org_a.id, "First Element")
+        db_session.flush()
+
+        # Second element — must not be confused with the first.
+        _fresh_element(db_session, org_a.id, "Second Element")
+        db_session.flush()
+
+        db_session.commit()
+
+        from app.models.transformation_execution import OperationOutboxEvent
+        count = (
+            db_session.query(OperationOutboxEvent)
+            .filter(
+                OperationOutboxEvent.organization_id == org_a.id,
+                OperationOutboxEvent.entity_type == "archimate_element",
+            )
+            .count()
+        )
+        assert count == 2, f"Expected 2 outbox events, got {count}"

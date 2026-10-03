@@ -7,6 +7,9 @@ row in ``transformation_outbox_events``.
 
 The relay in ``app/services/event_log_service.py`` copies these rows into
 the partitioned ``event_log``.
+
+State is stored on ``session.info`` so concurrent sessions (threads,
+greenlets, or nested sessions) never share pending/seen/depth state.
 """
 
 from __future__ import annotations
@@ -22,14 +25,34 @@ logger = logging.getLogger(__name__)
 # The models we listen for.
 _TARGET_MODELS: dict = {}
 
-# Accumulates (entity_type, action, target) tuples during a flush.
-_pending: list[tuple[str, str, object]] = []
+# Keys for session.info dict — scoped per session, never shared across threads.
+_INFO_KEY_PENDING = "_archimate_outbox_pending"
+_INFO_KEY_SEEN = "_archimate_outbox_seen"
+_INFO_KEY_DEPTH = "_archimate_outbox_flush_depth"
 
-# Tracks entity instances already processed in the current flush cycle
-# (the recursive flush triggered by adding outbox rows must not re-process
-# the same entities).
-_seen: set[int] = set()
-_flush_depth: int = 0
+
+def _get_pending(session) -> list:
+    pending = session.info.get(_INFO_KEY_PENDING)
+    if pending is None:
+        pending = []
+        session.info[_INFO_KEY_PENDING] = pending
+    return pending
+
+
+def _get_seen(session) -> set:
+    seen = session.info.get(_INFO_KEY_SEEN)
+    if seen is None:
+        seen = set()
+        session.info[_INFO_KEY_SEEN] = seen
+    return seen
+
+
+def _get_depth(session) -> int:
+    return session.info.get(_INFO_KEY_DEPTH, 0)
+
+
+def _set_depth(session, value: int) -> None:
+    session.info[_INFO_KEY_DEPTH] = value
 
 
 def _entity_type_for(instance: object) -> str | None:
@@ -65,48 +88,51 @@ def _on_after_flush(session, flush_context):
     one triggered by ``session.commit()``).
 
     The recursive flush triggered by adding outbox rows must not re-process
-    the same entities — we track seen instances with ``_seen`` and only
+    the same entities — we track seen instances per session and only
     collect on the outermost call.
     """
-    global _pending, _seen, _flush_depth
-    _flush_depth += 1
+    depth = _get_depth(session) + 1
+    _set_depth(session, depth)
 
-    if _flush_depth == 1:
-        _pending.clear()
-        _seen.clear()
+    pending = _get_pending(session)
+    seen = _get_seen(session)
+
+    if depth == 1:
+        pending.clear()
+        seen.clear()
 
     for instance in session.new:
-        if id(instance) not in _seen:
+        if id(instance) not in seen:
             et = _entity_type_for(instance)
             if et is not None:
-                _seen.add(id(instance))
-                _pending.append((et, "created", instance))
+                seen.add(id(instance))
+                pending.append((et, "created", instance))
 
     for instance in session.dirty:
-        if id(instance) not in _seen:
+        if id(instance) not in seen:
             et = _entity_type_for(instance)
             if et is not None:
-                _seen.add(id(instance))
-                _pending.append((et, "updated", instance))
+                seen.add(id(instance))
+                pending.append((et, "updated", instance))
 
     for instance in session.deleted:
-        if id(instance) not in _seen:
+        if id(instance) not in seen:
             et = _entity_type_for(instance)
             if et is not None:
-                _seen.add(id(instance))
-                _pending.append((et, "deleted", instance))
+                seen.add(id(instance))
+                pending.append((et, "deleted", instance))
 
     # Only emit on the outermost call — recursive calls are just the
     # outbox rows themselves being flushed and carry no target entities.
-    if _flush_depth > 1:
-        _flush_depth -= 1
+    if depth > 1:
+        _set_depth(session, depth - 1)
         return
 
     # Now create outbox rows.  This happens AFTER the main flush has
     # committed its SQL to the database, so we are safe to add more objects.
     from app.services.outbox import emit_event
 
-    for entity_type, action, target in _pending:
+    for entity_type, action, target in pending:
         org_id = getattr(target, "organization_id", None)
         if org_id is None:
             logger.warning(
@@ -140,7 +166,7 @@ def _on_after_flush(session, flush_context):
                 entity_type, action, getattr(target, "id", None),
             )
 
-    _flush_depth -= 1
+    _set_depth(session, depth - 1)
 
 
 def install_archimate_outbox_sync():
