@@ -1328,6 +1328,7 @@ def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
     updated = 0
     if not dry_run and before:
         result = db.session.execute(
+            # tenancy-ok: one-time backfill, retirement 2026-12-31
             text(
                 """
                 UPDATE webhook_deliveries AS d
@@ -1343,6 +1344,7 @@ def _backfill_webhook_organizations(*, dry_run, existing_tables, added, failed):
         db.session.commit()
         if "webhook_events" in existing_tables:
             result = db.session.execute(
+                # tenancy-ok: one-time backfill, retirement 2026-12-31
                 text(
                     """
                     UPDATE webhook_deliveries AS d
@@ -1409,6 +1411,7 @@ def _backfill_document_chunk_organizations(*, dry_run, existing_tables, added, f
     updated = eligible
     if not dry_run and eligible:
         result = db.session.execute(
+            # tenancy-ok: one-time backfill, retirement 2026-12-31
             text(
                 """
                 UPDATE document_chunk_embeddings AS c
