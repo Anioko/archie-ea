@@ -77,6 +77,7 @@ class TestGoalTrace:
             name=goal.name,
             type="Goal",
             layer="Motivation",
+            organization_id=org.id,
         )
         db_session.add(goal_elem)
         db_session.flush()
@@ -86,6 +87,7 @@ class TestGoalTrace:
             name="Customer Analytics",
             type="Capability",
             layer="Business",
+            organization_id=org.id,
         )
         db_session.add(cap_elem)
         db_session.flush()
@@ -95,6 +97,7 @@ class TestGoalTrace:
             source_id=goal_elem.id,
             target_id=cap_elem.id,
             type="realization",
+            organization_id=org.id,
         )
         db_session.add(rel)
         db_session.flush()
