@@ -262,6 +262,14 @@ def _register_optional_standalone(app):
         # scope comes from the share row, never from the URL. See the module
         # docstring in app/modules/sharing/routes.py.
         ("app.modules.sharing.routes", "artefact_share_bp", None),
+        # System of record per data entity, undeclared copies, master data
+        # domain register and the logical-model standards check. Tier-
+        # independent: the blueprint carries its own /data-governance prefix.
+        (
+            "app.modules.architecture.routes.data_governance_routes",
+            "data_governance_bp",
+            None,
+        ),
         # ARCH-123 (Data Lineage) is NOT a new blueprint: it extends the
         # existing app.modules.architecture.routes.data_architecture_routes
         # (blueprint "data_architecture", already registered elsewhere) with
