@@ -13,7 +13,7 @@ Design (ADR):
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List
 
 from app.extensions import db
@@ -52,8 +52,8 @@ def relay_outbox_batch(batch_size: int = 500) -> int:
             _append_one(outbox)
             # Mark delivered regardless of whether event_log already had it
             # (the idempotent path still means "we've processed this row").
-            outbox.published_at = datetime.utcnow()
-            outbox.delivery_attempts = OperationOutboxEvent.delivery_attempts + 1
+            outbox.published_at = datetime.now(timezone.utc)
+            outbox.delivery_attempts = (outbox.delivery_attempts or 0) + 1
             db.session.flush()
             inserted += 1
         except Exception:

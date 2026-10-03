@@ -406,3 +406,42 @@ class TestDirectOutboxEmit:
         assert len(log_rows) == 1
         assert log_rows[0].ordinal == 1
         assert log_rows[0].payload_json == {"hello": "world"}
+
+    def test_relay_increments_delivery_attempts(self, db_session, two_orgs):
+        """After relay, delivery_attempts must be an integer, not a BinaryExpression."""
+        org_a = two_orgs["A"]
+
+        event = emit_event(
+            organization_id=org_a.id,
+            event_type="test.delivery.count",
+            payload={"n": 1},
+            entity_type="test_entity",
+            entity_id=99,
+        )
+        db_session.commit()
+
+        # Before relay: delivery_attempts is 0 (server default).
+        outbox_before = db_session.get(OperationOutboxEvent, event.id)
+        assert outbox_before.delivery_attempts == 0
+
+        inserted = relay_outbox_batch()
+        db_session.commit()
+        assert inserted == 1
+
+        # After relay: delivery_attempts must be an int, incremented to 1.
+        db_session.expire_all()
+        outbox_after = db_session.get(OperationOutboxEvent, event.id)
+        assert isinstance(outbox_after.delivery_attempts, int), (
+            f"delivery_attempts must be int, got {type(outbox_after.delivery_attempts)}"
+        )
+        assert outbox_after.delivery_attempts == 1
+
+        # Relay again (idempotent) — no unpublished rows remain.
+        inserted2 = relay_outbox_batch()
+        db_session.commit()
+        assert inserted2 == 0  # nothing new to relay
+
+        db_session.expire_all()
+        outbox_after2 = db_session.get(OperationOutboxEvent, event.id)
+        assert isinstance(outbox_after2.delivery_attempts, int)
+        assert outbox_after2.delivery_attempts == 1  # unchanged, row already published
