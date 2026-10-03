@@ -84,6 +84,11 @@ INTENTIONALLY_GLOBAL = {
         "owner actions explicitly scope by organization_id; the unauthenticated "
         "public token flow derives scope from the link"
     ),
+    "ImportSessionLog": (
+        "audit log recording which organisation an import ran in; the column is "
+        "for attribution, not scoping — the log is queried by session_id or "
+        "user_id, and a restore point without an organisation is never offered"
+    ),
     "ErrorEvent": (
         "operational telemetry about the platform, not tenant data — a platform "
         "admin needs to see every organisation's errors to tell 'one customer hit "

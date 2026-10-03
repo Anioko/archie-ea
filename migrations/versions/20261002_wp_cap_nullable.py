@@ -22,7 +22,7 @@ from sqlalchemy import text
 from app.commands.schema_migrations import ContractBlocked
 
 revision = "20261002_wp_cap_nullable"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_data_domain_org_unique"
 branch_labels = None
 depends_on = None
 
