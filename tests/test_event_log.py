@@ -544,3 +544,71 @@ class TestRelayJobRegistration:
             "event_log_relay must be in TENANT_JOBS or the scheduler "
             "will remove it as undeclared"
         )
+
+
+# ---------------------------------------------------------------------------
+# Acceptance: replay rebuilds a derived table identically
+# ---------------------------------------------------------------------------
+
+
+class TestReplayRebuildsDerivedTable:
+    """Replaying events from a timestamp must rebuild a derived table
+    that is identical to the one built incrementally from offsets."""
+
+    def test_replay_rebuilds_derived_table_identically(self, db_session, two_orgs):
+        """Create elements in org A, relay them, build a derived table
+        incrementally, then replay from the start timestamp and verify
+        the rebuilt table matches."""
+        org_a = two_orgs["A"]
+
+        # Record the timestamp before any events.
+        start_time = datetime.now(timezone.utc)
+
+        # Create 3 elements with distinct names.
+        names = ["Alpha", "Beta", "Gamma"]
+        for name in names:
+            _fresh_element(db_session, org_a.id, name)
+        db_session.commit()
+
+        # Relay all outbox events into event_log.
+        relay_outbox_batch()
+        db_session.commit()
+
+        # --- Incremental build: read from offset 0 ---
+        incremental_table: dict[str, dict] = {}
+        offset = 0
+        while True:
+            batch = read_from_offset(org_a.id, from_offset=offset, limit=100)
+            if not batch:
+                break
+            for event in batch:
+                name = event["payload"].get("name")
+                if name:
+                    incremental_table[name] = {
+                        "event_type": event["event_type"],
+                        "ordinal": event["ordinal"],
+                    }
+                offset = max(offset, event["ordinal"])
+        assert len(incremental_table) == 3
+
+        # --- Replay build: replay from start_time ---
+        replay_table: dict[str, dict] = {}
+        for event in replay_from(org_a.id, since=start_time, limit=100):
+            name = event["payload"].get("name")
+            if name:
+                replay_table[name] = {
+                    "event_type": event["event_type"],
+                    "ordinal": event["ordinal"],
+                }
+
+        # The two derived tables must be identical.
+        assert replay_table == incremental_table, (
+            f"Replay rebuild must match incremental build.\n"
+            f"  incremental: {incremental_table}\n"
+            f"  replay:      {replay_table}"
+        )
+
+        # Also verify org B has no events in either table.
+        org_b = two_orgs["B"]
+        b_replay = replay_from(org_b.id, since=start_time, limit=100)
+        assert len(b_replay) == 0
