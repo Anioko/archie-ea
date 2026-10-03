@@ -163,7 +163,7 @@ def populate_solution_from_template(solution_id):
             skipped.append({'layer': layer_lower, 'reason': 'layer_already_populated'})
             continue
 
-        templates = RequirementTemplate.query.filter(
+templates = RequirementTemplate.query.filter(
             RequirementTemplate.layer == layer_lower,
             RequirementTemplate.is_system == True
         ).limit(3).all()
@@ -176,13 +176,12 @@ def populate_solution_from_template(solution_id):
             req = SolutionRequirement(
                 solution_id=solution_id,
                 name=tpl.name,
-                description=tpl.description or '',
+                description=tpl.description_hint or '',
                 layer=tpl.layer,
                 template_id=tpl.id,
                 acceptance_criteria=tpl.ac_hint or '',
                 moscow_priority='SHOULD',
                 status='open',
-                created_by_id=current_user.id
             )
             db.session.add(req)
             sync_archimate_element(req)
