@@ -156,6 +156,9 @@ POLICY = {
 for _allowed in POLICY.values():
     _allowed.add("platform_admin")
 
+for _allowed in OVERSIGHT_POST_POLICY.values():
+    _allowed.add("platform_admin")
+
 ACCOUNT_POST_POLICY = {
     "/account/switch-organization": set(ARCHETYPES),
 }
