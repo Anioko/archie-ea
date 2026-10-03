@@ -39,3 +39,7 @@ from . import (  # noqa: F401, E402
     page_guide_routes,
     agent_oversight_routes,
 )
+
+from .run_record_routes import register_run_record_routes
+
+register_run_record_routes(unified_ai_chat_bp)
