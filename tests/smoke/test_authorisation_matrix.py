@@ -673,6 +673,9 @@ def test_oversight_post_routes_authorisation(
     assert actual == expected, (
         "%s reached %s: expected %s, got %s" % (archetype, path, expected, actual)
     )
+
+
+@pytest.fixture(scope="module")
 def other_org_interface_initiative(seeded):
     """SDD §8.2 negative case: a TechnologyRoadmapInitiative rooted at an
     ArchitectureModel belonging to a DIFFERENT organisation than `seeded`'s.
