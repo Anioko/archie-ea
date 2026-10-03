@@ -67,6 +67,15 @@ _NO_DERIVATION = {
     "duplicate_detection_runs",
 }
 
+# Fixed SQL for orphan-count queries (no string-built SQL — Bandit B608).
+_ORPHAN_COUNT_SQL = {
+    "duplicate_detection_runs": "SELECT count(*) FROM duplicate_detection_runs WHERE organization_id IS NULL",
+    "duplicate_groups": "SELECT count(*) FROM duplicate_groups WHERE organization_id IS NULL",
+    "unified_detection_runs": "SELECT count(*) FROM unified_detection_runs WHERE organization_id IS NULL",
+    "unified_duplicate_groups": "SELECT count(*) FROM unified_duplicate_groups WHERE organization_id IS NULL",
+    "consolidation_list_entries": "SELECT count(*) FROM consolidation_list_entries WHERE organization_id IS NULL",
+}
+
 
 def _backfill(org_id=None, dry_run=False):
     conn = db.session.connection()
@@ -83,7 +92,7 @@ def _backfill(org_id=None, dry_run=False):
         {**_DERIVABLE, **{t: None for t in _NO_DERIVATION}}.keys()
     ):
         orphans = conn.execute(
-            text(f'SELECT count(*) FROM {table} WHERE organization_id IS NULL')
+            text(_ORPHAN_COUNT_SQL[table])
         ).scalar()
         if orphans:
             verb, label = ("would leave", "!") if dry_run else ("left", "!")

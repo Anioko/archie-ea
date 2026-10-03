@@ -47,9 +47,22 @@ class ConsolidationListEntry(TenantMixin, db.Model):
 
     Users can add applications from duplicate groups to this list, then plan actions
     like decommissioning, retirement, or adding to roadmap.
+
+    TenantMixin declares organization_id NOT NULL, but this is an existing
+    table and reconcile-schema can only ADD nullable columns (ADR 0002).
+    Override to nullable so the column can land on deployed databases
+    without a maintenance window.  Legacy rows with no known owner stay NULL
+    and are hidden from every organisation by the tenant filter.
     """
 
     __tablename__ = "consolidation_list_entries"
+
+    organization_id = db.Column(
+        db.Integer,
+        db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id = Column(Integer, primary_key=True)
 

@@ -6,7 +6,7 @@ This migration adds the organization_id column (nullable for legacy rows)
 to every table that does not already have it.
 
 Revision ID: 20261002_dd_tenancy
-Revises: 20261002_vendor_legal_reg_idx
+Revises: 20261002_data_domain_org_unique
 Create Date: 2026-10-03
 """
 from alembic import op
