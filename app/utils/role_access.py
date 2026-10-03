@@ -621,6 +621,7 @@ _MY_WORK_LINKS = {
         # sidebar; Tech Radar is new. Both are now linked.
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "workflow"),
         _link("Tech Radar", "tech_radar.index", "radar"),
+        _link("Strategy Traceability", "architect_ui.traceability_matrix", "git-compare"),
     ],
     ROLE_CTO: [
         # A CTO with no route to a roadmap from their own sidebar. Found
@@ -783,6 +784,7 @@ _MY_WORK_LINKS = {
         # roles is invisible to most real accounts. Rendered total for this
         # role goes 25 -> 26, still under SIDEBAR_LINK_BUDGET (27).
         _link("Architecture Journey", "architecture_journey.index", "compass"),
+        _link("Strategy Traceability", "architect_ui.traceability_matrix", "git-compare"),
     ],
     # Promoted from charter-only, 31 Aug 2026. The blueprint scores a Security
     # Viewpoint as one of its fifteen sections and nobody owned it; every link
