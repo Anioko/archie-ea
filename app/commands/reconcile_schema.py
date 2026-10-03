@@ -1736,7 +1736,7 @@ def _reconcile(dry_run=False):
         added=added,
         failed=failed,
     )
-_backfill_sso_mapping_organizations(
+    _backfill_sso_mapping_organizations(
         dry_run=dry_run,
         existing_tables=existing_tables,
         added=added,

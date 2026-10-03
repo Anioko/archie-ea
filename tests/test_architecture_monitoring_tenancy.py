@@ -1032,7 +1032,7 @@ def test_backfill_skips_baseline_with_non_array_capabilities(app):
 
             # Must not raise -- the jsonb_typeof guard prevents the
             # jsonb_array_elements error
-            stats = repair_layer_tenancy()
+            repair_layer_tenancy()
 
             # Both should be derivable from created_by since the user exists
             assert db.session.execute(
@@ -1127,7 +1127,7 @@ def test_backfill_derives_alert_from_capability_before_acknowledging_user(app):
 
             db.session.commit()
 
-            stats = repair_layer_tenancy()
+            repair_layer_tenancy()
 
             # Must derive from org_a (the capability), not org_b (the ack user)
             result_org = db.session.execute(
