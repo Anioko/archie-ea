@@ -47,7 +47,7 @@ def issue(user, remember=False):
         sid=sid,
         user_id=user.id,
         organization_id=getattr(user, "organization_id", None),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         ip=ip,
         user_agent=ua,
     )
@@ -150,7 +150,7 @@ def revoke_all_for_user(user_id, reason, except_sid=None):
         if except_sid:
             q = q.filter(UserSession.sid != except_sid)
         rows = q.all()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for row in rows:
             row.revoked_at = now
             row.revoked_reason = reason

@@ -155,6 +155,12 @@ class Config:
         "DERIVED_RECOMPUTE_INTERVAL_MINUTES", "10"
     )
 
+    # Per-organisation model-health drift scan — recurring interval,
+    # configurable downward. Default 60 minutes.
+    MODEL_HEALTH_SCAN_INTERVAL_MINUTES = os.environ.get(
+        "MODEL_HEALTH_SCAN_INTERVAL_MINUTES", "60"
+    )
+
     # Session security — 8-hour session lifetime, 30-day remember-me cookie
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
     # F-07: the 8 hours above is an ABSOLUTE cap; it is not an idle timeout and
