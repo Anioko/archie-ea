@@ -70,7 +70,16 @@ def relay_outbox_batch(batch_size: int = 500) -> int:
 
 def _append_one(outbox: OperationOutboxEvent) -> None:
     """Insert one event_log row from an outbox row, skipping if idempotent."""
-    # Check dedup first — same event_id for the same org means already relayed.
+    # Serialise the entire dedup+ordinal+insert operation per organisation so
+    # two concurrent relay workers never race past each other's dedup check.
+    db.session.execute(
+        _sa_text(
+            "SELECT pg_advisory_xact_lock(hashtext('event_log_ordinal:' || :org_id))"
+        ),
+        {"org_id": str(outbox.organization_id)},
+    )
+
+    # Check dedup — same event_id for the same org means already relayed.
     existing = (
         db.session.query(EventLogRecord.id)
         .filter(
@@ -81,15 +90,6 @@ def _append_one(outbox: OperationOutboxEvent) -> None:
     )
     if existing is not None:
         return
-
-    # Serialise ordinal allocation per organisation so concurrent relay
-    # workers never compute the same next_ordinal.
-    db.session.execute(
-        _sa_text(
-            "SELECT pg_advisory_xact_lock(hashtext('event_log_ordinal:' || :org_id))"
-        ),
-        {"org_id": str(outbox.organization_id)},
-    )
 
     # Compute the next per-org monotonic ordinal.
     last = (
