@@ -51,7 +51,6 @@ def _seed_user(db_session, org_id, email):
 
     user = User(
         email=email,
-        username=email,
         organization_id=org_id,
         password_hash="test",
     )
@@ -100,7 +99,8 @@ def test_framework_adoption_isolation(db_session, make_org, tenant_ctx):
 
 def test_adopted_control_isolation(db_session, make_org, tenant_ctx):
     """Org A's adopted controls must never appear for org B."""
-    from app.models.regulatory_framework import AdoptedControl, FrameworkAdoption
+    from app.models.application_compliance import ApplicationComplianceControl
+    from app.models.regulatory_framework import FrameworkAdoption
 
     org_a, org_b = make_org("a"), make_org("b")
     fw = _seed_framework(db_session, "SOC-2", "SOC 2")
@@ -115,9 +115,8 @@ def test_adopted_control_isolation(db_session, make_org, tenant_ctx):
         )
         db_session.add(adoption)
         db_session.flush()
-        ac = AdoptedControl(
+        ac = ApplicationComplianceControl(
             organization_id=org_a.id,
-            scope="tenant",
             adoption_id=adoption.id,
             control_id=ctl.id,
             implementation_status="planned",
@@ -126,7 +125,7 @@ def test_adopted_control_isolation(db_session, make_org, tenant_ctx):
         db_session.flush()
 
     with tenant_ctx(org_b.id):
-        b_controls = AdoptedControl.query.filter_by(
+        b_controls = ApplicationComplianceControl.query.filter_by(
             organization_id=org_b.id
         ).all()
 
@@ -162,36 +161,24 @@ def test_regulatory_change_isolation(db_session, make_org, tenant_ctx):
 
 
 def test_adopt_framework_populates_controls(db_session, make_org, tenant_ctx):
-    """Adopting a framework creates AdoptedControl rows for every control."""
-    from app.models.regulatory_framework import AdoptedControl, FrameworkAdoption
+    """Adopting a framework creates ApplicationComplianceControl rows for every control."""
+    from app.models.application_compliance import ApplicationComplianceControl
+    from app.modules.compliance.services.applicability_service import ApplicabilityService
 
     org = make_org("a")
     fw = _seed_framework(db_session, "ISO-27001", "ISO/IEC 27001")
-    ctl1 = _seed_control(db_session, fw.id, "A.5.1", "Policies for information security")
-    ctl2 = _seed_control(db_session, fw.id, "A.8.2", "Privileged access rights")
+    _seed_control(db_session, fw.id, "A.5.1", "Policies for information security")
+    _seed_control(db_session, fw.id, "A.8.2", "Privileged access rights")
+    user = _seed_user(db_session, org.id, "adopter@org-a.test")
 
     with tenant_ctx(org.id):
-        adoption = FrameworkAdoption(
+        adoption = ApplicabilityService.adopt_framework(
             organization_id=org.id,
-            scope="tenant",
             framework_id=fw.id,
-            status="active",
+            adopted_by_id=user.id,
         )
-        db_session.add(adoption)
-        db_session.flush()
 
-        for ctl in [ctl1, ctl2]:
-            ac = AdoptedControl(
-                organization_id=org.id,
-                scope="tenant",
-                adoption_id=adoption.id,
-                control_id=ctl.id,
-                implementation_status="planned",
-            )
-            db_session.add(ac)
-        db_session.flush()
-
-        count = AdoptedControl.query.filter_by(
+        count = ApplicationComplianceControl.query.filter_by(
             organization_id=org.id, adoption_id=adoption.id
         ).count()
 

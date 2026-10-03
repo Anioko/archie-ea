@@ -27,11 +27,6 @@ _FK_ADOPTION_FRAMEWORK = "fk_framework_adoptions_framework_id"
 _FK_ADOPTION_ORG = "fk_framework_adoptions_organization_id"
 _FK_ADOPTION_REF = "fk_framework_adoptions_reference_adoption_id"
 
-_FK_CONTROL_ADOPTION = "fk_adopted_controls_adoption_id"
-_FK_CONTROL_CONTROL = "fk_adopted_controls_control_id"
-_FK_CONTROL_ORG = "fk_adopted_controls_organization_id"
-_FK_CONTROL_VERIFIED_BY = "fk_adopted_controls_verified_by_id"
-
 _FK_CHANGE_FRAMEWORK = "fk_regulatory_changes_framework_id"
 _FK_CHANGE_ORG = "fk_regulatory_changes_organization_id"
 _FK_CHANGE_RECORDED_BY = "fk_regulatory_changes_recorded_by_id"
@@ -44,17 +39,12 @@ _IX_HARMONIZED_CONTROL = "ix_compliance_controls_harmonized_control_id"
 _IX_ADOPTION_FRAMEWORK = "ix_framework_adoptions_framework_id"
 _IX_ADOPTION_ORG = "ix_framework_adoptions_organization_id"
 _IX_ADOPTION_SCOPE = "ix_framework_adoptions_scope"
-_IX_CONTROL_ADOPTION = "ix_adopted_controls_adoption_id"
-_IX_CONTROL_CONTROL = "ix_adopted_controls_control_id"
-_IX_CONTROL_ORG = "ix_adopted_controls_organization_id"
-_IX_CONTROL_SCOPE = "ix_adopted_controls_scope"
 _IX_CHANGE_FRAMEWORK = "ix_regulatory_changes_framework_id"
 _IX_CHANGE_ORG = "ix_regulatory_changes_organization_id"
 _IX_IMPACT_CHANGE = "ix_regulatory_change_impacts_change_id"
 _IX_IMPACT_ORG = "ix_regulatory_change_impacts_organization_id"
 
 _UQ_ORG_ADOPTION = "uq_org_framework_adoption"
-_UQ_ORG_CONTROL = "uq_org_adoption_control"
 
 
 def _add_fk_if_not_exists(bind, table, constraint_name, columns, ref_table, ref_columns, ondelete=None):
@@ -172,59 +162,33 @@ def upgrade():
         "ON framework_adoptions (scope)"
     ))
 
-    # ── Adopted controls ────────────────────────────────────────────────
+    # ── Adoption link on application_compliance_controls ─────────────────
     bind.execute(text("""
-        CREATE TABLE IF NOT EXISTS adopted_controls (
-            id SERIAL NOT NULL,
-            organization_id INTEGER,
-            scope VARCHAR(16),
-            adoption_id INTEGER NOT NULL,
-            control_id INTEGER NOT NULL,
-            tailoring_notes TEXT,
-            implementation_status VARCHAR(20),
-            evidence_url VARCHAR(500),
-            verified_date TIMESTAMP WITHOUT TIME ZONE,
-            verified_by_id INTEGER,
-            created_at TIMESTAMP WITHOUT TIME ZONE,
-            updated_at TIMESTAMP WITHOUT TIME ZONE,
-            PRIMARY KEY (id)
-        )
+        DO $app_id_nullable$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'application_compliance_controls'
+              AND column_name = 'application_id'
+              AND is_nullable = 'NO'
+          ) THEN
+            ALTER TABLE application_compliance_controls
+              ALTER COLUMN application_id DROP NOT NULL;
+          END IF;
+        END
+        $app_id_nullable$
     """))
-    _add_fk_if_not_exists(
-        bind, "adopted_controls", _FK_CONTROL_ADOPTION,
-        ["adoption_id"], "framework_adoptions", ["id"],
-    )
-    _add_fk_if_not_exists(
-        bind, "adopted_controls", _FK_CONTROL_CONTROL,
-        ["control_id"], "compliance_controls", ["id"],
-    )
-    _add_fk_if_not_exists(
-        bind, "adopted_controls", _FK_CONTROL_ORG,
-        ["organization_id"], "organizations", ["id"], ondelete="CASCADE",
-    )
-    _add_fk_if_not_exists(
-        bind, "adopted_controls", _FK_CONTROL_VERIFIED_BY,
-        ["verified_by_id"], "users", ["id"], ondelete="SET NULL",
-    )
-    _add_unique_if_not_exists(
-        bind, "adopted_controls", _UQ_ORG_CONTROL,
-        ["organization_id", "adoption_id", "control_id"],
-    )
     bind.execute(text(
-        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_ADOPTION} "
-        "ON adopted_controls (adoption_id)"
+        "ALTER TABLE application_compliance_controls "
+        "ADD COLUMN IF NOT EXISTS adoption_id INTEGER"
     ))
+    _add_fk_if_not_exists(
+        bind, "application_compliance_controls", "fk_app_compliance_adoption",
+        ["adoption_id"], "framework_adoptions", ["id"], ondelete="SET NULL",
+    )
     bind.execute(text(
-        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_CONTROL} "
-        "ON adopted_controls (control_id)"
-    ))
-    bind.execute(text(
-        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_ORG} "
-        "ON adopted_controls (organization_id)"
-    ))
-    bind.execute(text(
-        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_SCOPE} "
-        "ON adopted_controls (scope)"
+        "CREATE INDEX IF NOT EXISTS ix_app_compliance_adoption_id "
+        "ON application_compliance_controls (adoption_id)"
     ))
 
     # ── Regulatory changes ──────────────────────────────────────────────
@@ -307,7 +271,21 @@ def downgrade():
 
     bind.execute(text("DROP TABLE IF EXISTS regulatory_change_impacts CASCADE"))
     bind.execute(text("DROP TABLE IF EXISTS regulatory_changes CASCADE"))
-    bind.execute(text("DROP TABLE IF EXISTS adopted_controls CASCADE"))
+
+    bind.execute(text("DROP INDEX IF EXISTS ix_app_compliance_adoption_id"))
+    bind.execute(text(
+        "ALTER TABLE application_compliance_controls "
+        "DROP CONSTRAINT IF EXISTS fk_app_compliance_adoption"
+    ))
+    bind.execute(text(
+        "ALTER TABLE application_compliance_controls "
+        "DROP COLUMN IF EXISTS adoption_id"
+    ))
+    bind.execute(text(
+        "ALTER TABLE application_compliance_controls "
+        "ALTER COLUMN application_id SET NOT NULL"
+    ))
+
     bind.execute(text("DROP TABLE IF EXISTS framework_adoptions CASCADE"))
 
     bind.execute(text(

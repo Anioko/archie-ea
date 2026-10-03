@@ -11,9 +11,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app import db
+from app.models.application_compliance import ApplicationComplianceControl
 from app.models.compliance_models import ComplianceControl, RegulatoryFramework
 from app.models.regulatory_change import RegulatoryChange, RegulatoryChangeImpact
-from app.models.regulatory_framework import AdoptedControl, FrameworkAdoption
+from app.models.regulatory_framework import FrameworkAdoption
 from app.models.technology_layer import Node
 
 logger = logging.getLogger(__name__)
@@ -116,9 +117,8 @@ class ApplicabilityService:
         db.session.flush()
 
         for control in framework.controls:
-            adopted = AdoptedControl(
+            adopted = ApplicationComplianceControl(
                 organization_id=organization_id,
-                scope="tenant",
                 adoption_id=adoption.id,
                 control_id=control.id,
                 implementation_status="planned",
