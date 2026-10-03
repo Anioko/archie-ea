@@ -1,5 +1,6 @@
-"""Route tests for R1-B80's lineage and sharing-agreement screens
-(lineage_view, sharing_agreements, new_sharing_agreement)."""
+"""Route tests for R1-B80's lineage, downstream-impact and sharing-agreement
+screens (lineage_view, downstream_impact_view, sharing_agreements,
+new_sharing_agreement)."""
 
 from __future__ import annotations
 
@@ -23,7 +24,19 @@ def _vendor_org(db_session, name="Route Vendor"):
 def _signed_in(client, db_session, login_as, org):
     """Create and log in an enterprise-architect user for ``org`` — the
     role granted access to the ``data_integration`` nav section that
-    ``data_governance_routes._guard`` requires."""
+    ``data_governance_routes._guard`` requires.
+
+    Call this LAST, immediately before the first request: some models
+    written here (e.g. ApplicationComponent) have before_insert/flush
+    listeners that resolve ``current_user`` outside of a request context.
+    Because the ``db_session`` fixture keeps one app context open for the
+    whole test, resolving ``current_user`` with no active request caches
+    an anonymous user onto that shared ``g`` -- and every later request in
+    the test reuses that same ``g`` (see the ``login_as`` fixture's own
+    docstring), so a login performed before such a flush is invisible to
+    every request that follows. Logging in last avoids the trap instead
+    of chasing it per-model.
+    """
     user = User(
         first_name="Dg", last_name="Tester",
         email=f"dg-route-{uuid.uuid4().hex[:8]}@example.com",
@@ -39,13 +52,13 @@ def test_lineage_view_renders_hops_for_an_element_with_lineage(
     client, db_session, make_org, login_as
 ):
     org = make_org("dg-lineage-ok")
-    _signed_in(client, db_session, login_as, org)
     a = ArchiMateElement(name="Source", type="ApplicationComponent", layer="application", organization_id=org.id)
     b = ArchiMateElement(name="Target", type="ApplicationComponent", layer="application", organization_id=org.id)
     db_session.add_all([a, b])
     db_session.flush()
     db_session.add(DataLineage(name="flow", archimate_element_id=a.id, target_archimate_element_id=b.id, organization_id=org.id))
     db_session.commit()
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.get(f"/data-governance/lineage/{a.id}")
     assert resp.status_code == 200
@@ -59,10 +72,10 @@ def test_lineage_view_renders_an_element_with_no_further_lineage_as_a_single_hop
     depth-0, so a valid element with no edges still renders (just one
     hop) rather than 404ing."""
     org = make_org("dg-lineage-none")
-    _signed_in(client, db_session, login_as, org)
     a = ArchiMateElement(name="Lonely", type="ApplicationComponent", layer="application", organization_id=org.id)
     db_session.add(a)
     db_session.commit()
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.get(f"/data-governance/lineage/{a.id}")
     assert resp.status_code == 200
@@ -79,7 +92,6 @@ def test_lineage_view_404s_for_an_element_that_does_not_exist(client, db_session
 
 def test_downstream_impact_ranks_consumers_by_criticality(client, db_session, make_org, login_as):
     org = make_org("dg-impact-ranked")
-    _signed_in(client, db_session, login_as, org)
     from app.models.application_portfolio import ApplicationComponent
 
     source = ArchiMateElement(name="Source Field", type="DataObject", layer="application", organization_id=org.id)
@@ -96,6 +108,7 @@ def test_downstream_impact_ranks_consumers_by_criticality(client, db_session, ma
         ApplicationComponent(name="Critical App", archimate_element_id=critical.id, organization_id=org.id, business_criticality="Critical"),
     ])
     db_session.commit()
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.get(f"/data-governance/impact/{source.id}")
     assert resp.status_code == 200
@@ -116,7 +129,6 @@ def test_sharing_agreements_lists_only_this_organizations_agreements(
 ):
     org = make_org("dg-sharing-list")
     other_org = make_org("dg-sharing-other")
-    _signed_in(client, db_session, login_as, org)
     vendor = _vendor_org(db_session)
     mine = DataSharingAgreement(
         name="Mine", vendor_organization_id=vendor.id, organization_id=org.id, status="active"
@@ -126,6 +138,7 @@ def test_sharing_agreements_lists_only_this_organizations_agreements(
     )
     db_session.add_all([mine, theirs])
     db_session.commit()
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.get("/data-governance/sharing-agreements")
     assert resp.status_code == 200
@@ -135,8 +148,8 @@ def test_sharing_agreements_lists_only_this_organizations_agreements(
 
 def test_new_sharing_agreement_get_renders_form(client, db_session, make_org, login_as):
     org = make_org("dg-sharing-new-get")
-    _signed_in(client, db_session, login_as, org)
     _vendor_org(db_session)
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.get("/data-governance/sharing-agreements/new")
     assert resp.status_code == 200
@@ -145,8 +158,8 @@ def test_new_sharing_agreement_get_renders_form(client, db_session, make_org, lo
 
 def test_new_sharing_agreement_post_creates_and_redirects(client, db_session, make_org, login_as):
     org = make_org("dg-sharing-new-post")
-    _signed_in(client, db_session, login_as, org)
     vendor = _vendor_org(db_session)
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.post(
         "/data-governance/sharing-agreements/new",
@@ -165,8 +178,8 @@ def test_new_sharing_agreement_post_without_name_flashes_and_redirects_back(
     client, db_session, make_org, login_as
 ):
     org = make_org("dg-sharing-new-invalid")
-    _signed_in(client, db_session, login_as, org)
     vendor = _vendor_org(db_session)
+    _signed_in(client, db_session, login_as, org)
 
     resp = client.post(
         "/data-governance/sharing-agreements/new",
