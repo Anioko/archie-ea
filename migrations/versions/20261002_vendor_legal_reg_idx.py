@@ -7,14 +7,14 @@ does not honour that dialect-specific option, so the index must be created
 by a migration (or deploy-schema.sh for existing databases).
 
 Revision ID: 20261002_vendor_legal_reg_idx
-Revises: 20261001_approval_nullable
+Revises: 20261002_wp_cap_nullable
 Create Date: 2026-10-02
 """
 from alembic import op
 from sqlalchemy import text
 
 revision = "20261002_vendor_legal_reg_idx"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_wp_cap_nullable"
 branch_labels = None
 depends_on = None
 
