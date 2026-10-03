@@ -254,10 +254,12 @@ class ToolCall:
 
 class ToolExecutor:
 
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, persona: str = None):
         self.user_id = user_id
         self._resolver = EntityResolver()
         self._org_id = None  # cached lazily
+        self._persona = persona
+        self._charter_checked = None  # cached result of the charter check
 
     @staticmethod
     def _coverage(rows, total, noun):
@@ -365,6 +367,52 @@ class ToolExecutor:
         handler = getattr(self, f"_tool_{tool_call.name}", None)
         if not handler:
             return {"success": False, "error": f"Unknown tool: {tool_call.name}"}
+
+        # Charter enforcement: a tool call must be within the persona's charter
+        # bounds. This is checked BEFORE the permission check so a refused
+        # charter-bound call is surfaced as the charter refusal, not a
+        # permission denial — the persona has no business calling this tool,
+        # regardless of the user's own permissions.
+        persona = self._persona
+        if persona:
+            try:
+                org_id = self._get_organization_id()
+                from app.models.agent_charter import AgentCharter
+
+                if not AgentCharter.tool_allowed(persona, tool_call.name, org_id):
+                    logger.warning(
+                        "ToolExecutor: refusing tool '%s' for persona '%s' — outside charter bounds",
+                        tool_call.name, persona,
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            f"I can't run '{tool_call.name}' — the {persona.replace('_', ' ')} "
+                            f"charter does not permit this action. If this is something you "
+                            f"need, switch to a persona whose scope covers it, or ask an "
+                            f"administrator to amend the charter."
+                        ),
+                        "code": "CHARTER_REFUSED",
+                        "charter_refused": True,
+                        "persona": persona,
+                        "tool": tool_call.name,
+                    }
+            except Exception:
+                # Fail CLOSED: if the charter cannot be read, refuse the call.
+                logger.exception(
+                    "ToolExecutor: charter check failed for persona '%s' tool '%s' — refusing",
+                    persona, tool_call.name,
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"I can't run '{tool_call.name}' — the charter for "
+                        f"{persona.replace('_', ' ')} could not be verified. "
+                        f"An administrator should check the charter is correctly seeded."
+                    ),
+                    "code": "CHARTER_UNAVAILABLE",
+                    "charter_refused": True,
+                }
 
         schema = TOOL_SCHEMA_BY_NAME.get(tool_call.name)
         # Fail CLOSED: an unregistered/unclassified tool is treated as mutating,

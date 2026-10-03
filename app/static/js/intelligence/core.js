@@ -302,11 +302,17 @@
         };
     }
 
-    function flowModel(flow) {
+    function flowModel(flow, elements) {
+        // The server sends other_element_name directly on the flow AND (now
+        // that the elements map exists) a fuller record keyed by id in
+        // elements -- prefer the direct field when present, fall back to
+        // the map so a caller that only has elements (the new graph
+        // rendering) still resolves a name.
+        var entry = elements ? elements[String(flow.other_element_id)] : null;
         return {
             direction: flow.direction,
             otherElementId: flow.other_element_id,
-            otherElementName: flow.other_element_name,
+            otherElementName: flow.other_element_name || (entry && entry.name) || null,
             lineageType: flow.lineage_type || null,
             frequency: flow.frequency || null
         };
@@ -317,7 +323,10 @@
     }
 
     function buildFlows(payload) {
-        return (payload.flows || []).map(flowModel);
+        var elements = payload.elements || {};
+        return (payload.flows || []).map(function (flow) {
+            return flowModel(flow, elements);
+        });
     }
 
     /* Compliance (under L6): the controls the element's application is mapped
