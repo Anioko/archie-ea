@@ -163,6 +163,41 @@ def test_get_state_route_requires_org_admin(app, db_session, make_org, client, l
     assert data["success"] is True
 
 
+def test_service_fails_closed_without_tenant_context(app, db_session, make_org):
+    """When g.current_org_id is None, every service method returns an error."""
+    from app.modules.ai_chat.services.agent_oversight_service import AgentOversightService
+
+    org = make_org("no-tenant-ctx")
+    admin = _make_org_admin(db_session, org)
+
+    service = AgentOversightService(admin.id)
+
+    # Without a tenant context, _get_user_and_org returns (None, None)
+    user, org_id = service._get_user_and_org()
+    assert user is None
+    assert org_id is None
+
+    # Every public method should fail closed
+    result = service.pause_all_writes("test")
+    assert result["success"] is False
+    assert "User not found" in result.get("error", "")
+
+    result = service.resume_all_writes()
+    assert result["success"] is False
+
+    result = service.get_oversight_state()
+    assert result["success"] is False
+
+    result = service.get_refused_calls()
+    assert result["success"] is False
+
+    result = service.check_tool_classification("create_solution")
+    assert result["success"] is False
+
+    result = service.get_all_classification_status()
+    assert result["success"] is False
+
+
 # ------------------------------------------------------------------ #
 # Two-organisation isolation for pause/resume                         #
 # ------------------------------------------------------------------ #
@@ -218,6 +253,30 @@ def test_refused_calls_route_requires_org_admin(app, db_session, make_org, clien
     data = resp.get_json()
     assert data["success"] is True
     assert "refused_calls" in data
+
+
+def test_refused_calls_rejects_invalid_limit_and_offset(app, db_session, make_org, client, login_as):
+    """Negative limit and offset values return 400, not 500."""
+    org = make_org("route-refused-validate")
+    admin = _make_org_admin(db_session, org)
+
+    login_as(client, admin)
+
+    # limit=-1 should return 400
+    resp = client.get("/ai-chat/oversight/refused-calls?limit=-1")
+    assert resp.status_code == 400, "limit=-1 should return 400, got %s" % resp.status_code
+
+    # limit=0 should return 400
+    resp = client.get("/ai-chat/oversight/refused-calls?limit=0")
+    assert resp.status_code == 400, "limit=0 should return 400, got %s" % resp.status_code
+
+    # offset=-1 should return 400
+    resp = client.get("/ai-chat/oversight/refused-calls?offset=-1")
+    assert resp.status_code == 400, "offset=-1 should return 400, got %s" % resp.status_code
+
+    # Valid limit and offset should return 200
+    resp = client.get("/ai-chat/oversight/refused-calls?limit=50&offset=0")
+    assert resp.status_code == 200, "valid limit/offset should return 200, got %s" % resp.status_code
 
 
 def test_refused_calls_shows_paused_refusals(app, db_session, make_org, client, login_as, tenant_ctx):
