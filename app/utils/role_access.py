@@ -644,6 +644,8 @@ _MY_WORK_LINKS = {
         # its sidebar. 28 nav links on the CTO dashboard, none of them this.
         # Finding a page by grepping the source is not finding it.
         _link("Tech Radar", "tech_radar.index", "radar"),
+        # Ownership coverage by business unit — CTO accountability.
+        _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
     ROLE_BUSINESS_ARCHITECT: [
         # BA-A1/A2. This persona had 4 links against a budget of 27 while
@@ -735,6 +737,8 @@ _MY_WORK_LINKS = {
         # zone has ample headroom, and portfolio_manager already owns
         # Rationalization above, from which this page is reached in context.
         _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
+        # Ownership coverage by business unit — portfolio manager accountability.
+        _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
     ROLE_PROCUREMENT: [
         # Fix round: Overview, Licences and Compliance were reachable from
@@ -833,6 +837,8 @@ _MY_WORK_LINKS = {
         _link("Data Architecture", "data_architecture.data_architecture_dashboard", "database"),
         _link("Data Lineage", "data_architecture.data_lineage_view", "git-fork"),
         _link("Data Stewardship", "solution_design.data_stewardship", "shield"),
+        _link("System of Record", "data_governance.entities", "database-zap"),
+        _link("Master Data Domains", "data_governance.domains", "folder-tree"),
         _link("Architecture Model", "archimate_crud.dashboard", "boxes"),
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Capability Map", "capability_map.index", "layers"),

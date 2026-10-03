@@ -4519,7 +4519,12 @@ def api_composer_impact():
         relationships (list): [{source_id, target_id, type}, ...]
 
     Traverses up to 3 hops from the element. Returns affected elements and narrative.
+    Uses stored derived facts when the element_id corresponds to a real database element,
+    falling back to client-side computation for draft diagrams.
     """
+    from flask import g
+    from app.modules.intelligence.services.derived_facts import list_derived_facts
+
     data = request.get_json(silent=True) or {}
     element_id = data.get("element_id")
     elements = data.get("elements") or []
@@ -4528,62 +4533,135 @@ def api_composer_impact():
     if element_id is None:
         return jsonify({"error": "element_id is required"}), 400
 
-    # Build lookup maps
-    el_by_id = {}
-    for el in elements:
-        el_by_id[str(el.get("id", ""))] = el
+    # Try to use stored derived facts if element_id is a real database ID
+    org_id = getattr(g, "current_org_id", None)
+    derived_hop_details = []
+    derived_affected_ids = []
+    used_stored_facts = False
 
-    target_el = el_by_id.get(str(element_id))
-    if not target_el:
-        return jsonify({"error": "Element not found in provided elements list"}), 404
+    if org_id is not None:
+        try:
+            element_id_int = int(element_id)
+            # Query stored derived facts for this element (both directions)
+            derived_facts = list_derived_facts(
+                org_id,
+                include_stale=False,
+                source_element_id=element_id_int,
+                target_element_id=element_id_int,
+                direction="both",
+                max_depth=3,
+            )
+            if derived_facts:
+                used_stored_facts = True
+                # Build hop details from derived facts
+                # Group by depth
+                by_depth = {}
+                for fact in derived_facts:
+                    depth = fact.get("depth", 1)
+                    if depth not in by_depth:
+                        by_depth[depth] = []
+                    by_depth[depth].append(fact)
+                    # Track affected element IDs
+                    if fact["source_element_id"] == element_id_int:
+                        derived_affected_ids.append(str(fact["target_element_id"]))
+                    else:
+                        derived_affected_ids.append(str(fact["source_element_id"]))
 
-    # Build adjacency list (bidirectional -- impact flows both ways)
-    adjacency = {}
-    rel_lookup = {}
-    for rel in relationships:
-        src = str(rel.get("source_id", ""))
-        tgt = str(rel.get("target_id", ""))
-        r_type = (rel.get("type") or "association").lower()
-        adjacency.setdefault(src, []).append(tgt)
-        adjacency.setdefault(tgt, []).append(src)
-        rel_lookup[(src, tgt)] = r_type
-        rel_lookup[(tgt, src)] = r_type
+                for depth in sorted(by_depth.keys()):
+                    hop_elements = []
+                    for fact in by_depth[depth]:
+                        # Determine the other end
+                        other_id = fact["target_element_id"] if fact["source_element_id"] == element_id_int else fact["source_element_id"]
+                        # Find element name from canvas data
+                        other_el = None
+                        for el in elements:
+                            if str(el.get("id", "")) == str(other_id):
+                                other_el = el
+                                break
+                        hop_elements.append({
+                            "element_name": other_el.get("name", "(unknown)") if other_el else "(unknown)",
+                            "element_id": str(other_id),
+                            "relationship": fact.get("derived_type", "association").lower(),
+                        })
+                    if hop_elements:
+                        derived_hop_details.append({
+                            "hop": depth,
+                            "elements": [h["element_name"] for h in hop_elements],
+                            "element_ids": [h["element_id"] for h in hop_elements],
+                            "relationships": [h["relationship"] for h in hop_elements],
+                        })
+        except (ValueError, TypeError):
+            # element_id is not an integer, fall back to client-side computation
+            pass
 
-    # BFS up to 3 hops
-    visited = {str(element_id)}
-    hop_details = []
-    current_frontier = [str(element_id)]
-    max_hops = 3
+    if used_stored_facts and derived_hop_details:
+        # Use stored derived facts
+        hop_details = derived_hop_details
+        affected_ids = derived_affected_ids
+        # Find element name from canvas data
+        el_by_id = {}
+        for el in elements:
+            el_by_id[str(el.get("id", ""))] = el
+        target_el = el_by_id.get(str(element_id))
+        el_name = target_el.get("name", "(unnamed)") if target_el else "(unnamed)"
+    else:
+        # Fall back to client-side computation
+        # Build lookup maps
+        el_by_id = {}
+        for el in elements:
+            el_by_id[str(el.get("id", ""))] = el
 
-    for hop in range(1, max_hops + 1):
-        next_frontier = []
-        hop_elements = []
-        for node_id in current_frontier:
-            for neighbor_id in adjacency.get(node_id, []):
-                if neighbor_id not in visited:
-                    visited.add(neighbor_id)
-                    next_frontier.append(neighbor_id)
-                    neighbor_el = el_by_id.get(neighbor_id, {})
-                    r_type_val = rel_lookup.get((node_id, neighbor_id), "association")
-                    hop_elements.append({
-                        "element_name": neighbor_el.get("name", "(unknown)"),
-                        "element_id": neighbor_id,
-                        "relationship": r_type_val,
-                    })
-        if hop_elements:
-            hop_details.append({
-                "hop": hop,
-                "elements": [h["element_name"] for h in hop_elements],
-                "element_ids": [h["element_id"] for h in hop_elements],
-                "relationships": [h["relationship"] for h in hop_elements],
-            })
-        current_frontier = next_frontier
-        if not current_frontier:
-            break
+        target_el = el_by_id.get(str(element_id))
+        if not target_el:
+            return jsonify({"error": "Element not found in provided elements list"}), 404
 
-    # Build impact narrative
-    affected_ids = list(visited - {str(element_id)})
-    el_name = target_el.get("name", "(unnamed)")
+        # Build adjacency list (bidirectional -- impact flows both ways)
+        adjacency = {}
+        rel_lookup = {}
+        for rel in relationships:
+            src = str(rel.get("source_id", ""))
+            tgt = str(rel.get("target_id", ""))
+            r_type = (rel.get("type") or "association").lower()
+            adjacency.setdefault(src, []).append(tgt)
+            adjacency.setdefault(tgt, []).append(src)
+            rel_lookup[(src, tgt)] = r_type
+            rel_lookup[(tgt, src)] = r_type
+
+        # BFS up to 3 hops
+        visited = {str(element_id)}
+        hop_details = []
+        current_frontier = [str(element_id)]
+        max_hops = 3
+
+        for hop in range(1, max_hops + 1):
+            next_frontier = []
+            hop_elements = []
+            for node_id in current_frontier:
+                for neighbor_id in adjacency.get(node_id, []):
+                    if neighbor_id not in visited:
+                        visited.add(neighbor_id)
+                        next_frontier.append(neighbor_id)
+                        neighbor_el = el_by_id.get(neighbor_id, {})
+                        r_type_val = rel_lookup.get((node_id, neighbor_id), "association")
+                        hop_elements.append({
+                            "element_name": neighbor_el.get("name", "(unknown)"),
+                            "element_id": neighbor_id,
+                            "relationship": r_type_val,
+                        })
+            if hop_elements:
+                hop_details.append({
+                    "hop": hop,
+                    "elements": [h["element_name"] for h in hop_elements],
+                    "element_ids": [h["element_id"] for h in hop_elements],
+                    "relationships": [h["relationship"] for h in hop_elements],
+                })
+            current_frontier = next_frontier
+            if not current_frontier:
+                break
+
+        # Build impact narrative
+        affected_ids = list(visited - {str(element_id)})
+        el_name = target_el.get("name", "(unnamed)")
 
     if not affected_ids:
         narrative = (

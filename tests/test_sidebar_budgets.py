@@ -261,6 +261,8 @@ def test_cto_my_work_membership():
         # its own require_roles list -- the persona was authorised to set the
         # rings and had no link to the page from anywhere.
         "Tech Radar",
+        # Ownership coverage by business unit — CTO accountability.
+        "Ownership Coverage",
     ]
 
 
@@ -313,6 +315,8 @@ def test_portfolio_manager_my_work_membership():
         # NAV-1: see test_cto_my_work_membership — same page, other owner.
         "Portfolio KPIs",
         "Duplicate Detection",
+        # Ownership coverage by business unit — portfolio manager.
+        "Ownership Coverage",
     ]
 
 
