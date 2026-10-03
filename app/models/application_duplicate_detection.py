@@ -32,6 +32,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from .. import db
+from ..models.mixins.core import TenantMixin
 
 
 class ProcessLevel(PyEnum):
@@ -105,7 +106,7 @@ class ApplicationProcessMapping(db.Model):
         return f"<AppProcessMapping {self.application_id}→{self.business_process_id} ({self.support_type})>"
 
 
-class DuplicateDetectionRun(db.Model):
+class DuplicateDetectionRun(TenantMixin, db.Model):
     """
     Duplicate Detection Run
 
@@ -164,7 +165,7 @@ class DuplicateDetectionRun(db.Model):
         return f"<DuplicateDetectionRun {self.run_name} ({self.status})>"
 
 
-class DuplicateGroup(db.Model):
+class DuplicateGroup(TenantMixin, db.Model):
     """
     Duplicate Application Group
 
