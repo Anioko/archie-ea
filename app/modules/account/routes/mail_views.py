@@ -40,15 +40,31 @@ def _after_confirmation_url(user):
     return url_for("dashboard.overview")
 
 
-def register_view():
+def register_view(trial=False):
+    """Sign-up. With ``trial`` the new organisation starts on a trial, reached
+    from the demonstration banner; the demonstration visitor is signed out
+    first so the trial belongs to the person signing up."""
     form = RegistrationForm()
     if form.validate_on_submit():
+        if trial:
+            from app.services.demonstration_service import is_demonstration_org_id
+
+            if current_user.is_authenticated and is_demonstration_org_id(
+                current_user.organization_id
+            ):
+                AccountService.logout()
         _user, confirmation = AccountService.sign_up(
             first_name=form.first_name.data,
             last_name=form.last_name.data,
             email=form.email.data,
             password=form.password.data,
         )
+        if trial:
+            from app import db
+            from app.services.demonstration_service import start_trial
+
+            start_trial(_user)
+            db.session.commit()
         if confirmation == "sent":
             return redirect(url_for("account.unconfirmed"))
         if confirmation == "failed":
@@ -64,7 +80,7 @@ def register_view():
             "info",
         )
         return redirect(url_for("main.index"))
-    return render_template("account/register.html", form=form)
+    return render_template("account/register.html", form=form, trial=trial)
 
 
 def reset_request_view():
