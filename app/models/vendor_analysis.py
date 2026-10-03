@@ -18,7 +18,7 @@ import json
 from datetime import datetime
 
 from .. import db
-from .mixins.core import TenantMixin
+from app.models.mixins import TenantMixin
 
 
 class OptionsAnalysis(TenantMixin, db.Model):

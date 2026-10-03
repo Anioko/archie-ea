@@ -333,11 +333,13 @@ def test_expanded_chain_marks_an_unresolved_link_instead_of_dropping_it(
     assert "source_id" not in expanded[1]
 
 
-def test_module_registers_exactly_nine_routes(app):
-    """The impact, risk, portfolio, programme, strategy, accountability and
-    yield routes all mount on this same existing blueprint rather than a
-    new one each. Still exactly one blueprint, now nine routes on it -- all
-    six lenses of the catalogue plus recompute/derived/yield.
+def test_module_registers_exactly_eleven_routes(app):
+    """The impact, risk, portfolio, programme, strategy, accountability,
+    traceability, value-streams-at-risk and yield routes all mount on this
+    same existing blueprint rather than a new one each. Still exactly one
+    blueprint, now eleven routes on it -- all six lenses of the catalogue,
+    the traceability check over the impact walk, the Strategic
+    value-streams-at-risk surface and recompute/derived/yield.
     """
     rules = [
         rule for rule in app.url_map.iter_rules() if rule.endpoint.startswith("intelligence_api.")
@@ -346,12 +348,14 @@ def test_module_registers_exactly_nine_routes(app):
     assert endpoints == {
         "intelligence_api.recompute_derivation",
         "intelligence_api.get_derived_fact_provenance",
+        "intelligence_api.value_streams_at_risk",
         "intelligence_api.cross_layer_impact",
         "intelligence_api.risk_for_element",
         "intelligence_api.portfolio_component_for_element",
         "intelligence_api.programme_for_element",
         "intelligence_api.strategy_for_element",
         "intelligence_api.accountability_for_element",
+        "intelligence_api.traceability_check",
         "intelligence_api.derivation_yield",
     }
 
@@ -877,11 +881,11 @@ def test_accountability_endpoint_never_returns_seeded_ownership_data(
     component = ApplicationComponent(name="A App", organization_id=org.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Finance", unit_type="Department", head_of_unit="Pat Head")
+    unit = OrganizationUnit(organization_id=org.id, name="Finance", unit_type="Department", head_of_unit="Pat Head")
     db_session.add(unit)
     db_session.flush()
     ownership = ApplicationOwnership(
-        application_id=component.id, organization_unit_id=unit.id,
+        organization_id=org.id, application_id=component.id, organization_unit_id=unit.id,
         ownership_type="Business Owner", primary_contact="Jordan Owner",
     )
     db_session.add(ownership)
@@ -908,11 +912,11 @@ def test_accountability_endpoint_cross_tenant_element_is_404_not_leak(
     component = ApplicationComponent(name="A App", organization_id=org_a.id, archimate_element_id=a.id)
     db_session.add(component)
     db_session.flush()
-    unit = OrganizationUnit(name="Tenant A Finance", unit_type="Department")
+    unit = OrganizationUnit(organization_id=org_a.id, name="Tenant A Finance", unit_type="Department")
     db_session.add(unit)
     db_session.flush()
     db_session.add(ApplicationOwnership(
-        application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
+        organization_id=org_a.id, application_id=component.id, organization_unit_id=unit.id, ownership_type="Business Owner",
     ))
     db_session.commit()
 

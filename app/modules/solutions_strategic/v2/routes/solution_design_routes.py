@@ -54,7 +54,9 @@ from app.models.application_portfolio import ApplicationComponent
 from app.models.apqc_process import APQCProcess, ProcessApplicationMapping
 from app.models.solution_sad_models import SolutionADRDirect, SolutionAPQCProcess
 from app.models.solution_governance import SolutionNotification
+from app.jobs.tenant_safe_job import tenant_scope
 from app.models.solution_models import Solution
+from app.utils.tenant_users import escape_like_literal
 from app.utils.route_guards import require_entity
 from app.services.feature_flag_service import FeatureFlagService
 from app.utils.pagination import safe_int_arg
@@ -1081,7 +1083,7 @@ def list_solutions():
 
         # PLT-019: Apply BU domain scope filter
         if bu_filter_active and not show_all_override and bu_name:
-            _safe_bu = bu_name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            _safe_bu = escape_like_literal(bu_name)
             query = query.filter(
                 Solution.business_domain.ilike(f"%{_safe_bu}%", escape="\\")
             )
@@ -1103,7 +1105,7 @@ def list_solutions():
 
         # Apply search filter (escape LIKE wildcards to prevent injection)
         if search:
-            safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            safe_search = escape_like_literal(search)
             query = query.filter(
                 or_(
                     Solution.name.ilike(f"%{safe_search}%", escape="\\"),
@@ -1351,6 +1353,7 @@ def list_solutions():
             hidden_by_bu_filter=hidden_by_bu_filter,
             hidden_by_search_filter=hidden_by_search_filter,
             hidden_by_filters=hidden_by_filters,
+            only_default_filter_active=_default_shell_filter_active and hidden_by_filters > 0 and hidden_by_role_filter == 0 and not domain_filter and not type_filter and not created_after and not created_before and not ws_filter,
             active_filter_descriptions=active_filter_descriptions,
             clear_filters_url=clear_filters_url,
             org_total=org_total,
@@ -1500,11 +1503,15 @@ def _condition_actor_name(user_obj) -> str:
 
 
 def _user_display_name(user_id: int | None) -> str | None:
+    """Display name for a condition's actor, resolved only inside the caller's
+    organisation. ``owner_id`` comes from request JSON, so an id belonging to
+    another organisation must not be named."""
     if not user_id:
         return None
-    from app.models.user import User
+    from app.middleware.tenant_context import current_org_id
+    from app.utils.tenant_users import user_in_org
 
-    user_obj = db.session.get(User, user_id)
+    user_obj = user_in_org(user_id, current_org_id())
     if not user_obj:
         return None
     return _condition_actor_name(user_obj)
@@ -1615,9 +1622,9 @@ def _serialize_arb_review_history_item(review) -> dict:
         "decision_label": (review.decision or review.status or "pending").replace("_", " ").title(),
         "submitted_at": _format_arb_history_timestamp(review.submitted_at),
         "decision_date": _format_arb_history_timestamp(review.decision_date),
-        "submitter_name": _condition_actor_name(review.submitter) if review.submitter else None,
-        "reviewer_name": _condition_actor_name(review.reviewer) if review.reviewer else None,
-        "decided_by_name": _condition_actor_name(review.decided_by) if review.decided_by else None,
+        "submitter_name": _user_display_name(review.submitter_id),
+        "reviewer_name": _user_display_name(review.reviewer_id),
+        "decided_by_name": _user_display_name(review.decided_by_id),
         "decision_rationale": review.decision_rationale,
         "conditions": [
             text for text in (_normalize_arb_review_condition(condition) for condition in (review.conditions or [])) if text
@@ -1625,7 +1632,7 @@ def _serialize_arb_review_history_item(review) -> dict:
         "comments": [
             {
                 "id": comment.id,
-                "author_name": _condition_actor_name(comment.user) if comment.user else "Unknown User",
+                "author_name": _user_display_name(comment.user_id) or "Unknown User",
                 "comment_type": comment.comment_type or "general",
                 "content": comment.content,
                 "created_at": _format_arb_history_timestamp(comment.created_at),
@@ -2958,6 +2965,42 @@ def _build_blueprint_context(solution):
     }
 
 
+def _run_proactive_analysis(app, solution_id: int, organization_id):
+    """Run proactive copilot-insight generation for one solution, tenant-scoped.
+
+    Runs synchronously when called directly (tests) or as a daemon thread's
+    target (``view_solution``). When ``organization_id`` is None it logs a
+    warning and returns without running; otherwise it runs inside
+    ``tenant_scope`` so every query the analysis makes is filtered to the
+    solution's own organisation.
+    """
+    if organization_id is None:
+        logger.warning(
+            "Skipping proactive analysis for solution %s: organization_id is None",
+            solution_id,
+        )
+        return
+    with app.app_context(), tenant_scope(organization_id):
+        try:
+            from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
+            from app.models.copilot_insight import CopilotInsight
+            from app import db
+            svc = ProactiveAnalysisService()
+            new_insights = svc.analyse_solution(solution_id)
+            for insight in new_insights:
+                existing = CopilotInsight.query.filter_by(
+                    solution_id=solution_id,
+                    insight_type=insight.insight_type,
+                    seen=False,
+                    dismissed=False,
+                ).first()
+                if not existing:
+                    db.session.add(insight)
+            db.session.commit()
+        except Exception as _e:
+            logger.debug("Proactive analysis failed for sol %s: %s", solution_id, _e)
+
+
 @solution_design_bp.route("/<int:solution_id>", methods=["GET"])
 @login_required
 def view_solution(solution_id: int):
@@ -2984,30 +3027,9 @@ def view_solution(solution_id: int):
 
             # Fire proactive analysis in background — does not block page render
             import threading as _t
-            def _run_proactive(app_ref, sol_id):
-                with app_ref.app_context():
-                    try:
-                        from app.modules.ai_chat.services.proactive_analysis_service import ProactiveAnalysisService
-                        from app.models.copilot_insight import CopilotInsight
-                        from app import db
-                        svc = ProactiveAnalysisService()
-                        new_insights = svc.analyse_solution(sol_id)
-                        for insight in new_insights:
-                            existing = CopilotInsight.query.filter_by(
-                                solution_id=sol_id,
-                                insight_type=insight.insight_type,
-                                seen=False,
-                                dismissed=False,
-                            ).first()
-                            if not existing:
-                                db.session.add(insight)
-                        db.session.commit()
-                    except Exception as _e:
-                        logger.debug("Proactive analysis failed for sol %s: %s", sol_id, _e)
-
             _t.Thread(
-                target=_run_proactive,
-                args=(current_app._get_current_object(), solution.id),
+                target=_run_proactive_analysis,
+                args=(current_app._get_current_object(), solution.id, solution.organization_id),
                 daemon=True,
             ).start()
 
@@ -3272,7 +3294,7 @@ def _build_readme(bundle):
     lines = [
         f"# {bundle['solution_name']} — Generated API Contracts",
         "",
-        f"Generated by A.R.C.H.I.E. on {bundle['generated_at']}",
+        f"Generated by Entelim on {bundle['generated_at']}",
         f"Solution ID: {bundle['solution_id']}",
         f"Spec Version: {bundle.get('version', '1.0.0')}",
         f"Spec Maturity: {maturity.get('score', 0):.0%} ({maturity.get('rating', 'unknown')})",
@@ -3306,7 +3328,7 @@ def _build_readme(bundle):
         "",
         "Every path and schema includes `x-archimate-source` linking back to the",
         "ArchiMate element that generated it. Use these IDs to trace code back to",
-        "the approved architecture in A.R.C.H.I.E.",
+        "the approved architecture in Entelim",
         "",
         "## Warnings",
         "",
@@ -3396,7 +3418,7 @@ for test in tests:
 ## Architecture Traceability
 
 Every endpoint and schema includes `x-archimate-source` linking to the
-ArchiMate element in A.R.C.H.I.E. that generated it. Use this to:
+ArchiMate element in Entelim that generated it. Use this to:
 
 1. Understand WHY an endpoint exists (architecture rationale)
 2. Trace code changes back to architecture decisions
@@ -3407,7 +3429,7 @@ ArchiMate element in A.R.C.H.I.E. that generated it. Use this to:
 1. Generate server stubs from `openapi.yaml`
 2. Implement business logic in the generated route handlers
 3. Run contract tests to validate your implementation
-4. Deploy and link back to the solution in A.R.C.H.I.E.
+4. Deploy and link back to the solution in Entelim
 """
 
 
@@ -4329,7 +4351,7 @@ def export_solution_markdown(solution_id: int):
         logger.debug(f"Could not load lifecycle entities for export: {e}")
     lines += [
         "---",
-        "_Exported from A.R.C.H.I.E. Enterprise Architecture Platform_",
+        "_Exported from Entelim Enterprise Architecture Platform_",
     ]
     content = "\n".join(lines)
     from flask import Response
@@ -5107,6 +5129,22 @@ def _engine_archimate_cleanup(solution_ids):
         _sp_exe(f"DELETE FROM archimate_contracts      WHERE model_id           IN ({mids_str})")
         _sp_exe(f"DELETE FROM archimate_representations WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM archimate_resources       WHERE model_id          IN ({mids_str})")
+        # This is a full solution teardown, so the paired canonical row goes
+        # with its source ADR record rather than being left dangling. Three
+        # steps, in order: architecture_decision_records.retired_into_id is a
+        # plain (NO ACTION) FK into architecture_decisions, so deleting the
+        # parent row first raises ForeignKeyViolation while a child still
+        # points at it -- break the link first (capturing the ids into a
+        # temp table, since the UPDATE below would otherwise lose them
+        # before the next statement can read them back), then delete the
+        # now-unreferenced canonical rows, then the source rows.
+        _sp_exe("CREATE TEMP TABLE IF NOT EXISTS _teardown_canonical_ids (id integer) ON COMMIT DROP")
+        _sp_exe(f"INSERT INTO _teardown_canonical_ids "
+                f"SELECT retired_into_id FROM architecture_decision_records "
+                f"WHERE architecture_model_id IN ({mids_str}) AND retired_into_id IS NOT NULL")
+        _sp_exe(f"UPDATE architecture_decision_records SET retired_into_id = NULL "
+                f"WHERE architecture_model_id IN ({mids_str})")
+        _sp_exe("DELETE FROM architecture_decisions WHERE id IN (SELECT id FROM _teardown_canonical_ids)")
         _sp_exe(f"DELETE FROM architecture_decision_records WHERE architecture_model_id IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_collaborations   WHERE model_id          IN ({mids_str})")
         _sp_exe(f"DELETE FROM business_interactions     WHERE model_id          IN ({mids_str})")
@@ -9303,7 +9341,7 @@ def generate_adr(solution_id):
         lines.append("")
 
     lines.append("---")
-    lines.append(f"*Generated by A.R.C.H.I.E. on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*")
+    lines.append(f"*Generated by Entelim on {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}*")
     lines.append("")
 
     markdown_content = "\n".join(lines)
@@ -11724,6 +11762,7 @@ def api_raci_matrix(solution_id):
 @login_required
 def api_set_raci(solution_id):
     """FRAG-030: Set RACI assignment."""
+    require_entity(Solution, solution_id, description="Solution not found")
     try:
         from app.services.raci_service import set_raci_assignment
         data = request.get_json()

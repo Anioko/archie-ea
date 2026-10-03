@@ -295,24 +295,69 @@ def init_security(app):
 
         return response
 
-    # Wire MetricsCollector to request pipeline for automatic tracking
+    # Wire MetricsCollector to request pipeline for automatic tracking, and
+    # the same request into the Prometheus HTTP counters that
+    # app/services/platform_slo_service.py reads -- one collector recording
+    # every request, not two (CLAUDE.md ADR 0008).
     try:
-        from flask import g, request as flask_request
+        from flask import g, request as flask_request, request_started
         from app.core.observability.metrics import metrics_collector
+        from app.services.prometheus_metrics import prometheus_metrics
 
-        @app.before_request
-        def _metrics_start():
+        # Timing starts on the `request_started` signal rather than in a
+        # `before_request` function: Flask sends that signal before any
+        # `before_request` hook runs, including ones registered ahead of
+        # this one, so a request is still timed even when an earlier hook
+        # raises before this module's own `before_request` would have run.
+        def _metrics_request_started(sender, **extra):
             g._metrics_start = time.monotonic()
+            g._metrics_status_code = None
+
+        # weak=False: blinker's default weak reference would let this local
+        # closure be garbage-collected almost immediately (nothing else
+        # holds a strong reference to it), silently dropping every request
+        # from the metrics -- unlike @app.before_request, which keeps its
+        # own strong reference list.
+        request_started.connect(_metrics_request_started, app, weak=False)
 
         @app.after_request
-        def _metrics_record(response):
-            start = getattr(g, "_metrics_start", None)
-            if start is not None:
-                duration_ms = (time.monotonic() - start) * 1000
-                metrics_collector.record(
-                    flask_request.endpoint, response.status_code, duration_ms
-                )
+        def _metrics_capture_status(response):
+            # Stash the real status for teardown to read -- teardown_request
+            # is not handed the response object.
+            g._metrics_status_code = response.status_code
             return response
+
+        @app.teardown_request
+        def _metrics_record(exc):
+            # teardown_request always runs -- even when a before_request
+            # hook, the view, or an after_request hook raised and no normal
+            # response was ever built (e.g. under TESTING's
+            # PROPAGATE_EXCEPTIONS, where `_metrics_capture_status` above
+            # never fires) -- so a failing request is still counted instead
+            # of silently vanishing from the availability figures.
+            start = getattr(g, "_metrics_start", None)
+            if start is None:
+                return
+            duration_ms = (time.monotonic() - start) * 1000
+            status_code = getattr(g, "_metrics_status_code", None)
+            if status_code is None:
+                # No response was ever produced: an unhandled failure, which
+                # is exactly what "5xx counts as bad" means to capture.
+                status_code = 500
+
+            metrics_collector.record(
+                flask_request.endpoint, status_code, duration_ms
+            )
+
+            # URL matching happens before any before_request hook runs, so
+            # `url_rule` is set even when a hook raised early; only a 404
+            # (no route matched at all) leaves it None, which is correctly
+            # excluded -- there is no route prefix to attribute it to.
+            url_rule = flask_request.url_rule
+            if url_rule is not None:
+                prometheus_metrics.track_http_request(
+                    flask_request.method, url_rule.rule, status_code, duration_ms / 1000.0
+                )
 
         app.logger.info("MetricsCollector wired to request pipeline")
     except Exception as e:

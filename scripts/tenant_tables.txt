@@ -12,6 +12,7 @@ application_events
 application_functions
 application_import_history
 application_interfaces
+application_ownership
 application_processes
 application_rationalization_scores
 application_replacements
@@ -56,6 +57,8 @@ implementation_events
 kanban_boards
 license_entitlements
 migration_waves
+options_analysis
+organization_units
 plateaus
 policy_violations
 projects
@@ -92,6 +95,7 @@ solution_stakeholders
 solution_versions
 solution_workflows
 solutions
+stakeholder_inputs
 strategic_initiatives
 unified_value_stream_stages
 value_streams
@@ -102,4 +106,5 @@ vendor_process_mappings
 vendor_service_catalog
 vendor_stack_templates
 vendor_taxonomy
+work_package_resource_demand
 work_packages

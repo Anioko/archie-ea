@@ -20,6 +20,7 @@
     var STRATEGY_URL = '/api/v1/intelligence/strategy/';
     var ACCOUNTABILITY_URL = '/api/v1/intelligence/accountability/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
+    var DERIVED_URL = '/api/v1/intelligence/derived/';
 
     var ERROR_LINE = 'We could not answer that just now.';
     var BUSY_LINE = 'A recalculation is already running. Try again shortly.';
@@ -68,6 +69,18 @@
 
     function recompute() {
         return Platform.fetch.post(RECOMPUTE_URL, { scope: 'tenant' }, { silent: true });
+    }
+
+    /* Why a worked-out connection exists: the recorded links behind it, who drew
+       each and when, the rule, and the decisions recorded against those
+       elements. Written by the server; the drawer shows it as it arrives. */
+    function fetchExplanation(derivedId) {
+        return Platform.fetch.get(DERIVED_URL + derivedId, {}, { silent: true }).then(function (resp) {
+            if (!resp || !resp.data || !resp.data.explanation) {
+                throw new Error('The explanation was missing from the answer.');
+            }
+            return resp.data.explanation;
+        });
     }
 
     /* L6: risks seeded on an element, each with its own blast-radius rows.
@@ -136,17 +149,32 @@
        ask.js's template reads -- costVariancePct is null (not 0) when the
        package was never costed, matching the server's own not_costed
        reason rather than inventing a number. */
+    /* A signed percentage to one decimal place, e.g. "12.5%" or "-3.0%". The
+       one place a variance is turned into text; templates only show it. */
+    function percentText(value) {
+        if (value == null) return null;
+        return Number(value).toLocaleString('en-GB', {
+            minimumFractionDigits: 1, maximumFractionDigits: 1
+        }) + '%';
+    }
+
     function workPackageModel(wp) {
+        var hasCostVariance = wp.cost_variance_pct != null;
+        var costRedacted = wp.cost_reason === 'financial_data_restricted';
         return {
             workPackageId: wp.work_package_id,
             name: wp.name,
             status: wp.status,
+            statusLabel: statusLabel(wp.status),
             progressPercentage: wp.progress_percentage,
             startDate: wp.start_date,
             endDate: wp.end_date,
             isOverdue: wp.is_overdue,
             owner: wp.owner || null,
-            costVariancePct: wp.cost_variance_pct != null ? wp.cost_variance_pct : null,
+            costVariancePct: hasCostVariance ? wp.cost_variance_pct : null,
+            costVarianceText: hasCostVariance ? percentText(wp.cost_variance_pct) : null,
+            hasCostVariance: hasCostVariance,
+            costRedacted: costRedacted,
             costReason: wp.cost_reason || null,
             affectedRows: wp.affected_rows || [],
             affectedSummary: wp.affected_summary || {}
@@ -177,10 +205,13 @@
        no_budget_recorded reason rather than inventing a number. Success
        metrics are nested as-is (already a small, flat list server-side). */
     function initiativeModel(initiative) {
+        var hasBudgetVariance = initiative.budget_variance_pct != null;
+        var budgetRedacted = initiative.budget_reason === 'financial_data_restricted';
         return {
             initiativeId: initiative.initiative_id,
             name: initiative.name,
             status: initiative.status,
+            statusLabel: statusLabel(initiative.status),
             priority: initiative.priority,
             healthStatus: initiative.health_status,
             completionPercentage: initiative.completion_percentage,
@@ -188,7 +219,10 @@
             targetEndDate: initiative.target_end_date,
             executiveSponsor: initiative.executive_sponsor || null,
             programManager: initiative.program_manager || null,
-            budgetVariancePct: initiative.budget_variance_pct != null ? initiative.budget_variance_pct : null,
+            budgetVariancePct: hasBudgetVariance ? initiative.budget_variance_pct : null,
+            budgetVarianceText: hasBudgetVariance ? percentText(initiative.budget_variance_pct) : null,
+            hasBudgetVariance: hasBudgetVariance,
+            budgetRedacted: budgetRedacted,
             budgetReason: initiative.budget_reason || null,
             successMetrics: (initiative.success_metrics || []).map(function (m) {
                 return {
@@ -271,6 +305,23 @@
         var active = document.activeElement;
         var onButton = active && active.hasAttribute && active.hasAttribute('data-recompute-button');
         if (onButton || !active || active === document.body) heading.focus();
+    }
+
+    /* After an answer arrives, scroll its results heading into view and move
+       focus to it so the answer is visible without scrolling and announced
+       for screen readers (the heading already carries tabindex="-1"). */
+    function showResults(heading) {
+        if (!heading) return;
+        heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        heading.focus();
+    }
+
+    /* Convert a snake_case status code to a readable label: "in_progress" →
+       "In Progress", "Active" → "Active". Matches the Python-side pattern
+       status.replace("_", " ").title() used across this codebase. */
+    function statusLabel(status) {
+        if (!status) return '';
+        return status.replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
     }
 
     function failureStatus(err) {
@@ -475,9 +526,12 @@
         fetchAccountability: fetchAccountability,
         buildOwners: buildOwners,
         recompute: recompute,
+        fetchExplanation: fetchExplanation,
         timeText: timeText,
         refreshIcons: refreshIcons,
         keepPlace: keepPlace,
+        showResults: showResults,
+        statusLabel: statusLabel,
         failureStatus: failureStatus,
         bandFor: bandFor,
         pluralThings: pluralThings,
