@@ -19,6 +19,7 @@ _TIMESTAMP_RE = re.compile(
 def _seed_model_health_fixture(app):
     from app import db
     from app.models.archimate_core import ArchiMateElement
+    from app.models.drift_report import DriftReport
     from app.models.organization import Organization
     from app.models.user import Role, User
     from app.services.billing_plans import set_contract_plan
@@ -59,6 +60,16 @@ def _seed_model_health_fixture(app):
         )
         db.session.add(orphan)
         db.session.commit()
+
+        # Seed a stored drift report so the page renders findings immediately
+        # rather than showing the pending state (the detector is scheduled, not
+        # run synchronously on page load).
+        from app.modules.genome.services.drift_detector import detect_model_drift
+
+        report = detect_model_drift(org.id)
+        DriftReport.upsert(org.id, report)
+        db.session.commit()
+
         email = user.email
         orphan_name = orphan.name
         db.session.remove()
@@ -108,8 +119,10 @@ def test_model_health_rescan_persists_timestamp_and_findings(browser, live_serve
         expect(page.get_by_role("heading", name="Model Health", exact=True)).to_be_visible(
             timeout=PAGE_TIMEOUT
         )
-        expect(page.get_by_text("Not yet computed", exact=False)).to_be_visible(
-            timeout=PAGE_TIMEOUT
+        # A stored report was seeded in the fixture, so the orphan element is
+        # visible immediately — no synchronous detector run on page load.
+        expect(page.locator("body")).to_contain_text(
+            seeded["orphan_name"], timeout=PAGE_TIMEOUT
         )
 
         with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT) as navigation:
