@@ -350,7 +350,16 @@ EXCLUDED_ENDPOINT_PREFIXES = {
 }
 
 # Exclusions by exact endpoint.
-EXCLUDED_ENDPOINTS: dict[str, str] = {}
+EXCLUDED_ENDPOINTS: dict[str, str] = {
+    "solution_design.mark_solution_notification_read": (
+        "SolutionNotification has no organisation of its own (solution_id is "
+        "nullable, so there is no required parent to derive one from either); "
+        "the route scopes by the specific recipient's own user_id "
+        "(filter_by(id=notification_id, user_id=current_user.id)), which "
+        "another organisation's user can never match -- a narrower guarantee "
+        "than organisation-scoping, not a gap in it"
+    ),
+}
 
 # Record types that belong to no organisation by design. A route whose
 # identifiers name only these is out of scope, with this reason. Any other
