@@ -12,7 +12,7 @@ import os
 from datetime import datetime
 from typing import Optional  # dead-code-ok: used by type hints
 
-from sqlalchemy import Index, Text, UniqueConstraint
+from sqlalchemy import Index, Text, UniqueConstraint, text as sql_text
 
 from app import db
 from app.models.mixins.core import TenantMixin
@@ -50,6 +50,10 @@ class VendorProductEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     vendor_product_id = db.Column(db.Integer, db.ForeignKey("vendor_products.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))  # all-MiniLM-L6-v2 uses 384 dimensions
     embedding_text = db.Column(Text)  # Original text used for embedding
@@ -75,11 +79,21 @@ class BusinessCapabilityEmbedding(db.Model):
 
     __tablename__ = "business_capability_embeddings"
     __table_args__ = (
-        UniqueConstraint("business_capability_id", name="uq_capability_embedding"),
+        UniqueConstraint("business_capability_id", "organization_id", name="uq_capability_embedding"),
+        Index(
+            "uq_capability_embedding_null_org",
+            "business_capability_id",
+            unique=True,
+            postgresql_where=sql_text("organization_id IS NULL"),
+        ),
         Index("ix_capability_embedding_created", "created_at"),
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     business_capability_id = db.Column(
         db.Integer, db.ForeignKey("business_capability.id"), nullable=False
     )
@@ -113,6 +127,10 @@ class ProcessEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     process_id = db.Column(db.Integer, db.ForeignKey("industry_apqc_process.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))
     embedding_text = db.Column(Text)
@@ -144,6 +162,10 @@ class ChatMessageEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     chat_session_id = db.Column(db.String(255), nullable=False)  # Session identifier
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     message_text = db.Column(Text, nullable=False)
@@ -170,6 +192,10 @@ class SolutionEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     solution_id = db.Column(db.Integer, db.ForeignKey("solutions.id"), nullable=False)
     embedding = db.Column(get_vector_column(384))
     embedding_text = db.Column(Text)
@@ -200,6 +226,10 @@ class VendorOrganizationEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     vendor_organization_id = db.Column(
         db.Integer, db.ForeignKey("vendor_organizations.id"), nullable=False
     )
@@ -232,6 +262,10 @@ class ApplicationComponentEmbedding(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(
+        db.Integer, db.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
     application_component_id = db.Column(
         db.Integer, db.ForeignKey("application_components.id"), nullable=False
     )
