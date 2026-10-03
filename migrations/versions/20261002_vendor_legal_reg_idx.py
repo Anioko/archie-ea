@@ -12,14 +12,14 @@ column did not exist yet (schema-deploy runs migrations before
 deploy-schema.sh).
 
 Revision ID: 20261002_vendor_legal_reg_idx
-Revises: 20261002_data_domain_org_unique
+Revises: 20261002_assessment_driver_id
 Create Date: 2026-10-02
 """
 from alembic import op
 from sqlalchemy import text
 
 revision = "20261002_vendor_legal_reg_idx"
-down_revision = "20261002_data_domain_org_unique"
+down_revision = "20261002_assessment_driver_id"
 branch_labels = None
 depends_on = None
 
