@@ -47,6 +47,7 @@ def authorization_server_metadata():
         "issuer": base,
         "authorization_endpoint": f"{base}/oauth/authorize",
         "token_endpoint": f"{base}/oauth/token",
+        "registration_endpoint": f"{base}/oauth/register",
         "revocation_endpoint": f"{base}/oauth/revoke",
         "scopes_supported": ["mcp:read", "mcp:propose"],
         "response_types_supported": ["code"],

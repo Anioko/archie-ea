@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import re
 import urllib.parse
 
 from flask import Blueprint, current_app, jsonify, redirect, render_template, request
@@ -22,6 +23,9 @@ from app.modules.oauth_provider.models import OAuthAuthorizationCode, OAuthClien
 logger = logging.getLogger(__name__)
 
 oauth_provider_bp = Blueprint("oauth_provider", __name__, url_prefix="/oauth")
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "[::1]"}
 
 # Scopes a client may ever be granted. Anything else requested is silently
 # dropped rather than granted — an allow-list, not a denylist.
@@ -298,3 +302,89 @@ def revoke():
         if token is not None:
             token.revoke()
     return "", 200
+
+
+def _is_valid_registration_redirect_uri(uri: str) -> bool:
+    """https anywhere, or http on a loopback address only — no wildcards, no fragment."""
+    if not uri or "*" in uri:
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(uri)
+    except ValueError:
+        return False
+    if parsed.fragment:
+        return False
+    if not parsed.hostname:
+        return False
+    if parsed.scheme == "https":
+        return True
+    if parsed.scheme == "http":
+        return parsed.hostname in _LOOPBACK_HOSTS or parsed.hostname == "localhost"
+    return False
+
+
+def _registration_error(message: str):
+    return jsonify({"error": "invalid_client_metadata", "error_description": message}), 400
+
+
+def registration_rate_limit_string() -> str:
+    """Read dynamically (not captured at import/decoration time) so a test
+    overriding the config value after the app is built still takes effect."""
+    return current_app.config.get("OAUTH_CLIENT_REGISTRATION_RATE_LIMIT", "10 per hour")
+
+
+def register():
+    """RFC 7591 dynamic client registration.
+
+    Public clients only: no client secret is ever issued, because
+    token_endpoint_auth_method is always "none" — the only value accepted
+    here. There is no session to read (no credentials, no cookie), so this
+    view is unauthenticated by design and rate-limited per remote address
+    instead.
+    """
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return _registration_error("a JSON object body is required")
+
+    redirect_uris = body.get("redirect_uris")
+    if not isinstance(redirect_uris, list) or not redirect_uris:
+        return _registration_error("redirect_uris must be a non-empty array")
+    for uri in redirect_uris:
+        if not isinstance(uri, str) or not _is_valid_registration_redirect_uri(uri):
+            return _registration_error(
+                f"redirect_uri {uri!r} must be https, or http on a loopback address, "
+                "with no wildcard and no fragment"
+            )
+
+    token_endpoint_auth_method = body.get("token_endpoint_auth_method", "none")
+    if token_endpoint_auth_method != "none":
+        return _registration_error("only the public client method 'none' is supported")
+
+    response_types = body.get("response_types", ["code"])
+    if response_types != ["code"]:
+        return _registration_error("response_types must be ['code']")
+
+    grant_types = body.get("grant_types", ["authorization_code", "refresh_token"])
+    if not set(grant_types) <= {"authorization_code", "refresh_token"} or not grant_types:
+        return _registration_error("grant_types must be a subset of authorization_code, refresh_token")
+
+    client_name = body.get("client_name")
+    if client_name is not None:
+        if not isinstance(client_name, str):
+            return _registration_error("client_name must be a string")
+        client_name = _CONTROL_CHARS.sub("", client_name)[:100]
+
+    client = OAuthClient.register(client_name=client_name, redirect_uris=" ".join(redirect_uris))
+
+    return jsonify({
+        "client_id": client.client_id,
+        "client_id_issued_at": int(client.created_at.timestamp()),
+        "redirect_uris": redirect_uris,
+        "grant_types": grant_types,
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+        "client_name": client.client_name,
+    }), 201
+
+
+register = oauth_provider_bp.route("/register", methods=["POST"])(csrf.exempt(register))

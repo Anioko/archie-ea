@@ -89,6 +89,10 @@ VIEW_OPT_OUT = {
     "app.modules.oauth_provider.routes.revoke":
         "OAuth token revocation (RFC 7009) — same caller population as the "
         "token endpoint above, no session cookie read.",
+    "app.modules.oauth_provider.routes.register":
+        "Unauthenticated dynamic client registration (RFC 7591) — there is "
+        "no credential or session to present yet; rate-limited per remote "
+        "address instead of session-gated.",
 }
 
 # Whole blueprints exempted. Every route in the blueprint must share the same

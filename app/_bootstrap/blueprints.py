@@ -592,6 +592,27 @@ def _register_always_on_apis(app, csrf):
         app.register_blueprint(oauth_metadata_bp)
         app.logger.info("[BLUEPRINT] OAuth metadata registered at /.well-known")
 
+        # Rate-limit dynamic client registration, applied here rather than at
+        # routes.py's module import time: app.modules.oauth_provider is a
+        # package whose __init__ eagerly imports routes.py, and that import
+        # can be triggered (by pytest collecting a conftest.py that lives
+        # under this package, for instance) before init_rate_limiting(app)
+        # above has ever run for any app — binding the limiter at module
+        # scope would silently capture None forever. Rewriting
+        # app.view_functions here happens after this app's own
+        # init_rate_limiting() call, every time, and Flask looks the view up
+        # from this dict fresh on every request.
+        from app._bootstrap.rate_limiting import limiter as _rate_limiter
+        from app.modules.oauth_provider.routes import registration_rate_limit_string
+
+        if _rate_limiter is not None:
+            _register_endpoint = "oauth_provider.register"
+            _register_view = app.view_functions.get(_register_endpoint)
+            if _register_view is not None:
+                app.view_functions[_register_endpoint] = _rate_limiter.limit(
+                    registration_rate_limit_string
+                )(_register_view)
+
         from app.modules.mcp import mcp_bp
 
         app.register_blueprint(mcp_bp)

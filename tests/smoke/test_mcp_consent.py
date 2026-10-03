@@ -68,16 +68,17 @@ def _pkce_pair() -> tuple[str, str]:
     return verifier, challenge
 
 
-def _register_test_client(redirect_uri: str):
-    from app import create_app, db
-    from app.modules.oauth_provider.models import OAuthClient
-
-    app = create_app("testing")
-    with app.app_context():
-        client = OAuthClient.register(client_name="Smoke Test Assistant", redirect_uris=redirect_uri)
-        client_id = client.client_id
-        db.session.commit()
-    return client_id
+def _register_test_client(redirect_uri: str, live_server: str) -> str:
+    """Register through the real POST /oauth/register endpoint (RFC 7591),
+    not by calling the model directly — this is the same path a real
+    assistant backend uses to onboard itself before ever reaching consent."""
+    resp = requests.post(
+        live_server + "/oauth/register",
+        json={"redirect_uris": [redirect_uri], "client_name": "Smoke Test Assistant"},
+        timeout=10,
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["client_id"]
 
 
 def _login(page, base, email):
@@ -113,7 +114,7 @@ def test_allow_reaches_local_listener_and_exchanges_for_a_token(
     page, live_server, seeded, local_callback_server
 ):
     """solution_architect: sign in, see consent, click Allow, redeem the code."""
-    client_id = _register_test_client(local_callback_server)
+    client_id = _register_test_client(local_callback_server, live_server)
     verifier, challenge = _pkce_pair()
 
     _login(page, live_server, seeded["emails"]["solution_architect"])
@@ -164,7 +165,7 @@ def test_read_only_archetype_is_not_offered_propose_changes(
     own request shapes it, not a claim that this particular archetype lacks
     write permission on their account.
     """
-    client_id = _register_test_client(local_callback_server)
+    client_id = _register_test_client(local_callback_server, live_server)
     _verifier, challenge = _pkce_pair()
 
     _login(page, live_server, seeded["emails"]["procurement"])
@@ -179,7 +180,7 @@ def test_read_only_archetype_is_not_offered_propose_changes(
 
 
 def test_deny_redirects_with_access_denied(page, live_server, seeded, local_callback_server):
-    client_id = _register_test_client(local_callback_server)
+    client_id = _register_test_client(local_callback_server, live_server)
     _verifier, challenge = _pkce_pair()
 
     _login(page, live_server, seeded["emails"]["business_architect"])

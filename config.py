@@ -202,6 +202,9 @@ class Config:
     PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
     MCP_ENABLED = _env_bool("MCP_ENABLED", False)
     OAUTH_REFRESH_TOKEN_DAYS = int(os.environ.get("OAUTH_REFRESH_TOKEN_DAYS", "30"))
+    OAUTH_CLIENT_REGISTRATION_RATE_LIMIT = os.environ.get(
+        "OAUTH_CLIENT_REGISTRATION_RATE_LIMIT", "10 per hour"
+    )
 
     # Email
     MAIL_SERVER = os.environ.get("MAIL_SERVER", "smtp.sendgrid.net")
