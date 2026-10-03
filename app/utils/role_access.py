@@ -441,6 +441,18 @@ def _link(label, endpoint, icon, requires=None, query_params=None):
 # cannot drift apart between personas.
 _ASK_LINK = _link("Ask a question", "intelligence_ui.ask", "search")
 
+# Signature screens (one click from the sidebar of the personas whose work they
+# are). One shared definition each, so the label, endpoint and icon cannot drift
+# between personas. Each lands in a My-work zone with headroom: the worst-case
+# persona (enterprise_architect, business_architect, platform_admin) gains
+# nothing, so the rendered worst case and the sidebar_links ratchet stay where
+# they are. The application manager's workspace is already the first link in
+# that persona's My work ("My Applications").
+_TWIN_MAP_LINK = _link("Twin map", "intelligence_ui.twin_map", "network")
+_ENTERPRISE_DASHBOARD_LINK = _link("Enterprise dashboard", "enterprise.enterprise_dashboard", "landmark")
+_BUSINESS_CASE_LINK = _link("Business cases", "business_case.index", "calculator")
+_BATCH_IMPORT_LINK = _link("Batch Import", "batch_import_view.dashboard", "upload")
+
 _HOME_LINKS = [
     _link("Dashboard Overview", "dashboard.overview", "layout-dashboard"),
     _link("Health Scorecard", "dashboard.health_scorecard", "heart-pulse"),
@@ -559,6 +571,8 @@ _MY_WORK_LINKS = {
         # analysis surface this links to. Same endpoint and icon as
         # enterprise_architect's link, which already had it (S-11, 18 Aug 2026).
         _link("Impact Analysis", "strategic.impact_analysis", "crosshair"),
+        # Signature screen: what a design touches, drawn with typed arrows.
+        _TWIN_MAP_LINK,
     ],
     ROLE_ENTERPRISE_ARCHITECT: [
         _link("Transformation programmes", "solution_design.programmes_list", "waypoints"),
@@ -644,6 +658,11 @@ _MY_WORK_LINKS = {
         # its sidebar. 28 nav links on the CTO dashboard, none of them this.
         # Finding a page by grepping the source is not finding it.
         _link("Tech Radar", "tech_radar.index", "radar"),
+        # Signature screens for the executive seat: the enterprise dashboard,
+        # the business cases behind investment calls, and the Twin map.
+        _ENTERPRISE_DASHBOARD_LINK,
+        _BUSINESS_CASE_LINK,
+        _TWIN_MAP_LINK,
         # Ownership coverage by business unit — CTO accountability.
         _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
@@ -737,6 +756,8 @@ _MY_WORK_LINKS = {
         # zone has ample headroom, and portfolio_manager already owns
         # Rationalization above, from which this page is reached in context.
         _link("Duplicate Detection", "unified_duplicate.simple_dashboard", "copy"),
+        # Signature screen: the business cases a portfolio decision rests on.
+        _BUSINESS_CASE_LINK,
         # Ownership coverage by business unit — portfolio manager accountability.
         _link("Ownership Coverage", "unified_applications.ownership_coverage", "users"),
     ],
@@ -761,6 +782,8 @@ _MY_WORK_LINKS = {
         _link("Applications", "unified_applications.application_list", "list"),
         _link("Rationalization", "unified_applications.rationalization_dashboard", "git-merge"),
         _link("Vendors", "unified_applications.vendors", "building"),
+        # Signature screen: bring an application list in from a file.
+        _BATCH_IMPORT_LINK,
     ],
     # Not enumerated in the spec's My-work column; ARB member's primary work
     # is governance review, backed by its own zone below. My work here mirrors
@@ -768,6 +791,8 @@ _MY_WORK_LINKS = {
     ROLE_ARB_MEMBER: [
         _link("Solutions", "solution_design.list_solutions", "wrench"),
         _link("Portfolio", "portfolio.index", "briefcase"),
+        # Signature screen: a reviewer sees what a submission touches.
+        _TWIN_MAP_LINK,
     ],
     # Also not enumerated in the spec; platform_admin gets a working set that
     # mirrors its legacy full-access scope, distinct from the Admin zone below.
@@ -844,6 +869,8 @@ _MY_WORK_LINKS = {
         _link("Capability Map", "capability_map.index", "layers"),
         _link("Traceability Matrix", "architect_ui.traceability_matrix", "git-compare"),
         _link("Interface Register", "interface_register.index", "cable"),
+        # Signature screen: bring model data in from a file.
+        _BATCH_IMPORT_LINK,
     ],
 }
 
