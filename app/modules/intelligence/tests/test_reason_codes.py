@@ -98,6 +98,9 @@ _EXPECTED = {
     "no_capability_linked",
     "value_stream_not_linked_to_model",
     "dependency_direction_unknown",
+    "no_data_recorded",
+    "no_steward_recorded",
+    "no_lineage_recorded",
     "no_plateau_recorded",
     "no_gap_recorded",
     "no_maturity_target_recorded",
@@ -113,8 +116,8 @@ _EXPECTED = {
 }
 
 
-def test_reason_codes_has_exactly_forty_three_members():
-    assert len(REASON_CODES) == 43
+def test_reason_codes_has_exactly_forty_six_members():
+    assert len(REASON_CODES) == 46
     assert REASON_CODES == frozenset(_EXPECTED)
 
 
