@@ -84,11 +84,6 @@ INTENTIONALLY_GLOBAL = {
         "owner actions explicitly scope by organization_id; the unauthenticated "
         "public token flow derives scope from the link"
     ),
-    "ImportSessionLog": (
-        "audit log recording which organisation an import ran in; the column is "
-        "for attribution, not scoping — the log is queried by session_id or "
-        "user_id, and a restore point without an organisation is never offered"
-    ),
     "ErrorEvent": (
         "operational telemetry about the platform, not tenant data — a platform "
         "admin needs to see every organisation's errors to tell 'one customer hit "
@@ -355,7 +350,16 @@ EXCLUDED_ENDPOINT_PREFIXES = {
 }
 
 # Exclusions by exact endpoint.
-EXCLUDED_ENDPOINTS: dict[str, str] = {}
+EXCLUDED_ENDPOINTS: dict[str, str] = {
+    "solution_design.mark_solution_notification_read": (
+        "SolutionNotification has no organisation of its own (solution_id is "
+        "nullable, so there is no required parent to derive one from either); "
+        "the route scopes by the specific recipient's own user_id "
+        "(filter_by(id=notification_id, user_id=current_user.id)), which "
+        "another organisation's user can never match -- a narrower guarantee "
+        "than organisation-scoping, not a gap in it"
+    ),
+}
 
 # Record types that belong to no organisation by design. A route whose
 # identifiers name only these is out of scope, with this reason. Any other
