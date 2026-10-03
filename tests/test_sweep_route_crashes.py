@@ -46,10 +46,8 @@ def logged_in_client(app, db_session, org, login_as):
 
 # ── Fix 1: PATCH /api/adm-kanban/v2/deliverables/<id>/check ──────────────
 
-def test_check_deliverable_succeeds_for_existing_deliverable(
-    logged_in_client, db_session, org
-):
-    """A valid deliverable check must not 500 with a FK violation."""
+@pytest.fixture
+def deliverable(db_session):
     from app.models.adm_deliverable import ADMDeliverable
 
     d = ADMDeliverable(
@@ -60,9 +58,15 @@ def test_check_deliverable_succeeds_for_existing_deliverable(
     )
     db_session.add(d)
     db_session.flush()
+    return d
 
+
+def test_check_deliverable_succeeds_for_existing_deliverable(
+    logged_in_client, deliverable
+):
+    """A valid deliverable check must not 500 with a FK violation."""
     resp = logged_in_client.patch(
-        f"/api/adm-kanban/v2/deliverables/{d.id}/check",
+        f"/api/adm-kanban/v2/deliverables/{deliverable.id}/check",
         json={"board_id": 1, "checked": True},
     )
     assert resp.status_code == 200, (resp.status_code, resp.get_json())
@@ -81,8 +85,8 @@ def test_check_deliverable_returns_404_for_missing_deliverable(logged_in_client)
 
 # ── Fix 2: POST /api/enterprise/requirements/<id>/generate-test-cases ────
 
-def test_generate_test_cases_succeeds(logged_in_client, db_session, org):
-    """Generating test cases must not fail with AttributeError on requirement_name."""
+@pytest.fixture
+def requirement(db_session, org):
     from app.models.solution_architect_models import SolutionRequirement
 
     req = SolutionRequirement(
@@ -93,9 +97,13 @@ def test_generate_test_cases_succeeds(logged_in_client, db_session, org):
     )
     db_session.add(req)
     db_session.flush()
+    return req
 
+
+def test_generate_test_cases_succeeds(logged_in_client, requirement):
+    """Generating test cases must not fail with AttributeError on requirement_name."""
     resp = logged_in_client.post(
-        f"/api/enterprise/requirements/{req.id}/generate-test-cases",
+        f"/api/enterprise/requirements/{requirement.id}/generate-test-cases",
     )
     assert resp.status_code == 200, (resp.status_code, resp.get_json())
     data = resp.get_json()
@@ -104,8 +112,8 @@ def test_generate_test_cases_succeeds(logged_in_client, db_session, org):
 
 # ── Fix 3: POST /api/enterprise/solutions/<id>/populate-from-template ────
 
-def test_populate_from_template_succeeds(logged_in_client, db_session, org):
-    """Populating from template must not fail with AttributeError on is_active."""
+@pytest.fixture
+def solution_with_template(db_session, org):
     from app.models.requirement_template import RequirementTemplate
     from app.models.solution_architect_models import Solution
 
@@ -124,20 +132,24 @@ def test_populate_from_template_succeeds(logged_in_client, db_session, org):
     )
     db_session.add(tpl)
     db_session.flush()
+    return sol
 
+
+def test_populate_from_template_succeeds(logged_in_client, solution_with_template):
+    """Populating from template must not fail with AttributeError on is_active."""
     resp = logged_in_client.post(
-        f"/api/enterprise/solutions/{sol.id}/populate-from-template",
+        f"/api/enterprise/solutions/{solution_with_template.id}/populate-from-template",
         json={"layers": ["business"]},
     )
     assert resp.status_code in (200, 201), (resp.status_code, resp.get_json())
     data = resp.get_json()
-    assert data.get("solution_id") == sol.id
+    assert data.get("solution_id") == solution_with_template.id
 
 
 # ── Fix 4: POST /api/solutions/<id>/relationships/extract ────────────────
 
-def test_extract_relationships_returns_clear_error(logged_in_client, db_session, org):
-    """Missing orchestrator method must return a clear 400, not AttributeError."""
+@pytest.fixture
+def solution_for_extract(db_session, org):
     from app.models.solution_architect_models import Solution
 
     sol = Solution(
@@ -147,9 +159,13 @@ def test_extract_relationships_returns_clear_error(logged_in_client, db_session,
     )
     db_session.add(sol)
     db_session.flush()
+    return sol
 
+
+def test_extract_relationships_returns_clear_error(logged_in_client, solution_for_extract):
+    """Missing orchestrator method must return a clear 400, not AttributeError."""
     resp = logged_in_client.post(
-        f"/api/solutions/{sol.id}/relationships/extract",
+        f"/api/solutions/{solution_for_extract.id}/relationships/extract",
         json={"message": "The web frontend calls the order service"},
     )
     assert resp.status_code == 400, (resp.status_code, resp.get_json())
@@ -159,20 +175,23 @@ def test_extract_relationships_returns_clear_error(logged_in_client, db_session,
 
 # ── Fix 5: POST /architecture/decisions/<id>/edit ────────────────────────
 
-def test_edit_decision_without_title_does_not_500(logged_in_client, db_session, org):
-    """Editing a decision without a title must keep the existing title, not 500."""
+@pytest.fixture
+def decision(db_session, org):
     from app.models.architecture_decision import ArchitectureDecision
 
     original_title = f"Original title {uuid.uuid4().hex[:8]}"
-    decision = ArchitectureDecision(
+    d = ArchitectureDecision(
         title=original_title,
         status="proposed",
         organization_id=org.id,
     )
-    db_session.add(decision)
+    db_session.add(d)
     db_session.flush()
+    return d
 
-    # POST without a title field — must not violate NOT NULL
+
+def test_edit_decision_without_title_does_not_500(logged_in_client, decision):
+    """Editing a decision without a title must keep the existing title, not 500."""
     resp = logged_in_client.post(
         f"/architecture/decisions/{decision.id}/edit",
         data={"status": "accepted"},
@@ -183,8 +202,8 @@ def test_edit_decision_without_title_does_not_500(logged_in_client, db_session, 
 
 # ── Fix 6: POST /dashboard/api/archimate-elements/<id>/correct ───────────
 
-def test_archimate_element_correct_succeeds(logged_in_client, db_session, org):
-    """Correcting an ArchiMate element must not fail with ModuleNotFoundError."""
+@pytest.fixture
+def archimate_element(db_session, org):
     from app.models.archimate_core import ArchiMateElement
 
     elem = ArchiMateElement(
@@ -195,9 +214,13 @@ def test_archimate_element_correct_succeeds(logged_in_client, db_session, org):
     )
     db_session.add(elem)
     db_session.flush()
+    return elem
 
+
+def test_archimate_element_correct_succeeds(logged_in_client, archimate_element):
+    """Correcting an ArchiMate element must not fail with ModuleNotFoundError."""
     resp = logged_in_client.post(
-        f"/dashboard/api/archimate-elements/{elem.id}/correct",
+        f"/dashboard/api/archimate-elements/{archimate_element.id}/correct",
         json={"action": "approve"},
     )
     assert resp.status_code == 200, (resp.status_code, resp.get_json())
@@ -207,8 +230,8 @@ def test_archimate_element_correct_succeeds(logged_in_client, db_session, org):
 
 # ── Fix 7: POST /solutions/<id>/codegen/data/import ──────────────────────
 
-def test_data_import_rejects_string_mappings(logged_in_client, db_session, org):
-    """String mappings must be rejected with a clear 400, not AttributeError."""
+@pytest.fixture
+def solution_for_import(db_session, org):
     from app.models.solution_architect_models import Solution
 
     sol = Solution(
@@ -218,9 +241,13 @@ def test_data_import_rejects_string_mappings(logged_in_client, db_session, org):
     )
     db_session.add(sol)
     db_session.flush()
+    return sol
 
+
+def test_data_import_rejects_string_mappings(logged_in_client, solution_for_import):
+    """String mappings must be rejected with a clear 400, not AttributeError."""
     resp = logged_in_client.post(
-        f"/solutions/{sol.id}/codegen/data/import",
+        f"/solutions/{solution_for_import.id}/codegen/data/import",
         json={
             "mappings": ["not_a_dict"],
             "rows": [{"col": "val"}],

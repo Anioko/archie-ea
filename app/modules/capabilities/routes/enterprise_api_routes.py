@@ -163,7 +163,7 @@ def populate_solution_from_template(solution_id):
             skipped.append({'layer': layer_lower, 'reason': 'layer_already_populated'})
             continue
 
-templates = RequirementTemplate.query.filter(
+        templates = RequirementTemplate.query.filter(
             RequirementTemplate.layer == layer_lower,
             RequirementTemplate.is_system == True
         ).limit(3).all()
