@@ -120,6 +120,11 @@ REASON_CODES = frozenset(
         "no_capability_linked",
         "value_stream_not_linked_to_model",
         "dependency_direction_unknown",
+        # Accountability answer for a capability: no capability of this
+        # organisation mirrors the element, and a capability with no RACI
+        # assignment recorded against it.
+        "no_capability_in_chain",
+        "no_raci_recorded",
         # The programme lens's own plateau/gap block: a work package's stored
         # plateau_id/gap_id may be unset (a nullable FK), or, in principle,
         # point at a record belonging to a different tenant (the FK itself
@@ -135,7 +140,6 @@ REASON_CODES = frozenset(
         # for a later reader) an answer with no Capability element in its
         # chain at all.
         "no_maturity_target_recorded",
-        "no_capability_in_chain",
         # The Portfolio lens's component block adds cost, health and
         # licence facts read from the columns already entered on the
         # resolved ApplicationComponent (and the two tables keyed off it).
