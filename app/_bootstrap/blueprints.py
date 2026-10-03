@@ -172,6 +172,7 @@ def _init_blueprints(app):
     _ff_industry_apqc = _register_industry_apqc(app)
     _register_solution_product(app)
     _register_intelligence(app)
+    _register_metamodel_properties(app)
 
     # --- North Star Persona MVP modules (NS-008, NS-009, NS-010, NS-011, NS-012, NS-013) ---
     _register_persona_modules(app)
@@ -261,6 +262,14 @@ def _register_optional_standalone(app):
         # scope comes from the share row, never from the URL. See the module
         # docstring in app/modules/sharing/routes.py.
         ("app.modules.sharing.routes", "artefact_share_bp", None),
+        # System of record per data entity, undeclared copies, master data
+        # domain register and the logical-model standards check. Tier-
+        # independent: the blueprint carries its own /data-governance prefix.
+        (
+            "app.modules.architecture.routes.data_governance_routes",
+            "data_governance_bp",
+            None,
+        ),
         # ARCH-123 (Data Lineage) is NOT a new blueprint: it extends the
         # existing app.modules.architecture.routes.data_architecture_routes
         # (blueprint "data_architecture", already registered elsewhere) with
@@ -543,6 +552,25 @@ def _register_always_on_apis(app, csrf):
 
     app.register_blueprint(error_events_bp)
     app.logger.info("[BLUEPRINT] Error aggregation registered at /api/client-error, /admin/errors")
+
+    # Capability merge report (ADR 0008 consolidation): platform-admin view of
+    # which duplicate capability records were merged. Registered here rather
+    # than under app.modules.governance's own register() because that module
+    # is reached only when USE_NEW_GOVERNANCE (or USE_GOVERNANCE_GUARDRAILS,
+    # which registers app.modules.governance.v2 instead) is enabled -- this
+    # report must exist regardless of that flag.
+    from app.modules.governance.routes.capability_merge_report_routes import (
+        init_app as init_capability_merge_report,
+    )
+
+    init_capability_merge_report(app)
+    app.logger.info("[BLUEPRINT] Capability merge report registered at /admin/capability-merges")
+
+    # Service status: current health, incident history, subscribe (any signed-in user).
+    from app.modules.monitoring.routes.status_routes import status_bp
+
+    app.register_blueprint(status_bp)
+    app.logger.info("[BLUEPRINT] Service status registered at /status")
 
     # Security API
     from app.routes.security_api import security_bp
@@ -1329,6 +1357,19 @@ def _register_industry_apqc(app):
     except Exception as _e:
         app.logger.error(f"[MODULE] Industry APQC import failed: {_e}")
         return False
+
+
+def _register_metamodel_properties(app):
+    """Register the element properties pages (an organisation's governed
+    property definitions), non-fatally like every other module here."""
+    try:
+        from app.modules.architecture_assistant.routes.metamodel_property_routes import (
+            metamodel_properties_bp,
+        )
+
+        app.register_blueprint(metamodel_properties_bp)
+    except Exception as e:
+        app.logger.warning("Failed to register element properties pages: %s", e)
 
 
 def _register_intelligence(app):
