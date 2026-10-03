@@ -25,10 +25,11 @@ in this codebase.
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, g, request
+from flask import Blueprint, current_app, request
 from flask_login import current_user, login_required
 
 from app.modules.intelligence.services.reason_codes import validate_reason_code
+from app.utils.tenant import current_organization_id
 from app.utils.api_response import error_response, not_found_response, success_response
 
 # NEW-4 fix: these two DE-14 reason codes are structurally unreachable in the
@@ -75,23 +76,6 @@ def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: 
         row[reason_field] = _FINANCIAL_DATA_RESTRICTED_REASON
 
 
-def _current_organization_id() -> int | None:
-    """The plain int this request belongs to -- never an ORM object.
-
-    ``g.current_org_id`` is what the tenant-isolation listeners key off
-    (CLAUDE.md "Multi-tenancy is implicit"), and is what
-    ``run_for_each_tenant``'s per-tenant loop restores when it finishes, so
-    reading it here (rather than ``current_user.organization`` -- an ORM
-    relationship) is both the correct source and avoids holding an object
-    reference across the recompute call.
-    """
-    org_id = getattr(g, "current_org_id", None)
-    if org_id is not None:
-        return int(org_id)
-    org_id = getattr(current_user, "organization_id", None)
-    return int(org_id) if org_id is not None else None
-
-
 @intelligence_api.route("/derivation/recompute", methods=["POST"])
 @login_required
 def recompute_derivation():
@@ -110,7 +94,7 @@ def recompute_derivation():
             status_code=400,
         )
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request", code="NO_TENANT_CONTEXT", status_code=400
@@ -176,7 +160,7 @@ def get_derived_fact_provenance(derived_id: int):
     double-scopes it -- so this 404s -- never 403, never a leak of another
     tenant's row existing.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request", code="NO_TENANT_CONTEXT", status_code=400
@@ -333,7 +317,7 @@ def value_streams_at_risk():
                 status_code=400,
             )
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -415,7 +399,7 @@ def cross_layer_impact(element_id: int):
 
     layer = request.args.get("layer")
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -476,7 +460,7 @@ def traceability_check(element_id: int):
     as the impact route above. An element outside the caller's organisation
     answers exactly as one that does not exist.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -532,7 +516,7 @@ def risk_for_element(element_id: int):
                 status_code=400,
             )
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -597,7 +581,7 @@ def portfolio_component_for_element(element_id: int):
     already use; see the service method's own docstring for why
     duplicate-detection and TCO history are not offered here.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -673,7 +657,7 @@ def programme_for_element(element_id: int):
                 status_code=400,
             )
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -749,7 +733,7 @@ def strategy_for_element(element_id: int):
                 status_code=400,
             )
 
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -806,7 +790,7 @@ def accountability_for_element(element_id: int):
     only the body of the answer is a permanent honest empty state until
     that reader exists.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -895,7 +879,7 @@ def derivation_yield():
     view function name is deliberately ``derivation_yield``, not
     ``cross_layer_impact``, which is already taken in this file).
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
