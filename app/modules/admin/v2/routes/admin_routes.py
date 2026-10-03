@@ -4741,10 +4741,6 @@ def _get_capability_suggestion_default():
         return "(Could not load default prompt)"
 
 
-def _override_key(prompt_key):
-    return f"solution_prompt_{prompt_key}"
-
-
 @admin_bp_v2.route("/solution-prompts")
 @timed_route
 @login_required
@@ -4763,7 +4759,7 @@ def solution_prompts_data():
     prompts = []
 
     for key, config in defaults.items():
-        override_name = _override_key(key)
+        override_name = solution_prompt_override_service.override_key(key)
         override = AIPromptTemplate.query.filter_by(name=override_name).first()
 
         prompts.append({
@@ -4887,7 +4883,7 @@ def solution_prompt_history(prompt_key):
     if prompt_key not in defaults:
         return jsonify({"error": f"Unknown prompt: {prompt_key}"}), 404
 
-    override_name = _override_key(prompt_key)
+    override_name = solution_prompt_override_service.override_key(prompt_key)
     override = AIPromptTemplate.query.filter_by(name=override_name).first()
     history = (
         AIPromptTemplateVersion.query.filter_by(template_name=override_name)
@@ -4934,7 +4930,7 @@ def solution_prompt_diff(prompt_key):
 
     from_v = request.args.get("from", "current")
     to_v = request.args.get("to", "current")
-    override_name = _override_key(prompt_key)
+    override_name = solution_prompt_override_service.override_key(prompt_key)
 
     try:
         from_text = _version_content_v2(prompt_key, from_v, override_name)
