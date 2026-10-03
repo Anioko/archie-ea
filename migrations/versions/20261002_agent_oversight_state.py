@@ -4,7 +4,7 @@ One row per organisation, created on first read (AgentOversightState.get_for_org
 The table is tenant-fenced via TenantMixin.organization_id.
 
 Revision ID: 20261002_agent_oversight_state
-Revises: 20261001_approval_nullable
+Revises: 20261002_data_domain_org_unique
 Create Date: 2026-10-02
 """
 from alembic import op
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 # under that length, the same constraint every revision after the baseline
 # already satisfies.
 revision = "20261002_agent_oversight_state"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_data_domain_org_unique"
 branch_labels = None
 depends_on = None
 
