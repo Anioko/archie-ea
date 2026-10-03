@@ -33,32 +33,6 @@ flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merg
 flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipped - older audit entries from ARB, ArchiMate composer and rationalisation stores remain uncopied until it runs (RUN-01)' >&2
 flask --app manage backfill-review-queue-approvals || echo 'WARN approval-queue consolidation backfill skipped - pending rows from review_queue_items, relationship_suggestions and solution_blueprint_proposals remain uncopied until it runs' >&2
 
-# Add vendor_organizations legal entity columns (migration-exempt model)
-# These columns are defined in app/models/vendor/vendor_organization.py but
-# the model is tagged migration-exempt, so reconcile-schema will NOT add them.
-# For new databases init-db creates them; this block covers existing ones.
-python -c "
-from app.extensions import db
-from sqlalchemy import text
-engine = db.engine
-with engine.connect() as conn:
-    for col, ddl in [
-        ('legal_name', 'ALTER TABLE vendor_organizations ADD COLUMN legal_name VARCHAR(300)'),
-        ('legal_registration_number', 'ALTER TABLE vendor_organizations ADD COLUMN legal_registration_number VARCHAR(100)'),
-        ('legal_address', 'ALTER TABLE vendor_organizations ADD COLUMN legal_address TEXT'),
-        ('parent_vendor_id', 'ALTER TABLE vendor_organizations ADD COLUMN parent_vendor_id INTEGER REFERENCES vendor_organizations(id)'),
-    ]:
-        try:
-            conn.execute(text(ddl))
-            conn.commit()
-            print(f'  vendor_organizations.{col} added')
-        except Exception as e:
-            if 'duplicate' in str(e).lower() or 'already exists' in str(e).lower():
-                print(f'  vendor_organizations.{col} already exists')
-            else:
-                print(f'WARN vendor_organizations.{col} — {e}')
-" || echo 'WARN vendor_organizations legal entity columns migration skipped (non-fatal)'
-
 # The generic history trigger reconcile-schema cannot create, then
 # one seeded version per pre-existing element/relationship. Trigger first so
 # the backfill's "no entity_history row at all" check is not racing a
