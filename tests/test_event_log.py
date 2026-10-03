@@ -628,33 +628,31 @@ class TestRelayFailureReporting:
     def test_relay_reports_failure_and_leaves_row_for_retry(
         self, db_session, two_orgs, caplog
     ):
-        """When an outbox row cannot be relayed (e.g. no partition for the
-        event timestamp), the relay must log the error, exclude the row from
-        the inserted count, and leave the row unpublished so it can be
-        retried."""
+        """When an outbox row cannot be relayed (e.g. a CHECK constraint on
+        event_log rejects the insert), the relay must log the error, exclude
+        the row from the inserted count, and leave the row unpublished so it
+        can be retried."""
         org_a = two_orgs["A"]
 
-        # Insert an outbox row with a created_at far in the past, outside
-        # any event_log monthly partition.  The relay will fail because
-        # PostgreSQL rejects a row that doesn't fit any child partition.
-        event_id = str(uuid.uuid4())
+        # Create a valid outbox row.
+        event = emit_event(
+            organization_id=org_a.id,
+            event_type="test.failure.reporting",
+            payload={"test": True},
+            entity_type="test_entity",
+            entity_id=1,
+        )
+        db_session.commit()
+
+        # Add a temporary CHECK constraint that rejects every insert into
+        # event_log.  The constraint lives only for this transaction (the
+        # db_session fixture rolls everything back).
         db_session.execute(
             text(
-                "INSERT INTO transformation_outbox_events "
-                "(organization_id, event_id, ordinal, event_type, payload_json, "
-                " created_at, entity_type, entity_id, delivery_attempts) "
-                "VALUES (:org_id, :event_id, 0, :event_type, :payload, "
-                " :created_at, :entity_type, :entity_id, 0)"
-            ),
-            {
-                "org_id": org_a.id,
-                "event_id": event_id,
-                "event_type": "test.failure.reporting",
-                "payload": '{"test": true}',
-                "created_at": "2025-01-01 00:00:00+00",
-                "entity_type": "test_entity",
-                "entity_id": 1,
-            },
+                "ALTER TABLE event_log "
+                "ADD CONSTRAINT ck_test_relay_failure CHECK (ordinal < 0) "
+                "NOT VALID"
+            )
         )
         db_session.commit()
 
@@ -673,11 +671,8 @@ class TestRelayFailureReporting:
         )
 
         # The outbox row must still be unpublished (left for retry).
-        outbox_after = (
-            db_session.query(OperationOutboxEvent)
-            .filter(OperationOutboxEvent.event_id == event_id)
-            .first()
-        )
+        db_session.expire_all()
+        outbox_after = db_session.get(OperationOutboxEvent, event.id)
         assert outbox_after is not None, "Outbox row must still exist"
         assert outbox_after.published_at is None, (
             "Failed outbox row must remain unpublished for retry"
