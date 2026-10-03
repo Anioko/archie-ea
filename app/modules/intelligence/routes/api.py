@@ -24,7 +24,7 @@ in this codebase.
 
 from __future__ import annotations
 
-from flask import Blueprint, current_app, g, request
+from flask import Blueprint, current_app, request
 from flask_login import current_user, login_required
 
 from app.modules.intelligence.services.reason_codes import validate_reason_code
