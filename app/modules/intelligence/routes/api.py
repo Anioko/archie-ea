@@ -894,4 +894,90 @@ def derivation_yield():
     return success_response(result)
 
 
+@intelligence_api.route("/catalogue", methods=["GET"])
+@login_required
+def query_catalogue_list():
+    """R1-B39: list the named questions a Portfolio Manager or Business
+    Owner can ask or run directly."""
+    from app.modules.intelligence.services.query_catalogue import list_entries
+
+    return success_response({"entries": list_entries()})
+
+
+@intelligence_api.route("/catalogue/<string:entry_id>", methods=["GET"])
+@login_required
+def query_catalogue_run(entry_id):
+    """R1-B39: run one catalogue entry by id, with its declared parameters
+    taken from the query string. Serves both the screen and this API with
+    the same rows (TB-0107) -- the entry itself is the only query engine."""
+    organization_id = current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.modules.intelligence.services.query_catalogue import CATALOGUE, run_entry
+
+    entry = CATALOGUE.get(entry_id)
+    if entry is None:
+        return not_found_response(f"no catalogue entry named '{entry_id}'")
+
+    params = {name: request.args.get(name) for name in entry.params if request.args.get(name) is not None}
+    result = run_entry(entry_id, organization_id, **params)
+    return success_response({"entry_id": entry_id, "title": entry.title, "params": params, **result})
+
+
+@intelligence_api.route("/ask", methods=["POST"])
+@login_required
+def ask_nl_question():
+    """R1-B39: a plain-language question, interpreted onto one catalogue
+    entry and run. The interpretation (which entry, which parameters) is
+    always returned alongside the answer so the caller can show it and
+    let the user correct a misread parameter by re-POSTing with
+    ``entry_id``/``params`` set directly (TB-0108)."""
+    organization_id = current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    body = request.get_json(silent=True) or {}
+    question = body.get("question", "")
+
+    from app.modules.intelligence.services.query_catalogue import CATALOGUE, run_entry
+    from app.modules.intelligence.services.nl_query_interpreter import interpret
+
+    if body.get("entry_id"):
+        # The user corrected the interpretation -- run exactly what they chose.
+        interpretation = {
+            "entry_id": body["entry_id"],
+            "params": body.get("params") or {},
+            "confidence": 1.0,
+            "method": "corrected",
+            "title": CATALOGUE[body["entry_id"]].title if body["entry_id"] in CATALOGUE else None,
+        }
+    else:
+        interpretation = interpret(question)
+
+    entry_id = interpretation["entry_id"]
+    if entry_id is None or entry_id not in CATALOGUE:
+        return success_response(
+            {
+                "question": question,
+                "interpretation": interpretation,
+                "answer": None,
+                "reason": "could not map this question to a known catalogue entry",
+            }
+        )
+
+    result = run_entry(entry_id, organization_id, **interpretation["params"])
+    return success_response({"question": question, "interpretation": interpretation, **result})
+
+
 __all__ = ["intelligence_api"]
