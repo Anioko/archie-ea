@@ -525,3 +525,22 @@ class TestOutboxSessionIsolation:
             .count()
         )
         assert count == 2, f"Expected 2 outbox events, got {count}"
+
+
+# ---------------------------------------------------------------------------
+# Relay job registration
+# ---------------------------------------------------------------------------
+
+
+class TestRelayJobRegistration:
+    """The relay must be registered as a scheduled job so outbox events
+    actually reach event_log in production."""
+
+    def test_relay_job_is_in_tenant_jobs(self):
+        """event_log_relay must be listed in TENANT_JOBS so the scheduler
+        does not remove it as undeclared."""
+        from app.jobs.tenant_safe_job import TENANT_JOBS
+        assert "event_log_relay" in TENANT_JOBS, (
+            "event_log_relay must be in TENANT_JOBS or the scheduler "
+            "will remove it as undeclared"
+        )
