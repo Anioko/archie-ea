@@ -268,7 +268,10 @@ class ApplicationUsage(db.Model):
 
 class ApplicationCost(db.Model):
     """
-    Financial tracking for applications - TCO, licensing, support costs
+    RETIRED — The annual cost of an application is now stored in
+    ApplicationComponent.total_cost_of_ownership and accessed through
+    app.services.application_cost_accessor.get_annual_cost().
+    This table exists for historical data only; no new writes arrive here.
     """
 
     __tablename__ = "application_costs"

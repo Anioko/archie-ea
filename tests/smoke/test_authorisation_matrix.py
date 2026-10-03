@@ -56,6 +56,9 @@ POLICY = {
     # impact endpoint they read, not by the page.
     "/intelligence/ask":       set(ARCHETYPES),
     "/intelligence/twin-map":  set(ARCHETYPES),
+# Model Health / Drift: carries @login_required and no role gate, so every
+    # archetype is expected to reach it.
+    "/genome/model-health/":   set(ARCHETYPES),
     # Traceability check and element properties: @login_required and no role
     # gate on the page, so every archetype reads them; the answer is fenced
     # per tenant by the service behind each page. Saving a property definition
@@ -131,6 +134,27 @@ POLICY = {
     # boundary as /comparison and /new above, no initiative_id 302s to the
     # picker either way.
     "/interface-register/costing": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    # Data governance (system of record, undeclared copies, master data
+    # domains, standards check): gated by the same data_integration section
+    # predicate as the Interface Register above, so the same five personas reach
+    # it and arb_member, portfolio_manager, cto, procurement and
+    # application_manager are refused.
+    "/data-governance/entities": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/undeclared-copies": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/domains": {
+        "solution_architect", "enterprise_architect", "business_architect",
+        "security_architect", "data_architect",
+    },
+    "/data-governance/models": {
         "solution_architect", "enterprise_architect", "business_architect",
         "security_architect", "data_architect",
     },
