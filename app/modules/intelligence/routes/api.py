@@ -834,7 +834,7 @@ def data_for_element(element_id: int):
     this organisation's (or does not exist) is the same 404, so a foreign id cannot be told
     from a missing one.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
