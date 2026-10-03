@@ -10,24 +10,17 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, g, request
-from flask_login import current_user, login_required
+from flask import Blueprint, request
+from flask_login import login_required
 
 from app.utils.api_response import error_response, success_response
+from app.utils.tenant import current_organization_id
 
 logger = logging.getLogger(__name__)
 
 motivation_api = Blueprint(
     "motivation_api", __name__, url_prefix="/api/v1/motivation"
 )
-
-
-def _current_organization_id() -> int | None:
-    org_id = getattr(g, "current_org_id", None)
-    if org_id is not None:
-        return int(org_id)
-    org_id = getattr(current_user, "organization_id", None)
-    return int(org_id) if org_id is not None else None
 
 
 # --------------------------------------------------------------------------- #
@@ -46,7 +39,7 @@ def goal_trace(goal_id: int):
 
     Each hop cites its relationship row. Shareable by permanent link.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -78,7 +71,7 @@ def goal_trace(goal_id: int):
 @login_required
 def create_driver():
     """Create a Driver record with source, date and owner."""
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -129,7 +122,7 @@ def create_driver():
 @login_required
 def create_assessment(driver_id: int):
     """Create an Assessment row against a Driver."""
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -195,7 +188,7 @@ def suggest_goals_for_driver(driver_id: int):
 
     Never auto-links; returns candidates for the strategy officer to confirm.
     """
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
@@ -226,7 +219,7 @@ def suggest_goals_for_driver(driver_id: int):
 @login_required
 def link_driver_to_goal(driver_id: int):
     """Link a Driver to a Goal. The strategy officer confirms the link."""
-    organization_id = _current_organization_id()
+    organization_id = current_organization_id()
     if organization_id is None:
         return error_response(
             "no tenant context for this request",
