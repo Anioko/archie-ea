@@ -4,125 +4,328 @@ Revision ID: 20261003_fw_adopt
 Revises: 20261001_approval_nullable
 Create Date: 2026-10-03 00:34:30.660416
 
+Idempotent: every CREATE / ADD is guarded by IF NOT EXISTS so that CI
+(which builds the schema from the models before running the migration chain)
+does not fail with DuplicateTable or DuplicateColumn.  Every DROP in the
+downgrade is guarded by IF EXISTS for the same reason.  Matches the pattern
+established by 20260930_capability_backlinks.py and 20261001_risk_score_fields.py.
 """
 from alembic import op
-import sqlalchemy as sa
+from sqlalchemy import text
 
-
-# revision identifiers, used by Alembic.
-revision = '20261003_fw_adopt'
-down_revision = '20261001_approval_nullable'
+revision = "20261003_fw_adopt"
+down_revision = "20261001_approval_nullable"
 branch_labels = None
 depends_on = None
 
+# ── explicit constraint names ──────────────────────────────────────────
+
+_FK_HARMONIZED_CONTROL = "fk_compliance_controls_harmonized_control_id"
+
+_FK_ADOPTION_ADOPTED_BY = "fk_framework_adoptions_adopted_by_id"
+_FK_ADOPTION_FRAMEWORK = "fk_framework_adoptions_framework_id"
+_FK_ADOPTION_ORG = "fk_framework_adoptions_organization_id"
+_FK_ADOPTION_REF = "fk_framework_adoptions_reference_adoption_id"
+
+_FK_CONTROL_ADOPTION = "fk_adopted_controls_adoption_id"
+_FK_CONTROL_CONTROL = "fk_adopted_controls_control_id"
+_FK_CONTROL_ORG = "fk_adopted_controls_organization_id"
+_FK_CONTROL_VERIFIED_BY = "fk_adopted_controls_verified_by_id"
+
+_FK_CHANGE_FRAMEWORK = "fk_regulatory_changes_framework_id"
+_FK_CHANGE_ORG = "fk_regulatory_changes_organization_id"
+_FK_CHANGE_RECORDED_BY = "fk_regulatory_changes_recorded_by_id"
+
+_FK_IMPACT_CHANGE = "fk_regulatory_change_impacts_change_id"
+_FK_IMPACT_ORG = "fk_regulatory_change_impacts_organization_id"
+_FK_IMPACT_OWNER = "fk_regulatory_change_impacts_owner_id"
+
+_IX_HARMONIZED_CONTROL = "ix_compliance_controls_harmonized_control_id"
+_IX_ADOPTION_FRAMEWORK = "ix_framework_adoptions_framework_id"
+_IX_ADOPTION_ORG = "ix_framework_adoptions_organization_id"
+_IX_ADOPTION_SCOPE = "ix_framework_adoptions_scope"
+_IX_CONTROL_ADOPTION = "ix_adopted_controls_adoption_id"
+_IX_CONTROL_CONTROL = "ix_adopted_controls_control_id"
+_IX_CONTROL_ORG = "ix_adopted_controls_organization_id"
+_IX_CONTROL_SCOPE = "ix_adopted_controls_scope"
+_IX_CHANGE_FRAMEWORK = "ix_regulatory_changes_framework_id"
+_IX_CHANGE_ORG = "ix_regulatory_changes_organization_id"
+_IX_IMPACT_CHANGE = "ix_regulatory_change_impacts_change_id"
+_IX_IMPACT_ORG = "ix_regulatory_change_impacts_organization_id"
+
+_UQ_ORG_ADOPTION = "uq_org_framework_adoption"
+_UQ_ORG_CONTROL = "uq_org_adoption_control"
+
+
+def _add_fk_if_not_exists(bind, table, constraint_name, columns, ref_table, ref_columns, ondelete=None):
+    """Add a foreign key if it does not already exist."""
+    bind.execute(text(f"""
+        DO $fk${constraint_name}$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = to_regclass('{table}')
+              AND conname = '{constraint_name}'
+          ) THEN
+            ALTER TABLE "{table}"
+              ADD CONSTRAINT {constraint_name}
+              FOREIGN KEY ({', '.join(columns)})
+              REFERENCES {ref_table} ({', '.join(ref_columns)})
+              {'ON DELETE ' + ondelete if ondelete else ''};
+          END IF;
+        END
+        $fk${constraint_name}$
+    """))
+
+
+def _add_unique_if_not_exists(bind, table, constraint_name, columns):
+    """Add a UNIQUE constraint if it does not already exist."""
+    bind.execute(text(f"""
+        DO $uq${constraint_name}$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conrelid = to_regclass('{table}')
+              AND conname = '{constraint_name}'
+          ) THEN
+            ALTER TABLE "{table}"
+              ADD CONSTRAINT {constraint_name}
+              UNIQUE ({', '.join(columns)});
+          END IF;
+        END
+        $uq${constraint_name}$
+    """))
+
 
 def upgrade():
-    # Harmonisation columns on compliance_controls
-    op.add_column('compliance_controls', sa.Column('harmonized_control_id', sa.Integer(), nullable=True))
-    op.add_column('compliance_controls', sa.Column('harmonization_status', sa.String(length=20), nullable=True))
-    op.add_column('compliance_controls', sa.Column('harmonization_notes', sa.Text(), nullable=True))
-    op.create_index(op.f('ix_compliance_controls_harmonized_control_id'), 'compliance_controls', ['harmonized_control_id'], unique=False)
-    op.create_foreign_key(None, 'compliance_controls', 'compliance_controls', ['harmonized_control_id'], ['id'])
+    bind = op.get_bind()
 
-    # Framework adoptions (tenant-hybrid)
-    op.create_table('framework_adoptions',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('organization_id', sa.Integer(), nullable=True),
-        sa.Column('scope', sa.String(length=16), nullable=True),
-        sa.Column('framework_id', sa.Integer(), nullable=False),
-        sa.Column('reference_adoption_id', sa.Integer(), nullable=True),
-        sa.Column('adopted_by_id', sa.Integer(), nullable=True),
-        sa.Column('adopted_at', sa.DateTime(), nullable=True),
-        sa.Column('status', sa.String(length=20), nullable=True),
-        sa.Column('tailoring_notes', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['adopted_by_id'], ['users.id'], ),
-        sa.ForeignKeyConstraint(['framework_id'], ['regulatory_frameworks.id'], ),
-        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['reference_adoption_id'], ['framework_adoptions.id'], ondelete='SET NULL'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('organization_id', 'framework_id', name='uq_org_framework_adoption'),
+    # ── Harmonisation columns on compliance_controls ────────────────────
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "ADD COLUMN IF NOT EXISTS harmonized_control_id INTEGER"
+    ))
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "ADD COLUMN IF NOT EXISTS harmonization_status VARCHAR(20)"
+    ))
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "ADD COLUMN IF NOT EXISTS harmonization_notes TEXT"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_HARMONIZED_CONTROL} "
+        "ON compliance_controls (harmonized_control_id)"
+    ))
+    _add_fk_if_not_exists(
+        bind, "compliance_controls", _FK_HARMONIZED_CONTROL,
+        ["harmonized_control_id"], "compliance_controls", ["id"],
     )
-    op.create_index(op.f('ix_framework_adoptions_framework_id'), 'framework_adoptions', ['framework_id'], unique=False)
-    op.create_index(op.f('ix_framework_adoptions_organization_id'), 'framework_adoptions', ['organization_id'], unique=False)
-    op.create_index(op.f('ix_framework_adoptions_scope'), 'framework_adoptions', ['scope'], unique=False)
 
-    # Adopted controls (tenant-hybrid)
-    op.create_table('adopted_controls',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('organization_id', sa.Integer(), nullable=True),
-        sa.Column('scope', sa.String(length=16), nullable=True),
-        sa.Column('adoption_id', sa.Integer(), nullable=False),
-        sa.Column('control_id', sa.Integer(), nullable=False),
-        sa.Column('tailoring_notes', sa.Text(), nullable=True),
-        sa.Column('implementation_status', sa.String(length=20), nullable=True),
-        sa.Column('evidence_url', sa.String(length=500), nullable=True),
-        sa.Column('verified_date', sa.DateTime(), nullable=True),
-        sa.Column('verified_by_id', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['adoption_id'], ['framework_adoptions.id'], ),
-        sa.ForeignKeyConstraint(['control_id'], ['compliance_controls.id'], ),
-        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['verified_by_id'], ['users.id'], ondelete='SET NULL'),
-        sa.PrimaryKeyConstraint('id'),
-        sa.UniqueConstraint('organization_id', 'adoption_id', 'control_id', name='uq_org_adoption_control'),
+    # ── Framework adoptions ─────────────────────────────────────────────
+    bind.execute(text("""
+        CREATE TABLE IF NOT EXISTS framework_adoptions (
+            id SERIAL NOT NULL,
+            organization_id INTEGER,
+            scope VARCHAR(16),
+            framework_id INTEGER NOT NULL,
+            reference_adoption_id INTEGER,
+            adopted_by_id INTEGER,
+            adopted_at TIMESTAMP WITHOUT TIME ZONE,
+            status VARCHAR(20),
+            tailoring_notes TEXT,
+            created_at TIMESTAMP WITHOUT TIME ZONE,
+            updated_at TIMESTAMP WITHOUT TIME ZONE,
+            PRIMARY KEY (id)
+        )
+    """))
+    _add_fk_if_not_exists(
+        bind, "framework_adoptions", _FK_ADOPTION_ADOPTED_BY,
+        ["adopted_by_id"], "users", ["id"],
     )
-    op.create_index(op.f('ix_adopted_controls_adoption_id'), 'adopted_controls', ['adoption_id'], unique=False)
-    op.create_index(op.f('ix_adopted_controls_control_id'), 'adopted_controls', ['control_id'], unique=False)
-    op.create_index(op.f('ix_adopted_controls_organization_id'), 'adopted_controls', ['organization_id'], unique=False)
-    op.create_index(op.f('ix_adopted_controls_scope'), 'adopted_controls', ['scope'], unique=False)
+    _add_fk_if_not_exists(
+        bind, "framework_adoptions", _FK_ADOPTION_FRAMEWORK,
+        ["framework_id"], "regulatory_frameworks", ["id"],
+    )
+    _add_fk_if_not_exists(
+        bind, "framework_adoptions", _FK_ADOPTION_ORG,
+        ["organization_id"], "organizations", ["id"], ondelete="CASCADE",
+    )
+    _add_fk_if_not_exists(
+        bind, "framework_adoptions", _FK_ADOPTION_REF,
+        ["reference_adoption_id"], "framework_adoptions", ["id"], ondelete="SET NULL",
+    )
+    _add_unique_if_not_exists(
+        bind, "framework_adoptions", _UQ_ORG_ADOPTION,
+        ["organization_id", "framework_id"],
+    )
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_ADOPTION_FRAMEWORK} "
+        "ON framework_adoptions (framework_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_ADOPTION_ORG} "
+        "ON framework_adoptions (organization_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_ADOPTION_SCOPE} "
+        "ON framework_adoptions (scope)"
+    ))
 
-    # Regulatory changes
-    op.create_table('regulatory_changes',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('organization_id', sa.Integer(), nullable=False),
-        sa.Column('framework_id', sa.Integer(), nullable=False),
-        sa.Column('change_type', sa.String(length=30), nullable=False),
-        sa.Column('title', sa.String(length=500), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('effective_date', sa.Date(), nullable=True),
-        sa.Column('source_url', sa.String(length=500), nullable=True),
-        sa.Column('recorded_by_id', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['framework_id'], ['regulatory_frameworks.id'], ),
-        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['recorded_by_id'], ['users.id'], ),
-        sa.PrimaryKeyConstraint('id'),
+    # ── Adopted controls ────────────────────────────────────────────────
+    bind.execute(text("""
+        CREATE TABLE IF NOT EXISTS adopted_controls (
+            id SERIAL NOT NULL,
+            organization_id INTEGER,
+            scope VARCHAR(16),
+            adoption_id INTEGER NOT NULL,
+            control_id INTEGER NOT NULL,
+            tailoring_notes TEXT,
+            implementation_status VARCHAR(20),
+            evidence_url VARCHAR(500),
+            verified_date TIMESTAMP WITHOUT TIME ZONE,
+            verified_by_id INTEGER,
+            created_at TIMESTAMP WITHOUT TIME ZONE,
+            updated_at TIMESTAMP WITHOUT TIME ZONE,
+            PRIMARY KEY (id)
+        )
+    """))
+    _add_fk_if_not_exists(
+        bind, "adopted_controls", _FK_CONTROL_ADOPTION,
+        ["adoption_id"], "framework_adoptions", ["id"],
     )
-    op.create_index(op.f('ix_regulatory_changes_framework_id'), 'regulatory_changes', ['framework_id'], unique=False)
-    op.create_index(op.f('ix_regulatory_changes_organization_id'), 'regulatory_changes', ['organization_id'], unique=False)
+    _add_fk_if_not_exists(
+        bind, "adopted_controls", _FK_CONTROL_CONTROL,
+        ["control_id"], "compliance_controls", ["id"],
+    )
+    _add_fk_if_not_exists(
+        bind, "adopted_controls", _FK_CONTROL_ORG,
+        ["organization_id"], "organizations", ["id"], ondelete="CASCADE",
+    )
+    _add_fk_if_not_exists(
+        bind, "adopted_controls", _FK_CONTROL_VERIFIED_BY,
+        ["verified_by_id"], "users", ["id"], ondelete="SET NULL",
+    )
+    _add_unique_if_not_exists(
+        bind, "adopted_controls", _UQ_ORG_CONTROL,
+        ["organization_id", "adoption_id", "control_id"],
+    )
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_ADOPTION} "
+        "ON adopted_controls (adoption_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_CONTROL} "
+        "ON adopted_controls (control_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_ORG} "
+        "ON adopted_controls (organization_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CONTROL_SCOPE} "
+        "ON adopted_controls (scope)"
+    ))
 
-    # Regulatory change impacts
-    op.create_table('regulatory_change_impacts',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('organization_id', sa.Integer(), nullable=False),
-        sa.Column('change_id', sa.Integer(), nullable=False),
-        sa.Column('element_type', sa.String(length=50), nullable=False),
-        sa.Column('element_id', sa.Integer(), nullable=False),
-        sa.Column('element_name', sa.String(length=500), nullable=True),
-        sa.Column('impact_assessment', sa.Text(), nullable=True),
-        sa.Column('owner_id', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(['change_id'], ['regulatory_changes.id'], ),
-        sa.ForeignKeyConstraint(['organization_id'], ['organizations.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
-        sa.PrimaryKeyConstraint('id'),
+    # ── Regulatory changes ──────────────────────────────────────────────
+    bind.execute(text("""
+        CREATE TABLE IF NOT EXISTS regulatory_changes (
+            id SERIAL NOT NULL,
+            organization_id INTEGER NOT NULL,
+            framework_id INTEGER NOT NULL,
+            change_type VARCHAR(30) NOT NULL,
+            title VARCHAR(500) NOT NULL,
+            description TEXT,
+            effective_date DATE,
+            source_url VARCHAR(500),
+            recorded_by_id INTEGER,
+            created_at TIMESTAMP WITHOUT TIME ZONE,
+            updated_at TIMESTAMP WITHOUT TIME ZONE,
+            PRIMARY KEY (id)
+        )
+    """))
+    _add_fk_if_not_exists(
+        bind, "regulatory_changes", _FK_CHANGE_FRAMEWORK,
+        ["framework_id"], "regulatory_frameworks", ["id"],
     )
-    op.create_index(op.f('ix_regulatory_change_impacts_change_id'), 'regulatory_change_impacts', ['change_id'], unique=False)
-    op.create_index(op.f('ix_regulatory_change_impacts_organization_id'), 'regulatory_change_impacts', ['organization_id'], unique=False)
+    _add_fk_if_not_exists(
+        bind, "regulatory_changes", _FK_CHANGE_ORG,
+        ["organization_id"], "organizations", ["id"], ondelete="CASCADE",
+    )
+    _add_fk_if_not_exists(
+        bind, "regulatory_changes", _FK_CHANGE_RECORDED_BY,
+        ["recorded_by_id"], "users", ["id"],
+    )
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CHANGE_FRAMEWORK} "
+        "ON regulatory_changes (framework_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_CHANGE_ORG} "
+        "ON regulatory_changes (organization_id)"
+    ))
+
+    # ── Regulatory change impacts ───────────────────────────────────────
+    bind.execute(text("""
+        CREATE TABLE IF NOT EXISTS regulatory_change_impacts (
+            id SERIAL NOT NULL,
+            organization_id INTEGER NOT NULL,
+            change_id INTEGER NOT NULL,
+            element_type VARCHAR(50) NOT NULL,
+            element_id INTEGER NOT NULL,
+            element_name VARCHAR(500),
+            impact_assessment TEXT,
+            owner_id INTEGER,
+            created_at TIMESTAMP WITHOUT TIME ZONE,
+            PRIMARY KEY (id)
+        )
+    """))
+    _add_fk_if_not_exists(
+        bind, "regulatory_change_impacts", _FK_IMPACT_CHANGE,
+        ["change_id"], "regulatory_changes", ["id"],
+    )
+    _add_fk_if_not_exists(
+        bind, "regulatory_change_impacts", _FK_IMPACT_ORG,
+        ["organization_id"], "organizations", ["id"], ondelete="CASCADE",
+    )
+    _add_fk_if_not_exists(
+        bind, "regulatory_change_impacts", _FK_IMPACT_OWNER,
+        ["owner_id"], "users", ["id"],
+    )
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_IMPACT_CHANGE} "
+        "ON regulatory_change_impacts (change_id)"
+    ))
+    bind.execute(text(
+        f"CREATE INDEX IF NOT EXISTS {_IX_IMPACT_ORG} "
+        "ON regulatory_change_impacts (organization_id)"
+    ))
 
 
 def downgrade():
-    op.drop_table('regulatory_change_impacts')
-    op.drop_table('regulatory_changes')
-    op.drop_table('adopted_controls')
-    op.drop_table('framework_adoptions')
+    bind = op.get_bind()
 
-    op.drop_constraint(None, 'compliance_controls', type_='foreignkey')
-    op.drop_index(op.f('ix_compliance_controls_harmonized_control_id'), table_name='compliance_controls')
-    op.drop_column('compliance_controls', 'harmonization_notes')
-    op.drop_column('compliance_controls', 'harmonization_status')
-    op.drop_column('compliance_controls', 'harmonized_control_id')
+    bind.execute(text("DROP TABLE IF EXISTS regulatory_change_impacts CASCADE"))
+    bind.execute(text("DROP TABLE IF EXISTS regulatory_changes CASCADE"))
+    bind.execute(text("DROP TABLE IF EXISTS adopted_controls CASCADE"))
+    bind.execute(text("DROP TABLE IF EXISTS framework_adoptions CASCADE"))
+
+    bind.execute(text(
+        f"ALTER TABLE compliance_controls "
+        f"DROP CONSTRAINT IF EXISTS {_FK_HARMONIZED_CONTROL}"
+    ))
+    bind.execute(text(
+        f"DROP INDEX IF EXISTS {_IX_HARMONIZED_CONTROL}"
+    ))
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "DROP COLUMN IF EXISTS harmonization_notes"
+    ))
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "DROP COLUMN IF EXISTS harmonization_status"
+    ))
+    bind.execute(text(
+        "ALTER TABLE compliance_controls "
+        "DROP COLUMN IF EXISTS harmonized_control_id"
+    ))
