@@ -19,6 +19,7 @@
     var PROGRAMME_URL = '/api/v1/intelligence/programme/';
     var STRATEGY_URL = '/api/v1/intelligence/strategy/';
     var ACCOUNTABILITY_URL = '/api/v1/intelligence/accountability/';
+    var DATA_URL = '/api/v1/intelligence/data/';
     var RECOMPUTE_URL = '/api/v1/intelligence/derivation/recompute';
     var DERIVED_URL = '/api/v1/intelligence/derived/';
 
@@ -275,6 +276,53 @@
         return (payload.owners || []).map(ownerModel);
     }
 
+    /* L7: the data objects linked to the element, and the lineage flows in
+       and out of it. Steward and owner arrive as free text (recordedAsText),
+       never as a person; a missing value stays null and the template says
+       "not recorded", never a blank or a zero. */
+    function fetchData(elementId) {
+        return Platform.fetch.get(DATA_URL + elementId, {}, { silent: true }).then(function (resp) {
+            return resp && resp.data ? resp.data : {};
+        });
+    }
+
+    function dataObjectModel(obj) {
+        return {
+            id: obj.id,
+            name: obj.name,
+            dataType: obj.data_type || null,
+            classification: obj.data_classification || null,
+            isMasterData: !!obj.is_master_data,
+            containsPii: !!obj.contains_pii,
+            gdprScope: !!obj.gdpr_scope,
+            retentionDays: obj.retention_period_days === undefined ? null : obj.retention_period_days,
+            steward: obj.steward || null,
+            owner: obj.owner || null
+        };
+    }
+
+    function flowModel(flow, elements) {
+        var entry = elements ? elements[String(flow.other_element_id)] : null;
+        return {
+            direction: flow.direction,
+            otherElementId: flow.other_element_id,
+            otherElementName: entry && entry.name ? entry.name : null,
+            lineageType: flow.lineage_type || null,
+            frequency: flow.frequency || null
+        };
+    }
+
+    function buildDataObjects(payload) {
+        return (payload.data_objects || []).map(dataObjectModel);
+    }
+
+    function buildFlows(payload) {
+        var elements = payload.elements || {};
+        return (payload.flows || []).map(function (flow) {
+            return flowModel(flow, elements);
+        });
+    }
+
     // ── small helpers ─────────────────────────────────────────────────────
 
     function timeText(iso) {
@@ -525,6 +573,9 @@
         buildInitiatives: buildInitiatives,
         fetchAccountability: fetchAccountability,
         buildOwners: buildOwners,
+        fetchData: fetchData,
+        buildDataObjects: buildDataObjects,
+        buildFlows: buildFlows,
         recompute: recompute,
         fetchExplanation: fetchExplanation,
         timeText: timeText,
