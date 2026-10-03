@@ -94,6 +94,113 @@ _DERIVABLE_ORG = {
            AND v.organization_id IS NULL
            AND b.organization_id IS NOT NULL
     """,
+# roadmap_tasks rows predate the tenant column and carry no single
+    # provenance link; each statement fills only NULLs, in precedence order.
+    # The per-object links (the work package's creator, the consolidation
+    # entry's application) are checked before the task's own creating user:
+    # a user can be moved to a different organisation after the task was
+    # created (an admin route reassigns a removed user to another
+    # organisation), which would misattribute the task if the creating-user
+    # statement ran first. The work package's creator can move too, but it
+    # is ordinarily a different user than the task's own creator, and the
+    # consolidation entry's application is not read off a user at all, so
+    # checking both first is strictly safer than checking the task's own
+    # creator first.
+    "roadmap_tasks": [
+        # 1. the creator of the work package the task belongs to
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = u.organization_id
+          FROM unified_work_packages w
+          JOIN users u ON u.id = w.created_by
+         WHERE w.id = t.unified_work_package_id
+           AND t.organization_id IS NULL
+        """,
+        # 2. the application whose consolidation entry created the task
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = a.organization_id
+          FROM consolidation_list_entries e
+          JOIN application_components a ON a.id = e.application_id
+         WHERE e.roadmap_item_id = t.id
+           AND t.organization_id IS NULL
+           AND a.organization_id IS NOT NULL
+        """,
+        # 3. the user who created the task (set by the roadmap UI route);
+        # checked last because this user's own organization_id can change
+        # after the task was created
+        """
+        UPDATE roadmap_tasks t
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id = t.created_by
+           AND t.organization_id IS NULL
+        """,
+    ],
+    # monitoring_baselines/monitoring_alerts predate TenantMixin and carry no
+    # foreign key to their owning tenant. Per-object provenance runs first
+    # (ADR-0007 point 1): a baseline's own snapshot_data carries the ids of the
+    # capabilities it captured, and an organisation-owned capability (not a
+    # shared reference row) names its tenant directly, which is more reliable
+    # than the creating user -- a removed user is moved to the Default
+    # organisation, so the per-user statement alone would misattribute a
+    # baseline created in a real tenant to Default once its creator is
+    # removed. The id inside each JSON array element is guarded before the
+    # cast, never a bare CAST, the same rule every other statement here
+    # follows; a malformed snapshot_data is skipped by the leading shape
+    # check rather than aborting the row. Only the first statement (or
+    # neither) can fill a given row, since both guard on organization_id IS
+    # NULL; a row the first statement resolves never reaches the second.
+    "monitoring_baselines": [
+        # 1. an organisation-owned capability referenced in the baseline's
+        # own snapshot (skip when the snapshot holds only reference rows,
+        # i.e. every referenced capability has organization_id IS NULL).
+        # Known limit: a snapshot naming capabilities from more than one
+        # organisation (ORDER BY mb.id, uc.organization_id below, kept by
+        # DISTINCT ON) is assigned the lowest of those organisations' ids --
+        # not detected or reported as an ambiguous row.
+        """
+        UPDATE monitoring_baselines b
+           SET organization_id = src.organization_id
+          FROM (
+                SELECT DISTINCT ON (mb.id) mb.id AS row_id, uc.organization_id
+                  FROM monitoring_baselines mb
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                        COALESCE(mb.snapshot_data::jsonb -> 'capabilities', '[]'::jsonb)
+                      ) AS cap_elem
+                  JOIN unified_capabilities uc
+                    ON uc.id = CASE WHEN (cap_elem ->> 'id') ~ '^[0-9]+$'
+                                     THEN (cap_elem ->> 'id')::bigint END
+                 WHERE mb.organization_id IS NULL
+                   AND mb.snapshot_data ~ '^\\s*\\{'
+                   AND uc.organization_id IS NOT NULL
+                 ORDER BY mb.id, uc.organization_id
+               ) AS src
+         WHERE src.row_id = b.id
+           AND b.organization_id IS NULL
+        """,
+        # 2. the user who created the baseline; cast the integer id to text,
+        # never the reverse, which would raise on a non-numeric value such as
+        # the literal string "system" a caller may have written before this
+        # backfill existed, and abort the whole schema deploy
+        """
+        UPDATE monitoring_baselines b
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id::text = b.created_by
+           AND b.organization_id IS NULL
+        """,
+    ],
+    # monitoring_alerts carries no column referencing its baseline (only gap
+    # ids in alert_metadata), so its only provenance is the acknowledging
+    # user; same cast direction as above.
+    "monitoring_alerts": """
+        UPDATE monitoring_alerts a
+           SET organization_id = u.organization_id
+          FROM users u
+         WHERE u.id::text = a.acknowledged_by
+           AND a.organization_id IS NULL
+    """,
     # An ownership row's tenant is its application's tenant — every production
     # row resolves this way (nothing in app/ writes this table independently
     # of a component). A row whose application itself has no organization_id
@@ -343,41 +450,22 @@ _DERIVABLE_ORG = {
     """,
 }
 
-# Tables whose remaining NULL rows carry per-row provenance rather than a
-# single owning entity this command can always resolve: an ownership row
-# whose own application has no organization_id, or a unit referenced by more
-# than one organisation's ownership rows, or by none. Handing either to an
-# operator-chosen --org-id would move another tenant's row into view, so with
-# several organisations in the database the row stays NULL here and is only
-# reported, never a candidate for the single-organisation or --org-id orphan
-# assignment below. With exactly one organisation there is no other one it
-# could belong to, so the ordinary single-organisation rule still applies.
+# Tables whose rows carry per-row provenance rather than a single owning
+# entity: a row that cannot be derived from that provenance is another
+# tenant's data, never a candidate for the single-organisation or --org-id
+# orphan assignment below.
+#
+# An alert never acknowledged, or a baseline whose created_by names no user
+# (or predates the column, or is the literal "system"), has no provenance at
+# all: it stays NULL and reported, the same as a roadmap_tasks row with no
+# linked user, work package or consolidation entry.
 _PROVENANCE_ONLY = {
     "application_ownership", "options_analysis", "organization_units", "stakeholder_inputs",
-    # Every table above whose _DERIVABLE_ORG entry can leave
-    # a genuine remainder (a row whose own attribution columns are all NULL,
-    # or all point at rows that are themselves unattributed) -- the fenced,
-    # 100%-resolvable-by-a-NOT-NULL-FK tables (motivation_bridge_links,
-    # strategic_milestones, capability_health_overrides, programme_snapshots,
-    # solution_migration_roadmaps, solution_adr_links) are deliberately left
-    # out: an orphan there cannot occur under normal FK integrity, so there is
-    # nothing for this set to protect.
     "drivers", "goals", "meanings", "values", "assessments", "stakeholders", "requirements",
     "strategic_recommendations", "enterprise_briefings",
-    # No _DERIVABLE_ORG entry at all -- every existing row is an orphan
-    # candidate, for two different reasons:
-    # monitoring_alerts/monitoring_baselines have no FK at all to any
-    # tenant-fenced table -- affected_element_id is a bare, unconstrained
-    # integer whose target table varies by affected_element_type
-    # ("architecture", "capability", "vendor", ...), so there is no single
-    # join that can resolve it without risking a wrong-tenant guess.
     "monitoring_alerts", "monitoring_baselines",
-    # framework_instances/reference_model_import/industry_process_recommendation
-    # DO have an FK (configuration_id/reference_model_id/industry_framework_id
-    # and industry_process_id), but every one of those targets is a
-    # HybridTenantMixin shared-catalogue table with organization_id always
-    # NULL by design, so following it resolves to nothing either way.
     "framework_instances", "reference_model_import", "industry_process_recommendation",
+    "roadmap_tasks",
 }
 
 
@@ -482,14 +570,16 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             col = {"nullable": True}
 
         # A table that can state its own tenant does so first, so those rows
-        # never reach the guess-based orphan pass below. This runs in
-        # dry-run too (rolled back with everything else at the end of this
+        # never reach the guess-based orphan pass below. Run this in dry-run
+        # too (it is rolled back with everything else at the end of this
         # function): the orphan count taken right after must reflect rows
         # with no provenance at all, not rows a real run would derive a
-        # moment later, or a dry-run's residual report for a _PROVENANCE_ONLY
-        # table would overstate it.
+        # moment later, or the "would leave NULL" line below overstates how
+        # many rows actually have no provenance.
         if t in _DERIVABLE_ORG:
-            derived = conn.execute(text(_DERIVABLE_ORG[t])).rowcount
+            stmts = _DERIVABLE_ORG[t]
+            stmts = [stmts] if isinstance(stmts, str) else stmts
+            derived = sum(conn.execute(text(s)).rowcount for s in stmts)
             if derived:
                 verb, prefix = ("would derive", "-") if dry_run else ("derived", "+")
                 click.echo(f"  {prefix} {t}: {verb} org for {derived} row(s) from the linked entity")
@@ -502,12 +592,12 @@ def repair_layer_tenancy(org_id=None, dry_run=False):
             healthy += 1
             continue
 
-        # application_ownership and organization_units (_PROVENANCE_ONLY)
-        # never hand a row _DERIVABLE_ORG could not resolve to an
-        # operator-chosen organisation: with several tenants in the database
-        # an unresolved row is another tenant's data, not a guess this
-        # command is allowed to make. With exactly one tenant there is no
-        # other organisation it could belong to, so the ordinary
+# roadmap_tasks (and any other per-row-provenance table) never hands
+        # an orphan to an operator-chosen organisation: with several tenants
+        # in the database an unresolved row is another tenant's plan, not a
+        # guess this command is allowed to make. With exactly one tenant
+        # there is no other organisation it could belong to, so the ordinary
+        # single-organisation rule still applies.
         # single-organisation rule still applies.
         deferred = False
         if orphans and t in _PROVENANCE_ONLY:
