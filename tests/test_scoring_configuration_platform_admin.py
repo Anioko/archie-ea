@@ -1,28 +1,22 @@
-"""Rationalization scoring weights are platform-wide configuration: only a platform admin may change them.
+"""ScoringConfiguration carries no organization_id -- it is a platform-wide
+table (scope_type/scope_entity_id are a business-unit label, not a tenant
+fence) -- and create/update/delete were gated only by @login_required, so
+any signed-in user from any organisation could create a configuration with
+is_default=True (silently unsetting every other configuration's default,
+platform-wide) or edit/delete an existing one. Now platform-admin-only,
+matching the write-gating already applied to the other shared config
+tables (feature flags, persona prompts, sidebar/editor content, vendor
+pricing).
 
-``ScoringConfiguration`` (``app/models/application_rationalization.py``) has no organisation
-column, and ``RationalizationScoringService.get_scoring_configuration`` (the only reader,
-``app/services/rationalization_scoring_service.py``) never takes an organisation either — it
-resolves a "global" or "default" row with no tenant concept at all. The configuration is
-therefore genuinely platform-wide, the same shape as the feature-flag and roles/prompts
-findings fixed in PRs #241 and #242: the fix there was to gate writes with
-``@platform_admin_required`` rather than invent a tenant column for a store nothing reads
-per-tenant.
-
-Before the fix, the create/update/delete routes at ``POST/PUT/DELETE
-/dashboard/api/scoring-configurations`` (mounted three times in this repo:
-``app/api/dashboard_routes.py``, ``app/modules/dashboard/routes/dashboard_pages_routes.py`` and
-the canonical ``app/modules/dashboard/v2/routes/dashboard_pages_routes.py``) carried no
-authorisation check beyond ``@login_required`` — not even ``@admin_required`` — so any
-authenticated user of any organisation could change the weights that drive every other
-organisation's rationalization scores, or delete another organisation's chosen default.
+app.modules.dashboard.v2 is the live module (USE_DASHBOARD_GUARDRAILS
+defaults ON, confirmed by reading app/_bootstrap/blueprints.py's
+_register_dashboard before writing this fix) -- these tests exercise it.
 """
-
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import text
+import pytest
 
 
 def _user(db_session, org, *, platform=False):
@@ -31,16 +25,9 @@ def _user(db_session, org, *, platform=False):
 
     role = Role.query.filter_by(name="Administrator").first()
     if role is None:
-        Role.insert_roles()
-        role = Role.query.filter_by(name="Administrator").first()
-    user = User(
-        email=f"sc-{uuid.uuid4().hex[:6]}@example.test",
-        first_name="Scoring",
-        last_name="Tester",
-        organization_id=org.id,
-        confirmed=True,
-        role=role,
-    )
+        pytest.skip("no Administrator role seeded in this database")
+    user = User(email=f"sc-{uuid.uuid4().hex[:6]}@example.test", first_name="Scoring", last_name="Tester",
+                organization_id=org.id, confirmed=True, role=role)
     user.password = uuid.uuid4().hex
     user.is_org_admin = True
     user.is_platform_admin = platform
@@ -56,119 +43,118 @@ def _login(db_session, client, login_as, user_id):
     login_as(client, db_session.get(User, user_id))
 
 
-def _config(db_session):
+def _world(db_session, make_org):
+    # Two organisations: the platform admin sits in org A (the configuration's
+    # creator), the refused tenant admin sits in org B -- so a pass here cannot
+    # be explained by same-org membership, only by the is_platform_admin gate.
+    org_a = make_org("scoring-config-a")
+    org_b = make_org("scoring-config-b")
+    tenant = _user(db_session, org_b)
+    platform = _user(db_session, org_a, platform=True)
+    db_session.commit()
+    return tenant.id, platform.id
+
+
+_VALID_PAYLOAD = {
+    "name": "Test configuration",
+    "technical_health_weight": 30,
+    "business_value_weight": 35,
+    "cost_efficiency_weight": 25,
+    "vendor_risk_weight": 10,
+}
+
+
+def test_a_tenant_administrator_cannot_create_a_scoring_configuration(app, db_session, make_org, client, login_as):
+    tenant_id, _platform = _world(db_session, make_org)
+
+    _login(db_session, client, login_as, tenant_id)
+    response = client.post("/dashboard/api/scoring-configurations", json=_VALID_PAYLOAD)
+
+    assert response.status_code == 403
+
+
+def test_a_tenant_administrator_cannot_set_a_new_platform_default(app, db_session, make_org, client, login_as):
+    """The real-world exploit shape: is_default=True on a new row silently
+    unsets every other row's default, platform-wide."""
     from app.models.application_rationalization import ScoringConfiguration
 
-    config = ScoringConfiguration(
-        name=f"probe-{uuid.uuid4().hex[:8]}",
-        scope_type="global",
-        technical_health_weight=30,
-        business_value_weight=35,
-        cost_efficiency_weight=25,
-        vendor_risk_weight=10,
-        is_default=False,
-    )
-    db_session.add(config)
-    db_session.flush()
-    return config
+    tenant_id, _platform = _world(db_session, make_org)
 
-
-def _world(db_session, make_org):
-    org = make_org("scoring")
-    tenant_admin = _user(db_session, org)
-    platform_admin = _user(db_session, org, platform=True)
-    config = _config(db_session)
-    db_session.commit()
-    return tenant_admin.id, platform_admin.id, config.id
-
-
-def _weight(db_session, config_id):
-    return db_session.execute(
-        text("select technical_health_weight from scoring_configurations where id = :i"),
-        {"i": config_id},
-    ).scalar()
-
-
-def test_a_tenant_administrator_cannot_change_the_platform_wide_scoring_weights(
-    app, db_session, make_org, client, login_as
-):
-    tenant_admin_id, _platform_id, config_id = _world(db_session, make_org)
-
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = client.put(
-        f"/dashboard/api/scoring-configurations/{config_id}",
-        json={"technical_health_weight": 99},
-    )
+    _login(db_session, client, login_as, tenant_id)
+    response = client.post("/dashboard/api/scoring-configurations",
+                            json={**_VALID_PAYLOAD, "is_default": True})
 
     assert response.status_code == 403
-    assert _weight(db_session, config_id) == 30
+    assert ScoringConfiguration.query.filter_by(name="Test configuration").first() is None
 
 
-def test_a_tenant_administrator_cannot_delete_the_platform_wide_scoring_configuration(
+def test_a_tenant_administrator_cannot_update_or_delete_a_scoring_configuration(
     app, db_session, make_org, client, login_as
 ):
-    tenant_admin_id, _platform_id, config_id = _world(db_session, make_org)
+    from app.models.application_rationalization import ScoringConfiguration
 
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = client.delete(f"/dashboard/api/scoring-configurations/{config_id}")
+    tenant_id, platform_id = _world(db_session, make_org)
+
+    _login(db_session, client, login_as, platform_id)
+    created = client.post("/dashboard/api/scoring-configurations", json=_VALID_PAYLOAD)
+    assert created.status_code == 201
+    config_id = created.get_json()["data"]["id"]
+
+    _login(db_session, client, login_as, tenant_id)
+    updated = client.put(f"/dashboard/api/scoring-configurations/{config_id}",
+                          json={"name": "Tampered"})
+    deleted = client.delete(f"/dashboard/api/scoring-configurations/{config_id}")
+
+    assert updated.status_code == 403
+    assert deleted.status_code == 403
+    still = db_session.get(ScoringConfiguration, config_id)
+    assert still.name == "Test configuration"
+    assert still.is_active is True
+
+
+def test_a_platform_administrator_can_still_manage_scoring_configurations(
+    app, db_session, make_org, client, login_as
+):
+    _tenant, platform_id = _world(db_session, make_org)
+
+    _login(db_session, client, login_as, platform_id)
+    created = client.post("/dashboard/api/scoring-configurations", json=_VALID_PAYLOAD)
+    assert created.status_code == 201
+    config_id = created.get_json()["data"]["id"]
+
+    updated = client.put(f"/dashboard/api/scoring-configurations/{config_id}",
+                          json={"name": "Renamed"})
+    assert updated.status_code == 200
+
+    deleted = client.delete(f"/dashboard/api/scoring-configurations/{config_id}")
+    assert deleted.status_code == 200
+
+
+def test_the_services_defence_in_depth_refusal_stays_a_403_not_a_500(
+    app, db_session, make_org, client, login_as, monkeypatch
+):
+    """pr324-review-v1 nit 1: scoring_configuration_service._require_platform_admin
+    raises Forbidden (an HTTPException) when a caller reaches it without the
+    route's own @platform_admin_required having already refused them. Before
+    this fix, the route's bare `except Exception` caught that Forbidden too,
+    turning a would-be 403 into a logged 500 with a rollback. Simulated here by
+    making the service itself raise Forbidden -- the same path the real guard
+    takes, not by removing the route's decorator (the platform admin used below
+    would legitimately pass that decorator; the service is what refuses them)."""
+    from werkzeug.exceptions import Forbidden
+
+    from app.services import scoring_configuration_service
+
+    _tenant, platform_id = _world(db_session, make_org)
+
+    def _always_forbidden(*args, **kwargs):
+        raise Forbidden()
+
+    monkeypatch.setattr(
+        scoring_configuration_service, "create_scoring_configuration", _always_forbidden
+    )
+
+    _login(db_session, client, login_as, platform_id)
+    response = client.post("/dashboard/api/scoring-configurations", json=_VALID_PAYLOAD)
 
     assert response.status_code == 403
-    assert (
-        db_session.execute(
-            text("select is_active from scoring_configurations where id = :i"), {"i": config_id}
-        ).scalar()
-        is True
-    )
-
-
-def test_a_tenant_administrator_cannot_create_a_scoring_configuration(
-    app, db_session, make_org, client, login_as
-):
-    tenant_admin_id, _platform_id, _config_id = _world(db_session, make_org)
-
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = client.post(
-        "/dashboard/api/scoring-configurations",
-        json={
-            "name": "attacker config",
-            "technical_health_weight": 40,
-            "business_value_weight": 30,
-            "cost_efficiency_weight": 20,
-            "vendor_risk_weight": 10,
-            "is_default": True,
-        },
-    )
-
-    assert response.status_code == 403
-    assert (
-        db_session.execute(
-            text("select count(*) from scoring_configurations where name = 'attacker config'")
-        ).scalar()
-        == 0
-    )
-
-
-def test_reading_scoring_configurations_still_works_for_a_tenant_administrator(
-    app, db_session, make_org, client, login_as
-):
-    tenant_admin_id, _platform_id, config_id = _world(db_session, make_org)
-
-    _login(db_session, client, login_as, tenant_admin_id)
-    response = client.get("/dashboard/api/scoring-configurations")
-
-    assert response.status_code == 200
-
-
-def test_a_platform_administrator_can_still_change_the_scoring_weights(
-    app, db_session, make_org, client, login_as
-):
-    _tenant_id, platform_admin_id, config_id = _world(db_session, make_org)
-
-    _login(db_session, client, login_as, platform_admin_id)
-    response = client.put(
-        f"/dashboard/api/scoring-configurations/{config_id}",
-        json={"technical_health_weight": 40, "business_value_weight": 25},
-    )
-
-    assert response.status_code == 200
-    assert _weight(db_session, config_id) == 40

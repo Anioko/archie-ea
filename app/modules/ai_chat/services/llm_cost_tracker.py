@@ -8,17 +8,16 @@ Addresses Gap #3: No Cost Control or Budget Management
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Dict, Optional, Tuple
 
 from flask import current_app
-from flask_login import current_user
 from sqlalchemy import func
 
 from app import db
 from app.models import LLMInteraction
-from app.models.user import User
+from app.utils.tenant_sql import current_org_id
 
 # from app.services.decorators import transactional  # Temporarily disabled
 
@@ -117,7 +116,7 @@ class LLMCostTracker:
             Tuple of (allowed: bool, message: Optional[str])
         """
         # Get current month's spending
-        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         # Calculate spending by user
         if user_id:
@@ -147,26 +146,14 @@ class LLMCostTracker:
                     "Please optimize your prompts or request a budget increase."
                 )
 
-        # Calculate overall organizational spending -- scoped to the CALLER's own
-        # organisation. LLMInteraction carries no organisation column of its own, so an
-        # unscoped sum (the previous behaviour) mixed every tenant's spend into one
-        # number: one tenant's usage could exhaust every other tenant's budget check.
-        organization_id = self._resolve_organization_id(user_id)
-        if organization_id is not None:
-            org_spending = self._get_organization_spending(month_start, organization_id)
-            org_budget = self._get_organization_budget()
+        # Calculate overall organizational spending
+        org_spending = self._get_organization_spending(month_start)
+        org_budget = self._get_organization_budget()
 
-            if org_spending >= org_budget * Decimal(str(self.HARD_LIMIT_THRESHOLD)):
-                return False, (
-                    f"Organization monthly budget limit reached (£{org_spending:.2f} / £{org_budget:.2f}). "
-                    "Please contact the Enterprise Architecture team."
-                )
-        else:
-            logger.warning(
-                "Budget check could not resolve a calling organisation (no signed-in user and "
-                "no resolvable user_id=%s); skipping the organisation-level budget check rather "
-                "than falling back to a cross-tenant sum.",
-                user_id,
+        if org_spending >= org_budget * Decimal(str(self.HARD_LIMIT_THRESHOLD)):
+            return False, (
+                f"Organization monthly budget limit reached (£{org_spending:.2f} / £{org_budget:.2f}). "
+                "Please contact the Enterprise Architecture team."
             )
 
         return True, None
@@ -258,39 +245,18 @@ class LLMCostTracker:
 
         return Decimal(str(result)) if result else Decimal("0")
 
-    def _resolve_organization_id(self, user_id: Optional[int]) -> Optional[int]:
-        """The organisation whose budget this call should count against.
+def _get_organization_spending(self, since: datetime) -> Decimal:
+        """Get total organization spending since a given date."""
+        org_id = current_org_id()
+        if org_id is None:
+            return Decimal("0")
 
-        Prefers the signed-in user (the normal case: a live chat request), falling back to
-        the ``user_id`` argument for a call made on another user's behalf. ``User`` has no
-        ``TenantMixin`` (see ``app/utils/tenant_users.py``), so this direct lookup by id is
-        the correct way to resolve a user's own organisation -- unlike resolving an
-        externally-supplied id against a *known* organisation, it is not itself a tenancy
-        check. Returns ``None`` when neither is available (e.g. a background job with no
-        user context), so the caller can skip the organisation-level check rather than fall
-        back to a cross-tenant sum.
-        """
-        if current_user and getattr(current_user, "is_authenticated", False):
-            return current_user.organization_id
-        if user_id is not None:
-            user = db.session.get(User, user_id)
-            if user is not None:
-                return user.organization_id
-        return None
-
-    def _get_organization_spending(self, since: datetime, organization_id: int) -> Decimal:
-        """Total spend since a date, for interactions made by users of ONE organisation.
-
-        ``LLMInteraction`` carries no organisation column of its own -- ``user_id`` (via
-        ``User.organization_id``) is the only link, so the sum is joined through ``User``.
-        An interaction with no ``user_id`` (a background job not attributed to a user)
-        cannot be joined to any organisation and is excluded here, the same as it already
-        is from ``_get_user_spending``.
-        """
         result = (
             db.session.query(func.sum(LLMInteraction.cost))
-            .join(User, LLMInteraction.user_id == User.id)
-            .filter(User.organization_id == organization_id, LLMInteraction.created_at >= since)
+            .filter(
+                LLMInteraction.created_at >= since,
+                LLMInteraction.organization_id == org_id,
+            )
             .scalar()
         )
 
@@ -318,6 +284,7 @@ class LLMCostTracker:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         group_by: str = "provider",
+        organization_id: Optional[int] = None,  # TRNT-072: tenant scoping
     ) -> Dict:
         """
         Generate cost report for specified time period.
@@ -336,9 +303,12 @@ class LLMCostTracker:
             end_date = datetime.utcnow()
 
         # Get all interactions in period
-        interactions = LLMInteraction.query.filter(
+        interactions_q = LLMInteraction.query.filter(
             LLMInteraction.created_at >= start_date, LLMInteraction.created_at <= end_date
-        ).all()
+        )
+        if organization_id is not None:
+            interactions_q = interactions_q.filter(LLMInteraction.organization_id == organization_id)
+        interactions = interactions_q.all()
 
         # Calculate totals
         total_cost = sum(i.cost for i in interactions if i.cost)
@@ -393,26 +363,16 @@ class LLMCostTracker:
             },
         }
 
-    def get_budget_status(self, organization_id: Optional[int] = None) -> Dict:
+    def get_budget_status(self) -> Dict:
         """
-        Get current budget status for one organization.
-
-        Args:
-            organization_id: Organisation to report on. Defaults to the signed-in user's
-                own organisation; raises if neither is available, rather than falling back
-                to a cross-tenant sum (the previous, unscoped behaviour).
+        Get current budget status for the organization.
 
         Returns:
             Dict with budget utilization metrics
         """
-        if organization_id is None:
-            organization_id = self._resolve_organization_id(None)
-        if organization_id is None:
-            raise ValueError("get_budget_status requires an organization_id (no signed-in user)")
-
         month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        org_spending = self._get_organization_spending(month_start, organization_id)
+        org_spending = self._get_organization_spending(month_start)
         org_budget = self._get_organization_budget()
 
         days_in_month = (
@@ -439,6 +399,13 @@ class LLMCostTracker:
                 "projected_overage": float(max(Decimal("0"), projected_monthly - org_budget)),
                 "on_track": projected_monthly <= org_budget,
             },
+            "alerts": {
+                "soft_limit_reached": org_spending
+                >= org_budget * Decimal(str(self.SOFT_LIMIT_THRESHOLD)),
+                "hard_limit_reached": org_spending
+                >= org_budget * Decimal(str(self.HARD_LIMIT_THRESHOLD)),
+            },
+        }
             "alerts": {
                 "soft_limit_reached": org_spending
                 >= org_budget * Decimal(str(self.SOFT_LIMIT_THRESHOLD)),

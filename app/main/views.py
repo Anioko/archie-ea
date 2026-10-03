@@ -294,6 +294,25 @@ def public_site_page(slug):
     return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
 
 
+@main.route(
+    "/<any('data-processing-agreement', 'cookie-policy', 'refund-policy', "
+    "'commercial-licence'):slug>"
+)
+def public_legal_page(slug):
+    """A legal page whose text awaits approval; 404 until LEGAL_PAGES_ENABLED is on."""
+    from flask import abort
+
+    from app.services.legal_pages import legal_pages_enabled
+    from app.services.public_pages import build_jsonld, load_page
+
+    if not legal_pages_enabled():
+        abort(404)
+    page = load_page("legal", slug=slug)
+    if page is None:
+        abort(404)
+    return render_template("public/page.html", page=page, jsonld=build_jsonld(page))
+
+
 @main.route("/signup")
 def public_signup_redirect():
     """/signup is not a second form — it redirects to the real sign-up page."""
