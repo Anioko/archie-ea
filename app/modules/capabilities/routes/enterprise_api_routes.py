@@ -165,7 +165,7 @@ def populate_solution_from_template(solution_id):
 
         templates = RequirementTemplate.query.filter(
             RequirementTemplate.layer == layer_lower,
-            RequirementTemplate.is_active == True
+            RequirementTemplate.is_system == True
         ).limit(3).all()
 
         for tpl in templates:
@@ -720,8 +720,8 @@ def generate_requirement_test_cases(req_id):
         return jsonify({"error": "No acceptance criteria to generate tests from"}), 400
 
     layer = getattr(req, 'layer', None)
-    test_cases = _generate_layer_tests(req.requirement_name, req.acceptance_criteria, layer)
-    return jsonify({'test_cases': test_cases, 'requirement_id': req_id, 'layer': layer, 'test_type': _detect_test_type(layer, req.requirement_name)}), 200
+    test_cases = _generate_layer_tests(req.name, req.acceptance_criteria, layer)
+    return jsonify({'test_cases': test_cases, 'requirement_id': req_id, 'layer': layer, 'test_type': _detect_test_type(layer, req.name)}), 200
 
 
 @enterprise_api_bp.route("/requirements/<int:req_id>/dod", methods=["PATCH"])
