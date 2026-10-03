@@ -108,8 +108,10 @@ def test_model_health_rescan_persists_timestamp_and_findings(browser, live_serve
         expect(page.get_by_role("heading", name="Model Health", exact=True)).to_be_visible(
             timeout=PAGE_TIMEOUT
         )
-        expect(page.get_by_text("Not yet computed", exact=False)).to_be_visible(
-            timeout=PAGE_TIMEOUT
+        # First visit runs the detector on-the-fly when no stored report exists,
+        # so the orphan element is visible immediately.
+        expect(page.locator("body")).to_contain_text(
+            seeded["orphan_name"], timeout=PAGE_TIMEOUT
         )
 
         with page.expect_navigation(wait_until="domcontentloaded", timeout=PAGE_TIMEOUT) as navigation:

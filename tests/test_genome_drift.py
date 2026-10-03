@@ -233,10 +233,10 @@ def test_index_shows_error_not_empty_state_for_unreadable_stored_report(
     app, db_session, make_org, client, login_as
 ):
     """PR 304 fix round: a stored row that cannot be rendered must show an
-    explicit error, never the "Not yet computed" empty-state copy -- that
-    copy claims no report exists, which is false when one does but cannot be
-    read. The empty state is only correct when there is truly no stored row.
-    """
+    explicit error, never the "No drift detected" empty-state copy -- that
+    copy claims no findings exist, which is false when a report exists but
+    cannot be read. The empty state is only correct when there is truly no
+    stored row and the on-the-fly detector finds nothing."""
     from app.datetime_helpers import utcnow
     from app.models.drift_report import DriftReport
     from app.models.user import User
@@ -285,7 +285,7 @@ def test_index_shows_error_not_empty_state_for_unreadable_stored_report(
     resp_no_row = client.get("/genome/model-health/")
     assert resp_no_row.status_code == 200
     body_no_row = resp_no_row.get_data(as_text=True)
-    assert "Not yet computed" in body_no_row
+    assert "No drift detected" in body_no_row
     assert "could not be rendered" not in body_no_row
 
 
