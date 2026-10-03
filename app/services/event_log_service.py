@@ -19,6 +19,7 @@ from typing import List
 from app.extensions import db
 from app.models.event_log import EventLogRecord
 from app.models.transformation_execution import OperationOutboxEvent
+from sqlalchemy import text as _sa_text
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ def relay_outbox_batch(batch_size: int = 500) -> int:
 
     inserted = 0
     for outbox in rows:
+        savepoint = db.session.begin_nested()
         try:
             _append_one(outbox)
             # Mark delivered regardless of whether event_log already had it
@@ -55,9 +57,10 @@ def relay_outbox_batch(batch_size: int = 500) -> int:
             outbox.published_at = datetime.now(timezone.utc)
             outbox.delivery_attempts = (outbox.delivery_attempts or 0) + 1
             db.session.flush()
+            savepoint.commit()
             inserted += 1
         except Exception:
-            db.session.rollback()
+            savepoint.rollback()
             logger.exception(
                 "event_log relay: failed for outbox id=%s event_id=%s",
                 outbox.id, outbox.event_id,
@@ -78,6 +81,15 @@ def _append_one(outbox: OperationOutboxEvent) -> None:
     )
     if existing is not None:
         return
+
+    # Serialise ordinal allocation per organisation so concurrent relay
+    # workers never compute the same next_ordinal.
+    db.session.execute(
+        _sa_text(
+            "SELECT pg_advisory_xact_lock(hashtext('event_log_ordinal:' || :org_id))"
+        ),
+        {"org_id": str(outbox.organization_id)},
+    )
 
     # Compute the next per-org monotonic ordinal.
     last = (

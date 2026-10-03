@@ -219,6 +219,49 @@ class TestRelay:
         )
         assert [r.ordinal for r in b_rows] == [1, 2]
 
+    def test_relay_batch_survives_individual_failure(self, db_session, two_orgs):
+        """When one row in a batch is already relayed (idempotent skip),
+        the other rows must still be inserted — savepoints prevent a
+        single skip from rolling back the entire batch."""
+        org_a = two_orgs["A"]
+
+        # Create 2 elements.
+        _fresh_element(db_session, org_a.id, "Batch 1")
+        _fresh_element(db_session, org_a.id, "Batch 2")
+        db_session.commit()
+
+        # Relay the first one individually.
+        outbox_rows = (
+            db_session.query(OperationOutboxEvent)
+            .filter(OperationOutboxEvent.organization_id == org_a.id)
+            .order_by(OperationOutboxEvent.id)
+            .all()
+        )
+        assert len(outbox_rows) == 2
+
+        # Manually relay just the first row by calling _append_one directly
+        # and marking it published, so the batch relay sees one published
+        # and one unpublished.
+        from app.services.event_log_service import _append_one
+        _append_one(outbox_rows[0])
+        outbox_rows[0].published_at = datetime.now(timezone.utc)
+        outbox_rows[0].delivery_attempts = 1
+        db.session.flush()
+
+        # Now relay the batch — only the second row should be inserted.
+        inserted = relay_outbox_batch()
+        db_session.commit()
+        assert inserted == 1
+
+        log_rows = (
+            db_session.query(EventLogRecord)
+            .filter(EventLogRecord.organization_id == org_a.id)
+            .order_by(EventLogRecord.ordinal)
+            .all()
+        )
+        assert len(log_rows) == 2
+        assert [r.ordinal for r in log_rows] == [1, 2]
+
 
 # ---------------------------------------------------------------------------
 # Consumer read API
