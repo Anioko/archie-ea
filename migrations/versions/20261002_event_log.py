@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 revision = "20261002_event_log"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_data_domain_org_unique"
 branch_labels = None
 depends_on = None
 
