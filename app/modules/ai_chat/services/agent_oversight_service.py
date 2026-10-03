@@ -7,7 +7,7 @@ Provides oversight controls for AI agent write operations:
 - Classification-vs-actual-touch check integration
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app import db
@@ -35,10 +35,12 @@ class AgentOversightService:
             return self._user, self._org_id
 
         from flask import g
-        query = User.query.filter_by(id=self.user_id)
         org_id = getattr(g, "current_org_id", None)
-        if org_id is not None:
-            query = query.filter_by(organization_id=org_id)
+        if org_id is None:
+            # Without a tenant context we cannot safely scope the query;
+            # fail closed rather than querying without an org filter.
+            return None, None
+        query = User.query.filter_by(id=self.user_id, organization_id=org_id)
         self._user = query.first()
         if self._user:
             self._org_id = self._user.organization_id
@@ -122,7 +124,7 @@ class AgentOversightService:
         """Convert oversight state to dictionary."""
         paused_by = None
         if state.paused_by_id:
-            paused_by_user = User.query.get(state.paused_by_id)
+            paused_by_user = db.session.get(User, state.paused_by_id)
             if paused_by_user:
                 paused_by = {
                     "id": paused_by_user.id,
@@ -240,7 +242,7 @@ class AgentOversightService:
         return {
             "success": True,
             "catalogue": catalogue,
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "exported_by": user.full_name(),
         }
 
@@ -326,7 +328,7 @@ class AgentOversightService:
         if state.is_paused():
             paused_by_name = "Unknown"
             if state.paused_by_id:
-                paused_by_user = User.query.get(state.paused_by_id)
+                paused_by_user = db.session.get(User, state.paused_by_id)
                 if paused_by_user:
                     paused_by_name = paused_by_user.full_name()
             return False, (
