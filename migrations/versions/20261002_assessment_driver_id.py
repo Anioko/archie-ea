@@ -9,7 +9,7 @@ against a database that already has the column (e.g. after reconcile-schema
 has already added it from the model).
 
 Revision ID: 20261002_assessment_driver_id
-Revises: 20261002_data_domain_org_unique
+Revises: 20261002_agent_charters
 Create Date: 2026-10-02
 """
 from alembic import op
@@ -18,7 +18,7 @@ from sqlalchemy import text
 # alembic_version.version_num is VARCHAR(32) -- keep this id at or under that
 # length, the same constraint every revision after the baseline already satisfies.
 revision = "20261002_assessment_driver_id"
-down_revision = "20261002_data_domain_org_unique"
+down_revision = "20261002_agent_charters"
 branch_labels = None
 depends_on = None
 
