@@ -909,8 +909,8 @@ def register_cli_commands(app):
     @app.cli.command()
     def seed_framework_catalogue():
         """Seed the shared regulatory framework catalogue with ISO 27001, SOC 2 and DORA. Safe to run multiple times."""
-        from app.services.compliance.catalogue_seed import seed_catalogue_frameworks
-        seeded = seed_catalogue_frameworks()
+        from app.services.compliance.regulatory_framework_service import RegulatoryFrameworkService
+        seeded = RegulatoryFrameworkService.seed_manufacturing_frameworks()
         print(f"Framework catalogue: {seeded} frameworks seeded")
 
     # ===== BUSINESS CAPABILITY SEEDING =====
