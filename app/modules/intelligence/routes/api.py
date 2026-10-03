@@ -878,6 +878,7 @@ def data_for_element(element_id: int):
         {
             "data_objects": result["data_objects"],
             "flows": result["flows"],
+            "elements": result.get("elements") or {},
             "reasons": result.get("reasons") or [],
             "as_of": result.get("as_of"),
         }

@@ -1700,6 +1700,31 @@ class IntelligenceQueryService:
             for e in edges
         }
         visible = IntelligenceQueryService._lineage_other_end_visible(others, org_id)
+
+        # Build elements map for all referenced elements (center + flow endpoints)
+        elements = {}
+        # Add center element
+        elements[str(element_id)] = {
+            "id": element.id,
+            "name": element.name,
+            "type": element.type,
+            "layer": element.layer,
+        }
+        # Add other elements from flows
+        for other_id, other_name in visible.items():
+            other_element = db.session.execute(
+                db.select(ArchiMateElement)
+                .where(ArchiMateElement.id == other_id)
+                .where(predicate(ArchiMateElement, org_id))
+            ).scalar_one_or_none()
+            if other_element:
+                elements[str(other_id)] = {
+                    "id": other_element.id,
+                    "name": other_element.name,
+                    "type": other_element.type,
+                    "layer": other_element.layer,
+                }
+
         flows = []
         for edge in edges:
             outgoing = edge.archimate_element_id == element_id
@@ -1709,7 +1734,6 @@ class IntelligenceQueryService:
             flows.append({
                 "direction": "out" if outgoing else "in",
                 "other_element_id": other_id,
-                "other_element_name": visible[other_id],
                 "lineage_type": edge.lineage_type,
                 "frequency": edge.frequency,
             })
@@ -1721,7 +1745,7 @@ class IntelligenceQueryService:
             reasons.append(NO_STEWARD_RECORDED_REASON)
         if not flows:
             reasons.append(NO_LINEAGE_RECORDED_REASON)
-        return {"data_objects": data_objects, "flows": flows, "as_of": as_of, "reasons": reasons}
+        return {"data_objects": data_objects, "flows": flows, "elements": elements, "as_of": as_of, "reasons": reasons}
 
     # ------------------------------------------------------------------ #
     # T-S1: value streams at risk -- the curated path (DA-S1). Helpers are

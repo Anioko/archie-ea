@@ -301,11 +301,12 @@
         };
     }
 
-    function flowModel(flow) {
+    function flowModel(flow, elements) {
+        var entry = elements ? elements[String(flow.other_element_id)] : null;
         return {
             direction: flow.direction,
             otherElementId: flow.other_element_id,
-            otherElementName: flow.other_element_name,
+            otherElementName: entry && entry.name ? entry.name : null,
             lineageType: flow.lineage_type || null,
             frequency: flow.frequency || null
         };
@@ -316,7 +317,10 @@
     }
 
     function buildFlows(payload) {
-        return (payload.flows || []).map(flowModel);
+        var elements = payload.elements || {};
+        return (payload.flows || []).map(function (flow) {
+            return flowModel(flow, elements);
+        });
     }
 
     // ── small helpers ─────────────────────────────────────────────────────
