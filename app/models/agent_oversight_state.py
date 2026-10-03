@@ -6,10 +6,15 @@ Used by the oversight controls to block mutating tool calls before they
 reach the approval queue.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import db
 from app.models.mixins.core import TenantMixin
+
+
+def _utcnow() -> datetime:
+    """Naive UTC datetime for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class AgentOversightState(TenantMixin, db.Model):
@@ -37,9 +42,9 @@ class AgentOversightState(TenantMixin, db.Model):
     reason = db.Column(db.Text, nullable=True)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utcnow, nullable=False)
     updated_at = db.Column(
-        db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        db.DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     # Relationship to the user who paused
@@ -65,9 +70,9 @@ class AgentOversightState(TenantMixin, db.Model):
         """Activate the pause-all-writes switch."""
         self.writes_paused = True
         self.paused_by_id = user_id
-        self.paused_at = datetime.utcnow()
+        self.paused_at = _utcnow()
         self.reason = reason
-        self.updated_at = datetime.utcnow()
+        self.updated_at = _utcnow()
 
     def resume(self):
         """Deactivate the pause-all-writes switch."""
@@ -75,7 +80,7 @@ class AgentOversightState(TenantMixin, db.Model):
         self.paused_by_id = None
         self.paused_at = None
         self.reason = None
-        self.updated_at = datetime.utcnow()
+        self.updated_at = _utcnow()
 
     def is_paused(self):
         """Check if writes are currently paused."""
