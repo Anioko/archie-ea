@@ -6,7 +6,7 @@ All behavior preserved exactly from the original views.py implementation.
 """
 import logging
 
-from flask import session, url_for
+from flask import g, session, url_for
 from flask_login import logout_user
 
 try:
@@ -36,6 +36,45 @@ def _queue_email(*args, **kwargs):
 
 class AccountService:
     """Service layer for account-related operations."""
+
+    @staticmethod
+    def switch_active_organization(user, requested_org_id):
+        """Switch the signed-in user's active organisation.
+
+        Returns ``(success, message)`` so both account blueprints can keep the
+        same flash/redirect behaviour while delegating the membership and
+        session handling to one implementation.
+        """
+        from app.middleware.tenant_context import (
+            ACTIVE_ORG_SESSION_KEY,
+            accessible_organizations,
+            clear_tenant_context_cache,
+            user_can_access_org,
+        )
+        from app.models.organization import Organization
+
+        memberships = accessible_organizations(user)
+        if requested_org_id is None:
+            return False, "Select an organisation to continue."
+
+        if not any(org.id == requested_org_id for org in memberships) or not user_can_access_org(
+            user, requested_org_id
+        ):
+            session.pop(ACTIVE_ORG_SESSION_KEY, None)
+            session.modified = True
+            clear_tenant_context_cache()
+            return False, "You do not have access to that organisation."
+
+        session[ACTIVE_ORG_SESSION_KEY] = requested_org_id
+        session.modified = True
+        clear_tenant_context_cache()
+
+        active_org = db.session.get(Organization, requested_org_id)
+        g.current_org_id = requested_org_id
+        g.current_org = active_org
+        return True, (
+            f"Now working in {active_org.name if active_org else 'the selected organisation'}."
+        )
 
     @staticmethod
     def authenticate(email, password):
