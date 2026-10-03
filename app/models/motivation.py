@@ -13,6 +13,7 @@ Key EA Intelligence Fix #1:
 from datetime import datetime
 
 from .. import db
+from .mixins import TenantMixin
 
 # ============================================================================
 # JUNCTION TABLES - Define before models to avoid NameError
@@ -76,7 +77,7 @@ driver_outcomes = db.Table(
 # ============================================================================
 
 
-class Driver(db.Model):
+class Driver(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Driver element (Motivation Layer).
 
@@ -161,7 +162,7 @@ class Driver(db.Model):
         return f"<Driver {self.name} ({self.driver_type})>"
 
 
-class Goal(db.Model):
+class Goal(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Goal element (Motivation Layer).
 
@@ -296,7 +297,7 @@ class Goal(db.Model):
 # ============================================================================
 
 
-class Meaning(db.Model):
+class Meaning(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Meaning element (Motivation Layer).
 
@@ -327,7 +328,7 @@ class Meaning(db.Model):
         return f"<Meaning {self.name}>"
 
 
-class Value(db.Model):
+class Value(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Value element (Motivation Layer).
 
@@ -363,7 +364,7 @@ class Value(db.Model):
         return f"<Value {self.name}>"
 
 
-class Assessment(db.Model):
+class Assessment(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Assessment element (Motivation Layer).
 
@@ -400,7 +401,7 @@ class Assessment(db.Model):
         return f"<Assessment {self.name}>"
 
 
-class Stakeholder(db.Model):
+class Stakeholder(TenantMixin, db.Model):
     """
     ArchiMate 3.2 Stakeholder element (Motivation Layer).
 
@@ -457,7 +458,7 @@ class Stakeholder(db.Model):
 # ============================================================================
 
 
-class MotivationBridgeLink(db.Model):
+class MotivationBridgeLink(TenantMixin, db.Model):
     """
     Non-destructive bridge record linking a solution-scoped motivation element
     (SolutionDriver, SolutionGoal, SolutionOutcome, SolutionPrinciple — created
