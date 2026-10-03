@@ -660,7 +660,7 @@ def init_scheduler(app):
                 "Derived-facts recompute scheduler job was not registered: %s", exc
             )
 
-        # Event-log relay: copies undelivered outbox rows into event_log
+# Event-log relay: copies undelivered outbox rows into event_log
         # per organisation. Runs every 5 seconds so consumers see events
         # with at most a few seconds of latency.
         def run_event_log_relay():
@@ -701,6 +701,57 @@ def init_scheduler(app):
             max_instances=1,
         )
 
+        # Per-organisation model-health / drift scan. Runs the
+        # deterministic drift detector for every active organisation and
+        # stores the report so the page reads a single row rather than
+        # scanning the whole genome on every page load.
+        model_health_registered = False
+        try:
+            def run_model_health_scan():
+                with app.app_context():
+                    from app.jobs.tenant_safe_job import run_for_each_tenant
+                    from app.models.drift_report import DriftReport
+                    from app.modules.genome.services.drift_detector import (
+                        detect_model_drift,
+                    )
+
+                    def _scan_one(organization_id):
+                        report = detect_model_drift(organization_id)
+                        DriftReport.upsert(organization_id, report)
+                        return report.get("summary", {}).get("total", 0)
+
+                    run = run_for_each_tenant(
+                        app, "model_health_scan", _scan_one
+                    )
+                    if run.failed:
+                        app.logger.error(
+                            "APScheduler model-health scan partial failure: %s",
+                            run.as_dict(),
+                        )
+                    else:
+                        app.logger.info(
+                            "APScheduler model-health scan: %s", run.as_dict()
+                        )
+
+            model_health_interval_minutes = int(
+                app.config["MODEL_HEALTH_SCAN_INTERVAL_MINUTES"]
+            )
+            if model_health_interval_minutes <= 0:
+                raise ValueError("interval must be positive")
+            scheduler.add_job(
+                func=run_model_health_scan,
+                trigger=IntervalTrigger(minutes=model_health_interval_minutes),
+                id="model_health_scan",
+                name="Model Health Drift Scan",
+                replace_existing=True,
+                max_instances=1,
+            )
+            model_health_registered = True
+        except Exception as exc:
+            app.logger.error(
+                "Model-health scan scheduler job was not registered: %s", exc
+            )
+
         # Remove any undeclared job ids BEFORE starting the scheduler —
         # every job must be in PLATFORM_JOBS or TENANT_JOBS in
         # app/jobs/tenant_safe_job.py, or it runs unfiltered.  If enforcement
@@ -738,6 +789,8 @@ def init_scheduler(app):
             scheduled_jobs += ", capability maturity projection (interval)"
         if derived_recompute_registered:
             scheduled_jobs += ", derived-facts recompute (interval)"
+        if model_health_registered:
+            scheduled_jobs += ", model-health drift scan (interval)"
         app.logger.info("APScheduler started: %s", scheduled_jobs)
     except ImportError:
         app.logger.warning("APScheduler not available — EA workflow schedules disabled")
