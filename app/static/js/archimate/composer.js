@@ -642,6 +642,8 @@ function composerApp() {
         relPickerSourceId: null,
         relPickerTargetId: null,
         relPickerInvalidTypes: [],
+        /* Set when the server refuses the type just picked: {message, validTypes}. */
+        relPickerRejection: null,
         relPickerSourceCell: null,
         relPickerTargetCell: null,
         accessMode: 'readwrite',
@@ -1586,6 +1588,7 @@ function composerApp() {
 
                 self.relPickerTypes = [];
                 self.relPickerInvalidTypes = [];
+                self.relPickerRejection = null;
                 self.associationWarning = false;
                 self.relPickerOpen = true;
 
@@ -1707,6 +1710,7 @@ function composerApp() {
 
                     self.relPickerTypes = [];
                     self.relPickerInvalidTypes = [];
+                    self.relPickerRejection = null;
                     self.associationWarning = false;
                     self.relPickerOpen = true;
                     self.statusText = 'Pick relationship type…';
@@ -3602,6 +3606,7 @@ function composerApp() {
         cancelRelPicker: function() {
             this.relPickerOpen = false;
             this.associationWarning = false;
+            this.relPickerRejection = null;
             if (this._pendingLink) {
                 this._pendingLink.remove();
                 this._pendingLink = null;
@@ -4048,6 +4053,7 @@ function composerApp() {
 
             self.relPickerTypes = [];
             self.relPickerInvalidTypes = [];
+            self.relPickerRejection = null;
             self.associationWarning = false;
             self.relPickerOpen = true;
             self.statusText = 'Pick relationship type\u2026';

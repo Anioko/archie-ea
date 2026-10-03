@@ -301,6 +301,8 @@ def test_cto_my_work_membership():
         "Enterprise dashboard",
         "Business cases",
         "Twin map",
+        # Ownership coverage by business unit — CTO accountability.
+        "Ownership Coverage",
     ]
 
 
@@ -319,6 +321,7 @@ def test_business_architect_my_work_membership():
         "Architecture Journey",
         "Capability Maturity",
         "Value Streams",
+        "Value Streams at Risk",
         "Stakeholder Map",
         "Gap Analysis",
         "Roadmaps",
@@ -354,6 +357,8 @@ def test_portfolio_manager_my_work_membership():
         "Duplicate Detection",
         # Signature screen: the business cases a portfolio decision rests on.
         "Business cases",
+        # Ownership coverage by business unit — portfolio manager.
+        "Ownership Coverage",
     ]
 
 
