@@ -1,13 +1,15 @@
 """The intelligence module's query surfaces.
 
   POST /api/v1/intelligence/derivation/recompute
-  GET  /api/v1/intelligence/derived/<derived_id>
+  GET  /api/v1/intelligence/derived/<derived_id>   (with its explanation)
+  GET  /api/v1/intelligence/value-streams-at-risk
   GET  /api/v1/intelligence/impact/<element_id>
   GET  /api/v1/intelligence/risk/<element_id>
   GET  /api/v1/intelligence/portfolio/<element_id>
   GET  /api/v1/intelligence/programme/<element_id>
   GET  /api/v1/intelligence/strategy/<element_id>
   GET  /api/v1/intelligence/accountability/<element_id>
+  GET  /api/v1/intelligence/traceability/<element_id>
   GET  /api/v1/intelligence/yield
 
 Each new route was added to this EXISTING blueprint rather than a new
@@ -39,10 +41,10 @@ _NO_TENANT_CONTEXT_REASON = validate_reason_code("no_tenant_context")
 _ELEMENT_NOT_FOUND_REASON = validate_reason_code("element_not_found")
 _FINANCIAL_DATA_RESTRICTED_REASON = validate_reason_code("financial_data_restricted")
 
-# Roles with budget authority elsewhere in this codebase (ROLE_SECTION_ACCESS
-# already gates rationalization/TCO/procurement views to this same set) --
-# reused, not a new authority list invented for this endpoint.
-_FINANCIAL_DATA_ROLES = frozenset({"cto", "portfolio_manager", "platform_admin"})
+# The single cost-visibility rule lives in role_access.py so every
+# surface that redacts financial figures shares one authority.  Import it;
+# do not define a second list.
+from app.utils.role_access import COST_VISIBILITY_ROLES, get_user_role
 
 intelligence_api = Blueprint(
     "intelligence_api", __name__, url_prefix="/api/v1/intelligence"
@@ -64,9 +66,7 @@ def _redact_financial_fields(rows: list, fields: tuple[str, ...], reason_field: 
     can't see this." A caller with budget authority sees the real value and
     this function is a no-op for them.
     """
-    from app.utils.role_access import get_user_role
-
-    if get_user_role(current_user) in _FINANCIAL_DATA_ROLES:
+    if get_user_role(current_user) in COST_VISIBILITY_ROLES:
         return
     for row in rows:
         for field in fields:
@@ -187,8 +187,6 @@ def get_derived_fact_provenance(derived_id: int):
     if fact is None:
         return not_found_response("Derived relationship")
 
-    from app.extensions import db
-
     # No tenant_scope() here (round-1 refuter finding D4): this route already
     # runs inside a request with g.current_org_id set by the normal request
     # lifecycle, and the existing do_orm_execute tenant-isolation listener
@@ -196,43 +194,20 @@ def get_derived_fact_provenance(derived_id: int):
     # harness whose db.session.remove() calls destroy the REQUEST's own
     # session (detaching flask_login's cached current_user, clobbering
     # g.current_org for the rest of the request) when used inside a request.
-    expanded = []
-    if fact["chain"]:
-        from app.models import ArchiMateRelationship
+    #
+    # The chain is read once, by the explanation: each drawn link with its two
+    # elements, who drew it and when, the rule, and the decisions recorded
+    # against those elements -- all of this organisation. ``expanded_chain``
+    # is the same links in the id-and-endpoint shape this route has always
+    # returned, so the two cannot disagree. A chain link that no longer
+    # resolves stays in both as an explicit unresolved marker (D6) rather than
+    # silently shortening the chain.
+    from app.modules.intelligence.services.explanation import expanded_chain, explain_fact
 
-        rows = (
-            db.session.execute(
-                db.select(ArchiMateRelationship).where(
-                    ArchiMateRelationship.id.in_(fact["chain"]),
-                    ArchiMateRelationship.organization_id == organization_id,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        by_id = {r.id: r for r in rows}
-        for rel_id in fact["chain"]:
-            rel = by_id.get(rel_id)
-            if rel is None:
-                # A chain link that no longer resolves (D6): recording an
-                # explicit unresolved marker instead of silently shortening
-                # the array -- a shorter-but-complete-looking chain is
-                # exactly the kind of fabricated-looking gap CLAUDE.md's
-                # "never invent data" rule warns about.
-                expanded.append({"id": rel_id, "unresolved": True, "derived_from": fact["id"]})
-                continue
-            expanded.append(
-                {
-                    "id": rel.id,
-                    "type": rel.type,
-                    "source_id": rel.source_id,
-                    "target_id": rel.target_id,
-                    "derived_from": fact["id"],
-                }
-            )
-
+    explanation = explain_fact(organization_id, fact)
     fact_out = dict(fact)
-    fact_out["expanded_chain"] = expanded
+    fact_out["expanded_chain"] = expanded_chain(explanation)
+    fact_out["explanation"] = explanation
     return success_response(fact_out)
 
 
@@ -260,6 +235,128 @@ def _parse_bool_param(raw: str | None, *, default: bool, param_name: str):
         code="INVALID_PARAMETER",
         status_code=400,
     )
+
+
+def _value_stream_or_404_response(value_stream_id: int, organization_id: int):
+    """Resolve *value_stream_id* within *organization_id*'s tenant scope, or
+    the not-found error response for it.
+
+    Two predicates, not one: ``ValueStream`` carries ``TenantMixin``, so the
+    ``do_orm_execute`` tenant-isolation listener already fences this select
+    inside a request -- the same shape ``cross_layer_impact`` uses for
+    ``element_id`` below. The explicit
+    ``IntelligenceQueryService._value_stream_tenant_predicate`` carried on
+    top of that is what keeps "does not exist" and
+    "belongs to another tenant" indistinguishable even if the listener's
+    ambient organisation and the caller-resolved *organization_id* were ever
+    to diverge -- without it, a foreign id could return 200 with empty rows
+    (via the listener) while a never-existed id 404s here (this resolver),
+    an existence oracle. Reusing the same seam ``value_streams_at_risk``
+    itself uses also means the item-10 mutation proof, which neuters that
+    one function, now covers all three predicate call sites on this path,
+    not just two of them.
+
+    Isolated as its own seam, the same pattern as ``_parse_bool_param``
+    above, so the indistinguishability mutation-proof test (T-S1 acceptance
+    item 13) can monkeypatch exactly this function to diverge the message
+    between the two cases and confirm the named test goes red, without
+    editing source under test.
+
+    Returns ``(value_stream, error_response_or_None)``.
+    """
+    from app.extensions import db
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+    from app.models.unified_capability import ValueStream
+
+    value_stream = db.session.execute(
+        db.select(ValueStream).where(
+            ValueStream.id == value_stream_id,
+            IntelligenceQueryService._value_stream_tenant_predicate(
+                ValueStream, organization_id
+            ),
+        )
+    ).scalar_one_or_none()
+    if value_stream is not None:
+        return value_stream, None
+    return None, error_response(
+        "Value stream not found",
+        code="VALUE_STREAM_NOT_FOUND",
+        status_code=404,
+    )
+
+
+@intelligence_api.route("/value-streams-at-risk", methods=["GET"])
+@login_required
+def value_streams_at_risk():
+    """T-S1 (DA-S1): US-2's "which value streams are at risk, and why" --
+    the curated path only (no graph read; that is T-S3).
+
+    Serialises ``IntelligenceQueryService.value_streams_at_risk`` through
+    ``success_response`` -- no business logic here (task 02 constraint,
+    T-S1 brief constraint 4).
+    """
+    threshold_raw = request.args.get("threshold")
+    if threshold_raw is None:
+        threshold = 3
+    else:
+        try:
+            threshold = int(threshold_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "threshold must be an integer between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if not (1 <= threshold <= 5):
+            return error_response(
+                "threshold must be between 1 and 5",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    value_stream_id_raw = request.args.get("value_stream_id")
+    value_stream_id = None
+    if value_stream_id_raw is not None:
+        try:
+            value_stream_id = int(value_stream_id_raw)
+        except (TypeError, ValueError):
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+        if value_stream_id <= 0:
+            return error_response(
+                "value_stream_id must be a positive integer",
+                code="INVALID_PARAMETER",
+                status_code=400,
+            )
+
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    if value_stream_id is not None:
+        _value_stream, not_found_err = _value_stream_or_404_response(
+            value_stream_id, organization_id
+        )
+        if not_found_err is not None:
+            return not_found_err
+
+    from app.modules.intelligence.services.query_service import IntelligenceQueryService
+
+    result = IntelligenceQueryService.value_streams_at_risk(
+        organization_id,
+        threshold=threshold,
+        value_stream_id=value_stream_id,
+    )
+
+    return success_response(result)
 
 
 @intelligence_api.route("/impact/<int:element_id>", methods=["GET"])
@@ -364,8 +461,40 @@ def cross_layer_impact(element_id: int):
             "summary": result["summary"],
             "reasons": result.get("reasons") or [],
             "elements": result.get("elements") or {},
+            "maturity_flags": result.get("maturity_flags"),
         }
     )
+
+
+@intelligence_api.route("/traceability/<int:element_id>", methods=["GET"])
+@login_required
+def traceability_check(element_id: int):
+    """Does this element trace up to a capability and down to technology?
+
+    Serialises ``TraceabilityCheckService.check``, which reads the same walk
+    as the impact route above. An element outside the caller's organisation
+    answers exactly as one that does not exist.
+    """
+    organization_id = _current_organization_id()
+    if organization_id is None:
+        return error_response(
+            "no tenant context for this request",
+            code="NO_TENANT_CONTEXT",
+            details={"reason": _NO_TENANT_CONTEXT_REASON},
+            status_code=400,
+        )
+
+    from app.modules.intelligence.services.traceability_check_service import TraceabilityCheckService
+
+    result = TraceabilityCheckService.check(element_id, organization_id)
+    if result.get("state") != "checked":
+        return error_response(
+            "Element not found",
+            code="NOT_FOUND",
+            details={"reason": _ELEMENT_NOT_FOUND_REASON},
+            status_code=404,
+        )
+    return success_response(result)
 
 
 @intelligence_api.route("/risk/<int:element_id>", methods=["GET"])
@@ -439,13 +568,32 @@ def risk_for_element(element_id: int):
     )
 
 
+# The component block's seven entered cost fields (matches
+# IntelligenceQueryService.portfolio_component_for_element's ``cost`` key) --
+# named once here so the redaction call below and any future caller share
+# the one list rather than each spelling it out.
+_SEVEN_COST_FIELDS = (
+    "total_cost_of_ownership",
+    "license_cost_annual",
+    "maintenance_cost",
+    "infrastructure_cost",
+    "support_cost",
+    "implementation_cost",
+    "development_cost_annual",
+)
+
+
 @intelligence_api.route("/portfolio/<int:element_id>", methods=["GET"])
 @login_required
 def portfolio_component_for_element(element_id: int):
-    """L3: resolves an element to its ApplicationComponent, the only fact
-    the frontend needs to build the one genuine deep link that exists today
-    (rationalization planning). No inline rows or cost figures -- see
-    ``IntelligenceQueryService.portfolio_component_for_element`` for why
+    """L3: resolves an element to its ApplicationComponent and the
+    ``component`` block -- name, owner-recorded health, entered cost/TCO
+    figures, latest fiscal-period cost row and licence position -- built by
+    ``IntelligenceQueryService.portfolio_component_for_element`` off that
+    same resolution. Financial figures in the block are redacted for a
+    caller without budget authority, same role set and same
+    ``_redact_financial_fields`` helper the Strategy/Programme routes
+    already use; see the service method's own docstring for why
     duplicate-detection and TCO history are not offered here.
     """
     organization_id = _current_organization_id()
@@ -472,10 +620,21 @@ def portfolio_component_for_element(element_id: int):
 
     result = IntelligenceQueryService.portfolio_component_for_element(element_id)
 
+    component = result.get("component")
+    if component is not None:
+        _redact_financial_fields([component["cost"]], _SEVEN_COST_FIELDS, "access_reason")
+        _redact_financial_fields(
+            [component["cost_by_period"]],
+            ("total_cost", "total_budget", "variance"),
+            "access_reason",
+        )
+        _redact_financial_fields(component["licences"] or [], ("unit_cost",), "access_reason")
+
     return success_response(
         {
             "application_component_id": result.get("application_component_id"),
             "reasons": result.get("reasons") or [],
+            "component": component,
         }
     )
 
@@ -543,6 +702,9 @@ def programme_for_element(element_id: int):
 
     work_packages = result["work_packages"]
     _redact_financial_fields(work_packages, ("cost_variance_pct",), "cost_reason")
+    _redact_financial_fields(
+        [wp["gap"] for wp in work_packages], ("estimated_cost",), "access_reason"
+    )
 
     return success_response(
         {
@@ -635,6 +797,13 @@ def accountability_for_element(element_id: int):
     other lenses, no business logic here. No max_depth/include_derived
     params: this lens is a pure ownership lookup, not a blast-radius
     traversal, unlike every other lens on this blueprint.
+
+    The ownership read itself is currently WITHDRAWN -- see the service
+    method's own docstring (a real tenant-isolation gap found in external
+    review of the original PR; no shared, tenant-safe reader exists yet).
+    This route's element/tenant pre-checks are unchanged and still real;
+    only the body of the answer is a permanent honest empty state until
+    that reader exists.
     """
     organization_id = _current_organization_id()
     if organization_id is None:
@@ -665,6 +834,7 @@ def accountability_for_element(element_id: int):
             "owners": result["owners"],
             "capacity_not_available": result.get("capacity_not_available", True),
             "reasons": result.get("reasons") or [],
+            "as_of": result.get("as_of"),
         }
     )
 

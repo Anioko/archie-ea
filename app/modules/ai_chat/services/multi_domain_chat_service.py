@@ -23,7 +23,7 @@ Features:
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import g
@@ -565,7 +565,7 @@ class MultiDomainChatService:
             "domain_usage": {domain: 0 for domain in self.domains},
             "average_response_time": 0,
             "error_count": 0,
-            "last_reset": datetime.utcnow(),
+            "last_reset": datetime.now(timezone.utc),
         }
 
         # Initialize AI Chat Extension Services
@@ -4597,7 +4597,21 @@ Use enterprise architecture terminology appropriate for this role."""
             if context_filter and "layer" in context_filter:
                 target_layer = context_filter["layer"]
 
-            elements_query = ArchiMateElement.query
+            # Ordered by name, the same ordering the element list pages already
+            # use (api_elements_search) -- with no explicit order the database
+            # is free to return an organisation's rows in whatever order its
+            # physical layout happens to put them in, which is stable within
+            # one run but not across two (confirmed: the same organisation,
+            # captured the same way, listed a different element in an early
+            # visible slot depending on how much unrelated data existed
+            # elsewhere in the table). LIMIT then a possible re-sort by
+            # rel_counts both need a deterministic starting order to mean
+            # anything -- which 100 (or 200) rows the limit keeps, and which
+            # element wins a tie in the rel_counts sort below, both depend on
+            # it.
+            elements_query = ArchiMateElement.query.order_by(
+                ArchiMateElement.name, ArchiMateElement.id
+            )
             if target_layer:
                 elements_query = elements_query.filter(ArchiMateElement.layer == target_layer)
                 detail_elements = elements_query.limit(200).all()
@@ -6267,7 +6281,7 @@ Instructions:
                     f"{portfolio.get('total_vendors', 0)} vendors\n"
                 )
 
-            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (A.R.C.H.I.E.).
+            prompt = f"""You are an Intelligent Search Assistant for an Enterprise Architecture platform (Entelim).
 The user is searching for information across the organisation's architecture portfolio.
 
 USER SEARCH QUERY: {message}
@@ -6366,7 +6380,7 @@ Instructions:
 
             # Build a system instruction mentioning the attached diagram
             system_instruction = (
-                "You are A.R.C.H.I.E., an AI Architecture Assistant specialising in "
+                "You are Entelim, an AI Architecture Assistant specialising in "
                 "enterprise architecture (TOGAF 9.2, ArchiMate 3.2). "
                 "The user has attached an architecture diagram for analysis. "
                 "Describe the diagram contents, identify architectural elements, "
@@ -6421,6 +6435,12 @@ Instructions:
         Each provider has a slightly different multi-content message format.
         Returns the assistant's text response.
         """
+        provider, model, _ = LLMService._guard_provider_call(
+            provider,
+            model,
+            prompt=system_prompt + "\n\n" + user_message,
+        )
+
         if provider == "openai":
             from openai import OpenAI
             client = OpenAI(api_key=api_key)
@@ -6595,7 +6615,7 @@ Instructions:
                     if _apps:
                         blast_radius_block = self._compute_capability_blast_radius(_apps[0])
 
-            prompt = f"""You are A.R.C.H.I.E., an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
+            prompt = f"""You are Entelim, an AI Architecture Assistant for Enterprise Architecture. You have deep knowledge of TOGAF, ArchiMate 3.2, and the organisation's live portfolio data.
 
 USER QUESTION: {message}
 
@@ -6677,11 +6697,7 @@ Instructions:
             if not explicit_record and not implicit_decision:
                 return
 
-            from app.models.adr import ArchitectureDecisionRecord
-            from sqlalchemy import func
-
-            # Get next ADR number
-            max_num = db.session.query(func.max(ArchitectureDecisionRecord.adr_number)).scalar() or 0
+            from app.models.architecture_decision import ArchitectureDecision
 
             # Extract decision title from message
             title = message[:150].strip()
@@ -6701,20 +6717,25 @@ Instructions:
             for cap_info in resolved.get("capabilities", [])[:5]:
                 affected.append({"type": "capability", "id": cap_info["id"], "name": cap_info["name"]})
 
-            adr = ArchitectureDecisionRecord(
-                adr_number=max_num + 1,
+            from flask import g as _g
+            org_id = getattr(_g, "current_org_id", None)
+
+            adr = ArchitectureDecision(
+                decision_id=ArchitectureDecision.next_decision_id(),
                 title=title[:200],
                 status="accepted" if explicit_record else "proposed",
                 context=f"Decision recorded via AI chat by user {self.user_id}",
                 decision=message[:1000] if explicit_record else response_text[:1000],
                 rationale="Recorded from AI chat conversation",
                 consequences="To be assessed",
-                affected_systems=json.dumps(affected) if affected else None,
-                decision_date=datetime.utcnow().date(),
+                affected_systems=affected or None,
+                decided_at=datetime.utcnow() if explicit_record else None,
+                organization_id=org_id,
             )
             db.session.add(adr)
+            db.session.flush()
             db.session.commit()
-            logger.info(f"AIC-307: ADR #{adr.adr_number} recorded: {title[:60]}")
+            logger.info(f"AIC-307: decision {adr.decision_id} recorded: {title[:60]}")
         except Exception as e:
             logger.debug(f"AIC-307: Decision recording failed: {e}")
             db.session.rollback()
@@ -7465,6 +7486,7 @@ End with: "Type **'next'** to complete the design workflow."
             from app.models import LLMInteraction
             from sqlalchemy import func, distinct, cast, Date
 
+            # tenant-scoping-ok: user_id is already per-user; user belongs to one org
             base = LLMInteraction.query.filter(LLMInteraction.user_id == user_id)
             total_messages = base.count()
             active_days = db.session.query(
@@ -7486,13 +7508,21 @@ End with: "Type **'next'** to complete the design workflow."
         try:
             from app.models import LLMInteraction
             from sqlalchemy import func
+            from flask import g, has_app_context, has_request_context  # TRNT-072
+
+            # TRNT-072: tenant scoping
+            org_id = None
+            if has_request_context() or has_app_context():
+                org_id = getattr(g, "current_org_id", None)
 
             # Count interactions per provider as a proxy (domain not stored directly)
-            rows = (
+            rows_q = (
                 db.session.query(LLMInteraction.provider, func.count(LLMInteraction.id))
                 .group_by(LLMInteraction.provider)
-                .all()
             )
+            if org_id is not None:
+                rows_q = rows_q.filter(LLMInteraction.organization_id == org_id)
+            rows = rows_q.all()
             domains = [{"domain": provider or "unknown", "message_count": count} for provider, count in rows]
             total = sum(d["message_count"] for d in domains)
 
@@ -7510,14 +7540,22 @@ End with: "Type **'next'** to complete the design workflow."
         try:
             from app.models import LLMInteraction
             from sqlalchemy import func
+            from flask import g as _g, has_request_context, has_app_context  # TRNT-072
 
-            total = LLMInteraction.query.count()
+            # TRNT-072: tenant scoping
+            _org = getattr(_g, "current_org_id", None) if (has_request_context() or has_app_context()) else None
+
+            if _org is None:
+                return {"response_quality_score": None, "avg_response_time_ms": None, "success_rate": 0, "feedback_count": 0}
+
+            total = LLMInteraction.query.filter(LLMInteraction.organization_id == _org).count()
             if total == 0:
                 return {"response_quality_score": None, "avg_response_time_ms": None, "success_rate": 0, "feedback_count": 0}
 
-            avg_latency = db.session.query(func.avg(LLMInteraction.latency_ms)).scalar()
+            avg_latency = db.session.query(func.avg(LLMInteraction.latency_ms)).filter(LLMInteraction.organization_id == _org).scalar()
             # Success = has a non-empty response
             success_count = LLMInteraction.query.filter(
+                LLMInteraction.organization_id == _org,
                 LLMInteraction.response.isnot(None),
                 LLMInteraction.response != "",
             ).count()
@@ -7526,20 +7564,11 @@ End with: "Type **'next'** to complete the design workflow."
             feedback_count = 0
             try:
                 from sqlalchemy import text
-                # Was a bare COUNT(*) over the whole table, marked
-                # "scoped via parent FK" — there is no parent FK. Every tenant
-                # saw the global count. It read as harmless while the table was
-                # empty; the write path is fixed now, so it would not have been.
-                from flask import g as _g
-                _org = getattr(_g, "current_org_id", None)
-                if _org is None:
-                    feedback_count = None   # unknown, not zero — see CLAUDE.md
-                else:
-                    feedback_count = db.session.execute(
-                        text("SELECT COUNT(*) FROM ai_chat_feedback "
-                             "WHERE organization_id = :org"),
-                        {"org": _org},
-                    ).scalar() or 0
+                feedback_count = db.session.execute(
+                    text("SELECT COUNT(*) FROM ai_chat_feedback "
+                         "WHERE organization_id = :org"),
+                    {"org": _org},
+                ).scalar() or 0
             except Exception:  # fabricated-ok: guarded skip on error; emits no fabricated value
                 logger.exception("Failed to operation")
                 pass
