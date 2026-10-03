@@ -158,7 +158,6 @@ def index():
         error = "No active organization for the current user."
     else:
         try:
-            from app.extensions import db
             from app.models.drift_report import DriftReport
 
             stored = DriftReport.for_org(org_id)
@@ -171,20 +170,6 @@ def index():
                     )
                 else:
                     computed_at = stored.computed_at
-            else:
-                # No stored report yet — run the detector on-the-fly so the
-                # page is never empty on first visit, then store the result
-                # so subsequent visits hit the fast path.
-                enabled_provider_ids_before = _enabled_provider_ids()
-                report = detect_model_drift(org_id)
-                DriftReport.upsert(org_id, report)
-                _remove_enabled_provider_leaks(enabled_provider_ids_before)
-                db.session.commit()
-                report_html, summary = _render_stored_report(
-                    DriftReport.for_org(org_id)
-                )
-                if report_html is not None:
-                    computed_at = DriftReport.for_org(org_id).computed_at
         except Exception as exc:
             logger.warning("Drift report read failed for org %s: %s", org_id, exc)
             error = f"Model-health report could not be read: {exc}"

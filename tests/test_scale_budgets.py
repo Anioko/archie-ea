@@ -194,8 +194,8 @@ def test_stored_report_org_isolation_with_real_detector(app, db_session, make_or
 # --------------------------------------------------------------------------- #
 # Page reads stored report — "not yet computed" and computed time              #
 # --------------------------------------------------------------------------- #
-def test_page_shows_no_drift_when_no_report_and_no_elements(app, db_session, make_org, login_as):
-    """GET /genome/model-health runs detector on-the-fly when no stored report exists."""
+def test_page_shows_not_yet_computed_when_no_report(app, db_session, make_org, login_as):
+    """GET /genome/model-health shows 'Not yet computed' when no stored report."""
     from app.models.user import User
 
     with app.app_context():
@@ -214,7 +214,7 @@ def test_page_shows_no_drift_when_no_report_and_no_elements(app, db_session, mak
         resp = client.get("/genome/model-health/")
         assert resp.status_code == 200
         html = resp.data.decode("utf-8")
-        assert "No drift detected" in html
+        assert "Not yet computed" in html
 
 
 def test_page_shows_computed_time_when_report_exists(app, db_session, make_org, login_as):
@@ -313,7 +313,7 @@ def test_page_shows_render_error_only_for_the_broken_org(app, db_session, make_o
 
         assert response_b.status_code == 200
         html_b = response_b.data.decode("utf-8")
-        assert "No drift detected" in html_b
+        assert "Not yet computed" in html_b
         assert "Stored model-health report could not be rendered." not in html_b
         assert "corrupt-json-shape-for-org-a" not in html_b
 
@@ -337,9 +337,9 @@ def test_rescan_runs_detector_and_stores_report(app, db_session, make_org, login
         client = app.test_client()
         login_as(client, user)
 
-        # Before rescan, detector runs on-the-fly and stores report
+        # Before rescan, no report exists
         resp = client.get("/genome/model-health/")
-        assert "No drift detected" in resp.data.decode("utf-8")
+        assert "Not yet computed" in resp.data.decode("utf-8")
 
         # Trigger rescan
         resp = client.post("/genome/model-health/rescan", follow_redirects=True)
