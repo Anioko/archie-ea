@@ -255,8 +255,15 @@ def link_driver_to_goal(driver_id: int):
         db.session.commit()
         return success_response(result)
     except ValueError as exc:
+        msg = str(exc)
+        if "already linked" in msg:
+            return error_response(
+                msg,
+                code="CONFLICT",
+                status_code=409,
+            )
         return error_response(
-            str(exc),
+            msg,
             code="NOT_FOUND",
             status_code=404,
         )

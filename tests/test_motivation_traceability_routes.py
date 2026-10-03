@@ -503,6 +503,59 @@ class TestDriverGoalLinking:
         db_session.refresh(goal)
         assert goal.driver_id == driver.id
 
+    def test_link_driver_to_goal_rejects_overwrite(self, db_session, make_org, client, login_as):
+        """Linking a goal that already has a driver returns 409 Conflict."""
+        from app.models.motivation import Driver, Goal
+
+        suffix = _org_suffix()
+        org = make_org(f"link-overwrite-{suffix}")
+        user = _user(db_session, org.id, suffix)
+
+        driver1 = Driver(
+            name=f"First Driver {suffix}",
+            driver_type="regulatory",
+            source="external",
+            organization_id=org.id,
+        )
+        db_session.add(driver1)
+
+        driver2 = Driver(
+            name=f"Second Driver {suffix}",
+            driver_type="competitive",
+            source="internal",
+            organization_id=org.id,
+        )
+        db_session.add(driver2)
+
+        goal = Goal(
+            name=f"Already Linked Goal {suffix}",
+            goal_type="strategic",
+            status="active",
+            organization_id=org.id,
+        )
+        db_session.add(goal)
+        db_session.flush()
+        db_session.commit()
+
+        login_as(client, user)
+
+        # First link succeeds
+        resp = client.post(
+            f"/api/v1/motivation/drivers/{driver1.id}/link-goal",
+            json={"goal_id": goal.id},
+        )
+        assert resp.status_code == 200
+
+        # Second link to a different driver is rejected
+        resp = client.post(
+            f"/api/v1/motivation/drivers/{driver2.id}/link-goal",
+            json={"goal_id": goal.id},
+        )
+        assert resp.status_code == 409
+        data = resp.get_json()
+        assert data["success"] is False
+        assert "already linked" in data["error"]
+
     def test_link_driver_to_goal_cross_tenant_rejected(self, db_session, make_org, client, login_as):
         """Linking a driver in org A to a goal in org B is rejected."""
         from app.models.motivation import Driver, Goal

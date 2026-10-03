@@ -1623,6 +1623,12 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
         if goal is None:
             raise ValueError(f"Goal {goal_id} not found in organisation {organization_id}")
 
+        if goal.driver_id is not None:
+            raise ValueError(
+                f"Goal {goal_id} is already linked to driver {goal.driver_id}. "
+                "Unlink it first before linking to a different driver."
+            )
+
         goal.driver_id = driver_id
         db.session.flush()
 
