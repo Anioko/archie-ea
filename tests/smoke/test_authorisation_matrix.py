@@ -81,6 +81,16 @@ POLICY = {
     # is refused -- inviting people into an organisation is not a persona's
     # job, it is its administrator's.
     "/admin/team":             set(),
+    # Agent oversight: pause/resume all agent writes, view refused-call log,
+    # and check classification status — all gated by org_admin, which no
+    # seeded archetype except platform_admin holds.
+    "/ai-chat/oversight/state":          set(),
+    "/ai-chat/oversight/pause":          set(),
+    "/ai-chat/oversight/resume":         set(),
+    "/ai-chat/oversight/refused-calls":  set(),
+    "/ai-chat/oversight/classification/status": set(),
+    # Tool catalogue export: gated by security_architect or platform_admin.
+    "/ai-chat/oversight/catalogue/export": {"security_architect"},
     # Billing: plan, checkout, limits, invoices. Gated by admin_required, which
     # no ordinary persona role carries; only the administrator can buy, change
     # or cancel the organisation's plan.
@@ -870,3 +880,23 @@ def test_application_technology_links_refuse_a_read_only_account(
     assert _observe(page, live_server, path) == ALLOWED
     response = _post_technology_link(page, live_server, seeded["ids"]["application"])
     assert response.status == 403, "a Viewer wrote a technology link: %s" % response.status
+
+
+OVERSIGHT_CLASSIFICATION_PERMITTED = {
+    "platform_admin",
+}
+
+
+@pytest.mark.parametrize("archetype", ARCHETYPES)
+def test_oversight_classification_check_route_authorisation(
+    archetype, page, live_server, seeded
+):
+    """GET /ai-chat/oversight/classification/check/<tool_name> is gated by
+    org_admin, which no seeded archetype except platform_admin holds."""
+    _login(page, live_server, seeded["emails"][archetype])
+    path = "/ai-chat/oversight/classification/check/create_solution"
+    expected = ALLOWED if archetype in OVERSIGHT_CLASSIFICATION_PERMITTED else DENIED
+    actual = _observe(page, live_server, path)
+    assert actual == expected, (
+        "%s reached %s: expected %s, got %s" % (archetype, path, expected, actual)
+    )
