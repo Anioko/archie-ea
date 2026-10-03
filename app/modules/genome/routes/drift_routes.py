@@ -145,6 +145,37 @@ def _remove_enabled_provider_leaks(previous_ids):
     return sorted(leaked_ids)
 
 
+def _enqueue_model_health_scan_if_not_pending(org_id: int) -> bool:
+    """Enqueue a background model-health scan for *org_id* through the existing
+    job queue, but only if no PENDING or IN_PROGRESS scan already exists for
+    this organisation.  Returns True when a new job was created."""
+    from app.extensions import db
+    from app.models.job import Job, JobStatus
+
+    existing = (
+        db.session.query(Job)
+        .filter(
+            Job.task == "model_health_scan",
+            Job.status.in_([JobStatus.PENDING.value, JobStatus.IN_PROGRESS.value]),
+        )
+        .all()
+    )
+    for job in existing:
+        payload = job.payload or {}
+        if payload.get("organization_id") == org_id:
+            return False
+
+    from app.services.job_queue_service import get_job_queue_service
+
+    service = get_job_queue_service()
+    service.create_job(
+        name=f"Model-health scan for org {org_id}",
+        task="model_health_scan",
+        payload={"organization_id": org_id},
+    )
+    return True
+
+
 @genome_drift_bp.route("/", methods=["GET"])
 @login_required
 def index():
@@ -154,6 +185,7 @@ def index():
     error = None
     summary = None
     computed_at = None
+    pending = False
     if org_id is None:
         error = "No active organization for the current user."
     else:
@@ -170,6 +202,13 @@ def index():
                     )
                 else:
                     computed_at = stored.computed_at
+            else:
+                # No stored report — show a pending state and enqueue a
+                # background scan through the existing job queue so the
+                # page load stays sub-quadratic.  Enqueue at most once
+                # per organisation while a scan is already pending.
+                pending = True
+                _enqueue_model_health_scan_if_not_pending(org_id)
         except Exception as exc:
             logger.warning("Drift report read failed for org %s: %s", org_id, exc)
             error = f"Model-health report could not be read: {exc}"
@@ -180,6 +219,7 @@ def index():
         error=error,
         org_id=org_id,
         computed_at=computed_at,
+        pending=pending,
     )
 
 

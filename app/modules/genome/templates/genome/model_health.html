@@ -43,8 +43,13 @@
     {% if not error %}
     <div class="p-8 text-center text-muted-foreground border border-dashed border-border rounded-lg">
         <i data-lucide="activity" class="w-8 h-8 mx-auto mb-3 opacity-60"></i>
+        {% if pending %}
+        <p>The first health scan is being prepared. Reload this page in a moment
+        to see the deterministic model-health report for your organization.</p>
+        {% else %}
         <p>Not yet computed. Click <span class="font-medium text-foreground">Re-scan for drift</span>
         to build the deterministic model-health report for your organization.</p>
+        {% endif %}
     </div>
     {% endif %}
     {% endif %}
