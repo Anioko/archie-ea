@@ -222,3 +222,42 @@ def test_rollback_override_creates_a_fresh_override_when_none_is_live(app, db_se
         assert restored is not None
         assert restored.system_prompt == "v1 text"
         assert restored.version == 1
+
+
+def test_two_organisation_isolation(app, db_session, make_org):
+    """A platform admin in org A can write; a tenant admin in org B cannot.
+
+    ``AIPromptTemplate`` has no tenant column, so row-level tenant isolation
+    does not apply. The defence is role-based: only platform admins may write.
+    This test proves that a non-platform admin from a different organisation
+    is still refused, confirming the check is not accidentally scoped to the
+    caller's organisation.
+    """
+    from app.services import solution_prompt_override_service as svc
+
+    org_a = make_org("spo-org-a")
+    org_b = make_org("spo-org-b")
+    platform_admin = _user(db_session, org_a, platform=True)
+    tenant_admin = _user(db_session, org_b)  # tenant admin in org B, not platform
+    db_session.commit()
+    key = _key()
+
+    with app.test_request_context():
+        from flask_login import login_user
+        login_user(db_session.get(type(platform_admin), platform_admin.id))
+        svc.update_override(key, "desc", "v1 text")
+
+    with app.test_request_context():
+        from flask_login import login_user
+        login_user(db_session.get(type(tenant_admin), tenant_admin.id))
+        with pytest.raises(Forbidden):
+            svc.update_override(key, "desc", "v2 text")
+        with pytest.raises(Forbidden):
+            svc.reset_override(key)
+        with pytest.raises(Forbidden):
+            svc.rollback_override(key, 1, "desc")
+
+    with app.test_request_context():
+        from flask_login import login_user
+        login_user(db_session.get(type(platform_admin), platform_admin.id))
+        svc.reset_override(key)  # cleanup
