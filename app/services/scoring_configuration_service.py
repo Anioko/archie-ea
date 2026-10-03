@@ -16,10 +16,8 @@ Routing every write through this module instead makes the check structural
 rather than decorator-dependent: a fourth copy nobody has written yet, or a
 future edit that drops the decorator from one of these three, still cannot
 mutate the table without going through code that already refuses a
-non-platform-admin caller. Same pattern as
-``app/services/platform_feature_flag_service.py`` -- one accessor per
-concept (ADR-0008), not three near-identical copies of the same mutation
-logic kept in sync by hand.
+non-platform-admin caller. One accessor per concept (ADR-0008), not three
+near-identical copies of the same mutation logic kept in sync by hand.
 
 The lazy-create-default fallback in
 ``app/services/rationalization_scoring_service.py`` (materialises the
