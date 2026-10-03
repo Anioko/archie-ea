@@ -208,6 +208,15 @@ class ApplicationOwnership(TenantMixin, db.Model):
 
     notes = db.Column(db.Text)
 
+    # Consolidation: points to the ApplicationOwner row this record was
+    # merged into during backfill
+    retired_into_id = db.Column(
+        db.Integer,
+        db.ForeignKey("application_owners.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

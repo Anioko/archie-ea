@@ -21,6 +21,7 @@ from flask_login import login_required
 from sqlalchemy import or_
 
 from app import db
+from app.utils.tenant_users import escape_like_literal
 from . import archimate_crud
 from .services.ai_generation_service import AIGenerationService
 from .services.field_configs import (
@@ -695,7 +696,7 @@ def api_layer_elements(layer):
                 if hasattr(model_class, "archimate_element_id"):
                     q = q.filter(model_class.archimate_element_id.is_(None))
                 if search:
-                    safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                    safe_search = escape_like_literal(search)
                     filters = []
                     if hasattr(
                         model_class, "name"
@@ -812,7 +813,7 @@ def api_layer_elements(layer):
                 ArchiMateElement.type.in_(query_types),
             )
             if search:
-                safe_s = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                safe_s = escape_like_literal(search)
                 ae_q = ae_q.filter(
                     or_(
                         ArchiMateElement.name.ilike(f"%{safe_s}%", escape="\\"),
@@ -912,7 +913,7 @@ def list_elements(layer, element_type):
 
     # Apply search filter (escape LIKE wildcards to prevent injection)
     if search:
-        safe_search = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        safe_search = escape_like_literal(search)
         if hasattr(model_class, "name"):
             query = query.filter(model_class.name.ilike(f"%{safe_search}%", escape="\\"))
         if hasattr(model_class, "description"):
