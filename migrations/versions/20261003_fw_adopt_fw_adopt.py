@@ -14,7 +14,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision = "20261003_fw_adopt"
-down_revision = "20261001_approval_nullable"
+down_revision = "20261002_data_domain_org_unique"
 branch_labels = None
 depends_on = None
 
@@ -50,7 +50,7 @@ _UQ_ORG_ADOPTION = "uq_org_framework_adoption"
 def _add_fk_if_not_exists(bind, table, constraint_name, columns, ref_table, ref_columns, ondelete=None):
     """Add a foreign key if it does not already exist."""
     bind.execute(text(f"""
-        DO $fk${constraint_name}$
+        DO $do_fk$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_constraint
@@ -64,14 +64,14 @@ def _add_fk_if_not_exists(bind, table, constraint_name, columns, ref_table, ref_
               {'ON DELETE ' + ondelete if ondelete else ''};
           END IF;
         END
-        $fk${constraint_name}$
+        $do_fk$
     """))
 
 
 def _add_unique_if_not_exists(bind, table, constraint_name, columns):
     """Add a UNIQUE constraint if it does not already exist."""
     bind.execute(text(f"""
-        DO $uq${constraint_name}$
+        DO $do_uq$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_constraint
@@ -83,7 +83,7 @@ def _add_unique_if_not_exists(bind, table, constraint_name, columns):
               UNIQUE ({', '.join(columns)});
           END IF;
         END
-        $uq${constraint_name}$
+        $do_uq$
     """))
 
 

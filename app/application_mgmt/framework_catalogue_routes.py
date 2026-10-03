@@ -8,6 +8,7 @@ from flask_login import current_user, login_required
 from app import db
 from app.application_mgmt import application_mgmt
 from app.decorators import require_roles
+from app.middleware.tenant_decorators import platform_admin_required
 from app.models.compliance_models import RegulatoryFramework
 from app.models.regulatory_change import RegulatoryChange
 from app.models.regulatory_framework import FrameworkAdoption
@@ -86,6 +87,7 @@ def list_adopted_controls(adoption_id):
     return jsonify({
         "adoption_id": adoption.id,
         "framework_code": adoption.framework.code,
+        "tailoring_notes": adoption.tailoring_notes,
         "controls": [
             {
                 "id": ac.id,
@@ -93,7 +95,6 @@ def list_adopted_controls(adoption_id):
                 "control_code": ac.control.control_code,
                 "title": ac.control.title,
                 "implementation_status": ac.implementation_status,
-                "tailoring_notes": ac.tailoring_notes,
             }
             for ac in controls
         ],
@@ -105,7 +106,7 @@ def list_adopted_controls(adoption_id):
 
 @application_mgmt.route("/api/compliance/controls/<int:control_id>/harmonize", methods=["POST"])
 @login_required
-@require_roles("admin", "architect", "business_architect", "security_architect")
+@platform_admin_required
 def propose_harmonization(control_id):
     """Propose a cross-framework harmonisation between two controls."""
     data = request.get_json()
@@ -133,7 +134,7 @@ def propose_harmonization(control_id):
 
 @application_mgmt.route("/api/compliance/controls/<int:control_id>/harmonize/confirm", methods=["POST"])
 @login_required
-@require_roles("admin", "architect", "business_architect", "security_architect")
+@platform_admin_required
 def confirm_harmonization(control_id):
     """Confirm a proposed harmonisation."""
     try:

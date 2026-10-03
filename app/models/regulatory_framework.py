@@ -6,10 +6,15 @@ seeds a read-only catalogue of frameworks and controls, and each organisation
 adopts them into its own tenant scope with optional tailoring.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import db
 from app.models.mixins import HybridTenantMixin
+
+
+def _now_utc_naive():
+    """Return naive UTC datetime for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class FrameworkAdoption(HybridTenantMixin, db.Model):
@@ -33,12 +38,12 @@ class FrameworkAdoption(HybridTenantMixin, db.Model):
     )
 
     adopted_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
-    adopted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    adopted_at = db.Column(db.DateTime, default=_now_utc_naive)
     status = db.Column(db.String(20), default="active")  # active, inactive
     tailoring_notes = db.Column(db.Text)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_now_utc_naive)
+    updated_at = db.Column(db.DateTime, default=_now_utc_naive, onupdate=_now_utc_naive)
 
     # Relationships
     framework = db.relationship("RegulatoryFramework", backref="adoptions")

@@ -5,10 +5,15 @@ Records amendments to regulatory frameworks and tracks which obligations,
 controls and element owners are affected when the applicability engine re-runs.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import db
 from app.models.mixins import TenantMixin
+
+
+def _now_utc_naive():
+    """Return naive UTC datetime for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class RegulatoryChange(TenantMixin, db.Model):
@@ -37,8 +42,8 @@ class RegulatoryChange(TenantMixin, db.Model):
 
     recorded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_now_utc_naive)
+    updated_at = db.Column(db.DateTime, default=_now_utc_naive, onupdate=_now_utc_naive)
 
     # Relationships
     framework = db.relationship("RegulatoryFramework", backref="regulatory_changes")
@@ -71,7 +76,7 @@ class RegulatoryChangeImpact(TenantMixin, db.Model):
     impact_assessment = db.Column(db.Text)
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_now_utc_naive)
 
     # Relationships
     change = db.relationship("RegulatoryChange", back_populates="affected_items")

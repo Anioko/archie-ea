@@ -7,7 +7,7 @@ location, and business function.  Results are stored for audit.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app import db
@@ -18,6 +18,11 @@ from app.models.regulatory_framework import FrameworkAdoption
 from app.models.technology_layer import Node
 
 logger = logging.getLogger(__name__)
+
+
+def _now_utc_naive():
+    """Return naive UTC datetime for TIMESTAMP WITHOUT TIME ZONE columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class ApplicabilityService:
@@ -110,7 +115,7 @@ class ApplicabilityService:
             scope="tenant",
             framework_id=framework_id,
             adopted_by_id=adopted_by_id,
-            adopted_at=datetime.utcnow(),
+            adopted_at=_now_utc_naive(),
             status="active",
         )
         db.session.add(adoption)
