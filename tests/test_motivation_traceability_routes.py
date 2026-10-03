@@ -137,6 +137,7 @@ class TestGoalTrace:
         assert data["success"] is True
         assert data["data"]["goal"]["id"] == goal.id
         assert data["data"]["goal"]["name"] == goal.name
+        assert data["data"]["trace_status"] == "recorded"
         assert len(data["data"]["capabilities"]) == 1
         assert data["data"]["capabilities"][0]["name"] == "Customer Analytics"
         assert len(data["data"]["capability_hops"]) == 1
@@ -145,8 +146,8 @@ class TestGoalTrace:
         assert data["data"]["enterprise_initiatives"][0]["name"] == initiative.name
         assert len(data["data"]["initiative_hops"]) == 1
 
-    def test_goal_trace_unlinked_goal_shows_empty_hops(self, db_session, make_org, client, login_as):
-        """An unlinked goal returns the goal with empty capability/initiative lists."""
+    def test_goal_trace_unlinked_goal_shows_not_recorded(self, db_session, make_org, client, login_as):
+        """An unlinked goal returns trace_status 'not_recorded', never empty success."""
         from app.models.motivation import Goal
 
         suffix = _org_suffix()
@@ -170,6 +171,7 @@ class TestGoalTrace:
         data = resp.get_json()
         assert data["success"] is True
         assert data["data"]["goal"]["id"] == goal.id
+        assert data["data"]["trace_status"] == "not_recorded"
         assert data["data"]["capabilities"] == []
         assert data["data"]["enterprise_initiatives"] == []
         assert data["data"]["strategic_initiatives"] == []

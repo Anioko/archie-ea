@@ -1523,8 +1523,17 @@ Focus on QUALITY and SPECIFICITY - each requirement must be measurable and testa
                         "target": f"ApplicationComponent:{ac.id}",
                     })
 
+        has_trace = bool(
+            goal.archimate_element_id
+            or goal.initiatives
+            or StrategicInitiative.query.filter(
+                StrategicInitiative.goals.any(id=goal.id)
+            ).first()
+        )
+
         return {
             "goal": goal_dict,
+            "trace_status": "recorded" if has_trace else "not_recorded",
             "capabilities": capabilities,
             "capability_hops": capability_hops,
             "enterprise_initiatives": enterprise_initiatives,
