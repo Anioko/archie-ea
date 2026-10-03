@@ -63,6 +63,7 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 
 from app.decorators import audit_log
 from app.middleware.tenant_decorators import platform_admin_required
+from app.services.application_cost_accessor import set_annual_cost
 
 from app.services.application_consolidation_service import (
     ApplicationConsolidationService,
@@ -1046,8 +1047,8 @@ def api_rationalization_onboard():
             description=data.get("description"),
             application_type=data.get("type"),
             lifecycle_status=data.get("lifecycle_status", "planning"),
-            total_cost_of_ownership=data.get("annual_cost"),
         )
+        set_annual_cost(app, data.get("annual_cost"))
         db.session.add(app)
         db.session.flush()
 
