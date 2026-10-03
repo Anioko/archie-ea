@@ -9,6 +9,8 @@ Covers:
 
 from __future__ import annotations
 
+import logging
+import threading
 import uuid
 from datetime import datetime, timezone, timedelta
 
@@ -612,3 +614,219 @@ class TestReplayRebuildsDerivedTable:
         org_b = two_orgs["B"]
         b_replay = replay_from(org_b.id, since=start_time, limit=100)
         assert len(b_replay) == 0
+
+
+# ---------------------------------------------------------------------------
+# Relay failure reporting
+# ---------------------------------------------------------------------------
+
+
+class TestRelayFailureReporting:
+    """The relay must report failures (not silent success) and leave the
+    outbox row unpublished for retry."""
+
+    def test_relay_reports_failure_and_leaves_row_for_retry(
+        self, db_session, two_orgs, caplog
+    ):
+        """When an outbox row cannot be relayed (e.g. no partition for the
+        event timestamp), the relay must log the error, exclude the row from
+        the inserted count, and leave the row unpublished so it can be
+        retried."""
+        org_a = two_orgs["A"]
+
+        # Insert an outbox row with a created_at far in the past, outside
+        # any event_log monthly partition.  The relay will fail because
+        # PostgreSQL rejects a row that doesn't fit any child partition.
+        event_id = str(uuid.uuid4())
+        db_session.execute(
+            text(
+                "INSERT INTO transformation_outbox_events "
+                "(organization_id, event_id, ordinal, event_type, payload_json, "
+                " created_at, entity_type, entity_id, delivery_attempts) "
+                "VALUES (:org_id, :event_id, 0, :event_type, :payload, "
+                " :created_at, :entity_type, :entity_id, 0)"
+            ),
+            {
+                "org_id": org_a.id,
+                "event_id": event_id,
+                "event_type": "test.failure.reporting",
+                "payload": '{"test": true}',
+                "created_at": "2025-01-01 00:00:00+00",
+                "entity_type": "test_entity",
+                "entity_id": 1,
+            },
+        )
+        db_session.commit()
+
+        with caplog.at_level(logging.ERROR):
+            inserted = relay_outbox_batch()
+            db_session.commit()
+
+        # The failed row must NOT be counted as inserted.
+        assert inserted == 0, (
+            f"Relay must report 0 inserted for a failed row, got {inserted}"
+        )
+
+        # The error must be logged.
+        assert "event_log relay: failed for outbox" in caplog.text, (
+            "Relay must log an error message for the failed row"
+        )
+
+        # The outbox row must still be unpublished (left for retry).
+        outbox_after = (
+            db_session.query(OperationOutboxEvent)
+            .filter(OperationOutboxEvent.event_id == event_id)
+            .first()
+        )
+        assert outbox_after is not None, "Outbox row must still exist"
+        assert outbox_after.published_at is None, (
+            "Failed outbox row must remain unpublished for retry"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Concurrency: ordinal allocation under concurrent writers
+# ---------------------------------------------------------------------------
+
+
+class TestConcurrentOrdinalAllocation:
+    """Two concurrent sessions writing events for the same organisation must
+    produce unique, gap-free ordinals.  The advisory lock serialises the
+    ordinal computation so no two writers ever compute the same next_ordinal."""
+
+    def test_concurrent_writers_produce_unique_gap_free_ordinals(
+        self, app, _schema
+    ):
+        """Spawn two threads, each with its own database session.  Each
+        thread calls _append_one directly on a disjoint subset of outbox
+        rows for the same org.  A barrier forces both threads into the
+        critical section at the same time — without the advisory lock both
+        compute ordinals 1..5 independently, producing duplicates."""
+        from unittest.mock import patch
+
+        from app import db as app_db
+        from app.models.organization import Organization
+        from app.models.transformation_execution import OperationOutboxEvent
+        from app.services.event_log_service import _append_one as _real_append_one
+        from app.services.outbox import emit_event
+
+        # Create an org using a real session.
+        with app.app_context():
+            suffix = uuid.uuid4().hex[:10]
+            org = Organization(
+                name=f"Concurrency Org {suffix}", slug=f"conc-{suffix}"
+            )
+            app_db.session.add(org)
+            app_db.session.commit()
+            org_id = org.id
+
+        # Create 10 outbox rows in the main session, all unpublished.
+        row_ids: list = []
+        with app.app_context():
+            for i in range(10):
+                event = emit_event(
+                    organization_id=org_id,
+                    event_type="test.concurrent.event",
+                    payload={"seq": i},
+                    entity_type="test_entity",
+                    entity_id=i,
+                )
+                row_ids.append(event.id)
+            app_db.session.commit()
+            app_db.session.remove()
+
+        errors: list = []
+        # Barrier forces both threads into _append_one at the same time.
+        append_barrier = threading.Barrier(2, timeout=10)
+
+        def _append_one_barrier(outbox):
+            append_barrier.wait()
+            return _real_append_one(outbox)
+
+        def _writer(thread_id: int, ids: list) -> None:
+            try:
+                with app.app_context():
+                    local_rows = (
+                        app_db.session.query(OperationOutboxEvent)
+                        .filter(OperationOutboxEvent.id.in_(ids))
+                        .order_by(OperationOutboxEvent.id)
+                        .all()
+                    )
+                    with patch(
+                        "app.services.event_log_service._append_one",
+                        _append_one_barrier,
+                    ):
+                        for row in local_rows:
+                            _append_one_barrier(row)
+                        app_db.session.commit()
+            except Exception as exc:
+                errors.append(f"thread-{thread_id}: {exc}")
+            finally:
+                try:
+                    app_db.session.remove()
+                except Exception:
+                    pass
+
+        # Split rows: thread 1 gets first 5, thread 2 gets last 5.
+        t1 = threading.Thread(
+            target=_writer,
+            args=(1, row_ids[:5]),
+            daemon=True,
+        )
+        t2 = threading.Thread(
+            target=_writer,
+            args=(2, row_ids[5:]),
+            daemon=True,
+        )
+        t1.start()
+        t2.start()
+        t1.join(timeout=30)
+        t2.join(timeout=30)
+
+        assert len(errors) == 0, f"Thread errors: {errors}"
+
+        # Verify ordinals are unique and gap-free.
+        with app.app_context():
+            from app.models.event_log import EventLogRecord
+
+            rows = (
+                app_db.session.query(EventLogRecord)
+                .filter(EventLogRecord.organization_id == org_id)
+                .order_by(EventLogRecord.ordinal)
+                .all()
+            )
+            ordinals = [r.ordinal for r in rows]
+            expected = list(range(1, len(ordinals) + 1))
+            assert ordinals == expected, (
+                f"Expected contiguous ordinals {expected}, got {ordinals}"
+            )
+            assert len(set(ordinals)) == len(ordinals), (
+                f"Ordinals must be unique, got {ordinals}"
+            )
+
+        # Clean up.
+        with app.app_context():
+            from app.models.event_log import EventLogRecord
+
+            app_db.session.execute(
+                text(
+                    "UPDATE transformation_outbox_events "
+                    "SET published_at = NOW() "
+                    "WHERE organization_id = :org_id AND published_at IS NULL"
+                ),
+                {"org_id": org_id},
+            )
+            app_db.session.commit()
+
+            app_db.session.query(EventLogRecord).filter(
+                EventLogRecord.organization_id == org_id
+            ).delete()
+
+            app_db.session.execute(
+                text("SET LOCAL archie.signed_envelope_repair = 'on'")
+            )
+            app_db.session.query(Organization).filter(
+                Organization.id == org_id
+            ).delete()
+            app_db.session.commit()
+            app_db.session.remove()
