@@ -30,11 +30,35 @@ from ..models.consolidation_list import (
     CONSOLIDATION_STATUS_MAP,
 )
 from app.utils.pagination import safe_int_arg
+from app.utils.tenant_sql import current_org_id
 
 logger = logging.getLogger(__name__)
 
 # Create blueprint
 consolidation_list_bp = Blueprint("consolidation_list", __name__, url_prefix="/consolidation-list")
+
+
+def _entry_in_caller_org(entry_id):
+    """Fetch a ConsolidationListEntry only if its application belongs to the
+    caller's organisation. ConsolidationListEntry carries no organization_id
+    of its own -- ownership is via application_id -- so a bare
+    ConsolidationListEntry.query.get(...) would return any organisation's
+    entry. Fail closed: no ambient org, no application, or a foreign
+    application all refuse rather than guess.
+    """
+    org_id = current_org_id()
+    if org_id is None:
+        return None
+    entry = ConsolidationListEntry.query.get(entry_id)
+    if entry is None or not entry.application_id:
+        return None
+    owned_app = db.session.execute(
+        db.select(ApplicationComponent).where(
+            ApplicationComponent.id == entry.application_id,
+            ApplicationComponent.organization_id == org_id,
+        )
+    ).scalar_one_or_none()
+    return entry if owned_app is not None else None
 
 
 @consolidation_list_bp.route("/")
@@ -388,7 +412,9 @@ def add_to_list():
 def get_entry_detail(entry_id):
     """Get enriched detail for a consolidation entry (lazy load on row expand)."""
     try:
-        entry = ConsolidationListEntry.query.get_or_404(entry_id)
+        entry = _entry_in_caller_org(entry_id)
+        if entry is None:
+            return jsonify({"success": False, "error": "Entry not found"}), 404
         app = entry.application
 
         # Financial
@@ -476,7 +502,9 @@ def get_entry_detail(entry_id):
 def update_entry(entry_id):
     """Update a consolidation list entry"""
     try:
-        entry = ConsolidationListEntry.query.get_or_404(entry_id)
+        entry = _entry_in_caller_org(entry_id)
+        if entry is None:
+            return jsonify({"success": False, "error": "Entry not found"}), 404
         data = request.get_json()
 
         # Update fields
@@ -601,7 +629,9 @@ def update_entry(entry_id):
 def remove_entry(entry_id):
     """Remove an entry from consolidation list"""
     try:
-        entry = ConsolidationListEntry.query.get_or_404(entry_id)
+        entry = _entry_in_caller_org(entry_id)
+        if entry is None:
+            return jsonify({"success": False, "error": "Entry not found"}), 404
         db.session.delete(entry)
         db.session.commit()
 
@@ -654,7 +684,7 @@ def bulk_action():
 
         for entry_id in entry_ids:
             try:
-                entry = ConsolidationListEntry.query.get(entry_id)
+                entry = _entry_in_caller_org(entry_id)
                 if not entry:
                     errors.append(f"Entry {entry_id} not found")
                     continue
@@ -731,7 +761,7 @@ def create_roadmap_task():
         owner = data.get("owner")
 
         # Get the consolidation entry
-        entry = ConsolidationListEntry.query.get(entry_id)
+        entry = _entry_in_caller_org(entry_id)
         if not entry:
             return jsonify({"success": False, "error": "Consolidation entry not found"}), 404
 
