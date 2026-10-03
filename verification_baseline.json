@@ -46,7 +46,6 @@
     "store_agreement": 4,
     "canonical_store": 0,
     "unrendered_model_fields": 342,
-    "tenant_isolation_route_coverage_pct": 44.0,
-    "platform_admin_coverage": 463
+    "tenant_isolation_route_coverage_pct": 44.0
   }
 }
