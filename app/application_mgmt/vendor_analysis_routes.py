@@ -1652,6 +1652,16 @@ def api_get_value_streams():
             f"Value streams requested - domain_id: {domain_id}, domain_code: {domain_code}"
         )
 
+        if not domain_id and not domain_code:
+            # No domain filter chosen yet (e.g. the page's initial load,
+            # before the caller narrows by domain) — this is the honest
+            # empty state, not a lookup failure. It used to fall through to
+            # the "domain not found" branch below and answer 404 for a
+            # request that named no domain at all, which is what every one
+            # of this page's own initial loads did.
+            current_app.logger.info("Value streams requested with no domain filter — returning []")
+            return jsonify([])
+
         from app.models.unified_capability import BusinessDomain
 
         # Try to find domain by ID first, then by code
@@ -2423,8 +2433,9 @@ def api_submit_stakeholder_scores(analysis_id, input_id):
         if not si:
             return jsonify({"error": "Stakeholder input not found"}), 404
 
-        # Only the stakeholder themselves (or admin) can submit
-        if si.stakeholder_id != current_user.id and not current_user.is_admin:
+        # Only the stakeholder themselves (or admin) can submit. is_admin is a method:
+        # testing the bare attribute is always truthy, so this never used to deny anyone.
+        if si.stakeholder_id != current_user.id and not current_user.is_admin():
             return jsonify({"error": "Only the invited stakeholder can submit scores"}), 403
 
         data = request.get_json()
@@ -2530,9 +2541,15 @@ def api_get_stakeholder_consensus(analysis_id):
 )
 @login_required
 def api_remove_stakeholder(analysis_id, input_id):
-    """Remove a stakeholder from an analysis."""
+    """Remove a stakeholder from an analysis (analysis owner or admin only)."""
     try:
-        from app.models.vendor_analysis import StakeholderInput
+        from app.models.vendor_analysis import OptionsAnalysis, StakeholderInput
+
+        # The organisation fence arrives with OptionsAnalysis's tenant column.
+        # tenant-scoping-ok: access is decided by _check_analysis_access (owner or admin) on the next line
+        denied = _check_analysis_access(db.session.get(OptionsAnalysis, analysis_id))
+        if denied:
+            return denied
 
         si = StakeholderInput.query.filter_by(
             id=input_id, analysis_id=analysis_id
