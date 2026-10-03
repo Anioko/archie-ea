@@ -81,6 +81,14 @@ VIEW_OPT_OUT = {
     "app.routes.webhook.teams_notifications":
         "Microsoft Graph change notifications — external platform, "
         "client-state/signature verified, no session.",
+    "app.modules.oauth_provider.routes.token":
+        "OAuth token endpoint — called by OAuth clients (an assistant "
+        "backend, a CLI) presenting an authorization code or refresh token, "
+        "never a session cookie; there is no session here to carry a CSRF "
+        "token.",
+    "app.modules.oauth_provider.routes.revoke":
+        "OAuth token revocation (RFC 7009) — same caller population as the "
+        "token endpoint above, no session cookie read.",
 }
 
 # Whole blueprints exempted. Every route in the blueprint must share the same

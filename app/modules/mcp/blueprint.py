@@ -3,7 +3,13 @@
 A single POST endpoint at /mcp that accepts JSON-RPC messages and dispatches
 to the registered tool handlers. Every tool call executes inside a real Flask
 request carrying an authenticated ``current_user`` resolved from the OAuth
-bearer token.
+bearer token by the flask-login request_loader in
+``app.modules.oauth_provider.identity`` — this module never calls
+``login_user()`` and never touches the session itself. Because that loader
+runs lazily the first time anything asks for ``current_user`` — which happens
+inside the app's existing tenant-context ``before_request`` hook, before this
+view ever runs — ``g.current_org_id`` is already correctly set by the time
+any of the code below executes; nothing here needs to set it by hand.
 """
 
 from __future__ import annotations
@@ -11,12 +17,10 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, g, jsonify, request
 from flask_login import current_user
 
-from app.modules.oauth_provider.models import OAuthToken
 from app.modules.mcp.tools import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
@@ -29,66 +33,6 @@ JSONRPC_INVALID_REQUEST = -32600
 JSONRPC_METHOD_NOT_FOUND = -32601
 JSONRPC_INVALID_PARAMS = -32602
 JSONRPC_INTERNAL_ERROR = -32603
-
-
-def _resolve_bearer_token() -> OAuthToken | None:
-    """Resolve the current request's Bearer token to an OAuthToken.
-
-    Returns None if no valid token is present.
-    """
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        return None
-    access_token = auth_header[7:].strip()
-    if not access_token:
-        return None
-    token = OAuthToken.find_by_access_token(access_token)
-    if token is None:
-        return None
-    if not token.is_active:
-        return None
-    # Update last_used_at — an intentional write for token usage tracking
-    # so that idle tokens can be identified and revoked.
-    token.last_used_at = datetime.now(timezone.utc)
-    from app.extensions import db
-    db.session.flush()
-    return token
-
-
-def _authenticate_request() -> bool:
-    """Authenticate the current request via Bearer token.
-
-    Sets flask_login's current_user from the token's user. Also sets
-    g.current_org_id and the database tenant context, because the
-    before_request handler runs before this view function and cannot
-    see the yet-to-be-authenticated user. Returns True if authentication
-    succeeded.
-    """
-    token = _resolve_bearer_token()
-    if token is None:
-        return False
-
-    from app.models.user import User
-    from app.extensions import db
-    user = db.session.get(User, token.user_id)
-    if user is None:
-        return False
-
-    # Set up the request context exactly as a session-cookie request would
-    from flask_login import login_user
-    login_user(user)
-
-    # Re-establish tenant context now that current_user is set.
-    # The before_request handler ran before authentication and left
-    # g.current_org_id = None; we must set it here so that metering
-    # and tenant isolation work correctly for the remainder of the request.
-    if hasattr(user, "organization_id"):
-        g.current_org_id = user.organization_id
-        g.current_org = getattr(user, "organization", None)
-        from app.middleware.tenant_isolation import set_database_tenant_context
-        set_database_tenant_context(db.session.connection(), g.current_org_id)
-
-    return True
 
 
 def _jsonrpc_error(id_, code: int, message: str) -> dict:
@@ -131,7 +75,7 @@ def mcp_endpoint():
         return jsonify(_jsonrpc_result(req_id, {}))
 
     if method == "tools/list":
-        if not _authenticate_request():
+        if not current_user.is_authenticated:
             return jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR,
                                           "Authentication required")), 401
         tools = []
@@ -153,8 +97,10 @@ def mcp_endpoint():
             return jsonify(_jsonrpc_error(req_id, JSONRPC_METHOD_NOT_FOUND,
                                           f"Tool not found: {tool_name}")), 404
 
-        # Authenticate via Bearer token
-        if not _authenticate_request():
+        # Authenticated via Bearer token by the request_loader in
+        # app.modules.oauth_provider.identity, resolved the first time
+        # current_user was touched (the tenant-context before_request hook).
+        if not current_user.is_authenticated:
             return jsonify(_jsonrpc_error(req_id, JSONRPC_INTERNAL_ERROR,
                                           "Authentication required")), 401
 
