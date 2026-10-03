@@ -4,9 +4,7 @@
 replaces that prompt for every organisation's Architecture Journey. Routing
 every write through ``app.services.solution_prompt_override_service``
 instead of letting each route tree build its own query/mutate logic is the
-structural fix (ADR-0008) -- these tests exercise the module directly,
-mirroring ``tests/test_scoring_configuration_service.py`` and
-``tests/test_platform_feature_flag_service.py``.
+structural fix (ADR-0008) -- these tests exercise the module directly.
 """
 
 from __future__ import annotations

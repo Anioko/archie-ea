@@ -12,13 +12,11 @@ ruling that removing it could drop the page in a deployment without
 ``USE_ADMIN_GUARDRAILS``); fixed to ``@platform_admin_required`` in PR #307.
 
 Routing every write through this module instead makes the check structural
-rather than decorator-dependent -- the same pattern as
-``app/services/platform_feature_flag_service.py`` and
-``app/services/scoring_configuration_service.py`` (ADR-0008, one accessor
-per concept). It returns plain data (the ``AIPromptTemplate`` row, or
-``None`` where a route needs to answer 404); each route keeps building its
-own JSON response from its own ``_get_prompt_defaults()`` catalogue, since
-that catalogue is presentation data, not something this module should own.
+rather than decorator-dependent (ADR-0008, one accessor per concept). It
+returns plain data (the ``AIPromptTemplate`` row, or ``None`` where a route
+needs to answer 404); each route keeps building its own JSON response from
+its own ``_get_prompt_defaults()`` catalogue, since that catalogue is
+presentation data, not something this module should own.
 
 Learned from pr324-review-v1 nit 1 (the ScoringConfiguration chokepoint's
 defence-in-depth 403 silently becoming a 500 under a bare ``except
