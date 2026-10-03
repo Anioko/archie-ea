@@ -17,6 +17,7 @@ from app.services.rate_limiter import rate_limit
 from . import unified_applications_bp
 from app.utils.pagination import safe_int_arg
 from app.utils.route_guards import require_entity
+from app.utils.tenant_users import escape_like_literal
 
 logger = logging.getLogger(__name__)
 
@@ -840,7 +841,7 @@ def api_list_templates():
         if element_type:
             query = query.filter(ElementTemplate.element_type == element_type)
         if search:
-            _escaped = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            _escaped = escape_like_literal(search)
             query = query.filter(
                 db.or_(
                     ElementTemplate.name.ilike(f"%{_escaped}%", escape="\\"),

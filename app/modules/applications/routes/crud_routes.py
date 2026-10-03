@@ -13,6 +13,7 @@ from datetime import datetime
 from flask import (
     current_app,
     flash,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -20,6 +21,7 @@ from flask import (
     url_for,
 )
 from flask_login import current_user, login_required
+from werkzeug.exceptions import HTTPException
 
 from app import db
 from app.models.application_capability import ApplicationCapabilityMapping  # dead-code-ok
@@ -33,6 +35,7 @@ from app.models.application_layer import (
     ApplicationService,
     DataObject,
 )
+from app.models.application_owner import ApplicationOwner
 from app.models.application_portfolio import (
     APPLICATION_LIFECYCLE_STAGES,
     ApplicationComponent,
@@ -74,6 +77,7 @@ from ._helpers import (  # dead-code-ok
     _cleanup_application_relationships,
     _delete_mirror_archimate_element,
     _soft_delete_mirror_archimate_element,
+    _verify_app_in_org,
 )
 
 logger = logging.getLogger(__name__)
@@ -351,7 +355,7 @@ def application_fact_sheet(id):
     """
     from app.services.application_fact_sheet import build_fact_sheet  # noqa: PLC0415
 
-    app_obj = ApplicationComponent.query.get_or_404(id)
+    app_obj = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
     sheet = build_fact_sheet(app_obj)
     return render_template("applications/fact_sheet.html", **sheet)
 
@@ -591,7 +595,7 @@ def generate_application_archimate(id):
 def application_edit(id):
     """Edit Application - ALWAYS returns HTML"""
     try:
-        app = ApplicationComponent.query.get_or_404(id)
+        app = _verify_app_in_org(id, g.current_org_id, raise_not_found=True)
 
         if request.method == "POST":
             # Optimistic locking: check if another user modified the record
@@ -695,34 +699,6 @@ def application_edit(id):
                     validation_errors.append(error)
                 else:
                     app.deployment_status = validated_status
-
-            # Validate business_owner
-            business_owner = request.form.get("business_owner")
-            if business_owner is not None:
-                is_valid, validated_owner, error = validate_string(
-                    business_owner, max_length=255, field_name="business_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.business_owner = (
-                        sanitize_html(validated_owner) if validated_owner else None
-                    )
-
-            # Validate technical_owner
-            technical_owner = request.form.get("technical_owner")
-            if technical_owner is not None:
-                is_valid, validated_tech_owner, error = validate_string(
-                    technical_owner, max_length=255, field_name="technical_owner"
-                )
-                if not is_valid:
-                    validation_errors.append(error)
-                else:
-                    app.technical_owner = (
-                        sanitize_html(validated_tech_owner)
-                        if validated_tech_owner
-                        else None
-                    )
 
             # Validate business_purpose
             business_purpose = request.form.get("business_purpose")
@@ -841,12 +817,20 @@ def application_edit(id):
             ae = db.session.get(ArchiMateElement, app.archimate_element_id)
             if ae is not None:
                 architecture_state = ae.togaf_plateau
+
+        # Load ApplicationOwner records for the edit form
+        org_id = g.current_org_id
+        application_owners = ApplicationOwner.get_display_rows_for_application(id, org_id)
+
         return render_template(
             "applications/edit.html", application=app, architecture_state=architecture_state,
             lifecycle_stage_choices=APPLICATION_LIFECYCLE_STAGES,
             lifecycle_stage_choices_lower=[v.lower() for v in APPLICATION_LIFECYCLE_STAGES],
+            application_owners=application_owners,
         )
 
+    except HTTPException:
+        raise
     except Exception:
         db.session.rollback()
         flash("Error updating application. Please try again.", "error")

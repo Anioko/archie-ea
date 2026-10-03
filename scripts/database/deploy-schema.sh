@@ -33,6 +33,13 @@ flask --app manage backfill-solution-risk-merge || echo 'WARN solution risk merg
 flask --app manage backfill-audit-trail || echo 'WARN audit trail backfill skipped - older audit entries from ARB, ArchiMate composer and rationalisation stores remain uncopied until it runs (RUN-01)' >&2
 flask --app manage backfill-review-queue-approvals || echo 'WARN approval-queue consolidation backfill skipped - pending rows from review_queue_items, relationship_suggestions and solution_blueprint_proposals remain uncopied until it runs' >&2
 
+# The generic history trigger reconcile-schema cannot create, then
+# one seeded version per pre-existing element/relationship. Trigger first so
+# the backfill's "no entity_history row at all" check is not racing a
+# concurrent write that the trigger would otherwise have versioned.
+flask --app manage apply-entity-history-trigger || echo 'WARN entity-history trigger skipped - no version is recorded for a changed element/relationship until it runs' >&2
+flask --app manage backfill-entity-history || echo 'WARN entity-history backfill skipped - pre-existing elements/relationships have no history version until it runs' >&2
+
 # ADR 0008 -- give unified_capabilities (the canonical capability store, per
 # app/models/unified_capability.py and docs/adr/0008-one-system-of-record.md) a
 # producer. Must run after reconcile-schema (provenance columns) and after every
